@@ -67,7 +67,7 @@ Each declared attribute is `{name, original_value, normalized_value, grounding, 
 
 **Absence Observation (normative):** `found = false` requires, for every declared search key, the query string derived from the sanitized Tool Action log (the `type` action into the identified search control, never agent-reported), equal after §B normalization to the population record's value for that key, and the Target System's empty-result response grounded in a Structural Snapshot, plus a passing search-completeness check (§H). Otherwise the Work Item is `UNINSPECTED`.
 
-**Per-condition evaluations (normative):** each record carries one current evaluation per applicable Compliance Rule condition: `{condition_id, origin ∈ {RULE, AGENT_JUDGED, HUMAN, UNEVALUATED}, value ∈ {COMPLIANT, EXCEPTION, UNEVALUATED}, confirmation (Agent-Judged only) ∈ {pending, confirmed, rejected}, confidence ∈ [0,1] (Agent-Judged only), rationale, evidence_ids, diagnostic}`. A rejected Agent-Judged evaluation is retained as history and replaced by the human one. Applicability is the condition's compiled predicate on the Procedure Version (FR-9). Record evaluation derives from the conditions per FR-9.
+**Per-condition evaluations (normative):** each record carries one current evaluation per applicable Compliance Rule condition: `{condition_id, origin ∈ {RULE, AGENT_JUDGED, HUMAN}, value ∈ {COMPLIANT, EXCEPTION, UNEVALUATED}, confirmation (Agent-Judged only) ∈ {pending, confirmed, rejected}, confidence ∈ [0,1] (Agent-Judged only), rationale, evidence_ids, diagnostic}`. `UNEVALUATED` is a value, never an origin: an Unevaluated evaluation still records the origin that produced it (a compiled condition over a missing or contradictory attribute → `RULE`; a below-threshold agent judgment → `AGENT_JUDGED`; a human rejection to Unevaluated → `HUMAN`). A rejected Agent-Judged evaluation is retained as history and replaced by the human one. Applicability is the condition's compiled predicate on the Procedure Version (FR-9). Record evaluation derives from the conditions per FR-9.
 
 ## C. Procedure Template Contracts
 
@@ -162,7 +162,7 @@ Expected evaluations, and the confirmation script the tester follows for Agent-J
 
 **Exception states:** `OPEN → UNDER_REVIEW → CONFIRMED | NOT_AN_EXCEPTION`. `NOT_AN_EXCEPTION` is a human disposition and never erases the evaluation that raised it.
 
-**Evaluation origins (per condition):** `RULE`, `AGENT_JUDGED` (with `confirmation: pending | confirmed | rejected`), `HUMAN` (only after rejecting an Agent-Judged evaluation), `UNEVALUATED`.
+**Evaluation origins (per condition):** `RULE`, `AGENT_JUDGED` (with `confirmation: pending | confirmed | rejected`), `HUMAN` (only after rejecting an Agent-Judged evaluation). Evaluation values: `COMPLIANT`, `EXCEPTION`, `UNEVALUATED`; `UNEVALUATED` is a value with an origin, not an origin.
 
 **Result sealing (normative):** a Result seals when the Evidence Quality Gate has passed and no condition evaluation is `pending` (FR-40). The System Outcome is computed once at sealing and is immutable thereafter.
 
