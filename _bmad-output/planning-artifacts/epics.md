@@ -1,5 +1,5 @@
 ---
-stepsCompleted: []
+stepsCompleted: [1]
 inputDocuments:
   - "_bmad-output/specs/spec-IntelliFin Audit/SPEC.md"
   - "_bmad-output/specs/spec-IntelliFin Audit/glossary.md"
@@ -170,8 +170,93 @@ UX-DR41: Do and Don't rules from DESIGN.md: show version, lifecycle, Gate, outco
 
 ### FR Coverage Map
 
-{{requirements_coverage_map}}
+FR1: Epic 1 - Sign in and role-limited access
+FR2: Epic 1 - Three roles and their action sets
+FR3: Epic 1 (write-capable credential refused) and Epic 4 (execution-time denial and logging)
+FR4: Epic 2 - Create from one of four Templates, name the Control
+FR5: Epic 2 - Period and scope on the version; shown in every Result (Epic 3)
+FR6: Epic 2 - Population Source binding, inclusion rule, declared count; acquisition and empty-population rule in Epic 3
+FR7: Epic 1 (registration) and Epic 2 (selection on the version); desktop kind completed in Epic 7
+FR8: Epic 2 - Audit Instructions and authoring-time scope flag; execution denial in Epic 4
+FR9: Epic 2 - Compliance Rule compilation, applicability, boundary semantics; evaluation order applied in Epic 3
+FR10: Epic 2 (Evidence Requirements authoring) and Epic 4 (platform capture bound to the Tool Action)
+FR11: Epic 2 (Schedule field on the version) and Epic 8 (runtime)
+FR12: Epic 2 - Executable plan preview and re-derivation
+FR13: Epic 2 - Submit, approve, reject with diff
+FR14: Epic 2 (immutable versions, platform-authored drafts) and Epic 8 (period-boundary handover)
+FR15: Epic 8 - Regression Run gates activation
+FR16: Epic 3 - Manual initiation, overlap prevention, correlation id
+FR17: Epic 8 - Scheduled initiation, missed starts
+FR18: Epic 3 - Observable Run lifecycle with recorded transitions
+FR19: Epic 4 - Isolated Agent Workspace per Run
+FR20: Epic 4 (web path) and Epic 7 (desktop path)
+FR21: Epic 3 - Adapter acquisition on the same Timeline and schema
+FR22: Epic 3 - Session Steps and Work Items, sequential execution
+FR23: Epic 3 (limit framework and outcome mapping) and Epic 4 (agent limits, untrusted content)
+FR24: Epic 5 - Live View
+FR25: Epic 5 - Pause and resume
+FR26: Epic 3 (cancel from Run Detail, linked rerun) and Epic 5 (cancel from Live View)
+FR27: Epic 4 (Escalation kinds, answers, timeouts) and Epic 5 (flag from Live View)
+FR28: Epic 4 - In-app and email notification
+FR29: Epic 3 - Execution Timeline
+FR30: Epic 5 - Replay from the platform-owned asset set
+FR31: Epic 3 - Evidence capture fields, grounding, absence rule
+FR32: Epic 3 - Evidence Package lineage
+FR33: Epic 3 - Evidence Quality Gate
+FR34: Epic 3 - Inconclusive and Run Failed
+FR35: Epic 3 - Evidence immutability and integrity events
+FR36: Epic 3 - Normalize and match
+FR37: Epic 3 - Rule-Classified evaluations
+FR38: Epic 4 - Agent-Judged evaluations and confirmation
+FR39: Epic 3 - Result outputs and counts
+FR40: Epic 3 - Result summary and sealing
+FR41: Epic 6 - Exception investigation
+FR42: Epic 6 - Exception workflow
+FR43: Epic 6 - Submit, approve, reject, finalize
+FR44: Epic 6 - Reviewer disagreement
+FR45: Epic 1 - Append-only chained Audit Trail (every later epic appends its events)
+FR46: Epic 6 - Workpaper Bundle export
+FR47: Epic 6 - Reproduction support
+FR48: Epic 3 (Runs list and lifecycle labels) and Epic 9 (full filters, missed starts)
+FR49: Epic 9 - Operational diagnostics
+FR50: Epic 9 - Thesis instrumentation
+
 
 ## Epic List
 
-{{epics_list}}
+### Epic 1: Sign in, roles, and the registered synthetic environment
+The PoC Administrator registers the systems the agent may touch and the users who may work; Auditors and Audit Managers sign in and see only what their role allows. Delivers the runnable monorepo on Railway, the Ledger Signal shell, application-owned roles, the chained Audit Trail, the Administration surface with read-only registrations (write-capable credentials refused, registration digests, expected labels, secondary keys, masking), Population Source bindings, and the synthetic Northstar fixtures for every web, API, and file system plus the golden datasets as product data (Flow 0).
+**FRs covered:** FR1, FR2, FR3 (registration side), FR7 (registration side), FR45
+
+### Epic 2: Author and approve a Procedure
+An Auditor builds the Terminated Users Procedure from its Template in audit vocabulary, reads the derived plan, and submits it; an Audit Manager who is not the author reviews the diff and approves or rejects it. Delivers the Procedures, Procedure Builder, Procedure Detail, and Version review surfaces; Templates as data; the deterministic PlanCompiler with applicability predicates and scope-widening checks; queued plan derivation; immutable Procedure Versions with platform-authored drafts on registration change (Flows 1 and 2).
+**FRs covered:** FR4, FR5, FR6, FR7 (selection), FR8, FR9, FR10, FR11 (authoring), FR12, FR13, FR14 (immutability and drafts)
+
+### Epic 3: Run an adapter-acquired Procedure to a sealed Result
+An Auditor starts a Run of an Active version whose Population Source and Target Systems are API or file based, watches its lifecycle in Run Detail, and receives a sealed Pass or Control Failure, or an honest Inconclusive or Run Failed. Delivers the durable worker, Session Steps and Work Items, the one Observation contract with grounding and corroboration, the full Evidence Quality Gate, sealed Evidence Packages, the deterministic evaluator, Result publication and sealing, the Execution Timeline, cancel and rerun, and the Runs list. Proven on the Segregation-of-Duties and High-Value Transactions golden datasets with no model in the loop.
+**FRs covered:** FR16, FR18, FR21, FR22, FR23 (limits), FR26, FR29, FR31, FR32, FR33, FR34, FR35, FR36, FR37, FR39, FR40, FR48 (list and lifecycle)
+
+### Epic 4: The Audit Agent works a web Target System under supervision rules
+The Audit Agent signs in to LoanCore in an isolated Agent Workspace, inspects each terminated employee, and registers grounded Observations; when it cannot proceed safely the platform raises a typed Escalation that an Auditor answers from Run Detail, and an Auditor confirms or rejects Agent-Judged evaluations so the Result can seal. Delivers the Solari browser execution adapter with allowlists and read-only denial, just-in-time credentials with redaction, the accessibility-tree extractor, absence proof, bounded limits, durable waits, in-app and email notification, and the evaluation confirmation flow. Proven on the hero (LoanCore only) and Production Configuration Deviation golden datasets.
+**FRs covered:** FR3 (execution denial), FR8 (execution denial), FR10, FR19, FR20 (web path), FR23 (agent), FR27, FR28, FR38
+
+### Epic 5: Watch, pause, and replay the agent
+An Auditor opens Live View to watch the workspace screen, Observations, and Gate rows as they happen, pauses and resumes, flags a Run, answers an Escalation in place, and later replays any terminal Run with jumps to Work Items, Exceptions, and Escalations, with the Workspace Provider unreachable. Delivers the LISTEN/NOTIFY plus SSE live channel, the shared session viewer, the platform-owned Replay asset set, pause and resume as durable waits, and reading mode below 1024px (Flow 3).
+**FRs covered:** FR24, FR25, FR26 (from Live View), FR27 (flag), FR30
+
+### Epic 6: Investigate Exceptions, review, finalize, and reproduce
+An Auditor opens each Exception to its provenance chain and grounding, dispositions it, and submits the sealed Result; an Audit Manager approves, records disagreement without override, and finalizes with a signed manifest; any user exports a Workpaper Bundle from which an independent reviewer reproduces an evaluation offline. Delivers Exception Detail, the Review surface and queue, the Overview needs-attention list, the signed Bundle archive, and reproduction tooling (Flows 5 and 6).
+**FRs covered:** FR41, FR42, FR43, FR44, FR46, FR47
+
+### Epic 7: Inspect a desktop Target System
+The Audit Agent launches LedgerDesk in the Solari sandbox desktop, signs in, searches User Maintenance, and registers Observations grounded in the application's control tree, completing the hero Procedure across both Target Systems. Delivers the synthetic LedgerDesk application with its localhost JSON snapshot endpoint, the project-owned desktop template, the in-VM snapshot agent, the desktop execution adapter, and the desktop_tree extractor. Proven on the full hero golden dataset including the ambiguous role list and the Suspended account.
+**FRs covered:** FR7 (desktop kind), FR20 (desktop path)
+
+### Epic 8: Runs that happen without anyone watching
+A weekly Schedule starts the Run unattended at its UTC time with a derived period; a missed start is recorded and shown, never skipped; a new version takes over at the next period boundary without running a period twice; a version whose model, prompt, tool, or registration digest changed must pass a Regression Run on the golden dataset before it activates. Delivers the worker scheduler, handover, Retired transitions, the Regression Run kind with golden comparison, and upcoming and missed Runs on the dashboard (Flow 4).
+**FRs covered:** FR11 (runtime), FR14 (handover), FR15, FR17
+
+### Epic 9: Oversee the PoC and measure the thesis
+A PoC Administrator sees Target System connectivity, provider and runner health, errors, retries, limits, and durations without secrets; every user filters Runs by every state; the team reports the SM-11 measures per Procedure and proves the NFR envelope with isolation, abuse, integrity, recovery, performance, and accessibility tests. Delivers diagnostics rows, full Runs filters, thesis metrics, the restore drill, and the acceptance test suites.
+**FRs covered:** FR48 (full filters and missed starts), FR49, FR50
+
