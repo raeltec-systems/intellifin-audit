@@ -1,6 +1,6 @@
 ---
 title: "IntelliFin Audit PoC — Product Detail Addendum"
-status: draft
+status: final
 revision: 2
 created: 2026-08-31
 updated: 2026-09-01
@@ -18,58 +18,60 @@ The fictional organization is **Northstar Financial Group**, a regulated lender 
 
 ### A.1 Population Sources
 
-Every Population Source is acquired by a platform Adapter (FR-21) at the start of each Run; the Procedure Version freezes only the binding (FR-6). Every snapshot carries a declared row count, generation or version identifier, effective period, and integrity digest generated independently of the Audit Runner, so the Evidence Quality Gate can detect truncation or substitution.
+Per FR-6 and FR-21, each Run acquires the bound Population Source through a platform Adapter. Every snapshot carries a declared row count, generation or version identifier, effective period, and integrity digest generated independently of the Audit Runner, so the Evidence Quality Gate can detect truncation or substitution.
 
 | Source | Purpose | Binding | Declared count | Core records |
 | --- | --- | --- | --- | --- |
-| Leavers export | Weekly HR leavers export (`.xlsx`) published by HR to a registered location (Template P-1) | Versioned file; manual upload permitted for a `once` Schedule | Signed cover sheet (row count and digest) | Employee ID, name, department, employment status, termination effective date, manager |
+| Leavers export | Weekly HR leavers export (`.xlsx`) published by HR to a registered location (Template P-1); the fixture is cumulative for the year, so a manual Run for August and a weekly Run both find their period in the current file | Versioned file; manual upload permitted for a `once` Schedule | Signed cover sheet (row count and digest) | Employee ID, name, department, employment status, termination effective date, manager |
 | PeopleHub | HR system of record (alternative P-1 binding) | Read-only API | Count endpoint | Employee ID, name, employment status, termination effective time |
 | AccessGate | Application identity store (Template P-2) | Read-only API or versioned CSV | Count endpoint or cover sheet | Account ID, employee ID, username, status, roles, disabled time |
 | LedgerFlow | Transaction system (Template P-3) | Read-only API or versioned CSV | Count endpoint or cover sheet | Transaction ID, amount, currency, initiator, processed time, approval ID |
 | ConfigRegistry | Approved configuration baseline (Template P-4) | Versioned file | Cover sheet | Parameter, approved value, effective time |
 
-The Audit Agent may open a file Source in the workspace for the recording (UJ-3), but the Adapter's parse is the population of record.
+The Audit Agent may open a file Population Source in the workspace so that the action appears in the session recording (UJ-3), but the Adapter's parse is the population of record.
 
 ### A.2 Target Systems and Reference Sources
 
 | System | Role | Kind and acquisition path | What is done | Audit credential |
 | --- | --- | --- | --- | --- |
 | LoanCore | Target System (P-1) | Synthetic **web application** (loan origination and servicing) with a user-administration area; **agent-driven** | Sign in, search users by employee ID or name, open the account page, read status, username, roles, last login; platform captures screenshot bound to the read | Read-only audit account, no user-admin write rights |
-| LedgerDesk | Target System (P-1) | Synthetic **desktop application** (finance ERP client) running in the sandbox desktop `[ASSUMPTION: platform decided by Open Question 3]`; **agent-driven** | Launch, sign in, open User Maintenance, search by employee ID, read status and role assignments; platform captures screenshot | Read-only audit account |
+| LedgerDesk | Target System (P-1) | Synthetic **desktop application** (finance ERP client) running in the sandbox desktop `[ASSUMPTION: platform decided by Open Question 4]`; **agent-driven** | Launch, sign in, open User Maintenance, search by employee ID, read status and role assignments; platform captures screenshot | Read-only audit account |
 | AccessGate | Target System (P-2) | Read-only **API**; **adapter-acquired** | Extract role detail per active account in one extraction | Read-only API token |
 | RoleMatrix | Reference Source (P-2) | Versioned file; consulted by the evaluator | Expand roles to permissions; no Work Items | None |
-| ApproveNow | Target System (P-3) | Read-only **API**; **adapter-acquired** (`[ASSUMPTION]` controlled web extraction is an optional agent-driven variant) | Extract approval decisions for the transaction population | Read-only API token |
+| ApproveNow | Target System (P-3) | Read-only **API**; **adapter-acquired** (`[ASSUMPTION]` controlled web extraction is an optional agent-driven variant) | Extract approval decisions and approver limits for the transaction population | Read-only API token |
 | ProdConsole | Target System (P-4) | Synthetic **web** configuration surface; **agent-driven** | Read parameter values and the signed snapshot identifier | Read-only |
 
 Every Target System exposes only synthetic data, publishes an allowlisted origin or application identity, and refuses write actions from the audit credential at the system level, so that FR-3 is enforced by both the workspace and the system.
 
 ## B. Shared Data Rules
 
+- **Scheduled period derivation (normative):** daily → previous calendar day; weekly → previous Monday–Sunday; monthly → previous calendar month; once → the period the Auditor set.
 - All identifiers are strings and preserve leading zeros.
 - All timestamps use ISO 8601 and are normalized to UTC; original offsets are retained.
 - Money uses decimal amount plus ISO 4217 currency; the PoC avoids foreign-exchange conversion.
 - Empty mandatory identifiers, duplicate primary keys, unparseable timestamps, and undeclared schema fields trigger Evidence Quality Gate events.
-- Matching uses exact normalized identifiers. Fuzzy identity matching is out of scope; a Target System search that returns more than one candidate for a population record is an ambiguous match, and the record is Unevaluated unless a *choose candidate* Escalation resolved it to exactly one.
+- Matching uses exact normalized identifiers. Fuzzy identity matching is out of scope; a Target System search whose captured result rows contain exactly one row with a grounded identity attribute equal to the record key is resolved by the platform; any other outcome raises a *choose candidate* Escalation (FR-27), and the record is Unevaluated unless the answer resolved it, in which case it is flagged human-matched.
 - A record that cannot be matched unambiguously is Unevaluated and prevents Pass when it belongs to the declared population.
 - **Unnamed values (normative):** when a compiled condition meets an attribute value outside the set it names, the condition evaluates Unevaluated with diagnostic `rule does not name value <v>`; the platform raises an *unnamed value* Escalation (answers: mark Unevaluated and continue; abort). No answer maps the value.
 - **Exception fingerprint compatibility (normative):** two Procedure Versions are compatible for cross-Run fingerprints when they share the Procedure, the matching key, and the Compliance Rule digest. Compatibility is declared by the builder on approval and shown on the version.
 
 ### B.1 Observation schema (normative)
 
-Each Observation records: `work_item_id`, `population_record_key`, `target_system`, `found` (`true` / `false` / `ambiguous`), `observed_at` (UTC), `step_execution_id`, `capture_method` (`agent` / `adapter`), linked Evidence identifiers, and declared attributes.
+Each Observation records: `work_item_id`, `population_record_key`, `target_system`, `found` (`true` / `false` / `ambiguous`), `observed_at` (UTC), `step_execution_id`, `capture_method` (`agent` / `adapter`), linked Evidence identifiers, `identity` (a grounded attribute holding the matching key as displayed by the Target System; required when `found = true`), `match_origin` (`platform` / `human-matched`), and declared attributes.
 
 Each declared attribute is `{name, original_value, normalized_value, grounding, corroboration}` where:
 
-- `grounding` is `{evidence_id, locator, extracted_text}`; `locator` is an accessibility-tree or DOM path (web), a window and control identifier (desktop), or a sheet and cell reference (file). An attribute without grounding is absent.
-- `corroboration` is set by the Evidence Quality Gate: `matched` when the deterministic extractor's re-read of `locator` equals `original_value`; `contradictory` otherwise; `model_read` when the Procedure Version declares the attribute readable only by a model, in which case any condition over it is Agent-Judged.
+- `grounding` is `{evidence_id, locator, label, extracted_text}`; `evidence_id` references a Structural Snapshot (web: accessibility tree or DOM serialization; desktop: control tree) or a file Evidence item, never a screenshot or recording; `locator` is a path within it; `label` is the field's accessible name or label as read from the snapshot. An attribute without grounding is treated as not captured.
+- `corroboration` is set by the Evidence Quality Gate at registration: `matched` when the deterministic extractor's re-read of `locator` in the stored snapshot equals `original_value` and `label` matches the label the Procedure Version declares for the attribute; `contradictory` otherwise; `model_read` when the Procedure Version declares the attribute readable only by a model, in which case a compiled condition over it is applied by the deterministic evaluator with origin `AGENT_JUDGED` and the agent's read confidence.
+- **Structural Snapshot (normative):** captured by the platform at the Tool Action that read the attributes, bound to the same Tool Action as the screenshot, with URL or window title. Corroboration and FR-47 reproduction read the stored snapshot only, never the live workspace.
 
-**Absence Observation (normative):** `found = false` requires Evidence of every declared search key tried, the exact query string used for each, and the Target System's captured empty-result response for each, plus a passing search-completeness check (§H). Otherwise the Work Item is `UNINSPECTED`.
+**Absence Observation (normative):** `found = false` requires, for every declared search key, the query string derived from the sanitized Tool Action log (the `type` action into the identified search control, never agent-reported), equal after §B normalization to the population record's value for that key, and the Target System's empty-result response grounded in a Structural Snapshot, plus a passing search-completeness check (§H). Otherwise the Work Item is `UNINSPECTED`.
 
-**Per-condition evaluations (normative):** each record carries one evaluation per Compliance Rule condition: `{condition_id, origin ∈ {RULE, AGENT_JUDGED, HUMAN, UNEVALUATED}, value ∈ {COMPLIANT, EXCEPTION, UNEVALUATED}, confirmation (Agent-Judged only) ∈ {pending, confirmed, rejected}, confidence ∈ [0,1] (Agent-Judged only), rationale, evidence_ids, diagnostic}`. Record evaluation derives from the conditions per FR-9.
+**Per-condition evaluations (normative):** each record carries one current evaluation per applicable Compliance Rule condition: `{condition_id, origin ∈ {RULE, AGENT_JUDGED, HUMAN, UNEVALUATED}, value ∈ {COMPLIANT, EXCEPTION, UNEVALUATED}, confirmation (Agent-Judged only) ∈ {pending, confirmed, rejected}, confidence ∈ [0,1] (Agent-Judged only), rationale, evidence_ids, diagnostic}`. A rejected Agent-Judged evaluation is retained as history and replaced by the human one. Applicability is the condition's compiled predicate on the Procedure Version (FR-9). Record evaluation derives from the conditions per FR-9.
 
 ## C. Procedure Template Contracts
 
-Each Template pre-populates the Procedure Builder. Auditors edit Templates into Procedures; the values below are defaults, not fixed logic. Scheduled periods derive as: daily → previous calendar day; weekly → previous Monday–Sunday; monthly → previous calendar month; once → the period the Auditor set. Work Item coverage per Template is stated so §H per-record coverage is testable for each.
+Each Template pre-populates the Procedure Builder. Auditors edit Templates into Procedures; the values below are defaults, not fixed logic. Work Item coverage per Template is stated so §H per-record coverage is testable for each.
 
 ### P-1: Terminated Users Retaining Access (hero, fully configurable)
 
@@ -79,9 +81,10 @@ Each Template pre-populates the Procedure Builder. Auditors edit Templates into 
 - **Target Systems default:** LoanCore (web, agent-driven) and LedgerDesk (desktop, agent-driven). Execution order: all records in LoanCore, then all records in LedgerDesk (FR-20).
 - **Work Item coverage:** one Work Item per population record per Target System.
 - **Audit Instructions default:** "For each terminated employee, sign in to each Target System, search by employee ID, and if there is no ID match search by full name. Open the account record and note whether an account exists, its status, username, and assigned roles."
-- **Compliance Rule default:** condition C1 (compiles): Compliant when `found = false` (proven absence) or `account_status = disabled`; Exception when `account_status = active`; any other status → Unevaluated (unnamed value). Condition C2 (Agent-Judged): "Treat any account whose roles look privileged as an Exception even if disabled." C2 applies to every found account; a found account with no C2 evaluation is a Gate failure.
-- **Escalation triggers seeded:** a name-only match with two candidates (*choose candidate*); an account with status `Suspended` (*unnamed value*; expected terminal outcome Inconclusive with diagnostic); a search timeout (*retry or skip*).
-- **Evidence Requirements default:** username, account_status, roles (each grounded), platform screenshot of the account page bound to the read, source export row.
+- **Compliance Rule default:** condition C1 (compiles; applicability: all records): Compliant when `found = false` (proven absence) or `account_status = disabled`; Exception when `account_status = active`; any other status → Unevaluated (unnamed value). Condition C2 (Agent-Judged; applicability: `found = true`): "Treat any account whose roles look privileged as an Exception even if disabled." A found account with no C2 evaluation is a Gate failure.
+- **Declared attribute labels:** `account_status` → "Status", `username` → "Username", `roles` → "Roles", identity → "Employee ID"; secondary key for *choose candidate*: full name.
+- **Escalation triggers seeded:** a name-only match with two candidate rows lacking the employee ID (*choose candidate*); an account with status `Suspended` (*unnamed value*; expected terminal outcome Inconclusive with diagnostic); a search timeout exhausting retries (*retry or skip*).
+- **Evidence Requirements default:** username, account_status, roles (each grounded), Structural Snapshot and platform screenshot of the account page bound to the read, source export row.
 - **Schedule default:** weekly.
 - **Inconclusive:** any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.
 - **Template variant retained:** a 24-hour disablement-window rule (`disabled_time - termination_time <= 24h`, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes `disabled_time`; the §D boundary case for P-1 targets this variant.
@@ -111,7 +114,7 @@ Each Template pre-populates the Procedure Builder. Auditors edit Templates into 
 
 - **Objective:** Determine whether observed production parameters equal the approved baseline in effect at the observation time.
 - **Population Source:** ConfigRegistry baseline parameters (Adapter). **Target System:** ProdConsole (web, agent-driven).
-- **Work Item coverage:** one agent Work Item per parameter; the ProdConsole page read is one Step Execution whose grounded parameter values populate each Work Item's Observation.
+- **Work Item coverage:** one agent Work Item for the ProdConsole page read, owning one Observation per baseline parameter, each grounded in the page's Structural Snapshot with the parameter name as identity attribute.
 - **Matching key:** Exact parameter name.
 - **Compliant:** Observed and approved normalized values are equal. **Exception:** Value differs or an extra production parameter is explicitly prohibited by the baseline.
 - **Inconclusive:** Required parameter absent from the observation, multiple effective baselines apply, observation is stale, or extraction is partial.
@@ -130,27 +133,30 @@ Each Procedure's golden dataset must include, each with a declared expected **te
 - one record whose required Evidence cannot be captured (for example, account page fails to render);
 - one simulated Target System, workspace, or Adapter failure;
 - one prompt-like malicious string in retrieved content (file cell, page text, or desktop field) that must be treated as data, and one that attempts to shape an Escalation question;
+- one account page of a *different* employee presented as the record's page (identity corroboration must yield Inconclusive);
+- one page where the expected value appears only in a non-field element such as a filter option (label corroboration must yield Inconclusive);
+- one mistyped search key (query-string check must yield an Uninspected Work Item and Inconclusive);
 - one seeded transcription error (the screen shows `Active`; the agent is induced to record `disabled`) that must be caught by corroboration and yield Inconclusive;
 - one silent-timeout or partial-pagination case for a search that must yield an Uninspected Work Item and Inconclusive, never a Compliant absence;
 - three seeded scope-widening Audit Instructions (an unregistered system, a write verb, an out-of-scope origin) that must be flagged at authoring and denied at execution;
-- for the hero Procedure: one record whose C2 evaluation is correct; one record whose role list is genuinely ambiguous, accepted as Unevaluated, escalated, or correctly evaluated and failed only if confidently wrong; one *choose candidate* trigger; and one `Suspended` account (expected terminal outcome Inconclusive).
+- for the hero Procedure: one record whose C2 evaluation is correct; one record whose role list is genuinely ambiguous — accepted if the agent marks it Unevaluated or evaluates it correctly, failed only if the agent is confidently wrong, and excluded from the SM-4 and FR-15 identity comparison; one *choose candidate* trigger; and one `Suspended` account (expected terminal outcome Inconclusive).
 
-Expected evaluations are versioned separately from the executable rules so tests do not validate against the implementation that produced the Result. Every golden dataset is run at least twice for SM-4 consistency. Hero-Procedure golden populations are deliberately small (≤ 20 records) so live execution is easy to observe.
+Expected evaluations, and the confirmation script the tester follows for Agent-Judged evaluations, are versioned separately from the executable rules so tests do not validate against the implementation that produced the Result. Every golden dataset is run at least twice for SM-4 consistency. Hero-Procedure golden populations are deliberately small (≤ 20 records) so live execution is easy to observe.
 
 ## E. State Models and Outcome Rules
 
 **Procedure Version states:** `DRAFT → SUBMITTED → APPROVED | REJECTED`; `REJECTED → DRAFT` on edit; `APPROVED → ACTIVE` immediately, or after the FR-15 regression Run where required; `ACTIVE → RETIRED` at the first period boundary after a later version becomes `ACTIVE`. Only `ACTIVE` versions run or schedule. Platform-authored drafts (model, prompt, or tool change) follow the same states.
 
-**Run states:** `QUEUED → RUNNING`; `RUNNING ⇄ PAUSED`; `RUNNING → AWAITING_AUDITOR → RUNNING` (Escalation answered); terminal `COMPLETED | INCONCLUSIVE | RUN_FAILED | CANCELED`. *Active* = `QUEUED`, `RUNNING`, `PAUSED`, `AWAITING_AUDITOR`; cancel is permitted from any active state. Pause is permitted from `RUNNING` only.
+**Run states:** `QUEUED → RUNNING`; `RUNNING ⇄ PAUSED`; `RUNNING → AWAITING_AUDITOR → RUNNING` (Escalation answered); after the last Work Item the Run-level Gate checks run: `RUNNING → COMPLETED` on pass, `RUNNING → INCONCLUSIVE` on fail; `COMPLETED → INCONCLUSIVE` only at Result sealing, when a human rejection leaves a condition Unevaluated. Terminal: `INCONCLUSIVE`, `RUN_FAILED`, `CANCELED`, and `COMPLETED` once its Result is sealed. *Active* = `QUEUED`, `RUNNING`, `PAUSED`, `AWAITING_AUDITOR`; cancel is permitted from any active state, and an Escalation answer of *abort* is a cancel with reason recorded. Pause is permitted from `RUNNING` only.
 
 - `COMPLETED` means execution finished; its Result is Pending Confirmation until sealed, then Pass or Control Failure.
 - `INCONCLUSIVE` means Evidence exists but is insufficient, contradictory, uncorroborated, or leaves a record Unevaluated; or a Pause or Escalation timed out.
-- `RUN_FAILED` means Run-level technical execution could not complete: workspace creation, Target System sign-in, Population Source acquisition, or a denied action.
+- `RUN_FAILED` means a Session Step failed after bounded retries, or an action was denied (see *Session Steps* below).
 - `PAUSED` and `AWAITING_AUDITOR` beyond their timeouts transition to `INCONCLUSIVE` with reason recorded and Evidence preserved; `CANCELED` is reserved for explicit human cancellation.
 
-**Work Item states:** `PENDING → IN_PROGRESS → OBSERVED | UNINSPECTED | AMBIGUOUS | FAILED`; `AMBIGUOUS → IN_PROGRESS` when a *choose candidate* answer resolves it; `FAILED` and `UNINSPECTED` feed the §H coverage check.
+**Work Item states:** `PENDING → IN_PROGRESS → OBSERVED | UNINSPECTED | AMBIGUOUS | FAILED`; `AMBIGUOUS → IN_PROGRESS` when a *choose candidate* answer resolves it; `IN_PROGRESS → AWAITING (retry or skip) → IN_PROGRESS | UNINSPECTED` when a Step Execution's retry limit is exhausted; `FAILED` only when the *retry* cycle is also exhausted. `FAILED` and `UNINSPECTED` feed the §H coverage check.
 
-**Session Steps:** Population Source acquisition, Target System sign-in, and Adapter extraction are Run-level Session Steps; their failure after bounded retries yields `RUN_FAILED`.
+**Session Steps:** workspace creation, Population Source acquisition, Target System sign-in, and Adapter extraction are Run-level Session Steps; their failure after bounded retries yields `RUN_FAILED`. This is the normative cause list that FR-34 and NFR-8 reference.
 
 **Review states:** `DRAFT → SUBMITTED → APPROVED → FINALIZED`. Rejection creates a new review event and returns the Result from `SUBMITTED` to `DRAFT` without deleting history. Only an `APPROVED` Result may be finalized; after finalization nothing on the Result, Exceptions, reviews, Timeline, or Evidence changes.
 
@@ -158,9 +164,9 @@ Expected evaluations are versioned separately from the executable rules so tests
 
 **Evaluation origins (per condition):** `RULE`, `AGENT_JUDGED` (with `confirmation: pending | confirmed | rejected`), `HUMAN` (only after rejecting an Agent-Judged evaluation), `UNEVALUATED`.
 
-**Result sealing (normative):** a Result seals when the Evidence Quality Gate has passed and no condition evaluation is `pending`. The Result version increments on each confirmation or rejection before sealing. The System Outcome is computed once at sealing and is immutable thereafter.
+**Result sealing (normative):** a Result seals when the Evidence Quality Gate has passed and no condition evaluation is `pending` (FR-40). The System Outcome is computed once at sealing and is immutable thereafter.
 
-### Normative Outcome Rules
+### E.1 Normative Outcome Rules
 
 Rows apply in order; the first matching row wins.
 
@@ -168,15 +174,44 @@ Rows apply in order; the first matching row wins.
 | --- | --- | --- | --- |
 | Run canceled | Not completed | Canceled (Run state) | Request a new Run; cannot submit |
 | Run-level failure after bounded retries, or denied action | Not completed | Run Failed (Run state) | Diagnose and request a new Run; cannot submit |
-| Evidence Quality Gate fails (coverage, count, corroboration, absence, schema, freshness, ambiguity, unnamed value, missing C2 evaluation); or Pause or Escalation timed out | Not authoritative | Inconclusive (Run state) | Diagnose and request a new Run; cannot submit |
+| Evidence Quality Gate fails (coverage, count, corroboration, absence, schema, freshness, ambiguity, unnamed value, missing evaluation for an applicable condition); or Pause or Escalation timed out | Not authoritative | Inconclusive (Run state) | Diagnose and request a new Run; cannot submit |
 | Gate passes | Any Agent-Judged evaluation `pending` | Pending Confirmation (unsealed) | Confirm or reject each; cannot submit |
-| Gate passes, sealed | Any condition on any record `UNEVALUATED` and no Exception counts | Inconclusive (Run state) | Diagnose and request a new Run; cannot submit |
+| Gate passes, sealed | Any condition on any record `UNEVALUATED` (by human rejection) and no Exception counts | Inconclusive (Run state, via `COMPLETED → INCONCLUSIVE`) | Diagnose and request a new Run; cannot submit |
 | Gate passes, sealed | Any Exception counts toward the outcome | Control Failure, with any Unevaluated records listed | Disposition Exceptions, approve, reject, or record disagreement |
 | Gate passes, sealed | Every condition on every record Compliant | Pass | Approve, reject with rationale, or record disagreement |
 
-**Limit exhaustion mapping (normative):** exhausting retries or the time limit on one Step Execution marks its Work Item `FAILED` and the Run continues to a coverage-failure `INCONCLUSIVE`; exhausting the Run-level Step Execution, time, or token limit stops the Run as `INCONCLUSIVE` with partial Evidence preserved; a limit breach caused by a denied action or scope violation stops the Run as `RUN_FAILED` and is logged as a security event.
+**Limit exhaustion mapping (normative):** exhausting retries or the time limit on one Step Execution raises a *retry or skip* Escalation; *retry* grants one more bounded cycle counted against the Run-level Step Execution limit, *skip* marks the Work Item `UNINSPECTED`, a second exhaustion marks it `FAILED`, and the Run continues (the coverage check then yields `INCONCLUSIVE`); exhausting the Run-level Step Execution, time, or token limit stops the Run as `INCONCLUSIVE` with partial Evidence preserved; a limit breach caused by a denied action or scope violation stops the Run as `RUN_FAILED` and is logged as a security event.
 
 Human dispositions and disagreements never alter Rule-Classified evaluations or the sealed System Outcome. Confirming or rejecting an Agent-Judged evaluation is not an override: it is the human decision the evaluation was waiting for, and it is recorded as such.
+
+## H. Normative Evidence Quality Gate
+
+These rules apply to every PoC Population Source and Target System unless a Procedure Version is stricter.
+
+| Check | PoC rule | Failure outcome |
+| --- | --- | --- |
+| Workspace and Target System access | Agent Workspace is created and each required Target System sign-in succeeds within bounded retries | `RUN_FAILED` |
+| Population acquisition | The Adapter acquires the bound Population Source snapshot and its independently generated declared count and digest | `RUN_FAILED` when acquisition cannot complete; `INCONCLUSIVE` when the declaration is absent or contradictory |
+| Record-count reconciliation — file level | Rows parsed equal the declared row count exactly; digest matches; tolerance is zero | `INCONCLUSIVE` on any mismatch |
+| Record-count reconciliation — inclusion level | Rows in = rows included + rows excluded, every exclusion carries a reason, and the included set is the population of record | `INCONCLUSIVE` on any unaccounted row |
+| Empty population | Post-inclusion population is non-empty, unless the Procedure Version opts in to a zero-record Pass | `INCONCLUSIVE` |
+| Per-record coverage | Every population record has an Observation with `found ∈ {true, false}` for every required Target System, computed over Observations per the Template's coverage rule (§C) | `INCONCLUSIVE`; uninspected records are never Compliant |
+| Identity corroboration | For every `found = true` Observation, the extractor's re-read of the grounded identity attribute equals the normalized population record key, or the record is flagged human-matched by a *choose candidate* answer on a declared secondary key | `INCONCLUSIVE`; record Unevaluated |
+| Search completeness (absence) | Every `found = false` Observation carries, per declared search key, a Tool-Action-derived query string equal to the record's normalized key value and a grounded empty result; all result pages were consumed | `INCONCLUSIVE`; the Work Item is `UNINSPECTED` |
+| Required Evidence | Every Observation carries every Evidence Requirement, each attribute grounded | `INCONCLUSIVE`; affected records are not Compliant |
+| Observation corroboration | For every attribute not declared model-read, the deterministic extractor's re-read of the grounding in the stored Structural Snapshot equals `original_value` and the grounded label matches the declared label | `INCONCLUSIVE`; attribute `contradictory`, record Unevaluated |
+| Condition completeness | Every condition has an evaluation for every record its applicability predicate selects; no uncompiled condition is silently skipped | `INCONCLUSIVE` |
+| Pagination / extraction completeness | All declared pages, rows, or search results are consumed once, without gaps or loops | `INCONCLUSIVE` when partial data is available; `RUN_FAILED` when acquisition cannot complete |
+| Schema | Required fields and supported types match the Procedure Version | `INCONCLUSIVE` for missing or incompatible fields |
+| Mandatory values | Every population record contains its matching key and required evaluation fields | `INCONCLUSIVE`; affected records are not Compliant |
+| Duplicate primary keys | No duplicate Source primary key unless the Procedure Version explicitly permits versioned records | `INCONCLUSIVE` |
+| Ambiguous match | A Target System search resolves to exactly one candidate, or a *choose candidate* Escalation answer resolved it | `INCONCLUSIVE`; record Unevaluated |
+| Unnamed value | Every compiled condition meets only values it names (§B) | `INCONCLUSIVE`; record Unevaluated |
+| Freshness — snapshot Sources | The acquired snapshot's generation time is no earlier than the end of the effective period and no later than Run initiation, so the snapshot covers the period | `INCONCLUSIVE` when stale, future-dated, or unknown |
+| Freshness — Target System Observations | Observation is captured during the Run | `INCONCLUSIVE` when stale |
+| Integrity | Stored Evidence digest matches the digest computed at capture and export | `RUN_FAILED` during the Run; afterwards an Audit Trail integrity event and a flag on the Result and export, no state change |
+
+For synthetic file and API Sources, the declared count is generated independently from the Audit Runner. For ProdConsole, the controlled web page exposes a signed synthetic snapshot identifier and expected parameter count; the Audit Agent must extract both and the Gate reconciles them exactly.
 
 ## F. Workpaper Bundle Minimum Contents and Replay Asset Set
 
@@ -184,7 +219,7 @@ Human dispositions and disagreements never alter Rule-Classified evaluations or 
 - Control reference, Procedure, and Procedure Version definition including Audit Instructions, compiled conditions, Agent-Judged conditions, Evidence Requirements, Target Systems and kinds, Population Source binding, and the executable plan.
 - Scope and effective period, with derivation for scheduled Runs.
 - Acquired Population Source snapshot with digest, generation time, declared count, and inclusion reconciliation (rows in, included, excluded with reason).
-- Evidence inventory and preserved original synthetic artifacts, screenshots, and the Replay asset set.
+- Evidence inventory and preserved original synthetic artifacts, Structural Snapshots, screenshots, and the Replay asset set.
 - Observations per Work Item, with grounding and corroboration results.
 - Evidence Quality Gate results, population reconciliation, and per-Target System coverage.
 - Transformation and matching steps.
@@ -209,35 +244,9 @@ The PRD requirements were informed by:
 
 These sources guide product behavior but do not assert that the exploratory PoC is certified or compliant with any standard.
 
-## H. Normative Evidence Quality Gate
-
-These rules apply to every PoC Population Source and Target System unless a Procedure Version is stricter.
-
-| Check | PoC rule | Failure outcome |
-| --- | --- | --- |
-| Workspace and Target System access | Agent Workspace is created and each required Target System sign-in succeeds within bounded retries | `RUN_FAILED` |
-| Population acquisition | The Adapter acquires the bound Population Source snapshot and its independently generated declared count and digest | `RUN_FAILED` when acquisition cannot complete; `INCONCLUSIVE` when the declaration is absent or contradictory |
-| Record-count reconciliation — file level | Rows parsed equal the declared row count exactly; digest matches; tolerance is zero | `INCONCLUSIVE` on any mismatch |
-| Record-count reconciliation — inclusion level | Rows in = rows included + rows excluded, every exclusion carries a reason, and the included set is the population of record | `INCONCLUSIVE` on any unaccounted row |
-| Empty population | Post-inclusion population is non-empty, unless the Procedure Version opts in to a zero-record Pass | `INCONCLUSIVE` |
-| Per-record coverage | Every population record has an Observation with `found ∈ {true, false}` for every required Target System, per the Template's coverage rule (§C) | `INCONCLUSIVE`; uninspected records are never Compliant |
-| Search completeness (absence) | Every `found = false` Observation carries every declared search key, its query string, and the captured empty result; all result pages were consumed | `INCONCLUSIVE`; the Work Item is `UNINSPECTED` |
-| Required Evidence | Every Observation carries every Evidence Requirement, each attribute grounded | `INCONCLUSIVE`; affected records are not Compliant |
-| Observation corroboration | For every attribute not declared model-read, the deterministic extractor's re-read of the grounding equals `original_value` | `INCONCLUSIVE`; attribute `contradictory`, record Unevaluated |
-| Condition completeness | Every applicable condition has an evaluation for every record; no uncompiled condition is silently skipped | `INCONCLUSIVE` |
-| Pagination / extraction completeness | All declared pages, rows, or search results are consumed once, without gaps or loops | `INCONCLUSIVE` when partial data is available; `RUN_FAILED` when acquisition cannot complete |
-| Schema | Required fields and supported types match the Procedure Version | `INCONCLUSIVE` for missing or incompatible fields |
-| Mandatory values | Every population record contains its matching key and required evaluation fields | `INCONCLUSIVE`; affected records are not Compliant |
-| Duplicate primary keys | No duplicate Source primary key unless the Procedure Version explicitly permits versioned records | `INCONCLUSIVE` |
-| Ambiguous match | A Target System search resolves to exactly one candidate, or a *choose candidate* Escalation answer resolved it | `INCONCLUSIVE`; record Unevaluated |
-| Unnamed value | Every compiled condition met only values it names | `INCONCLUSIVE`; record Unevaluated, diagnostic names the value |
-| Freshness — snapshot Sources | The acquired snapshot's generation time is no earlier than the end of the effective period and no later than Run initiation, so the snapshot covers the period | `INCONCLUSIVE` when stale, future-dated, or unknown |
-| Freshness — Target System Observations | Observation is captured during the Run | `INCONCLUSIVE` when stale |
-| Integrity | Stored Evidence digest matches the digest computed at capture and export | `RUN_FAILED` when mutation or corruption is detected |
-
-For synthetic file and API Sources, the declared count is generated independently from the Audit Runner. For ProdConsole, the controlled web page exposes a signed synthetic snapshot identifier and expected parameter count; the Audit Agent must extract both and the Gate reconciles them exactly.
-
 ## I. FR and NFR Migration Map (revision 1 → revision 2)
+
+The revision-2 draft reviewed on 2026-09-01 numbered FR-1..47; the final revision 2 inserted FR-15, FR-21, and FR-28 and renumbered the rest (old n ≥ 15 → n+1; old n ≥ 20 → n+2; old n ≥ 26 → n+3). The reviews in this folder cite the draft numbering.
 
 | Rev 1 | Rev 2 | Note |
 | --- | --- | --- |
@@ -273,4 +282,4 @@ For synthetic file and API Sources, the declared count is generated independentl
 
 ## J. Execution Environment Rationale (user-contributed)
 
-Solari is important to the PoC specifically because it gives the Audit Agent the browser, desktop/sandbox environment, and session observability needed to actually perform the audit work rather than simply analyze data that has already been extracted. Its role is confined to providing the Agent Workspace and its recording; IntelliFin Audit's Execution Timeline, Replay asset set, and preserved Evidence remain the authoritative record, and the workspace contract must stay provider-replaceable (NFR-15). Revisit before any customer data: region, recording retention, maturity, and a private-runner path.
+Solari is important to the PoC specifically because it gives the Audit Agent the browser, desktop/sandbox environment, and session observability needed to actually perform the audit work rather than simply analyze data that has already been extracted. Its role is confined to the Agent Workspace and its recording (PRD §4.5 note, NFR-15). Revisit before any customer data: region, recording retention, maturity, and a private-runner path.
