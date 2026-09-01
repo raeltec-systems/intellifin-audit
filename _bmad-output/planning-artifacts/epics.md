@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1]
+stepsCompleted: [1, 2]
 inputDocuments:
   - "_bmad-output/specs/spec-IntelliFin Audit/SPEC.md"
   - "_bmad-output/specs/spec-IntelliFin Audit/glossary.md"
@@ -260,3 +260,182 @@ A weekly Schedule starts the Run unattended at its UTC time with a derived perio
 A PoC Administrator sees Target System connectivity, provider and runner health, errors, retries, limits, and durations without secrets; every user filters Runs by every state; the team reports the SM-11 measures per Procedure and proves the NFR envelope with isolation, abuse, integrity, recovery, performance, and accessibility tests. Delivers diagnostics rows, full Runs filters, thesis metrics, the restore drill, and the acceptance test suites.
 **FRs covered:** FR48 (full filters and missed starts), FR49, FR50
 
+
+## Epic 1: Sign in, roles, and the registered synthetic environment
+
+The PoC Administrator registers the systems the agent may touch and the users who may work; Auditors and Audit Managers sign in and see only what their role allows. This epic delivers the runnable monorepo on Railway, the Ledger Signal shell, application-owned roles, the chained Audit Trail, the Administration surface with read-only registrations and Population Source bindings, and the synthetic Northstar environment seeded with golden populations. Every later epic builds on it and none is required for it to work.
+
+### Story 1.1: Bootstrap the monorepo and deploy web and worker
+
+As a developer,
+I want the pnpm monorepo, dependency boundaries, CI, and Railway web and worker services in place,
+So that every later story lands in a running, boundary-enforced system.
+
+**Acceptance Criteria:**
+
+**Given** a fresh clone
+**When** `pnpm install` and `pnpm -r typecheck` run
+**Then** the workspace contains `apps/web`, `apps/worker`, `packages/domain`, `packages/application`, `packages/infrastructure`, `tests/fixtures`, `tests/integration`, and `tests/e2e` with the stack seed pinned (Node.js 24 LTS, TypeScript 7, Next.js 16, React 19, pnpm 11, Drizzle, postgres.js, pg-boss, Better Auth, Vercel AI SDK with Anthropic and OpenAI providers, Zod, Pino, Sentry, Vitest, Playwright)
+**And** a dependency-boundary check fails CI when `domain` imports any outward package, `application` imports anything but `domain`, or business code imports Drizzle, pg-boss, Solari, AI SDK, Resend, S3, Railway, Better Auth, Next.js, Pino, or Sentry types (AD-1)
+
+**Given** the CI pipeline
+**When** a pull request opens
+**Then** type checking, boundary checks, unit tests, and Drizzle migrations against a PostgreSQL 18 service run and must pass (AD-12)
+**And** web and worker never run migrations at startup; a release job applies them and each process refuses to start on an unsupported schema range (AD-15)
+
+**Given** the Railway project
+**When** the release pipeline runs
+**Then** web and worker deploy as separate containers from one repository, `server_version` is verified as PostgreSQL 18 at bootstrap, and runtime configuration is read only in each composition root through a validated schema (AD-11)
+**And** a health route on web and a heartbeat row from worker prove both processes are up
+
+### Story 1.2: Record tamper-evident audit events with sanitized telemetry
+
+As an Audit Manager,
+I want every security and configuration event recorded in a chained, append-only Audit Trail,
+So that later mutation of the record is detectable.
+
+**Acceptance Criteria:**
+
+**Given** the audit event store
+**When** any module appends an event
+**Then** the event carries actor (human, Schedule, Audit Agent, Adapter, or platform), event type, UTC time, source, outcome, session identifier, and correlation identifier (FR45)
+**And** it is serialized as UTF-8 RFC 8785 canonical JSON, links to its predecessor by SHA-256, and takes a transactionally allocated sequence on its aggregate or on the `platform` aggregate (AD-22)
+
+**Given** a stored chain
+**When** a verification routine re-walks it after a row is altered in PostgreSQL
+**Then** the break is reported at the altered event (NFR3)
+**And** a golden vector and a tampered vector are checked into `tests/fixtures`
+
+**Given** the telemetry pipeline
+**When** web or worker logs, traces, or reports an error
+**Then** only allowlisted scalar fields pass, Pino redaction is static, Sentry runs with `sendDefaultPii: false` and AI input and output capture disabled, and one correlation chain spans request, job, and later Run stages (AD-10)
+**And** a seeded negative test proves a credential-shaped value never reaches a log line or Sentry event
+
+### Story 1.3: Sign in and act only within an application-owned role
+
+As an Auditor,
+I want to sign in and reach only what my role allows,
+So that Procedures, Runs, Evidence, and administration are never exposed to the wrong person.
+
+**Acceptance Criteria:**
+
+**Given** Better Auth is configured for identity and session only
+**When** a user signs in
+**Then** the application resolves the user's role (Auditor, Audit Manager, or PoC Administrator) from its own `identity` module, never from the identity provider (AD-7)
+**And** successful and failed sign-in attempts are appended to the `platform` audit chain (FR1)
+
+**Given** an unauthenticated request
+**When** it targets any Procedure, Run, Evidence, Exception, Live View, Replay, administration route, or SSE stream
+**Then** the request is refused with no data in the response (FR1)
+**And** an automated test covers every route family
+
+**Given** a signed-in user
+**When** they invoke a command or query outside their role per the EXPERIENCE.md action-gating table
+**Then** the command is refused with the exact denial reason (for example "PoC Administrator cannot author Procedures or start Runs.") and the refusal is audited (FR2, UX-DR39)
+**And** revoking a role blocks new actions on the next request without ending existing sessions abruptly
+
+### Story 1.4: Application shell and Ledger Signal tokens
+
+As an Auditor,
+I want the IntelliFin Audit shell with its status vocabulary in place,
+So that every surface built later looks and behaves the same.
+
+**Acceptance Criteria:**
+
+**Given** the web app
+**When** any page renders
+**Then** the sidebar (Overview, Procedures, Runs, Review, Administration for PoC Administrators only), top bar with notification bell, and EnvironmentRibbon appear at the DESIGN.md widths, and breadcrumbs render on detail routes (UX-DR5)
+**And** every color, typography role, radius, and spacing value from DESIGN.md is a CSS variable with the listed value, teal is the only interactive color, and the focus ring is #0F766E and never suppressed (UX-DR1, UX-DR37)
+
+**Given** the status badge component
+**When** it renders any state from the eight families plus Work Item
+**Then** it shows the family's icon and the state's exact name, Awaiting Auditor, Pending Confirmation, Agent-Judged pending, and Work Item Awaiting use info-solid with the user icon, Completed is neutral, and no status is conveyed by color alone (UX-DR3, UX-DR4)
+**And** an automated WCAG 2.1 AA check passes on the shell, an empty Overview, and the badge gallery (NFR11)
+
+**Given** the reusable primitives
+**When** a page uses a data table, empty state, action bar, or confirmation dialog
+**Then** tables use `<th scope>`, captions, a focusable link in the first cell, and no row-level click handlers; empty states refuse to imply a passed control; disabled actions keep position and expose their reason in an "Unavailable actions" panel and as the accessible description; dialogs trap and restore focus, close on Escape, and support the three weights (UX-DR32, UX-DR33, UX-DR34)
+**And** the reading-mode breakpoints from EXPERIENCE.md collapse the layout below 1024px (UX-DR36)
+
+### Story 1.5: Manage users and roles
+
+As a PoC Administrator,
+I want to create users and assign roles,
+So that Auditors and Audit Managers can start working.
+
+**Acceptance Criteria:**
+
+**Given** the Administration surface
+**When** a PoC Administrator creates a user or changes a role
+**Then** the change takes effect on the user's next request and an audit event records actor, prior value, and new value (FR2, FR45)
+**And** the surface is hidden from non-administrators and every mutating action uses a routine confirmation dialog (UX-DR31, UX-DR33)
+
+**Given** the PoC Administrator role
+**When** it attempts to author a Procedure, approve anything, or alter Evidence, evaluations, or Results
+**Then** the action is refused with the stated reason and there is no override path (FR2)
+
+### Story 1.6: Register a Target System with a read-only credential
+
+As a PoC Administrator,
+I want to register a Target System with its kind, origins, credential reference, permitted actions, expected field labels, and secondary key,
+So that Auditors can only ever select systems the agent is allowed to read.
+
+**Acceptance Criteria:**
+
+**Given** the registrations form
+**When** a PoC Administrator saves a Target System of kind web, desktop, API, or versioned file
+**Then** the registration stores allowed origins or application identity, an opaque `CredentialRef`, permitted read actions, per-attribute expected field labels or locator patterns, and an optional secondary matching key (FR7)
+**And** the `registrations` module computes the registration digest as SHA-256 over RFC 8785 canonical JSON of exactly `{kind, allowed_origins | application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key}` and shows it in the registrations table (AD-2, UX-DR31)
+
+**Given** a credential reference whose capability check reports write access
+**When** the PoC Administrator tries to save it
+**Then** the save is blocked with "Audit credentials must be read-only." and the attempt is audited (FR3)
+**And** the `CredentialProvider` port never returns a secret to the web process; secret values live outside application data (NFR1)
+
+**Given** an existing registration
+**When** origin, application identity, credential reference, permitted actions, labels, or secondary key change
+**Then** a `RegistrationChanged` event is published in the same UnitOfWork and the save confirmation warns "This change creates a platform-authored draft for {n} Procedures and requires approval." (FR14, AD-2)
+**And** the connectivity column shows the last worker-written probe result, never a probe from the web process (AD-10)
+
+### Story 1.7: Register a Population Source binding
+
+As a PoC Administrator,
+I want to register where a population comes from and how its expected count is declared,
+So that a Procedure can bind to it and the Gate can reconcile every acquisition.
+
+**Acceptance Criteria:**
+
+**Given** the bindings form
+**When** a PoC Administrator registers a versioned-file location or a read-only API
+**Then** the binding stores location, declared schema, declared-count mechanism (signed cover sheet or count endpoint), and a set of fields designated sensitive for masking (FR6, FR41)
+**And** a binding with no declared-count mechanism is saved with a visible warning that Procedures cannot submit against it
+
+**Given** a manual upload binding
+**When** it is registered
+**Then** it is marked upload-only and the Builder later refuses it for any Schedule but `once` (FR6, AD-23)
+
+**Given** any binding change
+**When** it is saved
+**Then** the change is audited and, when a Procedure Version references it, the platform-authored draft warning appears (FR14)
+
+### Story 1.8: Synthetic Northstar systems seeded with golden populations
+
+As a PoC Administrator,
+I want the synthetic Northstar Financial Group systems running with read-only audit accounts,
+So that Procedures have real systems to inspect and every golden case exists somewhere.
+
+**Acceptance Criteria:**
+
+**Given** the fixtures workspace
+**When** the synthetic environment starts
+**Then** LoanCore (web application with a user-administration area and account pages exposing Status, Username, Roles, Employee ID), ProdConsole (web configuration page with a signed snapshot identifier and expected parameter count), AccessGate, ApproveNow, and PeopleHub (read-only APIs with count endpoints), and the Leavers export, RoleMatrix, and ConfigRegistry files with signed cover sheets are reachable at allowlisted origins (addendum §A)
+**And** every system refuses write actions from the audit credential at the system level and returns an explicit denial (FR3)
+
+**Given** the golden populations
+**When** the fixtures are seeded
+**Then** each Template's golden dataset from addendum §D exists in the relevant system (two compliant, two true Exceptions, boundary case, missing mandatory value, duplicate or ambiguous record, stale population, uncapturable page, injection strings, wrong-employee page, value in a non-field element, mistyped key, and for the hero a choose-candidate pair and a `Suspended` account) with declared counts generated independently of the Audit Runner
+**And** expected terminal outcomes and confirmation scripts are stored as versioned data files separate from any rule implementation (AD-12)
+
+**Given** NFR13
+**When** any fixture is inspected
+**Then** it contains no production or personal data, and a test asserts the synthetic marker on every dataset
