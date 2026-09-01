@@ -439,3 +439,196 @@ So that Procedures have real systems to inspect and every golden case exists som
 **Given** NFR13
 **When** any fixture is inspected
 **Then** it contains no production or personal data, and a test asserts the synthetic marker on every dataset
+
+## Epic 2: Author and approve a Procedure
+
+An Auditor picks one of the four Procedure Templates, edits it into a Procedure in audit vocabulary, period and scope, Population Source binding, Target Systems, Audit Instructions, Compliance Rule, Evidence Requirements, Schedule, reads the derived executable plan, and submits it; an Audit Manager who did not author it reviews the section-by-section diff and approves or rejects. This epic delivers the Procedures, Procedure Builder, Procedure Detail, and Version review surfaces; the four Template contracts as data owned by the `procedures` module; the deterministic `PlanCompiler` with applicability predicates, boundary semantics, and a scope-widening check; plan derivation as a queued worker job that may call `ModelGateway`; and the immutable Procedure Version state machine, including platform-authored drafts minted on a registration change (Flows 1 and 2). Execution of the plan, Regression Runs, and Schedule handover are later epics; this epic only authors and freezes what they will run against.
+
+### Story 2.1: Create a Procedure from a Template
+
+As an Auditor,
+I want to start a Procedure from one of the four Templates and name the Control it verifies,
+So that the Builder opens pre-filled in audit vocabulary instead of a blank form.
+
+**Acceptance Criteria:**
+
+**Given** the Procedures surface with no Procedure yet created
+**When** an Auditor opens it
+**Then** it shows an empty state whose only action is "New procedure" (UX-DR7)
+**And** once Procedures exist, each renders as a card showing its Active version, Schedule, next Run, and last outcome (UX-DR7)
+
+**Given** the four Procedure Templates (Terminated Users Retaining Access, Segregation-of-Duties Conflicts, High-Value Transactions Without Required Approval, Production Configuration Deviation) held as data owned by the `procedures` module
+**When** an Auditor chooses "New procedure", picks a Template, and names the Control it verifies
+**Then** a Procedure Version in `DRAFT` is created and the Builder opens with every section pre-populated from addendum §C for that Template (FR4, AD-2)
+**And** the Terminated Users Retaining Access Template (the hero) is fully configurable, while the other three Templates are at minimum editable in period, Population Source, Target Systems, and Schedule (FR4)
+
+**Given** a Draft Procedure Version open in the Builder
+**When** the Auditor changes a pre-filled value
+**Then** the change is scoped to that Draft only and no other Procedure Version is affected (FR4)
+**And** the Control name and Template identity are shown on every later surface that lists or opens this Procedure (UX-DR7)
+
+### Story 2.2: Bind the Population Source with an inclusion rule and declared count
+
+As an Auditor,
+I want to set the Procedure's period and scope and bind its Population Source with an inclusion rule and a declared-count mechanism,
+So that a Run can later acquire a population the Evidence Quality Gate can reconcile.
+
+**Acceptance Criteria:**
+
+**Given** the Builder's Period and scope section
+**When** an Auditor sets an explicit period (date range) and writes the scope statement
+**Then** both are stored on the Draft version verbatim, ready to be shown on every Result once a Run completes (FR5)
+**And** a scheduled Run will derive its own period rather than using this explicit one (FR5, addendum §B)
+
+**Given** the Builder's Population Source binding section pre-filled from the Template
+**When** the Auditor binds a registered Population Source and sets a structured inclusion rule over its declared columns
+**Then** the binding accepts manual upload only when the Schedule is `once`, and requires a versioned file or read-only API binding for daily, weekly, or monthly Schedules, refusing upload otherwise with "A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs." (FR6, AD-23)
+**And** the binding carries a declared-count mechanism (signed cover sheet or count endpoint); a binding with none shows the inline warning "Population Source must declare an expected record count." and blocks submission (FR6, UX-DR8)
+
+**Given** an empty post-inclusion population is possible for this Procedure
+**When** the Auditor sets the version's zero-record-Pass flag
+**Then** the version records the opt-in explicitly; without it an empty post-inclusion population will later be Inconclusive rather than Pass (FR6, AD-23)
+**And** approving this version freezes the Population Source binding exactly as set (AD-2)
+
+### Story 2.3: Select Target Systems and write Audit Instructions with the scope-widening check
+
+As an Auditor,
+I want to select the Procedure's Target Systems by name and write Audit Instructions that are checked against their registrations,
+So that the agent can never be told to touch a system, action, or origin it is not registered for.
+
+**Acceptance Criteria:**
+
+**Given** the Builder's Target Systems section pre-filled with the Template's default systems
+**When** an Auditor selects one or more registered Target Systems by name, of kind web, desktop, API, or versioned file
+**Then** the version records each system's kind, allowed origins or application identity, credential reference, permitted read actions, registration digest, and per-attribute expected field labels or locator patterns as they stand on the registration (FR7)
+**And** for the hero Procedure at least one web and one desktop Target System are selected (FR7)
+
+**Given** the Target Systems selected for this version
+**When** the Auditor writes natural-language Audit Instructions per agent-driven Target System
+**Then** the Instructions are stored verbatim on the version, to be shown later in the plan preview, Live View, Replay, and Workpaper Bundle (FR8)
+**And** on blur each Instruction is checked against the selected systems' allowlists for scope-widening, an unregistered system, a write verb, or an out-of-scope origin, and a match is flagged inline in warning color before submission is possible (FR8, AD-23, UX-DR8)
+
+**Given** a seeded scope-widening Instruction is corrected or removed
+**When** the Auditor re-checks the section
+**Then** the inline warning clears and the plan preview reflects the updated Instructions (UX-DR8)
+**And** a scope-widening Instruction left in place at submission time is still only flagged, not executed, its denial happens at execution in Epic 4 (FR8)
+
+### Story 2.4: Author the Compliance Rule with compiled and Agent-Judged conditions
+
+As an Auditor,
+I want to write Compliance Rule conditions that compile deterministically where possible and are otherwise marked Agent-Judged,
+So that every record's evaluation later derives from rules I can see and trust.
+
+**Acceptance Criteria:**
+
+**Given** the Builder's Compliance Rule editor pre-filled with the Template's default conditions
+**When** the `PlanCompiler` processes each condition
+**Then** a compilable condition is marked with the Rule-Classified origin badge and an uncompiled condition with the Agent-Judged badge, each carrying a compiled applicability predicate that defaults to `found = true` (FR9, UX-DR9)
+**And** the compiler version is frozen on this Draft so identical inputs will always compile identically (AD-23)
+
+**Given** a condition that compares a numeric attribute, such as P-3's USD 100,000 boundary
+**When** the Auditor sets its boundary semantics (inclusive or exclusive) and, where relevant, a tolerance
+**Then** the tolerance is stored as a compiled numeric condition and the P-3 boundary is exercised as inclusive (FR9, UX-DR9)
+**And** the version's per-condition record-derivation order is fixed as Exception, then Unevaluated, then Compliant, and an attribute value outside the set a compiled condition names will evaluate Unevaluated with diagnostic `rule does not name value <v>` once a Run runs it (FR9, AD-23, addendum §B)
+
+**Given** the version has at least one Agent-Judged condition
+**When** the Auditor sets the version's confidence threshold
+**Then** the field defaults to 0.80 and is stored once per version for later use in confirming or auto-marking Agent-Judged evaluations Unevaluated (FR9, UX-DR9)
+**And** approving the version freezes every condition's compiled/uncompiled status, applicability predicate, and the confidence threshold (AD-2)
+
+### Story 2.5: Specify Evidence Requirements and set the Schedule
+
+As an Auditor,
+I want to declare what Evidence each attribute needs and set the Procedure's Schedule,
+So that a Run knows what to capture and when to start.
+
+**Acceptance Criteria:**
+
+**Given** the Builder's Evidence Requirements section pre-filled from the Template
+**When** the Auditor specifies, per attribute, which Evidence Requirement applies, attribute value, Structural Snapshot, screenshot, source file excerpt, or recording segment
+**Then** the version records that every attribute must be grounded in a snapshot or file, never a screenshot alone, and that Structural Snapshot and screenshot are always platform-captured for agent-driven systems bound to the reading Tool Action (the capture itself happens at execution, Epic 4) (FR10)
+**And** any attribute the Auditor declares model-read is recorded as such on the version rather than requiring deterministic grounding (addendum §B.1)
+
+**Given** the Builder's Schedule section
+**When** the Auditor sets the Schedule to once, daily, weekly, or monthly
+**Then** the Schedule is stored as part of the version with a fixed UTC start time, to activate on approval or, when required, after the Regression Run that Epic 8 executes (FR11)
+**And** the version records the addendum §B period-derivation rule for its frequency (daily → previous calendar day, weekly → previous Monday to Sunday, monthly → previous calendar month, once → the Auditor's explicit period) without deriving any period yet (FR11, addendum §B)
+
+**Given** a `once` Schedule paired with a manual-upload Population Source binding
+**When** the Auditor reviews the Builder
+**Then** the pairing is accepted, matching the rule set in Story 2.2 (FR6, FR11)
+**And** changing the Schedule to daily, weekly, or monthly while a manual-upload binding is still set re-triggers the upload blocker from Story 2.2 (AD-23)
+
+### Story 2.6: Read the re-derived executable plan before submitting
+
+As an Auditor,
+I want to read the plan the platform derives from my Procedure and see it re-derive as I edit,
+So that I know exactly what will execute before I submit for approval.
+
+**Acceptance Criteria:**
+
+**Given** any field in the Builder changes
+**When** the change is saved
+**Then** a `procedures` plan-derivation job is queued to the worker, never derived inside the web request, and the plan preview shows "Re-deriving…" until it lands, then "Re-derived {time}" (FR12, AD-23, UX-DR10)
+**And** every re-derivation, successful or not, is recorded on the version (FR12)
+
+**Given** the plan-derivation job completes
+**When** the Auditor opens the plan preview
+**Then** it shows read-only rows for Session Steps, ordered Plan Steps per Target System, Observations to capture, compiled and Agent-Judged conditions, credential references, and limits, with no edit controls, edits happen only in the Builder's sections (FR12, UX-DR10)
+**And** when derivation used a model, the model's identity is shown in the plan preview and recorded on the version, using the default model `claude-sonnet-5` via the Anthropic provider unless configured otherwise (FR12, AD-23)
+
+**Given** the Procedure cannot be compiled into a plan, for example an unresolved binding or an incompatible condition
+**When** the Auditor opens the plan preview or attempts to submit
+**Then** it shows "Cannot derive: {reason}" and Submit is disabled while the plan is underivable (FR12, UX-DR8, UX-DR10)
+**And** the plan is frozen exactly as last derived the moment the version is approved (FR12, AD-2)
+
+### Story 2.7: Submit for approval and approve or reject with a diff
+
+As an Audit Manager,
+I want to review a submitted Procedure Version against its previous version and approve or reject it,
+So that only a reviewed, non-self-authored version can ever become Active.
+
+**Acceptance Criteria:**
+
+**Given** a Draft version with no outstanding Builder blocker and a derivable plan
+**When** the Auditor presses "Submit for approval"
+**Then** the version moves `DRAFT → SUBMITTED`, a notification record is created for every Audit Manager in the same transaction (AD-20), and Submit stays disabled with the listed reason whenever any blocker or an underivable plan exists (FR13, UX-DR8)
+**And** on Procedure Detail the versions list shows the Submitted state and an approval banner naming who can approve it (UX-DR11)
+
+**Given** a Submitted version opened on the Version review surface
+**When** an Audit Manager who is not its author reviews it
+**Then** every section is shown as a diff against the previous version, or fully expanded when this is the first version, using the version-diff component (FR13, UX-DR12)
+**And** the version's author sees Approve disabled with "You cannot approve a version you authored." (FR13, AD-7, UX-DR11, UX-DR12)
+
+**Given** a non-author Audit Manager on Version review
+**When** they approve
+**Then** the approval freezes the compiled plan, Compliance Rule (compiled/uncompiled status and applicability predicates), Evidence Requirements, Target Systems and their registration digests, Population Source binding, model and tool configuration, limits, Schedule, and records the approver, time, and diff (FR13, AD-2)
+**And** whenever a prior `ACTIVE` version of the same Procedure exists, the approval command computes `handover_at` once as the first period start strictly after activation and stores it on both versions; it records the configuration tuple (model, prompt version, tool configuration, registration digests) compared against that prior version and, when the tuple differs, marks the version as requiring a Regression Run, which Version review shows inline as pending; a first version, or one whose tuple is unchanged, moves `APPROVED → ACTIVE` immediately (FR13, AD-2, AD-19, UX-DR12)
+
+**Given** an Audit Manager rejects instead
+**When** they submit the rejection
+**Then** it requires a rationale, the version moves `SUBMITTED → REJECTED`, a notification record is created for the author (AD-20), and the rationale is shown inline on Procedure Detail next to an "Edit" action (FR13, UX-DR11)
+**And** using "Edit" returns the version to `DRAFT` (FR13, addendum §E)
+
+### Story 2.8: Immutable versions and platform-authored drafts
+
+As an Auditor,
+I want an approved version's frozen fields to be truly unchangeable, and a new Draft to appear automatically when something it depends on changes,
+So that a Run never silently executes against a definition nobody reviewed.
+
+**Acceptance Criteria:**
+
+**Given** an `APPROVED` or `ACTIVE` Procedure Version
+**When** any user attempts to change a frozen field directly on that version
+**Then** the change is refused; the only path to a new definition is "New version", which creates a Draft copy of the Active version for further editing (FR14, UX-DR11)
+**And** Procedure Detail shows the Active version with its next Run and an "Initiate Run" action, and a Retired version read-only with "Retired {time}; superseded by v{x}." (UX-DR11)
+
+**Given** a `RegistrationChanged` event published by the `registrations` module for a Target System or Population Source binding this Procedure's Active version references
+**When** the event is handled by `procedures` in the same UnitOfWork
+**Then** a new Draft version is minted automatically, marked platform-authored, and Procedure Detail shows "Created by the platform after a {model / prompt / tool / registration} change; requires approval" (FR14, AD-2, UX-DR11)
+**And** the prior version's Schedule stays Active and keeps running until this platform-authored draft is itself approved (FR14, UX-DR11)
+
+**Given** a platform-side model, prompt, or tool configuration change instead of a registration change
+**When** it affects an Active version's frozen configuration
+**Then** the same platform-authored Draft path applies, naming the model, prompt, or tool cause rather than registration (FR14, AD-2)
+**And** every Draft minted this way follows the same `DRAFT → SUBMITTED → APPROVED | REJECTED` state machine as an Auditor-authored one, with no shortcut to `ACTIVE` (FR14, addendum §E)
