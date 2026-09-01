@@ -68,7 +68,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.
 
 **IntelliFin Audit** is an audit-execution platform: an auditor defines an Audit Procedure once and delegates its repeated execution to an autonomous Audit Agent, whose work stays observable, replayable, evidence-backed, and subject to human review.
 
-**There is no application code yet.** This repository is a BMAD v6.11 planning workspace. The product is being specified before it is built. Do not look for `package.json`, `apps/`, or `packages/` — they do not exist. `AGENTS.md` does not exist yet either; `bmad-project-context` creates it.
+**There is no application code yet.** This repository is a BMAD v6.11 planning workspace. The product is being specified before it is built. Do not look for `package.json`, `apps/`, or `packages/` — they do not exist. `AGENTS.md` holds the verified agent block; refresh it with `/bmad-project-context`.
 
 ## Layout
 
