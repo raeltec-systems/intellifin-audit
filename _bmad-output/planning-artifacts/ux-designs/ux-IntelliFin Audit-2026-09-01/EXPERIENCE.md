@@ -19,7 +19,7 @@ sources:
 
 Desktop-first responsive web, single surface, three roles (Auditor, Audit Manager, PoC Administrator; FR-2). The IntelliFin Design System supplies the shell (Sidebar, top bar, EnvironmentRibbon) and base components; IntelliFin Audit adds the audit-native patterns named in `DESIGN.md.Components`. Synthetic PoC environment: Northstar Financial Group, one tenant, UTC everywhere.
 
-The primary mental model is **Procedure → Run → Agent Workspace → Evidence → Result → Auditor Review** (PRD §1). The agent's work is the core experience; the Result is what the Auditor is accountable for. Four things the interface never does: let a human map a value the Compliance Rule does not name, let free text reach the agent, let an unsealed or Inconclusive Result be submitted, or present an empty list as a passed control.
+The primary mental model is **Procedure → Run → Agent Workspace → Evidence → Result → Auditor Review** (PRD §1). Naming: the PRD's *System Outcome* is the sealed Pass or Control Failure; the UI shows it inside the *Result outcome* family, which adds Pending Confirmation (unsealed) and No conclusion issued. Both spines say "Result outcome" for the family and "sealed outcome" for the System Outcome. The agent's work is the core experience; the Result is what the Auditor is accountable for. Four things the interface never does: let a human map a value the Compliance Rule does not name, let free text reach the agent, let an unsealed or Inconclusive Result be submitted, or present an empty list as a passed control.
 
 ## Information Architecture
 
@@ -41,7 +41,7 @@ The primary mental model is **Procedure → Run → Agent Workspace → Evidence
 
 Sidebar areas: Overview · Procedures · Runs · Review · Administration, with counts on Runs (active) and Review (awaiting). Run Detail, Exception Detail, Live View, and Replay keep the Runs sidebar item highlighted; Builder, Procedure Detail, and Version review keep Procedures highlighted. Breadcrumbs on every detail surface ("Runs / RUN-2437 / Live"). Modal stacks one level deep.
 
-Closure: every UJ lands on a surface above; every surface except Administration is entered by a Key Flow below. Administration is exercised by FR-7 and FR-49 only and has no journey in the PRD.
+Closure: every UJ lands on a surface above; every surface is entered by a Key Flow below (Notifications in Flow 2, Administration in Flow 0).
 
 ## Voice and Tone
 
@@ -81,7 +81,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | --- | --- | --- |
 | Status badge | Everywhere | Family + icon + word from `DESIGN.md.Colors`; never color alone. Badge text is the state's exact name. |
 | Conclusion triptych | Run Detail → Result | Cells are lifecycle, Gate, outcome. Outcome cell shows Pending Confirmation with the count of pending evaluations while unsealed, the sealed marker once sealed, and the Result version always. Statement below is generated from the Result (FR-40). No cell is clickable; the tabs are the navigation. |
-| Gate checklist | Result (compact), Evidence (expanded) | Rows from addendum §H grouped per-Observation / Run-level. Per-Observation rows update live during a Run (FR-20). Each failed row links to the affected Work Items. Header count derived. |
+| Gate checklist | Result (compact), Evidence (expanded) | Rows from addendum §H in two groups. `[ASSUMPTION]` Per-Observation (update live during a Run, FR-20): required Evidence, identity corroboration, Observation corroboration, search completeness, ambiguous match, unnamed value, Target System freshness. Run-level (at end of execution): every other §H row. Each failed row links to the affected Work Items. Header count derived. |
 | Population reconciliation | Result | File-level then inclusion-level rows (FR-33). Excluded rows expand to the exclusion reason list. Empty post-inclusion population renders as Inconclusive unless the version opted in (FR-6). |
 | Evaluation card | Result, Exception Detail | One per condition per record, showing origin (Rule-Classified · Agent-Judged · Human-classified) and value (Compliant · Exception · Unevaluated). Unevaluated is a value; its origin is still shown. Rule-Classified cards have no controls; "Record disagreement" lives beside them (FR-44). Low-confidence Agent-Judged evaluations show value Unevaluated with the confidence and no controls. |
 | Evaluation confirmation | Result, Exception Detail | Pending Agent-Judged cards carry Confirm / Reject. Reject opens the rationale dialog, which requires a rationale and a replacement value (Compliant · Exception · Unevaluated); the replacement is recorded Human-classified and the rejected evaluation stays visible beneath it as history. Each confirmation or rejection increments the Result version; the last one seals the Result (FR-38, FR-40). |
@@ -89,7 +89,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Provenance chain | Exception Detail | Population record → Observation (grounding, corroboration, match origin) → evaluations → Exception → Timeline segment; last step opens Replay at that Tool Action (FR-41). |
 | Execution Timeline | Run Detail → Execution Timeline | Nested rows: Session Step › Work Item › Step Execution › Tool Action (FR-29). Collapsed to Work Item rows by default, except that Escalations, retries, errors, limits consumed, and version stamps stay expanded inline. Every row has "Open in Replay". Written live while Running. |
 | Session viewer | Live View, Replay | Live controls: Pause / Resume, Cancel, Flag to Audit Manager, and the Escalation panel when one is open. Replay controls: play / pause, scrubber, jump to Work Item, Exception, or Escalation. Frames are Replay assets; Replay never re-executes anything (FR-30). Adapter Session Steps show as log rows. Per-mode states: Per-surface states → Live View and Replay rows. |
-| Escalation panel | Live View, Run Detail, notification | One open Escalation per Run. Kind, Step, agent-generated question rendered inert, supporting Evidence (for *choose candidate*, the captured result rows with their grounded keys), closed answer buttons with the safest answer first, optional note "Recorded, not sent to the agent", countdown. Answer opens a routine confirmation; *abort* opens the routine cancel confirmation and ends the Run Canceled (FR-27). After answering, the panel becomes a Timeline entry. |
+| Escalation panel | Live View, Run Detail, notification | One open Escalation per Run. Kind, Step, agent-generated question rendered inert, supporting Evidence (for *choose candidate*, the captured result rows with their grounded keys), closed answer buttons in FR-27 order with no recommendation, optional note "Recorded, not sent to the agent", countdown. Answer opens a routine confirmation; *abort* opens the routine cancel confirmation and ends the Run Canceled (FR-27). After answering, the panel becomes a Timeline entry. |
 | Builder re-derivation | Builder | Template pre-populates every section (addendum §C). Changing any field re-derives the plan; the preview shows "Re-deriving…" then "Re-derived {time}" and the re-derivation is logged (FR-12). |
 | Builder validation | Builder | Sections validate on blur: missing declared-count mechanism, upload with a non-`once` Schedule, scope-widening instruction, uncompiled condition without applicability, all shown inline with warning colors. Submit is blocked while any blocker or an underivable plan exists, with the reason listed. |
 | Compliance Rule editor | Builder | Each condition row: text, evaluation-origin badge (Rule-Classified for a compiled condition, Agent-Judged for an uncompiled one), applicability predicate (default `found = true`), boundary semantics selector for comparisons, tolerance as a compiled numeric condition (FR-9). Confidence threshold for Agent-Judged evaluations set once per version (FR-38). |
@@ -98,6 +98,9 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Action bar + unavailable actions | Run Detail, Exception Detail, Procedure Detail | A disabled action keeps its position; its reason appears in the "Unavailable actions" panel and as the button's accessible description — never tooltip-only. This is the canonical statement of the rule. Export Workpaper Bundle is available on any terminal Run (FR-46). |
 | Confirmation dialog | All mutating actions | Three weights. *Routine* (submit, approve, rerun, export, pause, cancel, answer or abort an Escalation): restates the consequence. *Routine with rationale* (reject a Result, record disagreement, Not an Exception, reject an Agent-Judged evaluation): adds a rationale field validated non-empty. *Finalization*: destructive button, title names irreversibility. Focus trapped; Escape cancels; initial focus on the first field or Cancel. The result shows as a Banner on the surface the user is on. |
 | Filter bar | Runs, Review | Procedure select lists every Procedure; status chips single-select over all eight lifecycle states plus Pending Confirmation and Regression Run; initiator chips Manual · Schedule (FR-48). Search matches identifier, Procedure, initiator. Clear filters resets the three filters and the search. |
+| Data tables | Overview, Procedures, Runs, Run history, Review, Administration | Columns — Overview Recent Runs: Run · Procedure · Lifecycle · Result outcome · Gate. Runs: Run · Procedure · Effective period · Lifecycle · Result outcome · Gate · Review · Initiator · Elapsed · Change. Run history: Run · Effective period · Lifecycle · Result outcome. Review queue: Run · Procedure · Result outcome · Exceptions · Gate · Review state · Open. Administration registrations: System · Kind · Origin or application · Credential reference · Permitted actions · Registration digest · Connectivity. Every row's first cell is a link; no row-level click handlers. |
+| Exception list row | Run Detail → Result, Exceptions | Identifier, state badge, condition violated, origin badge, masked identity per the binding (FR-41), persistent "Open" link. Ordered by identifier (Open Question 2). Rows whose only Exception evaluation is Agent-Judged pending show "counts after confirmation". |
+| Evidence item card | Run Detail → Evidence | One card per Evidence item with the FR-31 fields and its kind; Structural Snapshots open the grounding inspector; recording segments open Replay at that Tool Action; partial or preserved-after-cancel items carry a note. Original artifacts are never truncated or transformed in place. |
 | Notification row | Notifications, top-bar menu | One row per Awaiting Auditor or flagged Run: Procedure, Run, Escalation kind, time remaining; opens Live View. Delivered in-app and by email; delivery recorded on the Audit Trail (FR-28). |
 | Empty state | Anywhere | Headline + one sentence that names what would appear and refuses to imply a passed control. Never a call to action that mutates. |
 | Rail cards | Detail surfaces | Procedure Version and Schedule; Auditor Review state; Change since previous Run (fingerprint-based, only across compatible versions, else "Not comparable — versions differ"); Technical detail → Timeline; Open Escalation (while Awaiting Auditor); Session (Watch or Replay). |
@@ -113,7 +116,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Evidence Quality Gate | Not evaluated → Passed / Not passed / Incomplete | Failed rows with diagnostics and Safe next action |
 | Result outcome (FR-40) | Pending Confirmation (unsealed) → sealed Pass or Control Failure; No conclusion issued for Inconclusive, Run Failed, Canceled | Result version; pending-evaluation count; sealed marker |
 | Auditor Review (addendum §E) | Draft → Submitted → Approved → Finalized; rejection is an event that returns Submitted → Draft | Review history with actor, time, rationale; Finalized locks every mutation with "Mutation is denied and logged." |
-| Exception (FR-42) | Open → Under review → Confirmed / Not an Exception | Disposition history; Not an Exception keeps the evaluation and outcome visible |
+| Exception (FR-42) | Open → Under Review → Confirmed / Not an Exception | Disposition history; Not an Exception keeps the evaluation and outcome visible |
 | Evaluation origin (FR-38) | Agent-Judged pending → confirmed, or → rejected and replaced by Human-classified; Rule-Classified never transitions | Rationale, confidence, and confirmation history on the card |
 | Work Item (addendum §E) | Pending → In progress → Observed / Uninspected / Ambiguous / Failed; Ambiguous → In progress on a *choose candidate* answer; In progress → Awaiting (retry or skip) → In progress / Uninspected | Timeline segment; Escalation link while Awaiting |
 
@@ -127,6 +130,12 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Procedures | No Procedures | EmptyState with "New procedure" as the only action. |
 | Procedure Detail | Draft only | Versions list with Draft badge; "Submit for approval" primary; no Initiate Run. |
 | Procedure Detail | Submitted | Approval pending banner naming who can approve; author sees "You cannot approve a version you authored." |
+| Procedure Detail | Rejected version | Rejected badge with the reviewer's rationale inline; "Edit" returns it to Draft and says so. |
+| Procedure Detail | Platform-authored draft | Draft badge with "Created by the platform after a {model / prompt / tool / registration} change; requires approval"; Schedule of the Active version continues until approval (FR-14). |
+| Version review | First version | Diff against nothing: every section shown expanded; Approve enabled for a non-author Audit Manager. |
+| Version review | Rejected | Reject requires rationale; the version shows Rejected and the author is notified. |
+| Version review | Approved, Regression Run pending | Regression Run row inline with its Run link; activation blocked until it passes (FR-15). |
+| Version review | Regression mismatch | Mismatch listed per golden expectation; activation blocked; Schedule of the prior version continues. |
 | Procedure Detail | Approved, Regression Run pending | Regression Run row with its own Run link; Schedule shows "Activates after the Regression Run passes." |
 | Procedure Detail | Active | Schedule with next Run time; Initiate Run enabled; New version creates a Draft copy. |
 | Procedure Detail | Retired version selected | Read-only, "Retired {time}; superseded by v{x}." |
@@ -135,7 +144,7 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Builder | Upload with scheduled frequency | Blocker: "A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs." |
 | Runs | No matching filters | EmptyState filtered variant with Clear filters. |
 | Runs | Missed scheduled start | Row with warning icon, "Missed 06:00 UTC start; not run", link to diagnostics (FR-17). |
-| Run Detail | Queued | Triptych: Queued · Not evaluated · No conclusion issued; Evidence tab empty state "No Evidence collected." |
+| Run Detail | Queued | Triptych: Queued · Not evaluated · No conclusion issued; Evidence tab empty state "No Evidence collected."; Cancel enabled; Watch disabled with "Live View opens when the Run starts." |
 | Run Detail | Running | Live Gate rows updating; "Watch" in rail; Cancel and Pause enabled. |
 | Run Detail | Paused | Banner with countdown "Paused by Daniel Okonjo at {time}. Resumes on your action; ends Inconclusive at {time}." Resume and Cancel enabled. |
 | Run Detail | Awaiting Auditor | Escalation panel at the top of every tab; countdown; Answer, Cancel enabled; Pause disabled with reason "A Run waiting on an answer cannot be paused." |
@@ -150,17 +159,24 @@ Behavioral. Visual specs live in `DESIGN.md.Components`.
 | Live View | Paused | Chrome PAUSED; last frame held; Resume replaces Pause. |
 | Live View | Awaiting Auditor | Chrome AWAITING with countdown; Escalation panel focused; workspace screen still visible (FR-24). |
 | Live View | Adapter-only Run | No workspace; viewer shows Adapter Session Steps as log rows with counts and digests. |
+| Live View | Run ended while open | Chrome flips to REPLAY; controls disable; Banner names the terminal state with a link to Run Detail. |
+| Live View | Stream lost | After 15 seconds without an update the stale indicator shows; after 60 seconds a Banner "Connection to the Run lost. Reconnecting." with controls disabled until the stream resumes. |
 | Live View | Below 1024px | Read-only; controls disabled with "Open on a desktop browser to supervise this Run." |
 | Replay | Any terminal Run | Chrome REPLAY; starts paused at the first frame; jump list of Work Items, Exceptions, Escalations; works with the Workspace Provider unreachable. |
 | Exception Detail | Rule-Classified only | No confirm controls; Record disagreement available to Audit Manager. |
 | Exception Detail | Includes Agent-Judged pending | Evaluation card with Confirm / Reject; Exception state Open but "counts after confirmation". |
 | Exception Detail | Human-matched record | Badge beside identity attribute; link to the Escalation answer. |
+| Exception Detail | Open · Under Review · Confirmed | State badge in the header; "Assigned to" field with assignee (Auditor or Audit Manager) and "Set Under review", "Confirm", "Set Not an Exception" actions; disposition history and notes in the rail (FR-42). |
+| Exception Detail | Not an Exception | Disposition rationale card; the evaluation and sealed outcome remain visible and unchanged. |
+| Exception Detail | Finalized Run | Every disposition action disabled with the finalization reason; notes read-only. |
+| Exception Detail | Masked field | Value shown as `••••` with "Masked by the Population Source binding"; unmasked in Exception Detail for Auditor and Audit Manager only. |
 | Exception Detail | Untrusted content present | Untrusted block; never rendered as markup. |
 | Review | Queue empty | EmptyState: "No Result awaits your decision." |
 | Review | Awaiting decision | Rows ordered by submission time; Regression and Pending Confirmation Runs never appear here. |
 | Notifications | None | EmptyState: "No Run is waiting on you." |
 | Administration | Registration change | Saving a Target System registration warns: "This change creates a platform-authored draft for {n} Procedures and requires approval." (FR-14) |
 | Any | Permission denied | Action visible, disabled, reason stated; Administration hidden from non-administrators. |
+| Any | Action failed | Destructive Banner "Couldn't {action}. Nothing was changed." with the platform reason; the action re-enables; no optimistic update anywhere. An Escalation answered after its timeout shows "This Escalation timed out at {time}; the Run is Inconclusive." |
 | Any | Cold load | Skeleton rows matching the layout; no counts shown until loaded. |
 | Any | Stale data | Banner "Updated {time}. Refresh." on Run Detail and Runs. |
 
@@ -219,7 +235,7 @@ Web only; no native surface. Email notifications deep-link to Live View or Run D
 | Action | Auditor | Audit Manager | PoC Administrator |
 | --- | --- | --- | --- |
 | Author Procedure, submit version, Initiate Run, pause/resume, cancel, answer Escalation, flag to Audit Manager | ✓ | ✓ | — "PoC Administrator cannot author Procedures or start Runs." |
-| Confirm / reject Agent-Judged evaluation, disposition Exceptions, annotate, submit Result | ✓ | ✓ | — "PoC Administrator cannot alter evaluations, Results, or reviews." |
+| Confirm / reject Agent-Judged evaluation, assign and disposition Exceptions, annotate, submit Result | ✓ | ✓ | — "PoC Administrator cannot alter evaluations, Results, or reviews." |
 | Approve / reject Procedure Version | — "Only an Audit Manager can approve a Procedure Version." | ✓ unless author: "You cannot approve a version you authored." | — |
 | Approve / reject / finalize Result, record disagreement | — "Only an Audit Manager can approve a submitted Result." | ✓ | — |
 | Export Workpaper Bundle | ✓ | ✓ | — |
@@ -228,6 +244,16 @@ Web only; no native surface. Email notifications deep-link to Live View or Run D
 `[ASSUMPTION]` An Audit Manager may confirm evaluations on, submit, and later approve the same Result in the PoC (PRD §12). `[NON-GOAL for PoC]` A Chief Audit Executive role; an executive reads Overview as an Audit Manager with no mutating actions if needed.
 
 ## Key Flows
+
+### Flow 0 — Register the systems the agent may touch (PoC setup)
+
+Ravi Menon, PoC Administrator, before any Procedure exists.
+
+1. Ravi opens Administration and registers LoanCore (web) and LedgerDesk (desktop) with read-only credential references, allowed origins, permitted read actions, and the expected field labels for `Status`, `Username`, `Roles`, and `Employee ID`.
+2. He registers the HR leavers export location as a versioned-file binding with its signed cover sheet as the declared-count mechanism.
+3. **Climax:** Saving a later change to LoanCore's origin warns "This change creates a platform-authored draft for 1 Procedure and requires approval"; he confirms, and the Active version keeps running until an Audit Manager approves the draft (FR-14).
+
+Failure: he tries to register a credential with write capability → save blocked with "Audit credentials must be read-only." (FR-3)
 
 ### Flow 1 — Build the Terminated Users procedure (UJ-1)
 
@@ -260,7 +286,7 @@ Daniel, later that morning.
 1. From Procedure Detail he presses Initiate Run for August 2026 and opens Live View.
 2. The viewer shows the Adapter acquiring the leavers export as a log row with digest and declared count, then the workspace opening LoanCore and signing in with masked credentials.
 3. Per-Observation Gate rows tick in the rail as each account is read; the narration names the employee and what was observed.
-4. On the seventh employee an Escalation appears in place: *choose candidate*, the two captured result rows with their grounded fields, answers "Choose by full name", "Mark ambiguous", "Abort". The workspace screen stays visible.
+4. On the seventh employee an Escalation appears in place: *choose candidate*, the two captured result rows with their grounded fields, answers "Choose by full name" and "Mark ambiguous". Cancel stays available in the Live View controls. The workspace screen stays visible.
 5. **Climax:** He chooses by full name; the confirmation restates that the record will be flagged human-matched; the agent continues, finishes LoanCore, and opens LedgerDesk. Daniel closes the tab.
 
 Alternate: he pauses to take a call → chrome shows PAUSED with a 30-minute countdown; on resume the agent continues from the next Tool Action.

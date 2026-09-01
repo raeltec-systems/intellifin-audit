@@ -34,7 +34,7 @@ colors:
   text-muted: '#64748B'
   text-inverse: '#FFFFFF'
   text-link: '#0F766E'
-  focus: '#14B8A6'
+  focus: '#0F766E'                # [ASSUMPTION] teal-700, not the parent's teal-500 (#14B8A6 is 2.5:1 on white, below the 3:1 non-text minimum)
   success-bg: '#F0FDF4'
   success-border: '#BBF7D0'
   success-text: '#15803D'
@@ -53,54 +53,66 @@ colors:
   neutral-border: '#E2E8F0'
   neutral-text: '#475569'
   neutral-solid: '#64748B'
-  scrim: 'rgba(16,42,67,0.45)'
+  scrim: '#102A43'                # navy at {spacing.scrim-opacity}
 typography:
+  # Every role uses {typography.sans} unless its comment says mono. Comments name where the role lives.
   sans:
     fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif"
   mono:
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"   # [ASSUMPTION] parent system has no mono token
-  page-title:
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"   # [ASSUMPTION] parent system has no mono token; identifiers, values, digests, timestamps, locators, Tool Actions
+  page-title:          # screen titles; Run and Exception identifiers as h1 (mono)
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 20px
     lineHeight: 28px
     fontWeight: '600'
-  card-title:
+  card-title:          # card and section headings, dialog titles
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 16px
     lineHeight: 24px
     fontWeight: '600'
-  sub-title:
+  sub-title:           # panel headings (execution failure, safe next action, untrusted content), rail card headings
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 14px
     lineHeight: 20px
     fontWeight: '600'
-  body:
+  body:                # outcome statements, objectives, Escalation questions, long prose
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 14px
     lineHeight: 21px
     fontWeight: '400'
-  body-sm:
+  body-sm:             # table cells and values (mono when the value is data)
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 13px
     lineHeight: 18px
     fontWeight: '400'
-  body-sm-relaxed:
+  body-sm-relaxed:     # detail copy in rows, diagnostics, narration
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 13px
     lineHeight: 19px
     fontWeight: '400'
-  row-title:
+  row-title:           # row titles, links, first cells
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 13px
     lineHeight: 18px
     fontWeight: '500'
-  caption:
+  caption:             # field labels, metadata labels
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 12px
     lineHeight: 16px
     fontWeight: '400'
-  caption-relaxed:
+  caption-relaxed:     # hints, notes, rule text under Gate rows
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 12px
     lineHeight: 17px
     fontWeight: '400'
-  overline:
+  overline:            # uppercase section labels, table headers, status words, chips
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 12px
     lineHeight: 16px
     fontWeight: '500'
     letterSpacing: 0.02em
-  micro:
+  micro:               # avatar initials, step-marker numbers, file metadata
+    fontFamily: '{typography.sans.fontFamily}'
     fontSize: 11px
     lineHeight: 15px
     fontWeight: '500'
@@ -137,11 +149,18 @@ spacing:
   badge-sm: 20px
   badge-md: 24px
   dialog: 560px
+  scrim-opacity: '0.45'
 components:
-  # Inherited unchanged from the IntelliFin Design System bundle
+  # Inherited from the IntelliFin Design System bundle (IntelliFinDesignSystem_92c78d), an external UI system
+  # that lives in the IntelliFin Business Suite repository, not here; references are by name per the DESIGN.md
+  # spec's UI-system inheritance pattern. Every token value this document needs is restated above.
   sidebar: '{IntelliFinDesignSystem.Sidebar}'
   button: '{IntelliFinDesignSystem.Button}'
-  status-badge: '{IntelliFinDesignSystem.StatusBadge}'
+  status-badge: '{IntelliFinDesignSystem.StatusBadge}'   # extended locally with the info-solid family, see status-badge-info-solid
+  status-badge-info-solid:
+    background: '{colors.info-solid}'
+    border: '{colors.info-solid}'
+    text: '{colors.text-inverse}'
   banner: '{IntelliFinDesignSystem.Banner}'
   environment-ribbon: '{IntelliFinDesignSystem.EnvironmentRibbon}'
   empty-state: '{IntelliFinDesignSystem.EmptyState}'
@@ -189,6 +208,30 @@ components:
   evidence-item:
     grid: repeat(3, minmax(0, 1fr))
     gap: 8px 20px
+    kind-badge: '{components.status-badge}'
+    note-background: '{colors.warning-bg}'
+    note-border: '1px solid {colors.warning-border}'
+  version-diff:
+    changed-section-border: '1px solid {colors.warning-border}'
+    added-value-background: '{colors.success-bg}'
+    removed-value-background: '{colors.danger-bg}'
+    value-font: '{typography.mono}'
+  data-table:
+    header-background: '{colors.surface-sunken}'
+    header-type: '{typography.overline}'
+    header-text: '{colors.text-secondary}'
+    header-padding: 8px 20px
+    cell-padding: 9px 20px
+    row-border: '1px solid {colors.surface-sunken}'
+    first-cell-type: '{typography.row-title}'
+  exception-row:
+    padding: '{spacing.row-padding}'
+    identifier-font: '{typography.mono}'
+    state-badge: '{components.status-badge}'
+  notification-row:
+    padding: '{spacing.row-padding}'
+    countdown-font: '{typography.mono}'
+    unread-marker: '{colors.info-solid}'
   untrusted-block:
     border: '1px solid {colors.warning-border}'
     body-font: '{typography.mono}'
@@ -251,7 +294,7 @@ The Audit Agent's work is the core product experience: the Auditor builds a Proc
 
 # Colors
 
-Inherited wholesale from the parent `tokens/colors.css`. No new hues are introduced. One new solid is named — `{colors.info-solid}` — for the "needs a human" treatment, because the audit domain has four states that are neither failure nor success but a person's turn. Token pairs are the parent system's WCAG 2.1 AA-tested pairs; gold is never used for text below 18.5px and never for status.
+Inherited wholesale from the parent `tokens/colors.css`. No new hues are introduced. One new solid is named — `{colors.info-solid}` — for the "needs a human" treatment, because the audit domain has four states that are neither failure nor success but a person's turn. Contrast targets: 4.5:1 for text, 3:1 for non-text indicators. `{colors.text-muted}` is used only on `{colors.surface-card}` and `{colors.surface-page}` (4.8:1 and 4.6:1); table headers on `{colors.surface-sunken}` use `{colors.text-secondary}` (7.0:1). The focus ring is `{colors.focus}` (teal-700, 4.7:1 on white); gold is never used for text below 18.5px and never for status.
 
 **Interaction.** `{colors.teal}` is the only interactive color: links, primary buttons, active tab underline, active nav marker, pressed filter chips; `{colors.focus}` for the focus ring. Nothing decorative is teal, and no status is teal.
 
@@ -264,8 +307,8 @@ Inherited wholesale from the parent `tokens/colors.css`. No new hues are introdu
 | Evidence Quality Gate | Passed · Not passed · Incomplete · Not evaluated | success · warning · danger-outline · neutral | shield-check · shield-alert · shield-alert · shield |
 | Result outcome | Pass · Control Failure · Pending Confirmation · No conclusion issued | success · danger · **info-solid** · neutral | check-circle-2 · alert-circle · user · slash |
 | Auditor Review | Draft · Submitted · Approved · Finalized | neutral · warning · info · neutral-solid | pencil · clock · check · lock |
-| Exception | Open · Under review · Confirmed · Not an Exception | danger-outline · info · danger · neutral-solid | alert-circle · clock · alert-circle · ban |
-| Evaluation origin | Rule-Classified · Agent-Judged (pending) · Agent-Judged (confirmed) · Human-classified | neutral · **info-solid** · info · info | braces · user · cpu · user |
+| Exception | Open · Under Review · Confirmed · Not an Exception | danger-outline · info · danger · neutral-solid | alert-circle · clock · alert-circle · ban |
+| Evaluation origin | Rule-Classified · Agent-Judged (pending) · Agent-Judged (confirmed) · Human-classified | neutral · **info-solid** · info · info | braces · user · cpu · user-check |
 | Evaluation value | Compliant · Exception · Unevaluated | success · danger · warning | check-circle-2 · alert-circle · help-circle |
 | Work Item | Pending · In progress · Awaiting · Observed · Uninspected · Ambiguous · Failed | neutral · info · info-solid · success · warning · warning · danger-outline | clock · refresh-cw · user · check · slash · git-compare · x-circle |
 
@@ -319,10 +362,10 @@ Inherited from the IntelliFin Design System bundle and used unchanged:
 
 - Sidebar.
 - Button — primary · secondary · ghost · destructive; `{spacing.control-sm}` and `{spacing.control-md}`.
-- StatusBadge — `{spacing.badge-sm}` in tables and lists, `{spacing.badge-md}` in the triptych and record headers.
+- StatusBadge — `{spacing.badge-sm}` in tables and lists, `{spacing.badge-md}` in the triptych and record headers. Extended locally with one family, `info-solid` (`{components.status-badge-info-solid}`); the parent's families are neutral, neutral-solid, info, success, warning, danger, danger-outline.
 - Banner, EnvironmentRibbon, EmptyState.
 - Tabs — `{spacing.tabs}`.
-- Icon — Lucide subset, self-hosted at `claude/mockups/assets/lucide-icons.js`. Added by this document: pause, play, user, braces, cpu, help-circle, shield, bell, flag, archive, search-x.
+- Icon — Lucide subset, self-hosted at `claude/mockups/assets/lucide-icons.js`. Added by this document: pause, play, user, user-check, braces, cpu, help-circle, shield, bell, flag, archive, search-x.
 
 Audit-specific patterns, composed from tokens (behavior in `EXPERIENCE.md`):
 
@@ -332,19 +375,31 @@ Audit-specific patterns, composed from tokens (behavior in `EXPERIENCE.md`):
 
 **Execution Timeline row.** Four-column grid (`{components.timeline-row.grid}`); rows nest by 20px per level — Session Step › Work Item › Step Execution › Tool Action. Each row shows a step marker, status icon, name and detail, a sanitized call box in `{typography.mono}`, and a right column with status word and duration. Work Item rows carry the Work Item badge; Escalation rows use the escalation-panel colors inline.
 
+**Data table.** `{components.data-table}`: overline header on a sunken ground, hairline rows, first cell a `{typography.row-title}` link, numeric columns right-aligned in `{typography.mono}`, badges at `{spacing.badge-sm}`. Column sets per table are in `EXPERIENCE.md` → Component Patterns → Data tables.
+
+**Exception list row.** `{components.exception-row}`: identifier link in `{typography.mono}` with the Exception state badge, the condition violated in `{typography.body-sm-relaxed}`, origin badge, masked identity where the binding designates it, and a persistent "Open" link on the right.
+
+**Evidence item card.** `{components.evidence-item}`: header with the Target System or Population Source name and a kind badge (Structural Snapshot · Screenshot · Source excerpt · Recording segment · Adapter extract); a three-column grid of the FR-31 fields — Work Item, Target System, Step, capture method, capture time (UTC), integrity digest — in `{typography.caption}` labels over `{typography.mono}` values; an optional warning note (`note-background`) for partial or preserved-after-cancel artifacts.
+
 **Population reconciliation.** Two-column table, labels left, monospace right-aligned values. File-level rows (declared, parsed, digest) above inclusion-level rows (rows in, included, excluded with reason). Differences are rendered in `{colors.warning-text}`. Excluded, Uninspected, and Unevaluated counts are always present.
 
 **Evaluation card** (Result, Exception Detail). One card per condition on a record: condition text, an origin badge from the evaluation-origin family, a value badge from the evaluation-value family, and for Agent-Judged evaluations the rationale and confidence in `{typography.mono}`. Unevaluated is a value, never an origin; an Unevaluated evaluation still shows its origin. A replaced evaluation is rendered beneath its replacement at `{typography.caption}` in `{colors.text-muted}`.
 
-**Grounding inspector** (Exception Detail, Evidence). For each attribute: original value, normalized value, the Structural Snapshot it was read from, locator and field label in `{typography.mono}`, and a corroboration badge (matched · contradictory · model-read). A human-matched record carries the `user` "Human-matched" badge beside its identity attribute.
+**Grounding inspector** (Exception Detail, Evidence). For each attribute: original value, normalized value, the Structural Snapshot it was read from, locator and field label in `{typography.mono}`, and a corroboration badge (matched · contradictory · model-read). A human-matched record carries a `user-check` "Human-matched" badge beside its identity attribute (badge text title-cases the PRD's lowercase flag). The `user` glyph is reserved for "your turn" states.
 
 **Provenance chain** (Exception Detail). Numbered steps in a ledger line: population record → grounded Observation → per-condition evaluations → Exception → Timeline segment, each showing the system that produced it and the raw value as inert monospace text. The last step is a link into Replay.
+
+**Safe next action panel** (`{components.safe-next-action-panel}`) and **execution failure panel** (`{components.execution-failure-panel}`). `{typography.sub-title}` heading with icon, `{typography.body-sm-relaxed}` body, an `error_class` line in `{typography.mono}` on the failure panel. When they appear is in `EXPERIENCE.md` → Per-surface states.
 
 **Untrusted source content.** Any retrieved free text that resembles an instruction — in Evidence or in an Escalation question — is displayed in a warning-bordered block as `<pre>` plain text, labeled with the field it came from and the statement that source content cannot change the Run objective, tool scope, or evaluation. Never rendered as markup.
 
 **Escalation panel** (Live View, Run Detail while Awaiting Auditor). `{components.escalation-panel}` colors; heading with the Escalation kind, the Step, and a countdown in `{typography.mono}`; the agent-generated question in a sunken, inert block labeled "Agent-generated"; supporting Evidence beneath; the closed answer set as a row of secondary buttons; an optional note field labeled "Recorded, not sent to the agent".
 
 **Session viewer** (Live View and Replay). A sandboxed viewport under a navy chrome strip (LIVE · PAUSED · AWAITING · REPLAY state dot and word, each dot from `{components.session-viewer}`, Agent Workspace identifier, "read-only · isolated credentials", Step counter), a Step scrubber built from `{components.session-viewer.scrubber-pill-height}` pills, and a narration rail (Session Steps and Work Items, current-Step narration, sanitized Tool Action, Observations so far). Adapter Session Steps render as a compact log row instead of a screen. Frames are the platform's Replay asset set; provider video, when retained, is a supplementary link. Controls per mode are in `EXPERIENCE.md`.
+
+**Version diff** (Version review). `{components.version-diff}`: one block per Builder section, unchanged sections collapsed, changed sections outlined with `changed-section-border`, added and removed values as inert `{typography.mono}` on the success and danger grounds; the approval action bar (Approve · Reject with rationale) in the header; a Regression Run row inline while one is pending.
+
+**Notification row and top-bar bell.** The top bar carries a `bell` icon with an unread count in `{components.status-badge-info-solid}` colors; each row (`{components.notification-row}`) shows Procedure, Run, Escalation kind, and a countdown in `{typography.mono}`.
 
 **Procedure Builder.** Structured sections in a single column (`{components.builder-section}`): Template and Control · Period and scope · Population Source binding · Target Systems · Audit Instructions · Compliance Rule · Evidence Requirements · Schedule · Plan preview. Each section is a card with an overline label column and a value column. The Compliance Rule editor marks each condition with the evaluation-origin badge its evaluations will carry — Rule-Classified for a compiled condition, Agent-Judged for an uncompiled one — and shows its applicability predicate. The plan preview is read-only: rows in `{typography.mono}` for Session Steps and Plan Steps, with a "Re-derived {time}" caption; there are no Edit controls on plan rows. Scope-widening flags on Audit Instructions use the warning colors inline.
 
