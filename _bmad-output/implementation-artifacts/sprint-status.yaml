@@ -1,0 +1,139 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-01-2026 23:59
+last_updated: 09-01-2026 23:59
+project: IntelliFin Audit
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-bootstrap-the-monorepo-and-deploy-web-and-worker: backlog
+  1-2-record-tamper-evident-audit-events-with-sanitized-telemetry: backlog
+  1-3-sign-in-and-act-only-within-an-application-owned-role: backlog
+  1-4-application-shell-and-ledger-signal-tokens: backlog
+  1-5-manage-users-and-roles: backlog
+  1-6-register-a-target-system-with-a-read-only-credential: backlog
+  1-7-register-a-population-source-binding: backlog
+  1-8-synthetic-northstar-systems-seeded-with-golden-populations: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-create-a-procedure-from-a-template: backlog
+  2-2-bind-the-population-source-with-an-inclusion-rule-and-declar: backlog
+  2-3-select-target-systems-and-write-audit-instructions-with-the: backlog
+  2-4-author-the-compliance-rule-with-compiled-and-agent-judged-co: backlog
+  2-5-specify-evidence-requirements-and-set-the-schedule: backlog
+  2-6-read-the-re-derived-executable-plan-before-submitting: backlog
+  2-7-submit-for-approval-and-approve-or-reject-with-a-diff: backlog
+  2-8-immutable-versions-and-platform-authored-drafts: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-initiate-a-run-for-an-active-version-and-period: backlog
+  3-2-acquire-the-population-source-deterministically: backlog
+  3-3-extract-adapter-acquired-target-systems-and-freeze-reference: backlog
+  3-4-register-observations-in-the-one-wire-schema-in-batches: backlog
+  3-5-seal-evidence-with-reservation-and-digest-verification: backlog
+  3-6-corroborate-observations-against-the-stored-structural-snaps: backlog
+  3-7-evaluate-corroborated-observations-deterministically-and-rai: backlog
+  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: backlog
+  3-9-seal-the-result-and-publish-the-adapter-run-s-outputs: backlog
+  3-10-cancel-an-active-run-and-start-a-linked-rerun: backlog
+  3-11-see-runs-and-inspect-an-adapter-run-s-result-evidence-except: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-provision-an-isolated-agent-workspace-per-run: backlog
+  4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: backlog
+  4-3-supply-credentials-just-in-time-and-suppress-capture-during: backlog
+  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: backlog
+  4-5-prove-absence-for-an-employee-with-no-account: backlog
+  4-6-bound-agent-execution-and-render-retrieved-content-inert: backlog
+  4-7-raise-typed-escalations-as-durable-waits: backlog
+  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: backlog
+  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: backlog
+  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: backlog
+  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-stream-the-execution-timeline-live-over-sse: backlog
+  5-2-capture-the-platform-owned-replay-asset-set-during-execution: backlog
+  5-3-watch-a-running-run-in-live-view: backlog
+  5-4-pause-and-resume-a-running-run: backlog
+  5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view: backlog
+  5-6-answer-an-escalation-without-leaving-live-view: backlog
+  5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open: backlog
+  5-8-replay-any-terminal-run-from-the-platform-owned-asset-set: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-investigate-an-exception-s-provenance-and-grounding: backlog
+  6-2-list-assign-and-disposition-exceptions: backlog
+  6-3-submit-a-sealed-result-for-review: backlog
+  6-4-approve-reject-or-record-disagreement-on-a-submitted-result: backlog
+  6-5-finalize-a-result-with-a-signed-manifest: backlog
+  6-6-overview-needs-attention-list-and-recent-runs: backlog
+  6-7-export-a-signed-workpaper-bundle: backlog
+  6-8-reproduce-an-evaluation-from-the-bundle-offline: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-synthetic-ledgerdesk-application-with-a-localhost-json-snaps: backlog
+  7-2-project-owned-desktop-template-and-workspace-lifecycle-in-th: backlog
+  7-3-in-vm-snapshot-agent-reads-the-ledgerdesk-control-tree: backlog
+  7-4-desktopexecution-adapter-meets-the-shared-conformance-suite: backlog
+  7-5-desktop_tree-extractor-and-corroboration: backlog
+  7-6-live-view-and-replay-for-a-desktop-session: backlog
+  7-7-the-hero-procedure-completes-across-loancore-and-ledgerdesk: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-run-schedules-on-frequency-utc-start-and-derived-periods: backlog
+  8-2-a-missed-or-failed-scheduled-start-is-recorded-and-never-ski: backlog
+  8-3-a-scheduled-run-completes-with-no-human-session-active: backlog
+  8-4-the-successor-version-takes-over-at-the-period-boundary: backlog
+  8-5-a-changed-version-must-pass-a-regression-run-before-it-activ: backlog
+  8-6-see-the-regression-run-and-its-golden-comparison-wherever-it: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-filter-and-inspect-every-run: backlog
+  9-2-operational-diagnostics-without-secrets: backlog
+  9-3-per-procedure-thesis-measures-and-the-adapter-portability-pr: backlog
+  9-4-prove-cross-user-cross-run-and-workspace-isolation: backlog
+  9-5-prove-agent-abuse-resistance-including-through-an-escalation: backlog
+  9-6-prove-integrity-determinism-and-golden-dataset-consistency: backlog
+  9-7-prove-the-performance-reliability-and-schedule-envelope: backlog
+  9-8-recovery-drill-and-documented-teardown: backlog
+  9-9-accessibility-ci-across-every-surface: backlog
+  epic-9-retrospective: optional
