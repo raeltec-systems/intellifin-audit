@@ -28,6 +28,7 @@ Defined terms used across SPEC.md and its companions. Capitalized in every artif
 | Exception | A record with at least one condition evaluated as violating the Compliance Rule. |
 | Executable plan | Session Steps, Plan Steps, Observations to capture, conditions, credentials, and limits derived by the Builder and frozen at approval. |
 | Execution Timeline (Timeline) | Ordered, authoritative record of every Step, Tool Action, Observation, evaluation, Escalation, and state change in a Run. |
+| Golden dataset | Per-Template fixture with known expected outcomes per record, used by Regression Runs and acceptance; a Run against it must reproduce every expected terminal outcome. |
 | Grounding | Pointer from an attribute into a Structural Snapshot or file (locator, label, extracted text) that a deterministic extractor can re-read. |
 | Human-classified evaluation | Evaluation set by an Auditor after rejecting an Agent-Judged one. |
 | Identity attribute | The matching key as displayed by the Target System, grounded on every `found = true` Observation. |
@@ -37,8 +38,10 @@ Defined terms used across SPEC.md and its companions. Capitalized in every artif
 | Pending Confirmation | Result outcome of a Completed Run while any Agent-Judged evaluation is unconfirmed; not a System Outcome. |
 | PoC Administrator | Manages users, registrations, bindings, and diagnostics; cannot alter Procedures, Evidence, or Results. |
 | Population Source (Source) | Where the population comes from, with its inclusion rule; the version freezes the binding, each Run acquires a snapshot. |
+| Procedure Builder (Builder) | The authoring surface that turns a Template into a Procedure Version and derives its executable plan; the only authoring path in the PoC. |
 | Procedure Template (Template) | Pre-authored Procedure an Auditor starts from; four in the PoC. |
 | Procedure Version | Immutable approved definition including plan, bindings, registration digests, conditions, configuration, limits, Schedule. |
+| Procedure-specific code | Code that references a Template, Control, or Target System by identity; synthetic Target Systems and golden datasets are fixtures, not procedure-specific code. |
 | Reference Source | Versioned file or API consulted by the evaluator, acquired as a Session Step; no Work Items. |
 | Regression Run | Run on an Approved version against the Template's golden dataset that gates activation. |
 | Replay | Playback of a terminal Run from the Timeline and the platform-owned Replay asset set. |
