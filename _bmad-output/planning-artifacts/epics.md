@@ -632,3 +632,972 @@ So that a Run never silently executes against a definition nobody reviewed.
 **When** it affects an Active version's frozen configuration
 **Then** the same platform-authored Draft path applies, naming the model, prompt, or tool cause rather than registration (FR14, AD-2)
 **And** every Draft minted this way follows the same `DRAFT → SUBMITTED → APPROVED | REJECTED` state machine as an Auditor-authored one, with no shortcut to `ACTIVE` (FR14, addendum §E)
+
+## Epic 3: Run an adapter-acquired Procedure to a sealed Result
+
+An Auditor starts a Run of an Active version whose Population Source and Target Systems are API or file based, watches its lifecycle in Run Detail, and receives a sealed Pass or Control Failure, or an honest Inconclusive or Run Failed. This epic delivers the durable worker, Session Steps and Work Items, the one Observation contract with grounding and corroboration, the full Evidence Quality Gate, sealed Evidence Packages, the deterministic evaluator, Result publication and sealing, the Execution Timeline, cancel and rerun, and the Runs list, proven end to end on the Segregation-of-Duties and High-Value Transactions golden datasets with no model, no Agent Workspace, and no Escalation in the loop.
+
+### Story 3.1: Initiate a Run for an Active version and period
+
+As an Auditor,
+I want to start a Run of an Active Procedure Version for a period,
+So that the Procedure executes durably, exactly once per period, with a traceable identity.
+
+**Acceptance Criteria:**
+
+**Given** an Active version and a period it owns
+**When** an Auditor initiates a Run
+**Then** `InitiateRun` resolves the version from the period's ownership and refuses a period no version owns, the Run is assigned a unique UUIDv7 correlation identifier, and the initiator is recorded (FR16)
+**And** the Run carries `kind = STANDARD` (AD-2) and enters `QUEUED`
+
+**Given** an active Run already exists for that (Procedure, effective period)
+**When** a second initiation is attempted
+**Then** it is refused; uniqueness on `(Procedure, effective period)` is enforced transactionally for `STANDARD` Runs (FR16, AD-3)
+
+**Given** the initiation command
+**When** it commits
+**Then** the Run row and its durable pg-boss job dispatch commit in the same PostgreSQL transaction (AD-3, AD-8)
+**And** the `QUEUED` transition records time, actor, reason, and prior state as a Timeline event in the Run's own audit chain (FR18, AD-22)
+
+### Story 3.2: Acquire the Population Source deterministically
+
+As an Auditor,
+I want the Run to acquire and digest the Population Source snapshot with a deterministic parser,
+So that the population of record is trustworthy before any record is evaluated.
+
+**Acceptance Criteria:**
+
+**Given** a Run for a Procedure bound to a versioned-file or API Population Source
+**When** the worker executes Population Source acquisition as a Run-level Session Step
+**Then** the Adapter acquires the bound snapshot and its independently generated declared row count and digest, and registers the snapshot as the Run's initial Evidence item (FR6, AD-18)
+**And** the deterministic parser's output, after the structured inclusion rule over declared columns, is the population of record (FR6)
+
+**Given** the acquired snapshot
+**When** the Gate reconciles it
+**Then** rows parsed equal the declared row count exactly and the digest matches at file level, and rows in equal rows included plus rows excluded with a reason for every exclusion at inclusion level (FR33, addendum H)
+
+**Given** a post-inclusion population with zero records
+**When** the Gate evaluates it
+**Then** the Run is `INCONCLUSIVE` unless the Procedure Version opts in to a zero-record Pass (FR6, addendum H)
+
+**Given** acquisition cannot complete after bounded retries
+**When** the Session Step exhausts its retry budget
+**Then** the Run ends `RUN_FAILED` (FR34, AD-3)
+
+### Story 3.3: Extract adapter-acquired Target Systems and freeze Reference Sources
+
+As an Auditor,
+I want the Adapter to extract each adapter-acquired Target System and acquire any Reference Source before evaluation begins,
+So that P-2 and P-3 Procedures run to a conclusion with no model in the loop.
+
+**Acceptance Criteria:**
+
+**Given** a P-2 Run
+**When** the worker executes the AccessGate extraction
+**Then** it runs as one adapter Work Item covering the whole population, with one Observation per active account carrying a grounded role list (addendum C, FR21, AD-18)
+
+**Given** a Procedure Version that names a Reference Source (RoleMatrix for P-2)
+**When** the Run starts
+**Then** the Adapter acquires it as a Session Step before any Work Item, and the artifact is registered, digested, and frozen into the Evidence Package before evaluation; the evaluator later consumes its parsed content as an input value and performs no I/O of its own (AD-18)
+
+**Given** a P-3 Run
+**When** the worker executes the ApproveNow extraction
+**Then** it runs as one adapter Work Item per extraction, and each covered transaction gets a grounded approval-lookup Observation with `found ∈ {true, false, ambiguous}` (FR21, AD-18, addendum C)
+
+**Given** the Run's Session Steps and Work Items
+**When** they execute
+**Then** each Work Item has its own state, Step Executions, Observations, Evidence, and Timeline segment, executed sequentially, and the model never assumes one Run equals one worker (FR22)
+
+### Story 3.4: Register Observations in the one wire schema, in batches
+
+As an Auditor,
+I want Adapter-produced Observations to use the same schema and the same transactional registration pattern as any other acquisition path,
+So that the Gate and evaluator treat every Run the same way regardless of how Evidence was acquired.
+
+**Acceptance Criteria:**
+
+**Given** an adapter extraction completes a batch of records
+**When** the batch is registered
+**Then** registration is one transaction and one Timeline event carrying the Observation digests, and the per-Observation Gate checks and the deterministic evaluator run inside that same transaction (AD-3, AD-18)
+**And** the Observation registration event carries each Observation's digest so a pre-finalization row change is detectable (AD-22)
+
+**Given** the wire schema
+**When** an Observation is emitted by any Adapter
+**Then** it carries `work_item_id`, `population_record_key`, `target_system`, `found ∈ {true, false, ambiguous}`, `observed_at` (UTC), `step_execution_id`, `capture_method = adapter`, a grounded `identity` attribute (required when `found = true`), `match_origin = platform`, and declared attributes as `{name, original_value, normalized_value, grounding, corroboration}`, all under a `schemaVersion` (FR31, addendum B.1, AD-14, AD-18)
+
+**Given** a `found = false` Observation
+**When** it is registered
+**Then** it is valid only with, for every declared search key, an Adapter-Action-derived query key equal to the record's normalized key value, a stored empty-result response artifact, and a passing extraction-completeness check; otherwise the covered record is `UNINSPECTED` (FR31, AD-6, addendum B.1)
+
+### Story 3.5: Seal Evidence with reservation and digest verification
+
+As an Auditor,
+I want every Evidence artifact reserved and digest-verified before it is Registered, and the package sealed only when every required artifact is present,
+So that nothing produced during a Run can be silently substituted, lost, or later removed.
+
+**Acceptance Criteria:**
+
+**Given** an artifact the Run must preserve (Adapter extract, source excerpt, uploaded Population Source file)
+**When** it is produced
+**Then** the application reserves it with an idempotency key and a unique provisional object key before upload, and `EvidenceStore` verifies availability, size, and digest before one transaction marks it Registered (AD-5, FR31)
+
+**Given** every terminal transition of the Run
+**When** it commits
+**Then** `SealPackage` seals the Evidence Package only when every `required` artifact is Registered and verified, and any open reservation is marked `abandoned` and listed on the Result and export (AD-5, FR32)
+
+**Given** a later change to the Source or the expiry of provider retention
+**When** either occurs
+**Then** the Evidence already preserved is never removed, and every evaluated record and every Exception still traces to its Observations, Evidence, Steps, and version (FR32)
+
+**Given** stored Evidence, an Observation, the Timeline, or lineage
+**When** a mismatch against its recorded digest is detected
+**Then** a mismatch during the Run ends it `RUN_FAILED`; a mismatch found afterward is an Audit Trail integrity event flagged on the Result and exports with no state change, and correction requires a new Run (FR35)
+
+### Story 3.6: Corroborate Observations against the stored Structural Snapshot
+
+As an Auditor,
+I want every declared attribute and identity re-read from the stored snapshot with a deterministic extractor,
+So that an Adapter's assertion can never stand uncorroborated.
+
+**Acceptance Criteria:**
+
+**Given** a Structural Snapshot of substrate kind `sheet` or `json`
+**When** the domain corroboration extractor re-reads an attribute's `locator`
+**Then** the attribute is `matched` when the re-read value equals `original_value` and the re-read label matches the label the Procedure Version declares, and `contradictory` otherwise (AD-6, AD-18)
+
+**Given** a `found = true` Observation
+**When** identity corroboration runs
+**Then** the extractor's re-read of the grounded identity attribute must equal the normalized population record key (FR33, addendum H)
+
+**Given** an attribute marked `contradictory`
+**When** the per-Observation Gate check runs
+**Then** the record is `UNEVALUATED` and the Run-level check fails `INCONCLUSIVE` (FR33, addendum H)
+
+**Given** a `found = ambiguous` Observation
+**When** the ambiguous-match Gate check runs
+**Then** the covered Work Item is `AMBIGUOUS`, the record is `UNEVALUATED`, and the Run is `INCONCLUSIVE` (FR33, addendum H)
+
+**Given** matched records
+**When** they are normalized
+**Then** originals and transformation history are retained, matching uses exact normalized keys, date-times are normalized to UTC with source offsets preserved, and unmatched or multiply matched records are shown and never Compliant (FR36)
+
+### Story 3.7: Evaluate corroborated Observations deterministically and raise Exceptions
+
+As an Auditor,
+I want compiled conditions applied deterministically to every corroborated Observation,
+So that a Rule-Classified result is reproducible and every Exception is traceable.
+
+**Acceptance Criteria:**
+
+**Given** a compiled condition whose applicability predicate selects a corroborated record
+**When** the deterministic evaluator runs at registration
+**Then** it evaluates the condition with origin `RULE`, and record evaluation derives in order Exception, then Unevaluated, then Compliant (FR9, FR37, AD-6)
+
+**Given** identical Observations and the same version
+**When** evaluation is repeated
+**Then** it yields identical Rule-Classified evaluations; no human can override one, and disagreement is recorded separately (FR37)
+
+**Given** an attribute value a compiled condition does not name
+**When** the condition is evaluated
+**Then** it evaluates `UNEVALUATED` with diagnostic `rule does not name value <v>` (FR9, addendum B)
+
+**Given** a P-3 transaction whose amount equals USD 100,000
+**When** the boundary condition is evaluated
+**Then** the inclusive boundary requires approval at exactly USD 100,000 (FR9, addendum C)
+
+**Given** the first `EXCEPTION` evaluation recorded for a record
+**When** it is registered
+**Then** the evaluation module creates the Exception in that same transaction with a Run-stable identifier and an HMAC-SHA-256 fingerprint (key ID retained), and it is never deleted (AD-6)
+
+**Given** unmatched, ambiguous, uninspected, or uncorroborated records
+**When** any condition is evaluated for them
+**Then** they are never Compliant (FR9)
+
+### Story 3.8: Run the full Evidence Quality Gate and map limit exhaustion to a safe outcome
+
+As an Auditor,
+I want the Run-level Gate to check everything before any conclusion is reached,
+So that Inconclusive and Run Failed are the honest outcomes whenever Evidence falls short.
+
+**Acceptance Criteria:**
+
+**Given** the last Work Item completes
+**When** the Run-level Gate runs
+**Then** every addendum H row not already checked per Observation runs: population acquisition, count reconciliation at file and inclusion level, empty population, per-record coverage, condition completeness, pagination/extraction completeness, schema, mandatory values, duplicate primary keys, ambiguous match, and Target System freshness (FR33, addendum H)
+
+**Given** any Gate row fails
+**When** the failure is recorded
+**Then** each check outcome with its diagnostic is a Timeline event, the Run moves to `INCONCLUSIVE`, and the Result names the affected systems, checks, Work Items, and records (FR33, FR34, AD-3)
+
+**Given** Run-level Step Execution, time, or token limit exhaustion
+**When** the limit is reached
+**Then** the Run stops `INCONCLUSIVE` with partial Evidence preserved (FR23, addendum E.1)
+
+**Given** a Session Step failure after bounded retries, a denied action, or a during-Run integrity mismatch
+**When** it occurs
+**Then** the Run ends `RUN_FAILED`, and a denied action or scope violation is also logged as a security event (FR23, FR34, FR35, AD-3)
+
+**Given** a per-Work-Item failure (skip or a second exhaustion to `FAILED`)
+**When** it happens
+**Then** the Run continues rather than stopping, and the coverage check later yields `INCONCLUSIVE` (FR34)
+
+**Given** every Gate check passes
+**When** `CompleteRun` runs
+**Then** it commits the Gate decision, the Result, the Run state `COMPLETED`, the final checkpoint, and the Timeline events atomically, or none of them (AD-3, AD-21)
+
+### Story 3.9: Seal the Result and publish the adapter Run's outputs
+
+As an Auditor,
+I want the Result to seal into one immutable System Outcome and report everything the Template promises,
+So that I can act on Pass or Control Failure with confidence.
+
+**Acceptance Criteria:**
+
+**Given** a `COMPLETED` Run with no evaluation pending
+**When** `CompleteRun` runs
+**Then** `SealResult` computes the System Outcome exactly once in the same transaction: Pass when every Gate check passed, the Result is sealed, and no condition is Exception or Unevaluated; Control Failure when any Exception counts toward the outcome, with any Unevaluated records listed (FR40, AD-21, addendum E.1)
+
+**Given** the addendum E.1 outcome table
+**When** an outcome is computed
+**Then** its rows apply in order and the first matching row wins across Canceled, Run Failed, Inconclusive, Pending Confirmation, Control Failure, and Pass (FR40, addendum E.1)
+
+**Given** a sealed Result
+**When** sealing completes
+**Then** the Result version increments, a passed Gate is necessary but not sufficient for Pass, and the outcome never changes thereafter (FR40, AD-21)
+
+**Given** the Result
+**When** it is published
+**Then** it reports the population, exclusions with reasons, inspected and uninspected records per Target System, per-condition counts by origin and confirmation state, and the Template's control-specific fields per addendum C; excluded, uninspected, or Unevaluated records are never counted Compliant (FR39)
+
+**Given** the version's stored scope statement
+**When** the Result is shown
+**Then** the scope is shown verbatim (FR5)
+
+### Story 3.10: Cancel an active Run and start a linked rerun
+
+As an authorized user,
+I want to cancel a Run in progress and start a fresh linked Run,
+So that a stuck or wrong Run never has to be left running or silently reused.
+
+**Acceptance Criteria:**
+
+**Given** an active Run (`QUEUED` or `RUNNING` in this epic's adapter-only scope)
+**When** a user cancels it from Run Detail
+**Then** `CancelRun` writes `cancel_requested`; the web command performs the `CANCELED` transition and cancels the dispatch job for `QUEUED`, and the worker performs it for `RUNNING` at the next boundary; Evidence already captured is preserved (FR26, AD-3)
+
+**Given** `CANCELED`
+**Then** it is reserved for explicit human cancellation and never produced by a timeout (FR26, addendum E)
+
+**Given** any terminal Run
+**When** a user requests a new Run
+**Then** a new linked Run is created recording the predecessor and reason, and the prior Run is not changed (FR26, AD-3)
+
+### Story 3.11: See Runs and inspect an adapter Run's Result, Evidence, Exceptions, and Timeline
+
+As an Auditor,
+I want the Runs list and Run Detail to show me an adapter Run's lifecycle, Gate, outcome, Evidence, and Timeline,
+So that I can act on a Run without reading logs.
+
+**Acceptance Criteria:**
+
+**Given** the Runs surface
+**When** it loads
+**Then** the table shows Run, Procedure, Effective period, Lifecycle, Result outcome, Gate, Review, Initiator, Elapsed, and Change columns, each row's lifecycle label drawn from Queued, Running, Completed, Inconclusive, Run Failed, or Canceled, with skeleton rows on cold load and updates within 5 seconds (FR48, FR29, UX-DR13, UX-DR35)
+
+**Given** Run Detail
+**When** it opens
+**Then** the tabs Result, Evidence, Exceptions, Review, and Execution Timeline render with the conclusion triptych (lifecycle, Gate, outcome with pending count, sealed marker, Result version) over a generated statement, and rail cards for Procedure Version and Schedule, Change since previous Run, and Technical detail (UX-DR14)
+
+**Given** Queued, Running, Completed sealed, Inconclusive, Run Failed, or Canceled
+**When** each is shown
+**Then** Queued shows the triptych with an empty Evidence tab; Running shows live Gate rows; Completed sealed shows Pass or Control Failure; Inconclusive shows its failed Gate rows first, a Safe next action panel, and Submit disabled with reason; Run Failed shows an execution-failure panel naming the Session Step, retries, and error class; Canceled shows the canceling actor and elapsed time (UX-DR15)
+
+**Given** the Result tab
+**When** it renders
+**Then** the Gate checklist groups Per-Observation and Run-level rows, each with a status icon, word, rule text, diagnostic, and links to affected Work Items, with a derived header count, and population reconciliation shows file-level rows above inclusion-level rows with excluded rows expanding to their reasons (UX-DR16, UX-DR17)
+
+**Given** an evaluation on the Result or an Exception
+**When** its card renders
+**Then** it shows the Rule-Classified origin badge, value badge, rationale, and confidence in mono, with no controls, since this epic's Procedures raise no Agent-Judged evaluation (UX-DR18)
+
+**Given** the Evidence tab
+**When** it renders
+**Then** one Evidence item card appears per item with the FR31 fields and its kind badge (Adapter extract, Source excerpt), and opening a sheet or json Structural Snapshot opens the grounding inspector showing the original value, normalized value, the snapshot at the locator, the locator and label in mono, and the corroboration badge (UX-DR19, UX-DR20)
+
+**Given** the Execution Timeline tab
+**When** it renders
+**Then** nested rows for Session Step, Work Item, Step Execution, and Adapter Action appear on the four-column grid, collapsed to Work Item rows by default except that errors, limits consumed, and version stamps stay expanded, and it is written live while the Run is Running (FR29, UX-DR23)
+
+**Given** the Exceptions tab
+**When** it renders
+**Then** it lists each Exception read-only by identifier, state badge, and condition violated, with disposition controls deferred to later epics
+
+**Given** Run Detail or Runs
+**When** data on screen goes stale
+**Then** a "Updated {time}. Refresh." Banner appears, with no auto-refresh of the detail page and pagination on the Runs list (UX-DR35)
+
+## Epic 4: The Audit Agent works a web Target System under supervision rules
+
+The Audit Agent signs in to LoanCore in an isolated Agent Workspace, inspects each terminated employee, and registers grounded Observations; when it cannot proceed safely the platform raises a typed Escalation that an Auditor answers from Run Detail, and an Auditor confirms or rejects Agent-Judged evaluations so the Result can seal. This epic delivers the Solari browser execution adapter with allowlists and read-only denial, just-in-time credentials with redaction, the accessibility-tree extractor, absence proof, bounded limits, durable waits, in-app and email notification, and the evaluation confirmation flow, proven on the hero (LoanCore only) and Production Configuration Deviation golden datasets.
+
+### Story 4.1: Provision an isolated Agent Workspace per Run
+
+As the Audit Runner,
+I want a fresh, isolated Agent Workspace created for every Run with an agent-driven Step,
+So that no state, credential, or session ever crosses from one Run into another.
+
+**Acceptance Criteria:**
+
+**Given** a Run whose plan includes an agent-driven Target System
+**When** the worker starts the Run's first Session Step
+**Then** it creates a fresh Solari-backed workspace for that Run only, bound to it for the Run's lifetime, and the workspace is destroyed at Run end with nothing persisted into a later Run (FR19)
+**And** an adapter-only Run needs no workspace and its Live View shows Adapter Session Steps instead (FR19)
+
+**Given** an Agent Workspace
+**When** the worker attempts egress from it
+**Then** only the Procedure Version's allowed origins are reachable; every other destination is denied and the denial is logged as a security event (FR19, AD-4)
+**And** workspace creation failure is a Session Step exhaustion that yields `RUN_FAILED` (FR19, addendum E)
+
+**Given** a wait record raised inside the workspace's Run (Escalation or Pause)
+**When** the wait opens
+**Then** the workspace is kept alive under a lease to the wait's deadline rather than torn down (AD-16)
+**And** every terminal Run transition and a periodic sweep reap any orphaned workspace and revoke its credentials, verified by a negative test that a workspace outlives no Run (NFR5)
+
+### Story 4.2: Sign in to LoanCore and enforce read-only, allowlisted actions
+
+As the Audit Agent,
+I want to sign in to LoanCore through `BrowserExecution` and have every action checked against the version's allowlist,
+So that a write, an out-of-scope origin, or an out-of-scope action is denied and logged rather than executed.
+
+**Acceptance Criteria:**
+
+**Given** the Procedure Version's frozen registration for LoanCore
+**When** the Audit Agent performs the sign-in Session Step
+**Then** Solari's browser SDK opens LoanCore with request interception enforcing the version's allowed origins, and only the version's permitted read actions may be invoked; a write action, an out-of-scope origin, or an out-of-scope parameter is denied before it reaches LoanCore and logged as a security event (FR3, AD-4)
+
+**Given** an Audit Instruction whose seeded scope-widening language reached execution (an unregistered system, a write verb, an out-of-scope origin)
+**When** the agent attempts to act on it
+**Then** the action is denied at execution and recorded as a security event, independent of the authoring-time flag (FR8)
+**And** retrieved LoanCore content cannot change the objective, permissions, tool scope, or Compliance Rule for the remainder of the Run (FR3, AD-9)
+
+**Given** the `BrowserExecution` conformance contract
+**When** any Tool Action executes
+**Then** redirects, downloads, cancellation acknowledgment, timeout accounting, and trace ordering follow the contract, and every Tool Action is logged with a sanitized action schema shared with Adapter Actions (AD-4, AD-10)
+**And** a shared conformance suite exercises the contract in CI (AD-12)
+
+### Story 4.3: Supply credentials just in time and suppress capture during entry
+
+As the Audit Agent,
+I want the LoanCore credential supplied only at the moment of sign-in and never captured on screen,
+So that no secret ever reaches Timeline, Evidence, logs, or exports.
+
+**Acceptance Criteria:**
+
+**Given** the opaque `CredentialRef` on the Target System registration
+**When** the sign-in Tool Action needs it
+**Then** `CredentialProvider` supplies the read-only LoanCore credential to the worker adapter just in time, the retrieval is audited without the secret value, and the credential never appears in Timeline, Evidence, logs, or exports (FR20, AD-4)
+
+**Given** a credential-entry Tool Action (typing the username or password)
+**When** the platform captures Structural Snapshots, screenshots, or frames
+**Then** capture is suppressed for that Tool Action and any secret-typed input value is redacted from every captured artifact before registration (AD-4)
+**And** an artifact found to contain a credential value fails registration rather than being stored (AD-4)
+
+**Given** a seeded negative test for credential redaction
+**When** it runs against a captured sign-in sequence
+**Then** it proves no credential-shaped value survives into a Structural Snapshot, screenshot, frame, log line, or export (AD-4, NFR1)
+
+### Story 4.4: Locate a record, capture Evidence, and register a grounded Observation
+
+As the Audit Agent,
+I want to search LoanCore for each terminated employee, capture the account page's Structural Snapshot and screenshot, and register a grounded Observation,
+So that every attribute the evaluator uses traces to platform-captured Evidence bound to the Tool Action that read it.
+
+**Acceptance Criteria:**
+
+**Given** a Work Item for one terminated employee
+**When** the agent signs in, searches by employee ID (falling back to full name), and opens the account record
+**Then** the platform captures the Structural Snapshot (`web_tree`) and a screenshot at the reading Tool Action, each bound to it with LoanCore's URL, and every declared attribute (`account_status`, `username`, `roles`) is grounded in that snapshot with locator, label, and extracted text, never in the screenshot (FR10, AD-6, AD-18)
+
+**Given** a `found = true` Observation
+**When** it is registered
+**Then** it carries an identity attribute grounded in the same Structural Snapshot as the value attributes, and a platform key match over the search-result rows is recorded as a separate `match` provenance node comparing the matched-row locator to the record key (FR20, AD-6)
+**And** the per-Observation Gate checks and the deterministic evaluator for compiled conditions run in the same registration transaction (FR20, AD-3)
+
+**Given** the grounding inspector on a registered attribute
+**When** an Auditor opens it
+**Then** it shows the original value, normalized value, the Structural Snapshot at the locator, and the locator and label in mono, with a corroboration badge explaining any mismatch (UX-DR20)
+**And** a record with no Observation for the required Target System is `UNINSPECTED`; the agent stops and reports rather than guessing at a missing or unreadable field (FR20)
+
+### Story 4.5: Prove absence for an employee with no account
+
+As the Audit Agent,
+I want a "no account found" result to require proof, not just my report,
+So that a false absence claim cannot manufacture a Compliant record.
+
+**Acceptance Criteria:**
+
+**Given** a terminated employee record with no matching LoanCore account
+**When** the agent searches by every declared search key
+**Then** the sanitized `type` Tool Action's query string is compared, after §B normalization, to the population record's key value for each declared key, and the empty-result page is captured as a Structural Snapshot (FR20, AD-6, addendum B.1)
+
+**Given** an absence claim missing any of its required fields (query-string match, grounded empty-result snapshot, or full result-page consumption)
+**When** the Observation is registered
+**Then** the Work Item is `UNINSPECTED` rather than a Compliant absence (FR20, addendum B.1)
+**And** the golden dataset's silent-timeout or partial-pagination case and mistyped-search-key case both yield `UNINSPECTED` and an Inconclusive Run, never a false Compliant absence (addendum D)
+
+### Story 4.6: Bound agent execution and render retrieved content inert
+
+As the Audit Agent,
+I want fixed retry, time, and token limits, a recorded model identity, and no channel for retrieved content to act as an instruction,
+So that exhaustion or a hostile page fails safely instead of fabricating an Observation or expanding scope.
+
+**Acceptance Criteria:**
+
+**Given** a Run's frozen limits (retries per Step Execution, Run-level Step Execution count, time, tokens)
+**When** the agent executes
+**Then** `ModelGateway` and tool ports enforce one conformance contract for ordered tool calls, cancellation, timeout and token accounting, and structured uncertainty; tools, model identity, configuration, and prompt version are recorded per Run and cannot be changed by retrieved content (FR23, AD-9)
+
+**Given** limit exhaustion
+**When** a Step Execution's retries are exhausted
+**Then** a *retry or skip* Escalation is raised; Run-level Step Execution, time, or token exhaustion stops the Run `INCONCLUSIVE` with partial Evidence preserved; no path fabricates an Observation (FR23, addendum E.1)
+
+**Given** LoanCore page content containing a seeded injection string
+**When** the agent reads it
+**Then** the content is stored as untrusted and rendered inert everywhere it is shown, in a warning-bordered block labeled untrusted, never as executable instruction or markup (FR23, UX-DR34, UX-DR41)
+**And** any agent narration shown alongside is labeled as agent-generated, distinct from the platform-derived narration built from sanitized Tool Actions (AD-9, UX-DR41)
+
+**Given** the direct Anthropic and OpenAI provider adapters
+**When** a Run executes
+**Then** the default model is `claude-sonnet-5` via the Anthropic adapter with OpenAI wired as fallback, and provider route, model identity, model configuration, prompt version, build version, and terminal reason are persisted on the Run (AD-9)
+
+### Story 4.7: Raise typed Escalations as durable waits
+
+As the platform,
+I want *choose candidate*, *unnamed value*, and *retry or skip* Escalations raised as durable Run states with a wait record and exactly one durable job,
+So that an unanswered question survives a worker restart and times out on its own, never twice.
+
+**Acceptance Criteria:**
+
+**Given** a LoanCore search returning more than one grounded candidate row, or the platform's key match finding no unique row
+**When** the platform raises a *choose candidate* Escalation
+**Then** the Run enters `AWAITING_AUDITOR`, a wait record `{kind, options, deadline, closed_at?, closure_kind?, answer_option_id?, actor?}` is persisted with the candidate rows and their grounded keys as supporting Evidence, and exactly one durable job is created in the same transaction with `startAfter = deadline` (4 hours) and singleton key `wait:<wait id>` (FR27, AD-16)
+**And** the closed answer set is exactly "choose by the declared secondary key" (full name for the hero) or "mark the record ambiguous"; a record chosen by secondary key is flagged human-matched in every Result, list, and export, and the platform resolves a search with exactly one grounded key match itself with no Escalation (FR27, addendum B)
+
+**Given** a compiled condition meeting an attribute value outside the set it names
+**When** the platform raises an *unnamed value* Escalation
+**Then** the condition is recorded Unevaluated with diagnostic `rule does not name value <v>` and the closed answer set offered is exactly "mark Unevaluated and continue" or "abort" (FR27, addendum B)
+
+**Given** a Step Execution's retry budget exhausted
+**When** the platform raises a *retry or skip* Escalation
+**Then** the closed answer set offered is exactly "retry" (one more bounded retry cycle counted against the Run-level Step Execution limit), "skip" (Work Item `UNINSPECTED`), or "abort", and the Work Item enters `AWAITING` while the wait is open; a second exhaustion after "retry" marks it `FAILED` and the Run continues (FR27, addendum E.1)
+
+**Given** any open Escalation
+**When** the agent is briefed to continue
+**Then** the agent receives only the chosen option identifier and nothing else; no answer evaluates a record or changes scope, credentials, tools, or the Compliance Rule (FR27, AD-9)
+**And** the question shown to a human is labeled agent-generated and rendered inert, never as an instruction channel back to the agent (UX-DR27, UX-DR41)
+
+### Story 4.8: Answer an Escalation from Run Detail and notify Audit Managers
+
+As an Auditor,
+I want to answer an open Escalation from Run Detail and know both the Escalation and its notification are handled once, correctly,
+So that the Run resumes on my decision and Audit Managers are told without seeing any Evidence in the message.
+
+**Acceptance Criteria:**
+
+**Given** an `AWAITING_AUDITOR` Run
+**When** it enters that state or an Auditor flags it
+**Then** notification records are created in the same state-change transaction for the initiating Auditor (or the Procedure author for a scheduled Run) and every Audit Manager, delivered in-app and by email through `NotificationSender` with idempotent send keys, each delivery outcome recorded on the Audit Trail (FR28, AD-20)
+**And** the content names Procedure, Run, Escalation kind, and time remaining, and contains no Evidence value, question text, or secret (FR28, AD-20)
+
+**Given** the Escalation panel on Run Detail
+**When** an Auditor opens it
+**Then** it shows kind, Step, the inert agent-generated question, supporting Evidence (candidate rows with grounded keys for *choose candidate*), closed answer buttons in FR27 order with no recommendation, an optional note labeled "Recorded, not sent to the agent", and a countdown; it appears at the top of every tab while Awaiting Auditor and Pause is disabled with "A Run waiting on an answer cannot be paused." (FR27, UX-DR15, UX-DR27)
+
+**Given** an Auditor selects an answer
+**When** they confirm it
+**Then** answering opens a routine confirmation dialog, and closing the wait is one command that locks the wait row, requires it open and the expected Run revision, and writes `{closed_at, closure_kind, answer_option_id, actor}`; a second closure attempt on the same wait fails the precondition (FR27, AD-16)
+**And** the answer is scoped to this Run only, appears on the Execution Timeline and in the Workpaper Bundle, and after answering the panel becomes a Timeline entry (FR27, UX-DR27)
+
+**Given** an Auditor selects *abort* on any Escalation kind
+**When** they confirm the routine cancel confirmation
+**Then** the Run ends `CANCELED` with reason "Escalation answer: abort" (FR27)
+
+**Given** an open Escalation left unanswered
+**When** its wait job wakes past the 4-hour deadline
+**Then** the wake handler locks the wait row and moves the Run to `INCONCLUSIVE` with Evidence preserved, and the notification for that wait is skipped as `superseded` if it was already closed before the wake fires (FR27, AD-16, AD-20)
+
+### Story 4.9: Confirm or reject Agent-Judged evaluations to seal the Result
+
+As an Auditor,
+I want to confirm or reject each pending Agent-Judged evaluation for condition C2,
+So that the Result can seal instead of sitting Pending Confirmation forever.
+
+**Acceptance Criteria:**
+
+**Given** a `found = true` LoanCore Observation and an uncompiled condition (C2, privileged-roles judgment)
+**When** the agent registers its evaluation
+**Then** the registration envelope carries the Agent-Judged evaluation with origin `AGENT_JUDGED`, confirmation `pending`, a confidence in [0, 1], and rationale, in the same registration transaction as the Observation (FR38, AD-6)
+
+**Given** the version's confidence threshold (default 0.80)
+**When** the agent's confidence for that evaluation is below it
+**Then** the evaluation is stored with value `UNEVALUATED`, origin `AGENT_JUDGED`, confidence retained, and needs no confirmation (FR38, AD-6)
+
+**Given** a Completed, unsealed Run with pending Agent-Judged evaluations
+**When** Run Detail renders
+**Then** the outcome shows "Pending Confirmation" with "{n} Agent-Judged evaluations await confirmation" and Submit is disabled with "Submission is unavailable while the Result is unsealed." (UX-DR15)
+**And** each pending evaluation card shows origin badge, value badge, rationale, and confidence in mono, with Confirm and Reject controls; a below-threshold card shows value Unevaluated with its confidence and no controls; Rule-Classified cards have no controls (UX-DR18)
+
+**Given** an Auditor confirms a pending evaluation
+**When** `ConfirmEvaluation` runs
+**Then** it is refused unless the Run is `COMPLETED` and the Result unsealed; it locks the Result row under the expected revision, increments the revision, and evaluates the seal condition inside that lock (FR38, AD-21)
+
+**Given** an Auditor rejects a pending evaluation
+**When** the rationale dialog is completed with a rationale and a replacement value (Compliant, Exception, or Unevaluated)
+**Then** `RejectEvaluation` records the replacement with origin `HUMAN`, keeps the rejected Agent-Judged evaluation visible beneath it as history, and evaluates the seal condition under the same lock (FR38, AD-21, UX-DR18)
+
+**Given** the last pending evaluation on a Result is resolved
+**When** its confirmation or rejection commits
+**Then** `SealResult` computes the System Outcome exactly once, increments the Result version, and refuses every later evaluation mutation (AD-21)
+
+### Story 4.10: Prove the agent path on ProdConsole with one Observation per parameter
+
+As the Audit Agent,
+I want to read all four ProdConsole parameters and the signed snapshot identifier from one page in a single Work Item,
+So that the Production Configuration Deviation Procedure has grounded, reconciled Evidence with no adapter in the loop.
+
+**Acceptance Criteria:**
+
+**Given** the P-4 Template's one agent Work Item for the ProdConsole page
+**When** the agent reads it
+**Then** one Observation is registered per baseline parameter (`max_manual_approval_amount`, `mfa_required_for_admin`, `session_timeout_minutes`, `production_debug_mode`), each grounded in the page's Structural Snapshot with the parameter name as its identity attribute (FR20, AD-18, addendum C)
+
+**Given** ProdConsole's signed snapshot identifier and expected parameter count, both agent-extracted
+**When** the Work Item's Observations are registered
+**Then** the Gate reconciles the agent-extracted declared count exactly against the Observations registered, the same as any other declared count (AD-18, addendum H)
+
+**Given** the P-4 golden dataset
+**When** the Run executes end to end
+**Then** the four parameters produce grounded Observations under the one Work Item, and any parameter absent or partially readable yields `INCONCLUSIVE`, never a silent Compliant (FR20, addendum C)
+
+### Story 4.11: Prove abuse resistance and workspace isolation with negative tests
+
+As the platform team,
+I want automated abuse tests and workspace isolation tests that fail the build on any breach,
+So that scope-widening, secret disclosure, and cross-Run leakage are proven absent, not merely believed absent.
+
+**Acceptance Criteria:**
+
+**Given** retrieved LoanCore content, including content surfaced through an Escalation question
+**When** the seeded abuse tests run
+**Then** they prove none of it can expand scope, invoke a denied tool, disclose a secret, alter the Compliance Rule, or modify the Run objective (NFR2)
+**And** the two seeded injection strings from the golden dataset (one shaping an Escalation) are exercised and both fail to affect Run state (addendum D, NFR2)
+
+**Given** two concurrent Runs each with their own Agent Workspace
+**When** the isolation negative tests run
+**Then** each workspace is proven isolated from the other Run and from the web app, holds no credential once its Run ends, and can reach only its own allowlisted destinations (NFR5, AD-4)
+
+**Given** the three seeded scope-widening Audit Instructions (unregistered system, write verb, out-of-scope origin)
+**When** the Run executes them
+**Then** all three are denied at execution and logged as security events, matching the 100% denial bar (FR3, FR8, addendum D)
+
+## Epic 5: Watch, pause, and replay the agent
+
+An Auditor opens Live View to watch the workspace screen, Observations, and Gate rows as they happen, pauses and resumes a Running Run, cancels it, flags it to Audit Managers, and answers an Escalation without leaving the screen; later, any authorized user replays any terminal Run from the platform-owned Replay asset set, jumping to any Work Item, Exception, or Escalation, even with the Workspace Provider unreachable. This epic delivers the LISTEN/NOTIFY plus SSE live channel, the shared session viewer, durable pause and resume, the Replay asset set captured during execution, and the Replay surface itself.
+
+### Story 5.1: Stream the Execution Timeline live over SSE
+
+As an Auditor,
+I want the Execution Timeline to reach the browser within seconds of being written,
+So that Live View, Run Detail, the Runs list, and my notification badge all reflect Run progress without me reloading.
+
+**Acceptance Criteria:**
+
+**Given** a Timeline event is appended by worker or web
+**When** the append transaction commits
+**Then** a `NOTIFY run_timeline(run_id, seq)` fires in the same transaction, and `seq` is the chain sequence allocated under the Run head row lock, gapless and commit-ordered across writers (AD-17)
+
+**Given** a client requests `/runs/<run-id>/events?after=<seq>`
+**When** the route opens
+**Then** it replays every Timeline event with `seq` greater than the cursor in order before streaming new ones, sends a heartbeat comment at most every 30 seconds, and caps its own stream lifetime under 15 minutes (AD-17)
+**And** Live View, the active Run Detail, the Runs list, Overview counts, and the notification badge each subscribe to this one channel, with no WebSocket, Redis, or provider stream as a source of truth (AD-17)
+
+**Given** a stream disconnects and reconnects
+**When** the client resumes with its last-seen `seq` as cursor
+**Then** no event is skipped and none is delivered twice (AD-17, NFR7)
+**And** Live View reflects Run state within 5 seconds, and a stale indicator appears after 15 seconds without an update (FR24, UX-DR35, NFR7)
+
+### Story 5.2: Watch a Running Run in Live View
+
+As an Auditor,
+I want to open Live View on a Running, Paused, or Awaiting Auditor Run and see its current Step, Work Item, workspace screen, Observations, Evidence, and Audit Instructions,
+So that I can supervise the Audit Agent's work as it happens.
+
+**Acceptance Criteria:**
+
+**Given** a Running Run
+**When** an Auditor opens Live View
+**Then** the session viewer renders inside a navy chrome strip with state dot and word LIVE, the workspace screen streams from the captured frames within 5 seconds, and the current Step, Work Item, Observations, and Evidence as registered are shown (FR24, UX-DR24, UX-DR25)
+**And** the natural-language Audit Instructions for the agent-driven Target System currently being worked are shown verbatim (FR8)
+
+**Given** the Run is adapter-only
+**When** Live View opens
+**Then** no workspace screen is shown, and Adapter Session Steps render as log rows with counts and digests (UX-DR24, UX-DR25)
+
+**Given** Live View is open
+**When** the Auditor closes the tab
+**Then** the Run continues unaffected (FR24)
+
+**Given** the session viewer
+**When** a frame is shown or the Run state changes
+**Then** the frame's `alt` narration equals the Step narration, `aria-live="polite"` announces the Run state change, and Live View passes automated WCAG 2.1 AA checks (UX-DR37, NFR11)
+
+**Given** a viewport below 1024px
+**When** Live View opens
+**Then** it renders read-only with "Open on a desktop browser to supervise this Run." and every control disabled (UX-DR25, UX-DR36)
+
+### Story 5.3: Pause and resume a Running Run
+
+As an Auditor,
+I want to pause a Running Run and resume it later,
+So that I can step away without losing the agent's place or forcing a Cancel.
+
+**Acceptance Criteria:**
+
+**Given** a Running Run
+**When** an Auditor presses Pause in Live View
+**Then** the pause takes effect at the next Tool Action boundary, the Run persists as `PAUSED` with a checkpoint, an open wait record `{kind, options, deadline}`, and a workspace lease, and the pause records actor, time, and Step (FR25, AD-16)
+**And** chrome shows PAUSED with the last frame held and a countdown banner naming who paused it and when it ends Inconclusive (UX-DR25)
+
+**Given** a Run Awaiting Auditor
+**When** an Auditor tries to pause it
+**Then** Pause is disabled with "A Run waiting on an answer cannot be paused." (AD-16)
+
+**Given** a Paused Run
+**When** 30 minutes elapse with no resume
+**Then** the wait's durable job wakes on `startAfter = deadline`, the Run ends `INCONCLUSIVE` with Evidence preserved, and reason is recorded (FR25, AD-16)
+
+**Given** a Paused Run
+**When** an Auditor presses Resume
+**Then** the closure command locks the wait row under the expected Run revision, the worker reattaches to the leased workspace via `attach(WorkspaceRef)`, restarts the current Step Execution from its first Tool Action as a new attempt marked `superseded_by_resume` while the earlier attempt's Tool Actions remain on the Timeline, and the model is re-briefed from the frozen plan and the Work Item with no carried conversation state (AD-16)
+**And** resume records actor, time, and Step, and Live View chrome returns to LIVE (FR25, UX-DR25)
+
+**Given** the leased workspace is gone at resume
+**When** the worker reattaches
+**Then** it re-runs the sign-in Session Steps for the current Target System under the Session Step retry budget and records the reattach on the Timeline; exhaustion is `RUN_FAILED` (AD-16)
+
+### Story 5.4: Cancel a Run and flag it to Audit Managers from Live View
+
+As an Auditor,
+I want to cancel a Run or flag it to Audit Managers directly from Live View,
+So that I can stop unwanted work or escalate for attention without leaving the screen I am watching.
+
+**Acceptance Criteria:**
+
+**Given** any active Run (Queued, Running, Paused, Awaiting Auditor)
+**When** an authorized user presses Cancel in Live View
+**Then** a routine confirmation restates the consequence, `cancel_requested` is written, the worker transitions the Run to `CANCELED` at the next Tool Action boundary with Evidence preserved, and `CANCELED` is reserved for this explicit human cancellation (FR26, AD-3, UX-DR33)
+
+**Given** a Canceled Run
+**When** the Auditor wants the work continued
+**Then** starting a new Run creates one linked to it without changing the prior Run (FR26)
+
+**Given** a Running, Paused, or Awaiting Auditor Run
+**When** an Auditor presses Flag to Audit Manager in Live View
+**Then** an optional note may be attached, every Audit Manager is notified, the flag has no effect on execution, and the flag is recorded on the Audit Trail (FR27)
+**And** Flag to Audit Manager sits in the session viewer's live controls beside Pause/Resume and Cancel (UX-DR24)
+
+### Story 5.5: Answer an Escalation without leaving Live View
+
+As an Auditor,
+I want the open Escalation panel to appear inside Live View itself,
+So that I can answer it without navigating to Run Detail while still watching the workspace.
+
+**Acceptance Criteria:**
+
+**Given** a Run enters Awaiting Auditor while Live View is open
+**When** the transition streams over the live channel
+**Then** chrome flips from LIVE to AWAITING with a countdown, the Escalation panel renders in place with kind, Step, the agent-generated question rendered inert and labeled as such, supporting Evidence (for choose candidate, the captured result rows with grounded keys), closed answer buttons in FR27 order with no recommendation, and an optional note field "Recorded, not sent to the agent", and the workspace screen stays visible behind it (FR24, FR27, UX-DR24, UX-DR25, UX-DR27)
+
+**Given** the Escalation panel is present
+**When** a keyboard or screen-reader user is elsewhere on the page
+**Then** a skip link "Go to open Escalation" moves focus to the panel, and its appearance is announced via `aria-live="polite"` along with the 10-minute and 1-minute countdown milestones (UX-DR27, UX-DR37)
+
+**Given** the Auditor answers or aborts from the panel
+**When** the answer or abort is confirmed
+**Then** the panel becomes a Timeline entry, and Live View returns to LIVE or reflects Canceled on abort (FR27, UX-DR27)
+**And** Pause stays disabled with "A Run waiting on an answer cannot be paused." until the answer is confirmed (FR25, AD-16)
+
+**Given** the acceptance test suite
+**When** it exercises Flow 3
+**Then** Playwright drives Live View through Initiate Run, a choose-candidate Escalation answered in place, and a pause with a 30-minute countdown before resume (AD-12, UX-DR40)
+
+### Story 5.6: Live View when the stream drops or the Run ends while open
+
+As an Auditor,
+I want Live View to tell me plainly when the connection is lost or the Run has already finished,
+So that I never mistake a stale screen for the Run's real state.
+
+**Acceptance Criteria:**
+
+**Given** Live View is open and no Timeline update arrives
+**When** 15 seconds pass
+**Then** the stale indicator appears (AD-17, NFR7)
+**And** after 60 seconds without an update, a Banner "Connection to the Run lost. Reconnecting." appears with every control disabled until the stream resumes (UX-DR25)
+
+**Given** a Run reaches a terminal state while Live View is open
+**When** the terminal Timeline event streams in
+**Then** chrome flips from LIVE, PAUSED, or AWAITING to REPLAY, every live control disables, and a Banner names the terminal state with a link to Run Detail (UX-DR25)
+
+**Given** the stream reconnects after a drop
+**When** the client resumes with its last-seen `seq`
+**Then** it replays every missed event in order with no gap and no duplicate before returning to live rendering (AD-17)
+
+### Story 5.7: Capture the platform-owned Replay asset set during execution
+
+As an Auditor,
+I want every Tool Action, Escalation, and Session Step to leave behind the exact frames and data Replay needs,
+So that I can replay any terminal Run without the platform ever calling the Workspace Provider again.
+
+**Acceptance Criteria:**
+
+**Given** a Tool Action executes
+**When** it completes
+**Then** the platform captures a timestamped frame, the sanitized action, and the Observation delta as Replay assets, each reserved with an idempotency key and unique object key before upload and verified by size and digest before being marked Registered with `role = replay` (FR30, AD-9, AD-5)
+
+**Given** an Escalation is raised and answered, or a Session Step starts and ends
+**When** either happens
+**Then** the Escalation's question, options, answer, actor, and time, and the Session Step's start, end, and outcome are captured as Replay assets (AD-9, addendum F)
+
+**Given** a frame capture fails or is missing
+**When** the package is sealed
+**Then** a Timeline `frame_missing` event is recorded and flagged on Replay and export, and the seal is not blocked, because `replay`-role artifacts never gate `SealPackage` (AD-5)
+
+**Given** the Workspace Provider recorded the session
+**When** the Run ends
+**Then** the recording is copied into platform storage at Run end and provider retention is set to minimum; Replay never depends on the provider afterward (resolved decision, 2026-09-01)
+
+### Story 5.8: Replay any terminal Run from the platform-owned asset set
+
+As an authorized user,
+I want to replay any terminal Run from its captured frames, sanitized actions, and Observation deltas,
+So that I can re-examine what the agent did even after the Workspace Provider's own recording has expired.
+
+**Acceptance Criteria:**
+
+**Given** any terminal Run
+**When** an authorized user opens Replay
+**Then** chrome shows REPLAY, playback starts paused at the first frame, a jump list lets them jump to any Work Item, Exception, or Escalation, and the Audit Instructions for the relevant agent-driven Target System are shown verbatim (FR8, FR30, UX-DR26)
+
+**Given** Replay is open
+**When** frames, sanitized actions, and Observation deltas render
+**Then** they come only from the platform-owned Replay asset set aligned to Steps, and no action is ever re-executed (FR30, addendum F)
+
+**Given** the Workspace Provider is blocked at the network, or its retention has expired
+**When** Replay is opened
+**Then** it renders the full Run with no provider call and no error (FR30)
+**And** an automated test exercises Replay with the Workspace Provider blocked at the network (AD-12)
+
+**Given** the session viewer in Replay mode
+**When** a user operates the scrubber or jump list
+**Then** Space or Enter on scrubber pills and Step rows jumps Replay, arrow keys step frames when the viewer has focus, Space toggles play or pause, and frame `alt` narration equals the Step narration (UX-DR24, UX-DR37)
+
+## Epic 6: Investigate Exceptions, review, finalize, and reproduce
+
+An Auditor opens each Exception to its provenance chain and grounding, dispositions it, and submits the sealed Result; an Audit Manager approves, records disagreement without override, and finalizes with a signed manifest; any authorized user exports a Workpaper Bundle from which an independent reviewer reproduces an evaluation offline. This epic delivers Exception Detail, the Review surface and queue, the Overview needs-attention list, the signed Bundle archive, and reproduction tooling, closing the loop from sealed Result to finalized, exportable, reproducible audit work (Flows 5 and 6).
+
+### Story 6.1: Investigate an Exception's provenance and grounding
+
+As an Auditor,
+I want to open an Exception and follow its full provenance chain to the underlying Evidence,
+So that I can trust or challenge the conclusion before I disposition it.
+
+**Acceptance Criteria:**
+
+**Given** a sealed Result with a Control Failure
+**When** an Auditor opens an Exception from the Exceptions tab
+**Then** Exception Detail shows the violated condition, the Observation and its grounding, compared values, lineage, the Timeline segment with a link that opens Replay at the Tool Action, and the evaluation's origin (Rule-Classified, Agent-Judged, or Human-classified) (FR41)
+**And** the provenance chain renders population record → Observation (grounding, corroboration, match origin) → evaluations → Exception → Timeline segment in that order (UX-DR21)
+
+**Given** the Exception carries a stable Run identifier and an HMAC-SHA-256 fingerprint
+**When** the identifier or fingerprint is displayed
+**Then** both are shown in mono and remain stable across Runs of Procedure Versions declared compatible (same Procedure, matching key, Compliance Rule digest) (FR41, AD-6)
+**And** a Run whose predecessor version is not declared compatible shows "Not comparable — versions differ" instead of a fingerprint match
+
+**Given** an attribute on the Exception
+**When** an Auditor clicks it in the grounding inspector
+**Then** the inspector shows the original value, the normalized value, the Structural Snapshot at the locator, the locator and label in mono, and a corroboration badge explaining any mismatch; a model-read attribute links to the condition it made Agent-Judged, and a human-matched identity attribute links to the Escalation answer that matched it (UX-DR20)
+**And** a masked field is shown as `••••` with the reason "Masked by the Population Source binding" in every list, and is unmasked only in Exception Detail and exports for Auditor and Audit Manager, with every unmasked read audited (FR41, AD-7)
+
+**Given** untrusted retrieved content appears on the Exception
+**When** the page renders it
+**Then** it is shown in a warning-bordered block and never rendered as markup (UX-DR21, UX-DR34)
+
+### Story 6.2: List, assign, and disposition Exceptions
+
+As an Auditor,
+I want to see every Exception for a Run in one list and set its disposition with notes,
+So that Control Failures are triaged and the decision trail is preserved.
+
+**Acceptance Criteria:**
+
+**Given** a Run's Exceptions tab
+**When** it renders
+**Then** each row shows the identifier as a mono link, the state badge (Open, Under Review, Confirmed, Not an Exception), the condition violated, the origin badge, the masked identity, and a persistent "Open" link, ordered by identifier (UX-DR22)
+**And** a row whose only Exception evaluation is Agent-Judged pending shows "counts after confirmation" (UX-DR22, AD-6)
+
+**Given** an Exception in state `OPEN`
+**When** an Auditor sets "Assigned to", clicks "Set Under review", "Confirm", or "Set Not an Exception", or adds a note
+**Then** the command carries the expected revision, and on success the state transitions `OPEN → UNDER_REVIEW → CONFIRMED | NOT_AN_EXCEPTION`, with actor, time, prior value, and rationale recorded (FR42, AD-7)
+**And** "Not an Exception" requires a non-empty rationale via the routine-with-rationale confirmation dialog, and the underlying evaluation and sealed System Outcome remain visible and unchanged (FR42, UX-DR21, UX-DR33)
+
+**Given** disposition history
+**When** an Auditor opens the Exception's rail
+**Then** every prior assignment, state change, and note appears with actor and time, and notes never reach the Audit Agent (FR42, AD-7)
+
+**Given** a Run whose Result is Finalized
+**When** an Auditor attempts any disposition action
+**Then** every action is disabled with the finalization reason and notes render read-only (UX-DR21)
+
+### Story 6.3: Submit a sealed Result for review
+
+As an Auditor,
+I want to submit a Run's sealed Result for Audit Manager review,
+So that only a defensible conclusion enters the review queue.
+
+**Acceptance Criteria:**
+
+**Given** a Run that is `COMPLETED` and its Result is sealed
+**When** an Auditor opens the Review tab and presses Submit
+**Then** the Auditor Review transitions `DRAFT → SUBMITTED`, recording reviewer, time, decision, the Result version, and the Procedure Version, and the Result appears in the Review queue (FR43, AD-7)
+**And** Submit uses the routine confirmation dialog and the result shows as a Banner on the surface (UX-DR29, UX-DR33)
+
+**Given** a Run that is unsealed, `INCONCLUSIVE`, `RUN_FAILED`, or `CANCELED`
+**When** an Auditor opens the Review tab
+**Then** Submit is disabled and states the exact reason, for example "Submission is unavailable while the Result is unsealed." or "Submission is unavailable for an Inconclusive Run. No conclusion exists to review." (FR43, UX-DR15)
+**And** the disabled action keeps its position and the reason also appears in the "Unavailable actions" panel (UX-DR32)
+
+**Given** an Inconclusive Run
+**When** an Audit Manager reviews Overview or Run Detail
+**Then** the failed Gate rows lead, a Safe next action panel states the corrective step and ends "This Run remains unchanged.", and she confirms no Pass or Control Failure exists before asking for a new version (FR43, UX-DR15, UX-DR40 Flow 5)
+
+### Story 6.4: Approve, reject, or record disagreement on a submitted Result
+
+As an Audit Manager,
+I want to approve or reject a submitted Result, or record disagreement without overriding it,
+So that review authority stays separate from the machine-computed outcome.
+
+**Acceptance Criteria:**
+
+**Given** the Review queue
+**When** an Audit Manager opens it
+**Then** rows show Run, Procedure, Result outcome, Exceptions, Gate, Review state, and Open, ordered by submission time, excluding Regression Runs and Runs still Pending Confirmation; an empty queue shows "No Result awaits your decision." (UX-DR28)
+
+**Given** a `SUBMITTED` Result
+**When** an Audit Manager presses Approve
+**Then** the Review transitions `SUBMITTED → APPROVED`, recording reviewer, time, decision, Result version, and Procedure Version (FR43, AD-7)
+**And** when an Audit Manager presses Reject, the routine-with-rationale dialog requires a non-empty rationale, the Review returns `SUBMITTED → DRAFT` as a recorded event without deleting history, and the rejection with its rationale is shown in the review history on the Run's Review tab (FR43, AD-7, UX-DR29, UX-DR33)
+
+**Given** any Rule-Classified evaluation or the sealed System Outcome
+**When** an Audit Manager presses "Record disagreement"
+**Then** the routine-with-rationale dialog requires a non-empty rationale, nothing is overridden, the disagreement is appended to the Audit Trail and later to the Bundle, and the sealed outcome stays visible beside the disagreeing disposition (FR44, UX-DR29, UX-DR41)
+
+**Given** the review history rail
+**When** it renders
+**Then** every review decision shows actor, time, and rationale (UX-DR29)
+
+**Given** direct finalization is attempted from `DRAFT` or `SUBMITTED`
+**When** the command runs
+**Then** it is denied and logged (FR43)
+
+### Story 6.5: Finalize a Result with a signed manifest
+
+As an Audit Manager,
+I want to finalize an approved Result behind a destructive confirmation,
+So that the workpaper becomes immutable and independently verifiable.
+
+**Acceptance Criteria:**
+
+**Given** a Result in state `APPROVED`
+**When** an Audit Manager presses "Finalize Result"
+**Then** the finalization dialog uses the destructive weight, its title names irreversibility, focus is trapped and restored, and Escape cancels (FR43, UX-DR33)
+**And** on confirmation the platform obtains an Ed25519 signature over the manifest from `ManifestSigner`, then one transaction stores the versioned manifest, the signature envelope (format version, algorithm, key ID, public-key fingerprint, signing time), the audit event, and the `FINALIZED` state, or stores none of them (AD-22)
+
+**Given** a Result that has just been finalized
+**When** any user opens the Run
+**Then** every mutating action across Run Detail, Exceptions, and Review is disabled with "Finalized on {time} by {actor}. Mutation is denied and logged.", and an integrity flag shows if a post-Run integrity event exists (FR43, UX-DR15)
+**And** the Review state shows `FINALIZED` and no later command can alter the Result, Exceptions, dispositions, reviews, Timeline, or Evidence (FR43, AD-7)
+
+**Given** the retained public verification bundle
+**When** an independent party checks a finalized manifest's signature
+**Then** the historical key used at signing time is available for verification (AD-22)
+
+**Given** each of the four Procedure Templates (P-1 through P-4) on its golden dataset
+**When** its Run is completed, sealed, submitted, approved, and finalized
+**Then** each reaches `FINALIZED` review at least once, satisfying SC-1
+
+### Story 6.6: Overview needs-attention list and Recent Runs
+
+As an Auditor or Audit Manager,
+I want one place that lists everything waiting on a human and the most recent Runs,
+So that nothing awaiting review, confirmation, or a missed start goes unnoticed.
+
+**Acceptance Criteria:**
+
+**Given** items across Procedures need attention
+**When** an authorized user opens Overview
+**Then** the needs-attention list is ordered Awaiting Auditor (countdown) · Pending Confirmation · Submitted for review · Approved awaiting finalization · Inconclusive · Run Failed · missed scheduled start, and each row names the Run, Procedure, state, and one action (UX-DR6)
+
+**Given** nothing needs attention
+**When** Overview renders
+**Then** the empty state reads "Nothing needs attention. No Result awaits confirmation or review, no Run is waiting on you, and none is Inconclusive or Run Failed. This does not imply that any control passed." (UX-DR6)
+
+**Given** no Run has ever executed
+**When** Overview renders
+**Then** the empty state reads "No Runs yet. No Procedure has run in this environment. An empty Overview does not mean a control passed." (UX-DR6)
+
+**Given** recent Run activity
+**When** Overview renders the Recent Runs table
+**Then** columns are Run, Procedure, Lifecycle, Result outcome, and Gate, with the first cell of every row a focusable link and no row-level click handlers (UX-DR6, UX-DR34)
+
+### Story 6.7: Export a signed Workpaper Bundle
+
+As an Auditor or Audit Manager,
+I want to export a self-contained, signed Workpaper Bundle for any terminal Run,
+So that the work can be reviewed and verified without the platform, source code, or live systems.
+
+**Acceptance Criteria:**
+
+**Given** any terminal Run, including `INCONCLUSIVE` and `RUN_FAILED`
+**When** an authorized user presses "Export Workpaper Bundle"
+**Then** the action is available regardless of lifecycle state, and the archive assembles the addendum §F minimum contents, the Replay asset set, and an integrity manifest, readable without source code (FR46, UX-DR32)
+**And** the export includes the Procedure Version's Audit Instructions verbatim and its explicit scope statement verbatim, matching what was shown in the plan, Live View, Replay, and Result (FR8, FR5)
+
+**Given** the archive being written
+**When** it is assembled
+**Then** it follows the fixed layout: a signed `manifest.json` at the root, `keys/` holding the public verification bundle, `artifacts/<sha256>` for every preserved input, Structural Snapshot, screenshot, and Replay frame addressed by digest, and versioned JSON members (with `schemaVersion`) for the Procedure Version, Observations with grounding, per-condition evaluations with origin and confirmation history, Escalations and answers, Timeline, reviews, and the audit excerpt (AD-5, AD-14)
+**And** any artifact reservation left `abandoned` is listed on the export, and every artifact read during assembly is verified by SHA-256 (AD-5)
+
+**Given** the resolved decision that the signed archive is the only export format
+**When** the Bundle is opened
+**Then** it includes a browser-readable HTML summary of the Run and Result alongside the versioned JSON members, needing no application to view (resolved decision 2026-09-01)
+**And** identifiers, timestamps, amounts, counts, periods, and durations in the summary follow the UX-DR38 formats (mono identifiers, ISO 8601 UTC with `Z` and original offset, `USD 250,000.00`, thousands separators, `2026-08-25 → 2026-08-31`, `3m 41s`)
+
+### Story 6.8: Reproduce an evaluation from the Bundle offline
+
+As an independent reviewer,
+I want to reproduce a sampled Rule-Classified evaluation and re-examine a sampled Agent-Judged one from the Bundle alone,
+So that the Result's conclusion is independently verifiable without the platform or live systems.
+
+**Acceptance Criteria:**
+
+**Given** an exported Workpaper Bundle and no network access to the platform, live Target Systems, or Workspace Provider
+**When** a reviewer selects a sampled Rule-Classified evaluation
+**Then** the reproduction reads the stored Structural Snapshot from `artifacts/<sha256>` only, re-runs the domain corroboration and evaluation, and reaches the same evaluation value recorded in the Bundle (FR47, AD-6)
+
+**Given** a sampled Agent-Judged evaluation
+**When** the reviewer re-examines it
+**Then** the Bundle's rationale, confidence, and Evidence let the reviewer judge the evaluation on the same grounds the confirming Auditor did, with no live model call and no re-execution of any action (FR47, AD-9)
+
+**Given** the full Flow 6 path
+**When** it is walked end to end as an e2e test
+**Then** it covers opening a submitted sealed Result's Exception Detail with the grounding inspector, exporting the Bundle, reproducing the sampled evaluation, approving, finalizing with the destructive dialog, and recording a disagreement that leaves the evaluation and sealed outcome unchanged (UX-DR40 Flow 6)
