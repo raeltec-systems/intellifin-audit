@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3]
 inputDocuments:
   - "_bmad-output/specs/spec-IntelliFin Audit/SPEC.md"
   - "_bmad-output/specs/spec-IntelliFin Audit/glossary.md"
@@ -344,7 +344,7 @@ So that every surface built later looks and behaves the same.
 
 **Given** the web app
 **When** any page renders
-**Then** the sidebar (Overview, Procedures, Runs, Review, Administration for PoC Administrators only), top bar with notification bell, and EnvironmentRibbon appear at the DESIGN.md widths, and breadcrumbs render on detail routes (UX-DR5)
+**Then** the sidebar (Overview, Procedures, Runs, Review, Administration for PoC Administrators only), top bar with notification bell, and EnvironmentRibbon appear at the DESIGN.md widths, and breadcrumbs render on detail routes; the Sidebar, Button, StatusBadge, Banner, EnvironmentRibbon, EmptyState, Tabs, and Icon components are consumed from the IntelliFin Design System by name, with StatusBadge extended locally by the info-solid variant (UX-DR2, UX-DR5)
 **And** every color, typography role, radius, and spacing value from DESIGN.md is a CSS variable with the listed value, teal is the only interactive color, and the focus ring is #0F766E and never suppressed (UX-DR1, UX-DR37)
 
 **Given** the status badge component
@@ -1108,6 +1108,10 @@ So that the Run resumes on my decision and Audit Managers are told without seein
 **When** it enters that state or an Auditor flags it
 **Then** notification records are created in the same state-change transaction for the initiating Auditor (or the Procedure author for a scheduled Run) and every Audit Manager, delivered in-app and by email through `NotificationSender` with idempotent send keys, each delivery outcome recorded on the Audit Trail (FR28, AD-20)
 **And** the content names Procedure, Run, Escalation kind, and time remaining, and contains no Evidence value, question text, or secret (FR28, AD-20)
+
+**Given** the Notifications surface and the top-bar bell
+**When** an Auditor or Audit Manager opens either
+**Then** one row per Awaiting Auditor or flagged Run shows Procedure, Run, Escalation kind, and time remaining computed from the open wait record, the bell carries the unread count, each row opens the Run, an email link deep-links to the same Run, and the empty state reads "No Run is waiting on you." (FR28, AD-20, UX-DR30)
 
 **Given** the Escalation panel on Run Detail
 **When** an Auditor opens it
@@ -1893,3 +1897,204 @@ So that I can confirm it confidently before it gates a Schedule.
 **Given** the Regression Run itself
 **When** opened on Run Detail
 **Then** it carries the label "Regression Run for v{x}", the approver confirms its Agent-Judged evaluations from the Template's confirmation script (the golden dataset's versioned answer list, addendum §D), and its outcome is compared to the golden expectation with any mismatch listed (UX-DR15)
+
+## Epic 9: Oversee the PoC and measure the thesis
+
+A PoC Administrator sees Target System connectivity, Workspace Provider and Audit Runner health, errors, retries, limits, and Run durations without ever seeing a secret; every authorized user filters Runs across all eight lifecycle states plus Pending Confirmation and Regression Run; the team reports the SM-11 measures per Procedure with zero procedure-specific code for the hero; and the platform proves its NFR envelope with isolation, abuse, integrity, recovery, performance, schedule, and accessibility test suites. This epic delivers diagnostics rows the worker writes and the web only reads, the full Runs filter bar and dashboard, thesis metrics as queryable product data, the restore drill, documented teardown, and the acceptance test suites that make every earlier epic's NFR claims provable rather than assumed.
+
+### Story 9.1: Filter and inspect every Run
+
+As an authorized user,
+I want to filter Runs by Procedure, status, initiator, period, and start time and see upcoming and missed scheduled Runs,
+So that I can find any Run's state without waiting on someone else to tell me.
+
+**Acceptance Criteria:**
+
+**Given** the Runs surface
+**When** an authorized user opens the filter bar
+**Then** a Procedure select lists every Procedure, single-select status chips cover all eight lifecycle states (Queued, Running, Paused, Awaiting Auditor, Completed, Inconclusive, Run Failed, Canceled) plus Pending Confirmation and Regression Run, initiator chips are Manual and Schedule, search matches identifier, Procedure, and initiator, and Clear filters resets the three filters and the search (FR48, UX-DR13)
+**And** Control Failure, Pending Confirmation, Awaiting Auditor, and technical or evidence failures each carry their own separate filter and label, never merged into one generic "failed" state (FR48)
+
+**Given** a Schedule with a due time
+**When** the Runs list renders
+**Then** upcoming scheduled Runs appear and a missed start shows a warning row linking to diagnostics, with no scheduled period silently skipped from the list (FR48, UX-DR13)
+
+**Given** the Runs table
+**When** it renders results
+**Then** columns are Run, Procedure, Effective period, Lifecycle, Result outcome, Gate, Review, Initiator, Elapsed, Change, the first cell of each row is a link, results are paginated with no infinite scroll, and a filtered empty state names the active filters with Clear filters offered (FR48, UX-DR13, UX-DR34, UX-DR35)
+
+**Given** a Run's lifecycle state changes
+**When** the Timeline emits the change
+**Then** the Runs list reflects it within 5 seconds over the live channel without a page reload, and a cold load shows skeleton rows with no counts until loaded (FR48, NFR7, AD-17, UX-DR35)
+
+### Story 9.2: Operational diagnostics without secrets
+
+As a PoC Administrator,
+I want to see Target System connectivity, Workspace Provider health, Audit Runner health, errors, retries, limit consumption, and Run duration,
+So that I can tell the platform is healthy without ever seeing a secret or touching a Result.
+
+**Acceptance Criteria:**
+
+**Given** the Administration surface
+**When** a PoC Administrator opens diagnostics
+**Then** Target System connectivity, Workspace Provider health, Audit Runner health, errors, retries, limit consumption, and Run duration are shown as rows the worker wrote and the web only reads; the web process never probes a Target System or provider itself (FR49, AD-10, UX-DR31)
+**And** no secret, credential, or signed URL appears anywhere on the surface (FR49, NFR1)
+
+**Given** a diagnostic row
+**When** a PoC Administrator opens it
+**Then** it links to the affected Run and its correlation identifier, and every diagnostics view and action is read-only: nothing on the surface can alter a Result (FR49)
+
+**Given** a Run, active or completed
+**When** its diagnostics are inspected
+**Then** duration, per-Step and per-Target-System latency, Work Item counts and states, retries, limits consumed, Escalations, status, and error class are all present and queryable by correlation identifier across Runs (NFR12, AD-10)
+
+### Story 9.3: Per-Procedure thesis measures and the adapter portability proof
+
+As a PoC Administrator,
+I want the platform to record the SM-11 measures per Procedure automatically,
+So that the team can report setup effort, cost, and reusability without manual tallying.
+
+**Acceptance Criteria:**
+
+**Given** a Procedure Version's lifecycle
+**When** it is authored, submitted, approved, or rejected
+**Then** the platform records Auditor authoring time and approval time as structured Run and Procedure metrics queryable across all four Templates (FR50, AD-13)
+
+**Given** a completed Run
+**When** it ends
+**Then** the platform records Escalations and manual interventions per Run, a manual intervention being any human action on the Run other than a Live View control or an Escalation answer, by anyone, plus "Not an Exception" dispositions per Run, Result approval and rejection counts, and tokens and Workspace Provider time consumed per Run (FR50, SM-11)
+
+**Given** a Procedure's implementation
+**When** its code is measured
+**Then** procedure-specific code is defined as code that references a Template, Control, or Target System by identity; synthetic Target Systems and golden datasets count as fixtures, not procedure-specific code; the hero Procedure's target is zero; and reusable versus procedure-specific components, including Adapters, are reported separately (FR50)
+
+**Given** a seeded Target System change and its Regression Run
+**When** maintenance effort is measured
+**Then** the effort includes the registration update, any Adapter change, and the FR-15 Regression Run itself (FR50, SM-11)
+**And** a test adding a new Population Source or Target System kind proves it changes no Builder, Gate, evaluation, or review code (NFR15)
+
+### Story 9.4: Prove cross-user, cross-Run, and workspace isolation
+
+As a PoC Administrator,
+I want automated tests that deny cross-user, cross-Run, and cross-workspace access,
+So that no Procedure, Run, Evidence, or workspace leaks to someone who should not see it.
+
+**Acceptance Criteria:**
+
+**Given** two users of different accounts or roles
+**When** one requests another's Procedure, Run, Evidence, Exception, Live View, Replay, or administration data by guessing or replaying an identifier
+**Then** the request is denied and the denial is audited, proven by an automated test for every route family (NFR1)
+
+**Given** data at rest and in transit
+**When** it is inspected
+**Then** it is encrypted, secrets live outside application data, and logs, Timelines, and exports never contain one (NFR1)
+
+**Given** two concurrent Runs, including Runs of different Procedures
+**When** one Run's Agent Workspace or Evidence is inspected from the other
+**Then** no data crosses between them, each workspace reaches only its allowlisted destinations, and both are proven by automated negative tests (NFR5)
+
+**Given** a Run that ends
+**When** its Agent Workspace is torn down
+**Then** no credential remains reachable from the workspace afterward, proven by a negative test (NFR5)
+
+### Story 9.5: Prove agent abuse resistance, including through an Escalation question
+
+As a PoC Administrator,
+I want automated abuse tests that inject content through files, pages, applications, and Escalation questions,
+So that retrieved content can never expand scope, invoke a denied tool, disclose a secret, or change the objective or Compliance Rule.
+
+**Acceptance Criteria:**
+
+**Given** content retrieved from a file, page, or application, including the addendum §D injection strings
+**When** it carries a prompt-injection attempt
+**Then** automated tests prove it cannot expand scope, invoke a denied tool, disclose a secret, alter the Compliance Rule, or modify the Run objective (NFR2)
+
+**Given** an Escalation whose supporting content was shaped by one of the seeded injection strings
+**When** the agent-generated question is rendered
+**Then** it is labeled agent-generated and inert, and a test proves any instruction hidden inside it reaches only as narration, never as something the platform executes (NFR2, FR27)
+
+**Given** the three seeded scope-widening Audit Instructions
+**When** they reach execution
+**Then** 100% are denied as a security event, matching the FR-8 authoring-time flag (NFR2, FR8)
+
+### Story 9.6: Prove integrity, determinism, and golden-dataset consistency
+
+As a PoC Administrator,
+I want automated tests proving tamper detection, deterministic evaluation, and repeatable golden Runs,
+So that the platform's conclusions can be trusted to be reproducible.
+
+**Acceptance Criteria:**
+
+**Given** preserved Evidence, Observations, Timelines, a finalized Result, or an Audit Trail record
+**When** a verification routine runs after a row is altered directly in PostgreSQL
+**Then** the modification is detected at the altered record (NFR3)
+
+**Given** the same frozen Observations and Procedure Version
+**When** evaluation runs twice
+**Then** every Rule-Classified evaluation is identical both times, and each Agent-Judged evaluation stays re-examinable from its preserved rationale and Evidence (NFR4)
+
+**Given** each Template's golden dataset run twice consecutively
+**When** the two Runs complete
+**Then** both reach identical terminal outcomes and identical Rule-Classified counts, excluding the addendum §D-exempt ambiguous record, any Observation difference is explained, and no Agent-Judged evaluation is confidently wrong (SM-4)
+
+### Story 9.7: Prove the performance, reliability, and schedule envelope
+
+As a PoC Administrator,
+I want measured proof that the platform meets its performance, reliability, and schedule targets,
+So that the PoC acceptance envelope is demonstrated, not assumed.
+
+**Acceptance Criteria:**
+
+**Given** the hero Procedure with up to 50 records across two agent-driven Target Systems, and adapter-only Runs of up to 10,000 records
+**When** 95% of each are measured
+**Then** the hero Runs complete within 30 minutes excluding Pause and Escalation wait time, and adapter-only Runs complete within 5 minutes (NFR6)
+
+**Given** Live View and the Runs dashboard
+**When** state changes
+**Then** both reflect it within 5 seconds, and 95% of list and detail views respond within 2 seconds at 5 concurrent users (NFR7)
+
+**Given** a transient Target System or workspace failure
+**When** it is retried
+**Then** it is retried at most 3 times with bounded backoff and produces no duplicate Observation, Result, or Evidence; exhausted retries map to Run Failed, a retry-or-skip Escalation, or Inconclusive per addendum §E (NFR8)
+
+**Given** a due Schedule
+**When** it fires, including across a platform restart
+**Then** the Run starts within 5 minutes or a missed start is recorded, and the restart loses or duplicates no scheduled Run (NFR9)
+
+### Story 9.8: Recovery drill and documented teardown
+
+As a PoC Administrator,
+I want a proven restore drill and a documented teardown procedure,
+So that the PoC's recovery promise and its end-of-life data handling are both real, not assumed.
+
+**Acceptance Criteria:**
+
+**Given** the daily PostgreSQL backup and the separately credentialed recovery bucket copy of sealed Evidence
+**When** a restore drill runs
+**Then** it reconstructs a finalized Run with every digest, audit-chain link, and signature verified against the 24-hour RPO and 8-hour RTO targets (NFR10, AD-11)
+**And** the recovery bucket's credentials are unavailable to the web or worker processes (AD-11)
+
+**Given** the PoC's documented teardown procedure
+**When** it runs
+**Then** Run data, Evidence, Timelines, Replay assets, Results, and Audit Trails are deleted only through that documented procedure and by no other path (NFR14)
+**And** Replay assets never depend on Workspace Provider retention, proven by replaying a Run after that retention has expired (NFR14, FR30)
+
+### Story 9.9: Accessibility CI across every surface
+
+As an Auditor using a keyboard or assistive technology,
+I want every surface to pass automated accessibility checks,
+So that Builder, Live View, Replay, and every other core workflow stay usable to me.
+
+**Acceptance Criteria:**
+
+**Given** every surface in the application, from Overview through Administration
+**When** automated WCAG 2.1 AA checks run in CI
+**Then** all of them pass, not only Builder, Live View, and Replay, and a failing check blocks the build (NFR11, UX-DR37)
+
+**Given** keyboard-only navigation
+**When** a user tabs through any surface
+**Then** tab order follows reading order, the focus ring is never suppressed, Escape closes the topmost dialog and never cancels a Run, and Space or Enter on scrubber pills and Step rows jump Replay while arrow keys step frames (NFR11, UX-DR37)
+
+**Given** dynamic content
+**When** a Run state changes, a new Escalation opens, or a countdown reaches its 10-minute or 1-minute milestone
+**Then** it is announced via `aria-live="polite"`, a Run Failed transition is announced via `aria-live="assertive"`, and a skip link reaches an open Escalation (UX-DR37)
