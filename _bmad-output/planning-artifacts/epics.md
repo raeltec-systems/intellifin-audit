@@ -299,7 +299,7 @@ So that later mutation of the record is detectable.
 **Given** the audit event store
 **When** any module appends an event
 **Then** the event carries actor (human, Schedule, Audit Agent, Adapter, or platform), event type, UTC time, source, outcome, session identifier, and correlation identifier (FR45)
-**And** it is serialized as UTF-8 RFC 8785 canonical JSON, links to its predecessor by SHA-256, and takes a transactionally allocated sequence on its aggregate or on the `platform` aggregate (AD-22)
+**And** it is serialized as UTF-8 RFC 8785 canonical JSON, links to its predecessor by SHA-256, and takes a transactionally allocated sequence on its own aggregate or on the `platform` aggregate; each aggregate has a head row, and the sequence is allocated under that head row lock, gapless and commit-ordered, so a Run's Timeline can later reuse this chain unchanged (AD-22)
 
 **Given** a stored chain
 **When** a verification routine re-walks it after a row is altered in PostgreSQL
@@ -461,6 +461,7 @@ So that the Builder opens pre-filled in audit vocabulary instead of a blank form
 **When** an Auditor chooses "New procedure", picks a Template, and names the Control it verifies
 **Then** a Procedure Version in `DRAFT` is created and the Builder opens with every section pre-populated from addendum §C for that Template (FR4, AD-2)
 **And** the Terminated Users Retaining Access Template (the hero) is fully configurable, while the other three Templates are at minimum editable in period, Population Source, Target Systems, and Schedule (FR4)
+**And** each Template record carries, as data, its golden Population Source binding reference and the version of its expected outcomes and confirmation script, for later Regression Runs (AD-12, AD-19)
 
 **Given** a Draft Procedure Version open in the Builder
 **When** the Auditor changes a pre-filled value
@@ -647,7 +648,7 @@ So that the Procedure executes durably, exactly once per period, with a traceabl
 
 **Given** an Active version and a period it owns
 **When** an Auditor initiates a Run
-**Then** `InitiateRun` resolves the version from the period's ownership and refuses a period no version owns, the Run is assigned a unique UUIDv7 correlation identifier, and the initiator is recorded (FR16)
+**Then** `InitiateRun` resolves the version from the period's ownership, derived from the versions' stored `handover_at` (a null `handover_at` means the version owns every period), and refuses a period no version owns, the Run is assigned a unique UUIDv7 correlation identifier, and the initiator is recorded (FR16)
 **And** the Run carries `kind = STANDARD` (AD-2) and enters `QUEUED`
 
 **Given** an active Run already exists for that (Procedure, effective period)
@@ -703,6 +704,10 @@ So that P-2 and P-3 Procedures run to a conclusion with no model in the loop.
 **Given** a P-3 Run
 **When** the worker executes the ApproveNow extraction
 **Then** it runs as one adapter Work Item per extraction, and each covered transaction gets a grounded approval-lookup Observation with `found ∈ {true, false, ambiguous}` (FR21, AD-18, addendum C)
+
+**Given** an adapter-acquired Target System or API Population Source with an opaque `CredentialRef`
+**When** the Adapter opens its connection
+**Then** `CredentialProvider` supplies the read-only API token to the worker adapter just in time, the retrieval is audited without the secret value, and the token never appears in the Timeline, Evidence, logs, or exports (FR20, AD-4, NFR1)
 
 **Given** the Run's Session Steps and Work Items
 **When** they execute
@@ -764,6 +769,7 @@ So that an Adapter's assertion can never stand uncorroborated.
 **Given** a Structural Snapshot of substrate kind `sheet` or `json`
 **When** the domain corroboration extractor re-reads an attribute's `locator`
 **Then** the attribute is `matched` when the re-read value equals `original_value` and the re-read label matches the label the Procedure Version declares, and `contradictory` otherwise (AD-6, AD-18)
+**And** the Structural Snapshot contract enumerates the substrate kinds `{web_tree, desktop_tree, sheet, json}`, each with a locator grammar and a label rule (accessible name, control name, header cell, property key path), and the one domain extractor implements `sheet` and `json` here with the other two kinds left as explicit unimplemented cases (AD-18)
 
 **Given** a `found = true` Observation
 **When** identity corroboration runs
@@ -902,7 +908,7 @@ So that I can act on a Run without reading logs.
 
 **Given** the Runs surface
 **When** it loads
-**Then** the table shows Run, Procedure, Effective period, Lifecycle, Result outcome, Gate, Review, Initiator, Elapsed, and Change columns, each row's lifecycle label drawn from Queued, Running, Completed, Inconclusive, Run Failed, or Canceled, with skeleton rows on cold load and updates within 5 seconds (FR48, FR29, UX-DR13, UX-DR35)
+**Then** the table shows Run, Procedure, Effective period, Lifecycle, Result outcome, Gate, Review, Initiator, Elapsed, and Change columns, each row's lifecycle label drawn from Queued, Running, Completed, Inconclusive, Run Failed, or Canceled, with skeleton rows on cold load and request-time reads behind the "Updated {time}. Refresh." Banner; the 5-second live bound arrives with the live channel in Epic 5 (FR48, FR29, UX-DR13, UX-DR35)
 
 **Given** Run Detail
 **When** it opens
@@ -1080,7 +1086,7 @@ So that an unanswered question survives a worker restart and times out on its ow
 
 **Given** a LoanCore search returning more than one grounded candidate row, or the platform's key match finding no unique row
 **When** the platform raises a *choose candidate* Escalation
-**Then** the Run enters `AWAITING_AUDITOR`, a wait record `{kind, options, deadline, closed_at?, closure_kind?, answer_option_id?, actor?}` is persisted with the candidate rows and their grounded keys as supporting Evidence, and exactly one durable job is created in the same transaction with `startAfter = deadline` (4 hours) and singleton key `wait:<wait id>` (FR27, AD-16)
+**Then** the Run enters `AWAITING_AUDITOR`, a wait record `{kind, options, deadline, closed_at?, closure_kind?, answer_option_id?, actor?}` is persisted with the candidate rows and their grounded keys as supporting Evidence, and exactly one durable job is created in the same transaction with `startAfter = deadline` (4 hours), singleton key `wait:<wait id>`, and payload `{schemaVersion, runId, waitId}` only; the wait record is kind-agnostic, so the same record and wake handler serve every Escalation kind and, later, Pause (FR27, AD-16)
 **And** the closed answer set is exactly "choose by the declared secondary key" (full name for the hero) or "mark the record ambiguous"; a record chosen by secondary key is flagged human-matched in every Result, list, and export, and the platform resolves a search with exactly one grounded key match itself with no Escalation (FR27, addendum B)
 
 **Given** a compiled condition meeting an attribute value outside the set it names
@@ -1230,7 +1236,31 @@ So that Live View, Run Detail, the Runs list, and my notification badge all refl
 **Then** no event is skipped and none is delivered twice (AD-17, NFR7)
 **And** Live View reflects Run state within 5 seconds, and a stale indicator appears after 15 seconds without an update (FR24, UX-DR35, NFR7)
 
-### Story 5.2: Watch a Running Run in Live View
+### Story 5.2: Capture the platform-owned Replay asset set during execution
+
+As an Auditor,
+I want every Tool Action, Escalation, and Session Step to leave behind the exact frames and data Replay needs,
+So that I can replay any terminal Run without the platform ever calling the Workspace Provider again.
+
+**Acceptance Criteria:**
+
+**Given** a Tool Action executes
+**When** it completes
+**Then** the platform captures a timestamped frame, the sanitized action, and the Observation delta as Replay assets, each reserved with an idempotency key and unique object key before upload and verified by size and digest before being marked Registered with `role = replay` (FR30, AD-9, AD-5)
+
+**Given** an Escalation is raised and answered, or a Session Step starts and ends
+**When** either happens
+**Then** the Escalation's question, options, answer, actor, and time, and the Session Step's start, end, and outcome are captured as Replay assets (AD-9, addendum F)
+
+**Given** a frame capture fails or is missing
+**When** the package is sealed
+**Then** a Timeline `frame_missing` event is recorded and flagged on Replay and export, and the seal is not blocked, because `replay`-role artifacts never gate `SealPackage` (AD-5)
+
+**Given** the Workspace Provider recorded the session
+**When** the Run ends
+**Then** the recording is copied into platform storage at Run end and provider retention is set to minimum; Replay never depends on the provider afterward (resolved decision, 2026-09-01)
+
+### Story 5.3: Watch a Running Run in Live View
 
 As an Auditor,
 I want to open Live View on a Running, Paused, or Awaiting Auditor Run and see its current Step, Work Item, workspace screen, Observations, Evidence, and Audit Instructions,
@@ -1259,7 +1289,7 @@ So that I can supervise the Audit Agent's work as it happens.
 **When** Live View opens
 **Then** it renders read-only with "Open on a desktop browser to supervise this Run." and every control disabled (UX-DR25, UX-DR36)
 
-### Story 5.3: Pause and resume a Running Run
+### Story 5.4: Pause and resume a Running Run
 
 As an Auditor,
 I want to pause a Running Run and resume it later,
@@ -1289,7 +1319,7 @@ So that I can step away without losing the agent's place or forcing a Cancel.
 **When** the worker reattaches
 **Then** it re-runs the sign-in Session Steps for the current Target System under the Session Step retry budget and records the reattach on the Timeline; exhaustion is `RUN_FAILED` (AD-16)
 
-### Story 5.4: Cancel a Run and flag it to Audit Managers from Live View
+### Story 5.5: Cancel a Run and flag it to Audit Managers from Live View
 
 As an Auditor,
 I want to cancel a Run or flag it to Audit Managers directly from Live View,
@@ -1310,7 +1340,7 @@ So that I can stop unwanted work or escalate for attention without leaving the s
 **Then** an optional note may be attached, every Audit Manager is notified, the flag has no effect on execution, and the flag is recorded on the Audit Trail (FR27)
 **And** Flag to Audit Manager sits in the session viewer's live controls beside Pause/Resume and Cancel (UX-DR24)
 
-### Story 5.5: Answer an Escalation without leaving Live View
+### Story 5.6: Answer an Escalation without leaving Live View
 
 As an Auditor,
 I want the open Escalation panel to appear inside Live View itself,
@@ -1335,7 +1365,7 @@ So that I can answer it without navigating to Run Detail while still watching th
 **When** it exercises Flow 3
 **Then** Playwright drives Live View through Initiate Run, a choose-candidate Escalation answered in place, and a pause with a 30-minute countdown before resume (AD-12, UX-DR40)
 
-### Story 5.6: Live View when the stream drops or the Run ends while open
+### Story 5.7: Live View when the stream drops or the Run ends while open
 
 As an Auditor,
 I want Live View to tell me plainly when the connection is lost or the Run has already finished,
@@ -1355,30 +1385,6 @@ So that I never mistake a stale screen for the Run's real state.
 **Given** the stream reconnects after a drop
 **When** the client resumes with its last-seen `seq`
 **Then** it replays every missed event in order with no gap and no duplicate before returning to live rendering (AD-17)
-
-### Story 5.7: Capture the platform-owned Replay asset set during execution
-
-As an Auditor,
-I want every Tool Action, Escalation, and Session Step to leave behind the exact frames and data Replay needs,
-So that I can replay any terminal Run without the platform ever calling the Workspace Provider again.
-
-**Acceptance Criteria:**
-
-**Given** a Tool Action executes
-**When** it completes
-**Then** the platform captures a timestamped frame, the sanitized action, and the Observation delta as Replay assets, each reserved with an idempotency key and unique object key before upload and verified by size and digest before being marked Registered with `role = replay` (FR30, AD-9, AD-5)
-
-**Given** an Escalation is raised and answered, or a Session Step starts and ends
-**When** either happens
-**Then** the Escalation's question, options, answer, actor, and time, and the Session Step's start, end, and outcome are captured as Replay assets (AD-9, addendum F)
-
-**Given** a frame capture fails or is missing
-**When** the package is sealed
-**Then** a Timeline `frame_missing` event is recorded and flagged on Replay and export, and the seal is not blocked, because `replay`-role artifacts never gate `SealPackage` (AD-5)
-
-**Given** the Workspace Provider recorded the session
-**When** the Run ends
-**Then** the recording is copied into platform storage at Run end and provider retention is set to minimum; Replay never depends on the provider afterward (resolved decision, 2026-09-01)
 
 ### Story 5.8: Replay any terminal Run from the platform-owned asset set
 
