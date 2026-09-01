@@ -489,6 +489,7 @@ So that a Run can later acquire a population the Evidence Quality Gate can recon
 **Given** an empty post-inclusion population is possible for this Procedure
 **When** the Auditor sets the version's zero-record-Pass flag
 **Then** the version records the opt-in explicitly; without it an empty post-inclusion population will later be Inconclusive rather than Pass (FR6, AD-23)
+**And** the version carries a separate versioned-duplicate permission flag; without it a duplicate Source primary key is a Gate failure (AD-23, addendum H)
 **And** approving this version freezes the Population Source binding exactly as set (AD-2)
 
 ### Story 2.3: Select Target Systems and write Audit Instructions with the scope-widening check
@@ -604,6 +605,7 @@ So that only a reviewed, non-self-authored version can ever become Active.
 **Given** a non-author Audit Manager on Version review
 **When** they approve
 **Then** the approval freezes the compiled plan, Compliance Rule (compiled/uncompiled status and applicability predicates), Evidence Requirements, Target Systems and their registration digests, Population Source binding, model and tool configuration, limits, Schedule, and records the approver, time, and diff (FR13, AD-2)
+**And** when two Audit Managers act on the same Submitted version, the second command fails the expected-revision precondition and nothing is applied twice (AD-7)
 **And** whenever a prior `ACTIVE` version of the same Procedure exists, the approval command computes `handover_at` once as the first period start strictly after activation and stores it on both versions; it records the configuration tuple (model, prompt version, tool configuration, registration digests) compared against that prior version and, when the tuple differs, marks the version as requiring a Regression Run, which Version review shows inline as pending; a first version, or one whose tuple is unchanged, moves `APPROVED → ACTIVE` immediately (FR13, AD-2, AD-19, UX-DR12)
 
 **Given** an Audit Manager rejects instead
@@ -676,6 +678,7 @@ So that the population of record is trustworthy before any record is evaluated.
 **Given** the acquired snapshot
 **When** the Gate reconciles it
 **Then** rows parsed equal the declared row count exactly and the digest matches at file level, and rows in equal rows included plus rows excluded with a reason for every exclusion at inclusion level (FR33, addendum H)
+**And** a row that fails the inclusion rule is listed with its reason, and a non-USD LedgerFlow transaction is excluded by the rule and never currency-converted (addendum B, addendum C)
 
 **Given** a post-inclusion population with zero records
 **When** the Gate evaluates it
@@ -785,7 +788,7 @@ So that an Adapter's assertion can never stand uncorroborated.
 
 **Given** matched records
 **When** they are normalized
-**Then** originals and transformation history are retained, matching uses exact normalized keys, date-times are normalized to UTC with source offsets preserved, and unmatched or multiply matched records are shown and never Compliant (FR36)
+**Then** originals and transformation history are retained, matching uses exact normalized keys where identifiers are strings that keep leading zeros so `007` and `7` never match, date-times are normalized to UTC with source offsets preserved, and unmatched or multiply matched records are shown and never Compliant (FR36)
 
 ### Story 3.7: Evaluate corroborated Observations deterministically and raise Exceptions
 
@@ -829,7 +832,8 @@ So that Inconclusive and Run Failed are the honest outcomes whenever Evidence fa
 
 **Given** the last Work Item completes
 **When** the Run-level Gate runs
-**Then** every addendum H row not already checked per Observation runs: population acquisition, count reconciliation at file and inclusion level, empty population, per-record coverage, condition completeness, pagination/extraction completeness, schema, mandatory values, duplicate primary keys, ambiguous match, and Target System freshness (FR33, addendum H)
+**Then** every addendum H row not already checked per Observation runs: population acquisition, count reconciliation at file and inclusion level, empty population, per-record coverage, condition completeness, pagination/extraction completeness, schema, mandatory values, duplicate primary keys, ambiguous match, snapshot freshness, and Target System freshness (FR33, addendum H)
+**And** a snapshot whose generation time is earlier than the end of the effective period, later than Run initiation, or unknown is `INCONCLUSIVE`; an empty mandatory identifier, a duplicate primary key, an unparseable timestamp, or an undeclared schema field each raise a Gate event (addendum B, addendum H)
 
 **Given** any Gate row fails
 **When** the failure is recorded
@@ -878,6 +882,10 @@ So that I can act on Pass or Control Failure with confidence.
 **Given** the version's stored scope statement
 **When** the Result is shown
 **Then** the scope is shown verbatim (FR5)
+
+**Given** a version that opted in to a zero-record Pass and a post-inclusion population of zero records
+**When** the Gate passes and the Result seals
+**Then** the outcome is Pass with population 0 and every count 0, and the generated statement says that no record was inspected (FR6, addendum E.1)
 
 ### Story 3.10: Cancel an active Run and start a linked rerun
 
@@ -1087,7 +1095,7 @@ So that an unanswered question survives a worker restart and times out on its ow
 **Given** a LoanCore search returning more than one grounded candidate row, or the platform's key match finding no unique row
 **When** the platform raises a *choose candidate* Escalation
 **Then** the Run enters `AWAITING_AUDITOR`, a wait record `{kind, options, deadline, closed_at?, closure_kind?, answer_option_id?, actor?}` is persisted with the candidate rows and their grounded keys as supporting Evidence, and exactly one durable job is created in the same transaction with `startAfter = deadline` (4 hours), singleton key `wait:<wait id>`, and payload `{schemaVersion, runId, waitId}` only; the wait record is kind-agnostic, so the same record and wake handler serve every Escalation kind and, later, Pause (FR27, AD-16)
-**And** the closed answer set is exactly "choose by the declared secondary key" (full name for the hero) or "mark the record ambiguous"; a record chosen by secondary key is flagged human-matched in every Result, list, and export, and the platform resolves a search with exactly one grounded key match itself with no Escalation (FR27, addendum B)
+**And** the closed answer set is exactly "choose by the declared secondary key" (full name for the hero) or "mark the record ambiguous"; a record chosen by secondary key is flagged human-matched in every Result, list, and export, and the platform resolves a search with exactly one grounded key match itself with no Escalation; two result rows carrying the same grounded key are not a unique match and raise choose candidate, and zero rows is an absence claim handled by the absence path, never an Escalation (FR27, addendum B)
 
 **Given** a compiled condition meeting an attribute value outside the set it names
 **When** the platform raises an *unnamed value* Escalation
@@ -1135,6 +1143,7 @@ So that the Run resumes on my decision and Audit Managers are told without seein
 **Given** an open Escalation left unanswered
 **When** its wait job wakes past the 4-hour deadline
 **Then** the wake handler locks the wait row and moves the Run to `INCONCLUSIVE` with Evidence preserved, and the notification for that wait is skipped as `superseded` if it was already closed before the wake fires (FR27, AD-16, AD-20)
+**And** an answer submitted after the deadline is refused and the panel shows "This Escalation timed out at {time}; the Run is Inconclusive." (UX-DR15)
 
 ### Story 4.9: Confirm or reject Agent-Judged evaluations to seal the Result
 
@@ -1151,6 +1160,7 @@ So that the Result can seal instead of sitting Pending Confirmation forever.
 **Given** the version's confidence threshold (default 0.80)
 **When** the agent's confidence for that evaluation is below it
 **Then** the evaluation is stored with value `UNEVALUATED`, origin `AGENT_JUDGED`, confidence retained, and needs no confirmation (FR38, AD-6)
+**And** a confidence exactly equal to the threshold is `pending` and needs confirmation; a missing confidence or one outside [0, 1] fails wire-schema validation at the adapter boundary and the Step Execution is retried under its retry budget (addendum B.1, AD-14)
 
 **Given** a Completed, unsealed Run with pending Agent-Judged evaluations
 **When** Run Detail renders
@@ -1168,6 +1178,7 @@ So that the Result can seal instead of sitting Pending Confirmation forever.
 **Given** the last pending evaluation on a Result is resolved
 **When** its confirmation or rejection commits
 **Then** `SealResult` computes the System Outcome exactly once, increments the Result version, and refuses every later evaluation mutation (AD-21)
+**And** when the resolving rejection leaves a condition Unevaluated and no Exception counts toward the outcome, sealing moves the Run `COMPLETED → INCONCLUSIVE` with Evidence preserved (AD-21, addendum E.1)
 
 ### Story 4.10: Prove the agent path on ProdConsole with one Observation per parameter
 
@@ -1255,6 +1266,7 @@ So that I can replay any terminal Run without the platform ever calling the Work
 **Given** a frame capture fails or is missing
 **When** the package is sealed
 **Then** a Timeline `frame_missing` event is recorded and flagged on Replay and export, and the seal is not blocked, because `replay`-role artifacts never gate `SealPackage` (AD-5)
+**And** frames suppressed during a credential-entry Tool Action are recorded as suppressed, never as `frame_missing` (AD-4, AD-5)
 
 **Given** the Workspace Provider recorded the session
 **When** the Run ends
@@ -1301,6 +1313,7 @@ So that I can step away without losing the agent's place or forcing a Cancel.
 **When** an Auditor presses Pause in Live View
 **Then** the pause takes effect at the next Tool Action boundary, the Run persists as `PAUSED` with a checkpoint, an open wait record `{kind, options, deadline}`, and a workspace lease, and the pause records actor, time, and Step (FR25, AD-16)
 **And** chrome shows PAUSED with the last frame held and a countdown banner naming who paused it and when it ends Inconclusive (UX-DR25)
+**And** a pause requested when no further Tool Action boundary occurs is recorded as superseded on the Timeline and the Run proceeds to its terminal state (AD-16)
 
 **Given** a Run Awaiting Auditor
 **When** an Auditor tries to pause it
@@ -1810,6 +1823,7 @@ So that a quiet Schedule is never mistaken for a passed control.
 **Given** a Schedule due at 06:00 UTC
 **When** no Run starts within 5 minutes
 **Then** a missed-start event is recorded, never silently skipped, and the Runs list shows a warning row with the exact copy "Missed 06:00 UTC start; not run" (FR17, NFR9, UX-DR13)
+**And** after a worker restart, every period that fell due during the downtime records a missed-start event and is not run late; the Auditor may initiate it manually (NFR9, FR17)
 **And** the row links to diagnostics (UX-DR13)
 
 **Given** the derived period already has a Run from manual initiation
