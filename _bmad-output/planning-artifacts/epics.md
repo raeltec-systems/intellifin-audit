@@ -1601,3 +1601,295 @@ So that the Result's conclusion is independently verifiable without the platform
 **Given** the full Flow 6 path
 **When** it is walked end to end as an e2e test
 **Then** it covers opening a submitted sealed Result's Exception Detail with the grounding inspector, exporting the Bundle, reproducing the sampled evaluation, approving, finalizing with the destructive dialog, and recording a disagreement that leaves the evaluation and sealed outcome unchanged (UX-DR40 Flow 6)
+
+## Epic 7: Inspect a desktop Target System
+
+The Audit Agent launches LedgerDesk in the Solari sandbox desktop, signs in, searches User Maintenance, and registers Observations grounded in the application's control tree, completing the hero Procedure across both Target Systems. This epic delivers the synthetic LedgerDesk application with its localhost JSON snapshot endpoint, the project-owned desktop template, the in-VM snapshot agent, the `DesktopExecution` adapter, the `desktop_tree` extractor and its corroboration, and Live View and Replay for a desktop Session, proven on the full hero golden dataset including the ambiguous role list, the choose-candidate pair, and the `Suspended` account.
+
+### Story 7.1: Synthetic LedgerDesk application with a localhost JSON snapshot endpoint
+
+As a PoC Administrator,
+I want the synthetic LedgerDesk finance ERP desktop application running with a localhost JSON control-tree endpoint,
+So that the Audit Agent has a real desktop system to inspect and the platform has structural ground truth outside its own reads.
+
+**Acceptance Criteria:**
+
+**Given** the fixtures workspace
+**When** LedgerDesk starts inside a desktop workspace
+**Then** it presents a Linux desktop application with sign-in, a User Maintenance screen, employee ID search, and account records exposing `account_status`, `username`, `roles`, and identity under the labels Status, Username, Roles, and Employee ID (addendum §A.2)
+**And** it serves the current screen's full control tree as JSON on a localhost port reachable only from inside its own workspace VM, with no accessibility-tree (AT-SPI) dependency (AD-4)
+
+**Given** a rendered User Maintenance record
+**When** the snapshot endpoint is queried
+**Then** every visible control appears with its control name and current value at a stable locator path, and Status, Username, Roles, and Employee ID each resolve at a locator matching the Target System's declared expected field labels (FR7, AD-18)
+**And** the audit credential is refused for every write action at the system level (FR3)
+
+**Given** LedgerDesk's golden dataset
+**When** it is seeded
+**Then** it contains the hero cases assigned to LedgerDesk per addendum §D: one record whose C2 evaluation is correct, one record whose role list is genuinely ambiguous, one *choose candidate* trigger (two candidate rows lacking the employee ID), and one `Suspended` account
+**And** expected terminal outcomes for these records are stored as versioned data separate from any rule implementation (AD-12)
+
+### Story 7.2: Project-owned desktop template and workspace lifecycle in the Solari sandbox
+
+As a developer,
+I want a project-owned desktop template in the Solari sandbox that boots into LedgerDesk on demand, isolated per Run,
+So that a fresh Agent Workspace exists for every Run with a desktop Step and nothing persists between Runs.
+
+**Acceptance Criteria:**
+
+**Given** a Run with a LedgerDesk Session Step
+**When** the worker requests a desktop workspace
+**Then** the Solari sandbox desktop launches a fresh instance from the project-owned template, pre-provisioned with LedgerDesk and its localhost snapshot endpoint, isolated from every other Run's workspace (FR19, AD-4)
+**And** the Solari sandbox desktop provides session, action transport, screenshots, and stream only; it exposes no control-tree or focused-record identity capability of its own (AD-4)
+
+**Given** a desktop workspace
+**When** the Run ends for any reason, including cancellation or a timed-out wait
+**Then** the instance is destroyed, nothing persists to a later workspace, and its credential is revoked (FR19, AD-16)
+**And** workspace creation failure yields `RUN_FAILED` (FR19, addendum §E)
+
+**Given** a `PAUSED` or `AWAITING_AUDITOR` wait on a LedgerDesk Step
+**When** the wait closes
+**Then** the desktop workspace stays alive under its lease to the wait's deadline and the resuming command reattaches to it (`attach(WorkspaceRef)`), or re-runs the LedgerDesk sign-in Session Step under the retry budget if it is gone (AD-16)
+
+### Story 7.3: In-VM snapshot agent reads the LedgerDesk control tree
+
+As a developer,
+I want an in-VM snapshot agent that reads LedgerDesk's localhost JSON endpoint and returns it through the desktop workspace's `exec`/`fs` actions,
+So that `DesktopExecution` can capture a control-tree Structural Snapshot without any accessibility-tree dependency.
+
+**Acceptance Criteria:**
+
+**Given** a desktop workspace running LedgerDesk
+**When** the agent performs a reading Tool Action, such as opening a User Maintenance record
+**Then** the worker invokes the in-VM snapshot agent immediately afterward through the desktop `exec`/`fs` actions, and its read of the localhost JSON endpoint is captured as the control-tree Structural Snapshot bound to that same Tool Action with the window title (FR10, AD-4)
+**And** a test proves no AT-SPI dependency exists anywhere on this path (AD-4)
+
+**Given** a credential-entry Tool Action on LedgerDesk sign-in
+**When** the snapshot agent or frame capture would otherwise run
+**Then** both are suppressed and secret-typed input values are redacted from every captured artifact before registration
+**And** a seeded negative test proves a credential value never reaches a stored snapshot, screenshot, or frame (AD-4, NFR1)
+
+**Given** a Procedure Version's Evidence Requirements for a LedgerDesk attribute with no reachable snapshot path
+**When** the plan is derived
+**Then** that attribute is declared model-read on the version, and a compiled condition over it is later applied by the deterministic evaluator to the model-read value with origin `AGENT_JUDGED` (AD-4, AD-6)
+
+### Story 7.4: `DesktopExecution` adapter meets the shared conformance suite
+
+As a developer,
+I want a `DesktopExecution` adapter implementing the application-owned port over the Solari sandbox desktop and the in-VM snapshot agent,
+So that the Audit Agent can launch, sign in to, search, and read LedgerDesk under the same guarantees as the web path.
+
+**Acceptance Criteria:**
+
+**Given** a Procedure Version's LedgerDesk registration (application identity, permitted read actions, credential reference)
+**When** the agent attempts an action
+**Then** only allowlisted read operations execute against LedgerDesk; a denied application, an out-of-scope action, or any write attempt is refused and logged as a security event (FR3, FR20)
+
+**Given** the hero Audit Instructions ("launch, sign in to each Target System, search by employee ID... open the account record and note whether an account exists, its status, username, and assigned roles")
+**When** the LedgerDesk portion of a Run executes
+**Then** launching and signing in to LedgerDesk is one Session Step, and for each population record the agent searches User Maintenance by employee ID, opens the account, and reads `account_status`, `username`, `roles`, and the identity attribute, with a platform screenshot and a control-tree Structural Snapshot both captured and bound to the reading Tool Action (FR20, FR10, addendum §C P-1)
+**And** the supplied credential is never present in Timeline, Evidence, logs, or exports (FR20)
+
+**Given** the one shared conformance suite per outbound port (AD-12)
+**When** it runs against `DesktopExecution`
+**Then** it passes the same contract `BrowserExecution` passes: allowlists, read-only actions, structural snapshot capture, focused-record identity, sanitized Tool Action logging, cancellation acknowledgment, timeout accounting, and trace ordering (AD-4)
+**And** `attach(WorkspaceRef)` and `release` are proven as conformance requirements of `DesktopExecution`, exercised by a resumed wait (AD-16)
+
+### Story 7.5: `desktop_tree` extractor and corroboration
+
+As a developer,
+I want the domain's `desktop_tree` extractor to re-read grounded attributes from the stored control-tree snapshot,
+So that every LedgerDesk Observation is corroborated the same way a web or file Observation is.
+
+**Acceptance Criteria:**
+
+**Given** a registered Observation with a `desktop_tree` grounding
+**When** the Evidence Quality Gate runs at registration
+**Then** the one shared domain extractor, covering all four substrate kinds `{web_tree, desktop_tree, sheet, json}`, re-reads the locator in the stored snapshot and marks the attribute `matched` when the re-read value equals `original_value` and the control name matches the declared label, `contradictory` otherwise (AD-6, AD-18)
+**And** the `desktop_tree` substrate's label rule is control name, per its declared locator grammar (AD-18)
+
+**Given** a `found = true` LedgerDesk Observation
+**When** corroboration runs
+**Then** the identity attribute is re-read from the same control-tree snapshot and compared to the normalized population record key; a mismatch marks the record Unevaluated (FR33, addendum §H)
+**And** an attribute the Procedure Version declares model-read is marked `model_read` rather than `contradictory` and is never fed into a compiled condition's predicate directly (AD-4, AD-6)
+
+**Given** the hero's Compliance Rule (condition C1 compiled over `account_status`, condition C2 Agent-Judged over privileged roles)
+**When** a LedgerDesk Observation is evaluated
+**Then** C1 is applied by the deterministic evaluator to the corroborated `account_status`, and a found account carrying no C2 evaluation is a Gate failure (addendum §C P-1, AD-6)
+
+### Story 7.6: Live View and Replay for a desktop Session
+
+As an Auditor,
+I want to watch and later replay the LedgerDesk portion of a Run in the same viewer I use for LoanCore,
+So that supervising or reviewing a desktop Target System feels the same as a web one.
+
+**Acceptance Criteria:**
+
+**Given** a Running Run with an open LedgerDesk Session
+**When** Live View is open
+**Then** the shared session viewer shows the desktop workspace screen from Solari's stream inside the sandboxed viewport, and per-Observation Gate rows tick in the rail as each LedgerDesk record is read, reflecting progress within 5 seconds (FR24, UX-DR24)
+**And** Pause, Resume, Cancel, and Flag to Audit Manager behave identically to the LoanCore portion of the same Run
+
+**Given** a Tool Action on LedgerDesk
+**When** it completes
+**Then** a timestamped frame, sanitized action, and Observation delta are captured to the platform-owned Replay asset set exactly as for a web Tool Action (FR30, AD-9)
+
+**Given** a terminal Run with LedgerDesk Steps
+**When** an authorized user opens Replay
+**Then** it plays frames from the desktop portion aligned to Steps, jumps to any LedgerDesk Work Item, Exception, or Escalation, never re-executes an action, and works with the Workspace Provider blocked and after its retention expires (FR30, UX-DR26)
+**And** "Open in Replay" on a LedgerDesk row in the Execution Timeline jumps to that frame the same way it does for LoanCore (UX-DR23)
+
+### Story 7.7: The hero Procedure completes across LoanCore and LedgerDesk
+
+As an Auditor,
+I want the full hero Procedure to run LoanCore then LedgerDesk end to end on its golden dataset,
+So that the desktop kind and path are proven complete, not merely implemented.
+
+**Acceptance Criteria:**
+
+**Given** the hero Procedure's default Target Systems
+**When** a Run executes
+**Then** all records are worked in LoanCore before LedgerDesk opens (addendum §C P-1, FR20)
+**And** every LedgerDesk golden record reaches its expected terminal outcome: the correct C2 case evaluated correctly, the ambiguous role list marked Unevaluated or evaluated correctly and excluded from the SM-4 comparison, the *choose candidate* trigger resolved by a *choose candidate* answer and flagged human-matched, and the `Suspended` account Inconclusive with diagnostic (addendum §D)
+
+**Given** the full hero golden dataset across both systems
+**When** the Run is executed twice in a row
+**Then** every expected terminal outcome reproduces both times with identical Rule-Classified evaluation counts (NFR4, addendum §D)
+
+**Given** FR7's desktop kind
+**When** the Procedure Version and its Observations are inspected
+**Then** LedgerDesk's registration, Session Steps, Work Items, and Observation schema are indistinguishable in shape from an adapter-acquired system's other than `capture_method = agent` (FR7, AD-18)
+
+**Given** a scope-widening Audit Instruction naming an unregistered desktop application or a write verb against LedgerDesk
+**When** it is authored
+**Then** it is flagged before submission, and if it reaches execution against LedgerDesk it is denied and logged as a security event (FR8, FR3)
+
+## Epic 8: Runs that happen without anyone watching
+
+A weekly Schedule starts the Run unattended at its fixed UTC time with a derived period, records a missed start rather than skipping it, and hands over to a new version at the next period boundary without running a period twice; a version whose model, prompt, tool, or registration digest changed must pass a Regression Run on the Template's golden dataset before it activates, with that Regression Run and its golden comparison visible everywhere the Auditor and Audit Manager review it. This epic delivers the worker scheduler, period-boundary handover, the Regression Run kind, and the upcoming and missed Runs treatment on the dashboard (Flow 4).
+
+### Story 8.1: Run Schedules on frequency, UTC start, and derived periods
+
+As a developer,
+I want the worker scheduler to enqueue exactly one Run per version and period when a Schedule falls due,
+So that daily, weekly, and monthly Procedures run unattended without duplication.
+
+**Acceptance Criteria:**
+
+**Given** an Active version with a weekly Schedule at a fixed UTC start time
+**When** the worker scheduler polls and the start time falls due
+**Then** it enqueues one Run under a unique constraint on `(Procedure Version, effective period)`, recording the derived period and initiator "Schedule" (FR11, FR17, AD-19)
+**And** the period is derived per addendum §B: daily → the previous calendar day, weekly → the previous Monday–Sunday, monthly → the previous calendar month (FR11)
+
+**Given** a version with a `once` Schedule
+**When** the scheduler polls
+**Then** it creates no scheduler entry for that version; the Run is started manually (AD-19)
+
+**Given** the worker restarts between polls
+**When** it resumes polling
+**Then** the unique constraint on `(version, period)` refuses a duplicate enqueue for a period already started, and no due period is silently dropped across the restart (NFR9)
+
+### Story 8.2: A missed or failed scheduled start is recorded and never skipped
+
+As an Auditor,
+I want a Schedule that fails to start on time to show up as a missed start,
+So that a quiet Schedule is never mistaken for a passed control.
+
+**Acceptance Criteria:**
+
+**Given** a Schedule due at 06:00 UTC
+**When** no Run starts within 5 minutes
+**Then** a missed-start event is recorded, never silently skipped, and the Runs list shows a warning row with the exact copy "Missed 06:00 UTC start; not run" (FR17, NFR9, UX-DR13)
+**And** the row links to diagnostics (UX-DR13)
+
+**Given** the derived period already has a Run from manual initiation
+**When** the scheduler next polls
+**Then** it does not enqueue a duplicate and records no missed-start event for that period (AD-19)
+
+**Given** at least one missed or upcoming scheduled Run
+**When** an authorized user opens Runs
+**Then** upcoming and missed scheduled Runs are both shown, the missed ones with the warning row (UX-DR13, FR17)
+
+### Story 8.3: A scheduled Run completes with no human session active
+
+As an Auditor,
+I want a weekly Run to start, run, and finish before I ever sign in,
+So that I can review it later instead of watching it.
+
+**Acceptance Criteria:**
+
+**Given** a weekly Schedule fires at 06:00 UTC with no user signed in
+**When** the Run starts
+**Then** Runs shows initiator "Schedule" and the derived period, and Reference Sources are acquired as a Session Step at Run start, before any Work Item (FR17, AD-19)
+
+**Given** the scheduled Run proceeds with no Escalation raised
+**When** it reaches a terminal or Pending Confirmation state
+**Then** at least one scheduled Run completes end to end with no human session active at any point during execution (FR17)
+
+**Given** the completed scheduled Run has a pending Agent-Judged evaluation
+**When** an Auditor opens Run Detail later
+**Then** Flow 4 is walkable end to end: the Schedule started the Run unattended, the Auditor opens Replay from the evaluation's provenance chain, confirms the evaluation, and the Result seals (UX-DR40 Flow 4)
+
+### Story 8.4: The successor version takes over at the period boundary
+
+As an Auditor,
+I want the new Active version to take over from the old one exactly at the boundary,
+So that no period is ever run twice or skipped.
+
+**Acceptance Criteria:**
+
+**Given** an Audit Manager approves a successor version while a predecessor is Active
+**When** the approval command commits
+**Then** `handover_at` is computed once as the first period start, per the successor's Schedule, strictly after activation, and is stored on both versions (FR14, AD-19)
+
+**Given** `handover_at` has passed
+**When** the scheduler enqueues the first Run the successor owns, or on the first tick after `handover_at`
+**Then** it transitions the predecessor `ACTIVE → RETIRED` with actor "Schedule" in that same operation, and no effective period is owned by both versions or by neither (FR14, AD-19)
+
+**Given** a Run already in flight on the predecessor version at the moment of handover
+**When** the predecessor retires
+**Then** the in-flight Run completes on the version it started with, unaffected by the retirement (FR14)
+**And** Procedure Detail shows the predecessor "Retired {time}; superseded by v{x}" read-only, and the successor Active with its next Run time and Initiate Run enabled (UX-DR11)
+
+### Story 8.5: A changed version must pass a Regression Run before it activates
+
+As an Audit Manager,
+I want a version whose model, prompt, tool configuration, or registration changed to prove itself on the golden dataset first,
+So that a Regression never reaches an Active Schedule.
+
+**Acceptance Criteria:**
+
+**Given** an Audit Manager approves a version whose configuration tuple (model, prompt version, tool configuration, registration digests) differs from the most recent version of the same Procedure that reached `ACTIVE`
+**When** approval commits
+**Then** the approval command starts a `REGRESSION` Run on the `APPROVED` version, with the Template's golden Population Source binding substituted for that Run only and the version's frozen registrations otherwise kept (FR15, AD-2, AD-19)
+**And** a first version of a Procedure needs no Regression Run (AD-2)
+
+**Given** the Regression Run executes
+**When** it runs
+**Then** it is exempt from the overlap rule, never enters Review, never sends a notification, and is recorded and labeled on the dashboard (FR15, AD-19, UX-DR13)
+
+**Given** the Regression Run completes
+**When** the procedures module compares its terminal outcome and evaluations to the golden expectations
+**Then** every expected terminal outcome reproduces except records addendum §D exempts, and `RegressionPassed` or `RegressionFailed` is recorded on the version (FR15, addendum §D)
+**And** only `RegressionPassed` moves `APPROVED → ACTIVE`; a `RegressionFailed` blocks activation and the Regression Run is counted in the Procedure's maintenance-effort metric either way (FR15, AD-13)
+
+### Story 8.6: See the Regression Run and its golden comparison wherever it is reviewed
+
+As an Audit Manager,
+I want the Regression Run and its comparison to the golden dataset visible on Version review, Procedure Detail, and Run Detail,
+So that I can confirm it confidently before it gates a Schedule.
+
+**Acceptance Criteria:**
+
+**Given** a version Approved and awaiting its Regression Run
+**When** an Audit Manager opens Version review
+**Then** the Regression Run row appears inline with its Run link, and activation is blocked until it passes (UX-DR12, FR15)
+**And** when the Regression Run mismatches a golden expectation, the mismatch is listed per golden expectation, activation stays blocked, and the Schedule of the prior version continues (UX-DR12)
+
+**Given** the same Approved-and-pending state
+**When** viewed on Procedure Detail
+**Then** a Regression Run row shows its own Run link and the Schedule reads "Activates after the Regression Run passes." (UX-DR11)
+
+**Given** the Regression Run itself
+**When** opened on Run Detail
+**Then** it carries the label "Regression Run for v{x}", the approver confirms its Agent-Judged evaluations from the Template's confirmation script (the golden dataset's versioned answer list, addendum §D), and its outcome is compared to the golden expectation with any mismatch listed (UX-DR15)
