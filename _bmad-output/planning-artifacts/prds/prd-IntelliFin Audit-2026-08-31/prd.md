@@ -15,7 +15,7 @@ This PRD defines the exploratory proof of concept (PoC) for product, design, eng
 
 **Revision 2** re-centers the PoC on a clarified product thesis (§1). It supersedes revision 1 in full. Functional requirements are renumbered; addendum §I maps old identifiers to new ones.
 
-`[NOTE FOR PM]` The architecture spine and the UX handoff dated 2026-09-01 were derived from revision 1 and must be revised against this document before build. That re-derivation is real work: the spine's execution model (which evaluated after sealing and assumed a single acquisition boundary), and the UX handoff's screen set — which has no Builder, Live View, or Replay screens, all three now required — are both invalidated by this revision.
+The architecture spine (revision 2) and the UX spines (DESIGN.md, EXPERIENCE.md), all finalized 2026-09-01, are derived from this revision. The open questions in §11 were resolved on 2026-09-01; each carries its resolution in place and the resulting assumptions are indexed in §12.
 
 ## 1. Vision and Product Thesis
 
@@ -47,11 +47,11 @@ This is not robotic process automation with an audit label. RPA replays a develo
 
 These five principles, carried from the product brief, are the tie-break rules for every downstream decision.
 
-1. **No conclusion without sufficient evidence.** A technically correct comparison on stale or incomplete data is not a valid audit result. — FR-33, FR-34, SM-5, SM-C1.
-2. **Reproducibility over theatrical autonomy.** A competent reviewer must understand what ran, on which evidence, under which versions, and why. — FR-29, FR-30, FR-47, NFR-4, SM-C2.
-3. **Human accountability is part of the workflow.** Procedure approval, material judgment, Exception investigation, risk assessment, professional skepticism, and final assurance remain with authorized people. — FR-13, FR-38, FR-43, FR-44.
-4. **Read-only and least privilege by default.** Permissions and credentials are bounded by Procedure and environment. — FR-3, FR-7, FR-19, NFR-5.
-5. **Agent uncertainty must be visible.** Ambiguous evidence or unreliable automation produces Escalation or safe failure, never concealed inference. — FR-23, FR-27, FR-38, SM-C4.
+1. **No conclusion without sufficient evidence.** A technically correct comparison on stale or incomplete data is not a valid audit result. — FR-33, FR-34, SM-5, SM-C1. **Resolved 2026-09-01:** Claude Sonnet 5 (`claude-sonnet-5`) through the Anthropic provider by default, with the OpenAI provider wired as fallback; the hero benchmark may change the default; the model identity is recorded on every Procedure Version.
+2. **Reproducibility over theatrical autonomy.** A competent reviewer must understand what ran, on which evidence, under which versions, and why. — FR-29, FR-30, FR-47, NFR-4, SM-C2. **Resolved 2026-09-01:** A per-version Builder field, default 0.80, set by the author and frozen at approval; below it the evaluation is stored Unevaluated.
+3. **Human accountability is part of the workflow.** Procedure approval, material judgment, Exception investigation, risk assessment, professional skepticism, and final assurance remain with authorized people. — FR-13, FR-38, FR-43, FR-44. **Resolved 2026-09-01:** The platform copies the recording into its own storage at Run end; provider retention is set to its minimum; the provider region matches the hosting region.
+4. **Read-only and least privilege by default.** Permissions and credentials are bounded by Procedure and environment. — FR-3, FR-7, FR-19, NFR-5. **Resolved 2026-09-01:** LedgerDesk, a Linux desktop application that serves its control tree as JSON on localhost inside the workspace VM, read by the platform snapshot agent; no accessibility-bus dependency.
+5. **Agent uncertainty must be visible.** Ambiguous evidence or unreliable automation produces Escalation or safe failure, never concealed inference. — FR-23, FR-27, FR-38, SM-C4. **Resolved 2026-09-01:** None for the PoC: the signed archive (manifest, JSON, captures, browser-readable HTML summary) is the only export; PDF and others stay in §8.3.
 
 ### 1.2 The Trust Seam
 
@@ -827,10 +827,10 @@ The PoC designs for these but does not build them; inline `[NON-GOAL for PoC]` t
 3. What is the retention and region configuration for workspace session recordings at the Workspace Provider, given that the Replay asset set (addendum §F) is owned by IntelliFin Audit? **Owner:** Architecture. **Revisit:** before Replay implementation.
 4. Which synthetic desktop application is built for the PoC, and on which desktop platform in the sandbox? **Owner:** Engineering. **Revisit:** when defining addendum §A Target System contracts.
 5. What export formats must the Workpaper Bundle support beyond a human-readable package with Replay assets? **Owner:** Product and UX. **Revisit:** during Workpaper Bundle interaction design.
-6. Who acts as the independent reviewer for SM-7, and what reproduction checklist will they follow? **Owner:** Product sponsor. **Revisit:** before PoC acceptance testing begins.
-7. Which Auditor performs SM-1 as the authoring subject, and what counts as a manual intervention? **Owner:** Product sponsor. **Revisit:** before PoC acceptance testing begins.
-8. Which deterministic extractors ground each Target System kind (accessibility tree, DOM, desktop control tree), and which hero attributes, if any, must be declared model-read because no Structural Snapshot exposes them? **Owner:** Engineering. **Revisit:** when defining addendum §A Target System contracts.
-9. Who establishes the manual or scripted baseline for the hero Procedure that SM-11 compares against? **Owner:** Product sponsor. **Revisit:** before PoC acceptance testing begins.
+6. Who acts as the independent reviewer for SM-7, and what reproduction checklist will they follow? **Owner:** Product sponsor. **Revisit:** before PoC acceptance testing begins. **Resolved 2026-09-01:** A design-partner auditor who neither authored nor approved the Procedure, following the addendum §F bundle contents plus the reproduction steps; the person is named before acceptance.
+7. Which Auditor performs SM-1 as the authoring subject, and what counts as a manual intervention? **Owner:** Product sponsor. **Revisit:** before PoC acceptance testing begins. **Resolved 2026-09-01:** A design-partner auditor who did not see the Template built; a manual intervention is any human action on a Run other than the Live View controls and Escalation answers, by anyone, with developer actions always counting.
+8. Which deterministic extractors ground each Target System kind (accessibility tree, DOM, desktop control tree), and which hero attributes, if any, must be declared model-read because no Structural Snapshot exposes them? **Owner:** Engineering. **Revisit:** when defining addendum §A Target System contracts. **Resolved 2026-09-01:** Web: accessibility-tree snapshot through the browser SDK; desktop: the LedgerDesk snapshot endpoint; file: CSV and XLSX parser; API: JSON path. Model-read is allowed only for values that exist only as pixels; the hero declares none.
+9. Who establishes the manual or scripted baseline for the hero Procedure that SM-11 compares against? **Owner:** Product sponsor. **Revisit:** before PoC acceptance testing begins. **Resolved 2026-09-01:** A design-partner auditor performs the hero check by hand on the golden data, timed and step-counted.
 
 ## 12. Assumptions Index
 
@@ -838,13 +838,17 @@ The PoC designs for these but does not build them; inline `[NON-GOAL for PoC]` t
 - FR-2 — An Audit Manager may confirm Agent-Judged evaluations on, or submit, a Result they later approve.
 - FR-4 — Non-hero Templates are configurable in period, Population Source, Target Systems, and Schedule; their instructions and rules are editable but not re-authored for acceptance.
 - FR-11 — Single UTC time zone and fixed start time per Schedule; period derived as preceding day, week, or month.
-- FR-12 — Plan derivation may use a model; the plan is reviewed data and the model identity is recorded.
+- FR-12, FR-38 — Plan derivation and Agent-Judged evaluation default to Claude Sonnet 5 through the Anthropic provider, OpenAI as fallback; the plan is reviewed data and the model identity is recorded (§11.1).
+- FR-38 — Agent-Judged confidence threshold is a per-version field, default 0.80, frozen at approval (§11.2).
+- FR-7, FR-10 — LedgerDesk exposes its control tree through a localhost snapshot endpoint; extractors are accessibility tree (web), snapshot endpoint (desktop), CSV/XLSX parser (file), JSON path (API); the hero declares no model-read attribute (§11.4, §11.8).
+- FR-46 — The signed archive is the only Workpaper Bundle export in the PoC (§11.5).
+- SM-1, SM-7, SM-11 — Hero author, independent reviewer, and manual baseline are design-partner auditors named before acceptance; a manual intervention is any human action on a Run outside Live View controls and Escalation answers (§11.6, §11.7, §11.9).
 - FR-24, NFR-7 — Live View and dashboard reflect agent state within 5 seconds.
 - FR-25 — Paused workspace timeout of 30 minutes.
 - FR-27 — Unanswered Escalation timeout of 4 hours for manual and scheduled Runs; workspace preserved for the full timeout.
 - FR-38 — Low-confidence Agent-Judged evaluations are stored with value Unevaluated and need no confirmation.
 - NFR-6 — Hero Procedure: 95% of Runs within 30 minutes for up to 50 records across two agent-driven Target Systems; adapter-acquired Runs: 95% within 5 minutes for up to 10,000 records.
 - NFR-10 — Daily backup, 24-hour recovery-point objective, and 8-hour recovery-time objective.
-- NFR-14 — PoC artifacts remain available for the PoC lifetime; Replay independent of provider retention.
+- NFR-14 — PoC artifacts remain available for the PoC lifetime; Replay independent of provider retention: recordings are copied to platform storage at Run end, provider retention at minimum, region matching hosting (§11.3).
 - NFR-15 — Runner, workspace, and Adapter contracts preserve a future private-runner path without deploying one.
 - addendum.md — Additional inferred product detail is tagged inline.

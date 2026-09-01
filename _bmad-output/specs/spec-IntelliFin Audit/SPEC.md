@@ -127,20 +127,18 @@ An Auditor builds the Terminated Users procedure in the Builder without a develo
 - An Audit Manager may confirm evaluations on, submit, and later approve the same Result in the PoC.
 - Non-hero Templates are configurable in period, source, Target Systems, and Schedule; their instructions and rules are not re-authored for acceptance.
 - Schedules use a single UTC time zone and fixed start time; periods derive as the preceding day, week, or month.
-- Plan derivation may use a model, recorded on the version; the plan is data the Auditor reviews.
+- Plan derivation and Agent-Judged evaluation use Claude Sonnet 5 (`claude-sonnet-5`) through the Anthropic adapter by default, with the OpenAI adapter wired as fallback; the hero benchmark may change the default; the model identity is recorded on every version and the plan is data the Auditor reviews.
+- The Agent-Judged confidence threshold is a per-version Builder field, default 0.80, set by the author and frozen at approval; below it the evaluation is stored Unevaluated.
 - Timeouts: 30 minutes Paused, 4 hours Awaiting Auditor; Live View freshness 5 seconds.
 - Low-confidence Agent-Judged evaluations are stored Unevaluated and need no confirmation.
-- Replay is independent of provider retention; the Replay asset set is platform-owned.
+- Replay is independent of provider retention: the platform copies the Workspace Provider recording into its own storage at Run end, provider retention is set to its minimum, and the provider region matches the hosting region.
+- LedgerDesk is a Linux desktop application that serves its control tree as JSON on localhost inside the workspace VM; the platform snapshot agent reads that endpoint.
+- Export is the signed archive only: manifest, JSON, captures, and a browser-readable HTML summary.
+- Extractors: web accessibility-tree snapshot through the browser SDK, the LedgerDesk snapshot endpoint, a CSV and XLSX parser, and JSON path for APIs; model-read is allowed only for values that exist only as pixels, and the hero declares none.
+- Acceptance roles: a design-partner auditor who did not see the Template built authors the hero (SM-1); a different design-partner auditor who neither authored nor approved it reproduces from the bundle using the addendum §F contents plus the reproduction steps (SM-7); a design-partner auditor performs the hero check by hand on the golden data as the timed baseline (SM-11); the people are named before acceptance.
+- A manual intervention is any human action on a Run other than the Live View controls and Escalation answers, by anyone; developer actions always count.
 - The IntelliFin Design System bundle ("Ledger Signal") is an external UI system; DESIGN.md restates every token it needs.
 
 ## Open Questions
 
-- Which model and provider power plan derivation and Agent-Judged evaluation? (Engineering, after the hero benchmark.)
-- What confidence threshold applies to Agent-Judged evaluations, and who sets it per version? (Product.)
-- What retention and region configuration applies to Workspace Provider recordings? (Architecture, before Replay.)
-- Which synthetic desktop application and platform, and how is its control tree exposed in the Solari VM — AT-SPI dump or an in-app snapshot endpoint? Without one, LedgerDesk conditions become Agent-Judged. (Engineering, when LedgerDesk is built.)
-- What export formats beyond the bound archive layout? (Product and UX.)
-- Who is the independent reviewer for reproduction, and which checklist? (Product sponsor.)
-- Which Auditor authors the hero for acceptance, and what counts as a manual intervention? (Product sponsor.)
-- Which deterministic extractors ground each Target System kind, and which hero attributes must be model-read? (Engineering.)
-- Who establishes the manual or scripted baseline the instrumentation compares against? (Product sponsor.)
+None. The nine PRD questions were resolved by the owner on 2026-09-01; the answers are the Assumptions above and PRD §11 records them.
