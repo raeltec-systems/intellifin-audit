@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
   - "_bmad-output/specs/spec-IntelliFin Audit/SPEC.md"
   - "_bmad-output/specs/spec-IntelliFin Audit/glossary.md"
@@ -956,7 +956,7 @@ The Audit Agent signs in to LoanCore in an isolated Agent Workspace, inspects ea
 
 ### Story 4.1: Provision an isolated Agent Workspace per Run
 
-As the Audit Runner,
+As an Audit Runner,
 I want a fresh, isolated Agent Workspace created for every Run with an agent-driven Step,
 So that no state, credential, or session ever crosses from one Run into another.
 
@@ -979,7 +979,7 @@ So that no state, credential, or session ever crosses from one Run into another.
 
 ### Story 4.2: Sign in to LoanCore and enforce read-only, allowlisted actions
 
-As the Audit Agent,
+As an Audit Agent,
 I want to sign in to LoanCore through `BrowserExecution` and have every action checked against the version's allowlist,
 So that a write, an out-of-scope origin, or an out-of-scope action is denied and logged rather than executed.
 
@@ -1001,7 +1001,7 @@ So that a write, an out-of-scope origin, or an out-of-scope action is denied and
 
 ### Story 4.3: Supply credentials just in time and suppress capture during entry
 
-As the Audit Agent,
+As an Audit Agent,
 I want the LoanCore credential supplied only at the moment of sign-in and never captured on screen,
 So that no secret ever reaches Timeline, Evidence, logs, or exports.
 
@@ -1022,7 +1022,7 @@ So that no secret ever reaches Timeline, Evidence, logs, or exports.
 
 ### Story 4.4: Locate a record, capture Evidence, and register a grounded Observation
 
-As the Audit Agent,
+As an Audit Agent,
 I want to search LoanCore for each terminated employee, capture the account page's Structural Snapshot and screenshot, and register a grounded Observation,
 So that every attribute the evaluator uses traces to platform-captured Evidence bound to the Tool Action that read it.
 
@@ -1044,7 +1044,7 @@ So that every attribute the evaluator uses traces to platform-captured Evidence 
 
 ### Story 4.5: Prove absence for an employee with no account
 
-As the Audit Agent,
+As an Audit Agent,
 I want a "no account found" result to require proof, not just my report,
 So that a false absence claim cannot manufacture a Compliant record.
 
@@ -1061,7 +1061,7 @@ So that a false absence claim cannot manufacture a Compliant record.
 
 ### Story 4.6: Bound agent execution and render retrieved content inert
 
-As the Audit Agent,
+As an Audit Agent,
 I want fixed retry, time, and token limits, a recorded model identity, and no channel for retrieved content to act as an instruction,
 So that exhaustion or a hostile page fails safely instead of fabricating an Observation or expanding scope.
 
@@ -1086,7 +1086,7 @@ So that exhaustion or a hostile page fails safely instead of fabricating an Obse
 
 ### Story 4.7: Raise typed Escalations as durable waits
 
-As the platform,
+As an Auditor,
 I want *choose candidate*, *unnamed value*, and *retry or skip* Escalations raised as durable Run states with a wait record and exactly one durable job,
 So that an unanswered question survives a worker restart and times out on its own, never twice.
 
@@ -1182,7 +1182,7 @@ So that the Result can seal instead of sitting Pending Confirmation forever.
 
 ### Story 4.10: Prove the agent path on ProdConsole with one Observation per parameter
 
-As the Audit Agent,
+As an Audit Agent,
 I want to read all four ProdConsole parameters and the signed snapshot identifier from one page in a single Work Item,
 So that the Production Configuration Deviation Procedure has grounded, reconciled Evidence with no adapter in the loop.
 
@@ -1202,7 +1202,7 @@ So that the Production Configuration Deviation Procedure has grounded, reconcile
 
 ### Story 4.11: Prove abuse resistance and workspace isolation with negative tests
 
-As the platform team,
+As a developer,
 I want automated abuse tests and workspace isolation tests that fail the build on any breach,
 So that scope-widening, secret disclosure, and cross-Run leakage are proven absent, not merely believed absent.
 
