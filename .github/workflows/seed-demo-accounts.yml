@@ -1,0 +1,93 @@
+# Seed two demo accounts into the deployed environment. MANUAL ONLY.
+#
+# This exists because there is no other way to create a user: Better Auth has
+# `disableSignUp: true`, so the running application has no sign-up endpoint at all, and
+# `scripts/seed-identity.mts` is the single administrative path.
+#
+# READ THIS BEFORE KEEPING IT. This workflow can mint a PoC Administrator, and it prints
+# the password into the run summary, where anybody with read access to Actions can see
+# it. That is acceptable for a PoC whose data is synthetic by construction and whose
+# accounts are throwaway. It is NOT acceptable once anything real is behind these
+# accounts. Delete this file when the demo is over, or move the password to a repository
+# secret and stop printing it.
+#
+# It never resets an existing password: `seed-identity` leaves a known address alone and
+# only re-asserts the role. Re-running it does not lock anybody out, and it also does not
+# recover a lost password — delete the row and re-run for that.
+
+name: Seed demo accounts
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "seed" to confirm creating demo accounts in production'
+        required: true
+        type: string
+
+concurrency: seed-demo-accounts
+
+jobs:
+  seed:
+    name: Seed demo accounts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Refuse unless explicitly confirmed
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = "seed" || {
+            echo 'Refusing: type "seed" to confirm.'
+            exit 1
+          }
+
+      - uses: actions/checkout@v5
+
+      - name: Enable corepack and pin pnpm
+        run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `seed-identity` runs under plain node and imports the packages' built output.
+      - run: pnpm build
+
+      - name: Fail fast when the DATABASE_URL secret is missing
+        run: test -n "${{ secrets.DATABASE_URL }}" || { echo 'DATABASE_URL is not set'; exit 1; }
+
+      - name: Create the two accounts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Not read by the seed script, which needs only a valid origin to construct
+          # Better Auth. Nothing here signs in and the host is never resolved.
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          BETTER_AUTH_URL: https://seed.invalid
+        run: |
+          set -euo pipefail
+          # Generated here rather than typed anywhere: a password in an input box is a
+          # password in the workflow's parameters for ever.
+          PASSWORD="Demo-$(openssl rand -hex 6)"
+          export SEED_PASSWORD="$PASSWORD"
+
+          pnpm seed:identity --email administrator@example.test \
+            --name 'Demo PoC Administrator' --role poc-administrator
+          pnpm seed:identity --email auditor@example.test \
+            --name 'Demo Auditor' --role auditor
+
+          {
+            echo '## Demo accounts'
+            echo
+            echo 'Throwaway credentials for walking the PoC. Change or delete them after.'
+            echo
+            echo '| Role | Email | Password |'
+            echo '|---|---|---|'
+            echo "| PoC Administrator | administrator@example.test | \`$PASSWORD\` |"
+            echo "| Auditor | auditor@example.test | \`$PASSWORD\` |"
+            echo
+            echo 'If an address already existed, its password was NOT reset — the run only'
+            echo 're-asserted the role, and the password above will not work for it.'
+          } >> "$GITHUB_STEP_SUMMARY"
