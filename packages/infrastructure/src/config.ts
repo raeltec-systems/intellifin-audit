@@ -68,6 +68,18 @@ export function parseCredentialCapabilities(
     const key = reference.trim();
     if (key === '') return null;
     if (capability !== 'read-only' && capability !== 'write-capable') return null;
+    // Two keys that trim to the SAME reference are a refusal, not a last-one-wins.
+    //
+    // `{"prod": "write-capable", " prod": "read-only"}` used to yield
+    // `prod -> read-only`: the later `set` silently replaced an explicit write-capable
+    // declaration, and registration input is trimmed too, so `prod` was then accepted
+    // as proven read-only. That is a fail-OPEN in the one guarantee this manifest
+    // exists to provide, and it is invisible — the two keys look different in the JSON.
+    //
+    // The whole manifest is rejected rather than the duplicate entry, and a rejected
+    // manifest is empty, which refuses every registration. A deployment whose
+    // declaration is ambiguous has not declared anything.
+    if (manifest.has(key)) return null;
     manifest.set(key, capability);
   }
   return manifest;
