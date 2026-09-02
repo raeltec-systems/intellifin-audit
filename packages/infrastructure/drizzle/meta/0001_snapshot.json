@@ -1,0 +1,70 @@
+{
+  "id": "d3fff57d-f9b6-4882-bfd3-ebe635779818",
+  "prevId": "c82f3c8d-7497-49dd-8571-5ad378aa7554",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.schema_meta": {
+      "name": "schema_meta",
+      "schema": "",
+      "columns": {
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.worker_heartbeat": {
+      "name": "worker_heartbeat",
+      "schema": "",
+      "columns": {
+        "hostname": {
+          "name": "hostname",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "seen_at": {
+          "name": "seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

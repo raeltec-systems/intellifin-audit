@@ -1,0 +1,9 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm 11 blocks dependency build scripts by default. Allow only the ones that
+# genuinely need one; everything else stays denied.
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true

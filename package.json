@@ -1,0 +1,29 @@
+{
+  "name": "intellifin-audit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": "24.20.0",
+    "pnpm": "11.25.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker build",
+    "dev": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/web dev",
+    "dev:worker": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker dev",
+    "typecheck": "pnpm -r typecheck",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages",
+    "test": "vitest run",
+    "test:integration": "vitest run --config tests/integration/vitest.config.ts",
+    "db:generate": "pnpm --filter @intellifin/infrastructure db:generate",
+    "db:migrate": "pnpm --filter @intellifin/infrastructure db:migrate"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.13.3",
+    "dependency-cruiser": "18.2.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

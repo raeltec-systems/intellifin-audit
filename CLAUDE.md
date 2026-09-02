@@ -68,11 +68,22 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.
 
 **IntelliFin Audit** is an audit-execution platform: an auditor defines an Audit Procedure once and delegates its repeated execution to an autonomous Audit Agent, whose work stays observable, replayable, evidence-backed, and subject to human review.
 
-**There is no application code yet.** This repository is a BMAD v6.11 planning workspace. The product is being specified before it is built. Do not look for `package.json`, `apps/`, or `packages/` — they do not exist. `AGENTS.md` holds the verified agent block; refresh it with `/bmad-project-context`.
+This repository is both a BMAD v6.11 planning workspace and, since Story 1.1, the application monorepo itself. Planning artifacts under `_bmad-output/` still lead the code: the product is specified before it is built. `AGENTS.md` holds the verified agent block; refresh it with `/bmad-project-context`.
 
 ## Layout
 
 ```
+apps/web/               Next.js 16 UI and route handlers; composition root (src/bootstrap.ts)
+apps/worker/            Node worker; composition root (src/main.ts), heartbeat loop
+packages/domain/        Entities, value objects, state machines. Imports nothing outward
+packages/application/   Commands, queries, owned ports. Imports only domain
+packages/infrastructure/ Drizzle, postgres.js, config, migrations. Implements the ports
+tests/fixtures/         Frozen golden and adversarial data
+tests/integration/      Real PostgreSQL 18 contracts
+tests/unit/             Cross-cutting unit tests (the AD-1 boundary check)
+tests/e2e/              Playwright journeys
+.github/workflows/      ci.yml (PR gate) and release.yml (the only migrator)
+.railway/railway.ts     Declared Railway shape; validated only by `railway config plan`
 _bmad/                  BMAD install: config, manifests, shared Python scripts (installer-managed, read-only)
 _bmad-output/           Everything the planning workflow produces (the real work product)
   planning-artifacts/
@@ -80,6 +91,7 @@ _bmad-output/           Everything the planning workflow produces (the real work
     prds/               PRD + addendum + reviews + .memlog.md
     ux-designs/         UX handoff
     architecture/       Architecture spine + reviews
+  implementation-artifacts/  Epic context, per-story specs, sprint status
 .claude/skills/         49 BMAD skills as rendered for Claude Code
 .agents/skills/         Byte-identical copy of the same skills (IDE-neutral path)
 .github/agents/         Thin GitHub Copilot stubs that forward into .agents/skills/
@@ -121,7 +133,23 @@ uv run --with pytest --with ruamel.yaml pytest ".claude/skills/bmad-review/scrip
 uv run --with pytest --with ruamel.yaml pytest .claude/skills/*/scripts/tests
 ```
 
-There is no build, lint, or app test suite yet. When the monorepo is bootstrapped (per the architecture spine: pnpm workspaces, `apps/web`, `apps/worker`, `packages/{domain,application,infrastructure}`), add its commands here.
+### Monorepo commands
+
+Node 24.20.0 and pnpm 11.25.0 exactly. Run `nvm use` (reads `.nvmrc`) then `corepack enable` first; `engine-strict` is on, so another Node major fails the install.
+
+```bash
+pnpm install                 # workspace install (--frozen-lockfile in CI)
+pnpm -r typecheck            # per-package tsc --noEmit
+pnpm boundaries              # AD-1 dependency-cruiser check
+pnpm test                    # Vitest unit tests, no database needed
+pnpm test:integration        # needs DATABASE_URL and a migrated PostgreSQL 18
+pnpm db:migrate              # needs DATABASE_URL; release/CI only, never at startup
+pnpm db:generate             # writes a new Drizzle migration; needs DATABASE_URL
+pnpm build                   # packages then worker
+pnpm dev                     # builds packages, then Next.js dev for apps/web
+```
+
+There is no lint step yet.
 
 ## Working with BMAD skills
 
@@ -138,3 +166,16 @@ There is no build, lint, or app test suite yet. When the monorepo is bootstrappe
 - **Reviews are files, not chat.** Reviewer subagents write `review-<slug>.md` / `recheck-<slug>.md` next to the artifact and return a summary; the parent reads the file only when drilling into a finding.
 - **Revising an upstream artifact invalidates downstream ones.** After a PRD revision, the architecture spine and UX handoff must be re-derived; say so in the PRD §0 and in the PR.
 - **`.claude/skills` and `.agents/skills` are copies, not symlinks.** A change to a skill must be made in both, or re-rendered by the installer.
+
+### Monorepo (added with Story 1.1)
+
+- **Node 24.20.0 and pnpm 11.25.0 are hard pins.** `.nvmrc` + `engine-strict=true`. Run `nvm use && corepack enable` before any `pnpm` command; Node 22 fails the install on purpose.
+- **pnpm 11 blocks dependency build scripts.** The allowlist lives in `pnpm-workspace.yaml` under `allowBuilds:` (a name-to-boolean map). The pnpm 10 keys `pnpm.onlyBuiltDependencies` in `package.json` and `onlyBuiltDependencies:` in the workspace file are silently ignored.
+- **Root pins `typescript@6.0.3`, packages pin `typescript@7.0.2`.** dependency-cruiser 18.2.0 refuses TypeScript >= 7 and then cruises zero modules while still exiting 0 — a silently dead boundary check. The root TS 6 copy exists only for `pnpm boundaries`; every `typecheck` uses its own package's TS 7. Drop the root pin when dependency-cruiser supports TS 7.
+- **Keep `node_modules` out of dependency-cruiser's `exclude`.** Excluded paths are not rule-checked, so excluding `node_modules`, a bare `dist/`, or a bare `\.d\.ts$` silently hides vendor imports whose entry point lives there and disables the AD-1 vendor rules. `doNotFollow` is the right knob; `exclude` is scoped to `^(apps|packages)/`.
+- **Workspace packages export TypeScript source for types and `dist` for runtime.** Typecheck and Vitest work from a fresh clone with no build; anything that actually runs (`apps/worker`, Docker images) must run `pnpm build` first.
+- **Migrations are release-only (AD-15).** Never call `drizzle-kit migrate` from app code or a startup path. `packages/infrastructure/drizzle/0001_worker_heartbeat.sql` also seeds `schema_meta.version = 1`; bump that with the next generation.
+- **`packages/domain` and `packages/application` deliberately omit `types: ["node"]`.** Without the Node ambient types, `process.env` does not typecheck there at all — the AD-11 "no ambient env inward" rule is enforced by the compiler, not only by dependency-cruiser. Do not add `types: ["node"]` to either tsconfig to silence an error; move the code that needs the environment into a composition root or `packages/infrastructure/src/config.ts`.
+- **dependency-cruiser rule patterns must not nest quantifiers.** It runs every `path` regex through a catastrophic-backtracking check and, on a hit, rejects the entire rule set — the cruise then exits non-zero with "Bailing out" and no rule is actually evaluated. Prefer several simple patterns in a `path` array over one clever combined regex.
+- **Never `exclude` `node_modules` in `.dependency-cruiser.cjs`.** An excluded path is not rule-checked, so excluding it (or a bare `dist/` or `\.d\.ts$`) silently hides vendor imports whose entry point lives there and disables the AD-1 vendor rules. `doNotFollow` is the right knob; `exclude` stays scoped to `^(apps|packages)/`.
+- **`.railway/railway.ts` is never compiled here.** `railway` is not a workspace dependency, so no typecheck, boundary check, or test touches that file. Its only validation is `railway config plan`.

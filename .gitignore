@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.turbo/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Test output
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# Editor / OS
+.DS_Store
+*.log
+
+# Boundary-test fixtures. tests/unit/boundaries.test.ts plants a deliberately
+# illegal import here, runs the AD-1 check, then deletes it. A crashed run can
+# leave one behind; it must never be committed.
+**/__boundary_violation__/
