@@ -81,9 +81,16 @@ export const DENIAL_REASONS = {
 
 /** Context a cell may need beyond the role. Absent fields simply do not constrain. */
 export interface AuthorizationContext {
-  /** The person asking. Compared with `authorId` for the author-cannot-approve rule. */
+  /**
+   * The person asking. Supplied by the session, never by a caller — see
+   * `authorizeCommand`, which applies it last so nothing can override it.
+   */
   readonly actorId?: string | undefined;
-  /** Author of the Procedure Version under approval. */
+  /**
+   * Author of the Procedure Version under approval. REQUIRED for
+   * `procedure.version.approve`: omitting it denies, because the author rule cannot
+   * be checked without it.
+   */
   readonly authorId?: string | undefined;
 }
 
@@ -177,6 +184,11 @@ const ACTION_RULES: Readonly<Record<GatedAction, ActionRule>> = {
  * cannot approve a Procedure Version they authored." Rejecting a version one wrote
  * takes nothing away from anybody, and FR-2 names only approval, so the guard is
  * scoped to approval alone.
+ *
+ * A MISSING `authorId` denies. The rule cannot be honoured without knowing who wrote
+ * the version, and a rule that cannot be checked must not be assumed satisfied: a
+ * caller that simply omitted the author would otherwise self-approve. Supplying the
+ * author is therefore part of asking for this action, not an optional refinement.
  */
 function authorApprovingOwnVersion(
   action: GatedAction,
@@ -184,7 +196,8 @@ function authorApprovingOwnVersion(
 ): boolean {
   if (action !== 'procedure.version.approve') return false;
   const { actorId, authorId } = context;
-  return actorId !== undefined && authorId !== undefined && actorId === authorId;
+  if (authorId === undefined) return true;
+  return actorId !== undefined && actorId === authorId;
 }
 
 /**
@@ -200,8 +213,12 @@ export function authorizeAction(
   action: GatedAction,
   context: AuthorizationContext = {},
 ): AuthorizationDecision {
-  const rule = ACTION_RULES[action] as ActionRule | undefined;
-  if (!rule) return deny(DEFAULT_DENIAL_REASON);
+  // `Object.hasOwn`, not a truthiness check: `ACTION_RULES['constructor']` and
+  // `ACTION_RULES['toString']` inherit truthy values from Object.prototype, so a
+  // plain lookup would sail past the guard and then throw on `rule.allowedRoles` —
+  // a 500 where a denial belongs.
+  if (!Object.hasOwn(ACTION_RULES, action)) return deny(DEFAULT_DENIAL_REASON);
+  const rule = ACTION_RULES[action];
   if (role === null) return deny(DEFAULT_DENIAL_REASON);
   if (!rule.allowedRoles.includes(role)) {
     return deny(rule.reasons?.[role] ?? DEFAULT_DENIAL_REASON);

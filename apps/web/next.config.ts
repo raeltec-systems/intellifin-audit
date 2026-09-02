@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
     '@intellifin/infrastructure',
   ],
   reactStrictMode: true,
+  // `next dev` otherwise writes its own AGENTS.md and CLAUDE.md into apps/web. This
+  // repository already owns both file names as the shared decision log and the agent
+  // block, so a generated pair beside them is at best untracked noise and at worst a
+  // second, contradictory set of instructions.
+  agentRules: false,
 };
 
 export default nextConfig;

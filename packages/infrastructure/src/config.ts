@@ -60,6 +60,29 @@ export const configSchema = z
         .regex(/^https?:\/\//, 'must start with http:// or https://')
         .optional(),
     ),
+    /**
+     * Read only to decide whether `http://` is acceptable for BETTER_AUTH_URL. It is
+     * not otherwise application configuration: what the build supports is a property
+     * of the build (see `db/compat.ts`), not of the environment.
+     */
+    NODE_ENV: z.string().optional(),
+  })
+  .superRefine((config, ctx) => {
+    // Better Auth marks the session cookie `Secure` only for an https base URL. Over
+    // http in production the cookie travels in clear text and any network hop can
+    // replay it, so a plain-http production origin is refused rather than warned about.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.BETTER_AUTH_URL !== undefined &&
+      !config.BETTER_AUTH_URL.startsWith('https://')
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['BETTER_AUTH_URL'],
+        message:
+          'must use https:// when NODE_ENV is production; an http origin yields a session cookie with no Secure attribute',
+      });
+    }
   });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -91,6 +114,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     SENTRY_TRACES_SAMPLE_RATE: env['SENTRY_TRACES_SAMPLE_RATE'],
     BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
+    NODE_ENV: env['NODE_ENV'],
   });
 
   if (!parsed.success) {

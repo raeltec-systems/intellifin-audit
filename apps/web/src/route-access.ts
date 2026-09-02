@@ -35,16 +35,22 @@ export type ProtectedRouteFamily = (typeof PROTECTED_ROUTE_FAMILIES)[number]['fa
  * Exact paths that are public. Kept separate from the prefixes so `/sign-in-secretly`
  * is not accidentally public because `/sign-in` is.
  */
-export const PUBLIC_EXACT_PATHS = ['/sign-in', '/api/health'] as const;
+export const PUBLIC_EXACT_PATHS = ['/sign-in', '/api/health', '/_next/image'] as const;
 
 /**
- * Public path prefixes. Only two: the authentication endpoints (they must be reachable
- * to sign in at all) and Next's own static output, which carries no product data.
+ * Public path prefixes. Only the authentication endpoints (they must be reachable to
+ * sign in at all) and Next's own static output, which carries no product data.
+ *
+ * EVERY prefix ends in a slash. `isPublicPath` matches with `${path}/`.startsWith, so
+ * a prefix without one also matches its own look-alikes: `/_next/image` would make
+ * `/_next/imagery` and `/_next/imagex/leak` public, which is a hole straight through
+ * default-deny. `/_next/image` itself is served by Next's optimizer without a
+ * sub-path, so it is listed in {@link PUBLIC_EXACT_PATHS} instead.
  */
 export const PUBLIC_PATH_PREFIXES = [
   '/api/auth/',
   '/_next/static/',
-  '/_next/image',
+  '/_next/image/',
 ] as const;
 
 /** Root-level files a browser or crawler fetches before any session exists. */

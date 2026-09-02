@@ -43,9 +43,13 @@ export async function authorizeCommand(
   // still authorize after the row behind it was deleted (AD-7).
   const role = await dependencies.roles.findRole(session.userId);
 
+  // The session's identity is applied LAST and cannot be overridden. A caller that
+  // could put its own `actorId` in the context would defeat the author-cannot-approve
+  // rule by claiming to be somebody else; who is asking is established by the session
+  // and by nothing a handler passes in.
   const decision = authorizeAction(role, action, {
-    actorId: session.userId,
     ...input.context,
+    actorId: session.userId,
   });
 
   if (decision.allowed) {

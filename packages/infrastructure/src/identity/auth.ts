@@ -2,7 +2,13 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 
 import type { Database } from '../db/client.js';
-import { authAccount, authSession, authUser, authVerification } from '../db/schema.js';
+import {
+  authAccount,
+  authRateLimit,
+  authSession,
+  authUser,
+  authVerification,
+} from '../db/schema.js';
 
 /**
  * Better Auth, configured for identity and session ONLY (AD-7).
@@ -53,6 +59,7 @@ function buildAuth(db: Database, config: AuthConfig, internal: InternalAuthOptio
         auth_session: authSession,
         auth_account: authAccount,
         auth_verification: authVerification,
+        auth_rate_limit: authRateLimit,
       },
     }),
     user: { modelName: 'auth_user' },
@@ -65,6 +72,34 @@ function buildAuth(db: Database, config: AuthConfig, internal: InternalAuthOptio
       autoSignIn: internal.autoSignIn,
       requireEmailVerification: false,
       minPasswordLength: 12,
+    },
+    /**
+     * Declared explicitly rather than left to the default, which is OFF outside
+     * production. `/api/auth/**` is the one publicly allowlisted surface in the whole
+     * application, and `/sign-in/email` is a password oracle: unlimited attempts
+     * against it are how a weak password is found. The window is stated here so it
+     * behaves the same in a preview environment, in CI and on a developer's machine
+     * as it does in production.
+     *
+     * Storage is the database, not process memory: the deployment can run more than
+     * one web container, and a per-process counter is a limit an attacker escapes by
+     * being load-balanced elsewhere.
+     */
+    rateLimit: {
+      enabled: true,
+      storage: 'database',
+      modelName: 'auth_rate_limit',
+      // The catch-all for every other authentication endpoint.
+      window: 60,
+      max: 60,
+      customRules: {
+        // Ten attempts a minute is far more than a person types and far less than a
+        // guessing run needs. `SIGN_IN_RATE_LIMITED_MESSAGE` is what the caller sees.
+        '/sign-in/email': { window: 60, max: 10 },
+        '/sign-up/email': { window: 60, max: 5 },
+        '/forget-password': { window: 60, max: 5 },
+        '/reset-password': { window: 60, max: 5 },
+      },
     },
   });
 }

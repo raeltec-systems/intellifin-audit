@@ -35,15 +35,27 @@ export function middleware(request: NextRequest): NextResponse {
     }) as NextResponse;
   }
 
+  // `no-store` on the redirect too. A shared cache that stored this 307 for, say,
+  // `/runs/RUN-2437` would then serve it to a signed-in person who should have seen
+  // the page -- and, worse, could serve a cached page to somebody signed out.
   const target = new URL(SIGN_IN_PATH, request.nextUrl);
-  return NextResponse.redirect(target);
+  const redirect = NextResponse.redirect(target);
+  redirect.headers.set('cache-control', 'no-store');
+  return redirect;
 }
 
 /**
- * Run on everything except Next's own static output. The allowlist lives in
- * `route-access.ts`, not here: a matcher that skipped a path would skip it silently,
- * which is exactly the failure default-deny exists to prevent.
+ * Run on EVERY path. There is deliberately no negative lookahead here.
+ *
+ * A matcher exclusion is a second allowlist, written in a different language, that
+ * nothing tests — and it fails the same way a prefix without a trailing slash does:
+ * `(?!_next/image)` also skips `/_next/imagery` and `/_next/imagex/leak`. Those are
+ * harmless only for as long as no route happens to live there, which is not a property
+ * anybody is checking. So the matcher decides nothing and `isPublicPath` decides
+ * everything, in one place, under test.
+ *
+ * The cost is one function call on a static asset request, which is nothing.
  */
 export const config = {
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  matcher: ['/(.*)'],
 };

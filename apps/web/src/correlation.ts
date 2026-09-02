@@ -8,7 +8,12 @@ import { randomUUID } from 'node:crypto';
  * when it already fits. Anything else is replaced rather than sanitized: a header is
  * attacker-controlled, and a "cleaned" version of a hostile value is still their value.
  */
-const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
+/**
+ * Deliberately duplicated from `packages/domain/src/audit-event.ts`. This module runs
+ * on every request for one regular expression, and `correlation.test.ts` fails if the
+ * two ever differ — the same arrangement `session-cookie.ts` uses.
+ */
+export const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
 
 export const CORRELATION_HEADER = 'x-correlation-id';
 

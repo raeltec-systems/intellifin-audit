@@ -8,8 +8,12 @@
  * account nobody asked for is a standing credential) and committing a password.
  * So this is a script an operator runs by hand, with the password supplied by them.
  *
- * Usage, from the repository root:
+ * Usage, from the repository root. `pnpm build` FIRST: this script runs under plain
+ * `node`, which resolves `@intellifin/*` through each package's `default` export
+ * condition -- their built `dist`, not their TypeScript source. On a fresh clone that
+ * folder does not exist and the import fails before any argument is read.
  *
+ *   pnpm build
  *   DATABASE_URL=postgres://... BETTER_AUTH_SECRET=... BETTER_AUTH_URL=http://localhost:3000 \
  *   SEED_PASSWORD='<chosen password>' \
  *   pnpm seed:identity --email person@example.com --name 'Full Name' --role auditor
@@ -57,6 +61,10 @@ function parseArgs(argv: readonly string[]): Args {
   if (!isRole(role)) fail(`--role must be one of ${ROLES.join(', ')}`);
   return { email, name, role };
 }
+
+/** Named so the failure says what to do, instead of a bare module-resolution stack. */
+const MISSING_BUILD_HINT =
+  'run `pnpm build` first: this script imports the workspace packages\' built output';
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -109,4 +117,9 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+await main().catch((error: unknown) => {
+  if (error instanceof Error && /Cannot find module|ERR_MODULE_NOT_FOUND/.test(error.message)) {
+    fail(`${error.message}\n  hint: ${MISSING_BUILD_HINT}`);
+  }
+  throw error;
+});

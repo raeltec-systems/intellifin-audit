@@ -72,3 +72,96 @@ describe('loadConfig', () => {
     }
   });
 });
+
+/**
+ * The two identity keys. They are optional in the shared schema — the worker has no
+ * identity surface — but a value that IS supplied has to be usable, and in production
+ * it has to be safe.
+ */
+describe('loadConfig and the Better Auth keys', () => {
+  const secret = 'x'.repeat(32);
+
+  it('accepts a well-formed secret and https origin', () => {
+    const config = loadConfig({
+      ...validEnv,
+      BETTER_AUTH_SECRET: secret,
+      BETTER_AUTH_URL: 'https://audit.example.com',
+    });
+    expect(config.BETTER_AUTH_SECRET).toBe(secret);
+    expect(config.BETTER_AUTH_URL).toBe('https://audit.example.com');
+  });
+
+  it('rejects a secret shorter than 32 characters, naming the key', () => {
+    expect(() =>
+      loadConfig({ ...validEnv, BETTER_AUTH_SECRET: 'x'.repeat(31) }),
+    ).toThrow(/BETTER_AUTH_SECRET/);
+    expect(() => loadConfig({ ...validEnv, BETTER_AUTH_SECRET: 'short' })).toThrow(ConfigError);
+  });
+
+  it('never echoes the secret in the error it throws', () => {
+    const secretish = 'super-secret-value-nobody-should-see-here';
+    try {
+      loadConfig({ ...validEnv, BETTER_AUTH_URL: 'ftp://x', BETTER_AUTH_SECRET: secretish });
+      expect.unreachable('expected a ConfigError');
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secretish);
+    }
+  });
+
+  it.each(['audit.example.com', 'ftp://audit.example.com', '//audit.example.com', 'ws://x'])(
+    'rejects the base URL %s, which is not http(s)',
+    (value) => {
+      expect(() => loadConfig({ ...validEnv, BETTER_AUTH_URL: value })).toThrow(
+        /BETTER_AUTH_URL/,
+      );
+    },
+  );
+
+  it('allows http in development, where there is no transport to protect', () => {
+    const config = loadConfig({
+      ...validEnv,
+      BETTER_AUTH_URL: 'http://localhost:3000',
+      NODE_ENV: 'development',
+    });
+    expect(config.BETTER_AUTH_URL).toBe('http://localhost:3000');
+  });
+
+  it('rejects http in production, because the session cookie would not be Secure', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        BETTER_AUTH_SECRET: secret,
+        BETTER_AUTH_URL: 'http://audit.example.com',
+        NODE_ENV: 'production',
+      }),
+    ).toThrow(/BETTER_AUTH_URL.*https/s);
+  });
+
+  it('accepts https in production', () => {
+    const config = loadConfig({
+      ...validEnv,
+      BETTER_AUTH_SECRET: secret,
+      BETTER_AUTH_URL: 'https://audit.example.com',
+      NODE_ENV: 'production',
+    });
+    expect(config.BETTER_AUTH_URL).toBe('https://audit.example.com');
+  });
+
+  it('treats an empty string as absent, so the worker starts without either key', () => {
+    const config = loadConfig({
+      ...validEnv,
+      SERVICE_NAME: 'worker',
+      BETTER_AUTH_SECRET: '',
+      BETTER_AUTH_URL: '',
+    });
+    expect(config.SERVICE_NAME).toBe('worker');
+    expect(config.BETTER_AUTH_SECRET).toBeUndefined();
+    expect(config.BETTER_AUTH_URL).toBeUndefined();
+  });
+
+  it('lets the worker start with neither key set at all', () => {
+    const config = loadConfig({ ...validEnv, SERVICE_NAME: 'worker' });
+    expect(config.BETTER_AUTH_SECRET).toBeUndefined();
+    expect(config.BETTER_AUTH_URL).toBeUndefined();
+  });
+});

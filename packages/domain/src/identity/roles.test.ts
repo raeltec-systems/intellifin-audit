@@ -8,6 +8,7 @@ import {
   authorizeAction,
   isGatedAction,
   isRole,
+  type AuthorizationContext,
   type GatedAction,
   type Role,
 } from './roles.js';
@@ -93,6 +94,14 @@ const EXPECTED: Record<GatedAction, Record<Role, Cell>> = {
   'administration.diagnostics.read': ADMINISTER,
 };
 
+/**
+ * `procedure.version.approve` denies without an author, so the table cells supply one
+ * that is not the actor. The author rule itself is exercised on its own below.
+ */
+const CELL_CONTEXT: Partial<Record<GatedAction, AuthorizationContext>> = {
+  'procedure.version.approve': { actorId: 'user_actor', authorId: 'user_somebody_else' },
+};
+
 const CELLS = GATED_ACTIONS.flatMap((action) =>
   ROLES.map((role) => ({ action, role, expected: EXPECTED[action][role] })),
 );
@@ -104,7 +113,7 @@ describe('the action-gating table', () => {
   });
 
   it.each(CELLS)('$role -> $action', ({ role, action, expected }) => {
-    const decision = authorizeAction(role, action);
+    const decision = authorizeAction(role, action, CELL_CONTEXT[action]);
     if (expected === true) {
       expect(decision).toEqual({ allowed: true });
       return;
@@ -116,7 +125,7 @@ describe('the action-gating table', () => {
   it.each(
     CELLS.filter((cell) => cell.expected !== true),
   )('$role -> $action ends its reason with a full stop', ({ role, action }) => {
-    const decision = authorizeAction(role, action);
+    const decision = authorizeAction(role, action, CELL_CONTEXT[action]);
     expect(decision.allowed === false && decision.reason.endsWith('.')).toBe(true);
   });
 });
@@ -154,6 +163,20 @@ describe('the author-cannot-approve rule', () => {
     ).toEqual({ allowed: true });
   });
 
+  it('denies when the author is not supplied at all', () => {
+    // The rule cannot be checked without the author, so it is not assumed satisfied.
+    expect(authorizeAction('audit-manager', 'procedure.version.approve')).toEqual({
+      allowed: false,
+      reason: 'You cannot approve a version you authored.',
+    });
+    expect(
+      authorizeAction('audit-manager', 'procedure.version.approve', { actorId: AUTHOR }),
+    ).toEqual({
+      allowed: false,
+      reason: 'You cannot approve a version you authored.',
+    });
+  });
+
   it('does not let a missing author identity turn a refusal into an approval', () => {
     expect(
       authorizeAction('auditor', 'procedure.version.approve', { actorId: AUTHOR, authorId: AUTHOR }),
@@ -174,10 +197,12 @@ describe('a signed-in person with no role', () => {
 
   it('never falls back to a default role', () => {
     const allowedForSomebody = GATED_ACTIONS.filter((action) =>
-      ROLES.some((role) => authorizeAction(role, action).allowed),
+      ROLES.some((role) => authorizeAction(role, action, CELL_CONTEXT[action]).allowed),
     );
     expect(allowedForSomebody).toHaveLength(GATED_ACTIONS.length);
-    expect(GATED_ACTIONS.filter((action) => authorizeAction(null, action).allowed)).toEqual([]);
+    expect(
+      GATED_ACTIONS.filter((action) => authorizeAction(null, action, CELL_CONTEXT[action]).allowed),
+    ).toEqual([]);
   });
 });
 
@@ -197,4 +222,17 @@ describe('the vocabularies', () => {
     const decision = authorizeAction('audit-manager', 'not.an.action' as GatedAction);
     expect(decision).toEqual({ allowed: false, reason: DEFAULT_DENIAL_REASON });
   });
+
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf'])(
+    'denies the inherited Object.prototype key %s instead of throwing',
+    (key) => {
+      // A plain `RULES[key]` lookup finds a truthy inherited value, passes a `!rule`
+      // guard, and then throws reaching `.allowedRoles` -- a 500 where a denial belongs.
+      expect(() => authorizeAction('audit-manager', key as GatedAction)).not.toThrow();
+      expect(authorizeAction('audit-manager', key as GatedAction)).toEqual({
+        allowed: false,
+        reason: DEFAULT_DENIAL_REASON,
+      });
+    },
+  );
 });

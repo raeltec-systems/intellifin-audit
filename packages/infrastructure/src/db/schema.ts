@@ -181,6 +181,21 @@ export const authVerification = pgTable('auth_verification', {
 });
 
 /**
+ * Better Auth's rate-limit counters.
+ *
+ * Stored in PostgreSQL rather than in process memory because the deployment can run
+ * more than one web container, and a per-process counter is a limit an attacker walks
+ * around by being load-balanced to the other one. `/api/auth/**` is the only publicly
+ * allowlisted surface in the application, so its limiter has to actually hold.
+ */
+export const authRateLimit = pgTable('auth_rate_limit', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull().unique(),
+  count: integer('count').notNull(),
+  lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
+});
+
+/**
  * The application-owned role assignment (FR-2, AD-7).
  *
  * This table, not the identity provider's user record, is the authority on what a
@@ -228,4 +243,5 @@ export type AuditEventHeadRow = typeof auditEventHeads.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;
 export type AuthUserRow = typeof authUser.$inferSelect;
 export type AuthSessionRow = typeof authSession.$inferSelect;
+export type AuthRateLimitRow = typeof authRateLimit.$inferSelect;
 export type UserRoleRow = typeof userRole.$inferSelect;

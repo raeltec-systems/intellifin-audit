@@ -50,8 +50,10 @@ describe('protected route families', () => {
 
 describe('the public allowlist', () => {
   it('is exactly what it declares and nothing else', () => {
-    expect([...PUBLIC_EXACT_PATHS]).toEqual(['/sign-in', '/api/health']);
-    expect([...PUBLIC_PATH_PREFIXES]).toEqual(['/api/auth/', '/_next/static/', '/_next/image']);
+    expect([...PUBLIC_EXACT_PATHS]).toEqual(['/sign-in', '/api/health', '/_next/image']);
+    expect([...PUBLIC_PATH_PREFIXES]).toEqual(['/api/auth/', '/_next/static/', '/_next/image/']);
+    // Every prefix ends in a slash, or it also matches its own look-alikes.
+    for (const prefix of PUBLIC_PATH_PREFIXES) expect(prefix.endsWith('/')).toBe(true);
     expect([...PUBLIC_ROOT_FILES]).toEqual(['/favicon.ico', '/robots.txt', '/sitemap.xml']);
   });
 
@@ -63,6 +65,8 @@ describe('the public allowlist', () => {
     '/api/auth/sign-in/email',
     '/api/auth/get-session',
     '/_next/static/chunks/main.js',
+    '/_next/image',
+    '/_next/image/abc.png',
     '/favicon.ico',
   ])('lets %s through', (path) => {
     expect(isPublicPath(path)).toBe(true);
@@ -74,6 +78,9 @@ describe('the public allowlist', () => {
     '/api/authorize',
     '/api/auth-admin/users',
     '/_next/staticky/leak',
+    '/_next/imagery',
+    '/_next/imagex/leak',
+    '/_next/images/../../runs',
   ])('does not let %s through on a prefix that merely looks like one', (path) => {
     expect(isPublicPath(path)).toBe(false);
   });

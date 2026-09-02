@@ -2,11 +2,11 @@
 title: 'Story 1.3: Sign in and act only within an application-owned role'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'da944faf17c7c18f4d5e35d0f273b2b07d98fde2'
 baseline_commit: 'da944faf17c7c18f4d5e35d0f273b2b07d98fde2'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/AGENTS.md'
   - '{project-root}/CLAUDE.md'
@@ -270,3 +270,23 @@ if (!decision.allowed) {
 
 **Manual checks:**
 - Sign in through `/sign-in` as each of the three roles and confirm `GET /api/session` reports the role that `user_role` holds, not anything from the Better Auth user record.
+
+## Auto Run Result
+
+Status: done
+
+**Implemented.** Better Auth 1.7.2 establishes identity and session only; the role lives in the application-owned `user_role` table and is read fresh on every request, so a revocation blocks the next action without ending the session (AD-7). Route protection is default-deny behind an explicit public allowlist. The EXPERIENCE.md action-gating table is a pure domain policy carrying its five denial strings verbatim, and both sign-in outcomes and every refusal land on the `platform` audit chain.
+
+**Files changed.** `packages/domain/src/identity/*` role vocabulary, 24 gated actions and the policy; `packages/application/src/identity/*` the `RoleRepository`/`SessionReader` ports, `authorizeCommand` and `recordSignInAttempt`; `packages/infrastructure/src/identity/*` the Better Auth instance, role repository and session reader; `packages/infrastructure/src/db/schema.ts` plus `drizzle/0003_mature_the_renegades.sql` for the four `auth_*` tables, `user_role` and `auth_rate_limit` at generation 3, with `SUPPORTED_SCHEMA_MAX` raised alongside; `apps/web/middleware.ts`, `src/route-access.ts`, `src/require-role.ts`, `src/sign-in-route.ts`, `src/bootstrap.ts` and the `api/auth`, `api/session` and `sign-in` routes; `scripts/seed-identity.mts` for operator-run user creation; config, telemetry allowlists, CI and the Railway declaration.
+
+**Review findings.** 21 patches applied, 8 deferred (recorded in frontmatter), 3 rejected. Six patches were high severity: a caller-supplied `actorId` could override the session identity and defeat author-cannot-approve; a missing `authorId` allowed self-approval; `/_next/image` without a trailing slash made look-alike paths public, in both the allowlist and the middleware matcher; the sign-in handler's no-token branch returned 503 without revoking; no test constructed the production auth instance, so inverting `disableSignUp` would have shipped anonymous registration green; and `GET /api/session` had no test at all.
+
+**Follow-up review recommended: true.** Patched findings this pass: high 6, medium 11, low 4. Any high severity sets the flag; the score `3x11 + 1x4 = 37` also clears the threshold of 5.
+
+**Verification.** `pnpm -r typecheck` clean; `pnpm boundaries` clean at 82 modules; `pnpm test` 394 tests across 19 files; `pnpm build` and `pnpm --filter @intellifin/web build` both pass; `pnpm db:generate` reports no drift; `pnpm test:integration` 32 tests against real PostgreSQL 18, run twice to prove the suite is re-runnable after the `audit_event_heads` cleanup fix. The five denial strings were grepped against EXPERIENCE.md and match byte for byte. The `middleware.test.ts` 401 assertion was mutation-checked: leaking a body into the refusal fails it.
+
+**Residual risks.**
+- Generation 3 was regenerated rather than amended, replacing `0003_overconfident_mad_thinker.sql`. Verified safe: the live worker reports `schemaVersion 2`, so generation 3 has never been applied to any environment, and `release.yml` on `main` is the only migrator.
+- Next never actually invokes the middleware under test; the unit tests call the exported function. The new CI smoke assertions (`GET /` expects 307, `GET /api/session` expects 401) narrow this but do not close it. Next 16 also warns the `middleware` convention is deprecated in favour of `proxy`.
+- No shipped route calls `requireAction`, because this story forbids creating the surfaces that would. The audited-denial path is proven by unit and integration tests only until Story 1.4 or 1.5 adds the first gated route.
+- Sign-out and role changes are not audited. Both belong with Story 1.5's user management and are recorded in `deferred`.

@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 
 import {
+  SESSION_COOKIE_NAMES,
   findSessionByToken,
   findUserIdByEmail,
   revokeSessionByToken,
   PostgresAuditUnitOfWork,
+  type Telemetry,
 } from '@intellifin/infrastructure';
 import { recordSignInAttempt } from '@intellifin/application';
 
@@ -77,6 +79,14 @@ async function readToken(response: Response): Promise<string | null> {
   }
 }
 
+/**
+ * Turn Better Auth's refusal into ours.
+ *
+ * Non-disclosure only requires that a wrong password and an unknown address be
+ * indistinguishable; it does not require pretending an outage is a wrong password.
+ * A 5xx therefore answers 503, a 429 keeps its status, and only the 4xx credential
+ * refusals collapse into the one generic 401.
+ */
 function failed(status: number): Response {
   if (status === 429) {
     return Response.json(
@@ -84,7 +94,32 @@ function failed(status: number): Response {
       { status: 429, headers: NO_STORE },
     );
   }
+  if (status >= 500) return unavailable();
   return Response.json({ error: SIGN_IN_FAILED_MESSAGE }, { status: 401, headers: NO_STORE });
+}
+
+/**
+ * Every session token a sign-in response could have issued.
+ *
+ * Better Auth returns the token in the body AND sets it as a cookie whose value is
+ * `<token>.<signature>`; the `token` column holds the part before the dot. When the
+ * body cannot be read the cookie is the only handle on the row that was just created,
+ * so both are collected and all of them are revoked.
+ */
+export function issuedSessionTokens(response: Response, bodyToken: string | null): string[] {
+  const tokens = new Set<string>();
+  if (bodyToken) tokens.add(bodyToken);
+  for (const header of response.headers.getSetCookie()) {
+    const [pair] = header.split(';');
+    const separator = pair?.indexOf('=') ?? -1;
+    if (!pair || separator < 0) continue;
+    const name = pair.slice(0, separator).trim();
+    if (!SESSION_COOKIE_NAMES.some((cookieName) => name === cookieName)) continue;
+    const raw = decodeURIComponent(pair.slice(separator + 1).trim());
+    const value = raw.split('.')[0];
+    if (value) tokens.add(value);
+  }
+  return [...tokens];
 }
 
 function unavailable(): Response {
@@ -92,6 +127,31 @@ function unavailable(): Response {
     { error: SIGN_IN_UNAVAILABLE_MESSAGE },
     { status: 503, headers: NO_STORE },
   );
+}
+
+/**
+ * Delete the session rows a refused sign-in issued.
+ *
+ * A failure here is NOT swallowed. It means an unaudited, live session survived the
+ * request — the exact state this whole path exists to prevent — so it is captured
+ * rather than discarded, and the caller still gets a refusal. Silently dropping the
+ * error would leave the session live with nothing in the log stream to find it by.
+ */
+async function revokeIssued(
+  runtime: { db: Parameters<typeof revokeSessionByToken>[0]; telemetry: Telemetry },
+  tokens: readonly string[],
+  correlationId: string,
+): Promise<void> {
+  for (const token of tokens) {
+    try {
+      await revokeSessionByToken(runtime.db, token);
+    } catch (error) {
+      runtime.telemetry.captureError('Sign-in session revoke failed', error, {
+        outcome: 'failure',
+        correlationId,
+      });
+    }
+  }
 }
 
 /**
@@ -127,8 +187,9 @@ export async function handleAuthRequest(request: Request): Promise<Response> {
         correlationId,
       });
     } catch (error) {
-      runtime.telemetry.captureError('Sign-in refused', error, {
+      runtime.telemetry.captureError('Sign-in audit failed', error, {
         outcome: 'failure',
+        statusCode: response.status,
         correlationId,
       });
       return unavailable();
@@ -143,8 +204,15 @@ export async function handleAuthRequest(request: Request): Promise<Response> {
 
   const token = await readToken(response);
   if (!token) {
-    // A 2xx we cannot tie to a session row is not a sign-in we can audit.
-    runtime.telemetry.error('Sign-in refused', { outcome: 'failure', correlationId });
+    // A 2xx we cannot tie to a session row is not a sign-in we can audit. Better Auth
+    // may already have written the row, and dropping the response does not remove it,
+    // so revoke whatever this response issued before refusing.
+    await revokeIssued(runtime, issuedSessionTokens(response, null), correlationId);
+    runtime.telemetry.error('Sign-in could not be attributed', {
+      outcome: 'failure',
+      statusCode: response.status,
+      correlationId,
+    });
     return unavailable();
   }
 
@@ -167,8 +235,8 @@ export async function handleAuthRequest(request: Request): Promise<Response> {
     return response;
   } catch (error) {
     // Fail closed: undo the session rather than serve a cookie no event backs.
-    await revokeSessionByToken(runtime.db, token).catch(() => undefined);
-    runtime.telemetry.captureError('Sign-in refused', error, {
+    await revokeIssued(runtime, issuedSessionTokens(response, token), correlationId);
+    runtime.telemetry.captureError('Sign-in audit failed', error, {
       outcome: 'failure',
       correlationId,
     });

@@ -22,7 +22,7 @@ describe('the user_role check constraint', () => {
 
   it('is written into the generation-3 migration', () => {
     const migration = readFileSync(
-      fileURLToPath(new URL('../../drizzle/0003_overconfident_mad_thinker.sql', import.meta.url)),
+      fileURLToPath(new URL('../../drizzle/0003_mature_the_renegades.sql', import.meta.url)),
       'utf8',
     );
     const values = ROLES.map((role) => `'${role}'`).join(', ');

@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   appended: [] as AuditEventDraft[],
   appendFails: false,
   revoked: [] as string[],
+  revokeFails: false,
 }));
 
 vi.mock('@intellifin/infrastructure', async (importOriginal) => {
@@ -26,6 +27,7 @@ vi.mock('@intellifin/infrastructure', async (importOriginal) => {
     findUserIdByEmail: () => Promise.resolve(state.userIdByEmail),
     findSessionByToken: () => Promise.resolve(state.session),
     revokeSessionByToken: (_db: unknown, token: string) => {
+      if (state.revokeFails) return Promise.reject(new Error('revoke failed'));
       state.revoked.push(token);
       return Promise.resolve();
     },
@@ -81,6 +83,7 @@ describe('POST /api/auth/sign-in/email', () => {
     state.appended = [];
     state.appendFails = false;
     state.revoked = [];
+    state.revokeFails = false;
     telemetry.info.mockReset();
     telemetry.captureError.mockReset();
   });
@@ -165,6 +168,24 @@ describe('POST /api/auth/sign-in/email', () => {
     expect(state.revoked).toEqual([]);
   });
 
+  it('extracts a session token from a Set-Cookie header, dropping the signature', async () => {
+    const { issuedSessionTokens } = await load();
+    const response = new Response(null, {
+      headers: {
+        'set-cookie':
+          'better-auth.session_token=abc123.SIGNATURE; Path=/; HttpOnly, other=x; Path=/',
+      },
+    });
+
+    expect(issuedSessionTokens(response, null)).toEqual(['abc123']);
+    expect(issuedSessionTokens(response, 'abc123')).toEqual(['abc123']);
+    expect(issuedSessionTokens(new Response(null), 'only-body')).toEqual(['only-body']);
+    // A cookie that is not the session cookie is not a token.
+    expect(
+      issuedSessionTokens(new Response(null, { headers: { 'set-cookie': 'csrf=v; Path=/' } }), null),
+    ).toEqual([]);
+  });
+
   it('revokes the session and hands back no cookie when the event cannot be appended', async () => {
     const { handleAuthRequest } = await load();
     state.session = { userId: 'user_1', sessionId: 'sess_1' };
@@ -181,16 +202,121 @@ describe('POST /api/auth/sign-in/email', () => {
 
     expect(response.status).toBe(503);
     expect(response.headers.get('set-cookie')).toBeNull();
-    expect(state.revoked).toEqual(['the-session-token']);
+    // Both handles on the row Better Auth just created: the body token and the cookie.
+    expect(state.revoked).toEqual(['the-session-token', 'abc']);
   });
 
-  it('refuses a 2xx it cannot tie to a session row', async () => {
+  it('refuses a 2xx it cannot tie to a session row, and revokes what it issued', async () => {
     const { handleAuthRequest } = await load();
-    state.handler = () => Promise.resolve(Response.json({ ok: true }, { status: 200 }));
+    // A 2xx with no readable token can still have created a session row, and dropping
+    // the response does not remove it. The cookie is the only handle left on it.
+    state.handler = () =>
+      Promise.resolve(
+        Response.json(
+          { ok: true },
+          {
+            status: 200,
+            headers: {
+              'set-cookie':
+                'better-auth.session_token=orphan-token.sig; Path=/; HttpOnly',
+            },
+          },
+        ),
+      );
 
     const response = await handleAuthRequest(signInRequest('known@example.com'));
+
     expect(response.status).toBe(503);
+    expect(response.headers.get('set-cookie')).toBeNull();
     expect(state.appended).toEqual([]);
+    expect(state.revoked).toEqual(['orphan-token']);
+  });
+
+  it.each([500, 502, 503])(
+    'answers 503 for a %s from Better Auth rather than blaming the password',
+    async (status) => {
+      const { handleAuthRequest, SIGN_IN_UNAVAILABLE_MESSAGE } = await load();
+      state.handler = () => Promise.resolve(new Response(null, { status }));
+
+      const response = await handleAuthRequest(signInRequest('known@example.com'));
+      const body = (await response.json()) as { error: string };
+
+      expect(response.status).toBe(503);
+      expect(body.error).toBe(SIGN_IN_UNAVAILABLE_MESSAGE);
+      // An outage must never tell somebody their password is wrong.
+      expect(body.error).not.toContain('password');
+      // It is still an attempt, and it is still recorded.
+      expect(state.appended).toHaveLength(1);
+      expect(state.appended[0]).toMatchObject({ outcome: 'failure' });
+    },
+  );
+
+  it.each([400, 401, 403])('collapses the credential refusal %s into one 401', async (status) => {
+    const { handleAuthRequest, SIGN_IN_FAILED_MESSAGE } = await load();
+    state.handler = () => Promise.resolve(new Response(null, { status }));
+
+    const response = await handleAuthRequest(signInRequest('known@example.com'));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: SIGN_IN_FAILED_MESSAGE });
+  });
+
+  it('revokes the cookie-borne token as well as the body token on an audit failure', async () => {
+    const { handleAuthRequest } = await load();
+    state.session = { userId: 'user_1', sessionId: 'sess_1' };
+    state.appendFails = true;
+    state.handler = () =>
+      Promise.resolve(
+        Response.json(
+          { token: 'body-token' },
+          {
+            status: 200,
+            headers: { 'set-cookie': 'better-auth.session_token=cookie-token.sig; Path=/' },
+          },
+        ),
+      );
+
+    const response = await handleAuthRequest(signInRequest('known@example.com'));
+
+    expect(response.status).toBe(503);
+    expect(state.revoked).toEqual(['body-token', 'cookie-token']);
+  });
+
+  it('still refuses when the revoke itself fails, and does not swallow the error', async () => {
+    const { handleAuthRequest } = await load();
+    state.session = { userId: 'user_1', sessionId: 'sess_1' };
+    state.appendFails = true;
+    state.revokeFails = true;
+    state.handler = () =>
+      Promise.resolve(Response.json({ token: 'the-session-token' }, { status: 200 }));
+
+    const response = await handleAuthRequest(signInRequest('known@example.com'));
+
+    expect(response.status).toBe(503);
+    // An unaudited live session survived. That must reach the log stream, not /dev/null.
+    expect(telemetry.captureError).toHaveBeenCalledWith(
+      'Sign-in session revoke failed',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('names an audit failure distinctly from a credential refusal', async () => {
+    const { handleAuthRequest } = await load();
+    state.session = { userId: 'user_1', sessionId: 'sess_1' };
+    state.appendFails = true;
+    state.handler = () =>
+      Promise.resolve(Response.json({ token: 'the-session-token' }, { status: 200 }));
+
+    await handleAuthRequest(signInRequest('known@example.com'));
+
+    // An availability incident on the one public credential endpoint has to be
+    // findable in the log stream without reading every "Sign-in refused" line.
+    expect(telemetry.captureError).toHaveBeenCalledWith(
+      'Sign-in audit failed',
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it('passes every other authentication endpoint straight through', async () => {

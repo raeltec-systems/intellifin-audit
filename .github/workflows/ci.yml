@@ -155,7 +155,10 @@ jobs:
             -e DATABASE_URL='postgres://x:y@127.0.0.1:1/z' \
             -e SERVICE_NAME=web \
             -e BETTER_AUTH_SECRET='ci-smoke-secret-at-least-32-characters-long' \
-            -e BETTER_AUTH_URL='http://127.0.0.1:3000' \
+            `# https, not http: the image runs with NODE_ENV=production, where a` \
+            `# plain-http origin is refused because the session cookie would not` \
+            `# be Secure. Nothing here signs in, so the host need not resolve.` \
+            -e BETTER_AUTH_URL='https://web-smoke.invalid' \
             intellifin-web:ci
 
           code=000
@@ -168,12 +171,42 @@ jobs:
           echo "status=${code}"
           cat /tmp/health.json || true
           docker logs web-smoke || true
-          docker rm -f web-smoke >/dev/null 2>&1 || true
 
           if [ "$code" != "503" ]; then
+            docker rm -f web-smoke >/dev/null 2>&1 || true
             echo "::error::web did not answer 503 on /api/health within 60s (got ${code})"
             exit 1
           fi
+
+      # FR-1: default-deny is a shipped file (middleware.ts), not a unit-test fixture.
+      # /api/health is on the public allowlist, so the check above passes just as well
+      # with no route protection at all. These two ask the running image directly.
+      - name: Protected routes are refused in the built image
+        run: |
+          set -euo pipefail
+          api="$(curl -s -o /tmp/session.out -w '%{http_code}' http://127.0.0.1:3000/api/session)"
+          page="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)"
+          echo "GET /api/session -> ${api} ; GET / -> ${page}"
+
+          if [ "$api" != "401" ]; then
+            echo "::error::GET /api/session returned ${api}, expected 401 for an unauthenticated caller"
+            docker logs web-smoke || true
+            exit 1
+          fi
+          if [ -s /tmp/session.out ]; then
+            echo "::error::GET /api/session returned a body; an unauthenticated refusal must disclose nothing"
+            cat /tmp/session.out
+            exit 1
+          fi
+          if [ "$page" != "307" ]; then
+            echo "::error::GET / returned ${page}, expected a 307 redirect to /sign-in"
+            docker logs web-smoke || true
+            exit 1
+          fi
+
+      - name: Stop the web smoke container
+        if: always()
+        run: docker rm -f web-smoke >/dev/null 2>&1 || true
 
       - name: Worker exits non-zero and refuses to start when the database is unreachable
         run: |

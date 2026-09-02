@@ -1,89 +1,96 @@
-import { NextRequest } from 'next/server';
 import { describe, expect, it } from 'vitest';
 
-import { middleware } from '../middleware.js';
-import { SESSION_COOKIE_PREFIXES } from './session-cookie.js';
+import { config, middleware } from '../middleware.js';
 
 /**
- * `route-access.test.ts` proves which paths are public and which families are
- * protected. This file proves what the middleware actually *does* with that answer:
- * an API refusal carries no body, a page refusal goes to sign-in, and a request
- * carrying a session cookie is passed on to the handler that can really authorize it.
+ * The outer gate. It cannot authorize anything — it only sees whether a session
+ * cookie is present — so what is tested here is that it refuses by default, refuses
+ * without disclosing anything, and never lets a refusal be cached.
  */
 
-const ORIGIN = 'https://audit.example.com';
-
-function request(path: string, cookie?: string): NextRequest {
-  const headers = new Headers();
-  if (cookie) headers.set('cookie', cookie);
-  return new NextRequest(new URL(path, ORIGIN), { headers });
+interface RequestOptions {
+  readonly cookies?: readonly { name: string; value: string }[];
 }
 
-/** A middleware pass-through carries Next's own continue header rather than a status. */
-function isPassThrough(response: { headers: Headers }): boolean {
-  return response.headers.get('x-middleware-next') === '1';
+/** The slice of NextRequest the middleware actually touches. */
+function request(pathname: string, options: RequestOptions = {}) {
+  const cookies = options.cookies ?? [];
+  return {
+    nextUrl: new URL(`https://audit.example.com${pathname}`),
+    cookies: { getAll: () => [...cookies] },
+  } as unknown as Parameters<typeof middleware>[0];
 }
 
-describe('an anonymous request to a protected API path', () => {
-  it.each([
-    '/api/session',
-    '/api/procedures',
-    '/api/runs/RUN-1',
-    '/api/runs/RUN-1/stream',
-    '/api/evidence/E-1',
-    '/api/exceptions/X-1',
-    '/api/replay/RUN-1',
-    '/api/administration/users',
-  ])('refuses %s with 401 and no body at all', async (path) => {
-    const response = middleware(request(path));
+const SESSION = [{ name: 'better-auth.session_token', value: 'abc.def' }];
 
-    expect(response.status).toBe(401);
-    expect(await response.text()).toBe('');
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    // A refusal must not name the route, the reason, or whether it exists.
-    expect(response.headers.get('location')).toBeNull();
-  });
-});
+describe('middleware', () => {
+  it.each(['/sign-in', '/api/health', '/api/auth/sign-in/email', '/_next/static/x.js'])(
+    'lets the public path %s through untouched',
+    (path) => {
+      expect(middleware(request(path)).status).toBe(200);
+    },
+  );
 
-describe('an anonymous request to a protected page path', () => {
-  it.each(['/', '/runs', '/runs/RUN-1', '/administration'])(
-    'sends %s to the sign-in page',
+  it.each(['/api/session', '/api/procedures', '/api/runs/RUN-1/events'])(
+    'refuses %s with 401, an empty body and no cache',
+    async (path) => {
+      const response = middleware(request(path));
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      // A refusal must disclose nothing at all, not even which route it was.
+      await expect(response.text()).resolves.toBe('');
+    },
+  );
+
+  it.each(['/', '/runs/RUN-2437', '/administration/users'])(
+    'redirects the page %s to sign-in and forbids caching that redirect',
     (path) => {
       const response = middleware(request(path));
 
       expect(response.status).toBe(307);
-      expect(new URL(response.headers.get('location') as string).pathname).toBe('/sign-in');
+      expect(response.headers.get('location')).toBe('https://audit.example.com/sign-in');
+      // Without this a shared cache can pin a protected path to the sign-in redirect.
+      expect(response.headers.get('cache-control')).toBe('no-store');
     },
   );
 
-  it('keeps the redirect on the request origin rather than an attacker-supplied one', () => {
-    const response = middleware(request('/runs'));
-
-    expect(new URL(response.headers.get('location') as string).origin).toBe(ORIGIN);
-  });
-});
-
-describe('a public path', () => {
-  it.each(['/sign-in', '/api/health', '/api/auth/sign-in/email', '/favicon.ico'])(
-    'lets %s through with no session cookie',
-    (path) => {
-      expect(isPassThrough(middleware(request(path)))).toBe(true);
-    },
-  );
-});
-
-describe('a request carrying a session cookie', () => {
-  it.each(SESSION_COOKIE_PREFIXES)('lets a page through on %s', (name) => {
-    expect(isPassThrough(middleware(request('/runs', `${name}=abc`)))).toBe(true);
+  it.each([
+    'better-auth.session_token',
+    '__Secure-better-auth.session_token',
+    'better-auth.session_token.1',
+  ])('lets a request carrying the %s cookie reach the handler', (name) => {
+    const response = middleware(request('/api/session', { cookies: [{ name, value: 'v' }] }));
+    expect(response.status).toBe(200);
   });
 
-  it('lets an API route through, leaving the real decision to the handler', () => {
-    const cookie = `${SESSION_COOKIE_PREFIXES[0]}=abc`;
-    expect(isPassThrough(middleware(request('/api/session', cookie)))).toBe(true);
-  });
-
-  it('is not fooled by an unrelated cookie whose name merely contains the prefix', () => {
-    const response = middleware(request('/api/session', 'not-better-auth.session_token=abc'));
+  it('is not fooled by a cookie that merely looks like the session cookie', () => {
+    const response = middleware(
+      request('/api/session', { cookies: [{ name: 'not-better-auth.session_token', value: 'v' }] }),
+    );
     expect(response.status).toBe(401);
   });
+
+  it('treats the cookie as a hint only, never as proof', () => {
+    // The cookie is unsigned and unverified here; `requireAction` makes the real
+    // decision. This test exists so that stays deliberate rather than forgotten.
+    const response = middleware(request('/api/session', { cookies: SESSION }));
+    expect(response.status).toBe(200);
+  });
+});
+
+describe('the matcher', () => {
+  it('runs on every path, delegating the allowlist to route-access', () => {
+    // A negative lookahead here would be a second allowlist in another language that
+    // nothing tests, and it fails the same way a slash-less prefix does.
+    expect(config.matcher).toEqual(['/(.*)']);
+    for (const pattern of config.matcher) expect(pattern).not.toContain('?!');
+  });
+
+  it.each(['/_next/imagery', '/_next/imagex/leak', '/_next/staticky/leak'])(
+    'therefore still sees the look-alike path %s',
+    (path) => {
+      expect(middleware(request(path)).status).toBe(307);
+    },
+  );
 });
