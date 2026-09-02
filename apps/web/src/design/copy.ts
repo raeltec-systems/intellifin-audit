@@ -74,3 +74,16 @@ export const REGISTRATION_CHANGE_WARNING_TEMPLATE =
 export function registrationChangeWarning(count: number): string {
   return REGISTRATION_CHANGE_WARNING_TEMPLATE.replace('{n}', String(count));
 }
+
+/**
+ * What a Procedure is told when its Population Source binding declares no expected
+ * record count. Quoted from EXPERIENCE.md's Flow 1 failure line (FR-6).
+ *
+ * The Builder shows it in Epic 2, beside a disabled Submit. This surface shows it at
+ * REGISTRATION time, which is where FR-6's "its absence is surfaced at authoring time"
+ * can still be acted on: the administrator who chose `none` is the one who can go and
+ * find the cover sheet. The sentence is the same one either way, so the person who reads
+ * it in the Builder later recognizes it.
+ */
+export const DECLARED_COUNT_MISSING_SENTENCE =
+  'Population Source must declare an expected record count.';

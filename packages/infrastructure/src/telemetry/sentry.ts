@@ -45,6 +45,11 @@ export const TELEMETRY_MESSAGES = [
   // the command FAILED and nothing was written.
   'Register Target System failed',
   'Change Target System failed',
+  // Population Source bindings (Story 1.7). Same reading again: a refusal — an
+  // undeclared sensitive field, a stale row — is an audit event or a returned sentence,
+  // not a log line, so these two mean the command FAILED and nothing was written.
+  'Register Population Source failed',
+  'Change Population Source failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',

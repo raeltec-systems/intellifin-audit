@@ -388,6 +388,116 @@ export const targetSystemProbe = pgTable(
   ],
 );
 
+/**
+ * The Population Source binding vocabularies (generation 6, FR-6, FR-41).
+ *
+ * Spelled out here rather than imported from `@intellifin/domain`, for the reason
+ * `TARGET_SYSTEM_KIND_VOCABULARY` gives above: `drizzle-kit generate` resolves the
+ * workspace package to its BUILT output, so a value import would make migration
+ * generation depend on a prior `pnpm build`. `schema.test.ts` fails if either drifts.
+ */
+export const POPULATION_SOURCE_KIND_VOCABULARY = [
+  'manual-upload',
+  'versioned-file',
+  'read-only-api',
+] as const;
+
+export const DECLARED_COUNT_MECHANISM_VOCABULARY = [
+  'cover-sheet',
+  'count-endpoint',
+  'none',
+] as const;
+
+export const BINDING_STATUS_VOCABULARY = ['active', 'retired'] as const;
+
+/**
+ * Population Source bindings (generation 6, FR-6, FR-41).
+ *
+ * The digest is stored beside the row and never recomputed on read, for the same reason
+ * the registration digest is: it is the value a Procedure Version freezes, and a second
+ * implementation in SQL would eventually disagree with the domain module about a trimmed
+ * space or a sort order.
+ *
+ * Two of the CHECK constraints are the point of the table.
+ * `..._sensitive_fields_declared` is FR-41's masking rule at the one layer nothing can
+ * route around: `sensitive_fields <@ declared_schema` means no command, migration or
+ * psql session can store a mask over a field the schema does not declare — a mask that
+ * hides nothing while reading, in a list view, exactly like protection.
+ * `..._schema_present` refuses a binding that declares no fields at all, written with
+ * `cardinality` because `array_length(x, 1)` of an empty array is NULL and a NULL CHECK
+ * PASSES, which would accept exactly the row it forbids.
+ *
+ * No credential is stored here and there is no column one could go in. A `read-only-api`
+ * binding names a location; the credential a Run uses belongs to the Target System
+ * registration, which already proves it read-only.
+ */
+export const populationSourceBinding = pgTable(
+  'population_source_binding',
+  {
+    bindingId: uuid('binding_id').primaryKey(),
+    displayName: text('display_name').notNull(),
+    kind: text('kind').notNull(),
+    /** Where the population is found. Empty for a `manual-upload` binding, which names nowhere. */
+    location: text('location').notNull().default(''),
+    /** Field names, IN ORDER: a schema is a positional declaration. */
+    declaredSchema: text('declared_schema').array().notNull(),
+    declaredCountMechanism: text('declared_count_mechanism').notNull(),
+    /** A set, sorted, and always a subset of `declared_schema` (FR-41). */
+    sensitiveFields: text('sensitive_fields').array().notNull().default(sql`'{}'::text[]`),
+    note: text('note').notNull().default(''),
+    status: text('status').notNull().default('active'),
+    /** The binding digest, lower-case SHA-256 hex. */
+    digest: text('digest').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // `sql.raw` is safe for all three: every member is lower-case ASCII and hyphens.
+    check(
+      'population_source_binding_kind_vocabulary',
+      sql`${table.kind} IN (${sql.raw(quoted(POPULATION_SOURCE_KIND_VOCABULARY))})`,
+    ),
+    check(
+      'population_source_binding_mechanism_vocabulary',
+      sql`${table.declaredCountMechanism} IN (${sql.raw(quoted(DECLARED_COUNT_MECHANISM_VOCABULARY))})`,
+    ),
+    check(
+      'population_source_binding_status_vocabulary',
+      sql`${table.status} IN (${sql.raw(quoted(BINDING_STATUS_VOCABULARY))})`,
+    ),
+    /**
+     * `cardinality`, not `array_length(..., 1)`.
+     *
+     * `array_length` of an empty array is NULL, and a CHECK constraint that evaluates to
+     * NULL PASSES — so the obvious spelling of this rule accepts exactly the row it was
+     * written to refuse. `cardinality` returns 0. The integration suite inserts an empty
+     * array with raw SQL and expects the refusal by name.
+     */
+    check('population_source_binding_schema_present', sql`cardinality(${table.declaredSchema}) >= 1`),
+    /** FR-41, at the one layer nothing can route around: no mask over an undeclared field. */
+    check(
+      'population_source_binding_sensitive_fields_declared',
+      sql`${table.sensitiveFields} <@ ${table.declaredSchema}`,
+    ),
+    /**
+     * A binding names somewhere, or it is a manual upload that names nowhere.
+     *
+     * Both directions, because both are wrong. A versioned file with no location points
+     * at nothing; a manual upload WITH one holds a value the digest deliberately drops,
+     * so the row would say something the frozen contract does not.
+     */
+    check(
+      'population_source_binding_location_matches_kind',
+      sql`(${table.kind} = 'manual-upload' AND ${table.location} = '') OR (${table.kind} <> 'manual-upload' AND btrim(${table.location}) <> '')`,
+    ),
+    check('population_source_binding_digest_format', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
 export type SchemaMetaRow = typeof schemaMeta.$inferSelect;
 export type WorkerHeartbeatRow = typeof workerHeartbeat.$inferSelect;
 export type AuditEventHeadRow = typeof auditEventHeads.$inferSelect;
@@ -398,3 +508,4 @@ export type AuthRateLimitRow = typeof authRateLimit.$inferSelect;
 export type UserRoleRow = typeof userRole.$inferSelect;
 export type TargetSystemRegistrationRow = typeof targetSystemRegistration.$inferSelect;
 export type TargetSystemProbeRow = typeof targetSystemProbe.$inferSelect;
+export type PopulationSourceBindingRow = typeof populationSourceBinding.$inferSelect;

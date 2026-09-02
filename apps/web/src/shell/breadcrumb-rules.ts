@@ -23,6 +23,7 @@ export const SECTION_LABELS: Readonly<Record<string, string>> = {
  */
 export const SUBSECTION_LABELS: Readonly<Record<string, string>> = {
   '/administration/registrations': 'Target System registrations',
+  '/administration/sources': 'Population Source bindings',
 };
 
 export interface Crumb {

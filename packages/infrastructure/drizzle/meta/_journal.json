@@ -43,6 +43,13 @@
       "when": 1788367728933,
       "tag": "0005_clumsy_freak",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788372809282,
+      "tag": "0006_absent_thanos",
+      "breakpoints": true
     }
   ]
 }

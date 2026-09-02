@@ -25,3 +25,5 @@ export * from './identity/record-sign-in.js';
 export * from './identity/record-sign-out.js';
 export * from './registrations/ports.js';
 export * from './registrations/register-target-system.js';
+export * from './sources/ports.js';
+export * from './sources/register-population-source.js';

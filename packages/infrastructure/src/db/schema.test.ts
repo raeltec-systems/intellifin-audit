@@ -3,11 +3,20 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { REGISTRATION_STATUSES } from '@intellifin/application';
-import { PERMITTED_READ_ACTIONS, ROLES, TARGET_SYSTEM_KINDS } from '@intellifin/domain';
+import { BINDING_STATUSES, REGISTRATION_STATUSES } from '@intellifin/application';
+import {
+  DECLARED_COUNT_MECHANISMS,
+  PERMITTED_READ_ACTIONS,
+  POPULATION_SOURCE_KINDS,
+  ROLES,
+  TARGET_SYSTEM_KINDS,
+} from '@intellifin/domain';
 
 import {
+  BINDING_STATUS_VOCABULARY,
+  DECLARED_COUNT_MECHANISM_VOCABULARY,
   PERMITTED_READ_ACTION_VOCABULARY,
+  POPULATION_SOURCE_KIND_VOCABULARY,
   REGISTRATION_STATUS_VOCABULARY,
   ROLE_VOCABULARY,
   TARGET_SYSTEM_KIND_VOCABULARY,
@@ -93,5 +102,75 @@ describe('the target_system_registration check constraints', () => {
       .filter((line) => !line.trimStart().startsWith('--'))
       .join('\n');
     expect(statements).not.toContain('array_length');
+  });
+});
+
+describe('the population_source_binding check constraints', () => {
+  it('lists exactly the domain binding kinds, in the same order', () => {
+    expect([...POPULATION_SOURCE_KIND_VOCABULARY]).toEqual([...POPULATION_SOURCE_KINDS]);
+  });
+
+  it('lists exactly the domain declared-count mechanisms, in the same order', () => {
+    expect([...DECLARED_COUNT_MECHANISM_VOCABULARY]).toEqual([...DECLARED_COUNT_MECHANISMS]);
+  });
+
+  it('lists exactly the application binding statuses, in the same order', () => {
+    expect([...BINDING_STATUS_VOCABULARY]).toEqual([...BINDING_STATUSES]);
+  });
+
+  /**
+   * FR-41's masking rule has to be in the MIGRATION, not only in `schema.ts`.
+   *
+   * `schema.ts` describes the intended shape; the migration is what a database actually
+   * gets. A mask over a field the schema does not declare hides nothing while reading, in
+   * a list view, exactly like protection — so this is the one place the rule cannot be
+   * routed around.
+   */
+  it('writes the sensitive-fields subset constraint into the generation-6 migration', () => {
+    expect(migration('0006_absent_thanos.sql')).toContain(
+      `CHECK ("population_source_binding"."sensitive_fields" <@ "population_source_binding"."declared_schema")`,
+    );
+  });
+
+  it('writes the digest-format constraint into the generation-6 migration', () => {
+    expect(migration('0006_absent_thanos.sql')).toContain(
+      `CHECK ("population_source_binding"."digest" ~ '^[0-9a-f]{64}$')`,
+    );
+  });
+
+  /**
+   * The one constraint whose obvious spelling is WRONG, for the second time.
+   *
+   * `array_length(x, 1)` of an empty array is NULL, and a CHECK evaluating to NULL
+   * passes — so written that way this constraint would accept exactly the row it exists
+   * to refuse: a binding that declares no fields at all, which no inclusion rule and no
+   * masking designation could then mean anything against.
+   */
+  it('writes the schema-present constraint with cardinality, never array_length', () => {
+    const sql = migration('0006_absent_thanos.sql');
+    expect(sql).toContain(
+      `CHECK (cardinality("population_source_binding"."declared_schema") >= 1)`,
+    );
+    // Statements only. The file's header comment names `array_length` to explain why it
+    // is not used, and a naive search would match that and pass forever.
+    const statements = sql
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(statements).not.toContain('array_length');
+  });
+
+  it('writes the location rule in BOTH directions into the generation-6 migration', () => {
+    // A versioned file with no location points at nothing; a manual upload WITH one
+    // holds a value the digest deliberately drops.
+    const sql = migration('0006_absent_thanos.sql');
+    expect(sql).toContain(`"population_source_binding"."kind" = 'manual-upload' AND "population_source_binding"."location" = ''`);
+    expect(sql).toContain(`"population_source_binding"."kind" <> 'manual-upload' AND btrim("population_source_binding"."location") <> ''`);
+  });
+
+  it('seeds generation 6 by hand, because drizzle-kit does not write that line', () => {
+    expect(migration('0006_absent_thanos.sql')).toContain(
+      `INSERT INTO "schema_meta" ("version") VALUES (6) ON CONFLICT ("version") DO NOTHING;`,
+    );
   });
 });

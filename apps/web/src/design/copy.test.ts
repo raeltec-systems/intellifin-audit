@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
+  DECLARED_COUNT_MISSING_SENTENCE,
   EMPTY_STATES,
   ENVIRONMENT_RIBBON_SENTENCE,
   FULLY_QUOTED_EMPTY_STATES,
@@ -107,6 +108,25 @@ describe('the registration-change warning', () => {
     );
     expect(registrationChangeWarning(3)).toContain('3 Procedures');
     expect(registrationChangeWarning(3)).not.toContain('{n}');
+  });
+});
+
+describe('the missing declared-count warning', () => {
+  it("is EXPERIENCE.md's sentence, character for character", () => {
+    // Read off disk, exactly like the registration warning above. EXPERIENCE.md writes it
+    // in quotation marks as the Flow 1 failure line, so the quotes are part of the match:
+    // a paraphrase elsewhere in the document would not satisfy it.
+    expect(experience).toContain(`"${DECLARED_COUNT_MISSING_SENTENCE}"`);
+  });
+
+  it('is rendered from this module and not retyped in the surface', () => {
+    // The registration warning shipped first as an inline sentence that differed from the
+    // contract in two places, and nothing noticed. This is the same guard one story on.
+    for (const surface of ['../admin/BindingsPanel.tsx', '../admin/BindingForm.tsx']) {
+      const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
+      expect(source, surface).toContain('DECLARED_COUNT_MISSING_SENTENCE');
+      expect(source, surface).not.toContain('must declare an expected record count');
+    }
   });
 });
 
