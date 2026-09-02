@@ -71,7 +71,7 @@ function plant(testCase: Case): string {
 function cruise(): { status: number | null; output: string } {
   const result = spawnSync(
     'pnpm',
-    ['exec', 'depcruise', '--config', '.dependency-cruiser.cjs', '--no-cache', 'apps', 'packages'],
+    ['boundaries'],
     { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } },
   );
   return { status: result.status, output: `${result.stdout}\n${result.stderr}` };
