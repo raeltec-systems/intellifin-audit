@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { createSqlClient, runMigrations, type Sql } from '@intellifin/infrastructure';
+import { createSqlClient, type Sql } from '@intellifin/infrastructure';
+import { runMigrations } from '@intellifin/infrastructure/migrate';
 
 /**
  * AD-15 regression guard. CI points `DATABASE_URL` at the same TLS-enabled PostgreSQL

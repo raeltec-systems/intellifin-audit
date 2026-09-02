@@ -13,6 +13,10 @@
     "./db": {
       "types": "./src/db/index.ts",
       "default": "./dist/db/index.js"
+    },
+    "./migrate": {
+      "types": "./src/db/migrate.ts",
+      "default": "./dist/db/migrate.js"
     }
   },
   "files": [
