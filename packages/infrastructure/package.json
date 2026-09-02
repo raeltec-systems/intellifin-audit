@@ -1,0 +1,42 @@
+{
+  "name": "@intellifin/infrastructure",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./src/db/index.ts",
+      "default": "./dist/db/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "drizzle"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@intellifin/application": "workspace:*",
+    "@intellifin/domain": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "drizzle-kit": "0.31.10",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

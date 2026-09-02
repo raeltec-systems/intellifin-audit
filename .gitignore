@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.turbo/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Test output
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# Editor / OS
+.DS_Store
+*.log
