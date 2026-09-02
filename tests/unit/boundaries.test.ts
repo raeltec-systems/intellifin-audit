@@ -35,6 +35,11 @@ const CASES: readonly Case[] = [
     rule: 'no-vendor-sdk-in-business-code',
   },
   {
+    plantIn: 'packages/application/src',
+    imports: 'better-auth',
+    rule: 'no-vendor-sdk-in-business-code',
+  },
+  {
     plantIn: 'packages/domain/src',
     imports: '../../../application/src/index.js',
     rule: 'domain-imports-nothing-outward',

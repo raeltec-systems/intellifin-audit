@@ -16,6 +16,15 @@ export const TELEMETRY_MESSAGES = [
   'Heartbeat loop started',
   'Fatal worker error',
   'Captured failure',
+  'Sign-in recorded',
+  'Sign-in refused',
+  // Distinct from a refusal on purpose. A refusal is a person getting their password
+  // wrong; these three are availability incidents on the one public credential
+  // endpoint, and an operator must be able to tell them apart in the log stream.
+  'Sign-in audit failed',
+  'Sign-in could not be attributed',
+  'Sign-in session revoke failed',
+  'Authorization denied',
 ] as const;
 export type TelemetryMessage = (typeof TELEMETRY_MESSAGES)[number];
 

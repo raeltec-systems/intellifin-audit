@@ -17,9 +17,12 @@
     "test": "vitest run",
     "test:integration": "vitest run --config tests/integration/vitest.config.ts",
     "db:generate": "pnpm --filter @intellifin/infrastructure db:generate",
-    "db:migrate": "pnpm --filter @intellifin/infrastructure db:migrate"
+    "db:migrate": "pnpm --filter @intellifin/infrastructure db:migrate",
+    "seed:identity": "node scripts/seed-identity.mts"
   },
   "devDependencies": {
+    "@intellifin/domain": "workspace:*",
+    "@intellifin/infrastructure": "workspace:*",
     "@playwright/test": "1.62.1",
     "@types/node": "24.13.3",
     "dependency-cruiser": "18.2.0",

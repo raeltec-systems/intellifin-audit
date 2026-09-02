@@ -147,6 +147,8 @@ module.exports = {
           // nothing in the repository imports them.
           '^apps/web/app/',
           '^apps/web/instrumentation\\.ts$',
+          // Next.js discovers middleware by convention too.
+          '^apps/web/middleware\\.ts$',
           // Process entry points. Nothing imports a composition root -- that is the
           // point of AD-1 -- so they are orphans by design.
           '^apps/worker/src/main\\.ts$',

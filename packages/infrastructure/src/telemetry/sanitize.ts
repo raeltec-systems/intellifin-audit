@@ -1,4 +1,5 @@
 export const TELEMETRY_FIELD_KEYS = [
+  'action',
   'aggregateId',
   'correlationId',
   'durationMs',
@@ -13,7 +14,9 @@ export const TELEMETRY_FIELD_KEYS = [
   'intervalMs',
   'method',
   'operation',
+  'outcome',
   'postgresMajor',
+  'role',
   'route',
   'schemaVersion',
   'sessionId',
@@ -21,6 +24,7 @@ export const TELEMETRY_FIELD_KEYS = [
   'skippedBeats',
   'statusCode',
   'supportedSchemaRange',
+  'userId',
 ] as const;
 
 export type TelemetryFieldKey = (typeof TELEMETRY_FIELD_KEYS)[number];

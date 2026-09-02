@@ -40,6 +40,49 @@ export const configSchema = z
     SENTRY_DSN: optionalUrl,
     SENTRY_ENVIRONMENT: z.string().min(1).max(64).default('development'),
     SENTRY_TRACES_SAMPLE_RATE: sampleRate,
+    /**
+     * Better Auth signs session cookies with this. It is a secret: never logged,
+     * never echoed in an error, and never sent to telemetry.
+     *
+     * Optional HERE and required by `apps/web`. The worker has no identity surface,
+     * so demanding an authentication secret from it would make the worker refuse to
+     * start over a value it will never use. The web composition root checks for it.
+     */
+    BETTER_AUTH_SECRET: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(32, 'must be at least 32 characters').optional(),
+    ),
+    /** The public origin the browser reaches. Web-only, for the same reason. */
+    BETTER_AUTH_URL: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z
+        .string()
+        .regex(/^https?:\/\//, 'must start with http:// or https://')
+        .optional(),
+    ),
+    /**
+     * Read only to decide whether `http://` is acceptable for BETTER_AUTH_URL. It is
+     * not otherwise application configuration: what the build supports is a property
+     * of the build (see `db/compat.ts`), not of the environment.
+     */
+    NODE_ENV: z.string().optional(),
+  })
+  .superRefine((config, ctx) => {
+    // Better Auth marks the session cookie `Secure` only for an https base URL. Over
+    // http in production the cookie travels in clear text and any network hop can
+    // replay it, so a plain-http production origin is refused rather than warned about.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.BETTER_AUTH_URL !== undefined &&
+      !config.BETTER_AUTH_URL.startsWith('https://')
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['BETTER_AUTH_URL'],
+        message:
+          'must use https:// when NODE_ENV is production; an http origin yields a session cookie with no Secure attribute',
+      });
+    }
   });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -69,6 +112,9 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     SENTRY_DSN: env['SENTRY_DSN'],
     SENTRY_ENVIRONMENT: env['SENTRY_ENVIRONMENT'],
     SENTRY_TRACES_SAMPLE_RATE: env['SENTRY_TRACES_SAMPLE_RATE'],
+    BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
+    BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
+    NODE_ENV: env['NODE_ENV'],
   });
 
   if (!parsed.success) {
