@@ -23,7 +23,7 @@
     "@playwright/test": "1.62.1",
     "@types/node": "24.13.3",
     "dependency-cruiser": "18.2.0",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "4.1.11"
   }
 }
