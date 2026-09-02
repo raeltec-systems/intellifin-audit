@@ -92,7 +92,9 @@ jobs:
       # Deploy one service at a time so a failed web rollout does not race the worker.
       max-parallel: 1
       matrix:
-        service: [web, worker]
+        # northstar has no database and no migration to wait for, but it rides the same
+        # gate: a release that failed to migrate should not ship any image.
+        service: [web, worker, northstar]
     steps:
       - uses: actions/checkout@v5
         with:

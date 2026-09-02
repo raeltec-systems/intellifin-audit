@@ -148,6 +148,43 @@ jobs:
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
 
+      - name: Build northstar image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/northstar/Dockerfile
+          push: false
+          load: true
+          tags: intellifin-northstar:ci
+          cache-from: type=gha,scope=northstar
+          cache-to: type=gha,mode=max,scope=northstar
+
+      # The fixtures live OUTSIDE the package, so `pnpm deploy` does not carry them and
+      # the image has to copy them in. A missing copy is invisible until the process
+      # starts and cannot find `fixtures/northstar`, so this serves a real request and
+      # a real write attempt rather than only checking the container came up.
+      - name: Northstar serves a population and refuses a write
+        run: |
+          set -euo pipefail
+          docker run -d --name northstar-smoke -p 4300:4300 intellifin-northstar:ci
+
+          code=000
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4300/health || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          test "$code" = "200" || { docker logs northstar-smoke; exit 1; }
+
+          # A real population, from a fixture file inside the image.
+          curl -sf http://127.0.0.1:4300/accessgate/accounts | head -c 200
+
+          # FR-3 at the system level: a write is refused, with the rule, not 404'd.
+          write=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:4300/accessgate/accounts || true)
+          test "$write" = "405" || { echo "expected 405, got $write"; docker logs northstar-smoke; exit 1; }
+
+          docker rm -f northstar-smoke
+
       # AD-15: neither image may migrate, and neither may pretend to be healthy
       # against a database it cannot reach. Point both at an unreachable address.
       - name: Web answers 503 on /api/health when the database is unreachable

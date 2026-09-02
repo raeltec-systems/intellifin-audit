@@ -78,5 +78,34 @@ export default defineRailway(() => {
     },
   });
 
-  return project('intellifin-audit', { resources: [postgres, data, web, worker] });
+  /**
+   * The synthetic Northstar systems (Story 1.8).
+   *
+   * No database, no credential, no volume: it serves fixture files that ship inside its
+   * own image. It is read-only at the system level (FR-3) — every method but GET and
+   * HEAD is refused above routing — so a public origin exposes synthetic data that
+   * nobody, including us, can change through it.
+   *
+   * It is deliberately NOT given `DATABASE_URL`. A Target System that can reach the
+   * audit platform's own database is not a Target System; it is part of the platform.
+   *
+   * One service, six path-prefixed systems. Each registration's allowed origin is this
+   * service's public domain plus its prefix (`/loancore`, `/accessgate`, …), so the
+   * agent's allowlist still names six origins.
+   */
+  const northstar = service('northstar', {
+    dockerfile: 'apps/northstar/Dockerfile',
+    start: 'node dist/main.js',
+    healthcheck: '/health',
+    env: {
+      SERVICE_NAME: 'northstar',
+      NODE_ENV: 'production',
+      // Railway injects PORT; `main.ts` prefers NORTHSTAR_PORT and falls back to it.
+      PORT: '4300',
+    },
+  });
+
+  return project('intellifin-audit', {
+    resources: [postgres, data, web, worker, northstar],
+  });
 });

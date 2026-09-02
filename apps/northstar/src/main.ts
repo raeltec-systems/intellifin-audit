@@ -14,12 +14,20 @@ import { handleRequest } from './server.js';
 
 const DEFAULT_PORT = 4300;
 
+/**
+ * `NORTHSTAR_PORT` first, then `PORT`, then the default.
+ *
+ * `NORTHSTAR_PORT` is the explicit one the browser suite sets. `PORT` is the convention
+ * every container platform injects, Railway included, and a service that ignores it
+ * binds a port nothing routes to and fails its healthcheck with the process healthy.
+ * The specific name wins so a local run cannot be redirected by an ambient `PORT`.
+ */
 function port(): number {
-  const raw = process.env['NORTHSTAR_PORT'];
+  const raw = process.env['NORTHSTAR_PORT'] ?? process.env['PORT'];
   if (raw === undefined || raw === '') return DEFAULT_PORT;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    process.stderr.write(`northstar: NORTHSTAR_PORT must be a port number, found "${raw}"\n`);
+    process.stderr.write(`northstar: NORTHSTAR_PORT/PORT must be a port number, found "${raw}"\n`);
     process.exit(1);
   }
   return parsed;
