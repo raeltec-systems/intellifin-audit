@@ -255,7 +255,9 @@ describe.skipIf(!databaseUrl)('tamper-evident audit events against PostgreSQL 18
         await sql`UPDATE audit_events SET actor_id = ${testCase.replacement as string} WHERE event_id = ${record.eventId}`;
         break;
       case 'payload':
-        await sql`UPDATE audit_events SET payload = ${sql.json(testCase.replacement)} WHERE event_id = ${record.eventId}`;
+        // Stringify and cast explicitly: postgres.js cannot infer a bind type for a
+        // bare object here, and fails while binding rather than at the jsonb column.
+        await sql`UPDATE audit_events SET payload = ${JSON.stringify(testCase.replacement)}::jsonb WHERE event_id = ${record.eventId}`;
         break;
       case 'previous_hash':
         await sql`UPDATE audit_events SET previous_hash = ${testCase.replacement as string} WHERE event_id = ${record.eventId}`;

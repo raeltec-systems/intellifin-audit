@@ -281,10 +281,31 @@ function canonicalize(value: JsonValue): string {
     .join(',')}}`;
 }
 
-/** RFC 8785 JSON Canonicalization Scheme text for the hash input. */
+/**
+ * RFC 8785 JSON Canonicalization Scheme text for the hash input.
+ *
+ * The eleven canonical keys are projected explicitly. `AuditEventRecord` extends
+ * `CanonicalAuditEvent` with `previousHash` and `eventHash`, so a record is
+ * assignable here; without this projection those two keys would silently enter
+ * the hashed bytes and produce a different digest than the envelope they were
+ * built from.
+ */
 export function canonicalizeAuditEvent(event: CanonicalAuditEvent): string {
-  assertJsonValue(event, 'event', new Set());
-  return canonicalize(event as unknown as JsonValue);
+  const envelope: CanonicalAuditEvent = {
+    actor: { type: event.actor.type, id: event.actor.id },
+    aggregateId: event.aggregateId,
+    correlationId: event.correlationId,
+    eventId: event.eventId,
+    eventType: event.eventType,
+    occurredAt: event.occurredAt,
+    outcome: event.outcome,
+    payload: event.payload,
+    sequence: event.sequence,
+    sessionId: event.sessionId,
+    source: event.source,
+  };
+  assertJsonValue(envelope, 'event', new Set());
+  return canonicalize(envelope as unknown as JsonValue);
 }
 
 export function assertAuditHash(hash: string, field: 'previousHash' | 'eventHash'): void {

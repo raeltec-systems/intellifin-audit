@@ -52,6 +52,18 @@ describe('audit-event canonical contract', () => {
     }
   });
 
+  it('ignores the record hash columns, so a record hashes like its envelope', () => {
+    for (const vector of golden.events) {
+      const record = {
+        ...vector.canonical,
+        previousHash: vector.previousHash,
+        eventHash: vector.eventHash,
+      };
+      expect(canonicalizeAuditEvent(record)).toBe(vector.canonicalText);
+      expect(computeAuditEventHash(record.previousHash, record)).toBe(vector.eventHash);
+    }
+  });
+
   it('uses platform when a system event has no natural aggregate', () => {
     const event = createCanonicalAuditEvent(baseDraft, {
       eventId: '018f0000-0000-7000-8000-000000000001',
