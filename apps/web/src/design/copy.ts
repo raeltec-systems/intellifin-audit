@@ -53,3 +53,24 @@ export const FULLY_QUOTED_EMPTY_STATES = [
   'overviewNoRuns',
   'overviewNothingNeedsAttention',
 ] as const satisfies readonly (keyof typeof EMPTY_STATES)[];
+
+/**
+ * The registration-change warning, quoted from EXPERIENCE.md's "Registration change"
+ * row (FR-14).
+ *
+ * It shipped first as a sentence typed inline in `RegistrationForm.tsx` — "This creates
+ * … which an Audit Manager must approve" against the contract's "This change creates …
+ * and requires approval" — and nothing noticed, because no Procedure exists in this
+ * release, so the branch that renders it is unreachable and no test could read it. That
+ * is the worst case for inline copy: wrong on arrival and wrong again the day it first
+ * appears. `copy.test.ts` reads the row off disk.
+ *
+ * `{n}` is substituted, not interpolated into a retyped sentence, so the only thing
+ * this file can get wrong is the number.
+ */
+export const REGISTRATION_CHANGE_WARNING_TEMPLATE =
+  'This change creates a platform-authored draft for {n} Procedures and requires approval.';
+
+export function registrationChangeWarning(count: number): string {
+  return REGISTRATION_CHANGE_WARNING_TEMPLATE.replace('{n}', String(count));
+}

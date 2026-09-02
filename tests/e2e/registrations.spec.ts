@@ -108,11 +108,21 @@ test.describe('as a PoC Administrator', () => {
     // Procedures" is a sentence that cannot be true.
     await expect(dialog).not.toContainText('platform-authored draft');
 
-    // Nothing is registered until it is confirmed.
+    // Nothing is registered until it is confirmed. The RELOAD is the assertion: the
+    // table on screen was rendered before the click, so a check against it would pass
+    // whether or not cancelling stored anything.
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.reload();
     await expect(page.getByRole('rowheader', { name: systemName })).toHaveCount(0);
 
+    // The reload cleared the form as well as the table, which is the point: what is
+    // typed next is typed against a surface that came from the server.
+    await fillForm(page, {
+      name: systemName,
+      credential: READ_ONLY_CREDENTIAL,
+      origin: 'https://northstar.synthetic.invalid',
+    });
     await page.getByRole('button', { name: 'Register system' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Register system' }).click();
 
@@ -141,7 +151,9 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Register system' }).click();
 
     await expect(page.locator('main#content').getByRole('alert')).toHaveText(READ_ONLY_REFUSAL);
-    // Nothing was stored.
+    // Nothing was stored — read from the server, not from the table this page already
+    // had. Without the reload this assertion cannot fail.
+    await page.reload();
     await expect(page.getByRole('rowheader', { name: refusedName })).toHaveCount(0);
   });
 
@@ -158,6 +170,7 @@ test.describe('as a PoC Administrator', () => {
 
     // Identical to the write-capable refusal on purpose: unproven is not proven.
     await expect(page.locator('main#content').getByRole('alert')).toHaveText(READ_ONLY_REFUSAL);
+    await page.reload();
     await expect(page.getByRole('rowheader', { name: `${refusedName} unknown` })).toHaveCount(0);
   });
 
@@ -184,7 +197,10 @@ test.describe('as a PoC Administrator', () => {
     await page.getByLabel('Allowed origins').fill('https://moved.synthetic.invalid');
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByRole('status')).toContainText('recorded in the audit chain');
+    // The specific sentence, not a phrase both messages share: 'recorded in the audit
+    // chain' now appears on the annotated path too, so this test would have passed
+    // with the event never published.
+    await expect(page.getByRole('status')).toContainText('The digest is now ');
     await page.reload();
     await expect(page.locator('dd.ls-digest')).not.toHaveText(before);
   });

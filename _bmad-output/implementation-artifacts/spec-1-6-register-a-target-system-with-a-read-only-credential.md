@@ -2,10 +2,10 @@
 title: 'Story 1.6: Register a Target System with a read-only credential'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '191ee1bfe1b7802b7ee4826d05a5362cc7d53ba0'
 baseline_commit: '191ee1bfe1b7802b7ee4826d05a5362cc7d53ba0'
-review_loop_iteration: 0
+review_loop_iteration: 1
 followup_review_recommended: false
 context:
   - '{project-root}/AGENTS.md'
@@ -131,6 +131,94 @@ This was raised by the implementer against the spec, not found in review. The sp
 wrong; the code is right.
 
 ## Review Triage Log
+
+Four review passes over the Story 1.6 diff: digest and cryptography, security and secret
+containment, persistence and boundaries, and the user-facing surface. Every finding was
+reproduced against the code before being triaged.
+
+**3 BLOCKER, 12 SHOULD, 24 CONSIDER. 22 patched, 1 already fixed, the rest deferred with
+evidence or rejected.**
+
+### Blockers
+
+1. **A lone surrogate produced a digest over bytes the database cannot store.**
+   `sha256.ts` refuses an unpaired surrogate and CLAUDE.md recorded that as the
+   protection — but on this path the guard was unreachable: `JSON.stringify` escapes a
+   lone surrogate to six ASCII characters before the hash sees the text. The driver then
+   encoded the same string for the wire with U+FFFD substitution, so PostgreSQL stored a
+   value the digest was not taken over, permanently and silently, and Python `rfc8785`
+   refuses the same input so no fixture could ever pin it. The refusal moved into
+   `canonical-json.ts`, where every caller is covered, and
+   `validateRegistrationFields` turns it into a sentence rather than a framework 500.
+
+2. **A duplicate origin published a `RegistrationChanged` that did not happen.** The
+   digest deduplicates; the stored column did not. Removing a duplicated origin changed
+   the array without moving the digest, so the command appended an immutable event whose
+   `priorDigest` equalled its `newDigest` — and Epic 2 mints a platform-authored draft
+   for every Procedure Version from exactly that event. Two reviewers found it
+   independently. The row now stores the set the digest hashes, and the converse
+   assertion (a digest-bearing change that did not move the digest) was added to match
+   the one already there.
+
+3. **The platform-authored-draft warning was not the contract's sentence.** Typed inline
+   in the component, two clauses different from EXPERIENCE.md, and unreachable in this
+   release — so it shipped checked by nothing and would have been wrong the day Epic 2
+   made the count non-zero. It moved to `copy.ts` and `copy.test.ts` reads the row off
+   disk.
+
+### The ones that mattered most among the SHOULDs
+
+- **`expectedDigest` guarded six of the row's ten fields.** `status` is not digest-bearing,
+  so a stale tab could pass the guard and silently set a *retired* registration back to
+  active — a revert of the control that stops a Target System being used, by somebody who
+  never saw the retirement. Replaced by `registrationRowVersion`, a hash of all ten
+  fields, and it is required rather than optional: an optional guard is one that is
+  dropped by omission, and the command's own tests were already omitting it.
+- **The `dist` half of two boundary rules was dead.** Built output sat in
+  dependency-cruiser's `exclude`, and an excluded path is not rule-checked at all, so an
+  import spelled `packages/infrastructure/dist/registrations/probe.js` passed
+  `pnpm boundaries` with a `no-orphans` warning as the only trace. Third time this
+  codebase has been bitten by that shape. Built output moved to `doNotFollow`, and
+  `boundaries.test.ts` gained two cases that plant the `dist` spelling.
+- **`tests/unit/` and `tests/integration/` were typechecked by nothing.** The root config
+  covered `tests/e2e/` alone and the root did not link `@intellifin/application`, so this
+  story's new integration test was outside every tsconfig. Widening it immediately caught
+  four real errors in that file.
+- **The provider's echoed reference was never compared with the reference asked about**,
+  there was no deadline on the capability check, and the "two fields, so a provider has
+  nowhere to put a secret" claim was enforced by neither the type system nor the test
+  that named it — that test built a two-key object and asserted it had two keys. All
+  three fixed: the call site matches the reference, `DeadlinePort` bounds the wait, and a
+  hostile provider that returns a secret anyway now drives four tests.
+- **`recordProbe` checked existence in a separate statement** from the insert, so it did
+  not prevent the foreign-key error it existed to prevent. One `INSERT ... SELECT ...
+  WHERE EXISTS`.
+- **The `cardinality` constraint — the one whose obvious spelling is wrong — was the one
+  not pinned to the migration.** The other two were.
+
+### Deferred, with reasons
+
+- **No unique index on `digest`.** The digest names a capability, not a registration; two
+  registrations that permit exactly the same thing are legitimately identical. A unique
+  index would refuse the second, which is not the rule anybody has stated.
+- **`updatedAt: new Date()` in the repository bypasses the injected clock.** True, and it
+  is not read by any decision — the row version replaced the only guard that might have
+  used it. It belongs with a general clock-injection pass, not here.
+- **The migrate-then-deploy window.** A generation-4 container that RESTARTS between the
+  migration and the deploy refuses to boot; running ones are unaffected, because
+  generation 5 is purely additive. This is AD-15's accepted shape, not a Story 1.6 defect.
+- **Story 1.8's probe loop cannot live in `apps/worker`.** Correct, and intended: it runs
+  as its own entry point through `@intellifin/infrastructure/probe`, the way the release
+  migrator is invoked. Recorded so 1.8 does not rediscover it as a blocker.
+- **`canonicalJson` on a non-JSON object fails obscurely.** Now moot for `undefined` and
+  non-finite numbers, which are refused; a `Symbol` or a class instance still fails at
+  `Object.keys`. No caller can reach it.
+
+### Rejected
+
+- **"The read-only refusal is audited before the registration is known to exist."** True
+  on the change path, and deliberate: the credential really was unproven, and the refusal
+  event has to commit while nothing is stored. Documented rather than restructured.
 
 ## Design Notes
 

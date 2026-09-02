@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import type { Database } from '../db/client.js';
 import { targetSystemProbe, targetSystemRegistration } from '../db/schema.js';
@@ -51,28 +51,28 @@ export interface ProbeObservation {
  * write is normal, not an error.
  */
 export async function recordProbe(db: Database, observation: ProbeObservation): Promise<boolean> {
-  const exists = await db
-    .select({ registrationId: targetSystemRegistration.registrationId })
-    .from(targetSystemRegistration)
-    .where(eq(targetSystemRegistration.registrationId, observation.registrationId))
-    .limit(1);
-  if (exists.length === 0) return false;
-
-  await db
-    .insert(targetSystemProbe)
-    .values({
-      registrationId: observation.registrationId,
-      state: observation.state,
-      observedAt: observation.observedAt,
-      observedBy: observation.observedBy,
-    })
-    .onConflictDoUpdate({
-      target: targetSystemProbe.registrationId,
-      set: {
-        state: sql`excluded.state`,
-        observedAt: sql`excluded.observed_at`,
-        observedBy: sql`excluded.observed_by`,
-      },
-    });
-  return true;
+  // ONE statement. It was a SELECT to check the registration exists, then an INSERT —
+  // two statements, and under `db` they are not even guaranteed one connection, so the
+  // registration could vanish in between and the INSERT would raise the foreign-key
+  // error the check existed to prevent. `INSERT ... SELECT ... WHERE EXISTS` evaluates
+  // the check and the write together, and `RETURNING` says which happened.
+  // The timestamp is sent as ISO text with an explicit cast: in a raw statement there
+  // is no column type for the driver to infer from, and it refuses a `Date`.
+  const written = await db.execute(sql`
+    INSERT INTO ${targetSystemProbe} (registration_id, state, observed_at, observed_by)
+    SELECT ${observation.registrationId}, ${observation.state},
+           ${observation.observedAt.toISOString()}::timestamptz, ${observation.observedBy}
+    WHERE EXISTS (
+      SELECT 1 FROM ${targetSystemRegistration}
+      WHERE ${targetSystemRegistration.registrationId} = ${observation.registrationId}
+    )
+    ON CONFLICT (registration_id) DO UPDATE
+      SET state = excluded.state,
+          observed_at = excluded.observed_at,
+          observed_by = excluded.observed_by
+    RETURNING registration_id
+  `);
+  // postgres.js returns the rows themselves; drizzle may wrap them in `{ rows }`.
+  const rows = (written as { rows?: unknown[] }).rows ?? (written as unknown[]);
+  return Array.isArray(rows) && rows.length > 0;
 }

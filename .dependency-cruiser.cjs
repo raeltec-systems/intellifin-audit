@@ -173,14 +173,19 @@ module.exports = {
     },
   ],
   options: {
-    doNotFollow: { path: 'node_modules' },
+    // Built output is NOT followed, but it IS in the graph and therefore rule-checked.
+    // It was in `exclude`, and an excluded path is not rule-checked at all: the
+    // `(src|dist)` half of `no-migrator-in-apps` and `no-target-system-probe-in-apps`
+    // could never match, so an import spelled at `packages/infrastructure/dist/...`
+    // passed both rules. Same trap as excluding `node_modules`, one directory over.
+    doNotFollow: { path: ['node_modules', '^(apps|packages)/[^/]+/(dist|\\.next)/'] },
     exclude: {
       // Scoped to this repository's own tree on purpose: a broad `\\.d\\.ts$` or
       // `dist/` exclusion also drops vendor packages whose entry point is a
       // declaration file or a dist folder, which would silently disable the
       // vendor rules above. Only our build output and our ambient declarations
       // (next-env.d.ts) are skipped.
-      path: '^(apps|packages)/[^/]+/(dist|\\.next)/|^(apps|packages)/.+\\.d\\.ts$',
+      path: '^(apps|packages)/.+\\.d\\.ts$',
     },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },

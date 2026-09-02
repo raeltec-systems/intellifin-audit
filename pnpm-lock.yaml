@@ -11,6 +11,9 @@ importers:
       '@axe-core/playwright':
         specifier: 4.13.0
         version: 4.13.0(playwright-core@1.62.1)
+      '@intellifin/application':
+        specifier: workspace:*
+        version: link:packages/application
       '@intellifin/domain':
         specifier: workspace:*
         version: link:packages/domain

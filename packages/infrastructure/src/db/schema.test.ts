@@ -71,4 +71,27 @@ describe('the target_system_registration check constraints', () => {
       `CHECK ("target_system_registration"."digest" ~ '^[0-9a-f]{64}$')`,
     );
   });
+
+  /**
+   * The one constraint whose obvious spelling is WRONG.
+   *
+   * `array_length(x, 1)` of an empty array is NULL, and a CHECK evaluating to NULL
+   * passes — so written that way the constraint accepted exactly the row it existed to
+   * refuse: a registration permitting nothing. `cardinality` returns 0. The other two
+   * constraints were pinned here and this one was not, which is backwards: this is the
+   * one where an edit that looks like a tidy-up silently removes the rule.
+   */
+  it('writes the actions-present constraint with cardinality, never array_length', () => {
+    const sql = migration('0005_clumsy_freak.sql');
+    expect(sql).toContain(
+      `CHECK (cardinality("target_system_registration"."permitted_actions") >= 1)`,
+    );
+    // Statements only. The file's header comment names `array_length` to explain why it
+    // is not used, and a naive search would match that and pass forever.
+    const statements = sql
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(statements).not.toContain('array_length');
+  });
 });

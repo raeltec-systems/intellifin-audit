@@ -4,6 +4,7 @@ import {
   REGISTRATION_ANNOTATED_EVENT,
   changeTargetSystem,
   registerTargetSystem,
+  registrationRowVersion,
   type CredentialCapability,
   type CredentialProvider,
   type RegistrationDependencies,
@@ -16,6 +17,7 @@ import {
   DrizzleRegistrationRepository,
   DrizzleRoleRepository,
   ManifestCredentialProvider,
+  TimerDeadline,
   PostgresAuditChainReader,
   PostgresRegistrationsUnitOfWork,
   createDb,
@@ -94,6 +96,7 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
     return {
       roles: new DrizzleRoleRepository(db),
       credentials: options.credentials ?? new ManifestCredentialProvider(MANIFEST),
+      deadlines: new TimerDeadline(),
       unitOfWork: new PostgresRegistrationsUnitOfWork(
         db,
         // An id generator that produces something the canonical envelope rejects, so the
@@ -130,6 +133,19 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
       FROM target_system_registration WHERE registration_id = ${registrationId}
     `;
     return rows[0] ?? null;
+  }
+
+  /**
+   * The row version the surface would have rendered, read from the real row.
+   *
+   * Read through the repository rather than reconstructed in the test: a token the test
+   * builds from its own idea of the row would agree with itself and prove nothing about
+   * what the command compares against.
+   */
+  async function rowVersionOf(registrationId: string): Promise<string> {
+    const record = await new DrizzleRegistrationRepository(db).findRegistration(registrationId);
+    if (record === null) throw new Error(`no registration ${registrationId}`);
+    return registrationRowVersion(record);
   }
 
   async function createSession(userId: string, label: string): Promise<SessionSnapshot> {
@@ -321,7 +337,7 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
       session: admin,
       correlationId,
       registrationId: created_.registrationId,
-      expectedDigest: created_.digest,
+      expectedRowVersion: await rowVersionOf(created_.registrationId),
     });
 
     expect(outcome).toMatchObject({ ok: true, published: true, priorDigest: created_.digest });
@@ -351,7 +367,7 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
       session: admin,
       correlationId,
       registrationId: created_.registrationId,
-      expectedDigest: created_.digest,
+      expectedRowVersion: await rowVersionOf(created_.registrationId),
     });
 
     expect(outcome).toMatchObject({
@@ -381,7 +397,7 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
       session: admin,
       correlationId,
       registrationId: created_.registrationId,
-      expectedDigest: created_.digest,
+      expectedRowVersion: await rowVersionOf(created_.registrationId),
     });
 
     expect(outcome).toMatchObject({ ok: true, published: false, annotated: false });
@@ -403,7 +419,7 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
         session: admin,
         correlationId,
         registrationId: created_.registrationId,
-        expectedDigest: created_.digest,
+        expectedRowVersion: await rowVersionOf(created_.registrationId),
       }),
     ).rejects.toThrow();
 

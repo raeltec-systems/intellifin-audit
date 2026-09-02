@@ -26,6 +26,15 @@ interface Case {
   readonly imports: string;
   /** The dependency-cruiser rule that must fire. */
   readonly rule: string;
+  /**
+   * A repository-relative file that must exist for the case to mean anything.
+   *
+   * Only the built-output cases need one. They import from `dist`, which exists after
+   * `pnpm build` and not on a fresh clone; without the guard the case would plant an
+   * unresolvable import, trip `not-to-unresolvable` instead, and look like it proved
+   * the rule it is named after.
+   */
+  readonly requires?: string;
 }
 
 const CASES: readonly Case[] = [
@@ -73,6 +82,28 @@ const CASES: readonly Case[] = [
     plantIn: 'apps/worker/src',
     imports: '../../../../packages/infrastructure/src/registrations/probe.js',
     rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    /**
+     * The same import spelled at the BUILT path.
+     *
+     * Both probe rules and both migrator rules match `(src|dist)`, and the `dist` half
+     * was dead: built output sat in dependency-cruiser's `exclude`, and an excluded
+     * path is not rule-checked at all — so this exact import passed `pnpm boundaries`
+     * with a `no-orphans` warning as the only trace. That is the third time this
+     * codebase has been bitten by the same shape, after `node_modules` and a bare
+     * `.d.ts`. Built output now sits in `doNotFollow`, which keeps it in the graph.
+     */
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+    requires: 'packages/infrastructure/dist/registrations/probe.js',
+  },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/db/migrate.js',
+    rule: 'no-migrator-in-apps',
+    requires: 'packages/infrastructure/dist/db/migrate.js',
   },
 ];
 
@@ -133,6 +164,10 @@ describe('dependency boundaries (AD-1)', () => {
   it.each(CASES)(
     'fires $rule when $plantIn imports $imports',
     (testCase) => {
+      // A built-output case on an unbuilt tree proves nothing; skip rather than pass.
+      if (testCase.requires !== undefined && !existsSync(path.join(repoRoot, testCase.requires))) {
+        return;
+      }
       const planted = plant(testCase);
       const { status, output } = cruise();
 

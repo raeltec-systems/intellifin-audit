@@ -52,6 +52,19 @@ export default defineRailway(() => {
       BETTER_AUTH_SECRET: preserve(),
       // The public origin a browser reaches, resolved by Railway at deploy time.
       BETTER_AUTH_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
+      // What this deployment has been told about each credential reference: a JSON
+      // object mapping an opaque reference to `read-only` or `write-capable`. It holds
+      // NO secret and cannot — that is the whole point of Story 1.6 — so it is declared
+      // here rather than preserved from the dashboard.
+      //
+      // It is declared at all because an absent value is an EMPTY manifest, which
+      // refuses every registration with `Audit credentials must be read-only.` — a
+      // sentence about the credential, given to an operator whose actual problem is an
+      // unconfigured deployment. `{}` is the same refusal, said on purpose.
+      //
+      // A plain literal, not `preserve()`: it holds no secret, so there is nothing for
+      // the dashboard to own. Widen it here when a real reference is issued.
+      CREDENTIAL_CAPABILITIES: '{}',
     },
   });
 

@@ -60,7 +60,16 @@ const MAX = {
   listItem: 400,
   registrationId: 64,
   digest: 64,
+  /** A vocabulary word, not free text. Both are re-checked against the closed list. */
+  vocabulary: 32,
 } as const;
+
+/** The id shape this application mints: a UUID v7 from `CryptoUuidV7Generator`. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
 
 function boundedString(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.length <= max;
@@ -93,7 +102,10 @@ function isRegistrationFormFields(input: unknown): input is RegistrationFormFiel
   const fields = input as Record<string, unknown>;
   return (
     boundedString(fields['displayName'], MAX.displayName) &&
-    typeof fields['kind'] === 'string' &&
+    // Bounded, like every other field. This file's rule is "shape AND length", and
+    // these two were shape only — harmless today, since the vocabulary check rejects
+    // anything long, but the comment was not true of the code.
+    boundedString(fields['kind'], MAX.vocabulary) &&
     boundedList(fields['allowedOrigins'], MAX.listItems, MAX.listItem) &&
     boundedString(fields['applicationIdentity'], MAX.applicationIdentity) &&
     boundedString(fields['credentialRef'], MAX.credentialRef) &&
@@ -101,7 +113,7 @@ function isRegistrationFormFields(input: unknown): input is RegistrationFormFiel
     boundedList(fields['attributeLabelPatterns'], MAX.listItems, MAX.listItem) &&
     boundedString(fields['secondaryKey'], MAX.secondaryKey) &&
     boundedString(fields['note'], MAX.note) &&
-    typeof fields['status'] === 'string'
+    boundedString(fields['status'], MAX.vocabulary)
   );
 }
 
@@ -136,6 +148,7 @@ async function dependencies(): Promise<RegistrationDependencies> {
   return {
     roles: new DrizzleRoleRepository(runtime.db),
     credentials: runtime.credentials,
+    deadlines: runtime.deadlines,
     unitOfWork: new PostgresRegistrationsUnitOfWork(runtime.db),
     ids: new CryptoUuidV7Generator(),
   };
@@ -190,8 +203,12 @@ export async function createRegistrationAction(
 
 export interface ChangeRegistrationFormFields extends RegistrationFormFields {
   readonly registrationId: string;
-  /** The digest the surface rendered. Optimistic concurrency; see the command. */
-  readonly expectedDigest: string;
+  /**
+   * The version of the whole row the surface rendered. Optimistic concurrency; see the
+   * command. It was the digest, which covers six of the row's ten fields and therefore
+   * could not protect a retirement from being silently reverted by a stale tab.
+   */
+  readonly expectedRowVersion: string;
 }
 
 /**
@@ -206,10 +223,16 @@ export async function changeRegistrationAction(
   if (!decision.allowed) return { ok: false, reason: decision.reason };
 
   if (!isRegistrationFormFields(fields)) return { ok: false, reason: MALFORMED };
-  if (!boundedString((fields as { registrationId?: unknown }).registrationId, MAX.registrationId)) {
+  // Shape, not just length. This value reaches an audit payload on the refusal path,
+  // and payload strings are not held to `SAFE_ID_PATTERN` the way `aggregateId` is — so
+  // without this an administrator could write 64 arbitrary characters into the
+  // immutable chain, presented in review as a registration id.
+  if (!isUuid((fields as { registrationId?: unknown }).registrationId)) {
     return { ok: false, reason: MALFORMED };
   }
-  if (!boundedString((fields as { expectedDigest?: unknown }).expectedDigest, MAX.digest)) {
+  if (
+    !boundedString((fields as { expectedRowVersion?: unknown }).expectedRowVersion, MAX.digest)
+  ) {
     return { ok: false, reason: MALFORMED };
   }
   const typed = toRegistrationFields(fields);
@@ -223,7 +246,7 @@ export async function changeRegistrationAction(
       session: decision.session,
       correlationId,
       registrationId: fields.registrationId,
-      expectedDigest: fields.expectedDigest,
+      expectedRowVersion: fields.expectedRowVersion,
     });
     if (!outcome.ok) return outcome;
 

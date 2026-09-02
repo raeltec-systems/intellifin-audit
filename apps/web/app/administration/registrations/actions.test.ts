@@ -67,7 +67,7 @@ const VALID = {
 const VALID_CHANGE = {
   ...VALID,
   registrationId: '018f0000-0000-7000-8000-000000000001',
-  expectedDigest: 'a'.repeat(64),
+  expectedRowVersion: 'a'.repeat(64),
 } as const;
 
 const AUDITOR_DENIED: ActionDecision = {
@@ -159,7 +159,7 @@ describe('the registration Server Actions', () => {
   it.each([
     ['no registration id', { ...VALID_CHANGE, registrationId: 42 }],
     ['a registration id past its bound', { ...VALID_CHANGE, registrationId: 'x'.repeat(65) }],
-    ['a digest past its bound', { ...VALID_CHANGE, expectedDigest: 'a'.repeat(65) }],
+    ['a row version past its bound', { ...VALID_CHANGE, expectedRowVersion: 'a'.repeat(65) }],
   ])('refuses a change with %s', async (_label, body) => {
     requireServerAction.mockResolvedValue(ALLOWED);
 

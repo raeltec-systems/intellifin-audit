@@ -8,5 +8,6 @@
  * same shape as the release migrator.
  */
 export * from './credential-provider.js';
+export * from './deadline.js';
 export * from './registration-repository.js';
 export * from './registrations-unit-of-work.js';

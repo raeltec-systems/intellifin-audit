@@ -28,13 +28,25 @@ export type CredentialCapability = 'read-only' | 'write-capable' | 'unknown';
  * The provider's whole answer.
  *
  * Two fields, and they are the complete shape on purpose. There is no `secret`, no
- * `value`, no `token` and no `raw` here, and a provider implementation therefore has
- * nowhere to put one — not in a response body, not in a log line, not in an audit
- * payload. `ports.test.ts` asserts the key set, so a third field cannot be added
- * without somebody deciding to.
+ * `value`, no `token` and no `raw`.
+ *
+ * That is a rule the CALL SITE keeps, not one the type enforces — and the difference
+ * matters, because the comment here used to claim the opposite. TypeScript's
+ * excess-property check fires only on a fresh object literal assigned directly to an
+ * annotated type; a class declared `implements CredentialProvider` whose `describe`
+ * has an inferred return type is checked for assignability alone, so it can return a
+ * third field and compile. `refuseUnlessReadOnly` therefore DESTRUCTURES the two
+ * fields it needs and never holds the report, and
+ * `register-target-system.test.ts` drives it with a provider that returns a secret
+ * anyway and asserts the secret reaches neither the chain nor the row.
  */
 export interface CredentialCapabilityReport {
-  /** The opaque reference that was checked. Echoed so a caller can match the answer. */
+  /**
+   * The opaque reference that was checked, echoed back — and the command DOES match it
+   * against the reference it asked about. An answer about something else is treated as
+   * `unknown` and refused: a provider that batches, caches by a normalized key, or
+   * resolves an alias can otherwise prove a different credential read-only.
+   */
   readonly credentialRef: string;
   readonly capability: CredentialCapability;
 }
@@ -137,6 +149,23 @@ export interface RegistrationWriter {
   findRegistration(registrationId: string): Promise<RegistrationRecord | null>;
   insertRegistration(record: RegistrationRecord): Promise<void>;
   updateRegistration(record: RegistrationRecord): Promise<void>;
+}
+
+/**
+ * Bounds how long the application will wait for an outward call.
+ *
+ * It is a port because `packages/application` has no ambient host types — deliberately,
+ * since that absence is what stops `process.env` typechecking here (AD-11) — so there is
+ * no `setTimeout` to reach for and no clock to read. The command owns the POLICY (how
+ * long is too long); infrastructure owns the MECHANISM.
+ *
+ * It is a required dependency rather than an optional wrapper so an implementer cannot
+ * leave it out: without a deadline, a credential provider that never answers parks a
+ * request handler with nothing in the log to say why.
+ */
+export interface DeadlinePort {
+  /** Reject when `work` has not settled within `milliseconds`. */
+  within<T>(work: Promise<T>, milliseconds: number): Promise<T>;
 }
 
 /**

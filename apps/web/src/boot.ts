@@ -29,6 +29,13 @@ export async function runStartupChecks(): Promise<void> {
       schemaVersion: runtime.schemaVersion,
       supportedSchemaRange: runtime.supportedSchemaRange,
     });
+    // Fail-closed is right and it is also indistinguishable, from the surface, from a
+    // credential that really is write-capable: both answer "Audit credentials must be
+    // read-only." So the deployment says once, here, that it has been told about no
+    // credential at all.
+    if (runtime.credentialCapabilityCount === 0) {
+      telemetry.info('No credential capabilities declared', { configKeys: 'CREDENTIAL_CAPABILITIES' });
+    }
     return;
   } catch (error) {
     const permanent =

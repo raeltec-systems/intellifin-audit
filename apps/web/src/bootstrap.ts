@@ -1,6 +1,7 @@
 import {
   ConfigError,
   ManifestCredentialProvider,
+  TimerDeadline,
   UnsupportedDatabaseError,
   UnsupportedSchemaError,
   SUPPORTED_SCHEMA_RANGE,
@@ -19,7 +20,7 @@ import {
   type Telemetry,
 } from '@intellifin/infrastructure';
 
-import type { CredentialProvider } from '@intellifin/application';
+import type { CredentialProvider, DeadlinePort } from '@intellifin/application';
 
 import { telemetry } from './telemetry';
 
@@ -63,6 +64,16 @@ export interface WebRuntime {
    * line, an audit payload — has anything credential-shaped to leak.
    */
   readonly credentials: CredentialProvider;
+  /** Bounds every outward call the registration commands make. */
+  readonly deadlines: DeadlinePort;
+  /**
+   * How many credential references this deployment has been told about.
+   *
+   * A COUNT, never the manifest: nothing outside the provider needs to know which
+   * references exist, and a boot log that named them would put deployment topology in
+   * the log stream for no gain.
+   */
+  readonly credentialCapabilityCount: number;
   readonly schemaVersion: number;
   readonly postgresMajor: number;
   /** The range this build accepts, for logging. Fixed by the build, never by the environment. */
@@ -134,7 +145,8 @@ async function start(): Promise<WebRuntime> {
     let auth: Auth | undefined;
     const database = (): Database => (db ??= createDb(sql));
     // The manifest is parsed once, here, and the provider is a plain object over it.
-    const credentials = new ManifestCredentialProvider(credentialCapabilityManifest(config));
+    const manifest = credentialCapabilityManifest(config);
+    const credentials = new ManifestCredentialProvider(manifest);
 
     return {
       config,
@@ -149,6 +161,8 @@ async function start(): Promise<WebRuntime> {
       },
       authConfig,
       credentials,
+      deadlines: new TimerDeadline(),
+      credentialCapabilityCount: manifest.size,
       schemaVersion,
       postgresMajor,
       supportedSchemaRange: SUPPORTED_SCHEMA_RANGE,

@@ -12,6 +12,7 @@ import {
   actionLabel,
   connectivityLabel,
   kindLabel,
+  spokenDigest,
   statusLabel,
 } from './registrations';
 import type {
@@ -69,6 +70,8 @@ export function RegistrationsPanel({
 
       <RegistrationForm
         registration={null}
+        // Nothing to be stale against: this form creates.
+        rowVersion=""
         // 0 until Epic 2 exists. A new registration is referenced by nothing by
         // definition, so this is not merely the current value — it is the only one.
         referencingProcedures={0}
@@ -108,6 +111,17 @@ export function RegistrationsPanel({
                 ),
             },
             {
+              /**
+               * EXPERIENCE.md and epics.md UX-DR31 both name this column. It is the
+               * one field on the row that says WHICH credential a Run will use, and
+               * "the credential is read-only" is only meaningful if a reader can see
+               * which one was proven. It is an opaque reference and holds no secret.
+               */
+              key: 'credential',
+              header: 'Credential reference',
+              render: (row) => <span className="ls-mono">{row.credentialRef}</span>,
+            },
+            {
               key: 'actions',
               header: 'Permitted read actions',
               render: (row) => row.permittedActions.map(actionLabel).join(', '),
@@ -116,7 +130,11 @@ export function RegistrationsPanel({
             {
               key: 'digest',
               header: 'Registration digest',
-              render: (row) => <span className="ls-mono ls-digest">{row.digest}</span>,
+              render: (row) => (
+                <span className="ls-mono ls-digest" aria-label={spokenDigest(row.digest)}>
+                  {row.digest}
+                </span>
+              ),
             },
             {
               key: 'connectivity',

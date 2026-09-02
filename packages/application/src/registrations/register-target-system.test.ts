@@ -13,6 +13,7 @@ import {
   REGISTRATION_REFUSED_EVENT,
   changeTargetSystem,
   registerTargetSystem,
+  registrationRowVersion,
   type RegistrationDependencies,
   type RegistrationFields,
 } from './register-target-system.js';
@@ -20,6 +21,7 @@ import type {
   CredentialCapability,
   CredentialCapabilityReport,
   CredentialProvider,
+  DeadlinePort,
   RegistrationRecord,
   RegistrationsUnitOfWorkContext,
 } from './ports.js';
@@ -66,6 +68,8 @@ function harness(options: {
   readonly capability?: CredentialCapability;
   /** The provider itself throws — a network drop rather than a verdict. */
   readonly providerThrows?: boolean;
+  /** The provider never answers, and the deadline is what ends the wait. */
+  readonly deadlines?: DeadlinePort;
 } = {}): Harness {
   const stored = new Map<string, RegistrationRecord>();
   const events: AuditEventDraft[] = [];
@@ -126,6 +130,10 @@ function harness(options: {
   const dependencies: RegistrationDependencies = {
     roles,
     credentials,
+    // Pass-through. The mechanism is the infrastructure adapter's; what this suite
+    // needs from the port is that the command routes the call through it, which the
+    // hanging-provider test below proves by supplying one that always rejects.
+    deadlines: options.deadlines ?? { within: async (work) => work },
     unitOfWork,
     ids: { next: () => `018f0000-0000-7000-8000-00000000000${(counter += 1)}` },
   };
@@ -283,18 +291,25 @@ describe('changeTargetSystem', () => {
     const created = await register(test);
     if (!created.ok) throw new Error('setup failed');
     test.events.length = 0;
-    return { test, registrationId: created.registrationId, digest: created.digest };
+    const record = test.stored.get(created.registrationId) as RegistrationRecord;
+    return {
+      test,
+      registrationId: created.registrationId,
+      digest: created.digest,
+      // The token the surface would have rendered, from the row as stored.
+      rowVersion: registrationRowVersion(record),
+    };
   }
 
   it('publishes RegistrationChanged when a digest-bearing field changes', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
       ...FIELDS,
       session: ADMIN,
       correlationId: 'corr-2',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
       allowedOrigins: ['https://other.synthetic.invalid'],
     });
 
@@ -309,14 +324,14 @@ describe('changeTargetSystem', () => {
   });
 
   it('publishes no RegistrationChanged when only a non-digest field changes, but audits it', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
       ...FIELDS,
       session: ADMIN,
       correlationId: 'corr-3',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
       displayName: 'Northstar Web (renamed)',
       note: 'an operator note',
     });
@@ -337,14 +352,14 @@ describe('changeTargetSystem', () => {
   });
 
   it('audits a retirement, which moves no digest-bearing field', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
       ...FIELDS,
       session: ADMIN,
       correlationId: 'corr-3b',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
       status: 'retired',
     });
 
@@ -355,14 +370,14 @@ describe('changeTargetSystem', () => {
   });
 
   it('records the rename inside the event when a save moves both halves', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
       ...FIELDS,
       session: ADMIN,
       correlationId: 'corr-3c',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
       displayName: 'Northstar Web (renamed)',
       allowedOrigins: ['https://other.synthetic.invalid'],
     });
@@ -377,14 +392,14 @@ describe('changeTargetSystem', () => {
   });
 
   it('appends nothing when a save moves nothing at all', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
       ...FIELDS,
       session: ADMIN,
       correlationId: 'corr-3d',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
     });
 
     expect(outcome).toMatchObject({ ok: true, published: false, annotated: false });
@@ -392,14 +407,14 @@ describe('changeTargetSystem', () => {
   });
 
   it('publishes nothing when the six are retyped in another order', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
       ...FIELDS,
       session: ADMIN,
       correlationId: 'corr-4',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
       permittedActions: ['read-attribute', 'navigate'],
     });
 
@@ -407,7 +422,7 @@ describe('changeTargetSystem', () => {
     expect(test.events).toHaveLength(0);
   });
 
-  it('refuses a stale expected digest and changes nothing', async () => {
+  it('refuses a stale row version and changes nothing', async () => {
     const { test, registrationId, digest } = await seeded();
 
     const outcome = await changeTargetSystem(test.dependencies, {
@@ -415,13 +430,45 @@ describe('changeTargetSystem', () => {
       session: ADMIN,
       correlationId: 'corr-5',
       registrationId,
-      expectedDigest: '0'.repeat(64),
+      expectedRowVersion: '0'.repeat(64),
       allowedOrigins: ['https://other.synthetic.invalid'],
     });
 
-    expect(outcome).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.STALE_DIGEST });
+    expect(outcome).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.STALE_ROW });
     expect((test.stored.get(registrationId) as RegistrationRecord).digest).toBe(digest);
     expect(test.events).toHaveLength(0);
+  });
+
+  it('refuses a stale tab that would silently un-retire a registration', async () => {
+    // The token used to be the DIGEST, which covers six of the row's ten fields.
+    // `status` is not one of them, so this exact sequence passed the guard and set a
+    // retired registration back to active — a silent revert of the control that stops
+    // a Target System being used, by somebody who never saw the retirement.
+    const { test, registrationId, rowVersion } = await seeded();
+
+    const retired = await changeTargetSystem(test.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-5a',
+      registrationId,
+      expectedRowVersion: rowVersion,
+      status: 'retired',
+    });
+    expect(retired).toMatchObject({ ok: true, published: false, annotated: true });
+
+    // The second administrator's tab, opened before the retirement: same digest, and
+    // `status: 'active'` because that is what it rendered.
+    const stale = await changeTargetSystem(test.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-5b',
+      registrationId,
+      expectedRowVersion: rowVersion,
+      note: 'a note typed in the stale tab',
+    });
+
+    expect(stale).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.STALE_ROW });
+    expect((test.stored.get(registrationId) as RegistrationRecord).status).toBe('retired');
   });
 
   it('refuses an unknown registration', async () => {
@@ -431,12 +478,13 @@ describe('changeTargetSystem', () => {
       session: ADMIN,
       correlationId: 'corr-6',
       registrationId: '018f0000-0000-7000-8000-0000000000ff',
+      expectedRowVersion: '0'.repeat(64),
     });
     expect(outcome).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.UNKNOWN_REGISTRATION });
   });
 
   it('refuses a write-capable credential on a change, leaving the row untouched', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
     const writeCapable = harness({ capability: 'write-capable' });
     // Reuse the seeded row with a provider that reports write access.
     (writeCapable.stored as Map<string, RegistrationRecord>).set(
@@ -449,7 +497,7 @@ describe('changeTargetSystem', () => {
       session: ADMIN,
       correlationId: 'corr-7',
       registrationId,
-      expectedDigest: digest,
+      expectedRowVersion: rowVersion,
       credentialRef: 'cred://synthetic/writes-things',
     });
 
@@ -461,7 +509,7 @@ describe('changeTargetSystem', () => {
   });
 
   it('refuses an Auditor and changes nothing', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
     const auditorView = harness({ role: 'auditor' });
     (auditorView.stored as Map<string, RegistrationRecord>).set(
       registrationId,
@@ -473,6 +521,7 @@ describe('changeTargetSystem', () => {
       session: AUDITOR,
       correlationId: 'corr-8',
       registrationId,
+      expectedRowVersion: rowVersion,
       allowedOrigins: ['https://other.synthetic.invalid'],
     });
 
@@ -481,7 +530,7 @@ describe('changeTargetSystem', () => {
   });
 
   it('leaves the registration untouched when the append fails', async () => {
-    const { test, registrationId, digest } = await seeded();
+    const { test, registrationId, digest, rowVersion } = await seeded();
     test.failAppend = true;
 
     await expect(
@@ -490,7 +539,7 @@ describe('changeTargetSystem', () => {
         session: ADMIN,
         correlationId: 'corr-9',
         registrationId,
-        expectedDigest: digest,
+        expectedRowVersion: rowVersion,
         allowedOrigins: ['https://other.synthetic.invalid'],
       }),
     ).rejects.toThrow('the audit append failed');
@@ -499,16 +548,89 @@ describe('changeTargetSystem', () => {
   });
 });
 
-describe('the credential report shape', () => {
-  it('has exactly two fields, so a provider has nowhere to put a secret', async () => {
-    const describe_ = vi.fn(
-      async (credentialRef: string): Promise<CredentialCapabilityReport> => ({
-        credentialRef,
-        capability: 'read-only',
-      }),
+describe('a hostile credential provider', () => {
+  /**
+   * The claim was that `CredentialCapabilityReport` has two fields "so a provider has
+   * nowhere to put a secret". The test that made it built a two-key object inside
+   * itself and asserted it had two keys — a contract compared with a copy of itself,
+   * which would still pass the day the type grew a `secret` field.
+   *
+   * The type does NOT enforce it either: excess-property checking fires only on a
+   * fresh literal assigned directly to an annotated type, and a class declared
+   * `implements CredentialProvider` with an inferred return type is checked for
+   * assignability only. So the containment is a property of the CALL SITE, which
+   * destructures the two fields it needs and never holds the report — and that is what
+   * these tests exercise, with a provider that returns a secret anyway.
+   */
+  const SECRET = 'sk-live-this-must-never-appear';
+
+  function hostile(capability: CredentialCapability, echo?: string): CredentialProvider {
+    return {
+      describe: async (credentialRef): Promise<CredentialCapabilityReport> =>
+        ({
+          credentialRef: echo ?? credentialRef,
+          capability,
+          secret: SECRET,
+          raw: { token: SECRET },
+        }) as unknown as CredentialCapabilityReport,
+    };
+  }
+
+  it('stores the registration and puts nothing of the report into the chain', async () => {
+    const test = harness();
+    const outcome = await registerTargetSystem(
+      { ...test.dependencies, credentials: hostile('read-only') },
+      { ...FIELDS, session: ADMIN, correlationId: 'corr-hostile-1' },
     );
-    const report = await describe_('cred://x');
-    expect(Object.keys(report).sort()).toEqual(['capability', 'credentialRef']);
+
+    expect(outcome.ok).toBe(true);
+    expect(JSON.stringify(test.events)).not.toContain(SECRET);
+    expect(JSON.stringify([...test.stored.values()])).not.toContain(SECRET);
+  });
+
+  it('puts nothing of the report into the REFUSAL event either', async () => {
+    const test = harness();
+    const outcome = await registerTargetSystem(
+      { ...test.dependencies, credentials: hostile('write-capable') },
+      { ...FIELDS, session: ADMIN, correlationId: 'corr-hostile-2' },
+    );
+
+    expect(outcome).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.CREDENTIAL_NOT_READ_ONLY });
+    expect(test.events.map((event) => event.eventType)).toEqual([REGISTRATION_REFUSED_EVENT]);
+    expect(JSON.stringify(test.events)).not.toContain(SECRET);
+  });
+
+  it('refuses an answer about a DIFFERENT reference, however read-only it claims to be', async () => {
+    // A provider that batches, caches by a normalized key, or resolves an alias can
+    // answer about something else. The failure direction that matters is a
+    // write-capable credential accepted because a read-only one was described.
+    const test = harness();
+    const outcome = await registerTargetSystem(
+      { ...test.dependencies, credentials: hostile('read-only', 'cred://synthetic/something-else') },
+      { ...FIELDS, session: ADMIN, correlationId: 'corr-hostile-3' },
+    );
+
+    expect(outcome).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.CREDENTIAL_NOT_READ_ONLY });
+    expect(test.stored.size).toBe(0);
+  });
+
+  it('refuses a provider that never answers, and the deadline is what ends the wait', async () => {
+    const test = harness({
+      deadlines: {
+        within: async () => {
+          throw new Error('the call did not answer within 5000ms');
+        },
+      },
+    });
+    const outcome = await registerTargetSystem(test.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-hostile-4',
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: REGISTRATION_REFUSALS.CREDENTIAL_NOT_READ_ONLY });
+    expect(test.stored.size).toBe(0);
+    expect(test.events.map((event) => event.eventType)).toEqual([REGISTRATION_REFUSED_EVENT]);
   });
 });
 

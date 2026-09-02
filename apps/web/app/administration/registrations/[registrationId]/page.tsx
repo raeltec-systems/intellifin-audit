@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { registrationRowVersion } from '@intellifin/application';
 import { DrizzleRegistrationRepository, NoProcedureReferences } from '@intellifin/infrastructure';
 
 import { RegistrationEditor } from '../../../../src/admin/RegistrationEditor';
@@ -59,11 +60,13 @@ export default async function RegistrationPage({
         <p>
           Changing the origin, application identity, credential reference, permitted
           actions, label patterns or secondary key recomputes the registration digest and
-          is recorded in the audit chain. Changing the name or the note does not.
+          is recorded in the audit chain. Changing the name, the note or the status is
+          recorded too, under an event that affects no Procedure.
         </p>
       </header>
       <RegistrationEditor
         registration={registration}
+        rowVersion={registrationRowVersion(registration)}
         referencingProcedures={referencingProcedures}
         changeRegistration={changeRegistrationAction}
       />

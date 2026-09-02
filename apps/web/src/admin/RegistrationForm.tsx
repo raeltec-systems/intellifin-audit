@@ -6,6 +6,7 @@ import type { TargetSystemRegistration } from '@intellifin/application';
 
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { registrationChangeWarning } from '../design/copy';
 import {
   ACTION_OPTIONS,
   KIND_OPTIONS,
@@ -44,6 +45,15 @@ import type {
 export interface RegistrationFormProps {
   /** `null` registers a new system; a registration edits that one. */
   readonly registration: TargetSystemRegistration | null;
+  /**
+   * The version of the row this form is editing, computed on the SERVER by
+   * `registrationRowVersion`. Empty when creating.
+   *
+   * It is a prop rather than something this component derives, so the browser never
+   * needs the hashing code and there is exactly one implementation of the token — the
+   * command compares against the same function.
+   */
+  readonly rowVersion: string;
   /** How many Procedure Versions reference it. 0 until Epic 2 exists. */
   readonly referencingProcedures: number;
   readonly onCreate?: (fields: RegistrationFormFields) => Promise<RegistrationActionResult>;
@@ -59,6 +69,7 @@ const FIRST_KIND = KIND_OPTIONS[0]?.value ?? 'web';
 
 export function RegistrationForm({
   registration,
+  rowVersion,
   referencingProcedures,
   onCreate,
   onChange,
@@ -140,7 +151,7 @@ export function RegistrationForm({
           ? await onChange({
               ...fields(),
               registrationId: registration.registrationId,
-              expectedDigest: registration.digest,
+              expectedRowVersion: rowVersion,
             })
           : onCreate
             ? await onCreate(fields())
@@ -169,20 +180,20 @@ export function RegistrationForm({
     }
   }
 
+  // The dialog names the system it is about. A confirmation that says only "this
+  // registration" is one a person cannot check against what they meant to change,
+  // which is most of what a confirmation is for.
+  const subject = displayName.trim() === '' ? 'this Target System' : displayName.trim();
   const consequence = editing
-    ? 'The agent may then read only what this registration allows. A change to the origin, application identity, credential reference, permitted actions, label patterns or secondary key recomputes the digest and is recorded in the audit chain against your name.'
-    : 'The agent may read only what this registration allows, using a credential that must be read-only. Registering it is recorded in the audit chain against your name.';
+    ? `${subject} keeps its registration, changed. The agent may then read only what this registration allows. A change to the origin, application identity, credential reference, permitted actions, label patterns or secondary key recomputes the digest and is recorded in the audit chain against your name.`
+    : `${subject} becomes a Target System the agent may reach. The agent may read only what this registration allows, using a credential that must be read-only. Registering it is recorded in the audit chain against your name.`;
 
   /**
    * Rendered only above zero. No Procedure exists in this release, so it does not
    * appear; the moment one does, this sentence is already here.
    */
   const referencesWarning =
-    referencingProcedures > 0
-      ? ` This creates a platform-authored draft for ${referencingProcedures} ${
-          referencingProcedures === 1 ? 'Procedure' : 'Procedures'
-        }, which an Audit Manager must approve.`
-      : '';
+    referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
 
   return (
     <>
@@ -249,7 +260,7 @@ export function RegistrationForm({
             <div className="ls-dialog__field">
               <label htmlFor={originsId}>Allowed origins</label>
               <textarea
-                className="ls-input"
+                className="ls-textarea"
                 id={originsId}
                 name="allowedOrigins"
                 rows={3}
@@ -300,7 +311,7 @@ export function RegistrationForm({
           <div className="ls-dialog__field">
             <label htmlFor={patternsId}>Expected attribute labels or locator patterns</label>
             <textarea
-              className="ls-input"
+              className="ls-textarea"
               id={patternsId}
               name="attributeLabelPatterns"
               rows={3}
@@ -363,7 +374,7 @@ export function RegistrationForm({
         <div className="ls-dialog__field">
           <label htmlFor={noteId}>Operator note (optional)</label>
           <textarea
-            className="ls-input"
+            className="ls-textarea"
             id={noteId}
             name="note"
             rows={2}

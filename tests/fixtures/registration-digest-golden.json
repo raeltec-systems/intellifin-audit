@@ -117,7 +117,7 @@
     },
     {
       "name": "versioned-file-unicode",
-      "note": "A versioned file whose locator and labels are multi-byte UTF-8. RFC 8785 sorts object keys by UTF-16 code unit and emits the characters unescaped, so this list members are sorted the same way by the domain module, which is why the astral-plane emoji sorts AFTER the CJK character here.",
+      "note": "A versioned file whose locator and labels are multi-byte UTF-8. RFC 8785 sorts object keys by UTF-16 code unit and emits the characters unescaped, and the domain module sorts list members the same way. The U+FFFD sentinel is what makes that testable: it sorts after the astral-plane emoji by code unit and before it by code point, so a code-point comparator would fail this vector.",
       "input": {
         "kind": "versioned-file",
         "allowedOrigins": [
@@ -133,6 +133,7 @@
         "attributeLabelPatterns": [
           "N° de pièce",
           "金額",
+          "� sentinel",
           "🔎 locator"
         ],
         "secondaryKey": "édition-2"
@@ -144,7 +145,8 @@
         "attribute_label_patterns": [
           "N° de pièce",
           "金額",
-          "🔎 locator"
+          "🔎 locator",
+          "� sentinel"
         ],
         "credential_ref": "cred://synthetic/file-readonly",
         "kind": "versioned-file",
@@ -154,8 +156,8 @@
         ],
         "secondary_key": "édition-2"
       },
-      "canonicalText": "{\"allowed_origins\":[\"s3://synthetic-bucket/ledgers/2026/Qé.csv\"],\"attribute_label_patterns\":[\"N° de pièce\",\"金額\",\"🔎 locator\"],\"credential_ref\":\"cred://synthetic/file-readonly\",\"kind\":\"versioned-file\",\"permitted_actions\":[\"read-file\",\"read-metadata\"],\"secondary_key\":\"édition-2\"}",
-      "digest": "5cf4399eb637721e8c1cc4c587bc523454384d6423a471d87093e9f64836a038"
+      "canonicalText": "{\"allowed_origins\":[\"s3://synthetic-bucket/ledgers/2026/Qé.csv\"],\"attribute_label_patterns\":[\"N° de pièce\",\"金額\",\"🔎 locator\",\"� sentinel\"],\"credential_ref\":\"cred://synthetic/file-readonly\",\"kind\":\"versioned-file\",\"permitted_actions\":[\"read-file\",\"read-metadata\"],\"secondary_key\":\"édition-2\"}",
+      "digest": "f0b16ec02ef9b2f9d85474bf396c9585d7d5de892cfbe18f89a874e52f3e4ce5"
     },
     {
       "name": "web-same-fields-different-kind",

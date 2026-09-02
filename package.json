@@ -12,7 +12,7 @@
     "build": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker build",
     "dev": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/web dev",
     "dev:worker": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker dev",
-    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.e2e.json --noEmit",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.root-tests.json --noEmit",
     "boundaries": "node scripts/check-boundaries.mjs",
     "test": "vitest run",
     "test:integration": "vitest run --config tests/integration/vitest.config.ts",
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@intellifin/infrastructure": "workspace:*",
     "@playwright/test": "1.62.1",

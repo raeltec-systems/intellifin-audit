@@ -115,6 +115,14 @@ const FORBIDDEN_PAYLOAD_KEYS = new Set([
   'cookie',
   'credential',
   'credentials',
+  // A credential REFERENCE is opaque and holds no secret, but the chain is immutable:
+  // anything credential-shaped that enters it can never be taken out. The registration
+  // commands already omit it from every payload by discipline; these two entries make
+  // that a refusal, because the suffix rule below matches only a key ENDING in
+  // `credential` and `credentialRef` normalizes to `credentialref`.
+  'credentialref',
+  'credentialreference',
+  'credref',
   'evidence',
   'evidencedata',
   'evidencecontent',

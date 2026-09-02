@@ -1,7 +1,10 @@
 import {
+  canonicalJson,
   isPermittedReadAction,
   isTargetSystemKind,
   registrationDigest,
+  sha256Hex,
+  type JsonValue,
   type PermittedReadAction,
   type TargetSystemKind,
 } from '@intellifin/domain';
@@ -13,6 +16,7 @@ import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
 import {
   isRegistrationStatus,
   type CredentialProvider,
+  type DeadlinePort,
   type RegistrationRecord,
   type RegistrationStatus,
   type RegistrationsUnitOfWorkContext,
@@ -109,7 +113,15 @@ export const REGISTRATION_REFUSALS = {
   STATUS_INVALID: 'Choose a status.',
   TOO_LONG: 'That value is longer than this field allows.',
   UNKNOWN_REGISTRATION: 'That registration no longer exists.',
-  STALE_DIGEST:
+  /**
+   * A value with no canonical form — today, only an unpaired Unicode surrogate. It
+   * cannot be stored: the driver would encode it with U+FFFD substitution, so the row
+   * would hold something the digest was not taken over, permanently and silently. A
+   * refusal, not a 500: it arrives through a Server Action, which any administrator can
+   * post to by hand.
+   */
+  NOT_STORABLE: 'That value contains a character this system cannot store.',
+  STALE_ROW:
     'That registration changed since this page was loaded. Reload the page and try again.',
 } as const;
 
@@ -121,6 +133,8 @@ export interface RegistrationDependencies {
   /** Resolves the ACTOR's role for the authorization check. Read on every call (AD-7). */
   readonly roles: RoleRepository;
   readonly credentials: CredentialProvider;
+  /** Bounds the capability check. See {@link CREDENTIAL_CHECK_TIMEOUT_MS}. */
+  readonly deadlines: DeadlinePort;
   readonly unitOfWork: AuditUnitOfWork<RegistrationsUnitOfWorkContext>;
   readonly ids: UuidV7Generator;
 }
@@ -147,15 +161,25 @@ export interface RegisterTargetSystemInput extends RegistrationFields {
 export interface ChangeTargetSystemInput extends RegisterTargetSystemInput {
   readonly registrationId: string;
   /**
-   * The digest the surface rendered.
+   * The version of the WHOLE row the surface rendered. Required, never optional.
    *
    * Optimistic concurrency, and it is about the event as much as the write: a stale tab
    * that blind-overwrites produces a `RegistrationChanged` whose prior digest is a value
    * the administrator never saw, so the chain records a decision nobody made — and, once
-   * Epic 2 reads these events, mints drafts from it. `undefined` skips the check; every
-   * caller in this application states one.
+   * Epic 2 reads these events, mints drafts from it.
+   *
+   * It was the DIGEST, and that covered six of the row's ten fields. `displayName`,
+   * `note` and `status` sit outside the digest by design, so they were exactly the
+   * fields the token could not protect: one administrator retired a registration (the
+   * digest does not move), a second saved a note from a tab opened before that, and the
+   * guard passed while the write silently set `status` back to `active`. Retirement is
+   * the control that stops a Target System being used, so that was a silent revert of a
+   * security-relevant state by somebody who never saw it.
+   *
+   * It is also not optional any more. An optional guard is a guard that is dropped by
+   * omission, and the command's own tests were already calling this without one.
    */
-  readonly expectedDigest?: string | undefined;
+  readonly expectedRowVersion: string;
 }
 
 export type RegisterTargetSystemResult = RegistrationOutcome<{
@@ -193,9 +217,19 @@ function refuse(reason: string): { readonly ok: false; readonly reason: string }
   return { ok: false, reason };
 }
 
-/** Trim, drop blanks. The domain module sorts and deduplicates; this only tidies input. */
+/** Trim, drop blanks. Used where only the count and the emptiness matter. */
 function cleaned(values: readonly string[]): readonly string[] {
   return values.map((value) => value.trim()).filter((value) => value !== '');
+}
+
+/**
+ * The same set the domain module hashes: trimmed, blank-free, deduplicated, sorted.
+ *
+ * The stored column must be this and not the typed list, or the row and the digest
+ * disagree about duplicates and a change that moves nothing looks like a change.
+ */
+function setOf(values: readonly string[]): readonly string[] {
+  return [...new Set(cleaned(values))].sort();
 }
 
 /**
@@ -251,17 +285,42 @@ export function validateRegistrationFields(fields: RegistrationFields): string |
   if (!fields.permittedActions.every(isPermittedReadAction)) {
     return REGISTRATION_REFUSALS.ACTION_NOT_READ_ONLY;
   }
+
+  // Every string that will be hashed or stored, checked in one place. The canonicalizer
+  // refuses what it cannot represent, and this turns that refusal into a sentence
+  // instead of a framework 500 for the caller most likely to be probing.
+  const storable = [
+    fields.displayName,
+    fields.applicationIdentity,
+    fields.credentialRef,
+    fields.secondaryKey,
+    fields.note,
+    ...fields.allowedOrigins,
+    ...fields.attributeLabelPatterns,
+  ];
+  try {
+    for (const value of storable) canonicalJson(value);
+  } catch {
+    return REGISTRATION_REFUSALS.NOT_STORABLE;
+  }
   return null;
 }
 
 /** The stored shape, with the digest computed by the domain module and nowhere else. */
 function toRecord(registrationId: string, fields: RegistrationFields): RegistrationRecord {
   const kind = fields.kind;
-  const allowedOrigins = kind === 'desktop' ? [] : cleaned(fields.allowedOrigins);
+  // Stored as the SET the digest hashes, not as the list that was typed. `cleaned`
+  // alone trimmed and dropped blanks but kept duplicates, so the row and the digest
+  // input disagreed about them: typing one origin twice and later removing the
+  // duplicate changed the stored array without moving the digest, and the change
+  // command then published `RegistrationChanged` with priorDigest === newDigest —
+  // an immutable event asserting a transition that did not happen, and a
+  // platform-authored draft for every Procedure that froze the old digest.
+  const allowedOrigins = kind === 'desktop' ? [] : setOf(fields.allowedOrigins);
   const applicationIdentity = kind === 'desktop' ? fields.applicationIdentity.trim() : '';
   const credentialRef = fields.credentialRef.trim();
   const permittedActions = [...new Set(fields.permittedActions)].sort();
-  const attributeLabelPatterns = cleaned(fields.attributeLabelPatterns);
+  const attributeLabelPatterns = setOf(fields.attributeLabelPatterns);
   const secondaryKey = fields.secondaryKey.trim();
 
   return {
@@ -288,6 +347,37 @@ function toRecord(registrationId: string, fields: RegistrationFields): Registrat
   };
 }
 
+/**
+ * A version token over the WHOLE row: all ten fields, not the six the digest covers.
+ *
+ * Deliberately not the AD-2 digest and deliberately not `updated_at`. The digest is a
+ * frozen contract about what the agent may touch and must not change when a note does;
+ * `now()` is a transaction timestamp, which two concurrent transactions are not
+ * guaranteed to disagree about. This is a hash of the values themselves, so it moves
+ * when — and only when — something a save would replace has moved.
+ *
+ * It is not a security boundary and needs none: it is the same class of value as an
+ * ETag. It uses the shared canonicalizer so that array order and unicode escaping
+ * cannot make one caller compute a different token from the same row.
+ */
+export function registrationRowVersion(record: RegistrationRecord): string {
+  return sha256Hex(
+    canonicalJson({
+      allowedOrigins: [...record.allowedOrigins],
+      applicationIdentity: record.applicationIdentity,
+      attributeLabelPatterns: [...record.attributeLabelPatterns],
+      credentialRef: record.credentialRef,
+      displayName: record.displayName,
+      kind: record.kind,
+      note: record.note,
+      permittedActions: [...record.permittedActions],
+      registrationId: record.registrationId,
+      secondaryKey: record.secondaryKey,
+      status: record.status,
+    } as unknown as JsonValue),
+  );
+}
+
 /** The six digest-bearing field names, for the audit payload. */
 export const DIGEST_BEARING_FIELDS = [
   'allowedOrigins',
@@ -304,8 +394,14 @@ function changedDigestFields(
   before: RegistrationRecord,
   after: RegistrationRecord,
 ): readonly string[] {
-  const same = (a: readonly string[], b: readonly string[]): boolean =>
-    a.length === b.length && [...a].sort().every((value, index) => value === [...b].sort()[index]);
+  const same = (a: readonly string[], b: readonly string[]): boolean => {
+    if (a.length !== b.length) return false;
+    // Sort each side ONCE. Written inline in the comparison, `[...b].sort()` re-sorted
+    // the right operand for every element.
+    const left = [...a].sort();
+    const right = [...b].sort();
+    return left.every((value, index) => value === right[index]);
+  };
   const changed: string[] = [];
   if (before.kind !== after.kind) changed.push('kind');
   if (!same(before.allowedOrigins, after.allowedOrigins)) changed.push('allowedOrigins');
@@ -342,6 +438,16 @@ function changedNonDigestFields(
 }
 
 /**
+ * A capability check that has not answered in this long has not answered.
+ *
+ * The deadline lives in the command, not in each provider, so an implementer cannot
+ * forget it. Storage already fails closed without one — a promise that never settles
+ * never reaches `insertRegistration` — so this is about availability: without it every
+ * submit parks a request handler with nothing in the log to say why.
+ */
+export const CREDENTIAL_CHECK_TIMEOUT_MS = 5_000;
+
+/**
  * Prove the credential is read-only, and audit the refusal when it is not.
  *
  * A provider that throws is treated exactly as one that answers `unknown`. Anything
@@ -361,13 +467,29 @@ async function refuseUnlessReadOnly(
 ): Promise<string | null> {
   let capability: 'write-capable' | 'unknown' | 'read-only';
   try {
-    const report = await dependencies.credentials.describe(input.credentialRef);
+    // Destructured, never held. Whatever a provider returns, only these two values
+    // leave this expression, so a field an implementation adds beyond the two — a
+    // token, a raw secret — has nowhere to travel even if its class is written to
+    // return one. The type says two fields; a class declared `implements
+    // CredentialProvider` with an inferred return type is checked for assignability
+    // only, with no excess-property freshness, so the type does NOT enforce it.
+    const { credentialRef, capability: reported } = await dependencies.deadlines.within(
+      dependencies.credentials.describe(input.credentialRef),
+      CREDENTIAL_CHECK_TIMEOUT_MS,
+    );
     capability =
-      report.capability === 'read-only'
-        ? 'read-only'
-        : report.capability === 'write-capable'
-          ? 'write-capable'
-          : 'unknown';
+      // An answer about a different reference proves nothing about this one. The
+      // manifest provider is a synchronous Map lookup and cannot get this wrong; a
+      // real service that batches, caches by a normalized key, or resolves an alias
+      // can, and the failure direction that matters is write-capable read as
+      // read-only.
+      credentialRef !== input.credentialRef
+        ? 'unknown'
+        : reported === 'read-only'
+          ? 'read-only'
+          : reported === 'write-capable'
+            ? 'write-capable'
+            : 'unknown';
   } catch {
     capability = 'unknown';
   }
@@ -494,12 +616,20 @@ export async function changeTargetSystem(
         // connection.
         const before = await registrations.findRegistration(registrationId);
         if (before === null) throw new CommandRefused(REGISTRATION_REFUSALS.UNKNOWN_REGISTRATION);
-        if (input.expectedDigest !== undefined && before.digest !== input.expectedDigest) {
-          throw new CommandRefused(REGISTRATION_REFUSALS.STALE_DIGEST);
+        if (registrationRowVersion(before) !== input.expectedRowVersion) {
+          throw new CommandRefused(REGISTRATION_REFUSALS.STALE_ROW);
         }
 
         const changed = changedDigestFields(before, next);
         const annotated = changedNonDigestFields(before, next);
+        // Both directions, because each has a way of being wrong on its own. The
+        // converse (below) catches a projection that moved the digest with none of the
+        // six changed; this catches a stored column that disagrees with what the digest
+        // hashed, which is how `RegistrationChanged` came to be publishable with
+        // priorDigest === newDigest.
+        if (changed.length > 0 && before.digest === next.digest) {
+          throw new Error('a digest-bearing field changed without moving the digest');
+        }
         await registrations.updateRegistration(next);
 
         if (changed.length === 0) {

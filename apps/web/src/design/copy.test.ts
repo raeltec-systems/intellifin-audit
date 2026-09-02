@@ -3,7 +3,15 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_STATES, ENVIRONMENT_RIBBON_SENTENCE, FULLY_QUOTED_EMPTY_STATES } from './copy';
+import { REGISTRATION_REFUSALS } from '@intellifin/application';
+
+import {
+  EMPTY_STATES,
+  ENVIRONMENT_RIBBON_SENTENCE,
+  FULLY_QUOTED_EMPTY_STATES,
+  REGISTRATION_CHANGE_WARNING_TEMPLATE,
+  registrationChangeWarning,
+} from './copy';
 
 /**
  * Verbatim copy, checked against the UX handoff on disk.
@@ -81,5 +89,32 @@ describe('copy quoted from the UX contract', () => {
       const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
       expect(source, surface).toContain('EMPTY_STATES');
     }
+  });
+});
+
+describe('the registration-change warning', () => {
+  it('is EXPERIENCE.md\'s sentence, character for character', () => {
+    // Read off disk, not compared with a copy of itself. The first version of this
+    // sentence was typed inline in the component and differed from the contract in two
+    // places; nothing caught it, because the branch that renders it is unreachable
+    // until Epic 2 and no test could reach the string.
+    expect(experience).toContain(REGISTRATION_CHANGE_WARNING_TEMPLATE);
+  });
+
+  it('substitutes the count into the contract sentence rather than retyping it', () => {
+    expect(registrationChangeWarning(3)).toBe(
+      REGISTRATION_CHANGE_WARNING_TEMPLATE.replace('{n}', '3'),
+    );
+    expect(registrationChangeWarning(3)).toContain('3 Procedures');
+    expect(registrationChangeWarning(3)).not.toContain('{n}');
+  });
+});
+
+describe('the read-only credential refusal', () => {
+  it('is the sentence EXPERIENCE.md fixes, character for character', () => {
+    // Three independent literals carried this string — the command, the browser spec's
+    // helper and the surface — and each was only ever checked against another of them.
+    // This one reads the contract off disk, the way `denial-strings.test.ts` does.
+    expect(experience).toContain(`"${REGISTRATION_REFUSALS.CREDENTIAL_NOT_READ_ONLY}"`);
   });
 });

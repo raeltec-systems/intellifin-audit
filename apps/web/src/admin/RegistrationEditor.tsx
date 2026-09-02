@@ -6,7 +6,7 @@ import type { TargetSystemRegistration } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { RegistrationForm } from './RegistrationForm';
-import { NEVER_PROBED_SENTENCE, connectivityLabel, kindLabel } from './registrations';
+import { NEVER_PROBED_SENTENCE, connectivityLabel, kindLabel, spokenDigest } from './registrations';
 import type {
   ChangeRegistrationFormFields,
   RegistrationActionResult,
@@ -27,6 +27,8 @@ import type {
 
 export interface RegistrationEditorProps {
   readonly registration: TargetSystemRegistration;
+  /** Computed on the server by `registrationRowVersion`; see `RegistrationForm`. */
+  readonly rowVersion: string;
   readonly referencingProcedures: number;
   readonly changeRegistration: (
     fields: ChangeRegistrationFormFields,
@@ -35,6 +37,7 @@ export interface RegistrationEditorProps {
 
 export function RegistrationEditor({
   registration,
+  rowVersion,
   referencingProcedures,
   changeRegistration,
 }: RegistrationEditorProps): React.JSX.Element {
@@ -58,7 +61,9 @@ export function RegistrationEditor({
         </div>
         <div>
           <dt>Registration digest</dt>
-          <dd className="ls-mono ls-digest">{registration.digest}</dd>
+          <dd className="ls-mono ls-digest" aria-label={spokenDigest(registration.digest)}>
+            {registration.digest}
+          </dd>
         </div>
         <div>
           <dt>Connectivity</dt>
@@ -81,6 +86,7 @@ export function RegistrationEditor({
 
       <RegistrationForm
         registration={registration}
+        rowVersion={rowVersion}
         referencingProcedures={referencingProcedures}
         onChange={changeRegistration}
         onResult={(outcome) => {

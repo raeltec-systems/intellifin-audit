@@ -8,5 +8,11 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["playwright.config.ts", "tests/e2e/**/*.ts"]
+  "include": [
+    "playwright.config.ts",
+    "scripts/**/*.mts",
+    "tests/e2e/**/*.ts",
+    "tests/integration/**/*.ts",
+    "tests/unit/**/*.ts"
+  ]
 }

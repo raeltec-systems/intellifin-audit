@@ -109,22 +109,28 @@ VECTORS: list[tuple[str, str, dict, dict]] = [
     (
         "versioned-file-unicode",
         "A versioned file whose locator and labels are multi-byte UTF-8. RFC 8785 sorts "
-        "object keys by UTF-16 code unit and emits the characters unescaped, so this "
-        "list members are sorted the same way by the domain module, which is why the astral-plane emoji sorts AFTER the CJK character here.",
+        "object keys by UTF-16 code unit and emits the characters unescaped, and the "
+        "domain module sorts list members the same way. The U+FFFD sentinel is what "
+        "makes that testable: it sorts after the astral-plane emoji by code unit and "
+        "before it by code point, so a code-point comparator would fail this vector.",
         {
             "kind": "versioned-file",
             "allowedOrigins": ["s3://synthetic-bucket/ledgers/2026/Qé.csv"],
             "applicationIdentity": "",
             "credentialRef": "cred://synthetic/file-readonly",
             "permittedActions": ["read-file", "read-metadata", "read-file"],
-            "attributeLabelPatterns": ["N° de pièce", "金額", "🔎 locator"],
+            "attributeLabelPatterns": ["N° de pièce", "金額", "\ufffd sentinel", "🔎 locator"],
             "secondaryKey": "édition-2",
         },
         {
             "allowed_origins": ["s3://synthetic-bucket/ledgers/2026/Qé.csv"],
-            # UTF-16 code-unit order, which is what the domain module's sort produces:
-            # "N" U+004E, then U+91D1, then the U+D83D surrogate that begins U+1F50E.
-            "attribute_label_patterns": ["N° de pièce", "金額", "🔎 locator"],
+            # UTF-16 code-unit order, which is what the domain module's sort produces.
+            # The sentinel is the whole point of this vector: U+FFFD sorts AFTER the
+            # emoji by UTF-16 code unit (0xD83D, the emoji's leading surrogate, is below
+            # 0xFFFD) and BEFORE it by code point (U+FFFD < U+1F50E). Without it the
+            # three values sorted identically under both rules and the vector pinned
+            # nothing about which one is in force.
+            "attribute_label_patterns": ["N° de pièce", "金額", "🔎 locator", "\ufffd sentinel"],
             "credential_ref": "cred://synthetic/file-readonly",
             "kind": "versioned-file",
             "permitted_actions": ["read-file", "read-metadata"],

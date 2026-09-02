@@ -932,7 +932,10 @@ a {
 }
 
 .ls-definition dt {
-  font-size: var(--font-size-sm, 0.875rem);
+  /* `--font-size-sm` is defined nowhere; this rule was silently living on its fallback.
+     `--type-body-sm-font-size` is the documented token for the same role. */
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
   color: var(--color-text-muted);
 }
 
