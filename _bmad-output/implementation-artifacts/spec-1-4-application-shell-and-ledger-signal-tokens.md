@@ -2,18 +2,56 @@
 title: 'Story 1.4: Application shell and Ledger Signal tokens'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'c1f3716214748488c60d03a0d579d847b480f940'
 baseline_commit: 'c1f3716214748488c60d03a0d579d847b480f940'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/AGENTS.md'
   - '{project-root}/CLAUDE.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings:
   - oversized
-deferred: []
+deferred:
+  - summary: >-
+      There is no way to sign out; a session ends only by deleting cookies.
+    evidence: |-
+      DESIGN.md specifies the top bar as the notification bell and nothing else, and this
+      story forbids inventing top-bar contents, so no control was added. For a product
+      built on attributable action at a shared workstation this is a real gap, and it
+      also means the browser suite can never exercise session end. Story 1.5 owns users.
+    location: >-
+      apps/web/src/shell/AppShell.tsx
+    severity: medium
+  - summary: >-
+      The 1024-1239px breakpoint has no sticky identifier column.
+    evidence: |-
+      EXPERIENCE.md line 216 requires the Runs table to scroll horizontally with the
+      identifier column fixed. The table does not exist yet, and neither document states
+      a mechanism or width, so it belongs with the Runs list surface.
+    location: >-
+      apps/web/app/globals.css
+    severity: medium
+  - summary: >-
+      Sidebar counts have no data source.
+    evidence: |-
+      EXPERIENCE.md line 42 requires counts on Runs (active) and Review (awaiting). The
+      props exist and render correctly, but nothing supplies them because no Run or
+      Review data exists in this release. EXPERIENCE.md line 180 permits showing no
+      count until loaded.
+    location: >-
+      apps/web/app/layout.tsx
+    severity: medium
+  - summary: >-
+      The badge gallery ships synthetic sample rows to production.
+    evidence: |-
+      /badges is default-deny protected and its non-vocabulary content is labelled
+      illustrative, but any signed-in PoC user reaches fabricated Run identifiers and
+      outcomes. In an audit product that may warrant a config gate or a test-only path.
+    location: >-
+      apps/web/app/badges/page.tsx
+    severity: low
 ---
 
 <intent-contract>
@@ -127,6 +165,28 @@ deferred: []
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-09-02 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 35: (high 11, medium 20, low 4)
+- defer: 4: (medium 3, low 1)
+- reject: 4
+- addressed_findings:
+  - `[high]` `[patch]` The sidebar focus ring's white band sat inside the outline, so the ring still met navy at the 2.7:1 its comment claimed to fix.
+  - `[high]` `[patch]` A disabled button wrote text-muted on surface-sunken at 4.39:1, under AA, as live text.
+  - `[high]` `[patch]` ConfirmDialog bound Escape to the non-focusable scrim; a backdrop click made the modal undismissable by keyboard. Added inert and scroll lock.
+  - `[high]` `[patch]` currentIdentity swallowed every error, stripping the shell and the compliance ribbon silently and logging nothing.
+  - `[high]` `[patch]` The sign-in page rendered outside the shell, so the first page every user sees carried no environment ribbon.
+  - `[high]` `[patch]` The submit guard regressed: the old disabled attribute also blocked implicit submission, so holding Enter burned the rate limit.
+  - `[high]` `[patch]` The ribbon sentence and empty-state copy were pinned against retyped copies, not the artifacts on disk.
+  - `[high]` `[patch]` No check that a stylesheet rule existed for each badge treatment; removing one left four states as plain text with the suite green.
+  - `[high]` `[patch]` The aria-disabled activation guard was never exercised by a click.
+  - `[high]` `[patch]` The four sign-in accessibility fixes had no test, and axe scanned a form that had never been submitted.
+  - `[high]` `[patch]` Breadcrumbs threw on a malformed percent escape and used a plain-object lookup on request input.
+  - `[medium]` `[patch]` Twenty further fixes: focus-visible restyling the element, the skip link's positioning and focus target, single aria-current, the notification panel's dismissal, duplicate DOM ids and heading order, empty icon labels, missing not-found and error boundaries, CI failure artifacts, e2e typechecking, committed default credentials, dead CSS and an inert breakpoint rule, token coverage of the components group, the sub-900px table stack, next/link navigation, React cache around session resolution, sidebar count handling, the tabs demo pattern, the real brand asset, and Banner glyphs.
+
+Rejected: next-env.d.ts breaking CI (disproven by removing apps/web/.next entirely and running the full typecheck clean); a sign-out control and other top-bar additions (the top bar is specified as the bell only; recorded as deferred); a sticky identifier column (the Runs table does not exist); a Builder link on the Procedures empty state (Epic 2).
 
 ## Design Notes
 
