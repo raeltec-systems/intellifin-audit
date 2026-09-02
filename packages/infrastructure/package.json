@@ -24,7 +24,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "pnpm build && node dist/db/migrate.js"
   },
   "dependencies": {
     "@intellifin/application": "workspace:*",
