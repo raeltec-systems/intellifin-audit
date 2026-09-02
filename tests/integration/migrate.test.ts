@@ -14,7 +14,7 @@ describe.skipIf(!databaseUrl)('release migrator', () => {
   it('applies migrations over the configured connection and is idempotent', async () => {
     const first = await runMigrations(databaseUrl as string);
     const second = await runMigrations(databaseUrl as string);
-    expect(first).toBeGreaterThanOrEqual(1);
+    expect(first).toBeGreaterThanOrEqual(2);
     expect(second).toBe(first);
   });
 

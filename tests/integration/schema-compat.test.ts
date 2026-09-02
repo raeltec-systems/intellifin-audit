@@ -35,7 +35,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
   it('finds an applied schema version', async () => {
     const version = await readSchemaVersion(sql);
     expect(version).not.toBeNull();
-    expect(version).toBeGreaterThanOrEqual(1);
+    expect(version).toBeGreaterThanOrEqual(2);
   });
 
   it('accepts a range that contains the applied version', async () => {
@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the two Story 1.1 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-2 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -67,6 +67,11 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
 
     // Exact, not "contains": an extra public table means either a migration this
     // story does not own, or something created a table at runtime. Both break AD-15.
-    expect(names).toEqual(['schema_meta', 'worker_heartbeat']);
+    expect(names).toEqual([
+      'audit_event_heads',
+      'audit_events',
+      'schema_meta',
+      'worker_heartbeat',
+    ]);
   });
 });

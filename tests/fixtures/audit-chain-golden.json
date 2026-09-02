@@ -1,0 +1,46 @@
+{
+  "producer": "Python rfc8785 0.1.4 + hashlib.sha256",
+  "genesisHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "events": [
+    {
+      "canonical": {
+        "actor": { "type": "system", "id": "platform" },
+        "aggregateId": "platform",
+        "correlationId": "corr-0001",
+        "eventId": "018f0000-0000-7000-8000-000000000001",
+        "eventType": "security.login",
+        "occurredAt": "2026-09-02T12:34:56.789Z",
+        "outcome": "success",
+        "payload": {
+          "attempt": 1,
+          "method": "passwordless",
+          "nested": { "z": "last", "a": "first" }
+        },
+        "sequence": 1,
+        "sessionId": "session-0001",
+        "source": "web"
+      },
+      "canonicalText": "{\"actor\":{\"id\":\"platform\",\"type\":\"system\"},\"aggregateId\":\"platform\",\"correlationId\":\"corr-0001\",\"eventId\":\"018f0000-0000-7000-8000-000000000001\",\"eventType\":\"security.login\",\"occurredAt\":\"2026-09-02T12:34:56.789Z\",\"outcome\":\"success\",\"payload\":{\"attempt\":1,\"method\":\"passwordless\",\"nested\":{\"a\":\"first\",\"z\":\"last\"}},\"sequence\":1,\"sessionId\":\"session-0001\",\"source\":\"web\"}",
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "20cce2a839676dba17671fe4b04104168e752b6360e7ea785806830341b29304"
+    },
+    {
+      "canonical": {
+        "actor": { "type": "human", "id": "auditor-007" },
+        "aggregateId": "platform",
+        "correlationId": "corr-0001",
+        "eventId": "018f0000-0001-7000-8000-000000000002",
+        "eventType": "export.completed",
+        "occurredAt": "2026-09-02T12:35:00.000Z",
+        "outcome": "success",
+        "payload": { "format": "workpaper", "itemCount": 2 },
+        "sequence": 2,
+        "sessionId": "session-0001",
+        "source": "worker"
+      },
+      "canonicalText": "{\"actor\":{\"id\":\"auditor-007\",\"type\":\"human\"},\"aggregateId\":\"platform\",\"correlationId\":\"corr-0001\",\"eventId\":\"018f0000-0001-7000-8000-000000000002\",\"eventType\":\"export.completed\",\"occurredAt\":\"2026-09-02T12:35:00.000Z\",\"outcome\":\"success\",\"payload\":{\"format\":\"workpaper\",\"itemCount\":2},\"sequence\":2,\"sessionId\":\"session-0001\",\"source\":\"worker\"}",
+      "previousHash": "20cce2a839676dba17671fe4b04104168e752b6360e7ea785806830341b29304",
+      "eventHash": "196fdd0e2c230eabdadb00dbf94e101d36eeb0104d2fede698e0084a566b6be1"
+    }
+  ]
+}

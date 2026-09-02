@@ -15,3 +15,6 @@ export const APPLICATION_LAYER = 'application' as const;
 export function layersBelow(): readonly LayerName[] {
   return [DOMAIN_LAYER];
 }
+
+export * from './audit/clock.js';
+export * from './audit/ports.js';

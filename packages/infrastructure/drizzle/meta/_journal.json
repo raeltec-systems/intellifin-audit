@@ -15,6 +15,13 @@
       "when": 1788308930857,
       "tag": "0001_worker_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788338195884,
+      "tag": "0002_same_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,17 @@ const schemaGeneration = z
   .transform((value) => Number.parseInt(value, 10))
   .refine((value) => value >= 1, 'must be at least 1; schema generations start at 1');
 
+const optionalUrl = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.url().optional(),
+);
+
+const sampleRate = z
+  .string()
+  .regex(/^(?:0(?:\.\d+)?|1(?:\.0+)?)$/, 'must be a decimal from 0 through 1')
+  .default('0')
+  .transform(Number);
+
 export const configSchema = z
   .object({
     DATABASE_URL: z
@@ -33,6 +44,10 @@ export const configSchema = z
     SERVICE_NAME: z.enum(SERVICE_NAMES),
     SCHEMA_RANGE_MIN: schemaGeneration,
     SCHEMA_RANGE_MAX: schemaGeneration,
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+    SENTRY_DSN: optionalUrl,
+    SENTRY_ENVIRONMENT: z.string().min(1).max(64).default('development'),
+    SENTRY_TRACES_SAMPLE_RATE: sampleRate,
   })
   .refine((c) => c.SCHEMA_RANGE_MIN <= c.SCHEMA_RANGE_MAX, {
     message: 'SCHEMA_RANGE_MIN must be less than or equal to SCHEMA_RANGE_MAX',
@@ -64,6 +79,10 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     SERVICE_NAME: env['SERVICE_NAME'],
     SCHEMA_RANGE_MIN: env['SCHEMA_RANGE_MIN'],
     SCHEMA_RANGE_MAX: env['SCHEMA_RANGE_MAX'],
+    LOG_LEVEL: env['LOG_LEVEL'],
+    SENTRY_DSN: env['SENTRY_DSN'],
+    SENTRY_ENVIRONMENT: env['SENTRY_ENVIRONMENT'],
+    SENTRY_TRACES_SAMPLE_RATE: env['SENTRY_TRACES_SAMPLE_RATE'],
   });
 
   if (!parsed.success) {

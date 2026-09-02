@@ -2,7 +2,10 @@ import {
   ConfigError,
   UnsupportedDatabaseError,
   UnsupportedSchemaError,
+  createTelemetry,
 } from '@intellifin/infrastructure';
+
+const telemetry = createTelemetry({ serviceName: 'web' });
 
 /**
  * AD-11 and AD-15 run at boot, not lazily on the first request.
@@ -22,17 +25,17 @@ export async function register(): Promise<void> {
 
   try {
     const runtime = await getRuntime();
-    process.stdout.write(
-      `${JSON.stringify({
-        level: 'info',
-        time: new Date().toISOString(),
-        service: 'web',
-        message: 'Startup checks passed',
-        postgresMajor: runtime.postgresMajor,
-        schemaVersion: runtime.schemaVersion,
-        supportedSchemaRange: `${runtime.config.SCHEMA_RANGE_MIN}..${runtime.config.SCHEMA_RANGE_MAX}`,
-      })}\n`,
-    );
+    telemetry.configureLevel(runtime.config.LOG_LEVEL);
+    telemetry.configureSentry({
+      dsn: runtime.config.SENTRY_DSN,
+      environment: runtime.config.SENTRY_ENVIRONMENT,
+      tracesSampleRate: runtime.config.SENTRY_TRACES_SAMPLE_RATE,
+    });
+    telemetry.info('Startup checks passed', {
+      postgresMajor: runtime.postgresMajor,
+      schemaVersion: runtime.schemaVersion,
+      supportedSchemaRange: `${runtime.config.SCHEMA_RANGE_MIN}..${runtime.config.SCHEMA_RANGE_MAX}`,
+    });
     return;
   } catch (error) {
     const permanent =
@@ -40,20 +43,12 @@ export async function register(): Promise<void> {
       error instanceof UnsupportedDatabaseError ||
       error instanceof UnsupportedSchemaError;
 
-    process.stderr.write(
-      `${JSON.stringify({
-        level: 'error',
-        time: new Date().toISOString(),
-        service: 'web',
-        message: permanent ? 'Refusing to start' : 'Startup checks deferred',
-        reason: error instanceof Error ? error.message : String(error),
-        supportedSchemaRange:
-          error instanceof UnsupportedSchemaError ? error.supportedSchemaRange : null,
-        foundSchemaVersion: error instanceof UnsupportedSchemaError ? error.found : null,
-        foundPostgresMajor:
-          error instanceof UnsupportedDatabaseError ? error.found : null,
-      })}\n`,
-    );
+    telemetry.captureError(permanent ? 'Refusing to start' : 'Startup checks deferred', error, {
+      supportedSchemaRange:
+        error instanceof UnsupportedSchemaError ? error.supportedSchemaRange : null,
+      foundSchemaVersion: error instanceof UnsupportedSchemaError ? error.found : null,
+      foundPostgresMajor: error instanceof UnsupportedDatabaseError ? error.found : null,
+    });
 
     if (permanent) {
       process.exit(1);

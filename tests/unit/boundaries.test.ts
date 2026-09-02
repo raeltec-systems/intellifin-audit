@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,10 +74,32 @@ function plant(testCase: Case): string {
 }
 
 function cruise(): { status: number | null; output: string } {
+  // Windows only: `pnpm` is a .CMD shim spawnSync cannot exec. See scripts/check-boundaries.mjs.
+  const corepackCandidates =
+    process.platform === 'win32'
+      ? [
+          path.join(path.dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'pnpm.js'),
+          path.resolve(
+            path.dirname(process.execPath),
+            '..',
+            'lib',
+            'node_modules',
+            'corepack',
+            'dist',
+            'pnpm.js',
+          ),
+        ]
+      : [];
+  const corepackPnpm = corepackCandidates.find(existsSync);
   const result = spawnSync(
-    'pnpm',
-    ['boundaries'],
-    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } },
+    corepackPnpm ? process.execPath : 'pnpm',
+    [...(corepackPnpm ? [corepackPnpm] : []), 'boundaries'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: { ...process.env, NO_COLOR: '1' },
+      shell: process.platform === 'win32' && !corepackPnpm,
+    },
   );
   return { status: result.status, output: `${result.stdout}\n${result.stderr}` };
 }
@@ -88,23 +110,27 @@ describe('dependency boundaries (AD-1)', () => {
   beforeAll(cleanFixtures);
   afterEach(cleanFixtures);
 
-  it.each(CASES)('fires $rule when $plantIn imports $imports', (testCase) => {
-    const planted = plant(testCase);
-    const { status, output } = cruise();
+  it.each(CASES)(
+    'fires $rule when $plantIn imports $imports',
+    (testCase) => {
+      const planted = plant(testCase);
+      const { status, output } = cruise();
 
-    expect(status, output).not.toBe(0);
-    expect(output).toContain(testCase.rule);
-    expect(output).toContain(planted);
+      expect(status, output).not.toBe(0);
+      expect(output).toContain(testCase.rule);
+      expect(output).toContain(planted);
 
-    // The named rule must be the one that caught this file, not a bystander.
-    const line = output
-      .split('\n')
-      .find((l) => l.includes(testCase.rule) && l.includes(planted));
-    expect(line, `no "${testCase.rule}" violation reported for ${planted}\n${output}`).toBeDefined();
-  });
+      // The named rule must be the one that caught this file, not a bystander.
+      const line = output
+        .split('\n')
+        .find((l) => l.includes(testCase.rule) && l.includes(planted));
+      expect(line, `no "${testCase.rule}" violation reported for ${planted}\n${output}`).toBeDefined();
+    },
+    30_000,
+  );
 
   it('exits zero on the clean workspace', () => {
     const { status, output } = cruise();
     expect(status, output).toBe(0);
-  });
+  }, 30_000);
 });

@@ -6,7 +6,7 @@ const validEnv = {
   DATABASE_URL: 'postgres://user:pw@localhost:5432/intellifin',
   SERVICE_NAME: 'web',
   SCHEMA_RANGE_MIN: '1',
-  SCHEMA_RANGE_MAX: '1',
+  SCHEMA_RANGE_MAX: '2',
 };
 
 describe('loadConfig', () => {
@@ -14,7 +14,10 @@ describe('loadConfig', () => {
     const config = loadConfig(validEnv);
     expect(config.SERVICE_NAME).toBe('web');
     expect(config.SCHEMA_RANGE_MIN).toBe(1);
-    expect(config.SCHEMA_RANGE_MAX).toBe(1);
+    expect(config.SCHEMA_RANGE_MAX).toBe(2);
+    expect(config.LOG_LEVEL).toBe('info');
+    expect(config.SENTRY_DSN).toBeUndefined();
+    expect(config.SENTRY_TRACES_SAMPLE_RATE).toBe(0);
   });
 
   it('accepts the postgresql:// scheme', () => {
@@ -58,6 +61,21 @@ describe('loadConfig', () => {
     expect(() =>
       loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '3', SCHEMA_RANGE_MAX: '2' }),
     ).toThrow(/SCHEMA_RANGE_MIN must be less than or equal to SCHEMA_RANGE_MAX/);
+  });
+
+  it('validates optional telemetry configuration', () => {
+    expect(
+      loadConfig({
+        ...validEnv,
+        LOG_LEVEL: 'debug',
+        SENTRY_DSN: 'https://public@example.invalid/1',
+        SENTRY_ENVIRONMENT: 'test',
+        SENTRY_TRACES_SAMPLE_RATE: '0.25',
+      }),
+    ).toMatchObject({ LOG_LEVEL: 'debug', SENTRY_TRACES_SAMPLE_RATE: 0.25 });
+    expect(() => loadConfig({ ...validEnv, SENTRY_TRACES_SAMPLE_RATE: '1.1' })).toThrow(
+      /SENTRY_TRACES_SAMPLE_RATE/,
+    );
   });
 
   it('never puts the DATABASE_URL value into the error message', () => {

@@ -8,18 +8,33 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 
-import { createHeartbeatLoop, runStartupChecks, type LogLevel } from './startup.js';
+import { createHeartbeatLoop, runStartupChecks, type Logger } from './startup.js';
 
 interface LogLine {
-  level: LogLevel;
+  level: 'info' | 'error';
   message: string;
   extra: Record<string, unknown>;
 }
 
 function captureLog() {
   const lines: LogLine[] = [];
-  const log = (level: LogLevel, message: string, extra: Record<string, unknown> = {}) => {
-    lines.push({ level, message, extra });
+  const log: Logger = {
+    info(message, extra = {}) {
+      lines.push({ level: 'info', message, extra: extra as Record<string, unknown> });
+    },
+    error(message, extra = {}) {
+      lines.push({ level: 'error', message, extra: extra as Record<string, unknown> });
+    },
+    captureError(message, error, extra = {}) {
+      lines.push({
+        level: 'error',
+        message,
+        extra: {
+          ...(extra as Record<string, unknown>),
+          errorKind: error instanceof Error ? error.name : 'UnknownFailure',
+        },
+      });
+    },
   };
   return { lines, log };
 }
@@ -30,6 +45,9 @@ function config(min: number, max: number): AppConfig {
     SERVICE_NAME: 'worker',
     SCHEMA_RANGE_MIN: min,
     SCHEMA_RANGE_MAX: max,
+    LOG_LEVEL: 'info',
+    SENTRY_ENVIRONMENT: 'test',
+    SENTRY_TRACES_SAMPLE_RATE: 0,
   };
 }
 
@@ -81,7 +99,7 @@ describe('runStartupChecks', () => {
     expect(refusal?.level).toBe('error');
     expect(refusal?.extra['supportedSchemaRange']).toBe('7..9');
     expect(refusal?.extra['foundSchemaVersion']).toBe(1);
-    expect(String(refusal?.extra['reason'])).toContain('found 1, this build supports 7..9');
+    expect(refusal?.extra['errorKind']).toBe('UnsupportedSchemaError');
   });
 
   it('throws UnsupportedSchemaError with a null found version on an unmigrated database', async () => {
@@ -105,7 +123,7 @@ describe('runStartupChecks', () => {
 
     const refusal = lines.find((line) => line.message === 'Refusing to start');
     expect(refusal?.extra['supportedSchemaRange']).toBe('1..1');
-    expect(String(refusal?.extra['reason'])).toContain('found 17');
+    expect(refusal?.extra['errorKind']).toBe('UnsupportedDatabaseError');
   });
 });
 
@@ -149,7 +167,7 @@ describe('createHeartbeatLoop', () => {
     await expect(loop.beat()).resolves.toBeUndefined();
     const failure = lines.find((line) => line.message === 'Heartbeat upsert failed');
     expect(failure?.level).toBe('error');
-    expect(String(failure?.extra['reason'])).toContain('connection reset');
+    expect(failure?.extra['errorKind']).toBe('Error');
 
     shouldFail = false;
     await loop.beat();
@@ -178,7 +196,7 @@ describe('createHeartbeatLoop', () => {
 
     expect(loop.skippedBeats()).toBe(1);
     expect(calls()).toBe(1);
-    expect(lines.some((line) => line.message.startsWith('Heartbeat skipped'))).toBe(true);
+    expect(lines.some((line) => line.message === 'Heartbeat skipped')).toBe(true);
 
     release?.();
     await first;

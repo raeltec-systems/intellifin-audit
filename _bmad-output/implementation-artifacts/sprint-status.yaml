@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-bootstrap-the-monorepo-and-deploy-web-and-worker: done
-  1-2-record-tamper-evident-audit-events-with-sanitized-telemetry: backlog
+  1-2-record-tamper-evident-audit-events-with-sanitized-telemetry: done
   1-3-sign-in-and-act-only-within-an-application-owned-role: backlog
   1-4-application-shell-and-ledger-signal-tokens: backlog
   1-5-manage-users-and-roles: backlog

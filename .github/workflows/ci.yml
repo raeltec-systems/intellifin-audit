@@ -155,7 +155,7 @@ jobs:
             -e DATABASE_URL='postgres://x:y@127.0.0.1:1/z' \
             -e SERVICE_NAME=web \
             -e SCHEMA_RANGE_MIN=1 \
-            -e SCHEMA_RANGE_MAX=1 \
+            -e SCHEMA_RANGE_MAX=2 \
             intellifin-web:ci
 
           code=000
@@ -183,7 +183,7 @@ jobs:
             -e DATABASE_URL='postgres://x:y@127.0.0.1:1/z' \
             -e SERVICE_NAME=worker \
             -e SCHEMA_RANGE_MIN=1 \
-            -e SCHEMA_RANGE_MAX=1 \
+            -e SCHEMA_RANGE_MAX=2 \
             intellifin-worker:ci > /tmp/worker.out 2> /tmp/worker.err
           status=$?
           set -e
