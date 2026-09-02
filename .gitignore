@@ -16,6 +16,8 @@ playwright-report/
 test-results/
 blob-report/
 .playwright/
+# Signed-in browser state saved by tests/e2e/auth.setup.ts. Session cookies, never committed.
+playwright/.auth/
 
 # Editor / OS
 .DS_Store

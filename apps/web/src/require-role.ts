@@ -3,7 +3,11 @@ import {
   BetterAuthSessionReader,
   PostgresAuditUnitOfWork,
 } from '@intellifin/infrastructure';
-import { authorizeCommand, type SessionSnapshot } from '@intellifin/application';
+import {
+  authorizeCommand,
+  type RoleRepository,
+  type SessionSnapshot,
+} from '@intellifin/application';
 import type { AuthorizationContext, GatedAction, Role } from '@intellifin/domain';
 
 import { getRuntime } from './bootstrap';
@@ -59,33 +63,50 @@ export async function requireAction(
   if (!result.authenticated) {
     return { allowed: false, status: 401, reason: UNAUTHENTICATED_REASON };
   }
+  return authorizeSessionAction(result.session, action, correlationIdFrom(request), context);
+}
 
+/**
+ * The decision for a session that has ALREADY been resolved.
+ *
+ * `requireAction` is this plus the session lookup. It is exported so a server component
+ * can reuse the session `layout.tsx` already resolved for the same request instead of
+ * resolving it a second time, without either caller owning a second copy of the
+ * authorization and auditing path. A caller cannot forge a session: it can only pass one
+ * this module or `server-session.ts` produced.
+ *
+ * `roles` is injectable for the same reason — the server-component path passes a
+ * request-scoped memo of the same repository so the role is read once per request. It
+ * is still read on every request; nothing survives one (AD-7).
+ */
+export async function authorizeSessionAction(
+  session: SessionSnapshot,
+  action: GatedAction,
+  correlationId: string,
+  context: AuthorizationContext = {},
+  roles?: RoleRepository,
+): Promise<ActionDecision> {
   const runtime = await getRuntime();
   const outcome = await authorizeCommand(
     {
-      roles: new DrizzleRoleRepository(runtime.db),
+      roles: roles ?? new DrizzleRoleRepository(runtime.db),
       unitOfWork: new PostgresAuditUnitOfWork(runtime.db),
     },
-    {
-      session: result.session,
-      action,
-      correlationId: correlationIdFrom(request),
-      context,
-    },
+    { session, action, correlationId, context },
   );
 
   if (!outcome.allowed) {
     runtime.telemetry.info('Authorization denied', {
       action,
       role: outcome.role,
-      userId: result.session.userId,
-      sessionId: result.session.sessionId,
+      userId: session.userId,
+      sessionId: session.sessionId,
       outcome: 'denied',
     });
     return { allowed: false, status: 403, reason: outcome.reason };
   }
 
-  return { allowed: true, session: result.session, role: outcome.role };
+  return { allowed: true, session, role: outcome.role };
 }
 
 /**

@@ -1,0 +1,152 @@
+/*
+ * The Ledger Signal token set.
+ *
+ * GENERATED-BY-HAND-EQUIVALENT: every declaration below carries exactly the value the
+ * UX contract states, under a name derived mechanically from its key there:
+ *
+ *   colors.<key>                 ->  --color-<key>
+ *   typography.<role>.<prop>     ->  --type-<role>-<kebab-prop>
+ *   rounded.<key>                ->  --rounded-<key>
+ *   spacing.<key>                ->  --spacing-<key>
+ *
+ * A '{a.b.c}' reference in the contract becomes 'var(--...)' on the same mapping, so
+ * one value is stated once and referenced everywhere.
+ *
+ * The contract is
+ *   _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/DESIGN.md
+ * (revision 2, status final). 'claude/DESIGN.md' beside it is the superseded prototype
+ * contract and is NOT a source for anything here.
+ *
+ * This file is the single source of design values for the whole application. No
+ * component may write a literal colour, radius, or size that has a token here;
+ * 'src/design/tokens.test.ts' reads this file and DESIGN.md and fails on any drift.
+ */
+:root {
+  /* colors — DESIGN.md frontmatter `colors` */
+  --color-navy: #102A43;
+  --color-navy-800: #243B53;
+  --color-navy-700: #334E68;
+  --color-navy-100: #D9E2EC;
+  --color-teal: #0F766E;
+  --color-teal-800: #115E59;
+  --color-teal-500: #14B8A6;
+  --color-gold: #C0942F;
+  --color-surface-page: #F8FAFC;
+  --color-surface-card: #FFFFFF;
+  --color-surface-sunken: #F1F5F9;
+  --color-surface-sidebar: #102A43;
+  --color-surface-selected: #F0FDFA;
+  --color-border-default: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+  --color-border-selected: #0D9488;
+  --color-text-primary: #102A43;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748B;
+  --color-text-inverse: #FFFFFF;
+  --color-text-link: #0F766E;
+  --color-focus: #0F766E;
+  --color-success-bg: #F0FDF4;
+  --color-success-border: #BBF7D0;
+  --color-success-text: #15803D;
+  --color-warning-bg: #FFFBEB;
+  --color-warning-border: #FDE68A;
+  --color-warning-text: #92400E;
+  --color-danger-bg: #FEF2F2;
+  --color-danger-border: #FECACA;
+  --color-danger-text: #B91C1C;
+  --color-danger-solid: #B91C1C;
+  --color-info-bg: #EFF6FF;
+  --color-info-border: #BFDBFE;
+  --color-info-text: #1D4ED8;
+  --color-info-solid: #1D4ED8;
+  --color-neutral-bg: #F1F5F9;
+  --color-neutral-border: #E2E8F0;
+  --color-neutral-text: #475569;
+  --color-neutral-solid: #64748B;
+  --color-scrim: #102A43;
+
+  /* typography — DESIGN.md frontmatter `typography` */
+  --type-sans-font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  --type-mono-font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --type-page-title-font-family: var(--type-sans-font-family);
+  --type-page-title-font-size: 20px;
+  --type-page-title-line-height: 28px;
+  --type-page-title-font-weight: 600;
+  --type-card-title-font-family: var(--type-sans-font-family);
+  --type-card-title-font-size: 16px;
+  --type-card-title-line-height: 24px;
+  --type-card-title-font-weight: 600;
+  --type-sub-title-font-family: var(--type-sans-font-family);
+  --type-sub-title-font-size: 14px;
+  --type-sub-title-line-height: 20px;
+  --type-sub-title-font-weight: 600;
+  --type-body-font-family: var(--type-sans-font-family);
+  --type-body-font-size: 14px;
+  --type-body-line-height: 21px;
+  --type-body-font-weight: 400;
+  --type-body-sm-font-family: var(--type-sans-font-family);
+  --type-body-sm-font-size: 13px;
+  --type-body-sm-line-height: 18px;
+  --type-body-sm-font-weight: 400;
+  --type-body-sm-relaxed-font-family: var(--type-sans-font-family);
+  --type-body-sm-relaxed-font-size: 13px;
+  --type-body-sm-relaxed-line-height: 19px;
+  --type-body-sm-relaxed-font-weight: 400;
+  --type-row-title-font-family: var(--type-sans-font-family);
+  --type-row-title-font-size: 13px;
+  --type-row-title-line-height: 18px;
+  --type-row-title-font-weight: 500;
+  --type-caption-font-family: var(--type-sans-font-family);
+  --type-caption-font-size: 12px;
+  --type-caption-line-height: 16px;
+  --type-caption-font-weight: 400;
+  --type-caption-relaxed-font-family: var(--type-sans-font-family);
+  --type-caption-relaxed-font-size: 12px;
+  --type-caption-relaxed-line-height: 17px;
+  --type-caption-relaxed-font-weight: 400;
+  --type-overline-font-family: var(--type-sans-font-family);
+  --type-overline-font-size: 12px;
+  --type-overline-line-height: 16px;
+  --type-overline-font-weight: 500;
+  --type-overline-letter-spacing: 0.02em;
+  --type-micro-font-family: var(--type-sans-font-family);
+  --type-micro-font-size: 11px;
+  --type-micro-line-height: 15px;
+  --type-micro-font-weight: 500;
+
+  /* radii — DESIGN.md frontmatter `rounded` */
+  --rounded-sm: 4px;
+  --rounded-md: 6px;
+  --rounded-lg: 8px;
+  --rounded-full: 999px;
+
+  /* spacing and sizes — DESIGN.md frontmatter `spacing` */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-gutter: 24px;
+  --spacing-card-padding: 20px;
+  --spacing-card-header-padding: 14px 20px;
+  --spacing-row-padding: 12px 20px;
+  --spacing-row-padding-dense: 9px 20px;
+  --spacing-sidebar: 240px;
+  --spacing-top-bar: 56px;
+  --spacing-ribbon: 32px;
+  --spacing-content-max: 1320px;
+  --spacing-builder-max: 880px;
+  --spacing-rail: 340px;
+  --spacing-rail-procedure: 380px;
+  --spacing-rail-exception: 360px;
+  --spacing-rail-session: 320px;
+  --spacing-control-sm: 32px;
+  --spacing-control-md: 36px;
+  --spacing-chip: 28px;
+  --spacing-tabs: 38px;
+  --spacing-badge-sm: 20px;
+  --spacing-badge-md: 24px;
+  --spacing-dialog: 560px;
+  --spacing-scrim-opacity: 0.45;
+}

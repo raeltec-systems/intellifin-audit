@@ -25,6 +25,11 @@ export const TELEMETRY_MESSAGES = [
   'Sign-in could not be attributed',
   'Sign-in session revoke failed',
   'Authorization denied',
+  // The shell could not learn who is asking: the database is unreachable, the runtime
+  // refused to start, or the identity provider threw. Every page then renders with no
+  // role at all, so this must be visible in the log stream rather than inferred from a
+  // screenshot of a nav bar with nothing in it.
+  'Identity could not be resolved',
 ] as const;
 export type TelemetryMessage = (typeof TELEMETRY_MESSAGES)[number];
 
