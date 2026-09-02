@@ -2,8 +2,9 @@
 title: 'Story 1.1: Bootstrap the monorepo and deploy web and worker'
 type: 'chore'
 created: '2026-09-02'
-status: 'draft'
+status: 'in-progress'
 review_loop_iteration: 0
+baseline_commit: '8cf07a45efdee0e84579d06fbc19c7021fbeaf91'
 context:
   - '{project-root}/AGENTS.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
