@@ -42,8 +42,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The root script, not `pnpm -r`: `-r` skips the workspace root, where
+      # `playwright.config.ts` and `tests/e2e` live.
       - name: Typecheck
-        run: pnpm -r typecheck
+        run: pnpm typecheck
 
       - name: Dependency boundaries (AD-1)
         run: pnpm boundaries
@@ -304,9 +306,14 @@ jobs:
       - name: End-to-end and accessibility suite
         run: pnpm test:e2e
 
+      # Both, and `if: always()`: the HTML report explains a failure, and
+      # `test-results/` holds the per-test error context and any trace.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
+          if-no-files-found: ignore

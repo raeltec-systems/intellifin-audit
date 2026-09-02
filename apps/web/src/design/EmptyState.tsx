@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Icon, type IconName } from './Icon';
 
 interface EmptyStateProps {
@@ -37,7 +39,7 @@ export function EmptyState({
       </span>
       <p className="ls-empty__headline">{headline}</p>
       <p className="ls-empty__sentence">{sentence}</p>
-      {link ? <a href={link.href}>{link.label}</a> : null}
+      {link ? <Link href={link.href}>{link.label}</Link> : null}
     </div>
   );
 }

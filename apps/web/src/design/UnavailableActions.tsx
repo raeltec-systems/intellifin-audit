@@ -1,3 +1,9 @@
+'use client';
+
+// `useId` is a hook, so this component runs on the client. It renders inert markup and
+// carries no state; the directive is only what `useId` requires.
+import { useId } from 'react';
+
 export interface UnavailableAction {
   /**
    * The id the disabled button points its `aria-describedby` at. The panel's sentence
@@ -12,6 +18,12 @@ export interface UnavailableAction {
 
 interface UnavailableActionsProps {
   readonly actions: readonly UnavailableAction[];
+  /**
+   * The heading level, so the panel sits correctly under whatever heading precedes it.
+   * A fixed `<h2>` inverts the outline on any surface that introduces the action bar
+   * with an `<h3>`.
+   */
+  readonly headingLevel?: 2 | 3 | 4;
 }
 
 /**
@@ -29,13 +41,19 @@ interface UnavailableActionsProps {
  */
 export function UnavailableActions({
   actions,
+  headingLevel = 2,
 }: UnavailableActionsProps): React.JSX.Element | null {
+  // Generated, not fixed: two panels on one surface would otherwise both claim the same
+  // heading id and the second `aria-labelledby` would resolve to the first panel's.
+  const headingId = useId();
+  const Heading = `h${headingLevel}` as 'h2' | 'h3' | 'h4';
+
   if (actions.length === 0) return null;
   return (
-    <section className="ls-unavailable" aria-labelledby="unavailable-actions-heading">
-      <h2 className="ls-unavailable__heading" id="unavailable-actions-heading">
+    <section className="ls-unavailable" aria-labelledby={headingId}>
+      <Heading className="ls-unavailable__heading" id={headingId}>
         Unavailable actions
-      </h2>
+      </Heading>
       <ul>
         {actions.map((action) => (
           <li key={action.id} id={action.id}>

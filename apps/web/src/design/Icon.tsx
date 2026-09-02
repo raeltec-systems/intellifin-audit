@@ -31,7 +31,9 @@ interface IconProps {
  * 700 path elements into 700 lines of JSX.
  */
 export function Icon({ name, size = 16, label }: IconProps): React.JSX.Element {
-  const decorative = label === undefined;
+  // An empty string is decorative too. `role="img"` with an empty accessible name is a
+  // name-role-value failure, and a caller that computed a label and got '' meant none.
+  const decorative = label === undefined || label === '';
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -45,7 +47,7 @@ export function Icon({ name, size = 16, label }: IconProps): React.JSX.Element {
       strokeLinejoin="round"
       aria-hidden={decorative ? true : undefined}
       role={decorative ? undefined : 'img'}
-      aria-label={label}
+      aria-label={decorative ? undefined : label}
       focusable="false"
       dangerouslySetInnerHTML={{ __html: ICON_GLYPHS[name] }}
     />

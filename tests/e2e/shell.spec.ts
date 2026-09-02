@@ -27,8 +27,11 @@ test.describe('as an Auditor', () => {
   test('typing /administration is refused by the server', async ({ page }) => {
     await page.goto('/administration');
 
-    // The refusal names the reason the domain policy gives, verbatim.
-    await expect(page.getByRole('alert')).toHaveText(DEFAULT_DENIAL_REASON);
+    // The refusal names the reason the domain policy gives, verbatim. Scoped to the
+    // content: Next injects its own empty `role="alert"` route announcer into the page.
+    await expect(page.locator('main#content').getByRole('alert')).toHaveText(
+      DEFAULT_DENIAL_REASON,
+    );
     // And no administration content reaches the browser at all.
     await expect(page.getByText('Target System registrations')).toHaveCount(0);
     await expect(page.getByText('Nothing is registered yet.')).toHaveCount(0);
@@ -45,8 +48,17 @@ test.describe('as an Auditor', () => {
 
   test('the active item follows the route, and a list gets no breadcrumb', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: 'Runs' }).click();
-    await expect(page.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await expect(nav.locator('[aria-current="page"]')).toHaveText('Overview');
+
+    await nav.getByRole('link', { name: 'Runs' }).click();
+    await expect(page).toHaveURL(/\/runs$/);
+    // EXACTLY one, not merely "Runs is one of them". Overview's href is `/`, a prefix of
+    // every path, so dropping its exact-match branch would leave two items current and a
+    // check for "Runs has aria-current" would still pass.
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(nav.locator('[aria-current="page"]')).toHaveText('Runs');
+
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toHaveCount(0);
   });
 
@@ -166,9 +178,39 @@ test.describe('the confirmation dialog', () => {
       expect(inside, `focus escaped the dialog after ${step + 1} back-tabs`).toBe(true);
     }
 
+    // The page behind the scrim is inert: `aria-modal` is a hint, `inert` is the rule.
+    await expect(page.locator('#ls-app')).toHaveAttribute('inert', '');
+
+    // A click on the backdrop puts focus on <body>. Escape must still close the dialog:
+    // a handler bound to the scrim element would never fire again from here.
+    await page.mouse.click(8, 400);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(invoker).toBeFocused();
+    await expect(page.locator('#ls-app')).not.toHaveAttribute('inert', /.*/);
+  });
+
+  test('confirming twice before it closes confirms once', async ({ page }) => {
+    await page.goto('/badges');
+    const counter = page.getByTestId('confirmations');
+    await expect(counter).toHaveText('0');
+
+    await page.getByRole('button', { name: 'Routine', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+
+    // Both activations in ONE task, before React can unmount anything. Two separate
+    // Playwright clicks would not test the guard: the dialog is gone before the second.
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll('[role="dialog"] button')].find(
+        (candidate) => candidate.textContent?.trim() === 'Pause Run',
+      );
+      if (!(button instanceof HTMLElement)) throw new Error('confirm button not found');
+      button.click();
+      button.click();
+    });
+
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(counter).toHaveText('1');
   });
 
   test('a rationale dialog refuses an empty rationale', async ({ page }) => {
@@ -188,6 +230,32 @@ test.describe('the confirmation dialog', () => {
   });
 });
 
+test.describe('the notification disclosure', () => {
+  test.use({ storageState: AUTH_STATE.auditor });
+
+  test('closes on Escape and gives focus back to the bell', async ({ page }) => {
+    await page.goto('/');
+    const bell = page.getByRole('button', { name: 'Notifications' });
+    await bell.click();
+    await expect(bell).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('No Run is waiting on you.')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(bell).toHaveAttribute('aria-expanded', 'false');
+    await expect(bell).toBeFocused();
+  });
+
+  test('closes when a click lands outside it', async ({ page }) => {
+    await page.goto('/');
+    const bell = page.getByRole('button', { name: 'Notifications' });
+    await bell.click();
+    await expect(bell).toHaveAttribute('aria-expanded', 'true');
+
+    await page.getByRole('heading', { name: 'Overview', level: 1 }).click();
+    await expect(bell).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
 test.describe('the disabled-action rule', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -204,6 +272,35 @@ test.describe('the disabled-action rule', () => {
     await expect(page.locator('#unavailable-approve-version')).toContainText(
       'Only an Audit Manager can approve a Procedure Version.',
     );
+  });
+
+  test('clicking an unavailable action does nothing at all', async ({ page }) => {
+    await page.goto('/badges');
+    const before = page.url();
+
+    // The whole reason `aria-disabled` is safe here instead of `disabled` is that the
+    // handler refuses activation. `disabled` would make this untestable AND put the
+    // reason out of a keyboard's reach; this proves the trade actually holds.
+    // `force`, because Playwright treats `aria-disabled` as disabled and would
+    // otherwise wait for the control to become enabled, which is the whole point: the
+    // refusal has to come from the handler, not from the automation declining to click.
+    const button = page.getByRole('button', { name: 'Approve version' });
+    await button.click({ force: true });
+    await button.press('Enter');
+    await button.press('Space');
+
+    expect(page.url()).toBe(before);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(button).toBeVisible();
+  });
+
+  test('an unavailable action stays in the tab order so its reason is reachable', async ({
+    page,
+  }) => {
+    await page.goto('/badges');
+    const button = page.getByRole('button', { name: 'Approve version' });
+    await button.focus();
+    await expect(button).toBeFocused();
   });
 });
 
@@ -243,5 +340,36 @@ test.describe('breakpoints', () => {
 
     // Every nav item is still reachable.
     await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveCount(4);
+  });
+
+  test('a table becomes a label/value stack below 900px, not a scroller', async ({ page }) => {
+    await page.goto('/badges');
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.locator('.ls-table thead')).toBeVisible();
+
+    // EXPERIENCE.md → Responsive & Platform: below 900px, "tables become label/value
+    // stacks". The column names move into each cell, so the header row goes away.
+    await page.setViewportSize({ width: 880, height: 900 });
+    await expect(page.locator('.ls-table thead')).not.toBeInViewport();
+
+    const labelled = await page.evaluate(() => {
+      const cell = document.querySelector('.ls-table tbody td');
+      if (!cell) return null;
+      return {
+        label: cell.getAttribute('data-label'),
+        rendered: getComputedStyle(cell, '::before').content,
+        display: getComputedStyle(cell).display,
+      };
+    });
+    expect(labelled?.label).toBe('Procedure');
+    expect(labelled?.display).toBe('flex');
+    expect(labelled?.rendered).toContain('Procedure');
+
+    // Stacked, so nothing needs a horizontal scroll to be read.
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflows).toBe(false);
   });
 });

@@ -16,6 +16,10 @@ import { expect, type Page } from '@playwright/test';
  * production rule. `auth.setup.ts` performs the two real sign-ins; every other spec
  * loads the saved state.
  */
+/**
+ * The addresses default because they are not secrets — they name two synthetic accounts
+ * in a synthetic environment, and CI passes the same two. The password does not.
+ */
 export const ACCOUNTS = {
   auditor: {
     email: process.env['E2E_AUDITOR_EMAIL'] ?? 'auditor@example.test',
@@ -27,7 +31,21 @@ export const ACCOUNTS = {
   },
 } as const;
 
-export const PASSWORD = process.env['E2E_PASSWORD'] ?? 'e2e-password-at-least-12-chars';
+/**
+ * No default. A committed password is a standing credential in a repository whichever
+ * file it sits in, and this suite exists partly to prove the sign-in path works — a
+ * fallback would let it pass against an environment nobody configured, or silently
+ * spend the rate-limit budget failing against the wrong one.
+ */
+export const PASSWORD = ((): string => {
+  const value = process.env['E2E_PASSWORD'];
+  if (value === undefined || value === '') {
+    throw new Error(
+      'E2E_PASSWORD is required: it must be the password `pnpm seed:identity` was run with.',
+    );
+  }
+  return value;
+})();
 
 /** Where `auth.setup.ts` saves each role's signed-in browser state. Git-ignored. */
 export const AUTH_STATE = {

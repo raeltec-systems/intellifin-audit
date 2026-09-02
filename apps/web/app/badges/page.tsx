@@ -3,9 +3,9 @@ import type { Metadata } from 'next';
 import { Banner } from '../../src/design/Banner';
 import { DataTable } from '../../src/design/DataTable';
 import { StatusBadge } from '../../src/design/StatusBadge';
-import { Tabs } from '../../src/design/Tabs';
 import { STATUS_FAMILIES, STATUS_VOCABULARY, type StatusState } from '../../src/design/status';
 import { ConfirmDialogDemo } from './ConfirmDialogDemo';
+import { SectionTabs } from './SectionTabs';
 
 export const metadata: Metadata = { title: 'Status vocabulary · IntelliFin Audit' };
 
@@ -24,7 +24,8 @@ export const metadata: Metadata = { title: 'Status vocabulary · IntelliFin Audi
  */
 
 interface ExampleRow {
-  readonly run: string;
+  readonly id: string;
+  readonly label: string;
   readonly procedure: string;
   readonly lifecycle: StatusState<'run-lifecycle'>;
   readonly outcome: StatusState<'result-outcome'>;
@@ -34,7 +35,8 @@ interface ExampleRow {
 
 const EXAMPLE_ROWS: readonly ExampleRow[] = [
   {
-    run: 'RUN-0000',
+    id: 'completed',
+    label: 'Example completed Run',
     procedure: 'Example procedure',
     lifecycle: 'Completed',
     outcome: 'Pass',
@@ -42,7 +44,8 @@ const EXAMPLE_ROWS: readonly ExampleRow[] = [
     exceptions: 0,
   },
   {
-    run: 'RUN-0001',
+    id: 'awaiting',
+    label: 'Example Run awaiting an Auditor',
     procedure: 'Example procedure',
     lifecycle: 'Awaiting Auditor',
     outcome: 'Pending Confirmation',
@@ -62,51 +65,48 @@ export default function BadgeGalleryPage(): React.JSX.Element {
         </p>
       </header>
 
-      {STATUS_FAMILIES.map((family) => (
-        <section key={family} aria-labelledby={`family-${family}`} className="ls-stack">
-          <h2 id={`family-${family}`}>{STATUS_VOCABULARY[family].label}</h2>
-          <div className="ls-badge-gallery">
-            {Object.keys(STATUS_VOCABULARY[family].states).map((state) => (
-              // The one place the table is walked by string key rather than by a
-              // literal. `StatusState<F>` over the union of families narrows to
-              // `never`, so the cast is what "iterate every row" costs; the runtime
-              // lookup still throws on a state the family does not hold.
-              <StatusBadge
-                key={state}
-                family={family}
-                state={state as StatusState<typeof family>}
-                size="md"
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      <section aria-labelledby="families-heading" className="ls-stack">
+        <h2 id="families-heading">State families</h2>
+        {STATUS_FAMILIES.map((family) => (
+          <section key={family} aria-labelledby={`family-${family}`} className="ls-stack">
+            <h3 id={`family-${family}`}>{STATUS_VOCABULARY[family].label}</h3>
+            <div className="ls-badge-gallery">
+              {Object.keys(STATUS_VOCABULARY[family].states).map((state) => (
+                // The one place the table is walked by string key rather than by a
+                // literal. `StatusState<F>` over the union of families narrows to
+                // `never`, so the cast is what "iterate every row" costs; the runtime
+                // lookup still throws on a state the family does not hold.
+                <StatusBadge
+                  key={state}
+                  family={family}
+                  state={state as StatusState<typeof family>}
+                  size="md"
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </section>
 
       <section aria-labelledby="components-heading" className="ls-stack">
         <h2 id="components-heading">Component reference</h2>
         <Banner tone="info" title="Reference renderings.">
-          The Run identifiers, Procedures and counts below are illustrative. They belong
-          to no Run, and no control was tested to produce them.
+          The Procedures and counts below are illustrative. They belong to no Run, and no
+          control was tested to produce them. Each row links to the Runs list, because no
+          Run exists to link to.
         </Banner>
 
-        <Tabs
-          label="Component reference sections"
-          current="#components-heading"
-          tabs={[
-            { href: '#components-heading', label: 'Components' },
-            { href: '#table-heading', label: 'Data table' },
-            { href: '#actions-heading', label: 'Actions' },
-          ]}
-        />
+        <SectionTabs />
 
         <h3 id="table-heading">Data table</h3>
         <DataTable
           caption="Illustrative Runs. Every row's first cell is its only link; rows carry no click handler."
           first={{
             header: 'Run',
-            href: (row) => `/runs/${row.run}`,
-            label: (row) => row.run,
-            mono: true,
+            // The Runs list, not a fabricated Run identifier: `/runs/RUN-0000` is not a
+            // route, and a reference page that demonstrates a broken link teaches one.
+            href: () => '/runs',
+            label: (row) => row.label,
           }}
           columns={[
             { key: 'procedure', header: 'Procedure', render: (row) => row.procedure },
@@ -123,9 +123,7 @@ export default function BadgeGalleryPage(): React.JSX.Element {
             {
               key: 'gate',
               header: 'Gate',
-              render: (row) => (
-                <StatusBadge family="evidence-quality-gate" state={row.gate} />
-              ),
+              render: (row) => <StatusBadge family="evidence-quality-gate" state={row.gate} />,
             },
             {
               key: 'exceptions',
@@ -135,7 +133,11 @@ export default function BadgeGalleryPage(): React.JSX.Element {
             },
           ]}
           rows={EXAMPLE_ROWS}
-          rowKey={(row) => row.run}
+          rowKey={(row) => row.id}
+          empty={{
+            headline: 'No rows to show.',
+            sentence: 'A table with no rows states what is missing rather than showing a header over nothing.',
+          }}
         />
 
         <h3 id="actions-heading">Confirmation weights and unavailable actions</h3>

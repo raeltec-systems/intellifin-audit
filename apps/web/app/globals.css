@@ -110,25 +110,11 @@ a {
   overflow-wrap: anywhere;
 }
 
-.ls-overline {
-  font-size: var(--type-overline-font-size);
-  line-height: var(--type-overline-line-height);
-  font-weight: var(--type-overline-font-weight);
-  letter-spacing: var(--type-overline-letter-spacing);
-  /* EXPERIENCE.md → Voice and Tone: sentence case everywhere; headers uppercase by CSS only. */
-  text-transform: uppercase;
-}
-
 .ls-caption {
   font-size: var(--type-caption-font-size);
   line-height: var(--type-caption-line-height);
   font-weight: var(--type-caption-font-weight);
   color: var(--color-text-secondary);
-}
-
-.ls-body-sm-relaxed {
-  font-size: var(--type-body-sm-relaxed-font-size);
-  line-height: var(--type-body-sm-relaxed-line-height);
 }
 
 /* Text for assistive technology only. Never used to hide a reason from sight: a
@@ -150,19 +136,29 @@ a {
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
-  border-radius: var(--rounded-sm);
+  /* Outline and offset only. A `border-radius` here would change the corner shape of
+   * every control the moment it takes focus. */
 }
 
 /* The ring is the same #0F766E on the navy sidebar, where teal-700 alone would sit at
- * 2.7:1 against the ground. A white band at the element edge puts the ring against
- * white instead (4.7:1), so the colour stays exactly the contract's without the
- * indicator becoming invisible on the one dark surface in the product. */
+ * 2.7:1 against the ground.
+ *
+ * The order matters and is easy to get wrong: with the default `outline-offset: 2px`
+ * the teal ring is drawn from 2px to 4px outward, so a 2px white shadow at 0-2px sits
+ * BETWEEN the element and the ring and the ring's outer edge still meets navy. Here
+ * the offset is 0, so the teal ring occupies 0-2px, and a 4px white shadow — painted
+ * beneath the outline — shows only where the outline does not cover it, at 2-4px.
+ * The ring is therefore bounded by white on both sides and never borders navy. */
 .ls-sidebar :focus-visible {
-  box-shadow: 0 0 0 2px var(--color-surface-card);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px var(--color-surface-card);
 }
 
+/* `fixed`, not `absolute`: an absolutely positioned skip link reveals at the top of the
+ * DOCUMENT, so on a scrolled page it appears off-screen — invisible exactly when it is
+ * needed. */
 .ls-skip-link {
-  position: absolute;
+  position: fixed;
   left: var(--spacing-2);
   top: calc(-1 * var(--spacing-6) - var(--spacing-6));
   z-index: 40;
@@ -219,7 +215,7 @@ a {
 .ls-sidebar__mark {
   padding: 0 var(--spacing-5);
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--spacing-2);
 }
 
@@ -228,11 +224,6 @@ a {
   font-size: var(--type-card-title-font-size);
   line-height: var(--type-card-title-line-height);
   font-weight: var(--type-card-title-font-weight);
-}
-
-/* The one place gold appears: the IntelliFin mark. Never a status, never a control. */
-.ls-sidebar__mark-glyph {
-  color: var(--color-gold);
 }
 
 .ls-sidebar__nav {
@@ -395,23 +386,6 @@ a {
 
 /* ----------------------------------------------------------- components ---- */
 
-/* {components.card} */
-.ls-card {
-  background: var(--color-surface-card);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--rounded-lg);
-  box-shadow: none;
-}
-
-.ls-card__header {
-  padding: var(--spacing-card-header-padding);
-  border-bottom: 1px solid var(--color-border-default);
-}
-
-.ls-card__body {
-  padding: var(--spacing-card-padding);
-}
-
 /* Button ------------------------------------------------------------------- */
 
 .ls-button {
@@ -476,12 +450,17 @@ a {
 
 /* A disabled action keeps its POSITION and its size; only its weight changes. It is
  * still focusable, because its reason is its accessible description and a description
- * nobody can reach by keyboard is the tooltip this rule exists to forbid. */
+ * nobody can reach by keyboard is the tooltip this rule exists to forbid.
+ *
+ * `text-secondary`, not `text-muted`: this is live text (the control is `aria-disabled`,
+ * not `disabled`, so it is announced and focusable), and `text-muted` on
+ * `surface-sunken` is 4.39:1 — under AA. DESIGN.md also scopes `text-muted` to
+ * `surface-card` and `surface-page` only. `text-secondary` on sunken is 6.9:1. */
 .ls-button[aria-disabled='true'] {
   cursor: not-allowed;
   background: var(--color-surface-sunken);
   border-color: var(--color-border-default);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 
 /* StatusBadge -------------------------------------------------------------- */
@@ -753,16 +732,23 @@ a {
   align-items: center;
   justify-content: center;
   padding: var(--spacing-gutter);
+}
+
+/* The scrim: {colors.scrim} at {spacing.scrim-opacity}, painted as an opaque layer
+ * carrying an opacity. Not `color-mix()`, whose unsupported-declaration fallback is
+ * fully opaque navy over the whole page, and not an `rgba()` literal, which would
+ * restate a token's value in a second notation. */
+.ls-scrim::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: var(--color-scrim);
-  /* {spacing.scrim-opacity} */
-  background-color: color-mix(
-    in srgb,
-    var(--color-scrim) calc(var(--spacing-scrim-opacity) * 100%),
-    transparent
-  );
+  opacity: var(--spacing-scrim-opacity);
 }
 
 .ls-dialog {
+  /* Above the scrim layer. */
+  position: relative;
   width: 100%;
   max-width: var(--spacing-dialog);
   background: var(--color-surface-card);
@@ -823,8 +809,9 @@ a {
 
 /* Sign-in ------------------------------------------------------------------ */
 
+/* The viewport less the ribbon, which sits above this page rather than inside it. */
 .ls-signin {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--spacing-ribbon));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -862,12 +849,9 @@ a {
  * layouts arrive with the surfaces that have rails; what the shell owns is where the
  * sidebar sits and whether a table may scroll. */
 
-/* 1240–1279px: rail stacked under the main column. */
-@media (max-width: 1279px) {
-  .ls-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
+/* 1240-1279px in EXPERIENCE.md stacks the detail rail under the main column. No
+ * surface has a rail yet, so there is no rule here: a breakpoint that targets a class
+ * nothing uses reads as implemented and is not. It arrives with the first rail. */
 
 /* 1024–1239px: a wide table scrolls horizontally instead of clipping. */
 @media (max-width: 1239px) {
@@ -908,9 +892,48 @@ a {
   }
 }
 
-/* Below 900px the same reading mode; the surfaces that cannot be authored on a narrow
- * viewport say so themselves when they exist (Builder, Version review). */
+/* Below 900px, reading mode proper: EXPERIENCE.md says tables become label/value
+ * stacks rather than scrolling. Every cell carries its column name as `data-label`,
+ * and `DataTable` states each element's role explicitly, so `display: block` here
+ * restyles the table without stripping its semantics. */
 @media (max-width: 899px) {
+  .ls-table {
+    min-width: 0;
+  }
+
+  .ls-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .ls-table tbody tr {
+    display: block;
+    padding: var(--spacing-2) 0;
+    border-top: 1px solid var(--color-surface-sunken);
+  }
+
+  .ls-table tbody th,
+  .ls-table tbody td {
+    display: flex;
+    gap: var(--spacing-4);
+    justify-content: space-between;
+    padding: var(--spacing-1) var(--spacing-5);
+    border-top: none;
+  }
+
+  .ls-table tbody th::before,
+  .ls-table tbody td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption-font-size);
+    line-height: var(--type-caption-line-height);
+    font-weight: var(--type-caption-font-weight);
+  }
+
   .ls-topbar {
     padding: 0 var(--spacing-4);
   }

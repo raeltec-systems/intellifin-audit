@@ -12,7 +12,7 @@
     "build": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker build",
     "dev": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/web dev",
     "dev:worker": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker dev",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.e2e.json --noEmit",
     "boundaries": "node scripts/check-boundaries.mjs",
     "test": "vitest run",
     "test:integration": "vitest run --config tests/integration/vitest.config.ts",

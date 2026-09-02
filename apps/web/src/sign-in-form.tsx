@@ -30,15 +30,36 @@ export function SignInForm(): React.JSX.Element {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * Which attempt the current error belongs to. Keying the focus effect on the error
+   * STRING alone means two identical failures in a row — the common case, since every
+   * failed sign-in is rewritten to the same sentence — do not re-run it: the second
+   * failure would neither move focus nor re-announce, and the form would look like it
+   * had done nothing at all.
+   */
+  const [attempt, setAttempt] = useState(0);
   const errorRef = useRef<HTMLParagraphElement | null>(null);
+  /**
+   * The guard that actually holds. `busy` is state: two submit events dispatched before
+   * React re-renders — a click plus an implicit submission, or a held Enter key — both
+   * read the value from the render that is still on screen, which is `false`. A ref is
+   * written and read in the same tick.
+   */
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (error !== null) errorRef.current?.focus();
-  }, [error]);
+  }, [error, attempt]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    // Holding Enter in a text field fires submit repeatedly. Without this guard each
+    // repeat is another POST, and ten of them exhaust the real per-minute sign-in rate
+    // limit. The button's `aria-disabled` cannot stop implicit submission.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setBusy(true);
+    setAttempt((current) => current + 1);
     setError(null);
     try {
       const response = await fetch('/api/auth/sign-in/email', {
@@ -55,6 +76,7 @@ export function SignInForm(): React.JSX.Element {
     } catch {
       setError('Sign-in is temporarily unavailable. Try again.');
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   }

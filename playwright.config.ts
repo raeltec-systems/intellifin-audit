@@ -20,7 +20,18 @@ import { defineConfig, devices } from '@playwright/test';
  * running server (`PLAYWRIGHT_BASE_URL` set) skips the server entirely.
  */
 
-const PORT = Number(process.env['PLAYWRIGHT_PORT'] ?? 3000);
+/** A non-numeric or out-of-range value would become `http://localhost:NaN`. */
+function port(): number {
+  const raw = process.env['PLAYWRIGHT_PORT'];
+  if (raw === undefined || raw === '') return 3000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error(`PLAYWRIGHT_PORT must be a port number, found "${raw}"`);
+  }
+  return parsed;
+}
+
+const PORT = port();
 // `localhost`, never `127.0.0.1`: Next's dev server blocks cross-origin requests to
 // its own dev resources, and it does not treat the two spellings as one host, so a
 // browser on 127.0.0.1 is refused the HMR endpoint and the client runtime never boots
@@ -32,11 +43,18 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
   forbidOnly: Boolean(process.env['CI']),
-  retries: process.env['CI'] ? 1 : 0,
+  // No retries, in CI or out of it. This suite's whole point is a deterministic
+  // accessibility gate: an axe violation does not become non-violating on a second run,
+  // so a retry can only hide flakiness in the one place flakiness must be visible.
+  retries: 0,
   // One worker: the specs sign in as different roles against one database, so parallel
   // workers would race each other's session cookies for no wall-clock gain on three files.
   workers: 1,
-  reporter: process.env['CI'] ? [['github'], ['list']] : [['list']],
+  reporter: process.env['CI']
+    ? // The HTML report is what the failure artifact contains; without it the upload
+      // step has nothing to upload.
+      [['github'], ['list'], ['html', { open: 'never' }]]
+    : [['list'], ['html', { open: 'never' }]],
   timeout: 30_000,
   expect: { timeout: 10_000 },
   use: {

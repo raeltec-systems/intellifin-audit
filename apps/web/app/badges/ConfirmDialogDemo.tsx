@@ -63,6 +63,10 @@ const UNAVAILABLE = [
 
 export function ConfirmDialogDemo(): React.JSX.Element {
   const [open, setOpen] = useState<ConfirmWeight | null>(null);
+  // Confirmations are counted only so the double-activation guard is observable: a
+  // dialog that calls `onConfirm` twice looks identical to one that calls it once
+  // unless something on the page counts. Nothing is stored and nothing is sent.
+  const [confirmations, setConfirmations] = useState(0);
   const current = WEIGHTS.find((entry) => entry.weight === open);
 
   return (
@@ -86,7 +90,13 @@ export function ConfirmDialogDemo(): React.JSX.Element {
           </Button>
         ))}
       </div>
-      <UnavailableActions actions={UNAVAILABLE} />
+      {/* Under the surrounding <h3>, so the panel heading is an <h4>. */}
+      <UnavailableActions actions={UNAVAILABLE} headingLevel={4} />
+
+      <p className="ls-caption">
+        Confirmations recorded on this page:{' '}
+        <span data-testid="confirmations">{confirmations}</span>. Nothing is stored.
+      </p>
 
       {current ? (
         <ConfirmDialog
@@ -95,7 +105,10 @@ export function ConfirmDialogDemo(): React.JSX.Element {
           title={current.title}
           consequence={current.consequence}
           confirmLabel={current.confirmLabel}
-          onConfirm={() => setOpen(null)}
+          onConfirm={() => {
+            setConfirmations((count) => count + 1);
+            setOpen(null);
+          }}
           onCancel={() => setOpen(null)}
         />
       ) : null}

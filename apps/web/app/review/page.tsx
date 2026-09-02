@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { EMPTY_STATES } from '../../src/design/copy';
 import { EmptyState } from '../../src/design/EmptyState';
 
 export const metadata: Metadata = { title: 'Review · IntelliFin Audit' };
@@ -15,11 +16,7 @@ export default function ReviewPage(): React.JSX.Element {
         <h1>Review</h1>
         <p>Results awaiting a decision, and Results already finalized.</p>
       </header>
-      <EmptyState
-        icon="inbox"
-        headline="No Result awaits your decision."
-        sentence="A submitted Result, its outcome, and its Evidence Quality Gate would be listed here. An empty queue does not mean a control passed."
-      />
+      <EmptyState icon="inbox" {...EMPTY_STATES.reviewQueueEmpty} />
     </div>
   );
 }

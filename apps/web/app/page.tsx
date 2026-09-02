@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { EMPTY_STATES } from '../src/design/copy';
 import { EmptyState } from '../src/design/EmptyState';
 
 export const metadata: Metadata = { title: 'Overview · IntelliFin Audit' };
@@ -25,19 +26,12 @@ export default function OverviewPage(): React.JSX.Element {
 
       <section aria-labelledby="needs-attention-heading" className="ls-stack">
         <h2 id="needs-attention-heading">Needs attention</h2>
-        <EmptyState
-          icon="check-circle-2"
-          headline="Nothing needs attention."
-          sentence="No Result awaits confirmation or review, no Run is waiting on you, and none is Inconclusive or Run Failed. This does not imply that any control passed."
-        />
+        <EmptyState icon="shield" {...EMPTY_STATES.overviewNothingNeedsAttention} />
       </section>
 
       <section aria-labelledby="recent-runs-heading" className="ls-stack">
         <h2 id="recent-runs-heading">Recent Runs</h2>
-        <EmptyState
-          headline="No Runs yet."
-          sentence="No Procedure has run in this environment. An empty Overview does not mean a control passed."
-        />
+        <EmptyState {...EMPTY_STATES.overviewNoRuns} />
       </section>
     </div>
   );

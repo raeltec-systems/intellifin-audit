@@ -50,8 +50,14 @@ export function Button({
   busy = false,
 }: ButtonProps): React.JSX.Element {
   const ownDescriptionId = useId();
-  const unavailable = disabledReason !== undefined;
-  const describedBy = unavailable ? (disabledReasonId ?? ownDescriptionId) : undefined;
+  // An empty or blank reason is no reason: it would disable the control and describe it
+  // with nothing, which is exactly the silent disabling this component exists to prevent.
+  const reason = disabledReason !== undefined && disabledReason.trim() !== '' ? disabledReason : undefined;
+  const panelId = disabledReasonId !== undefined && disabledReasonId !== '' ? disabledReasonId : undefined;
+  const unavailable = reason !== undefined;
+  // Points at the panel's sentence when there is one, and at this button's own
+  // description otherwise. It is never set without the element it names existing.
+  const describedBy = unavailable ? (panelId ?? ownDescriptionId) : undefined;
 
   function handleClick(event: MouseEvent<HTMLButtonElement>): void {
     if (unavailable || busy) {
@@ -73,9 +79,9 @@ export function Button({
         {icon ? <Icon name={icon} size={14} /> : null}
         {children}
       </button>
-      {unavailable && disabledReasonId === undefined ? (
+      {unavailable && panelId === undefined ? (
         <span id={ownDescriptionId} className="ls-visually-hidden">
-          {disabledReason}
+          {reason}
         </span>
       ) : null}
     </>

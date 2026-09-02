@@ -1,45 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-/** The label a first path segment reads as. Anything else shows its own segment. */
-const SECTION_LABELS: Readonly<Record<string, string>> = {
-  procedures: 'Procedures',
-  runs: 'Runs',
-  review: 'Review',
-  administration: 'Administration',
-  badges: 'Status vocabulary',
-};
+import { crumbsFor } from './breadcrumb-rules';
 
-export interface Crumb {
-  readonly href: string;
-  readonly label: string;
-  /** An identifier segment is monospace, like every other identifier. */
-  readonly mono: boolean;
-}
-
-/**
- * The trail for a path. EXPERIENCE.md: "Breadcrumbs on every detail surface
- * ('Runs / RUN-2437 / Live')" — a detail surface being one with a parent, so a list
- * route gets none and neither does Overview.
- */
-export function crumbsFor(pathname: string): Crumb[] {
-  const segments = pathname.split('/').filter((segment) => segment !== '');
-  if (segments.length < 2) return [];
-
-  const crumbs: Crumb[] = [];
-  let href = '';
-  for (const [index, segment] of segments.entries()) {
-    href += `/${segment}`;
-    const known = index === 0 ? SECTION_LABELS[segment] : undefined;
-    crumbs.push({
-      href,
-      label: known ?? decodeURIComponent(segment),
-      mono: known === undefined,
-    });
-  }
-  return crumbs;
-}
+export type { Crumb } from './breadcrumb-rules';
 
 /** Every segment but the last is a link; the last is the current page. */
 export function Breadcrumbs(): React.JSX.Element | null {
@@ -64,9 +30,9 @@ export function Breadcrumbs(): React.JSX.Element | null {
                   {crumb.label}
                 </span>
               ) : (
-                <a href={crumb.href} className={crumb.mono ? 'ls-mono' : undefined}>
+                <Link href={crumb.href} className={crumb.mono ? 'ls-mono' : undefined}>
                   {crumb.label}
-                </a>
+                </Link>
               )}
             </li>
           );

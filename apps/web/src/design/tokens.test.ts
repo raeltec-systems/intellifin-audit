@@ -116,6 +116,19 @@ function parseCustomProperties(css: string): Map<string, string> {
 const frontmatter = parseFrontmatter(design);
 const tokens = parseCustomProperties(tokensCss);
 
+/**
+ * `globals.css` with its comments removed, whitespace squeezed out and lower-cased. A
+ * comment may quote a value; a rule may not, and `rgba(16, 42, 67, .24)` and
+ * `rgba(16,42,67,.24)` are the same declaration.
+ */
+const scannableGlobals = readFileSync(
+  fileURLToPath(new URL('../../app/globals.css', import.meta.url)),
+  'utf8',
+)
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/\s+/g, '')
+  .toLowerCase();
+
 const group = (name: string): Record<string, unknown> => {
   const value = frontmatter[name];
   if (typeof value !== 'object' || value === null) {
@@ -148,6 +161,11 @@ function expected(value: string): string {
     if (head === 'spacing' && rest.length === 1) return `var(${NAMES.spacing(rest[0] as string)})`;
     if (head === 'typography' && rest.length === 2) {
       return `var(${NAMES.type(rest[0] as string, rest[1] as string)})`;
+    }
+    // A whole typography ROLE, as `components.data-table.header-type` uses it. There is
+    // no single property to compare, so the font size stands for the role.
+    if (head === 'typography' && rest.length === 1) {
+      return `var(${NAMES.type(rest[0] as string, 'fontSize')})`;
     }
     throw new Error(`unresolvable reference {${path}}`);
   });
@@ -206,17 +224,218 @@ describe('the token stylesheet against DESIGN.md', () => {
     expect(tokens.get('--color-focus')).toBe('#0F766E');
   });
 
-  it('is the only stylesheet that states a token value', () => {
-    // `globals.css` may reference tokens and may carry the handful of literals the
-    // contract states inline; it may not restate a documented token's value.
-    const globals = readFileSync(
-      fileURLToPath(new URL('../../app/globals.css', import.meta.url)),
-      'utf8',
-    ).replace(/\/\*[\s\S]*?\*\//g, ''); // a comment may quote a value; a rule may not
-    const restated = [...colorEntries]
-      .map(([, value]) => value)
-      .filter((value) => value.startsWith('#'))
-      .filter((value) => globals.includes(value));
+  it('is the only stylesheet that states a token value, in any notation', () => {
+    // `globals.css` may reference tokens and may carry the literals the contract states
+    // inline (a component pattern's padding, the one dialog shadow); it may not restate
+    // a documented colour, in hex or in `rgb()`/`rgba()`, in either case.
+    //
+    // The contract's own literals are removed first. `{components.confirmation-dialog
+    // .shadow}` is `0 12px 32px rgba(16,42,67,0.24)` — navy in another notation, written
+    // that way by DESIGN.md itself, so copying it verbatim is compliance, not drift.
+    let scanned = scannableGlobals;
+    for (const [, value] of componentLeaves) {
+      if (value.startsWith('{IntelliFinDesignSystem')) continue;
+      const literal = value.replace(/\s+/g, '').toLowerCase();
+      if (literal.length > 3) scanned = scanned.split(literal).join('|');
+    }
+
+    const restated: string[] = [];
+    for (const [key, value] of colorEntries) {
+      if (!value.startsWith('#')) continue;
+      const red = Number.parseInt(value.slice(1, 3), 16);
+      const green = Number.parseInt(value.slice(3, 5), 16);
+      const blue = Number.parseInt(value.slice(5, 7), 16);
+      for (const form of [
+        value.toLowerCase(),
+        `rgb(${red},${green},${blue}`,
+        `rgba(${red},${green},${blue}`,
+      ]) {
+        if (scanned.includes(form)) restated.push(`${key} as ${form}`);
+      }
+    }
     expect(restated).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------- component patterns ---- */
+
+/**
+ * The fifth frontmatter group. Its entries are not tokens — they are compositions of
+ * tokens — but `globals.css` hand-copies the ones it implements, and a hand copy is
+ * exactly what drifts. Every leaf is classified below, and the classification is
+ * asserted exhaustive, so a pattern added to DESIGN.md fails this file until somebody
+ * decides whether it is implemented, inherited, or still to come.
+ */
+const componentLeaves = ((): [string, string][] => {
+  const leaves: [string, string][] = [];
+  for (const [name, entry] of Object.entries(group('components'))) {
+    if (typeof entry === 'string') leaves.push([name, entry]);
+    else {
+      for (const [property, value] of Object.entries(entry as Record<string, string>)) {
+        leaves.push([`${name}.${property}`, value]);
+      }
+    }
+  }
+  return leaves;
+})();
+
+/** Patterns named as the parent bundle's, with no value of their own to check. */
+const INHERITED_FROM_BUNDLE = [
+  'sidebar',
+  'button',
+  'status-badge',
+  'banner',
+  'environment-ribbon',
+  'empty-state',
+  'tabs',
+  'icon',
+] as const;
+
+/** Patterns `globals.css` implements today. Each value must appear in the stylesheet. */
+const IMPLEMENTED = [
+  'status-badge-info-solid.background',
+  'status-badge-info-solid.border',
+  'status-badge-info-solid.text',
+  'data-table.header-background',
+  'data-table.header-type',
+  'data-table.header-text',
+  'data-table.header-padding',
+  'data-table.cell-padding',
+  'data-table.row-border',
+  'data-table.first-cell-type',
+  'unavailable-actions-panel.background',
+  'unavailable-actions-panel.radius',
+  'unavailable-actions-panel.padding',
+  'confirmation-dialog.width',
+  'confirmation-dialog.radius',
+  'confirmation-dialog.shadow',
+  'confirmation-dialog.scrim',
+] as const;
+
+/** Every documented token value, so a literal can be recognised behind its token. */
+const tokenByValue = new Map<string, string>();
+for (const [name, value] of tokens) {
+  if (!tokenByValue.has(squash(value))) tokenByValue.set(squash(value), name);
+}
+
+function squash(text: string): string {
+  return text.replace(/\s+/g, '');
+}
+
+/** A value counts as implemented if the stylesheet writes it, or the token holding it. */
+function stylesheetStates(value: string): boolean {
+  const wanted = squash(expected(value));
+  if (scannableGlobals.includes(wanted.toLowerCase())) return true;
+  const token = tokenByValue.get(wanted);
+  return token !== undefined && scannableGlobals.includes(`var(${token})`);
+}
+
+
+/**
+ * Patterns whose surfaces do not exist yet — the conclusion triptych, the Execution
+ * Timeline, the session viewer and the rest arrive with Epics 2 to 6, and `card` has no
+ * caller until a surface has cards. They are listed rather than defaulted so that the
+ * exhaustiveness check above stays meaningful: a new pattern in DESIGN.md lands here
+ * deliberately, not by falling through.
+ */
+const DEFERRED_PATTERNS = [
+  'card.background',
+  'card.border',
+  'card.radius',
+  'card.shadow',
+  'conclusion-triptych.columns',
+  'conclusion-triptych.cell-padding',
+  'conclusion-triptych.divider',
+  'conclusion-triptych.statement-background',
+  'conclusion-triptych.statement-type',
+  'gate-checklist.row-grid',
+  'gate-checklist.row-padding',
+  'gate-checklist.group-label',
+  'timeline-row.grid',
+  'timeline-row.row-padding',
+  'timeline-row.call-box-background',
+  'timeline-row.call-box-font',
+  'timeline-row.indent-per-level',
+  'provenance-chain.marker-size',
+  'provenance-chain.marker-radius',
+  'provenance-chain.connector',
+  'provenance-chain.step-gap',
+  'evaluation-card.border',
+  'evaluation-card.origin-badge',
+  'evaluation-card.confidence-font',
+  'grounding-inspector.label-font',
+  'grounding-inspector.value-font',
+  'grounding-inspector.corroboration-badge',
+  'reconciliation-table.label-width',
+  'reconciliation-table.value-align',
+  'reconciliation-table.value-font',
+  'evidence-item.grid',
+  'evidence-item.gap',
+  'evidence-item.kind-badge',
+  'evidence-item.note-background',
+  'evidence-item.note-border',
+  'version-diff.changed-section-border',
+  'version-diff.added-value-background',
+  'version-diff.removed-value-background',
+  'version-diff.value-font',
+  'exception-row.padding',
+  'exception-row.identifier-font',
+  'exception-row.state-badge',
+  'notification-row.padding',
+  'notification-row.countdown-font',
+  'notification-row.unread-marker',
+  'untrusted-block.border',
+  'untrusted-block.body-font',
+  'untrusted-block.body-background',
+  'safe-next-action-panel.background',
+  'safe-next-action-panel.border',
+  'safe-next-action-panel.text',
+  'execution-failure-panel.background',
+  'execution-failure-panel.border',
+  'execution-failure-panel.text',
+  'escalation-panel.background',
+  'escalation-panel.border',
+  'escalation-panel.heading-text',
+  'escalation-panel.question-background',
+  'escalation-panel.question-font',
+  'session-viewer.chrome-background',
+  'session-viewer.chrome-text',
+  'session-viewer.live-dot',
+  'session-viewer.replay-dot',
+  'session-viewer.paused-dot',
+  'session-viewer.awaiting-dot',
+  'session-viewer.stage-background',
+  'session-viewer.stage-min-height',
+  'session-viewer.scrubber-pill-height',
+  'builder-section.label-width',
+  'builder-section.label-type',
+  'builder-section.plan-row-font',
+  'filter-chip.height',
+  'filter-chip.radius',
+  'filter-chip.pressed-background',
+  'filter-chip.pressed-text',
+] as const;
+
+describe('the component patterns globals.css implements', () => {
+  it('classifies every leaf of the components group exactly once', () => {
+    const classified = new Set<string>([
+      ...INHERITED_FROM_BUNDLE,
+      ...IMPLEMENTED,
+      ...DEFERRED_PATTERNS,
+    ]);
+    const leaves = componentLeaves.map(([path]) => path);
+    expect(leaves.filter((path) => !classified.has(path))).toEqual([]);
+    expect([...classified].filter((path) => !leaves.includes(path))).toEqual([]);
+  });
+
+  it.each(INHERITED_FROM_BUNDLE)('%s is named as the parent bundle\'s, not restated', (name) => {
+    const value = componentLeaves.find(([path]) => path === name)?.[1];
+    expect(value).toMatch(/^\{IntelliFinDesignSystem\./);
+  });
+
+  it.each(IMPLEMENTED)('%s is written into globals.css with the documented value', (path) => {
+    const value = componentLeaves.find(([leaf]) => leaf === path)?.[1];
+    expect(value, `no such component leaf: ${path}`).toBeDefined();
+    expect(stylesheetStates(value as string), `${path} = ${value ?? ""}`).toBe(true);
   });
 });

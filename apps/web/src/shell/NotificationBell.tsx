@@ -1,7 +1,8 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
+import { EMPTY_STATES } from '../design/copy';
 import { EmptyState } from '../design/EmptyState';
 import { Icon } from '../design/Icon';
 
@@ -23,19 +24,58 @@ interface NotificationBellProps {
  *
  * The panel holds the Notifications empty state until the Notifications surface exists.
  * A bell that opens nothing would be a control that lies about being one.
+ *
+ * It is a disclosure, not a dialog: it does not trap focus, so it must be dismissible
+ * the two ways a disclosure is expected to be — Escape, and a click outside — and it
+ * must put focus back on the bell when Escape closes it, or the keyboard user is left
+ * on a control that has just been removed.
  */
 export function NotificationBell({ unread }: NotificationBellProps): React.JSX.Element {
   const panelId = useId();
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const count = unread !== undefined && unread > 0 ? unread : null;
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setOpen(false);
+      buttonRef.current?.focus();
+    }
+    function onPointerDown(event: PointerEvent): void {
+      const target = event.target;
+      if (target instanceof Node && wrapRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    // Focus leaving the disclosure entirely closes it, which is what a Tab out means.
+    function onFocusIn(event: FocusEvent): void {
+      const target = event.target;
+      if (target instanceof Node && wrapRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+    };
+  }, [open]);
+
   return (
-    <div className="ls-bell-wrap">
+    <div className="ls-bell-wrap" ref={wrapRef}>
       <button
         type="button"
         className="ls-bell"
         aria-expanded={open}
         aria-controls={panelId}
+        ref={buttonRef}
         onClick={() => setOpen((current) => !current)}
       >
         <Icon name="bell" size={18} />
@@ -49,11 +89,7 @@ export function NotificationBell({ unread }: NotificationBellProps): React.JSX.E
       </button>
       <div className="ls-bell-panel" id={panelId} hidden={!open}>
         {open ? (
-          <EmptyState
-            icon="bell"
-            headline="No Run is waiting on you."
-            sentence="A Run waiting for an answer, or one flagged to an Audit Manager, appears here with the time remaining."
-          />
+          <EmptyState icon="bell" {...EMPTY_STATES.notificationsEmpty} />
         ) : null}
       </div>
     </div>

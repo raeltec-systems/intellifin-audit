@@ -1,4 +1,7 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
+
+import { EmptyState } from './EmptyState';
 
 export interface DataTableColumn<Row> {
   readonly key: string;
@@ -26,6 +29,11 @@ interface DataTableProps<Row> {
   readonly columns: readonly DataTableColumn<Row>[];
   readonly rows: readonly Row[];
   readonly rowKey: (row: Row) => string;
+  /**
+   * What to say when there is nothing to list. Required, because "no rows" is a
+   * statement about the environment and a header over an empty body is not one.
+   */
+  readonly empty: { readonly headline: string; readonly sentence: string };
 }
 
 /**
@@ -37,8 +45,11 @@ interface DataTableProps<Row> {
  * click target that a keyboard never reaches — EXPERIENCE.md: "Every row's first cell
  * is a link; no row-level click handlers."
  *
- * The wrapper scrolls horizontally below 1240px so a wide table narrows instead of
- * clipping.
+ * Two things carry the responsive behaviour. The wrapper scrolls horizontally between
+ * 1024px and 1239px; below 900px `globals.css` restyles the rows as label/value stacks,
+ * which needs both the `data-label` on every cell (it becomes the label) and the
+ * explicit ARIA roles here (`display: block` otherwise strips the table semantics that
+ * `<th scope>` depends on).
  */
 export function DataTable<Row>({
   caption,
@@ -46,18 +57,26 @@ export function DataTable<Row>({
   columns,
   rows,
   rowKey,
+  empty,
 }: DataTableProps<Row>): React.JSX.Element {
+  if (rows.length === 0) {
+    return <EmptyState headline={empty.headline} sentence={empty.sentence} />;
+  }
+
   return (
     <div className="ls-table-scroll">
-      <table className="ls-table">
+      <table className="ls-table" role="table">
         <caption>{caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{first.header}</th>
+        <thead role="rowgroup">
+          <tr role="row">
+            <th scope="col" role="columnheader">
+              {first.header}
+            </th>
             {columns.map((column) => (
               <th
                 key={column.key}
                 scope="col"
+                role="columnheader"
                 className={column.numeric ? 'ls-numeric' : undefined}
               >
                 {column.header}
@@ -65,16 +84,21 @@ export function DataTable<Row>({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {rows.map((row) => (
-            <tr key={rowKey(row)}>
-              <th scope="row">
-                <a className={first.mono ? 'ls-mono' : undefined} href={first.href(row)}>
+            <tr key={rowKey(row)} role="row">
+              <th scope="row" role="rowheader" data-label={first.header}>
+                <Link className={first.mono ? 'ls-mono' : undefined} href={first.href(row)}>
                   {first.label(row)}
-                </a>
+                </Link>
               </th>
               {columns.map((column) => (
-                <td key={column.key} className={column.numeric ? 'ls-numeric' : undefined}>
+                <td
+                  key={column.key}
+                  role="cell"
+                  data-label={column.header}
+                  className={column.numeric ? 'ls-numeric' : undefined}
+                >
                   {column.render(row)}
                 </td>
               ))}
