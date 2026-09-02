@@ -40,6 +40,20 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: 'latest' })).toThrow(ConfigError);
   });
 
+  it('rejects an empty schema range bound instead of reading it as generation 0', () => {
+    // z.coerce.number() would turn '' into 0 and start the process against a range
+    // nobody wrote. An unset-but-present variable is a mistake, not a value.
+    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '' })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: '' })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '   ' })).toThrow(ConfigError);
+  });
+
+  it('rejects generation 0 and negative or fractional bounds', () => {
+    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '0' })).toThrow(/at least 1/);
+    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: '-1' })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: '1.5' })).toThrow(ConfigError);
+  });
+
   it('rejects an inverted schema range', () => {
     expect(() =>
       loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '3', SCHEMA_RANGE_MAX: '2' }),

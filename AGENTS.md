@@ -5,7 +5,7 @@
 
 ## intellifin-audit
 
-Planning workspace for IntelliFin Audit, an audit-execution platform where an Auditor defines an Audit Procedure once and an autonomous Audit Agent runs it under human review. No application code yet; the decided stack is a pnpm monorepo (Next.js 16 web, Node worker, PostgreSQL 18) described in the architecture spine. Planning artifacts live under `_bmad-output/`; human working rules and the decision log live in `CLAUDE.md`.
+Planning workspace and application monorepo for IntelliFin Audit, an audit-execution platform where an Auditor defines an Audit Procedure once and an autonomous Audit Agent runs it under human review. The pnpm monorepo exists as of Story 1.1: `apps/web` (Next.js 16), `apps/worker` (Node), `packages/{domain,application,infrastructure}`, `tests/*`, on PostgreSQL 18. Planning artifacts live under `_bmad-output/` and still lead the code; human working rules and the decision log live in `CLAUDE.md`.
 
 ## Policy
 
@@ -26,7 +26,7 @@ Planning workspace for IntelliFin Audit, an audit-execution platform where an Au
 
 - Use Node 24.20.0 and pnpm 11.25.0: `nvm use` (reads `.nvmrc`), then `corepack enable`. `engine-strict` is on, so another Node major fails the install.
 - Monorepo, from the repository root: `pnpm install`, `pnpm -r typecheck`, `pnpm boundaries` (AD-1 dependency-cruiser check), `pnpm test` (Vitest unit tests).
-- Needs a database: `pnpm db:migrate` and `pnpm test:integration` both read `DATABASE_URL` and require PostgreSQL 18. `pnpm db:generate` writes a new Drizzle migration.
+- Needs a database: `pnpm db:migrate`, `pnpm db:generate` and `pnpm test:integration` all read `DATABASE_URL` and require PostgreSQL 18. Migrations run only in `release.yml` and in CI's throwaway database — never at process startup (AD-15).
 - Run BMAD scripts with `uv run <script>`, never plain `python`; they declare their own dependencies in PEP 723 headers.
 - Skill tests: `uv run --with pytest --with ruamel.yaml pytest .claude/skills/*/scripts/tests`.
 - Lint a spine with `uv run .claude/skills/bmad-architecture/scripts/lint_spine.py --workspace "<architecture folder>"`; passing the file path fails.

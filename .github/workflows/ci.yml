@@ -26,6 +26,7 @@ jobs:
   verify:
     name: Typecheck, boundaries, unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -53,6 +54,7 @@ jobs:
   database:
     name: Migrations and integration tests (PostgreSQL 18)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
@@ -95,7 +97,9 @@ jobs:
 
       - name: Fail if migrations are not up to date with the schema
         run: |
-          pnpm db:generate
+          # </dev/null: drizzle-kit prompts on an ambiguous diff. On a runner with no
+          # tty that would hang until the job timeout instead of failing.
+          pnpm db:generate < /dev/null
           drift="$(git status --porcelain -- packages/infrastructure/drizzle)"
           if [ -n "$drift" ]; then
             echo "::error::packages/infrastructure/drizzle is out of date. Run 'pnpm db:generate' and commit the migration."
@@ -108,24 +112,87 @@ jobs:
         run: pnpm test:integration
 
   images:
-    name: Container images build
+    name: Container images build and refuse to start unmigrated
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
+
       - name: Build web image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/web/Dockerfile
           push: false
+          load: true
+          tags: intellifin-web:ci
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
+
       - name: Build worker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/worker/Dockerfile
           push: false
+          load: true
+          tags: intellifin-worker:ci
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
+
+      # AD-15: neither image may migrate, and neither may pretend to be healthy
+      # against a database it cannot reach. Point both at an unreachable address.
+      - name: Web answers 503 on /api/health when the database is unreachable
+        run: |
+          set -euo pipefail
+          docker run -d --name web-smoke -p 3000:3000 \
+            -e DATABASE_URL='postgres://x:y@127.0.0.1:1/z' \
+            -e SERVICE_NAME=web \
+            -e SCHEMA_RANGE_MIN=1 \
+            -e SCHEMA_RANGE_MAX=1 \
+            intellifin-web:ci
+
+          code=000
+          for _ in $(seq 1 60); do
+            code="$(curl -s -o /tmp/health.json -w '%{http_code}' http://127.0.0.1:3000/api/health || echo 000)"
+            if [ "$code" = "503" ]; then break; fi
+            sleep 1
+          done
+
+          echo "status=${code}"
+          cat /tmp/health.json || true
+          docker logs web-smoke || true
+          docker rm -f web-smoke >/dev/null 2>&1 || true
+
+          if [ "$code" != "503" ]; then
+            echo "::error::web did not answer 503 on /api/health within 60s (got ${code})"
+            exit 1
+          fi
+
+      - name: Worker exits non-zero and refuses to start when the database is unreachable
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --name worker-smoke \
+            -e DATABASE_URL='postgres://x:y@127.0.0.1:1/z' \
+            -e SERVICE_NAME=worker \
+            -e SCHEMA_RANGE_MIN=1 \
+            -e SCHEMA_RANGE_MAX=1 \
+            intellifin-worker:ci > /tmp/worker.out 2> /tmp/worker.err
+          status=$?
+          set -e
+
+          echo "exit status: ${status}"
+          echo "--- stdout ---"; cat /tmp/worker.out || true
+          echo "--- stderr ---"; cat /tmp/worker.err || true
+          docker rm -f worker-smoke >/dev/null 2>&1 || true
+
+          if [ "$status" -eq 0 ]; then
+            echo "::error::worker exited 0 against an unreachable database; it must refuse to start"
+            exit 1
+          fi
+          if ! grep -q 'Refusing to start' /tmp/worker.err; then
+            echo "::error::worker stderr did not contain 'Refusing to start'"
+            exit 1
+          fi

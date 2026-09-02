@@ -36,10 +36,30 @@ const FORBIDDEN_VENDORS = [
   '@sentry/node',
 ];
 
-/** `foo` or `@scope/foo`, bare or under any node_modules/.pnpm layout. */
-const vendorPattern = `(^|/)(${FORBIDDEN_VENDORS.map((v) =>
+const escapedVendors = FORBIDDEN_VENDORS.map((v) =>
   v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-).join('|')})(/|$)`;
+).join('|');
+
+/**
+ * Two patterns, deliberately not one. A vendor counts as imported only when it is
+ *
+ *   1. a bare specifier at the very start of the path (`react`, `next/headers`), or
+ *   2. a path segment directly under a `node_modules/` directory -- which also covers
+ *      pnpm's `node_modules/.pnpm/<id>/node_modules/<name>/...` layout, since that
+ *      still contains `/node_modules/<name>/`.
+ *
+ * Neither matches anywhere else in a path, so an internal folder that happens to
+ * share a vendor's name -- `packages/domain/src/ai/index.ts`, `.../src/pg/...`,
+ * `.../src/next/...` -- is treated as our own code, which is what it is.
+ *
+ * Kept as two simple alternatives rather than one combined regex: dependency-cruiser
+ * runs every rule pattern through a catastrophic-backtracking check and rejects the
+ * whole rule set (silently disabling the check) if a pattern nests quantifiers.
+ */
+const vendorPatterns = [
+  `^(?:${escapedVendors})(?:/|$)`,
+  `(?:^|/)node_modules/(?:${escapedVendors})(?:/|$)`,
+];
 
 module.exports = {
   forbidden: [
@@ -76,7 +96,7 @@ module.exports = {
         'Put the vendor behind a port implemented in packages/infrastructure.',
       severity: 'error',
       from: { path: '^packages/(domain|application)/src' },
-      to: { path: vendorPattern },
+      to: { path: vendorPatterns },
     },
     {
       name: 'no-env-access-outside-composition-roots',
@@ -112,8 +132,13 @@ module.exports = {
           '\\.d\\.ts$',
           '(^|/)tsconfig\\.json$',
           '(^|/)(next|drizzle|vitest|playwright)\\.config\\.(js|cjs|mjs|ts|cts|mts)$',
-          // Next.js discovers app-router files by convention; nothing imports them.
+          // Next.js discovers app-router files and instrumentation by convention;
+          // nothing in the repository imports them.
           '^apps/web/app/',
+          '^apps/web/instrumentation\\.ts$',
+          // Process entry points. Nothing imports a composition root -- that is the
+          // point of AD-1 -- so they are orphans by design.
+          '^apps/worker/src/main\\.ts$',
           // Vitest discovers test files; nothing imports them.
           '\\.test\\.tsx?$',
         ],

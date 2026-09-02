@@ -14,10 +14,27 @@ export const REQUIRED_POSTGRES_MAJOR = 18;
 
 export class UnsupportedDatabaseError extends Error {
   override readonly name = 'UnsupportedDatabaseError';
+  /** The major the server reported, or `null` when it could not be read. */
+  readonly found: number | null;
+
+  constructor(message: string, found: number | null = null) {
+    super(message);
+    this.found = found;
+  }
 }
 
 export class UnsupportedSchemaError extends Error {
   override readonly name = 'UnsupportedSchemaError';
+  /** The applied schema generation, or `null` when the database is unmigrated. */
+  readonly found: number | null;
+  /** The range this build declares support for, as `min..max`. */
+  readonly supportedSchemaRange: string;
+
+  constructor(message: string, found: number | null, min: number, max: number) {
+    super(message);
+    this.found = found;
+    this.supportedSchemaRange = `${min}..${max}`;
+  }
 }
 
 /** Read the leading major out of a `server_version` string such as `18.6 (Debian ...)`. */
@@ -38,6 +55,7 @@ export function assertPostgresMajorSupported(serverVersion: string): number {
     throw new UnsupportedDatabaseError(
       `Unsupported PostgreSQL major: found ${major} (server_version "${serverVersion}"), ` +
         `this build requires ${REQUIRED_POSTGRES_MAJOR}.`,
+      major,
     );
   }
   return major;
@@ -84,11 +102,17 @@ export function assertSchemaVersionInRange(
       `No applied schema found (schema_meta is missing or empty); ` +
         `this build supports schema versions ${min}..${max}. ` +
         `Run the release pipeline migration job — processes never migrate at startup.`,
+      null,
+      min,
+      max,
     );
   }
   if (found < min || found > max) {
     throw new UnsupportedSchemaError(
       `Unsupported schema version: found ${found}, this build supports ${min}..${max}.`,
+      found,
+      min,
+      max,
     );
   }
   return found;

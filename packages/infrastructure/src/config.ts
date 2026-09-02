@@ -10,6 +10,20 @@ import { z } from 'zod';
 export const SERVICE_NAMES = ['web', 'worker'] as const;
 export type ServiceName = (typeof SERVICE_NAMES)[number];
 
+/**
+ * A schema generation bound.
+ *
+ * Parsed from a strict `^\d+$` string rather than with `z.coerce.number()`, which
+ * silently turns an empty string into 0. An unset-but-present variable
+ * (`SCHEMA_RANGE_MIN=`) is a configuration mistake and must be refused, not read
+ * as generation 0. Generations start at 1, so 0 is never valid either.
+ */
+const schemaGeneration = z
+  .string()
+  .regex(/^\d+$/, 'must be a whole number of digits, with no sign, spaces, or decimal point')
+  .transform((value) => Number.parseInt(value, 10))
+  .refine((value) => value >= 1, 'must be at least 1; schema generations start at 1');
+
 export const configSchema = z
   .object({
     DATABASE_URL: z
@@ -17,8 +31,8 @@ export const configSchema = z
       .min(1, 'DATABASE_URL is required')
       .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL must start with postgres:// or postgresql://'),
     SERVICE_NAME: z.enum(SERVICE_NAMES),
-    SCHEMA_RANGE_MIN: z.coerce.number().int().min(0),
-    SCHEMA_RANGE_MAX: z.coerce.number().int().min(0),
+    SCHEMA_RANGE_MIN: schemaGeneration,
+    SCHEMA_RANGE_MAX: schemaGeneration,
   })
   .refine((c) => c.SCHEMA_RANGE_MIN <= c.SCHEMA_RANGE_MAX, {
     message: 'SCHEMA_RANGE_MIN must be less than or equal to SCHEMA_RANGE_MAX',

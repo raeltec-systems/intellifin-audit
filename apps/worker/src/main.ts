@@ -1,24 +1,21 @@
 import { hostname } from 'node:os';
 
-import {
-  assertPostgres18,
-  assertSchemaSupported,
-  createDb,
-  createSqlClient,
-  loadConfig,
-} from '@intellifin/infrastructure';
+import { createDb, createSqlClient, loadConfig } from '@intellifin/infrastructure';
 
-import { HEARTBEAT_INTERVAL_MS, upsertHeartbeat } from './heartbeat.js';
+import { createHeartbeatLoop, runStartupChecks, type LogLevel } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
  *
  * Reads configuration once, runs the AD-11 PostgreSQL-major check and the AD-15
- * schema-range check, and only then starts polling. It never migrates: a database
+ * schema-range check, and only then starts beating. It never migrates: a database
  * outside the supported range makes the process exit non-zero before any work runs.
  */
 
-function log(level: 'info' | 'error', message: string, extra: Record<string, unknown> = {}): void {
+/** How often the liveness row is refreshed. */
+export const HEARTBEAT_INTERVAL_MS = 30_000;
+
+function log(level: LogLevel, message: string, extra: Record<string, unknown> = {}): void {
   const line = JSON.stringify({
     level,
     time: new Date().toISOString(),
@@ -35,6 +32,16 @@ function log(level: 'info' | 'error', message: string, extra: Record<string, unk
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // This image is the worker. Started with the web service's environment it would
+  // quietly write heartbeats under the wrong identity, so refuse instead.
+  if (config.SERVICE_NAME !== 'worker') {
+    log('error', 'Refusing to start', {
+      reason: `SERVICE_NAME must be "worker" for this process, found "${config.SERVICE_NAME}".`,
+    });
+    process.exit(1);
+  }
+
   const sql = createSqlClient(config.DATABASE_URL);
   const db = createDb(sql);
   const host = hostname();
@@ -55,36 +62,19 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   try {
-    const postgresMajor = await assertPostgres18(sql);
-    const schemaVersion = await assertSchemaSupported(
-      sql,
-      config.SCHEMA_RANGE_MIN,
-      config.SCHEMA_RANGE_MAX,
-    );
-    log('info', 'Startup checks passed', { postgresMajor, schemaVersion });
-  } catch (error) {
-    log('error', 'Refusing to start', {
-      reason: error instanceof Error ? error.message : String(error),
-      supportedSchemaRange: `${config.SCHEMA_RANGE_MIN}..${config.SCHEMA_RANGE_MAX}`,
-    });
+    await runStartupChecks(config, sql, log);
+  } catch {
+    // runStartupChecks already logged the refusal, the declared range, and the
+    // version it found. Nothing here is recoverable.
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(1);
   }
 
-  const beat = async (): Promise<void> => {
-    try {
-      await upsertHeartbeat(db, host, new Date());
-    } catch (error) {
-      // A failed beat is logged and retried on the next tick; it never stops the loop.
-      log('error', 'Heartbeat upsert failed', {
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
+  const loop = createHeartbeatLoop(db, host, log);
+  await loop.beat();
 
-  await beat();
   // The interval is the process's keep-alive; SIGTERM clears it and the process ends.
-  interval = setInterval(() => void beat(), HEARTBEAT_INTERVAL_MS);
+  interval = setInterval(() => void loop.beat(), HEARTBEAT_INTERVAL_MS);
 
   log('info', 'Heartbeat loop started', { hostname: host, intervalMs: HEARTBEAT_INTERVAL_MS });
 }

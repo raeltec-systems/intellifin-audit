@@ -4,9 +4,15 @@ name: Release
 # auto-migrate; each refuses to start against a schema outside its supported range.
 # Order is expand -> migrate -> deploy: migrations are backward compatible with the
 # build currently running, so the old processes keep serving while the new ones roll.
+#
+# It runs on a SUCCESSFUL CI run of main, not directly on push. Migrating a real
+# database from a commit whose typecheck, boundary check, or tests never passed is
+# the one mistake this pipeline cannot roll back.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -20,14 +26,27 @@ permissions:
 env:
   NODE_VERSION: '24.20.0'
   PNPM_VERSION: '11.25.0'
+  # Pinned, not floating: an unpinned deploy CLI is an unreviewed change to the
+  # step that ships the release.
+  RAILWAY_CLI_VERSION: '5.47.2'
 
 jobs:
   migrate:
     name: Apply migrations
+    # A manual dispatch has no workflow_run payload; a CI-triggered run must have
+    # concluded successfully.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     steps:
       - uses: actions/checkout@v5
+        with:
+          # workflow_run checks out the default branch by default. Deploy the exact
+          # commit CI verified.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Enable corepack and pin pnpm
         run: |
@@ -41,6 +60,23 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Fail fast when the DATABASE_URL secret is missing
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::The DATABASE_URL secret is empty for the production environment. Refusing to run a migration against an unknown target."
+            exit 1
+          fi
+
+      - name: Verify the target really is PostgreSQL 18 (AD-11)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          major="$(psql "$DATABASE_URL" -tAc "SELECT split_part(current_setting('server_version'), '.', 1)")"
+          echo "server_version major: ${major}"
+          test "${major}" = "18"
+
       - name: Apply Drizzle migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -50,6 +86,7 @@ jobs:
     name: Deploy ${{ matrix.service }}
     needs: migrate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     strategy:
       # Deploy one service at a time so a failed web rollout does not race the worker.
@@ -58,9 +95,11 @@ jobs:
         service: [web, worker]
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Install the Railway CLI
-        run: npm install --global @railway/cli
+        run: npm install --global "@railway/cli@${RAILWAY_CLI_VERSION}"
 
       - name: Deploy
         env:

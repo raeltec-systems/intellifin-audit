@@ -1,12 +1,30 @@
+# Build inputs only. Everything below is either regenerated in the image, not used
+# by the build, or must never reach a container in the first place.
+
 **/node_modules
 **/dist
 **/.next
 **/.turbo
+**/__boundary_violation__
+
+# Version control and CI definitions
 .git
 .github
+
+# Agent and planning trees: large, and none of it is a build input.
+.claude
+.agents
+.railway
 _bmad
 _bmad-output
-tests/e2e
-**/*.log
+AGENTS.md
+CLAUDE.md
+
+# Tests are not built into either image; CI runs them from the checkout.
+tests
+
+# Secrets must never enter an image layer.
 .env
 .env.*
+
+**/*.log

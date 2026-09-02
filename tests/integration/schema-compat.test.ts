@@ -57,14 +57,16 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has the two Story 1.1 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the two Story 1.1 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
       ORDER BY table_name
     `;
     const names = rows.map((r) => r.table_name);
-    expect(names).toContain('schema_meta');
-    expect(names).toContain('worker_heartbeat');
+
+    // Exact, not "contains": an extra public table means either a migration this
+    // story does not own, or something created a table at runtime. Both break AD-15.
+    expect(names).toEqual(['schema_meta', 'worker_heartbeat']);
   });
 });
