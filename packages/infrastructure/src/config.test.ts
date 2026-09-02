@@ -221,8 +221,27 @@ describe('CREDENTIAL_CAPABILITIES', () => {
     ['a capability outside the vocabulary', '{"cred://a":"admin"}'],
     ['a capability that is not a string', '{"cred://a":true}'],
     ['an empty reference', '{"   ":"read-only"}'],
+    ['two keys that trim to one reference', '{"cred://a":"write-capable"," cred://a":"read-only"}'],
+    ['two keys that trim to one reference, both read-only', '{"cred://a":"read-only","cred://a ":"read-only"}'],
   ])('refuses %s at boot rather than at the first registration', (_label, raw) => {
     expect(() => loadConfig({ ...base, CREDENTIAL_CAPABILITIES: raw })).toThrow(ConfigError);
+  });
+
+  it('never lets a later duplicate overwrite a write-capable declaration', () => {
+    // The fail-OPEN direction, stated as its own case because it is the one that
+    // matters. `{"prod":"write-capable"," prod":"read-only"}` used to yield
+    // `prod -> read-only`: the later `set` silently replaced the write-capable verdict,
+    // and registration input is trimmed too, so `prod` was then accepted as PROVEN
+    // read-only. The two keys look different in the JSON, so nothing looked wrong.
+    //
+    // A deployment whose declaration is ambiguous has declared nothing, so the whole
+    // manifest is refused and the process does not start.
+    expect(() =>
+      loadConfig({
+        ...base,
+        CREDENTIAL_CAPABILITIES: '{"prod":"write-capable"," prod":"read-only"}',
+      }),
+    ).toThrow(ConfigError);
   });
 
   it('names the offending key and never the value', () => {
