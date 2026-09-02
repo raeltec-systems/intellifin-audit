@@ -6,6 +6,7 @@ import { EnvironmentRibbon } from '../design/EnvironmentRibbon';
 import { Sidebar, type SidebarCounts } from '../design/Sidebar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { NotificationBell } from './NotificationBell';
+import { SignOutButton } from './SignOutButton';
 
 interface AppShellProps {
   /**
@@ -51,8 +52,15 @@ export function AppShell({
       <div className="ls-shell">
         <Sidebar role={role} counts={counts} />
         <div className="ls-column">
+          {/*
+            DESIGN.md specifies the top bar as the notification bell. Sign-out is added
+            beside it because Epic 1 otherwise ships a product for a shared workstation
+            with no way to end a session — see `sign-out-route.ts`. If the bar must stay
+            bell-only, this one line and those two files are the whole of it.
+          */}
           <div className="ls-topbar">
             <NotificationBell unread={unreadNotifications} />
+            <SignOutButton />
           </div>
           {/* `tabIndex={-1}`: without it the skip link moves the scroll position and
               leaves focus on the link, so the next Tab walks the navigation again. */}

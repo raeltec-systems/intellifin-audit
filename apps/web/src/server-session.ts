@@ -43,6 +43,15 @@ const findRoleOnce = cache(async (userId: string): Promise<Role | null> => {
 /** The same repository port, memoised for this request only. */
 const requestScopedRoles: RoleRepository = { findRole: findRoleOnce };
 
+/**
+ * The correlation id of the request being rendered or of the Server Action being
+ * invoked (AD-10). A Server Action has no `Request` of its own to read it from, so it
+ * reads the same incoming headers this module already reconstructs.
+ */
+export async function currentCorrelationId(): Promise<string> {
+  return correlationIdFrom(await currentRequest());
+}
+
 export interface Identity {
   readonly session: SessionSnapshot;
   /** `null` for a signed-in person with no `user_role` row. Never a default role. */

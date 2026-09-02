@@ -33,8 +33,8 @@ test.describe('as an Auditor', () => {
       DEFAULT_DENIAL_REASON,
     );
     // And no administration content reaches the browser at all.
-    await expect(page.getByText('Target System registrations')).toHaveCount(0);
-    await expect(page.getByText('Nothing is registered yet.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Users and roles' })).toHaveCount(0);
+    await expect(page.getByRole('table')).toHaveCount(0);
   });
 
   test('the environment ribbon carries the DESIGN.md sentence verbatim', async ({ page }) => {
@@ -93,7 +93,7 @@ test.describe('as a PoC Administrator', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Administration' }).click();
     await expect(page.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible();
-    await expect(page.getByText('Nothing is registered yet.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Users and roles' })).toBeVisible();
   });
 
   test('every nav item is reachable by Tab and shows the #0F766E focus ring', async ({ page }) => {
@@ -340,6 +340,21 @@ test.describe('breakpoints', () => {
 
     // Every nav item is still reachable.
     await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveCount(4);
+  });
+
+  test("a table's first cell is a link when the row has somewhere to go", async ({ page }) => {
+    // `DataTable`'s first cell became a branch when the user list — which has no detail
+    // surface — needed plain text there. Nothing exercised the link arm, so inverting the
+    // ternary would turn every first cell in the product into text with a green suite.
+    // EXPERIENCE.md: "Every row's first cell is a link; no row-level click handlers."
+    await page.goto('/badges');
+
+    const firstCell = page.locator('.ls-table tbody tr:first-child th[scope="row"]');
+    const link = firstCell.getByRole('link');
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', '/runs');
+    // And the cell is the row header, not a cell with a link dropped into it.
+    await expect(firstCell).toHaveAttribute('scope', 'row');
   });
 
   test('a table becomes a label/value stack below 900px, not a scroller', async ({ page }) => {

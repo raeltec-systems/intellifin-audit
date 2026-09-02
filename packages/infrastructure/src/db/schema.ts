@@ -100,19 +100,35 @@ export const auditEvents = pgTable(
  * There is deliberately NO role column on `auth_user`. Authorization comes from
  * `user_role` below and from nowhere else (AD-7).
  */
-export const authUser = pgTable('auth_user', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').notNull().default(false),
-  image: text('image'),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
-    .notNull()
-    .defaultNow(),
-});
+export const authUser = pgTable(
+  'auth_user',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    email: text('email').notNull().unique(),
+    emailVerified: boolean('email_verified').notNull().default(false),
+    image: text('image'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    /**
+     * One address, one account, whatever its case (generation 4).
+     *
+     * `.unique()` above is case-SENSITIVE, so `Dana@x` and `dana@x` are two rows to
+     * PostgreSQL and one person to everybody else. The create-user command lowercases
+     * when it checks for an existing address, but a check is not a constraint: two
+     * concurrent creates of the two spellings both pass the check and both insert. This
+     * index is what actually makes it impossible, and the command maps its violation to
+     * the same "already has an account" refusal.
+     */
+    uniqueIndex('auth_user_email_lower_uidx').on(sql`lower(${table.email})`),
+  ],
+);
 
 export const authSession = pgTable('auth_session', {
   id: text('id').primaryKey(),
@@ -228,8 +244,16 @@ export const userRole = pgTable(
     assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
-    /** The administrator who assigned it. Null for an operator-seeded row. */
-    assignedBy: text('assigned_by'),
+    /**
+     * The administrator who assigned it. Null for an operator-seeded row.
+     *
+     * Generation 4 makes it a real reference. Story 1.5 is the first thing that writes
+     * it, and an attribution column that can hold any string is not an attribution: the
+     * constraint is what makes "assigned by whom" answerable from the row. `SET NULL`
+     * rather than `CASCADE`, because removing the administrator who granted a role must
+     * not remove the role — that would be a silent privilege revocation nothing audited.
+     */
+    assignedBy: text('assigned_by').references(() => authUser.id, { onDelete: 'set null' }),
   },
   (table) => [
     // `sql.raw` is safe here: every member is lower-case ASCII letters and hyphens.

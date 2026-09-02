@@ -22,10 +22,8 @@ import {
   type CanonicalAuditEvent,
 } from '@intellifin/domain';
 
-import type { Database } from './client.js';
+import type { Database, Transaction } from './client.js';
 import { auditEventHeads, auditEvents } from './schema.js';
-
-type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 export class SystemClock implements Clock {
   now(): Date {
@@ -119,6 +117,21 @@ export interface PostgresAuditDependencies {
   readonly ids?: UuidV7Generator;
 }
 
+/**
+ * The append port, bound to one transaction.
+ *
+ * Exported so a richer unit of work — one that also carries the identity writers — can
+ * be assembled without a second copy of the append logic. There is one appender, and
+ * every unit of work uses it.
+ */
+export function createAuditEventWriter(
+  transaction: Transaction,
+  clock: Clock,
+  ids: UuidV7Generator,
+): AuditEventWriter {
+  return { append: (draft) => appendAuditEvent(transaction, clock, ids, draft) };
+}
+
 /** PostgreSQL implementation of the application-owned atomic audit unit of work. */
 export class PostgresAuditUnitOfWork implements AuditUnitOfWork {
   private readonly clock: Clock;
@@ -133,12 +146,9 @@ export class PostgresAuditUnitOfWork implements AuditUnitOfWork {
   }
 
   execute<TResult>(work: (context: AuditUnitOfWorkContext) => Promise<TResult>): Promise<TResult> {
-    return this.db.transaction(async (transaction) => {
-      const auditEventsWriter: AuditEventWriter = {
-        append: (draft) => appendAuditEvent(transaction, this.clock, this.ids, draft),
-      };
-      return work({ auditEvents: auditEventsWriter });
-    });
+    return this.db.transaction(async (transaction) =>
+      work({ auditEvents: createAuditEventWriter(transaction, this.clock, this.ids) }),
+    );
   }
 }
 

@@ -86,3 +86,17 @@ export function isApiPath(pathname: string): boolean {
 
 /** Where an unauthenticated page request is sent. */
 export const SIGN_IN_PATH = '/sign-in';
+
+/**
+ * Where the sign-out form posts.
+ *
+ * It lives in this module, and not beside the handler, because the control that names it
+ * is a client component: importing it from `sign-out-route.ts` would pull postgres.js,
+ * Better Auth and the composition root into the browser bundle. This module is pure —
+ * no request object, no database, no framework — which is why `middleware.ts` can run it
+ * on the edge and a client component can read a constant from it.
+ *
+ * It is under the `/api/auth/` public prefix, so it is reachable with no session and a
+ * double submit meets the same redirect rather than a 401.
+ */
+export const SIGN_OUT_PATH = '/api/auth/sign-out';

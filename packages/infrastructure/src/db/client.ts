@@ -26,4 +26,13 @@ export function createDb(sql: Sql) {
 }
 
 export type Database = ReturnType<typeof createDb>;
+
+/**
+ * The handle Drizzle passes to a `db.transaction` callback.
+ *
+ * Every writer that must join a unit of work takes THIS type rather than `Database`, so
+ * "this write is inside the transaction" is checked by the compiler instead of trusted.
+ */
+export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
 export type { Sql };

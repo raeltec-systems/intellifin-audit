@@ -21,7 +21,19 @@ interface DataTableProps<Row> {
    */
   readonly first: {
     readonly header: string;
-    readonly href: (row: Row) => string;
+    /**
+     * Where the row goes. OPTIONAL, and omitting it renders the label as plain text in
+     * the same `<th scope="row">`.
+     *
+     * EXPERIENCE.md's rule is "every row's first cell is a link; no row-level click
+     * handlers" — one rule with one purpose: a row must never be a click target a
+     * keyboard cannot reach. A table whose rows have no detail surface satisfies that
+     * rule by having no target at all, and inventing an `href` to a page that does not
+     * exist would satisfy the letter of it while sending people to a 404. The property
+     * that actually matters is still structural: there is no `onRowClick` prop here, so
+     * a row cannot become one.
+     */
+    readonly href?: (row: Row) => string;
     readonly label: (row: Row) => string;
     /** Identifiers are monospace. */
     readonly mono?: boolean;
@@ -88,9 +100,13 @@ export function DataTable<Row>({
           {rows.map((row) => (
             <tr key={rowKey(row)} role="row">
               <th scope="row" role="rowheader" data-label={first.header}>
-                <Link className={first.mono ? 'ls-mono' : undefined} href={first.href(row)}>
-                  {first.label(row)}
-                </Link>
+                {first.href ? (
+                  <Link className={first.mono ? 'ls-mono' : undefined} href={first.href(row)}>
+                    {first.label(row)}
+                  </Link>
+                ) : (
+                  <span className={first.mono ? 'ls-mono' : undefined}>{first.label(row)}</span>
+                )}
               </th>
               {columns.map((column) => (
                 <td

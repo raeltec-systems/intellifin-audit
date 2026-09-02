@@ -340,3 +340,70 @@ describe('POST /api/auth/sign-in/email', () => {
     expect(isEmailSignInPath('/api/auth/sign-in/email/extra')).toBe(false);
   });
 });
+
+/**
+ * The mounted surface is an allowlist.
+ *
+ * `/api/auth/**` is the one publicly allowlisted path family in the application, and
+ * Better Auth mounts a great deal more than this product serves. Probing the real handler
+ * found `revoke-session`, `revoke-sessions`, `revoke-other-sessions`, `update-user`,
+ * `change-password`, `change-email`, `delete-user` and `reset-password` all live and all
+ * unaudited: each one either ends a session or changes an identity, with nothing in the
+ * chain to say so. They are refused now, and this is the test that keeps them refused
+ * when a dependency upgrade mounts the next one.
+ */
+describe('the served Better Auth endpoints', () => {
+  const request = (path: string, method = 'POST') =>
+    new Request(`http://localhost:3000${path}`, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: method === 'POST' ? '{}' : undefined,
+    });
+
+  it.each([
+    'sign-up/email',
+    'revoke-session',
+    'revoke-sessions',
+    'revoke-other-sessions',
+    'update-user',
+    'change-password',
+    'change-email',
+    'delete-user',
+    'reset-password',
+    'forget-password',
+    'send-verification-email',
+    'verify-email',
+    'list-sessions',
+  ])('answers 404 to /api/auth/%s and never reaches Better Auth', async (endpoint) => {
+    const { handleAuthRequest } = await load();
+    state.handler = () => {
+      throw new Error('the mounted handler must not be reached for an unserved endpoint');
+    };
+
+    const response = await handleAuthRequest(request(`/api/auth/${endpoint}`));
+
+    expect(response.status).toBe(404);
+    // 404, not 403: a refusal must not confirm that the framework underneath supports it.
+    await expect(response.text()).resolves.toBe('');
+  });
+
+  it.each(['sign-in/email', 'sign-out', 'get-session'])('serves /api/auth/%s', async (endpoint) => {
+    const { isServedAuthEndpoint } = await load();
+    expect(isServedAuthEndpoint(`/api/auth/${endpoint}`)).toBe(true);
+    // And with a trailing slash, which is the same endpoint.
+    expect(isServedAuthEndpoint(`/api/auth/${endpoint}/`)).toBe(true);
+  });
+
+  it('does not treat a look-alike path as served', async () => {
+    const { isServedAuthEndpoint } = await load();
+    expect(isServedAuthEndpoint('/api/auth/sign-outx')).toBe(false);
+    expect(isServedAuthEndpoint('/api/auth/sign-out/all')).toBe(false);
+    expect(isServedAuthEndpoint('/api/auth')).toBe(false);
+    expect(isServedAuthEndpoint('/api/authx/sign-out')).toBe(false);
+  });
+
+  it('serves exactly three endpoints, so adding one is a deliberate act', async () => {
+    const { SERVED_AUTH_ENDPOINTS } = await load();
+    expect([...SERVED_AUTH_ENDPOINTS]).toEqual(['sign-in/email', 'sign-out', 'get-session']);
+  });
+});

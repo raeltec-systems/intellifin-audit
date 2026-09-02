@@ -11,6 +11,7 @@ import {
   loadConfig,
   type AppConfig,
   type Auth,
+  type AuthConfig,
   type Database,
   type Sql,
   type Telemetry,
@@ -40,6 +41,15 @@ export interface WebRuntime {
   readonly telemetry: Telemetry;
   /** Better Auth, built on first use. Identity and session only — never roles (AD-7). */
   readonly auth: Auth;
+  /**
+   * The validated secret and origin behind `auth`.
+   *
+   * Exposed for ONE caller: `PostgresIdentityUnitOfWork`, which builds a privileged,
+   * transaction-scoped Better Auth instance so an administrator's create-user command
+   * can write the account inside the same transaction as its audit event. Nothing mounts
+   * that instance on a route; the mounted one is `auth` above, where sign-up is disabled.
+   */
+  readonly authConfig: AuthConfig;
   readonly schemaVersion: number;
   readonly postgresMajor: number;
   /** The range this build accepts, for logging. Fixed by the build, never by the environment. */
@@ -71,7 +81,7 @@ export function isPermanentRefusal(error: unknown): boolean {
  * without them can serve a sign-in page that cannot sign anybody in — so it refuses
  * to start instead, at boot, with the offending keys named and no value echoed.
  */
-function requireAuthConfig(config: AppConfig): { secret: string; baseUrl: string } {
+function requireAuthConfig(config: AppConfig): AuthConfig {
   const issues: string[] = [];
   if (!config.BETTER_AUTH_SECRET) {
     issues.push('BETTER_AUTH_SECRET: is required for the web process');
@@ -122,6 +132,7 @@ async function start(): Promise<WebRuntime> {
         auth ??= createAuth(database(), authConfig);
         return auth;
       },
+      authConfig,
       schemaVersion,
       postgresMajor,
       supportedSchemaRange: SUPPORTED_SCHEMA_RANGE,

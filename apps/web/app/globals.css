@@ -786,6 +786,7 @@ a {
 }
 
 .ls-input,
+.ls-select,
 .ls-textarea {
   width: 100%;
   padding: var(--spacing-2) var(--spacing-3);
@@ -794,6 +795,13 @@ a {
   background: var(--color-surface-card);
   font-size: var(--type-body-sm-font-size);
   line-height: var(--type-body-sm-line-height);
+}
+
+/* A select is a control, not a paragraph: it must not stretch across a table cell. */
+.ls-select {
+  width: auto;
+  min-width: 168px;
+  color: var(--color-text-primary);
 }
 
 .ls-textarea {
@@ -836,6 +844,51 @@ a {
   flex-direction: column;
   gap: var(--spacing-4);
 }
+
+/* Administration -----------------------------------------------------------
+   Users and roles. The form is a card so the mutating surface is visibly separate
+   from the list it changes; the fields wrap into one column below 900px, where the
+   table has already become a label/value stack. */
+
+.ls-admin__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-5);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+}
+
+.ls-admin__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-4);
+  align-items: start;
+}
+
+.ls-admin__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The select and its button stay on one line while the row is wide enough, and wrap
+   rather than overflow when it is not. */
+.ls-role-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Sign-out ----------------------------------------------------------------- */
+
+.ls-signout {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
 
 .ls-badge-gallery {
   display: flex;
