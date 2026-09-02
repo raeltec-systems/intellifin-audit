@@ -2,7 +2,7 @@
 title: 'Story 1.5: Manage users and roles'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: 'f19a5066b6b263f8a06d716d96fc91b5e7152de9'
 baseline_commit: 'f19a5066b6b263f8a06d716d96fc91b5e7152de9'
 review_loop_iteration: 0
