@@ -33,8 +33,8 @@ test.describe('as an Auditor', () => {
       DEFAULT_DENIAL_REASON,
     );
     // And no administration content reaches the browser at all.
-    await expect(page.getByText('Target System registrations')).toHaveCount(0);
-    await expect(page.getByText('Nothing is registered yet.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Users and roles' })).toHaveCount(0);
+    await expect(page.getByRole('table')).toHaveCount(0);
   });
 
   test('the environment ribbon carries the DESIGN.md sentence verbatim', async ({ page }) => {
@@ -93,7 +93,7 @@ test.describe('as a PoC Administrator', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Administration' }).click();
     await expect(page.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible();
-    await expect(page.getByText('Nothing is registered yet.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Users and roles' })).toBeVisible();
   });
 
   test('every nav item is reachable by Tab and shows the #0F766E focus ring', async ({ page }) => {

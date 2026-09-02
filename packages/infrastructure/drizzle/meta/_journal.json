@@ -29,6 +29,13 @@
       "when": 1788349491327,
       "tag": "0003_mature_the_renegades",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788359801161,
+      "tag": "0004_aberrant_caretaker",
+      "breakpoints": true
     }
   ]
 }

@@ -30,6 +30,15 @@ export const TELEMETRY_MESSAGES = [
   // role at all, so this must be visible in the log stream rather than inferred from a
   // screenshot of a nav bar with nothing in it.
   'Identity could not be resolved',
+  // Administration mutations (Story 1.5). A refusal is not logged here — it is an audit
+  // event, appended by `authorizeCommand` — so these two mean the command FAILED and
+  // nothing was written; the person was told only that nothing changed.
+  'Create user failed',
+  'Set user role failed',
+  // Sign-out. The failure matters as much as the success: it means the session is still
+  // live because its event could not be appended, so the person is still signed in.
+  'Sign-out recorded',
+  'Sign-out failed',
 ] as const;
 export type TelemetryMessage = (typeof TELEMETRY_MESSAGES)[number];
 

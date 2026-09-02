@@ -23,7 +23,16 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['packages/**/src/**/*.test.ts', 'apps/**/src/**/*.test.ts', 'tests/unit/**/*.test.ts'],
+    include: [
+      'packages/**/src/**/*.test.ts',
+      'apps/**/src/**/*.test.ts',
+      // Next's app router puts route handlers and Server Actions under `app/`, not
+      // `src/`. A Server Action is its own POST endpoint and needs its own test, so
+      // that folder is part of the unit suite too.
+      'apps/**/app/**/*.test.ts',
+      'apps/**/app/**/*.test.tsx',
+      'tests/unit/**/*.test.ts',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', 'tests/integration/**'],
     reporters: ['default'],
   },

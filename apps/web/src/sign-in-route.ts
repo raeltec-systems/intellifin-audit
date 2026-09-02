@@ -12,6 +12,7 @@ import { recordSignInAttempt } from '@intellifin/application';
 
 import { getRuntime } from './bootstrap';
 import { correlationIdFrom } from './correlation';
+import { handleSignOut, isSignOutPath } from './sign-out-route';
 
 /**
  * The only public authentication surface (FR-1, FR-45).
@@ -161,6 +162,12 @@ async function revokeIssued(
 export async function handleAuthRequest(request: Request): Promise<Response> {
   const runtime = await getRuntime();
   const { pathname } = new URL(request.url);
+
+  // Sign-out is audited too, and it revokes the session in the same transaction as its
+  // event rather than letting Better Auth commit the deletion on its own connection.
+  if (request.method === 'POST' && isSignOutPath(pathname)) {
+    return handleSignOut(request);
+  }
 
   if (request.method !== 'POST' || !isEmailSignInPath(pathname)) {
     return runtime.auth.handler(request);

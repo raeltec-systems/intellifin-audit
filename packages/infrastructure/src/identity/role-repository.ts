@@ -1,9 +1,18 @@
-import { eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 
-import type { RoleRepository, SessionSnapshot, SessionReader } from '@intellifin/application';
+import type {
+  ManagedUser,
+  RoleAssignment,
+  RoleRepository,
+  RoleWriter,
+  SessionReader,
+  SessionSnapshot,
+  SessionWriter,
+  UserDirectory,
+} from '@intellifin/application';
 import { isRole, type Role } from '@intellifin/domain';
 
-import type { Database } from '../db/client.js';
+import type { Database, Transaction } from '../db/client.js';
 import { authSession, authUser, userRole } from '../db/schema.js';
 import type { Auth } from './auth.js';
 
@@ -18,17 +27,138 @@ import type { Auth } from './auth.js';
 export class DrizzleRoleRepository implements RoleRepository {
   constructor(private readonly db: Database) {}
 
-  async findRole(userId: string): Promise<Role | null> {
-    const rows = await this.db
-      .select({ role: userRole.role })
-      .from(userRole)
-      .where(eq(userRole.userId, userId))
-      .limit(1);
-    const value = rows[0]?.role;
-    // A row whose value is outside the vocabulary is treated as no role at all: an
-    // unrecognized string must never be read as "some role", which would fail open.
-    return isRole(value) ? value : null;
+  findRole(userId: string): Promise<Role | null> {
+    return readRole(this.db, userId);
   }
+}
+
+/**
+ * Either handle can read, and a transaction also reads its own uncommitted writes.
+ * Exported so an adapter that must read inside a unit of work can say so in its type.
+ */
+export type ReadHandle = Pick<Database, 'select'>;
+
+async function readRole(handle: ReadHandle, userId: string): Promise<Role | null> {
+  const rows = await handle
+    .select({ role: userRole.role })
+    .from(userRole)
+    .where(eq(userRole.userId, userId))
+    .limit(1);
+  const value = rows[0]?.role;
+  // A row whose value is outside the vocabulary is treated as no role at all: an
+  // unrecognized string must never be read as "some role", which would fail open.
+  return isRole(value) ? value : null;
+}
+
+/**
+ * The role write, bound to ONE transaction (FR-45, AD-8).
+ *
+ * It takes a {@link Transaction}, not a `Database`, and that is the guarantee: there is
+ * no way to construct this writer outside a unit of work, so a role change cannot commit
+ * while the audit event that records it fails. `findRole` is here too so the prior value
+ * an event names is read on the same connection that writes the new one — a read through
+ * the pool could be answered by a snapshot the write is about to invalidate.
+ *
+ * There is no cache and no read-modify-write outside the transaction: the upsert is one
+ * statement, so two administrators changing the same user serialize on the row.
+ */
+export class DrizzleRoleWriter implements RoleWriter {
+  constructor(private readonly transaction: Transaction) {}
+
+  findRole(userId: string): Promise<Role | null> {
+    return readRole(this.transaction, userId);
+  }
+
+  async setRole({ userId, role, assignedBy }: RoleAssignment): Promise<void> {
+    const assignedAt = new Date();
+    await this.transaction
+      .insert(userRole)
+      .values({ userId, role, assignedAt, assignedBy })
+      .onConflictDoUpdate({
+        target: userRole.userId,
+        set: { role, assignedAt, assignedBy },
+      });
+  }
+
+  async clearRole(userId: string): Promise<void> {
+    await this.transaction.delete(userRole).where(eq(userRole.userId, userId));
+  }
+}
+
+/**
+ * Ends one session inside the caller's transaction, so a sign-out and its event commit
+ * together. It deletes by the session ROW id; the token is a credential and never
+ * reaches this layer.
+ */
+export class DrizzleSessionWriter implements SessionWriter {
+  constructor(private readonly transaction: Transaction) {}
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.transaction.delete(authSession).where(eq(authSession.id, sessionId));
+  }
+}
+
+/**
+ * The user list the Administration surface renders.
+ *
+ * It selects the four columns the surface shows and no others — in particular not
+ * `auth_account.password`, which is where Better Auth keeps the credential hash. A
+ * `select *` here would put every hash one serialization mistake away from a response.
+ *
+ * The role is joined from `user_role`, read at the moment of the query like every other
+ * role read (AD-7). `null` means the account holds no role.
+ */
+export class DrizzleUserDirectory implements UserDirectory {
+  constructor(private readonly db: Database) {}
+
+  async listUsers(): Promise<readonly ManagedUser[]> {
+    const rows = await this.db
+      .select({
+        userId: authUser.id,
+        name: authUser.name,
+        email: authUser.email,
+        role: userRole.role,
+        createdAt: authUser.createdAt,
+      })
+      .from(authUser)
+      .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .orderBy(asc(authUser.createdAt), asc(authUser.id));
+    return rows.map(toManagedUser);
+  }
+
+  async findUser(userId: string): Promise<ManagedUser | null> {
+    const rows = await this.db
+      .select({
+        userId: authUser.id,
+        name: authUser.name,
+        email: authUser.email,
+        role: userRole.role,
+        createdAt: authUser.createdAt,
+      })
+      .from(authUser)
+      .leftJoin(userRole, eq(userRole.userId, authUser.id))
+      .where(eq(authUser.id, userId))
+      .limit(1);
+    const row = rows[0];
+    return row ? toManagedUser(row) : null;
+  }
+}
+
+function toManagedUser(row: {
+  userId: string;
+  name: string;
+  email: string;
+  role: string | null;
+  createdAt: Date;
+}): ManagedUser {
+  return {
+    userId: row.userId,
+    name: row.name,
+    email: row.email,
+    // Same fail-closed reading as `readRole`: an unrecognized value is no role at all.
+    role: isRole(row.role) ? row.role : null,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 /**
@@ -50,8 +180,11 @@ export class BetterAuthSessionReader implements SessionReader {
 }
 
 /** The user an email address belongs to, matched case-insensitively. `null` if none. */
-export async function findUserIdByEmail(db: Database, email: string): Promise<string | null> {
-  const rows = await db
+export async function findUserIdByEmail(
+  handle: ReadHandle,
+  email: string,
+): Promise<string | null> {
+  const rows = await handle
     .select({ id: authUser.id })
     .from(authUser)
     .where(sql`lower(${authUser.email}) = lower(${email})`)

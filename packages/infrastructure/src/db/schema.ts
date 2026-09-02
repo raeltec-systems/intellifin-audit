@@ -228,8 +228,16 @@ export const userRole = pgTable(
     assignedAt: timestamp('assigned_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
-    /** The administrator who assigned it. Null for an operator-seeded row. */
-    assignedBy: text('assigned_by'),
+    /**
+     * The administrator who assigned it. Null for an operator-seeded row.
+     *
+     * Generation 4 makes it a real reference. Story 1.5 is the first thing that writes
+     * it, and an attribution column that can hold any string is not an attribution: the
+     * constraint is what makes "assigned by whom" answerable from the row. `SET NULL`
+     * rather than `CASCADE`, because removing the administrator who granted a role must
+     * not remove the role — that would be a silent privilege revocation nothing audited.
+     */
+    assignedBy: text('assigned_by').references(() => authUser.id, { onDelete: 'set null' }),
   },
   (table) => [
     // `sql.raw` is safe here: every member is lower-case ASCII letters and hyphens.

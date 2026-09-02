@@ -19,5 +19,7 @@ export function layersBelow(): readonly LayerName[] {
 export * from './audit/clock.js';
 export * from './audit/ports.js';
 export * from './identity/authorize.js';
+export * from './identity/manage-users.js';
 export * from './identity/ports.js';
 export * from './identity/record-sign-in.js';
+export * from './identity/record-sign-out.js';
