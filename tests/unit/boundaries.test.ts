@@ -76,11 +76,27 @@ const CASES: readonly Case[] = [
     rule: 'no-target-system-probe-in-apps',
   },
   {
-    // The same rule covers the worker. The worker WILL probe in Story 1.8, through the
-    // package's ./probe subpath as its own entry point — the way the release migrator is
-    // invoked — not by importing it into the heartbeat bundle.
+    // The same rule covers the worker. Story 1.8 gave the worker a probe, and this is why
+    // the sweep lives in `packages/infrastructure/src/registrations/probe-runner.ts` and
+    // is started as its own process — the way the release migrator is — rather than as a
+    // file under `apps/worker/src/` that would have to import this and break the rule.
     plantIn: 'apps/worker/src',
     imports: '../../../../packages/infrastructure/src/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    // The sweep itself, from the worker. `to.path` is a PREFIX — `.../registrations/probe`
+    // matches `probe-runner.ts` too — so an entry point under `apps/worker/src/` that
+    // imported the sweep is refused exactly as one that imported the writer. That is not
+    // an accident of the pattern; it is the reason the runner is not there.
+    plantIn: 'apps/worker/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe-runner.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    // And from the web, which must never make an outbound call to a registered system.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe-runner.js',
     rule: 'no-target-system-probe-in-apps',
   },
   {

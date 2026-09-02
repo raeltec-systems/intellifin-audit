@@ -1,0 +1,49 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "rolematrix",
+  "title": "RoleMatrix — the versioned Reference Source that expands a role to permissions (P-2)",
+  "addendum_reference": "A.2 RoleMatrix; C P-2",
+  "serves": "versioned-file",
+  "generation": "2026-09-01.1",
+  "declared_schema": ["role", "permission"],
+  "prohibited_pairs": [
+    ["CREATE_VENDOR", "APPROVE_VENDOR"],
+    ["CREATE_PAYMENT", "RELEASE_PAYMENT"],
+    ["CONFIGURE_LIMITS", "APPROVE_LOAN"]
+  ],
+  "notes": [
+    "This is a LIST of entries, not an object keyed by role, so that a duplicate conflicting policy entry is expressible: AMBIGUOUS_DUAL appears twice with different permissions.",
+    "UNKNOWN_ROLE_X is deliberately absent: an unknown role must yield Inconclusive, never Compliant.",
+    "BRANCH_SUPERVISOR and CREDIT_COMMITTEE conflict only AFTER expansion. A rule that compares role names and not permissions misses it."
+  ],
+  "entries": [
+    { "role": "AP_CLERK", "permissions": ["CREATE_PAYMENT", "VIEW_PAYMENT"] },
+    { "role": "LOAN_VIEWER", "permissions": ["VIEW_LOAN"] },
+    { "role": "REPORT_READER", "permissions": ["VIEW_REPORT"] },
+    { "role": "VENDOR_MAINTAINER", "permissions": ["CREATE_VENDOR", "VIEW_VENDOR"] },
+    { "role": "VENDOR_APPROVER", "permissions": ["APPROVE_VENDOR", "VIEW_VENDOR"] },
+    { "role": "PAYMENT_CREATOR", "permissions": ["CREATE_PAYMENT", "VIEW_PAYMENT"] },
+    { "role": "PAYMENT_RELEASER", "permissions": ["RELEASE_PAYMENT", "VIEW_PAYMENT"] },
+    { "role": "BRANCH_SUPERVISOR", "permissions": ["CONFIGURE_LIMITS", "VIEW_LOAN"] },
+    { "role": "CREDIT_COMMITTEE", "permissions": ["APPROVE_LOAN", "VIEW_LOAN"] },
+    { "role": "AMBIGUOUS_DUAL", "permissions": ["CREATE_PAYMENT", "VIEW_PAYMENT"] },
+    { "role": "AMBIGUOUS_DUAL", "permissions": ["RELEASE_PAYMENT", "VIEW_PAYMENT"] },
+    { "role": "COLLECTIONS_AGENT", "permissions": ["VIEW_LOAN"] },
+    { "role": "TREASURY_ANALYST", "permissions": ["VIEW_PAYMENT"] },
+    { "role": "SERVICING_CLERK", "permissions": ["VIEW_LOAN"] },
+    { "role": "RISK_ANALYST", "permissions": ["VIEW_REPORT"] },
+    { "role": "RISK_VIEWER", "permissions": ["VIEW_REPORT"] },
+    { "role": "OPS_CLERK", "permissions": ["VIEW_LOAN"] },
+    { "role": "COMPLIANCE_REVIEWER", "permissions": ["VIEW_REPORT"] },
+    { "role": "FINANCE_CLERK", "permissions": ["VIEW_PAYMENT"] },
+    { "role": "LOAN_OFFICER", "permissions": ["CREATE_LOAN", "VIEW_LOAN"] },
+    { "role": "LOAN_ADMIN", "permissions": ["CONFIGURE_LIMITS", "VIEW_LOAN"] },
+    { "role": "SYSTEM_ADMIN", "permissions": ["MANAGE_USERS", "VIEW_REPORT"] },
+    { "role": "OPS_GENERIC", "permissions": ["VIEW_LOAN"] },
+    { "role": "XR_TEMP", "permissions": ["VIEW_LOAN"] }
+  ]
+}

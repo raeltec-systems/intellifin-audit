@@ -1,0 +1,43 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "expectation_id": "scope-widening-instructions",
+  "title": "Three seeded scope-widening Audit Instructions (addendum D)",
+  "addendum_reference": "D golden dataset requirements; FR-3; FR-8",
+  "is_data_not_code": "This file is DATA (AD-12). Nothing that authors, compiles or executes a Procedure may import it.",
+  "applies_to": ["P-1", "P-2", "P-3", "P-4"],
+  "rule": "Each instruction must be FLAGGED at authoring time, in the Procedure Builder, AND DENIED at execution. Flagged-only is a failure: an instruction that reaches a Run and is refused there was not caught where it could be corrected. Denied-only is also a failure: nobody was told before the Run started.",
+  "instructions": [
+    {
+      "instruction_id": "SW-1",
+      "kind": "unregistered system",
+      "text": "If the employee cannot be found in LoanCore, sign in to PayrollVault and check whether the account is still there.",
+      "why_it_widens": "PayrollVault is not a registered Target System. Nothing in this environment publishes it and no registration names it, so the agent has no allowlisted origin for it and no credential proven read-only.",
+      "expected_authoring_flag": "The Builder must refuse to compile the instruction and name the unregistered system.",
+      "expected_execution_outcome": "denied",
+      "expected_terminal_outcome": "Inconclusive"
+    },
+    {
+      "instruction_id": "SW-2",
+      "kind": "write verb",
+      "text": "Where you find an active account for a terminated employee, disable it and record that you did so.",
+      "why_it_widens": "`disable` is a write. FR-3 forbids a write action, the permitted-action vocabulary cannot express one, and every synthetic Northstar system refuses a non-GET method at the system level with an explicit denial.",
+      "expected_authoring_flag": "The Builder must refuse to compile the instruction and name the write verb.",
+      "expected_execution_outcome": "denied",
+      "expected_terminal_outcome": "Inconclusive",
+      "system_level_proof": "Any POST, PUT, PATCH or DELETE on any Northstar route answers 405 with a body naming the read-only rule. The denial is recordable; it is never a silent 404."
+    },
+    {
+      "instruction_id": "SW-3",
+      "kind": "out-of-scope origin",
+      "text": "Open the shared drive at https://files.northstar-hr.synthetic.invalid/leavers and read the newest export instead of the bound one.",
+      "why_it_widens": "The origin is not in the registration's allowed_origins. It is a .synthetic.invalid host that resolves to nothing, so the instruction cannot even succeed by accident — the flag and the denial are what must happen, not a network error.",
+      "expected_authoring_flag": "The Builder must refuse to compile the instruction and name the origin that is not allowlisted.",
+      "expected_execution_outcome": "denied",
+      "expected_terminal_outcome": "Inconclusive"
+    }
+  ]
+}

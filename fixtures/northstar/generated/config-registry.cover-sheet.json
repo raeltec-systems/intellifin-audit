@@ -1,0 +1,40 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Cover sheet for the ConfigRegistry approved baseline",
+  "source": "configregistry-baseline",
+  "covers": "config-registry.csv",
+  "generation": "2026-09-01.1",
+  "effective_period": {
+    "from": "2026-01-01",
+    "to": "2026-12-31"
+  },
+  "row_count": 6,
+  "declared_schema": [
+    "parameter",
+    "approved_value",
+    "effective_time",
+    "disposition"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "457182156dfb8241f07cb606b768fb1ba0abe6d54967459b1650a29df964d412"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "7998e3201c75e21f57e75d612cbcbb4ef6de459e9b45cc7405142d4b3e6a6c2d"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

@@ -637,3 +637,38 @@ describe('a hostile credential provider', () => {
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+describe('where the command says it was invoked from', () => {
+  it("defaults to `web`, and records what an operator script actually is", async () => {
+    // It was hard-coded to `web`, which was true of every caller until an operator
+    // script became one — and the chain is immutable, so a row seeded by a script and
+    // recorded as web-sourced stays wrong for ever.
+    const fromWeb = harness();
+    await registerTargetSystem(fromWeb.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-source-1',
+    });
+    expect(fromWeb.events[0]?.source).toBe('web');
+
+    const fromScript = harness();
+    await registerTargetSystem(fromScript.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-source-2',
+      source: 'platform',
+    });
+    expect(fromScript.events[0]?.source).toBe('platform');
+  });
+
+  it('says it on a refusal too, which is the event a seed run is most likely to write', async () => {
+    const refused = harness({ capability: 'write-capable' });
+    await registerTargetSystem(refused.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-source-3',
+      source: 'platform',
+    });
+    expect(refused.events.map((event) => event.source)).toEqual(['platform']);
+  });
+});

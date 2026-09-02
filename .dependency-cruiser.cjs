@@ -165,6 +165,13 @@ module.exports = {
           // Process entry points. Nothing imports a composition root -- that is the
           // point of AD-1 -- so they are orphans by design.
           '^apps/worker/src/main\\.ts$',
+          '^apps/northstar/src/main\\.ts$',
+          // Pipeline entry points inside packages/infrastructure. Nothing imports them
+          // either: the release migrator and the Target System probe sweep are each
+          // started as their own process through the package's subpath exports, which is
+          // exactly what keeps them out of every application bundle.
+          '^packages/infrastructure/src/db/migrate\\.ts$',
+          '^packages/infrastructure/src/registrations/probe-runner\\.ts$',
           // Vitest discovers test files; nothing imports them.
           '\\.test\\.tsx?$',
         ],

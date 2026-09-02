@@ -1,0 +1,172 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "systems",
+  "title": "The synthetic Northstar systems, their path prefixes, and how they are registered",
+  "addendum_reference": "A.1 Population Sources; A.2 Target Systems and Reference Sources",
+  "why_one_process": "The addendum describes six systems. Deploying six services is a Railway decision this story is not permitted to take, and six processes make the browser suite six times as fragile for no gain. One process serves every surface on its own path prefix, so an ALLOWED ORIGIN in this deployment is a base URL that INCLUDES the path prefix. Nothing downstream is affected: a registration's allowed_origins are opaque strings that a probe and an agent both treat as a base to fetch.",
+  "deferred": [
+    {
+      "system": "LedgerDesk",
+      "role": "Target System (P-1), synthetic desktop application",
+      "reason": "The desktop platform is an open question in the addendum and needs a desktop sandbox nothing in Epic 1 provides. Named here so Epic 3 picks it up deliberately rather than discovering it missing."
+    }
+  ],
+  "target_systems": [
+    {
+      "id": "loancore",
+      "display_name": "LoanCore",
+      "kind": "web",
+      "origin_path": "/loancore",
+      "permitted_actions": ["navigate", "search", "open-record", "read-attribute", "capture-screenshot"],
+      "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name"],
+      "secondary_key": "Full name",
+      "note": "Synthetic loan origination and servicing web application. Agent-driven (P-1). The audit account is signed in already and holds read access only."
+    },
+    {
+      "id": "prodconsole",
+      "display_name": "ProdConsole",
+      "kind": "web",
+      "origin_path": "/prodconsole",
+      "permitted_actions": ["navigate", "read-attribute", "read-metadata", "capture-screenshot"],
+      "attribute_label_patterns": ["Parameter", "Value", "Snapshot identifier", "Expected parameter count"],
+      "secondary_key": "",
+      "note": "Synthetic production configuration surface. Agent-driven (P-4). Publishes a signed snapshot identifier and an expected parameter count."
+    },
+    {
+      "id": "accessgate",
+      "display_name": "AccessGate",
+      "kind": "api",
+      "origin_path": "/accessgate",
+      "permitted_actions": ["list-records", "read-attribute", "read-metadata"],
+      "attribute_label_patterns": ["account_id", "employee_id", "username", "status", "roles"],
+      "secondary_key": "employee_id",
+      "note": "Application identity store. Adapter-acquired (P-2). It is both the population and the Target System."
+    },
+    {
+      "id": "approvenow",
+      "display_name": "ApproveNow",
+      "kind": "api",
+      "origin_path": "/approvenow",
+      "permitted_actions": ["list-records", "read-attribute", "read-metadata"],
+      "attribute_label_patterns": ["approval_id", "transaction_id", "decision", "decided_at", "approver", "approver_limit"],
+      "secondary_key": "approval_id",
+      "note": "Approval decisions and approver limits. Adapter-acquired (P-3)."
+    },
+    {
+      "id": "peoplehub",
+      "display_name": "PeopleHub",
+      "kind": "api",
+      "origin_path": "/peoplehub",
+      "permitted_actions": ["list-records", "read-attribute", "read-metadata"],
+      "attribute_label_patterns": ["employee_id", "full_name", "employment_status", "termination_effective_time"],
+      "secondary_key": "full_name",
+      "note": "HR system of record. The alternative P-1 population binding."
+    },
+    {
+      "id": "ledgerflow",
+      "display_name": "LedgerFlow",
+      "kind": "api",
+      "origin_path": "/ledgerflow",
+      "permitted_actions": ["list-records", "read-attribute", "read-metadata"],
+      "attribute_label_patterns": ["transaction_id", "amount", "currency", "initiator", "processed_time", "approval_id"],
+      "secondary_key": "approval_id",
+      "note": "Transaction system. The P-3 population. Addendum A.1 names it; the Story 1.8 spec's execution list omits it, and P-3 has no population without it."
+    },
+    {
+      "id": "leavers-file",
+      "display_name": "Northstar leavers export (published file)",
+      "kind": "versioned-file",
+      "origin_path": "/files/leavers-export.csv",
+      "permitted_actions": ["read-file", "read-metadata"],
+      "attribute_label_patterns": ["employee_id", "full_name", "employment_status", "termination_effective_date"],
+      "secondary_key": "full_name",
+      "note": "Weekly HR leavers export with a signed cover sheet. The P-1 population by default."
+    },
+    {
+      "id": "rolematrix-file",
+      "display_name": "RoleMatrix (published file)",
+      "kind": "versioned-file",
+      "origin_path": "/files/role-matrix.csv",
+      "permitted_actions": ["read-file", "read-metadata"],
+      "attribute_label_patterns": ["role", "permission"],
+      "secondary_key": "",
+      "note": "Reference Source for P-2: expands a role to permissions. It produces no Work Items."
+    },
+    {
+      "id": "configregistry-file",
+      "display_name": "ConfigRegistry (published file)",
+      "kind": "versioned-file",
+      "origin_path": "/files/config-registry.csv",
+      "permitted_actions": ["read-file", "read-metadata"],
+      "attribute_label_patterns": ["parameter", "approved_value", "effective_time", "disposition"],
+      "secondary_key": "",
+      "note": "Approved configuration baseline. The P-4 population."
+    }
+  ],
+  "population_source_bindings": [
+    {
+      "id": "leavers-export-versioned",
+      "display_name": "Leavers export (versioned file)",
+      "kind": "versioned-file",
+      "location_path": "/files/leavers-export.csv",
+      "declared_schema": ["employee_id", "full_name", "department", "employment_status", "termination_effective_date", "manager"],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": ["full_name"],
+      "note": "The P-1 default population. The cover sheet declares the row count and the digest of the bytes served."
+    },
+    {
+      "id": "leavers-export-manual",
+      "display_name": "Leavers export (manual upload, once Schedule only)",
+      "kind": "manual-upload",
+      "location_path": null,
+      "declared_schema": ["employee_id", "full_name", "department", "employment_status", "termination_effective_date", "manager"],
+      "declared_count_mechanism": "none",
+      "sensitive_fields": ["full_name"],
+      "note": "A manual upload has no location: the file arrives with the Run. It declares no expected count, so no Procedure Version can be submitted against it — which is exactly what FR-6 asks to be surfaced at authoring time."
+    },
+    {
+      "id": "peoplehub-employees",
+      "display_name": "PeopleHub employees (read-only API)",
+      "kind": "read-only-api",
+      "location_path": "/peoplehub/employees",
+      "declared_schema": ["employee_id", "full_name", "employment_status", "termination_effective_time"],
+      "declared_count_mechanism": "count-endpoint",
+      "sensitive_fields": ["full_name"],
+      "note": "The alternative P-1 population binding. Its count endpoint is /peoplehub/employees/count."
+    },
+    {
+      "id": "accessgate-active-accounts",
+      "display_name": "AccessGate active accounts (read-only API)",
+      "kind": "read-only-api",
+      "location_path": "/accessgate/accounts?status=Active",
+      "declared_schema": ["account_id", "employee_id", "username", "status", "roles", "disabled_time"],
+      "declared_count_mechanism": "count-endpoint",
+      "sensitive_fields": ["username"],
+      "note": "The P-2 population. The count endpoint declares the active population, so the bound location narrows to the same rule."
+    },
+    {
+      "id": "ledgerflow-transactions",
+      "display_name": "LedgerFlow processed transactions (read-only API)",
+      "kind": "read-only-api",
+      "location_path": "/ledgerflow/transactions",
+      "declared_schema": ["transaction_id", "amount", "currency", "initiator", "processed_time", "approval_id", "memo"],
+      "declared_count_mechanism": "count-endpoint",
+      "sensitive_fields": ["initiator"],
+      "note": "The P-3 population before the inclusion rule (USD and at least 100,000 in the period) is applied by the Adapter."
+    },
+    {
+      "id": "configregistry-baseline",
+      "display_name": "ConfigRegistry approved baseline (versioned file)",
+      "kind": "versioned-file",
+      "location_path": "/files/config-registry.csv",
+      "declared_schema": ["parameter", "approved_value", "effective_time", "disposition"],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": [],
+      "note": "The P-4 population."
+    }
+  ]
+}

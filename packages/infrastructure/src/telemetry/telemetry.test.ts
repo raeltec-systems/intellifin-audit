@@ -35,6 +35,30 @@ describe('telemetry sanitizer', () => {
     expect(sanitizeTelemetryFields(hostile)).toEqual({ correlationId: 'corr-safe-001' });
   });
 
+  it('keeps the fields the pipeline entry points actually log', () => {
+    /**
+     * An undocumented key is dropped SILENTLY, which turns a summary line into a bare
+     * message. The probe sweep shipped that way for one run: "Probe sweep complete" with
+     * every count removed. The migrator's refusal had the same shape — "Refusing to
+     * migrate" with the reason gone, which is the one thing that message exists to carry.
+     */
+    expect(
+      sanitizeTelemetryFields({
+        probed: 9,
+        probeReachable: 7,
+        probeUnreachable: 2,
+        probeSkipped: 1,
+        reason: 'DATABASE_URL is required',
+      }),
+    ).toEqual({
+      probed: 9,
+      probeReachable: 7,
+      probeUnreachable: 2,
+      probeSkipped: 1,
+      reason: 'DATABASE_URL is required',
+    });
+  });
+
   it('writes only safe Pino fields and sends only safe fields to the Sentry sink', () => {
     const chunks: string[] = [];
     const captures: Array<{ message: string; fields: unknown }> = [];

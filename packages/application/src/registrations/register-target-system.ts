@@ -5,6 +5,7 @@ import {
   registrationDigest,
   sha256Hex,
   type JsonValue,
+  type AuditEventSource,
   type PermittedReadAction,
   type TargetSystemKind,
 } from '@intellifin/domain';
@@ -155,6 +156,19 @@ export interface RegistrationFields {
 
 export interface RegisterTargetSystemInput extends RegistrationFields {
   readonly session: SessionSnapshot;
+  /**
+   * Where the command was invoked from, for the audit envelope.
+   *
+   * It was hard-coded to `web`, which was true of every caller until an operator script
+   * became one: rows seeded by `scripts/seed-northstar.mts` were recorded in the
+   * immutable chain as web-sourced, which is simply not what happened. The chain cannot
+   * be corrected later, so the one field that says where an action came from must be
+   * able to say something other than the common case.
+   *
+   * It defaults to `web` so no existing caller changes, and the seed script says
+   * `platform`.
+   */
+  readonly source?: AuditEventSource;
   readonly correlationId: string;
 }
 
@@ -461,6 +475,7 @@ async function refuseUnlessReadOnly(
     readonly session: SessionSnapshot;
     readonly correlationId: string;
     readonly registrationId: string | null;
+    readonly source: AuditEventSource;
     readonly kind: TargetSystemKind;
     readonly credentialRef: string;
   },
@@ -502,7 +517,7 @@ async function refuseUnlessReadOnly(
     auditEvents.append({
       actor: { type: 'human', id: input.session.userId },
       eventType: REGISTRATION_REFUSED_EVENT,
-      source: 'web',
+      source: input.source ?? 'web',
       outcome: 'denied',
       sessionId: input.session.sessionId,
       correlationId: input.correlationId,
@@ -540,6 +555,7 @@ export async function registerTargetSystem(
     session,
     correlationId,
     registrationId: null,
+    source: input.source ?? 'web',
     kind: input.kind,
     credentialRef: input.credentialRef.trim(),
   });
@@ -553,7 +569,7 @@ export async function registerTargetSystem(
       await auditEvents.append({
         actor: { type: 'human', id: session.userId },
         eventType: REGISTRATION_CREATED_EVENT,
-        source: 'web',
+        source: input.source ?? 'web',
         outcome: 'success',
         sessionId: session.sessionId,
         correlationId,
@@ -601,6 +617,7 @@ export async function changeTargetSystem(
     session,
     correlationId,
     registrationId,
+    source: input.source ?? 'web',
     kind: input.kind,
     credentialRef: input.credentialRef.trim(),
   });
@@ -653,7 +670,7 @@ export async function changeTargetSystem(
             await auditEvents.append({
               actor: { type: 'human', id: session.userId },
               eventType: REGISTRATION_ANNOTATED_EVENT,
-              source: 'web',
+              source: input.source ?? 'web',
               outcome: 'success',
               sessionId: session.sessionId,
               correlationId,
@@ -680,7 +697,7 @@ export async function changeTargetSystem(
         await auditEvents.append({
           actor: { type: 'human', id: session.userId },
           eventType: REGISTRATION_CHANGED_EVENT,
-          source: 'web',
+          source: input.source ?? 'web',
           outcome: 'success',
           sessionId: session.sessionId,
           correlationId,

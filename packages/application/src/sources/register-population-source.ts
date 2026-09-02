@@ -8,6 +8,7 @@ import {
   type DeclaredCountMechanism,
   type JsonValue,
   type PopulationSourceKind,
+  type AuditEventSource,
 } from '@intellifin/domain';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
@@ -150,6 +151,19 @@ export interface BindingFields {
 
 export interface RegisterPopulationSourceInput extends BindingFields {
   readonly session: SessionSnapshot;
+  /**
+   * Where the command was invoked from, for the audit envelope.
+   *
+   * It was hard-coded to `web`, which was true of every caller until an operator script
+   * became one: rows seeded by `scripts/seed-northstar.mts` were recorded in the
+   * immutable chain as web-sourced, which is simply not what happened. The chain cannot
+   * be corrected later, so the one field that says where an action came from must be
+   * able to say something other than the common case.
+   *
+   * It defaults to `web` so no existing caller changes, and the seed script says
+   * `platform`.
+   */
+  readonly source?: AuditEventSource;
   readonly correlationId: string;
 }
 
@@ -439,7 +453,7 @@ export async function registerPopulationSource(
       await auditEvents.append({
         actor: { type: 'human', id: session.userId },
         eventType: BINDING_CREATED_EVENT,
-        source: 'web',
+        source: input.source ?? 'web',
         outcome: 'success',
         sessionId: session.sessionId,
         correlationId,
@@ -531,7 +545,7 @@ export async function changePopulationSource(
             await auditEvents.append({
               actor: { type: 'human', id: session.userId },
               eventType: BINDING_ANNOTATED_EVENT,
-              source: 'web',
+              source: input.source ?? 'web',
               outcome: 'success',
               sessionId: session.sessionId,
               correlationId,
@@ -559,7 +573,7 @@ export async function changePopulationSource(
         await auditEvents.append({
           actor: { type: 'human', id: session.userId },
           eventType: BINDING_CHANGED_EVENT,
-          source: 'web',
+          source: input.source ?? 'web',
           outcome: 'success',
           sessionId: session.sessionId,
           correlationId,
