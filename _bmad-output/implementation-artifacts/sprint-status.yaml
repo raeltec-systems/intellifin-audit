@@ -40,7 +40,7 @@ development_status:
   1-2-record-tamper-evident-audit-events-with-sanitized-telemetry: done
   1-3-sign-in-and-act-only-within-an-application-owned-role: done
   1-4-application-shell-and-ledger-signal-tokens: done
-  1-5-manage-users-and-roles: backlog
+  1-5-manage-users-and-roles: done
   1-6-register-a-target-system-with-a-read-only-credential: backlog
   1-7-register-a-population-source-binding: backlog
   1-8-synthetic-northstar-systems-seeded-with-golden-populations: backlog

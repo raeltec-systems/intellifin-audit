@@ -2,11 +2,11 @@
 title: 'Story 1.5: Manage users and roles'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'f19a5066b6b263f8a06d716d96fc91b5e7152de9'
 baseline_commit: 'f19a5066b6b263f8a06d716d96fc91b5e7152de9'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/AGENTS.md'
   - '{project-root}/CLAUDE.md'
@@ -171,6 +171,26 @@ deferred:
 - **2026-09-02 — sign-out is implemented as an interception, not a Better Auth passthrough.** Better Auth's `/sign-out` commits the session deletion on its own connection and so cannot be atomic with the event. `apps/web/src/sign-out-route.ts` handles `POST /api/auth/sign-out`, revokes the session row inside the audit transaction, and clears the cookies itself. This is the piece the Design Notes flagged as removable; `SignOutButton.tsx`, that file, and one line in `AppShell.tsx` are the whole of it.
 
 ## Review Triage Log
+
+### 2026-09-02 — Review pass
+- intent_gap: 0
+- bad_spec: 1: (medium 1)
+- patch: 25: (high 9, medium 14, low 2)
+- defer: 3: (medium 3)
+- reject: 0
+- addressed_findings:
+  - `[high]` `[patch]` Nothing stopped an administrator removing their own role or the last administrator's, and with no sign-up endpoint recovery needed shell access. Both refused, counted inside the transaction under a lock.
+  - `[high]` `[patch]` Eleven public unaudited Better Auth endpoints were mounted, including delete-user, change-password and three revocation routes. `/api/auth/**` is now a three-entry allowlist answering 404 to everything else.
+  - `[high]` `[patch]` The form-method guard asserted only that a method existed, so `method="get"` passed — the exact defect it was written to prevent, on the one form it uniquely covered.
+  - `[high]` `[patch]` An open redirect in the sign-out route built its location from `request.url`, so a forged Host redirected the browser as its cookies were cleared.
+  - `[high]` `[patch]` Both admin controls swallowed a rejected Server Action silently — the same "nothing happened looks like success" class this story fixed for sign-out.
+  - `[high]` `[patch]` The sign-out route resolved runtime and session outside its own try, so a database failure gave a framework 500 instead of the fail-closed page.
+  - `[high]` `[patch]` The Server Actions trusted their input as typed on a public POST endpoint; shape and length are validated at the boundary now.
+  - `[high]` `[patch]` The sign-up-capable auth instance was constructed on every identity transaction, including every denial append. It is lazy, and the comment claiming it is never constructed by the web process is corrected.
+  - `[high]` `[patch]` Concurrent creation of one address in different letter case produced two accounts; generation 4 carries a unique index on `lower(email)`.
+  - `[medium]` `[patch]` Fourteen further fixes: a no-op role change no longer writes an event claiming a transition, optimistic concurrency on the role write, cookie attributes asserted independently with `Path=/` pinned, the DataTable link arm asserted, the wrong disabled reason for a user with no role, an unbounded user list, a banner that never cleared, an unguarded rate-limit wipe, a defensive migration, `Object.hasOwn` on a request-keyed lookup, the action-level denial audit proven through the real path, a glob that could not match, unscoped integration cleanup, and browser accounts that never cleaned up.
+
+Spec defect: the acceptance criterion required an unauthenticated Server Action call to be audited, which contradicts the Story 1.3 invariant that an anonymous probe must not be able to grow the immutable chain. The implementation followed the earlier invariant and flagged it; the criterion was over-specified, not the code.
 
 ## Design Notes
 
