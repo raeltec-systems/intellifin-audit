@@ -2,6 +2,7 @@ import {
   ConfigError,
   UnsupportedDatabaseError,
   UnsupportedSchemaError,
+  SUPPORTED_SCHEMA_RANGE,
   assertPostgres18,
   assertSchemaSupported,
   createSqlClient,
@@ -24,6 +25,8 @@ export interface WebRuntime {
   readonly sql: Sql;
   readonly schemaVersion: number;
   readonly postgresMajor: number;
+  /** The range this build accepts, for logging. Fixed by the build, never by the environment. */
+  readonly supportedSchemaRange: string;
 }
 
 let runtimePromise: Promise<WebRuntime> | undefined;
@@ -60,12 +63,14 @@ async function start(): Promise<WebRuntime> {
 
   try {
     const postgresMajor = await assertPostgres18(sql);
-    const schemaVersion = await assertSchemaSupported(
+    const schemaVersion = await assertSchemaSupported(sql);
+    return {
+      config,
       sql,
-      config.SCHEMA_RANGE_MIN,
-      config.SCHEMA_RANGE_MAX,
-    );
-    return { config, sql, schemaVersion, postgresMajor };
+      schemaVersion,
+      postgresMajor,
+      supportedSchemaRange: SUPPORTED_SCHEMA_RANGE,
+    };
   } catch (error) {
     await sql.end({ timeout: 5 }).catch(() => undefined);
     throw error;

@@ -11,18 +11,12 @@ export const SERVICE_NAMES = ['web', 'worker'] as const;
 export type ServiceName = (typeof SERVICE_NAMES)[number];
 
 /**
- * A schema generation bound.
- *
- * Parsed from a strict `^\d+$` string rather than with `z.coerce.number()`, which
- * silently turns an empty string into 0. An unset-but-present variable
- * (`SCHEMA_RANGE_MIN=`) is a configuration mistake and must be refused, not read
- * as generation 0. Generations start at 1, so 0 is never valid either.
+ * The supported schema range is deliberately NOT configuration. It is a property of
+ * the build and lives in `db/compat.ts` as `SUPPORTED_SCHEMA_MIN`/`SUPPORTED_SCHEMA_MAX`.
+ * As an environment variable it drifted: a release migrated production to generation 2
+ * while the deployment still declared `1..1`, and every process refused to start.
+ * Any `SCHEMA_RANGE_MIN`/`SCHEMA_RANGE_MAX` left in an environment is ignored here.
  */
-const schemaGeneration = z
-  .string()
-  .regex(/^\d+$/, 'must be a whole number of digits, with no sign, spaces, or decimal point')
-  .transform((value) => Number.parseInt(value, 10))
-  .refine((value) => value >= 1, 'must be at least 1; schema generations start at 1');
 
 const optionalUrl = z.preprocess(
   (value) => (value === '' ? undefined : value),
@@ -42,16 +36,10 @@ export const configSchema = z
       .min(1, 'DATABASE_URL is required')
       .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL must start with postgres:// or postgresql://'),
     SERVICE_NAME: z.enum(SERVICE_NAMES),
-    SCHEMA_RANGE_MIN: schemaGeneration,
-    SCHEMA_RANGE_MAX: schemaGeneration,
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
     SENTRY_DSN: optionalUrl,
     SENTRY_ENVIRONMENT: z.string().min(1).max(64).default('development'),
     SENTRY_TRACES_SAMPLE_RATE: sampleRate,
-  })
-  .refine((c) => c.SCHEMA_RANGE_MIN <= c.SCHEMA_RANGE_MAX, {
-    message: 'SCHEMA_RANGE_MIN must be less than or equal to SCHEMA_RANGE_MAX',
-    path: ['SCHEMA_RANGE_MIN'],
   });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -77,8 +65,6 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   const parsed = configSchema.safeParse({
     DATABASE_URL: env['DATABASE_URL'],
     SERVICE_NAME: env['SERVICE_NAME'],
-    SCHEMA_RANGE_MIN: env['SCHEMA_RANGE_MIN'],
-    SCHEMA_RANGE_MAX: env['SCHEMA_RANGE_MAX'],
     LOG_LEVEL: env['LOG_LEVEL'],
     SENTRY_DSN: env['SENTRY_DSN'],
     SENTRY_ENVIRONMENT: env['SENTRY_ENVIRONMENT'],

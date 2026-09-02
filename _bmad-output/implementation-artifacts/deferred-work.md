@@ -1,7 +1,4 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-bootstrap-the-monorepo-and-deploy-web-and-worker.md`
-  summary: Add a CI check that `max(schema_meta.version)` after `pnpm db:migrate` equals the generation this build declares, so a migration that forgets its version insert fails the pull request.
-  evidence: `0001_worker_heartbeat.sql` hand-inserts `version = 1`; nothing enforces that later migrations do the same, and `readSchemaVersion` uses `max(version)`.
-- source_spec: `_bmad-output/implementation-artifacts/spec-1-1-bootstrap-the-monorepo-and-deploy-web-and-worker.md`
   summary: Give the worker heartbeat a consumer: a staleness threshold surfaced on the Administration diagnostics surface and a Railway restart policy tied to it.
   evidence: The worker writes `seen_at` every 30 seconds but no route, test, or alert reads it; Story 9.2 (diagnostics) is the natural home.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-bootstrap-the-monorepo-and-deploy-web-and-worker.md`

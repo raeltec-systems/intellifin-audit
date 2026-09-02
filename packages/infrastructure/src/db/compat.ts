@@ -9,6 +9,26 @@ import type { Sql } from 'postgres';
  * outside it. Neither guard ever migrates.
  */
 
+/**
+ * The schema generations this build can run against (AD-15).
+ *
+ * This is a property of the BUILD, not of the deployment: an image ships a fixed set
+ * of migrations and a fixed set of queries, so it alone knows which generations it can
+ * serve. It was once read from `SCHEMA_RANGE_MIN`/`SCHEMA_RANGE_MAX` in the process
+ * environment, and that drifted: the release migrated production to generation 2 while
+ * the deployment still declared `1..1`, so every process refused to start against a
+ * database its own image had just migrated. An environment cannot be allowed to claim
+ * a range its image does not have, so it no longer gets a say.
+ *
+ * `MAX` must equal the highest generation seeded by `packages/infrastructure/drizzle`;
+ * `schema-range.test.ts` reads the migrations and fails when the two disagree.
+ */
+export const SUPPORTED_SCHEMA_MIN = 1;
+export const SUPPORTED_SCHEMA_MAX = 2;
+
+/** The supported range as it is logged and reported: `min..max`. */
+export const SUPPORTED_SCHEMA_RANGE = `${SUPPORTED_SCHEMA_MIN}..${SUPPORTED_SCHEMA_MAX}`;
+
 /** The only PostgreSQL major this release supports (AD-11). */
 export const REQUIRED_POSTGRES_MAJOR = 18;
 
@@ -121,8 +141,8 @@ export function assertSchemaVersionInRange(
 /** AD-15: refuse to serve or poll outside the declared schema range. */
 export async function assertSchemaSupported(
   sql: Sql,
-  min: number,
-  max: number,
+  min: number = SUPPORTED_SCHEMA_MIN,
+  max: number = SUPPORTED_SCHEMA_MAX,
 ): Promise<number> {
   const found = await readSchemaVersion(sql);
   return assertSchemaVersionInRange(found, min, max);

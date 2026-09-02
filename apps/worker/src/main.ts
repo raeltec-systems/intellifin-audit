@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   try {
-    await runStartupChecks(config, sql, telemetry);
+    await runStartupChecks(sql, telemetry);
   } catch {
     // runStartupChecks already logged the refusal, the declared range, and the
     // version it found. Nothing here is recoverable.
