@@ -34,7 +34,7 @@ export async function register(): Promise<void> {
     telemetry.info('Startup checks passed', {
       postgresMajor: runtime.postgresMajor,
       schemaVersion: runtime.schemaVersion,
-      supportedSchemaRange: `${runtime.config.SCHEMA_RANGE_MIN}..${runtime.config.SCHEMA_RANGE_MAX}`,
+      supportedSchemaRange: runtime.supportedSchemaRange,
     });
     return;
   } catch (error) {

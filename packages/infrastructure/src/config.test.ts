@@ -5,16 +5,12 @@ import { ConfigError, loadConfig } from './config.js';
 const validEnv = {
   DATABASE_URL: 'postgres://user:pw@localhost:5432/intellifin',
   SERVICE_NAME: 'web',
-  SCHEMA_RANGE_MIN: '1',
-  SCHEMA_RANGE_MAX: '2',
 };
 
 describe('loadConfig', () => {
-  it('accepts a complete environment and coerces the schema range to numbers', () => {
+  it('accepts a complete environment', () => {
     const config = loadConfig(validEnv);
     expect(config.SERVICE_NAME).toBe('web');
-    expect(config.SCHEMA_RANGE_MIN).toBe(1);
-    expect(config.SCHEMA_RANGE_MAX).toBe(2);
     expect(config.LOG_LEVEL).toBe('info');
     expect(config.SENTRY_DSN).toBeUndefined();
     expect(config.SENTRY_TRACES_SAMPLE_RATE).toBe(0);
@@ -39,28 +35,16 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...validEnv, SERVICE_NAME: 'scheduler' })).toThrow(ConfigError);
   });
 
-  it('rejects a non-numeric schema range bound', () => {
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: 'latest' })).toThrow(ConfigError);
-  });
-
-  it('rejects an empty schema range bound instead of reading it as generation 0', () => {
-    // z.coerce.number() would turn '' into 0 and start the process against a range
-    // nobody wrote. An unset-but-present variable is a mistake, not a value.
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '' })).toThrow(ConfigError);
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: '' })).toThrow(ConfigError);
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '   ' })).toThrow(ConfigError);
-  });
-
-  it('rejects generation 0 and negative or fractional bounds', () => {
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '0' })).toThrow(/at least 1/);
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: '-1' })).toThrow(ConfigError);
-    expect(() => loadConfig({ ...validEnv, SCHEMA_RANGE_MAX: '1.5' })).toThrow(ConfigError);
-  });
-
-  it('rejects an inverted schema range', () => {
-    expect(() =>
-      loadConfig({ ...validEnv, SCHEMA_RANGE_MIN: '3', SCHEMA_RANGE_MAX: '2' }),
-    ).toThrow(/SCHEMA_RANGE_MIN must be less than or equal to SCHEMA_RANGE_MAX/);
+  it('ignores a stale SCHEMA_RANGE_MIN/MAX left in the environment', () => {
+    // The supported range is a property of the build (SUPPORTED_SCHEMA_MIN/MAX).
+    // A deployment that still carries the old variables must not be able to move it.
+    const config = loadConfig({
+      ...validEnv,
+      SCHEMA_RANGE_MIN: '1',
+      SCHEMA_RANGE_MAX: '1',
+    });
+    expect(config).not.toHaveProperty('SCHEMA_RANGE_MIN');
+    expect(config).not.toHaveProperty('SCHEMA_RANGE_MAX');
   });
 
   it('validates optional telemetry configuration', () => {

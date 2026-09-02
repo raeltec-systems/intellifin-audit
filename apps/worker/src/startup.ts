@@ -1,9 +1,9 @@
 import {
+  SUPPORTED_SCHEMA_RANGE,
   UnsupportedSchemaError,
   assertPostgres18,
   assertSchemaSupported,
   upsertHeartbeat,
-  type AppConfig,
   type Database,
   type Sql,
   type Telemetry,
@@ -27,19 +27,11 @@ export interface StartupResult {
  * build's declared range). Logs the refusal with the declared range and the version
  * actually found, then rethrows so the caller decides how to die. Never migrates.
  */
-export async function runStartupChecks(
-  config: AppConfig,
-  sql: Sql,
-  telemetry: Logger,
-): Promise<StartupResult> {
-  const supportedSchemaRange = `${config.SCHEMA_RANGE_MIN}..${config.SCHEMA_RANGE_MAX}`;
+export async function runStartupChecks(sql: Sql, telemetry: Logger): Promise<StartupResult> {
+  const supportedSchemaRange = SUPPORTED_SCHEMA_RANGE;
   try {
     const postgresMajor = await assertPostgres18(sql);
-    const schemaVersion = await assertSchemaSupported(
-      sql,
-      config.SCHEMA_RANGE_MIN,
-      config.SCHEMA_RANGE_MAX,
-    );
+    const schemaVersion = await assertSchemaSupported(sql);
     telemetry.info('Startup checks passed', { postgresMajor, schemaVersion, supportedSchemaRange });
     return { postgresMajor, schemaVersion };
   } catch (error) {

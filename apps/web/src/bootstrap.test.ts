@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { UnsupportedSchemaError } from '@intellifin/infrastructure';
+import {
+  SUPPORTED_SCHEMA_MAX,
+  SUPPORTED_SCHEMA_RANGE,
+  UnsupportedSchemaError,
+} from '@intellifin/infrastructure';
 
 import { getRuntime, resetRuntimeForTests } from './bootstrap.js';
 
@@ -51,8 +55,6 @@ function config(overrides: Record<string, unknown> = {}) {
   return {
     DATABASE_URL: 'postgres://u:p@h:5432/d',
     SERVICE_NAME: 'web',
-    SCHEMA_RANGE_MIN: 1,
-    SCHEMA_RANGE_MAX: 1,
     ...overrides,
   };
 }
@@ -66,17 +68,18 @@ describe('web bootstrap', () => {
 
   it('resolves with the applied schema version when both guards pass', async () => {
     loadConfig.mockReturnValue(config());
-    createSqlClient.mockReturnValue(fakeSql({ schemaVersion: 1 }));
+    createSqlClient.mockReturnValue(fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX }));
 
     const runtime = await getRuntime();
 
-    expect(runtime.schemaVersion).toBe(1);
+    expect(runtime.schemaVersion).toBe(SUPPORTED_SCHEMA_MAX);
     expect(runtime.postgresMajor).toBe(18);
+    expect(runtime.supportedSchemaRange).toBe(SUPPORTED_SCHEMA_RANGE);
   });
 
   it('rejects with UnsupportedSchemaError and closes the connection when out of range', async () => {
-    const sql = fakeSql({ schemaVersion: 1 });
-    loadConfig.mockReturnValue(config({ SCHEMA_RANGE_MIN: 7, SCHEMA_RANGE_MAX: 9 }));
+    const sql = fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX + 1 });
+    loadConfig.mockReturnValue(config());
     createSqlClient.mockReturnValue(sql);
 
     await expect(getRuntime()).rejects.toBeInstanceOf(UnsupportedSchemaError);
@@ -84,8 +87,8 @@ describe('web bootstrap', () => {
   });
 
   it('caches a permanent refusal instead of reopening a connection per request', async () => {
-    loadConfig.mockReturnValue(config({ SCHEMA_RANGE_MIN: 7, SCHEMA_RANGE_MAX: 9 }));
-    createSqlClient.mockReturnValue(fakeSql({ schemaVersion: 1 }));
+    loadConfig.mockReturnValue(config());
+    createSqlClient.mockReturnValue(fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX + 1 }));
 
     await expect(getRuntime()).rejects.toBeInstanceOf(UnsupportedSchemaError);
     await expect(getRuntime()).rejects.toBeInstanceOf(UnsupportedSchemaError);

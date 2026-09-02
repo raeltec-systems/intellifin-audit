@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  SUPPORTED_SCHEMA_MAX,
+  SUPPORTED_SCHEMA_RANGE,
   UnsupportedDatabaseError,
   UnsupportedSchemaError,
-  type AppConfig,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
@@ -39,18 +40,6 @@ function captureLog() {
   return { lines, log };
 }
 
-function config(min: number, max: number): AppConfig {
-  return {
-    DATABASE_URL: 'postgres://u:p@h:5432/d',
-    SERVICE_NAME: 'worker',
-    SCHEMA_RANGE_MIN: min,
-    SCHEMA_RANGE_MAX: max,
-    LOG_LEVEL: 'info',
-    SENTRY_ENVIRONMENT: 'test',
-    SENTRY_TRACES_SAMPLE_RATE: 0,
-  };
-}
-
 /**
  * A stand-in for postgres.js: a tagged-template function that answers the three
  * queries the startup guards issue, so the guards run for real with no database.
@@ -79,9 +68,12 @@ function fakeSql(options: { serverVersion?: string; schemaVersion?: number | nul
 describe('runStartupChecks', () => {
   it('passes and logs the versions when PostgreSQL 18 has an in-range schema', async () => {
     const { lines, log } = captureLog();
-    const result = await runStartupChecks(config(1, 1), fakeSql({ schemaVersion: 1 }), log);
+    const result = await runStartupChecks(
+      fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX }),
+      log,
+    );
 
-    expect(result).toEqual({ postgresMajor: 18, schemaVersion: 1 });
+    expect(result).toEqual({ postgresMajor: 18, schemaVersion: SUPPORTED_SCHEMA_MAX });
     expect(lines).toHaveLength(1);
     expect(lines[0]?.level).toBe('info');
     expect(lines[0]?.message).toBe('Startup checks passed');
@@ -89,16 +81,17 @@ describe('runStartupChecks', () => {
 
   it('throws UnsupportedSchemaError and logs the range and the found version', async () => {
     const { lines, log } = captureLog();
+    const ahead = SUPPORTED_SCHEMA_MAX + 1;
 
     await expect(
-      runStartupChecks(config(7, 9), fakeSql({ schemaVersion: 1 }), log),
+      runStartupChecks(fakeSql({ schemaVersion: ahead }), log),
     ).rejects.toBeInstanceOf(UnsupportedSchemaError);
 
     const refusal = lines.find((line) => line.message === 'Refusing to start');
     expect(refusal).toBeDefined();
     expect(refusal?.level).toBe('error');
-    expect(refusal?.extra['supportedSchemaRange']).toBe('7..9');
-    expect(refusal?.extra['foundSchemaVersion']).toBe(1);
+    expect(refusal?.extra['supportedSchemaRange']).toBe(SUPPORTED_SCHEMA_RANGE);
+    expect(refusal?.extra['foundSchemaVersion']).toBe(ahead);
     expect(refusal?.extra['errorKind']).toBe('UnsupportedSchemaError');
   });
 
@@ -106,23 +99,23 @@ describe('runStartupChecks', () => {
     const { lines, log } = captureLog();
 
     await expect(
-      runStartupChecks(config(1, 1), fakeSql({ schemaVersion: null }), log),
+      runStartupChecks(fakeSql({ schemaVersion: null }), log),
     ).rejects.toBeInstanceOf(UnsupportedSchemaError);
 
     const refusal = lines.find((line) => line.message === 'Refusing to start');
     expect(refusal?.extra['foundSchemaVersion']).toBeNull();
-    expect(refusal?.extra['supportedSchemaRange']).toBe('1..1');
+    expect(refusal?.extra['supportedSchemaRange']).toBe(SUPPORTED_SCHEMA_RANGE);
   });
 
   it('throws UnsupportedDatabaseError and logs the range when the major is wrong', async () => {
     const { lines, log } = captureLog();
 
     await expect(
-      runStartupChecks(config(1, 1), fakeSql({ serverVersion: '17.4' }), log),
+      runStartupChecks(fakeSql({ serverVersion: '17.4' }), log),
     ).rejects.toBeInstanceOf(UnsupportedDatabaseError);
 
     const refusal = lines.find((line) => line.message === 'Refusing to start');
-    expect(refusal?.extra['supportedSchemaRange']).toBe('1..1');
+    expect(refusal?.extra['supportedSchemaRange']).toBe(SUPPORTED_SCHEMA_RANGE);
     expect(refusal?.extra['errorKind']).toBe('UnsupportedDatabaseError');
   });
 });
