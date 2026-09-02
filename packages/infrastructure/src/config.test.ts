@@ -165,3 +165,28 @@ describe('loadConfig and the Better Auth keys', () => {
     expect(config.BETTER_AUTH_URL).toBeUndefined();
   });
 });
+
+describe('ConfigError.keys', () => {
+  it('names every failing variable, once, without any value', () => {
+    const error = new ConfigError([
+      'BETTER_AUTH_SECRET: is required for the web process',
+      'BETTER_AUTH_URL: is required for the web process',
+      'BETTER_AUTH_SECRET: must be at least 32 characters',
+    ]);
+
+    expect(error.keys).toBe('BETTER_AUTH_SECRET,BETTER_AUTH_URL');
+  });
+
+  it('never carries a value, even when one appears in the issue text', () => {
+    // The issues are ours to write, but a future one could interpolate a value.
+    // Only the text before the first colon is ever exposed.
+    const error = new ConfigError(['DATABASE_URL: rejected postgres://u:hunter2@h/d']);
+
+    expect(error.keys).toBe('DATABASE_URL');
+    expect(error.keys).not.toContain('hunter2');
+  });
+
+  it('is empty rather than malformed when an issue names nothing', () => {
+    expect(new ConfigError(['']).keys).toBe('');
+  });
+});

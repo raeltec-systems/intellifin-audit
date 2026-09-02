@@ -96,6 +96,20 @@ export class ConfigError extends Error {
     super(`Invalid runtime configuration: ${issues.join('; ')}`);
     this.issues = issues;
   }
+
+  /**
+   * The names of the variables that failed, comma-separated, for telemetry.
+   *
+   * Sanitized telemetry deliberately drops `error.message`, so a refusal used to log
+   * `errorKind: "ConfigError"` and nothing else -- true, and useless: it cost a whole
+   * release cycle to learn which variable was missing. Each issue is written
+   * `KEY: reason`, so the key name is everything before the first colon. Only names
+   * are exposed; a value never reaches a log through here.
+   */
+  get keys(): string {
+    const names = this.issues.map((issue) => issue.split(':', 1)[0]?.trim() ?? '');
+    return [...new Set(names.filter(Boolean))].join(',');
+  }
 }
 
 type EnvSource = Record<string, string | undefined>;

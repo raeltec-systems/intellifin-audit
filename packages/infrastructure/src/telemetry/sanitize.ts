@@ -1,6 +1,7 @@
 export const TELEMETRY_FIELD_KEYS = [
   'action',
   'aggregateId',
+  'configKeys',
   'correlationId',
   'durationMs',
   'environment',
