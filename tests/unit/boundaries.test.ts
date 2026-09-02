@@ -49,6 +49,11 @@ const CASES: readonly Case[] = [
     imports: '../../../../apps/worker/src/main.js',
     rule: 'infrastructure-imports-no-composition-root',
   },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/db/migrate.js',
+    rule: 'no-migrator-in-apps',
+  },
 ];
 
 const fixtureDirs = [...new Set(CASES.map((c) => path.join(repoRoot, c.plantIn, FIXTURE_DIR)))];

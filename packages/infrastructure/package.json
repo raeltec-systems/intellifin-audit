@@ -13,6 +13,10 @@
     "./db": {
       "types": "./src/db/index.ts",
       "default": "./dist/db/index.js"
+    },
+    "./migrate": {
+      "types": "./src/db/migrate.ts",
+      "default": "./dist/db/migrate.js"
     }
   },
   "files": [
@@ -24,7 +28,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "pnpm build && node dist/db/migrate.js"
   },
   "dependencies": {
     "@intellifin/application": "workspace:*",

@@ -5,6 +5,10 @@ import { defineConfig } from 'vitest/config';
 const pkg = (name: string) =>
   fileURLToPath(new URL(`../../packages/${name}/src/index.ts`, import.meta.url));
 
+/** Subpath exports resolve to source too; without this they fall back to an unbuilt `dist`. */
+const sub = (path: string) =>
+  fileURLToPath(new URL(`../../packages/${path}.ts`, import.meta.url));
+
 /**
  * Integration tests run against a real PostgreSQL 18 (AD-12). They require
  * `DATABASE_URL` and a database the release/CI migration job has already migrated —
@@ -26,6 +30,8 @@ export default defineConfig(() => {
       alias: {
         '@intellifin/domain': pkg('domain'),
         '@intellifin/application': pkg('application'),
+        '@intellifin/infrastructure/migrate': sub('infrastructure/src/db/migrate'),
+        '@intellifin/infrastructure/db': sub('infrastructure/src/db/index'),
         '@intellifin/infrastructure': pkg('infrastructure'),
       },
     },

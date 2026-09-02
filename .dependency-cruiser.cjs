@@ -89,6 +89,17 @@ module.exports = {
       to: { path: '^apps/' },
     },
     {
+      name: 'no-migrator-in-apps',
+      comment:
+        'AD-15: the release migrator is a pipeline entry point, not application code. It carries ' +
+        'top-level process access and reads the migrations folder off disk, so importing it from a ' +
+        'composition root drags it into that application bundle. It is reachable only through the ' +
+        "package's ./migrate subpath, never through the barrel.",
+      severity: 'error',
+      from: { path: '^apps/' },
+      to: { path: '^packages/infrastructure/(src|dist)/db/migrate', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +
