@@ -36,6 +36,20 @@
       "when": 1788363389671,
       "tag": "0004_white_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788367728933,
+      "tag": "0005_clumsy_freak",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788375486419,
+      "tag": "0006_slim_sersi",
+      "breakpoints": true
     }
   ]
 }

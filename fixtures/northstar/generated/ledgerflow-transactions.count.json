@@ -1,0 +1,13 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "source": "ledgerflow-transactions",
+  "generation": "2026-09-01.1",
+  "declared_count": 13,
+  "counted_from": "datasets/ledgerflow-transactions.json",
+  "count_rule": "every processed transaction LedgerFlow publishes",
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

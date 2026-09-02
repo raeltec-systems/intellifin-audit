@@ -1,0 +1,65 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "configregistry-baseline",
+  "title": "ConfigRegistry approved configuration baseline — the P-4 population",
+  "addendum_reference": "A.1 ConfigRegistry; C P-4",
+  "serves": "versioned-file",
+  "generation": "2026-09-01.1",
+  "declared_schema": [
+    "parameter",
+    "approved_value",
+    "effective_time",
+    "disposition"
+  ],
+  "notes": [
+    "The four PoC parameters are fixed by addendum C P-4.",
+    "A parameter named in prohibited_parameters must not appear in production at all; an observed one is an Exception.",
+    "session_timeout_minutes has TWO baseline entries with different effective times. Only the one in effect at the observation time applies; a Procedure that cannot decide which yields Inconclusive.",
+    "The baseline file carries a `disposition` column so that a prohibited parameter is a ROW rather than a second file. A prohibited row has no approved value: there is no value at which it would be allowed."
+  ],
+  "prohibited_parameters": [
+    "legacy_direct_db_access"
+  ],
+  "parameters": [
+    {
+      "parameter": "max_manual_approval_amount",
+      "approved_value": "50000.00",
+      "effective_time": "2026-01-01T00:00:00+02:00",
+      "disposition": "approved"
+    },
+    {
+      "parameter": "mfa_required_for_admin",
+      "approved_value": "true",
+      "effective_time": "2026-01-01T00:00:00+02:00",
+      "disposition": "approved"
+    },
+    {
+      "parameter": "session_timeout_minutes",
+      "approved_value": "15",
+      "effective_time": "2026-01-01T00:00:00+02:00",
+      "disposition": "approved"
+    },
+    {
+      "parameter": "session_timeout_minutes",
+      "approved_value": "20",
+      "effective_time": "2026-08-15T00:00:00+02:00",
+      "disposition": "approved"
+    },
+    {
+      "parameter": "production_debug_mode",
+      "approved_value": "false",
+      "effective_time": "2026-01-01T00:00:00+02:00",
+      "disposition": "approved"
+    },
+    {
+      "parameter": "legacy_direct_db_access",
+      "approved_value": "",
+      "effective_time": "2026-01-01T00:00:00+02:00",
+      "disposition": "prohibited"
+    }
+  ]
+}

@@ -26,6 +26,15 @@ interface Case {
   readonly imports: string;
   /** The dependency-cruiser rule that must fire. */
   readonly rule: string;
+  /**
+   * A repository-relative file that must exist for the case to mean anything.
+   *
+   * Only the built-output cases need one. They import from `dist`, which exists after
+   * `pnpm build` and not on a fresh clone; without the guard the case would plant an
+   * unresolvable import, trip `not-to-unresolvable` instead, and look like it proved
+   * the rule it is named after.
+   */
+  readonly requires?: string;
 }
 
 const CASES: readonly Case[] = [
@@ -58,6 +67,59 @@ const CASES: readonly Case[] = [
     plantIn: 'apps/web/src',
     imports: '../../../../packages/infrastructure/src/db/migrate.js',
     rule: 'no-migrator-in-apps',
+  },
+  {
+    // AD-10: the web process never probes a Target System, and the rule that says so is
+    // worth nothing until it has been seen to fire.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    // The same rule covers the worker. Story 1.8 gave the worker a probe, and this is why
+    // the sweep lives in `packages/infrastructure/src/registrations/probe-runner.ts` and
+    // is started as its own process — the way the release migrator is — rather than as a
+    // file under `apps/worker/src/` that would have to import this and break the rule.
+    plantIn: 'apps/worker/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    // The sweep itself, from the worker. `to.path` is a PREFIX — `.../registrations/probe`
+    // matches `probe-runner.ts` too — so an entry point under `apps/worker/src/` that
+    // imported the sweep is refused exactly as one that imported the writer. That is not
+    // an accident of the pattern; it is the reason the runner is not there.
+    plantIn: 'apps/worker/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe-runner.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    // And from the web, which must never make an outbound call to a registered system.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe-runner.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    /**
+     * The same import spelled at the BUILT path.
+     *
+     * Both probe rules and both migrator rules match `(src|dist)`, and the `dist` half
+     * was dead: built output sat in dependency-cruiser's `exclude`, and an excluded
+     * path is not rule-checked at all — so this exact import passed `pnpm boundaries`
+     * with a `no-orphans` warning as the only trace. That is the third time this
+     * codebase has been bitten by the same shape, after `node_modules` and a bare
+     * `.d.ts`. Built output now sits in `doNotFollow`, which keeps it in the graph.
+     */
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+    requires: 'packages/infrastructure/dist/registrations/probe.js',
+  },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/db/migrate.js',
+    rule: 'no-migrator-in-apps',
+    requires: 'packages/infrastructure/dist/db/migrate.js',
   },
 ];
 
@@ -118,6 +180,10 @@ describe('dependency boundaries (AD-1)', () => {
   it.each(CASES)(
     'fires $rule when $plantIn imports $imports',
     (testCase) => {
+      // A built-output case on an unbuilt tree proves nothing; skip rather than pass.
+      if (testCase.requires !== undefined && !existsSync(path.join(repoRoot, testCase.requires))) {
+        return;
+      }
       const planted = plant(testCase);
       const { status, output } = cruise();
 

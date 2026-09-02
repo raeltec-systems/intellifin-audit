@@ -1,7 +1,11 @@
-/** JSON values accepted by the audit-event canonical envelope. */
-export type JsonScalar = string | number | boolean | null;
-export type JsonValue = JsonScalar | readonly JsonValue[] | { readonly [key: string]: JsonValue };
-export type JsonObject = { readonly [key: string]: JsonValue };
+import { canonicalJson, type JsonObject, type JsonValue } from './canonical-json.js';
+
+/**
+ * The RFC 8785 serializer is NOT defined here any more. `canonical-json.ts` owns it and
+ * the registration digest imports the same function, so the two digests cannot disagree
+ * about what canonical JSON is. The projection below — which keys are hashed — is still
+ * this module's own, and is the part that must never be shared.
+ */
 
 export const AUDIT_ACTOR_TYPES = ['human', 'agent', 'adapter', 'system'] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
@@ -111,6 +115,14 @@ const FORBIDDEN_PAYLOAD_KEYS = new Set([
   'cookie',
   'credential',
   'credentials',
+  // A credential REFERENCE is opaque and holds no secret, but the chain is immutable:
+  // anything credential-shaped that enters it can never be taken out. The registration
+  // commands already omit it from every payload by discipline; these two entries make
+  // that a refusal, because the suffix rule below matches only a key ENDING in
+  // `credential` and `credentialRef` normalizes to `credentialref`.
+  'credentialref',
+  'credentialreference',
+  'credref',
   'evidence',
   'evidencedata',
   'evidencecontent',
@@ -268,19 +280,6 @@ export function createCanonicalAuditEvent(
   };
 }
 
-function canonicalize(value: JsonValue): string {
-  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
-    return JSON.stringify(value);
-  }
-  if (typeof value === 'number') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
-  const object = value as { readonly [key: string]: JsonValue };
-  return `{${Object.keys(object)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalize(object[key] as JsonValue)}`)
-    .join(',')}}`;
-}
-
 /**
  * RFC 8785 JSON Canonicalization Scheme text for the hash input.
  *
@@ -305,7 +304,7 @@ export function canonicalizeAuditEvent(event: CanonicalAuditEvent): string {
     source: event.source,
   };
   assertJsonValue(envelope, 'event', new Set());
-  return canonicalize(envelope as unknown as JsonValue);
+  return canonicalJson(envelope as unknown as JsonValue);
 }
 
 export function assertAuditHash(hash: string, field: 'previousHash' | 'eventHash'): void {

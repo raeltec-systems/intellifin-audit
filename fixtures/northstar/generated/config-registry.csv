@@ -1,0 +1,8 @@
+# SYNTHETIC-NORTHSTAR-FIXTURE | Northstar Financial Group | ConfigRegistry approved configuration baseline — the P-4 population | generation 2026-09-01.1
+parameter,approved_value,effective_time,disposition
+max_manual_approval_amount,50000.00,2026-01-01T00:00:00+02:00,approved
+mfa_required_for_admin,true,2026-01-01T00:00:00+02:00,approved
+session_timeout_minutes,15,2026-01-01T00:00:00+02:00,approved
+session_timeout_minutes,20,2026-08-15T00:00:00+02:00,approved
+production_debug_mode,false,2026-01-01T00:00:00+02:00,approved
+legacy_direct_db_access,,2026-01-01T00:00:00+02:00,prohibited

@@ -9,20 +9,24 @@
     "pnpm": "11.25.0"
   },
   "scripts": {
-    "build": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker build",
+    "build": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker build && pnpm --filter @intellifin/northstar build",
     "dev": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/web dev",
     "dev:worker": "pnpm --filter \"./packages/**\" build && pnpm --filter @intellifin/worker dev",
-    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.e2e.json --noEmit",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.root-tests.json --noEmit",
     "boundaries": "node scripts/check-boundaries.mjs",
     "test": "vitest run",
     "test:integration": "vitest run --config tests/integration/vitest.config.ts",
     "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @intellifin/infrastructure db:generate",
     "db:migrate": "pnpm --filter @intellifin/infrastructure db:migrate",
-    "seed:identity": "node scripts/seed-identity.mts"
+    "seed:identity": "node scripts/seed-identity.mts",
+    "northstar": "pnpm --filter @intellifin/northstar build && pnpm --filter @intellifin/northstar start",
+    "probe": "pnpm --filter @intellifin/worker probe",
+    "seed:northstar": "node scripts/seed-northstar.mts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@intellifin/infrastructure": "workspace:*",
     "@playwright/test": "1.62.1",

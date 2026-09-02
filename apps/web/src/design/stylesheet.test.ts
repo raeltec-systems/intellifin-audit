@@ -93,3 +93,28 @@ describe('the stylesheet paints every variant a component can name', () => {
     }
   });
 });
+
+describe('every custom property the stylesheet reads is defined', () => {
+  it('names no token that does not exist', () => {
+    // `.ls-definition dt` read `var(--font-size-sm, 0.875rem)`, a token defined
+    // nowhere, and lived on its fallback: the rule looked token-driven, was not, and
+    // nothing said so. A typo in a token name fails silently in CSS, which is exactly
+    // the class of defect a stylesheet test exists to catch.
+    const raw = readFileSync(
+      fileURLToPath(new URL('../../app/globals.css', import.meta.url)),
+      'utf8',
+    );
+    const tokens = readFileSync(
+      fileURLToPath(new URL('../../app/tokens.css', import.meta.url)),
+      'utf8',
+    );
+    const defined = new Set([
+      ...[...tokens.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]),
+      // A rule may define a property for its own subtree; that counts as defined.
+      ...[...raw.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]),
+    ]);
+    const used = [...raw.matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map((match) => match[1] as string);
+    const missing = [...new Set(used)].filter((name) => !defined.has(name));
+    expect(missing, `globals.css reads tokens nothing defines: ${missing.join(', ')}`).toEqual([]);
+  });
+});

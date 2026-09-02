@@ -1,0 +1,44 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Cover sheet for the Northstar HR leavers export, previous generation",
+  "source": "leavers-export",
+  "covers": "leavers-export-2026-07.csv",
+  "generation": "2026-07-31.1",
+  "effective_period": {
+    "from": "2026-01-01",
+    "to": "2026-07-31"
+  },
+  "row_count": 4,
+  "declared_schema": [
+    "employee_id",
+    "full_name",
+    "department",
+    "employment_status",
+    "termination_effective_date",
+    "manager"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "86e17642a8bda070fa6d52b04a1af78831e8c2fbac704b5b05b4642ac5fc1d57"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "c71f7e69360440f18b138d5862b04bb1d2939ada68776bc12aaf911f4386f6eb"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)",
+  "seeded_case": "stale-population",
+  "seeded_case_note": "The effective period ends 2026-07-31, so this generation cannot cover an August period. Addendum D: one stale or incomplete population."
+}

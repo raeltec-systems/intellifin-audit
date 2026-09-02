@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { CREDENTIAL_CAPABILITIES } from './tests/e2e/credentials';
+import { NORTHSTAR_BASE_URL, NORTHSTAR_PORT } from './tests/e2e/northstar';
+
 /**
  * The browser gate.
  *
@@ -77,17 +80,41 @@ export default defineConfig({
   ...(externalServer
     ? {}
     : {
-        webServer: {
-          command: `pnpm --filter @intellifin/web exec next dev --port ${PORT}`,
-          url: `${baseURL}/api/health`,
-          reuseExistingServer: !process.env['CI'],
-          timeout: 180_000,
-          stdout: 'pipe',
-          stderr: 'pipe',
-          env: {
-            SERVICE_NAME: 'web',
-            BETTER_AUTH_URL: baseURL,
+        webServer: [
+          {
+            /**
+             * The synthetic Northstar systems. `node dist/main.js`, so `pnpm build` must
+             * have run — the same precondition the dev server and `pnpm seed:identity`
+             * already carry.
+             */
+            command: `pnpm --filter @intellifin/northstar start`,
+            url: `${NORTHSTAR_BASE_URL}/health`,
+            reuseExistingServer: !process.env['CI'],
+            timeout: 60_000,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { NORTHSTAR_PORT: String(NORTHSTAR_PORT) },
           },
-        },
+          {
+            command: `pnpm --filter @intellifin/web exec next dev --port ${PORT}`,
+            url: `${baseURL}/api/health`,
+            reuseExistingServer: !process.env['CI'],
+            timeout: 180_000,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: {
+              SERVICE_NAME: 'web',
+              BETTER_AUTH_URL: baseURL,
+              /**
+               * What this deployment has been told about the credential references the
+               * registration specs use (Story 1.6). It holds no secret — a reference and
+               * a verdict — and it is declared here rather than left to the environment
+               * so that a CI run needs no extra configuration to exercise both the
+               * accepted and the refused path.
+               */
+              CREDENTIAL_CAPABILITIES,
+            },
+          },
+        ],
       }),
 });

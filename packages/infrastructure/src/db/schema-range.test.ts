@@ -47,7 +47,12 @@ describe('supported schema range', () => {
 
   it('declares a min at or below the max, starting at generation 1 or later', () => {
     expect(SUPPORTED_SCHEMA_MIN).toBeGreaterThanOrEqual(1);
-    expect(SUPPORTED_SCHEMA_MIN).toBeLessThanOrEqual(SUPPORTED_SCHEMA_MAX);
+    // MIN equals MAX, and the test says so rather than allowing any range: a wider one
+    // is a claim the build cannot keep. Every generation since 1 has added a table this
+    // build queries unconditionally, so an image declaring a lower MIN passes the AD-15
+    // guard against an older database and then fails per request on a missing relation.
+    // Widening this needs a build that can actually serve the older generation.
+    expect(SUPPORTED_SCHEMA_MIN).toBe(SUPPORTED_SCHEMA_MAX);
     expect(SUPPORTED_SCHEMA_RANGE).toBe(`${SUPPORTED_SCHEMA_MIN}..${SUPPORTED_SCHEMA_MAX}`);
   });
 });

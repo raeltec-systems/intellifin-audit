@@ -1,0 +1,53 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "peoplehub-employees",
+  "title": "PeopleHub, the HR system of record — the alternative P-1 population binding",
+  "addendum_reference": "A.1 PeopleHub; C P-1",
+  "serves": "read-only-api",
+  "generation": "2026-09-01.1",
+  "declared_schema": [
+    "employee_id",
+    "full_name",
+    "employment_status",
+    "termination_effective_time"
+  ],
+  "sensitive_fields": ["full_name"],
+  "notes": [
+    "Instants keep their original offset (addendum B). +02:00 is the synthetic organization's local offset.",
+    "E-000106 has no termination instant at all: the same missing mandatory value the leavers export carries.",
+    "This binding names the same population as the leavers export, so a Procedure may be re-bound between them."
+  ],
+  "employees": [
+    { "employee_id": "E-000101", "full_name": "Adaeze Mwansa", "employment_status": "Terminated", "termination_effective_time": "2026-08-03T00:00:00+02:00" },
+    { "employee_id": "E-000102", "full_name": "Bwalya Tembo", "employment_status": "Terminated", "termination_effective_time": "2026-08-04T00:00:00+02:00" },
+    { "employee_id": "E-000103", "full_name": "Chipo Zulu", "employment_status": "Terminated", "termination_effective_time": "2026-08-05T00:00:00+02:00" },
+    { "employee_id": "E-000104", "full_name": "Dalitso Njobvu", "employment_status": "Terminated", "termination_effective_time": "2026-08-06T00:00:00+02:00" },
+    { "employee_id": "E-000105", "full_name": "Esther Kabwe", "employment_status": "Terminated", "termination_effective_time": "2026-08-07T00:00:00+02:00" },
+    { "employee_id": "E-000106", "full_name": "Fredrick Sakala", "employment_status": "Terminated", "termination_effective_time": "" },
+    { "employee_id": "E-000107", "full_name": "Grace Lungu", "employment_status": "Terminated", "termination_effective_time": "2026-08-10T00:00:00+02:00" },
+    { "employee_id": "E-000108", "full_name": "Hope Sinkala", "employment_status": "Terminated", "termination_effective_time": "2026-08-11T00:00:00+02:00" },
+    { "employee_id": "E-000109", "full_name": "Isaac Mubita", "employment_status": "Terminated", "termination_effective_time": "2026-08-12T00:00:00+02:00" },
+    { "employee_id": "E-000110", "full_name": "Joyce Nkandu", "employment_status": "Terminated", "termination_effective_time": "2026-08-13T00:00:00+02:00" },
+    { "employee_id": "E-000111", "full_name": "Kelvin Chibale", "employment_status": "Terminated", "termination_effective_time": "2026-08-14T00:00:00+02:00" },
+    { "employee_id": "E-000112", "full_name": "Lombe Chisenga", "employment_status": "Terminated", "termination_effective_time": "2026-08-17T00:00:00+02:00" },
+    { "employee_id": "E-000113", "full_name": "Mutale Sichone", "employment_status": "Terminated", "termination_effective_time": "2026-08-18T00:00:00+02:00" },
+    { "employee_id": "E-000114", "full_name": "Namakau Simwinga", "employment_status": "Terminated", "termination_effective_time": "2026-08-19T00:00:00+02:00" },
+    { "employee_id": "E-000115", "full_name": "Oliver Mumba", "employment_status": "Terminated", "termination_effective_time": "2026-08-20T00:00:00+02:00" },
+    { "employee_id": "E-000116", "full_name": "Pezo Kalaba", "employment_status": "Terminated", "termination_effective_time": "2026-08-21T00:00:00+02:00" },
+    { "employee_id": "E-000117", "full_name": "Rita Musonda", "employment_status": "Terminated", "termination_effective_time": "2026-08-24T00:00:00+02:00" },
+    { "employee_id": "E-000118", "full_name": "Sydney Chola", "employment_status": "Terminated", "termination_effective_time": "2026-08-25T00:00:00+02:00" },
+    { "employee_id": "E-000119", "full_name": "Thandiwe Mwila", "employment_status": "Terminated", "termination_effective_time": "2026-08-26T00:00:00+02:00" },
+    { "employee_id": "E-000201", "full_name": "Ulemu Kaunda", "employment_status": "Terminated", "termination_effective_time": "2026-03-09T00:00:00+02:00" },
+    { "employee_id": "E-000202", "full_name": "Violet Mwaba", "employment_status": "Terminated", "termination_effective_time": "2026-04-20T00:00:00+02:00" },
+    { "employee_id": "E-000203", "full_name": "Wesley Nyirenda", "employment_status": "Terminated", "termination_effective_time": "2026-06-15T00:00:00+02:00" },
+    { "employee_id": "E-000204", "full_name": "Yvonne Chirwa", "employment_status": "Terminated", "termination_effective_time": "2026-07-28T00:00:00+02:00" },
+    { "employee_id": "E-000301", "full_name": "Zawadi Mulungu", "employment_status": "Active", "termination_effective_time": "" },
+    { "employee_id": "E-000302", "full_name": "Alick Sikaonga", "employment_status": "Active", "termination_effective_time": "" },
+    { "employee_id": "E-000303", "full_name": "Beauty Namukolo", "employment_status": "On leave", "termination_effective_time": "" },
+    { "employee_id": "E-000901", "full_name": "Kelvin Chibale Jr", "employment_status": "Terminated", "termination_effective_time": "2026-05-11T00:00:00+02:00" }
+  ]
+}

@@ -17,6 +17,14 @@
     "./migrate": {
       "types": "./src/db/migrate.ts",
       "default": "./dist/db/migrate.js"
+    },
+    "./probe": {
+      "types": "./src/registrations/probe.ts",
+      "default": "./dist/registrations/probe.js"
+    },
+    "./probe-runner": {
+      "types": "./src/registrations/probe-runner.ts",
+      "default": "./dist/registrations/probe-runner.js"
     }
   },
   "files": [
@@ -28,7 +36,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "pnpm build && node dist/db/migrate.js"
+    "db:migrate": "pnpm build && node dist/db/migrate.js",
+    "probe": "pnpm build && node dist/registrations/probe-runner.js"
   },
   "dependencies": {
     "@intellifin/application": "workspace:*",

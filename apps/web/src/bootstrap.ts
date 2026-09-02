@@ -1,5 +1,7 @@
 import {
   ConfigError,
+  ManifestCredentialProvider,
+  TimerDeadline,
   UnsupportedDatabaseError,
   UnsupportedSchemaError,
   SUPPORTED_SCHEMA_RANGE,
@@ -8,6 +10,7 @@ import {
   createAuth,
   createDb,
   createSqlClient,
+  credentialCapabilityManifest,
   loadConfig,
   type AppConfig,
   type Auth,
@@ -16,6 +19,8 @@ import {
   type Sql,
   type Telemetry,
 } from '@intellifin/infrastructure';
+
+import type { CredentialProvider, DeadlinePort } from '@intellifin/application';
 
 import { telemetry } from './telemetry';
 
@@ -50,6 +55,25 @@ export interface WebRuntime {
    * that instance on a route; the mounted one is `auth` above, where sign-up is disabled.
    */
   readonly authConfig: AuthConfig;
+  /**
+   * Answers what a credential reference may do, and never returns the credential.
+   *
+   * Built here because the declared manifest is configuration, and AD-11 says
+   * configuration is read at a composition root. Its return type has two fields and
+   * neither of them can hold a secret, so nothing downstream — a response body, a log
+   * line, an audit payload — has anything credential-shaped to leak.
+   */
+  readonly credentials: CredentialProvider;
+  /** Bounds every outward call the registration commands make. */
+  readonly deadlines: DeadlinePort;
+  /**
+   * How many credential references this deployment has been told about.
+   *
+   * A COUNT, never the manifest: nothing outside the provider needs to know which
+   * references exist, and a boot log that named them would put deployment topology in
+   * the log stream for no gain.
+   */
+  readonly credentialCapabilityCount: number;
   readonly schemaVersion: number;
   readonly postgresMajor: number;
   /** The range this build accepts, for logging. Fixed by the build, never by the environment. */
@@ -120,6 +144,9 @@ async function start(): Promise<WebRuntime> {
     let db: Database | undefined;
     let auth: Auth | undefined;
     const database = (): Database => (db ??= createDb(sql));
+    // The manifest is parsed once, here, and the provider is a plain object over it.
+    const manifest = credentialCapabilityManifest(config);
+    const credentials = new ManifestCredentialProvider(manifest);
 
     return {
       config,
@@ -133,6 +160,9 @@ async function start(): Promise<WebRuntime> {
         return auth;
       },
       authConfig,
+      credentials,
+      deadlines: new TimerDeadline(),
+      credentialCapabilityCount: manifest.size,
       schemaVersion,
       postgresMajor,
       supportedSchemaRange: SUPPORTED_SCHEMA_RANGE,

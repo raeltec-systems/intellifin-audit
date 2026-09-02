@@ -1,0 +1,13 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "source": "loancore-accounts",
+  "generation": "2026-09-01.1",
+  "declared_count": 19,
+  "counted_from": "datasets/loancore-accounts.json",
+  "count_rule": "every account LoanCore user administration lists",
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

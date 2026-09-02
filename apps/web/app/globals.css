@@ -881,6 +881,75 @@ a {
   gap: var(--spacing-2);
 }
 
+/* The action checkboxes wrap into as many columns as fit. A checkbox and its label are
+   one control: the whole label is clickable, and the gap keeps the 24px target apart. */
+.ls-admin__fieldset {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-admin__fieldset legend {
+  padding: 0 var(--spacing-2);
+  font-weight: 600;
+}
+
+.ls-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-2);
+}
+
+.ls-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* A digest is 64 characters and must be readable in full: it is the value an auditor
+   compares. It wraps rather than being clipped, because a truncated hash is a hash
+   nobody can check. */
+.ls-digest {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.ls-plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Name/value pairs above a form. Stacked, so a long value never squeezes its label. */
+.ls-definition {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-4);
+  margin: 0;
+}
+
+.ls-definition dt {
+  /* `--font-size-sm` is defined nowhere; this rule was silently living on its fallback.
+     `--type-body-sm-font-size` is the documented token for the same role. */
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  color: var(--color-text-muted);
+}
+
+/* The digest cell: the full value plus its screen-reader equivalent. The equivalent is
+   `.ls-visually-hidden`, so the cell lays out as if it held the value alone. */
+.ls-digest-cell {
+  display: block;
+  margin: 0;
+}
+
+.ls-definition dd {
+  margin: 0;
+}
+
 /* Sign-out ----------------------------------------------------------------- */
 
 .ls-signout {

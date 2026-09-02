@@ -100,6 +100,19 @@ module.exports = {
       to: { path: '^packages/infrastructure/(src|dist)/db/migrate', reachable: true },
     },
     {
+      name: 'no-target-system-probe-in-apps',
+      comment:
+        'AD-10: the worker observes a Target System and writes what it saw; the web only reads ' +
+        'those rows. Nothing under apps/ may reach the probe module — not the web, which must ' +
+        'never make an outbound call to a registered system, and not the worker either, which ' +
+        'runs the probe as its own entry point through the package\'s ./probe subpath rather ' +
+        'than pulling it into the heartbeat bundle. `reachable: true`, so a transitive import ' +
+        'through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/' },
+      to: { path: '^packages/infrastructure/(src|dist)/registrations/probe', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +
@@ -152,6 +165,13 @@ module.exports = {
           // Process entry points. Nothing imports a composition root -- that is the
           // point of AD-1 -- so they are orphans by design.
           '^apps/worker/src/main\\.ts$',
+          '^apps/northstar/src/main\\.ts$',
+          // Pipeline entry points inside packages/infrastructure. Nothing imports them
+          // either: the release migrator and the Target System probe sweep are each
+          // started as their own process through the package's subpath exports, which is
+          // exactly what keeps them out of every application bundle.
+          '^packages/infrastructure/src/db/migrate\\.ts$',
+          '^packages/infrastructure/src/registrations/probe-runner\\.ts$',
           // Vitest discovers test files; nothing imports them.
           '\\.test\\.tsx?$',
         ],
@@ -160,14 +180,19 @@ module.exports = {
     },
   ],
   options: {
-    doNotFollow: { path: 'node_modules' },
+    // Built output is NOT followed, but it IS in the graph and therefore rule-checked.
+    // It was in `exclude`, and an excluded path is not rule-checked at all: the
+    // `(src|dist)` half of `no-migrator-in-apps` and `no-target-system-probe-in-apps`
+    // could never match, so an import spelled at `packages/infrastructure/dist/...`
+    // passed both rules. Same trap as excluding `node_modules`, one directory over.
+    doNotFollow: { path: ['node_modules', '^(apps|packages)/[^/]+/(dist|\\.next)/'] },
     exclude: {
       // Scoped to this repository's own tree on purpose: a broad `\\.d\\.ts$` or
       // `dist/` exclusion also drops vendor packages whose entry point is a
       // declaration file or a dist folder, which would silently disable the
       // vendor rules above. Only our build output and our ambient declarations
       // (next-env.d.ts) are skipped.
-      path: '^(apps|packages)/[^/]+/(dist|\\.next)/|^(apps|packages)/.+\\.d\\.ts$',
+      path: '^(apps|packages)/.+\\.d\\.ts$',
     },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },

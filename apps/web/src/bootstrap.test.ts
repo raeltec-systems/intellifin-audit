@@ -125,13 +125,15 @@ describe('web bootstrap', () => {
     loadConfig.mockReturnValue(config());
     createSqlClient
       .mockReturnValueOnce(fakeSql({ failWith: new Error('ECONNREFUSED 127.0.0.1:5432') }))
-      .mockReturnValueOnce(fakeSql({ schemaVersion: 1 }));
+      .mockReturnValueOnce(fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX }));
 
     await expect(getRuntime()).rejects.toThrow(/ECONNREFUSED/);
     expect(createSqlClient).toHaveBeenCalledTimes(1);
 
     const runtime = await getRuntime();
-    expect(runtime.schemaVersion).toBe(1);
+    // The build's own generation, not a literal: this test is about caching, and it
+    // hard-coded 1 until the supported range stopped including it.
+    expect(runtime.schemaVersion).toBe(SUPPORTED_SCHEMA_MAX);
     expect(createSqlClient).toHaveBeenCalledTimes(2);
   });
 });

@@ -30,11 +30,26 @@ export const TELEMETRY_MESSAGES = [
   // role at all, so this must be visible in the log stream rather than inferred from a
   // screenshot of a nav bar with nothing in it.
   'Identity could not be resolved',
+  // No credential reference has been declared to this deployment, so EVERY Target
+  // System registration will be refused with "Audit credentials must be read-only." —
+  // a sentence about the credential, given to somebody whose actual problem is an
+  // unconfigured deployment. Said once at boot, where an operator can act on it.
+  'No credential capabilities declared',
   // Administration mutations (Story 1.5). A refusal is not logged here — it is an audit
   // event, appended by `authorizeCommand` — so these two mean the command FAILED and
   // nothing was written; the person was told only that nothing changed.
   'Create user failed',
   'Set user role failed',
+  // Target System registrations (Story 1.6). Same reading: a refusal — including the
+  // read-only credential refusal — is an audit event, not a log line, so these two mean
+  // the command FAILED and nothing was written.
+  'Register Target System failed',
+  'Change Target System failed',
+  // Population Source bindings (Story 1.7). Same reading again: a refusal — an
+  // undeclared sensitive field, a stale row — is an audit event or a returned sentence,
+  // not a log line, so these two mean the command FAILED and nothing was written.
+  'Register Population Source failed',
+  'Change Population Source failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',

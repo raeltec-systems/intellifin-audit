@@ -17,6 +17,22 @@ export const TELEMETRY_FIELD_KEYS = [
   'operation',
   'outcome',
   'postgresMajor',
+  // The Target System probe sweep's summary (Story 1.8). Four counts and nothing about
+  // what was read: a response body, a header or an error string from a customer's system
+  // is exactly what NFR-6 keeps out of this product's data.
+  'probed',
+  'probeReachable',
+  'probeUnreachable',
+  'probeSkipped',
+  /**
+   * Why a pipeline entry point refused to run.
+   *
+   * The migrator and the probe both logged one, and both were dropped here — so
+   * "Refusing to migrate" reached the release log with the reason removed, which is the
+   * one thing that message exists to carry. Every value passed is a constant in this
+   * repository, and `safeScalar` caps it at 256 characters.
+   */
+  'reason',
   'role',
   'route',
   'schemaVersion',

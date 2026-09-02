@@ -29,6 +29,50 @@ const sampleRate = z
   .default('0')
   .transform(Number);
 
+/**
+ * The capability a credential reference may be DECLARED to have (FR-8).
+ *
+ * Two values, and `unknown` is deliberately not one of them: unknown is the absence of a
+ * declaration, and `ManifestCredentialProvider` returns it for any reference the manifest
+ * does not mention. Letting an environment declare `unknown` would be a way of writing
+ * down "I do not know", which is what saying nothing already means.
+ */
+export const CREDENTIAL_CAPABILITY_VALUES = ['read-only', 'write-capable'] as const;
+export type DeclaredCredentialCapability = (typeof CREDENTIAL_CAPABILITY_VALUES)[number];
+
+/**
+ * Parse `CREDENTIAL_CAPABILITIES`: a JSON object mapping an opaque credential reference
+ * to what the issuer says it can do. `null` means the value is not that shape.
+ *
+ * This is a DECLARATION, not a probe, and it holds no secret — a reference and a verdict,
+ * which is exactly what `CredentialCapabilityReport` can carry. A real capability service
+ * replaces the provider that reads it; the port above it does not change.
+ *
+ * An absent or empty variable is an empty manifest, which refuses every registration
+ * rather than accepting every one — the fail-closed direction.
+ */
+export function parseCredentialCapabilities(
+  raw: string,
+): Map<string, DeclaredCredentialCapability> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const manifest = new Map<string, DeclaredCredentialCapability>();
+  // `Object.entries`, so inherited keys are not read; and every value is checked against
+  // the vocabulary, so a typo declares nothing rather than declaring something wrong.
+  for (const [reference, capability] of Object.entries(parsed)) {
+    const key = reference.trim();
+    if (key === '') return null;
+    if (capability !== 'read-only' && capability !== 'write-capable') return null;
+    manifest.set(key, capability);
+  }
+  return manifest;
+}
+
 export const configSchema = z
   .object({
     DATABASE_URL: z
@@ -59,6 +103,25 @@ export const configSchema = z
         .string()
         .regex(/^https?:\/\//, 'must start with http:// or https://')
         .optional(),
+    ),
+    /**
+     * Declared capabilities of credential references, as JSON (FR-8).
+     *
+     * Optional, and an absent value means an empty manifest: every credential reference
+     * is then unproven and every Target System registration is refused. That is the
+     * fail-closed direction — a deployment that has declared nothing must not be able to
+     * register a system with a credential nobody has vouched for.
+     *
+     * It carries no secret. See {@link parseCredentialCapabilities}.
+     */
+    CREDENTIAL_CAPABILITIES: z.preprocess(
+      (value) => (value === '' || value === undefined ? '{}' : value),
+      z
+        .string()
+        .refine(
+          (raw) => parseCredentialCapabilities(raw) !== null,
+          'must be a JSON object mapping a credential reference to "read-only" or "write-capable"',
+        ),
     ),
     /**
      * Read only to decide whether `http://` is acceptable for BETTER_AUTH_URL. It is
@@ -128,6 +191,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     SENTRY_TRACES_SAMPLE_RATE: env['SENTRY_TRACES_SAMPLE_RATE'],
     BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
+    CREDENTIAL_CAPABILITIES: env['CREDENTIAL_CAPABILITIES'],
     NODE_ENV: env['NODE_ENV'],
   });
 
@@ -140,4 +204,16 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   }
 
   return parsed.data;
+}
+
+/**
+ * The declared manifest, as the provider needs it.
+ *
+ * `loadConfig` has already refused anything that is not the right shape, so this cannot
+ * fail; the fallback is an empty manifest, which refuses every registration.
+ */
+export function credentialCapabilityManifest(
+  config: AppConfig,
+): ReadonlyMap<string, DeclaredCredentialCapability> {
+  return parseCredentialCapabilities(config.CREDENTIAL_CAPABILITIES) ?? new Map();
 }

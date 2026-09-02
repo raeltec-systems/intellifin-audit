@@ -1,0 +1,118 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "approvenow-approvals",
+  "title": "ApproveNow approval decisions and approver limits — the P-3 Target System",
+  "addendum_reference": "A.2 ApproveNow; C P-3",
+  "serves": "read-only-api",
+  "generation": "2026-09-01.1",
+  "declared_schema": [
+    "approval_id",
+    "transaction_id",
+    "decision",
+    "decided_at",
+    "approver",
+    "approver_limit",
+    "currency"
+  ],
+  "notes": [
+    "APV-9009 and APV-9009B are two decisions for one transaction and they contradict each other.",
+    "There is no approval row for TX-500003 at all: proven absence, which is an Exception and not an Inconclusive.",
+    "This file is stored NEWEST DECISION FIRST, which is not sorted by approval_id. That is deliberate: the service sorts every collection by its primary key, and a dataset that was already sorted would make the sort untestable — removing it would change nothing and every determinism test would still pass."
+  ],
+  "approvals": [
+    {
+      "approval_id": "APV-9012",
+      "transaction_id": "TX-500012",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-19T14:50:00+02:00",
+      "approver": "k.musonda",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9009B",
+      "transaction_id": "TX-500009",
+      "decision": "REJECTED",
+      "decided_at": "2026-08-14T11:05:00+02:00",
+      "approver": "o.kunda",
+      "approver_limit": "300000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9009",
+      "transaction_id": "TX-500009",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-14T11:00:00+02:00",
+      "approver": "r.mbewe",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9008",
+      "transaction_id": "TX-500008",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-13T08:30:00+02:00",
+      "approver": "o.kunda",
+      "approver_limit": "300000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9007",
+      "transaction_id": "TX-500007",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-12T17:00:00+02:00",
+      "approver": "k.musonda",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9006",
+      "transaction_id": "TX-500006",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-12T09:20:00+02:00",
+      "approver": "o.kunda",
+      "approver_limit": "200000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9005",
+      "transaction_id": "TX-500005",
+      "decision": "REJECTED",
+      "decided_at": "2026-08-11T15:44:00+02:00",
+      "approver": "r.mbewe",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9004",
+      "transaction_id": "TX-500004",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-10T09:02:00+02:00",
+      "approver": "r.mbewe",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9002",
+      "transaction_id": "TX-500002",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-06T08:55:00+02:00",
+      "approver": "k.musonda",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    },
+    {
+      "approval_id": "APV-9001",
+      "transaction_id": "TX-500001",
+      "decision": "APPROVED",
+      "decided_at": "2026-08-04T10:30:00+02:00",
+      "approver": "k.musonda",
+      "approver_limit": "500000.00",
+      "currency": "USD"
+    }
+  ]
+}

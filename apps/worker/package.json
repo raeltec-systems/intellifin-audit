@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
+    "probe": "pnpm --filter @intellifin/infrastructure probe",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsc -p tsconfig.json && node --env-file-if-exists=../../.env dist/main.js"
   },

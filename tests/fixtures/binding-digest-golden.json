@@ -1,0 +1,216 @@
+{
+  "producer": "Python 3.11.15 + rfc8785 0.1.4 + hashlib.sha256",
+  "producedBy": "scripts/make-binding-digest-golden.py",
+  "regenerateWith": "uv run scripts/make-binding-digest-golden.py",
+  "why": "Population Source binding digest vectors, produced by an implementation that is NOT the code under test. packages/domain/src/sources/population-source.ts is checked against these bytes; a fixture produced by that module would prove only that it equals itself. The envelopes in the generator are written out by hand, so the projection from a binding to its five hashed keys is checked too, not just the hash of an envelope this repository derived.",
+  "algorithm": "digest = SHA-256( RFC 8785 canonical JSON of the five-key envelope {declared_count_mechanism, declared_schema, kind, location, sensitive_fields} ), lower-case hex. declared_schema keeps its typed order; sensitive_fields is sorted by UTF-16 code unit.",
+  "vectors": [
+    {
+      "name": "versioned-file-cover-sheet",
+      "note": "A versioned file whose expected count comes from a signed cover sheet. The declared schema keeps the order it was typed in — it is a positional declaration — while the sensitive fields are sorted, because masking is a membership question. Both lists are given here with a duplicate and a blank, and both drop them.",
+      "input": {
+        "kind": "versioned-file",
+        "location": "  s3://synthetic-bucket/hr/leavers/2026-08.csv  ",
+        "declaredSchema": [
+          "employee_id",
+          "employment_status",
+          "termination_date",
+          "salary",
+          "employee_id",
+          "   "
+        ],
+        "declaredCountMechanism": "cover-sheet",
+        "sensitiveFields": [
+          "salary",
+          "employee_id",
+          "salary"
+        ]
+      },
+      "envelope": {
+        "declared_count_mechanism": "cover-sheet",
+        "declared_schema": [
+          "employee_id",
+          "employment_status",
+          "termination_date",
+          "salary"
+        ],
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/hr/leavers/2026-08.csv",
+        "sensitive_fields": [
+          "employee_id",
+          "salary"
+        ]
+      },
+      "canonicalText": "{\"declared_count_mechanism\":\"cover-sheet\",\"declared_schema\":[\"employee_id\",\"employment_status\",\"termination_date\",\"salary\"],\"kind\":\"versioned-file\",\"location\":\"s3://synthetic-bucket/hr/leavers/2026-08.csv\",\"sensitive_fields\":[\"employee_id\",\"salary\"]}",
+      "digest": "abc87ad9f6506847d1de9ce167036e92b7b7a4a8a4c4dae33e2915d65db33741"
+    },
+    {
+      "name": "read-only-api-count-endpoint",
+      "note": "A read-only API whose expected count comes from a count endpoint, with no sensitive field designated. Every key is still present: an absent value is an empty list, never a missing key.",
+      "input": {
+        "kind": "read-only-api",
+        "location": "https://accessgate.synthetic.invalid/api/accounts",
+        "declaredSchema": [
+          "account_id",
+          "owner",
+          "status"
+        ],
+        "declaredCountMechanism": "count-endpoint",
+        "sensitiveFields": []
+      },
+      "envelope": {
+        "declared_count_mechanism": "count-endpoint",
+        "declared_schema": [
+          "account_id",
+          "owner",
+          "status"
+        ],
+        "kind": "read-only-api",
+        "location": "https://accessgate.synthetic.invalid/api/accounts",
+        "sensitive_fields": []
+      },
+      "canonicalText": "{\"declared_count_mechanism\":\"count-endpoint\",\"declared_schema\":[\"account_id\",\"owner\",\"status\"],\"kind\":\"read-only-api\",\"location\":\"https://accessgate.synthetic.invalid/api/accounts\",\"sensitive_fields\":[]}",
+      "digest": "edf2e350f0d6dcca43bfe8fc30f3f129d0932c5ddc5b538a931628f55531382a"
+    },
+    {
+      "name": "manual-upload-no-location",
+      "note": "A manual upload names nowhere: the file arrives with the Run. The location slot is null rather than absent, so this kind produces the same five keys as every other. A location typed anyway is dropped, which is why one is given here.",
+      "input": {
+        "kind": "manual-upload",
+        "location": "https://ignored.synthetic.invalid/never-read",
+        "declaredSchema": [
+          "voucher_no",
+          "amount"
+        ],
+        "declaredCountMechanism": "none",
+        "sensitiveFields": [
+          "amount"
+        ]
+      },
+      "envelope": {
+        "declared_count_mechanism": "none",
+        "declared_schema": [
+          "voucher_no",
+          "amount"
+        ],
+        "kind": "manual-upload",
+        "location": null,
+        "sensitive_fields": [
+          "amount"
+        ]
+      },
+      "canonicalText": "{\"declared_count_mechanism\":\"none\",\"declared_schema\":[\"voucher_no\",\"amount\"],\"kind\":\"manual-upload\",\"location\":null,\"sensitive_fields\":[\"amount\"]}",
+      "digest": "2d17d1f65f8a09d5627d5f961988d55af8d7b515d0cb7f34ed6e244f0a94cbb3"
+    },
+    {
+      "name": "schema-order-reversed",
+      "note": "Byte-identical to the first vector except that two schema fields are swapped. Its digest must differ: the declared schema is ordered, and a parser told the other order would read the wrong column.",
+      "input": {
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/hr/leavers/2026-08.csv",
+        "declaredSchema": [
+          "employee_id",
+          "employment_status",
+          "salary",
+          "termination_date"
+        ],
+        "declaredCountMechanism": "cover-sheet",
+        "sensitiveFields": [
+          "employee_id",
+          "salary"
+        ]
+      },
+      "envelope": {
+        "declared_count_mechanism": "cover-sheet",
+        "declared_schema": [
+          "employee_id",
+          "employment_status",
+          "salary",
+          "termination_date"
+        ],
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/hr/leavers/2026-08.csv",
+        "sensitive_fields": [
+          "employee_id",
+          "salary"
+        ]
+      },
+      "canonicalText": "{\"declared_count_mechanism\":\"cover-sheet\",\"declared_schema\":[\"employee_id\",\"employment_status\",\"salary\",\"termination_date\"],\"kind\":\"versioned-file\",\"location\":\"s3://synthetic-bucket/hr/leavers/2026-08.csv\",\"sensitive_fields\":[\"employee_id\",\"salary\"]}",
+      "digest": "4493a1527fc23cda4b50ae1d2ca732bcbe53b923ef1bd23c305d45ae89501eef"
+    },
+    {
+      "name": "sensitive-fields-order-irrelevant",
+      "note": "Byte-identical to the first vector except that the sensitive fields are typed in the other order. Its digest must EQUAL the first vector's: they are a set. This is the vector that fails if sensitive_fields is ever hashed as a list.",
+      "input": {
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/hr/leavers/2026-08.csv",
+        "declaredSchema": [
+          "employee_id",
+          "employment_status",
+          "termination_date",
+          "salary"
+        ],
+        "declaredCountMechanism": "cover-sheet",
+        "sensitiveFields": [
+          "salary",
+          "employee_id"
+        ]
+      },
+      "envelope": {
+        "declared_count_mechanism": "cover-sheet",
+        "declared_schema": [
+          "employee_id",
+          "employment_status",
+          "termination_date",
+          "salary"
+        ],
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/hr/leavers/2026-08.csv",
+        "sensitive_fields": [
+          "employee_id",
+          "salary"
+        ]
+      },
+      "canonicalText": "{\"declared_count_mechanism\":\"cover-sheet\",\"declared_schema\":[\"employee_id\",\"employment_status\",\"termination_date\",\"salary\"],\"kind\":\"versioned-file\",\"location\":\"s3://synthetic-bucket/hr/leavers/2026-08.csv\",\"sensitive_fields\":[\"employee_id\",\"salary\"]}",
+      "digest": "abc87ad9f6506847d1de9ce167036e92b7b7a4a8a4c4dae33e2915d65db33741"
+    },
+    {
+      "name": "unicode-field-names",
+      "note": "Multi-byte UTF-8 field names and location. RFC 8785 sorts object keys by UTF-16 code unit and emits the characters unescaped, and the domain module sorts the sensitive-field set the same way. The U+FFFD sentinel is what makes that testable: it sorts AFTER the astral-plane emoji by UTF-16 code unit (0xD83D, the emoji's leading surrogate, is below 0xFFFD) and BEFORE it by code point (U+FFFD < U+1F50E), so a code-point comparator fails this vector.",
+      "input": {
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/ledgers/2026/Qé.csv",
+        "declaredSchema": [
+          "N° de pièce",
+          "金額",
+          "🔎 locator",
+          "� sentinel"
+        ],
+        "declaredCountMechanism": "cover-sheet",
+        "sensitiveFields": [
+          "� sentinel",
+          "🔎 locator",
+          "金額"
+        ]
+      },
+      "envelope": {
+        "declared_count_mechanism": "cover-sheet",
+        "declared_schema": [
+          "N° de pièce",
+          "金額",
+          "🔎 locator",
+          "� sentinel"
+        ],
+        "kind": "versioned-file",
+        "location": "s3://synthetic-bucket/ledgers/2026/Qé.csv",
+        "sensitive_fields": [
+          "金額",
+          "🔎 locator",
+          "� sentinel"
+        ]
+      },
+      "canonicalText": "{\"declared_count_mechanism\":\"cover-sheet\",\"declared_schema\":[\"N° de pièce\",\"金額\",\"🔎 locator\",\"� sentinel\"],\"kind\":\"versioned-file\",\"location\":\"s3://synthetic-bucket/ledgers/2026/Qé.csv\",\"sensitive_fields\":[\"金額\",\"🔎 locator\",\"� sentinel\"]}",
+      "digest": "c805ae6980d692924e5088a686f9ed0b2666b82e7586ad7ff4a94a968866499a"
+    }
+  ]
+}

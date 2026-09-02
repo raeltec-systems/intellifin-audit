@@ -1,0 +1,42 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Cover sheet for the Northstar HR leavers export",
+  "source": "leavers-export",
+  "covers": "leavers-export.csv",
+  "generation": "2026-09-01.1",
+  "effective_period": {
+    "from": "2026-01-01",
+    "to": "2026-08-31"
+  },
+  "row_count": 27,
+  "declared_schema": [
+    "employee_id",
+    "full_name",
+    "department",
+    "employment_status",
+    "termination_effective_date",
+    "manager"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "6079dcca9f6675d6bc0fffe2a8db1b6966fce688ca3ace249d78c9751424b173"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "fc5b509a696be7160fec0ea20cba4661f93211ec0e7af7a8e731823022c9fad3"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

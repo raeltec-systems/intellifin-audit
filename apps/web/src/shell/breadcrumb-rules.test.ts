@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { crumbsFor, readableSegment, sectionLabel } from './breadcrumb-rules';
+import { crumbsFor, readableSegment, sectionLabel, subsectionLabel } from './breadcrumb-rules';
 
 /**
  * The breadcrumb rules, including the two ways a path from the address bar can be
@@ -52,5 +52,37 @@ describe('hostile path segments', () => {
 
   it('decodes an escape sequence that is valid', () => {
     expect(readableSegment('RUN%2D1')).toBe('RUN-1');
+  });
+});
+
+describe('a named sub-route', () => {
+  it('reads as its name, not as an identifier', () => {
+    expect(crumbsFor('/administration/registrations')).toEqual([
+      { href: '/administration', label: 'Administration', mono: false },
+      { href: '/administration/registrations', label: 'Target System registrations', mono: false },
+    ]);
+  });
+
+  it('names the Population Source bindings surface, and the id below it stays raw', () => {
+    // Every label in SECTION_LABELS needs a case: deleting this one left the suite
+    // green, which makes the table a list nothing checks.
+    expect(crumbsFor('/administration/sources')).toEqual([
+      { href: '/administration', label: 'Administration', mono: false },
+      { href: '/administration/sources', label: 'Population Source bindings', mono: false },
+    ]);
+  });
+
+  it('still treats a real identifier under it as one', () => {
+    const crumbs = crumbsFor('/administration/registrations/018f0000-0000-7000-8000-000000000001');
+    expect(crumbs[2]).toEqual({
+      href: '/administration/registrations/018f0000-0000-7000-8000-000000000001',
+      label: '018f0000-0000-7000-8000-000000000001',
+      mono: true,
+    });
+  });
+
+  it('does not inherit a label from Object.prototype', () => {
+    expect(subsectionLabel('/administration/constructor')).toBeUndefined();
+    expect(subsectionLabel('/toString')).toBeUndefined();
   });
 });
