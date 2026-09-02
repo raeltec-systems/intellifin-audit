@@ -1,0 +1,137 @@
+---
+title: 'Story 1.5: Manage users and roles'
+type: 'feature'
+created: '2026-09-02'
+status: 'in-progress'
+baseline_revision: 'f19a5066b6b263f8a06d716d96fc91b5e7152de9'
+baseline_commit: 'f19a5066b6b263f8a06d716d96fc91b5e7152de9'
+review_loop_iteration: 0
+followup_review_recommended: false
+context:
+  - '{project-root}/AGENTS.md'
+  - '{project-root}/CLAUDE.md'
+  - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
+warnings:
+  - oversized
+deferred: []
+---
+
+<intent-contract>
+
+## Intent
+
+**Problem:** A user can only be created by an operator running `pnpm seed:identity` from a shell with the database URL and a password in the environment. A PoC Administrator has no way to add an Auditor, and no way to change or remove a role. Worse, a role change today writes `user_role` with no audit event at all, so the privilege change behind an audited denial is itself invisible.
+
+**Approach:** Give the Administration surface a user list and two audited commands — create a user, and set a user's role — behind the authorization path Story 1.4 wired. Every mutation names its prior and new value in one `configuration` audit event committed in the same transaction as the change, and every mutation is confirmed with a routine dialog. Public self-registration stays impossible.
+
+## Boundaries & Constraints
+
+**Always:**
+- The publicly mounted Better Auth handler keeps `disableSignUp: true`. A user is created only by an authorized, audited application command; there is never a public path to account creation.
+- Every mutation is authorized through `requireAction('administration.users.manage')` on the server, which resolves the role fresh and audits refusals. Hiding the surface is never the control.
+- The role write and its audit event commit in one transaction, or neither happens. The event records the actor, the subject user, the prior value and the new value; a first assignment records the prior value as `null`.
+- A role change takes effect on the subject's next request without ending their session (AD-7).
+- A PoC Administrator cannot author Procedures, start Runs, approve anything, or alter Evidence, evaluations, Results or reviews, and this surface introduces no override, escalation or impersonation path.
+- Mutating actions use the routine confirmation dialog and state the consequence; the result appears as a Banner.
+- No password is ever logged, audited, echoed in a response, or placed in a URL.
+- An email address never enters the audit chain as `actor.id` or in a payload; the subject is identified by user id (`SAFE_ID_PATTERN` has no `@`).
+
+**Block If:**
+- Delivering this requires a public sign-up path, or an impersonation or role-escalation mechanism.
+- Delivering this requires changing an approved requirement, an AD, or a pinned dependency major.
+
+**Never:**
+- No Target System registrations, Population Source bindings or diagnostics — Stories 1.6, 1.7 and 9.2 own those Administration tabs.
+- No invite emails, password reset, or self-service profile editing.
+- No user deletion. Removing a role is the revocation mechanism; deleting the account would orphan its audit history.
+- No bulk import, no CSV, no scripted mutation surface.
+- No role cached anywhere, and no role written into a Better Auth field.
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|----------|--------------|---------------------------|----------------|
+| Administrator lists users | Signed in as `poc-administrator` | Each user with their current role, or "No role" | No password material in the response |
+| Administrator creates a user | New address, name, role | Account created, role assigned, one `configuration` event with `priorRole: null` | Both writes commit together or neither |
+| Duplicate address | Address already registered | Refused with a stated reason; no second account, no event | The existing account is unchanged |
+| Administrator changes a role | User holds `auditor`, set to `audit-manager` | Role updated; one event carries `priorRole: 'auditor'`, `newRole: 'audit-manager'` | Committed atomically |
+| Administrator removes a role | User holds `auditor`, role cleared | `user_role` row removed; event carries `newRole: null` | The account and its sessions survive |
+| Change takes effect | Subject has a live session when their role changes | Their next request is authorized against the new role; the session is not ended | Never an abrupt sign-out |
+| Audit append fails | Database error during the command | The role change does not happen and the surface says so | Fail closed; never an unaudited privilege change |
+| Auditor reaches the surface | Signed in as `auditor`, types the path | Refused with the verbatim reason, refusal audited, no user data in the response | The list is never rendered |
+| Administrator attempts a gated action | Any `procedure.*`, `result.*`, `evaluation.*` action | Refused with the stated reason; no override exists anywhere | Proven over the whole action set |
+| Public sign-up attempt | `POST /api/auth/sign-up/email` | Refused by the running application | Anonymous account creation stays impossible |
+
+</intent-contract>
+
+## Code Map
+
+- `packages/domain/src/identity/roles.ts` -- `ROLES`, `authorizeAction`, `DENIAL_REASONS`. `administration.users.manage` already exists and is administrator-only. The "no override path" criterion is a test over `GATED_ACTIONS` x `poc-administrator`, not new policy.
+- `packages/application/src/identity/ports.ts` -- `RoleRepository` is read-only (`findRole`). This story adds the write port and a user-creation port beside it, both in plain types.
+- `packages/application/src/identity/authorize.ts` -- `authorizeCommand` resolves the role and audits refusals inside the unit of work. The new commands reuse it; they never re-implement the check.
+- `packages/infrastructure/src/db/audit-events.ts:123` -- `PostgresAuditUnitOfWork.execute` gives one transaction. The role write must happen **inside** that callback so the change and its event share it.
+- `packages/domain/src/audit-event.ts:9-20` -- `AUDIT_EVENT_FAMILIES` already has `configuration`; `eventType` must match `^configuration\.[a-z0-9]+([._-][a-z0-9]+)*$`. `FORBIDDEN_PAYLOAD_KEYS` will reject any key ending in `password`.
+- `packages/infrastructure/src/identity/role-repository.ts:18` -- `DrizzleRoleRepository` reads `user_role` with no cache. Add the write here; it must accept a transaction so it can join the unit of work.
+- `packages/infrastructure/src/identity/auth.ts:112,121` -- `createAuth` has `allowSignUp: false` and is what the route mounts; `createSeedAuth` has `allowSignUp: true` and is how `scripts/seed-identity.mts` creates users. The admin command needs the same privileged capability server-side. Reaching it from a route is only safe because `requireAction` gates the command; an integration test must keep proving the mounted handler still refuses `sign-up/email`.
+- `packages/infrastructure/src/db/schema.ts` -- `user_role` has `user_id`, `role`, `assigned_at`, `assigned_by`. `assigned_by` has no foreign key (a Story 1.4 deferred finding); this story starts writing it for real, so decide whether to add the constraint. If a migration is added it is generation 4 and `SUPPORTED_SCHEMA_MAX` rises in the same commit or `schema-range.test.ts` fails.
+- `apps/web/app/administration/page.tsx` -- the Story 1.4 surface; today it calls `requireServerAction` and renders an `EmptyState`. The list replaces the empty state; the refusal branch stays exactly as it is.
+- `apps/web/src/design/ConfirmDialog.tsx` -- the three weights. Every mutation here is `routine`; it restates the consequence.
+- `apps/web/src/design/DataTable.tsx` -- `<th scope>`, caption, focusable first cell, no row click handler. The user list uses it.
+- `apps/web/src/require-role.ts` / `apps/web/src/server-session.ts` -- `requireServerAction` and the React-`cache`d session resolution. Server Actions must go through the same path; a Server Action is a POST endpoint and is **not** covered by the page's check.
+- `scripts/seed-identity.mts` -- the operator path. It stays: the first administrator has to exist before anyone can sign in and use this surface.
+- `tests/e2e/accounts.ts` -- the two seeded accounts and the saved sessions the browser suite reuses.
+
+## Tasks & Acceptance
+
+**Execution:**
+- `packages/application/src/identity/ports.ts` -- add `RoleWriter` (set and clear a role, transaction-scoped) and `UserCreator` (create an account, returning its id) as inward-owned ports -- keeps Better Auth and Drizzle out of the application layer.
+- `packages/application/src/identity/manage-users.ts` -- `createUserWithRole` and `setUserRole`: authorize, read the prior role, write, and append one `configuration.user-created` / `configuration.role-changed` event carrying actor, subject, prior and new value, all inside one unit of work -- one place decides, writes and audits, so a privilege change cannot happen unaudited.
+- `packages/application/src/identity/manage-users.test.ts` -- prior/new values including the `null` cases, and that a failing append leaves the role unchanged.
+- `packages/infrastructure/src/identity/role-repository.ts` -- implement `RoleWriter` over the transaction handle; no cache, no read-modify-write outside the transaction.
+- `packages/infrastructure/src/identity/user-creator.ts` -- implement `UserCreator` using the privileged auth instance, server-side only.
+- `apps/web/app/administration/page.tsx` -- render the user list with `DataTable`; keep the refusal branch unchanged.
+- `apps/web/app/administration/actions.ts` -- Server Actions for both commands, each calling `requireServerAction('administration.users.manage')` **first** -- a Server Action is its own POST endpoint and the page's check does not protect it.
+- `apps/web/src/admin/UserForm.tsx`, `RoleControl.tsx` -- the create form and the role control, each confirming through the routine dialog and reporting the outcome in a Banner.
+- `apps/web/app/administration/actions.test.ts` -- an unauthenticated and an auditor caller are refused **by the action itself**, not only by the page.
+- `tests/unit/no-override-path.test.ts` -- assert that for every entry in `GATED_ACTIONS`, `authorizeAction('poc-administrator', action)` denies everything outside the administration family, with the stated reason -- the "no override path" criterion, proven over the whole set rather than by example.
+- `tests/integration/manage-users.test.ts` -- against real PostgreSQL: create, change and clear a role each append exactly one event with the right prior and new values; a live session sees the new role on its next resolution and the session row survives; a forced append failure leaves `user_role` unchanged; and the mounted `createAuth` handler still refuses `sign-up/email`.
+- `tests/e2e/administration.spec.ts` -- an administrator creates a user and changes a role through the real UI with the confirmation dialog; an auditor is refused; axe finds no WCAG 2.1 AA violation on the populated surface.
+- `CLAUDE.md` -- record that a Server Action needs its own authorization check, and that user creation is an audited command rather than a public endpoint.
+
+**Acceptance Criteria:**
+- Given a PoC Administrator, when they create a user or change a role, then the change is written and exactly one `configuration` event records the actor, the subject, the prior value and the new value.
+- Given a user with a live session, when an administrator changes their role, then their next request is authorized against the new role and their session is not ended.
+- Given an Auditor or an unauthenticated caller, when they invoke the administration Server Actions directly, then each is refused by the action itself and the refusal is audited.
+- Given the whole gated action set, when a PoC Administrator is evaluated against it, then every non-administration action is denied with its stated reason and no override path exists.
+- Given a failure appending the audit event, when a role change is attempted, then the role is unchanged.
+- Given the running application, when `POST /api/auth/sign-up/email` is called, then it is refused.
+
+## Spec Change Log
+
+## Review Triage Log
+
+## Design Notes
+
+**Why the write must join the audit transaction.** `PostgresAuditUnitOfWork.execute` opens one PostgreSQL transaction and hands the callback an `auditEvents.append`. If the role were written through a repository bound to the pool instead of that transaction, a failed append would leave the privilege change committed and unrecorded — exactly the state FR-45 exists to prevent. The `RoleWriter` port therefore takes the transaction-scoped handle, and the integration test forces an append failure and asserts `user_role` is untouched.
+
+**Why a Server Action needs its own check.** The Administration page calls `requireServerAction`, but a Server Action is a separate POST endpoint that Next exposes by id; reaching the page is not a precondition for invoking it. Each action authorizes first, before reading any input. The test asserts this against the action, not the page, because that is the surface an attacker has.
+
+**Prior value, and why `null` is a value.** A first assignment records `priorRole: null` and a revocation records `newRole: null`. Both are real transitions and both must be reconstructable from the chain alone, so the event always carries both keys rather than omitting one.
+
+`[ASSUMPTION]` The story adds no user deletion. Removing the role is the revocation mechanism; deleting an account would orphan the audit history that names it, which AD-22 forbids in spirit.
+
+**One addition beyond the acceptance criteria, flagged deliberately.** There is still no way to sign out: a session ends only by clearing cookies. Story 1.4 left it out because DESIGN.md specifies the top bar as the notification bell alone, and neither this story's criteria nor 1.4's mention it. For a product whose whole premise is attributable action at a shared workstation, shipping Epic 1 with no sign-out is a security gap that no story owns. This story therefore adds a sign-out control and audits `security.sign-out`, and this note is the flag: if the top bar must stay bell-only, revert this one piece — nothing else depends on it.
+
+## Verification
+
+**Commands:**
+- `pnpm -r typecheck` and `pnpm typecheck` -- expected: clean.
+- `pnpm boundaries` -- expected: clean; no Better Auth or Drizzle type in `domain` or `application`.
+- `pnpm test` -- expected: all pass, including the no-override-path sweep.
+- `pnpm build && pnpm --filter @intellifin/web build` -- expected: both succeed.
+- `pnpm db:generate` -- expected: no drift, or exactly one generation-4 migration with `SUPPORTED_SCHEMA_MAX` raised in the same commit.
+- `pnpm test:integration` -- expected: passes twice in a row against PostgreSQL 18.
+- `pnpm test:e2e` -- expected: passes with zero WCAG 2.1 AA violations.
+
+**Manual checks:**
+- As an administrator, create a user and change a role, then read the `platform` chain and confirm each event names the actor, the subject, and both values.
