@@ -2,7 +2,7 @@
 title: 'Story 1.1: Bootstrap the monorepo and deploy web and worker'
 type: 'chore'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
 baseline_commit: '8cf07a45efdee0e84579d06fbc19c7021fbeaf91'
 context:
@@ -56,7 +56,7 @@ Greenfield: no code exists. Sources of truth for this story:
 - [x] `packages/domain`, `packages/application`, `packages/infrastructure` -- each `package.json`, `tsconfig.json`, `src/index.ts` exporting a named placeholder; `application` depends on `domain`, `infrastructure` on both -- the seed the spine fixes.
 - [x] `packages/infrastructure/src/config.ts` -- Zod schema for `DATABASE_URL`, `SERVICE_NAME`, `SCHEMA_RANGE_MIN`, `SCHEMA_RANGE_MAX`; exported `loadConfig()` called only by composition roots -- AD-11.
 - [x] `packages/infrastructure/src/db/{client.ts,schema.ts,compat.ts}`, `drizzle.config.ts`, `packages/infrastructure/drizzle/0000_schema_meta.sql`, `0001_worker_heartbeat.sql` -- postgres.js client, Drizzle tables `schema_meta(version int, applied_at)` and `worker_heartbeat(hostname pk, seen_at)`, `assertSchemaSupported()` and `assertPostgres18()` -- AD-8, AD-15.
-- [x] `apps/web` -- Next.js 16 app with `app/page.tsx` placeholder and `app/api/health/route.ts` returning status and schema version; composition root `src/bootstrap.ts` runs both asserts on first request -- health route AC.
+- [x] `apps/web` -- Next.js 16 app with `app/page.tsx` placeholder and `app/api/health/route.ts` returning status and schema version; composition root `src/bootstrap.ts` plus `instrumentation.ts` run both asserts at boot and exit non-zero on refusal -- health route and unsupported-schema ACs.
 - [x] `apps/worker/src/main.ts` -- composition root: `loadConfig()`, asserts, then a 30 s heartbeat upsert loop; graceful SIGTERM -- heartbeat AC.
 - [x] `.dependency-cruiser.cjs` -- AD-1 rules as listed under Always; `pnpm boundaries` runs it over `apps/` and `packages/`.
 - [x] `tests/fixtures/.gitkeep`, `tests/integration/vitest.config.ts`, `tests/e2e/.gitkeep`, `packages/infrastructure/src/config.test.ts`, `tests/integration/schema-compat.test.ts`, plus `tests/unit/boundaries.test.ts`, `apps/web/src/health-route.test.ts`, `tests/integration/heartbeat.test.ts` -- unit test for config validation; integration test for the range and version asserts against `DATABASE_URL`; one covering test per matrix row -- proves the refusal path.
@@ -72,6 +72,9 @@ Greenfield: no code exists. Sources of truth for this story:
 - Given both Railway services deployed, when `GET /api/health` is called and the worker log is read, then the route returns 200 with the schema version and a `worker_heartbeat` row is present and fresh.
 
 ## Spec Change Log
+
+- 2026-09-02, review loop 1. Finding: the task line for `apps/web` said the asserts run "on first request", contradicting the matrix rows that require both processes to exit non-zero at startup. Amended the task line to boot-time asserts through Next.js `instrumentation.ts`. Known-bad state avoided: a web process that keeps serving `/` against an unsupported schema and only reports it in the health body. Applied as a targeted patch rather than a full re-derivation because the fix is local to one hook. KEEP: the pure assert functions in `packages/infrastructure/src/db/compat.ts` with their unit tests; the `schema_meta` and `worker_heartbeat` migrations; the dependency-cruiser rule set and the spawn-based boundary test.
+- 2026-09-02, deviations recorded. (a) `typescript@6.0.3` is pinned at the workspace root only, because dependency-cruiser 18.2.0 silently cruises zero modules under TypeScript 7; every package still pins 7.0.2. This touches the Ask First list and awaits the owner's decision. (b) `@sentry/nextjs` is not installed yet; `pino` and `@sentry/node` are pinned in `packages/infrastructure` and wired by Story 1.2. (c) Railway config-as-code is deprecated for new services, so `.railway/railway.ts` replaces the two `railway.json` files; service settings were applied through the Railway connector. (d) The Railway database is reachable only through a TCP proxy that the sandbox cannot use, so the first migration runs from `release.yml`; until GitHub Actions runs in this repository the deployed web returns 503 and the worker refuses to start, by design.
 
 ## Verification
 
