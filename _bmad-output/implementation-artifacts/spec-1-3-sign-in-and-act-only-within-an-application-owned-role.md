@@ -13,7 +13,84 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings:
   - oversized
-deferred: []
+deferred:
+  - summary: >-
+      Sign-out is never audited, so the chain records how sessions begin but not how they end.
+    evidence: |-
+      handleAuthRequest intercepts only POST /api/auth/sign-in/email and passes every
+      other Better Auth endpoint through untouched. There is no security.sign-out event
+      anywhere. FR-45 asks for security activity generally; this story's matrix covers
+      only sign-in and denial.
+    location: >-
+      apps/web/src/sign-in-route.ts
+    severity: medium
+  - summary: >-
+      Assigning or revoking a role produces no audit event, so the privilege change behind a denial is invisible.
+    evidence: |-
+      scripts/seed-identity.mts writes user_role with raw SQL and appends nothing; the
+      integration test revokes with a bare DELETE. Denials are audited but their cause
+      is not. Story 1.5 owns user and role management and is the natural home.
+    location: >-
+      scripts/seed-identity.mts
+    severity: medium
+  - summary: >-
+      No route calls requireAction, so the audited-denial path has no production caller.
+    evidence: |-
+      requireAction and authorizeCommand are exercised by unit and integration tests but
+      by no shipped handler; /api/session uses requireSession and reads the role directly.
+      This story forbids creating Procedure, Run, Evidence and administration routes, so
+      the first real caller arrives with Story 1.4 or 1.5. Wire one then.
+    location: >-
+      apps/web/src/require-role.ts
+    severity: medium
+  - summary: >-
+      createSeedAuth, the factory with sign-up enabled, is reachable from apps/web through the infrastructure barrel.
+    evidence: |-
+      packages/infrastructure/src/identity/index.ts re-exports it, so nothing but
+      convention stops a composition root constructing it. The repo already has the
+      right pattern for this: the no-migrator-in-apps dependency-cruiser reachability
+      rule, added after the migrator leaked into the web bundle.
+    location: >-
+      packages/infrastructure/src/identity/index.ts
+    severity: medium
+  - summary: >-
+      Next never actually invokes the middleware under test; only the exported function is called.
+    evidence: |-
+      middleware.test.ts calls middleware() directly with a synthetic NextRequest, so
+      config.matcher and Next's file-convention discovery are never exercised. The CI
+      smoke assertions added in this pass narrow the gap but do not close it. Next 16
+      also warns the middleware convention is deprecated in favour of proxy.
+    location: >-
+      apps/web/middleware.ts
+    severity: medium
+  - summary: >-
+      Session lifetime and cookie policy are left entirely to Better Auth defaults.
+    evidence: |-
+      auth.ts sets no session.expiresIn, updateAge, cookiePrefix or trustedOrigins, and
+      session-cookie.ts hard-codes a name derived from the default prefix. A defaults
+      change would break the middleware into a redirect loop for signed-in users.
+    location: >-
+      packages/infrastructure/src/identity/auth.ts
+    severity: medium
+  - summary: >-
+      A deep link into a protected page loses its destination; sign-in always lands on the root.
+    evidence: |-
+      The middleware redirects to a bare /sign-in with no return parameter and the page
+      navigates unconditionally to /. A signed-in user visiting /sign-in is also not
+      redirected away. Story 1.4 owns the shell and is the right place to fix this.
+    location: >-
+      apps/web/middleware.ts
+    severity: low
+  - summary: >-
+      The sign-in form has accessibility defects and no test.
+    evidence: |-
+      The error paragraph carries both role="alert" and aria-live="polite", is not linked
+      to the fields with aria-describedby, sits after the form in DOM order and takes no
+      focus. The page exports no metadata. Story 1.4 owns the styled surface and the
+      WCAG 2.1 AA gate.
+    location: >-
+      apps/web/app/sign-in/page.tsx
+    severity: low
 ---
 
 <intent-contract>
@@ -129,6 +206,37 @@ deferred: []
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-09-02 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 21: (high 6, medium 11, low 4)
+- defer: 8: (medium 6, low 2)
+- reject: 3
+- addressed_findings:
+  - `[high]` `[patch]` `authorize.ts` spread order let a caller-supplied `context.actorId` override the session's identity, defeating author-cannot-approve. Context now spreads first and the session id is forced last.
+  - `[high]` `[patch]` `authorApprovingOwnVersion` returned false when `authorId` was absent, so omitting it allowed self-approval. Absence now denies.
+  - `[high]` `[patch]` `/_next/image` had no trailing slash in `PUBLIC_PATH_PREFIXES`, making `/_next/imagex/...` public — a hole in default-deny.
+  - `[high]` `[patch]` The `!token` branch of `handleAuthRequest` returned 503 without revoking, so Better Auth's session row could survive unaudited.
+  - `[high]` `[patch]` No test constructs `createAuth`; the integration suite uses `createSeedAuth`, which has sign-up enabled. Inverting `disableSignUp` would ship anonymous registration on a public path with every test still green.
+  - `[high]` `[patch]` `GET /api/session`, named in the spec as the observable proof of role resolution, had no test of any kind.
+  - `[medium]` `[patch]` A prototype key (`constructor`) passed the `!rule` check and threw instead of denying; now guarded with `Object.hasOwn`.
+  - `[medium]` `[patch]` A 5xx from Better Auth was rewritten as 401 "wrong password", reporting an outage as a credential error.
+  - `[medium]` `[patch]` A failed `revokeSessionByToken` was swallowed, leaving an unaudited live session with no operator signal.
+  - `[medium]` `[patch]` No rate limit configured on the one public credential endpoint; defaults are off outside production.
+  - `[medium]` `[patch]` `BETTER_AUTH_URL` accepted `http://` in production, yielding a cookie without Secure.
+  - `[medium]` `[patch]` The middleware page redirect carried no `cache-control: no-store`; a shared cache could serve it to a signed-in user.
+  - `[medium]` `[patch]` Three of the five denial strings were asserted against the module that defines them. A test now reads EXPERIENCE.md from disk.
+  - `[medium]` `[patch]` `revokeSessionByToken` was exercised only through a mock; deleting by the wrong column would have passed.
+  - `[medium]` `[patch]` The integration cleanup left the `platform` row in `audit_event_heads`, so a second run of the file failed chain verification.
+  - `[medium]` `[patch]` CI's container smoke test curled only the public `/api/health`, so an absent middleware would pass. It now asserts 307 on `/` and 401 on `/api/session`.
+  - `[medium]` `[patch]` The two new `BETTER_AUTH_*` config rules had no test.
+  - `[medium]` `[patch]` `SAFE_ID_PATTERN` was duplicated into `correlation.ts` with no drift guard, unlike the diff's two other deliberate duplications.
+  - `[low]` `[patch]` "Sign-in refused" named three different conditions, including an availability incident, in the log stream.
+  - `[low]` `[patch]` The "unrecognized role value" integration case asserted the missing-row path, not the `isRole` guard, and carried a stray no-op assertion.
+  - `[low]` `[patch]` The seed script needs a prior `pnpm build` and nothing said so.
+
+Rejected: `auth_account.issuer` claimed unwritable by Better Auth — disproven against the live database, which holds three account rows with `issuer = 'local:credential'`. The cookie-prefix `startsWith` check was claimed forgeable — the outer gate is documented as a hint only and the inner check is authoritative, while an exact match risks breaking Better Auth's own cookie suffixes. A claim that `packages/application` needs its own vitest config — it has no colocated tests.
 
 ## Design Notes
 
