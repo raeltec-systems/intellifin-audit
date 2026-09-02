@@ -889,11 +889,6 @@ a {
   gap: var(--spacing-2);
 }
 
-.ls-signout__error {
-  color: var(--color-danger-text);
-  font-size: var(--type-caption-font-size);
-  line-height: var(--type-caption-line-height);
-}
 
 .ls-badge-gallery {
   display: flex;

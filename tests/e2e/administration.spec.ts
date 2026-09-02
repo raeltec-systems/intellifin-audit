@@ -44,6 +44,10 @@ test.describe('as a PoC Administrator', () => {
     await page.goto('/administration');
     await expect(page.getByRole('heading', { name: 'Administration', level: 1 })).toBeVisible();
 
+    // A submission that beats hydration must not put the password in a URL. With no
+    // method a form submits as a GET, which would do exactly that.
+    await expect(page.locator('form.ls-admin__form')).toHaveAttribute('method', 'post');
+
     await page.getByLabel('Email address').fill(newUserEmail);
     await page.getByLabel('Full name').fill(newUserName);
     await page.getByLabel('Initial password').fill(PASSWORD);
@@ -158,22 +162,66 @@ test.describe('as an Auditor', () => {
 });
 
 /**
- * Sign-out signs in FIRST, rather than reusing a saved state.
+ * Sign-out, with JavaScript DISABLED.
  *
- * The saved cookies in `playwright/.auth` are one session row each, shared by every
- * other spec in the suite. Ending one of those would sign the rest of the run out. This
- * block therefore makes a session of its own and destroys that one — which is also the
- * more honest test, since it exercises sign-in and sign-out end to end.
+ * This is the assertion that would have caught the defect this control was shipped with.
+ * The first version was a `fetch` inside an `onClick` handler, so a click before React
+ * hydrated did nothing at all — and the JavaScript-enabled test caught it only
+ * intermittently, when it happened to click inside that window. Running the same journey
+ * with no JavaScript at all removes the timing from the question: if the control needs a
+ * bundle, it fails here every time.
+ *
+ * It is the real-world case as well as the deterministic one. At a shared workstation a
+ * person clicks Sign out, sees nothing happen, and walks away believing the session
+ * ended.
+ *
+ * Sign-in still needs JavaScript, so the session is established in a JavaScript-enabled
+ * context and its cookies are handed to a JavaScript-disabled one. That also keeps this
+ * block from ending a session the rest of the suite shares: the saved states in
+ * `playwright/.auth` are one session row each, and signing one out would sign the rest
+ * of the run out with it.
  */
 test.describe('sign out', () => {
-  test('ends the session and returns to the sign-in page', async ({ page }) => {
-    await signIn(page, ACCOUNTS.auditor.email);
+  test('works with no JavaScript: ends the session and lands on the sign-in page', async ({
+    browser,
+    baseURL,
+  }) => {
+    const signedIn = await browser.newContext({ baseURL });
+    const signInPage = await signedIn.newPage();
+    await signIn(signInPage, ACCOUNTS.auditor.email);
+    const storageState = await signedIn.storageState();
+    await signedIn.close();
 
-    await page.getByRole('button', { name: 'Sign out' }).click();
-    await expect(page).toHaveURL(/\/sign-in$/);
+    const noScript = await browser.newContext({
+      baseURL,
+      javaScriptEnabled: false,
+      storageState,
+    });
+    const page = await noScript.newPage();
+    try {
+      await page.goto('/');
+      // The shell rendered server-side, so the control is really on the page.
+      await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 
-    // And this session really is gone: a protected path redirects instead of rendering.
-    await page.goto('/runs');
-    await expect(page).toHaveURL(/\/sign-in$/);
+      // A real form, submitted by the browser itself.
+      const form = page.locator('form.ls-signout');
+      await expect(form).toHaveAttribute('method', 'post');
+      await expect(form).toHaveAttribute('action', '/api/auth/sign-out');
+
+      await page.getByRole('button', { name: 'Sign out' }).click();
+      await expect(page).toHaveURL(/\/sign-in$/);
+
+      // And this session really is gone: a protected path redirects instead of rendering.
+      await page.goto('/runs');
+      await expect(page).toHaveURL(/\/sign-in$/);
+
+      // Signing out again is not an error. A double submit, a resubmitted form and a
+      // second tab all land here, and none of them may meet a 500.
+      const again = await page.request.post('/api/auth/sign-out', { maxRedirects: 0 });
+      expect(again.status()).toBe(303);
+      expect(again.headers()['location']).toContain('/sign-in');
+    } finally {
+      await noScript.close();
+    }
   });
 });

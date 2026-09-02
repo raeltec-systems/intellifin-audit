@@ -85,7 +85,22 @@ export function UserForm({ onSubmit, onResult }: UserFormProps): React.JSX.Eleme
 
   return (
     <>
-      <form className="ls-admin__form" onSubmit={onRequestSubmit}>
+      {/*
+        `method="post"` matters even though the submit handler always prevents the native
+        submission. A `<form>` with no method submits as a GET, so a submission that
+        happens BEFORE this component hydrates — a click, or Enter in any field — would
+        put the initial password in the URL, in browser history, and in every server
+        access log. This story's own constraint is that no password is ever placed in a
+        URL. A POST to `/administration` has no handler and answers 405, which changes
+        nothing and discloses nothing. `sign-in-form.tsx` carries the same guard for the
+        same reason.
+
+        This control cannot be made to work without JavaScript: EXPERIENCE.md requires a
+        focus-trapping confirmation dialog on every administration mutation, and a dialog
+        is script. So the requirement here is the weaker one — that a pre-hydration
+        submission be SAFE and visibly do nothing, rather than quietly leak a credential.
+      */}
+      <form className="ls-admin__form" method="post" onSubmit={onRequestSubmit}>
         <h2>Add a user</h2>
         <div className="ls-admin__fields">
           <div className="ls-dialog__field">
