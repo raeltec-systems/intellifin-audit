@@ -2,7 +2,7 @@
 title: 'Story 1.2: Record tamper-evident audit events with sanitized telemetry'
 type: 'feature'
 created: '2026-09-02'
-status: 'blocked'
+status: 'done'
 baseline_revision: 'eed8b80ecb2b1b6f8ddda875e0b5b99f6e91b5dc'
 baseline_commit: 'eed8b80ecb2b1b6f8ddda875e0b5b99f6e91b5dc'
 review_loop_iteration: 0
@@ -88,8 +88,8 @@ The canonical event excludes `previous_hash` and `event_hash`; its exact keys ar
 
 ## Auto Run Result
 
-Status: blocked
-Blocking condition: implementation verification failed -- `pnpm db:migrate` and `pnpm test:integration` cannot run in this environment, so no PostgreSQL-backed acceptance evidence exists.
+Status: done
+Blocking condition: none. The local run halted on `implementation verification failed` (no PostgreSQL 18 here); CI cleared it -- see "CI result" at the end of this section, which supersedes the local matrix audit below.
 
 **Run date:** 2026-09-02 (baseline `eed8b80ecb2b1b6f8ddda875e0b5b99f6e91b5dc`)
 
@@ -138,3 +138,32 @@ Run the `database` job in `.github/workflows/ci.yml`, which starts `ghcr.io/rail
 
 - `next build` fails locally because the repository path contains a space (`IntelliFin Audit`); Turbopack cannot canonicalize `IntelliFin%20Audit`. Pre-existing, unrelated to this story, and CI builds on Linux.
 - `apps/web` bundles `pino` and `@sentry/node` via `transpilePackages`. Do not "fix" this with `serverExternalPackages`: both are dependencies of `@intellifin/infrastructure`, not of `apps/web`, so under pnpm's isolated `node_modules` an external `require` from `.next/server` would not resolve at runtime.
+
+### CI result -- block cleared
+
+PR [#8](https://github.com/raeltec-systems/intellifin-audit/pull/8) ran the PostgreSQL 18 gate. This supersedes the local matrix audit above.
+
+**First run (`a8a9e95`) failed**, catching two defects no offline gate could see:
+
+1. **Canonical hash included the record hash columns.** `AuditEventRecord extends CanonicalAuditEvent`, so a record is assignable wherever an envelope is expected, and `canonicalizeAuditEvent` canonicalized whatever object it was handed. A record therefore contributed its own `previousHash` and `eventHash` to the hashed bytes and produced a different digest than the envelope it was built from. Fixed by projecting the eleven canonical keys explicitly in `packages/domain/src/audit-event.ts`. Production always passed a freshly built envelope, so no stored chain was ever written wrong.
+2. **The `payload changed` tamper case could not bind.** It passed a bare object through `sql.json`; postgres.js could not infer a parameter type and failed during Bind. Now stringified and cast to `jsonb` at the call site.
+
+A unit test was added (`tests/unit/audit-event.test.ts`) that hashes a full record and expects the envelope digest, so defect 1 is caught offline from now on.
+
+**Second run (`d62ee70`) passed all three jobs:**
+
+| Job | Result |
+|-----|--------|
+| Typecheck, boundaries, unit tests | success (67 unit tests) |
+| Migrations and integration tests (PostgreSQL 18) | success -- 4 files, 18 tests, including all 8 in `tests/integration/audit-events.test.ts` |
+| Container images build and refuse to start unmigrated | success |
+
+### Matrix test audit -- satisfied
+
+| Matrix row | Executed coverage |
+|------------|-------------------|
+| First event | `tests/unit/audit-event.test.ts` + `tests/integration/audit-events.test.ts` rollback case -- ran, passed |
+| Concurrent append | `tests/integration/audit-events.test.ts` head-lock case -- ran, passed |
+| Tampered history | all four `it.each` cases over `tests/fixtures/audit-chain-tampered.json` -- ran, passed |
+| System event | `platform` fallback and metadata rejection -- ran, passed |
+| Hostile telemetry | `packages/infrastructure/src/telemetry/telemetry.test.ts` (6 tests) -- ran, passed |
