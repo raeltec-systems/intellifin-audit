@@ -100,6 +100,19 @@ module.exports = {
       to: { path: '^packages/infrastructure/(src|dist)/db/migrate', reachable: true },
     },
     {
+      name: 'no-target-system-probe-in-apps',
+      comment:
+        'AD-10: the worker observes a Target System and writes what it saw; the web only reads ' +
+        'those rows. Nothing under apps/ may reach the probe module — not the web, which must ' +
+        'never make an outbound call to a registered system, and not the worker either, which ' +
+        'runs the probe as its own entry point through the package\'s ./probe subpath rather ' +
+        'than pulling it into the heartbeat bundle. `reachable: true`, so a transitive import ' +
+        'through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/' },
+      to: { path: '^packages/infrastructure/(src|dist)/registrations/probe', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +

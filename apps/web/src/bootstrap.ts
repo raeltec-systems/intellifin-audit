@@ -1,5 +1,6 @@
 import {
   ConfigError,
+  ManifestCredentialProvider,
   UnsupportedDatabaseError,
   UnsupportedSchemaError,
   SUPPORTED_SCHEMA_RANGE,
@@ -8,6 +9,7 @@ import {
   createAuth,
   createDb,
   createSqlClient,
+  credentialCapabilityManifest,
   loadConfig,
   type AppConfig,
   type Auth,
@@ -16,6 +18,8 @@ import {
   type Sql,
   type Telemetry,
 } from '@intellifin/infrastructure';
+
+import type { CredentialProvider } from '@intellifin/application';
 
 import { telemetry } from './telemetry';
 
@@ -50,6 +54,15 @@ export interface WebRuntime {
    * that instance on a route; the mounted one is `auth` above, where sign-up is disabled.
    */
   readonly authConfig: AuthConfig;
+  /**
+   * Answers what a credential reference may do, and never returns the credential.
+   *
+   * Built here because the declared manifest is configuration, and AD-11 says
+   * configuration is read at a composition root. Its return type has two fields and
+   * neither of them can hold a secret, so nothing downstream — a response body, a log
+   * line, an audit payload — has anything credential-shaped to leak.
+   */
+  readonly credentials: CredentialProvider;
   readonly schemaVersion: number;
   readonly postgresMajor: number;
   /** The range this build accepts, for logging. Fixed by the build, never by the environment. */
@@ -120,6 +133,8 @@ async function start(): Promise<WebRuntime> {
     let db: Database | undefined;
     let auth: Auth | undefined;
     const database = (): Database => (db ??= createDb(sql));
+    // The manifest is parsed once, here, and the provider is a plain object over it.
+    const credentials = new ManifestCredentialProvider(credentialCapabilityManifest(config));
 
     return {
       config,
@@ -133,6 +148,7 @@ async function start(): Promise<WebRuntime> {
         return auth;
       },
       authConfig,
+      credentials,
       schemaVersion,
       postgresMajor,
       supportedSchemaRange: SUPPORTED_SCHEMA_RANGE,

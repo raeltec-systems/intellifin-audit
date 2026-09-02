@@ -17,6 +17,10 @@
     "./migrate": {
       "types": "./src/db/migrate.ts",
       "default": "./dist/db/migrate.js"
+    },
+    "./probe": {
+      "types": "./src/registrations/probe.ts",
+      "default": "./dist/registrations/probe.js"
     }
   },
   "files": [

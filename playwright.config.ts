@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { CREDENTIAL_CAPABILITIES } from './tests/e2e/credentials';
+
 /**
  * The browser gate.
  *
@@ -87,6 +89,14 @@ export default defineConfig({
           env: {
             SERVICE_NAME: 'web',
             BETTER_AUTH_URL: baseURL,
+            /**
+             * What this deployment has been told about the credential references the
+             * registration specs use (Story 1.6). It holds no secret — a reference and a
+             * verdict — and it is declared here rather than left to the environment so
+             * that a CI run needs no extra configuration to exercise both the accepted
+             * and the refused path.
+             */
+            CREDENTIAL_CAPABILITIES,
           },
         },
       }),

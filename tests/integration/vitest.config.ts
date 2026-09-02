@@ -32,6 +32,7 @@ export default defineConfig(() => {
         '@intellifin/application': pkg('application'),
         '@intellifin/infrastructure/migrate': sub('infrastructure/src/db/migrate'),
         '@intellifin/infrastructure/db': sub('infrastructure/src/db/index'),
+        '@intellifin/infrastructure/probe': sub('infrastructure/src/registrations/probe'),
         '@intellifin/infrastructure': pkg('infrastructure'),
       },
     },

@@ -1,0 +1,204 @@
+{
+  "producer": "Python 3.11.15 + rfc8785 0.1.4 + hashlib.sha256",
+  "producedBy": "scripts/make-registration-digest-golden.py",
+  "regenerateWith": "uv run scripts/make-registration-digest-golden.py",
+  "why": "AD-2 digest vectors, produced by an implementation that is NOT the code under test. packages/domain/src/registrations/target-system.ts is checked against these bytes; a fixture produced by that module would prove only that it equals itself. The envelopes in the generator are written out by hand, so the projection from a registration to its six hashed keys is checked too, not just the hash of an envelope this repository derived.",
+  "algorithm": "digest = SHA-256( RFC 8785 canonical JSON of the six-key envelope ), lower-case hex. No previous-hash prefix: that belongs to the audit chain, not to this digest.",
+  "vectors": [
+    {
+      "name": "web-two-origins",
+      "note": "A web system. Origins are a set: they are given here out of order and with a duplicate, and the envelope holds them sorted and deduplicated.",
+      "input": {
+        "kind": "web",
+        "allowedOrigins": [
+          "https://northstar.synthetic.invalid",
+          "https://alpha.synthetic.invalid",
+          "https://northstar.synthetic.invalid"
+        ],
+        "applicationIdentity": "",
+        "credentialRef": "cred://synthetic/northstar-readonly",
+        "permittedActions": [
+          "read-attribute",
+          "navigate",
+          "open-record"
+        ],
+        "attributeLabelPatterns": [
+          "Invoice *",
+          "Approved by"
+        ],
+        "secondaryKey": "branch-042"
+      },
+      "envelope": {
+        "allowed_origins": [
+          "https://alpha.synthetic.invalid",
+          "https://northstar.synthetic.invalid"
+        ],
+        "attribute_label_patterns": [
+          "Approved by",
+          "Invoice *"
+        ],
+        "credential_ref": "cred://synthetic/northstar-readonly",
+        "kind": "web",
+        "permitted_actions": [
+          "navigate",
+          "open-record",
+          "read-attribute"
+        ],
+        "secondary_key": "branch-042"
+      },
+      "canonicalText": "{\"allowed_origins\":[\"https://alpha.synthetic.invalid\",\"https://northstar.synthetic.invalid\"],\"attribute_label_patterns\":[\"Approved by\",\"Invoice *\"],\"credential_ref\":\"cred://synthetic/northstar-readonly\",\"kind\":\"web\",\"permitted_actions\":[\"navigate\",\"open-record\",\"read-attribute\"],\"secondary_key\":\"branch-042\"}",
+      "digest": "359e1d1a22edc323ae5b2f4f0007151a096ef189b1313c8fc010da9d1bf1397a"
+    },
+    {
+      "name": "desktop-application-identity",
+      "note": "A desktop system. The application identity occupies the origins slot, so the envelope still has all six keys and the same shape as every other kind.",
+      "input": {
+        "kind": "desktop",
+        "allowedOrigins": [],
+        "applicationIdentity": "com.synthetic.northstar.ledger",
+        "credentialRef": "cred://synthetic/ledger-readonly",
+        "permittedActions": [
+          "read-attribute",
+          "capture-screenshot"
+        ],
+        "attributeLabelPatterns": [
+          "Voucher no."
+        ],
+        "secondaryKey": ""
+      },
+      "envelope": {
+        "allowed_origins": [
+          "com.synthetic.northstar.ledger"
+        ],
+        "attribute_label_patterns": [
+          "Voucher no."
+        ],
+        "credential_ref": "cred://synthetic/ledger-readonly",
+        "kind": "desktop",
+        "permitted_actions": [
+          "capture-screenshot",
+          "read-attribute"
+        ],
+        "secondary_key": null
+      },
+      "canonicalText": "{\"allowed_origins\":[\"com.synthetic.northstar.ledger\"],\"attribute_label_patterns\":[\"Voucher no.\"],\"credential_ref\":\"cred://synthetic/ledger-readonly\",\"kind\":\"desktop\",\"permitted_actions\":[\"capture-screenshot\",\"read-attribute\"],\"secondary_key\":null}",
+      "digest": "a323af13002825ac552666e9083426eb89cbbc0b6b0d6fbeeb3519be45c90828"
+    },
+    {
+      "name": "api-empty-optional-fields",
+      "note": "An API system with no label patterns and no secondary key. Every key is still present: an absent value is null or an empty list, never a missing key.",
+      "input": {
+        "kind": "api",
+        "allowedOrigins": [
+          "https://api.synthetic.invalid"
+        ],
+        "applicationIdentity": "",
+        "credentialRef": "cred://synthetic/api-readonly",
+        "permittedActions": [
+          "read-metadata"
+        ],
+        "attributeLabelPatterns": [],
+        "secondaryKey": "   "
+      },
+      "envelope": {
+        "allowed_origins": [
+          "https://api.synthetic.invalid"
+        ],
+        "attribute_label_patterns": [],
+        "credential_ref": "cred://synthetic/api-readonly",
+        "kind": "api",
+        "permitted_actions": [
+          "read-metadata"
+        ],
+        "secondary_key": null
+      },
+      "canonicalText": "{\"allowed_origins\":[\"https://api.synthetic.invalid\"],\"attribute_label_patterns\":[],\"credential_ref\":\"cred://synthetic/api-readonly\",\"kind\":\"api\",\"permitted_actions\":[\"read-metadata\"],\"secondary_key\":null}",
+      "digest": "b016cde77b71263d085a41bee880e394c55499e8a26c2eb74a00da3faaad56b4"
+    },
+    {
+      "name": "versioned-file-unicode",
+      "note": "A versioned file whose locator and labels are multi-byte UTF-8. RFC 8785 sorts object keys by UTF-16 code unit and emits the characters unescaped, so this list members are sorted the same way by the domain module, which is why the astral-plane emoji sorts AFTER the CJK character here.",
+      "input": {
+        "kind": "versioned-file",
+        "allowedOrigins": [
+          "s3://synthetic-bucket/ledgers/2026/Qé.csv"
+        ],
+        "applicationIdentity": "",
+        "credentialRef": "cred://synthetic/file-readonly",
+        "permittedActions": [
+          "read-file",
+          "read-metadata",
+          "read-file"
+        ],
+        "attributeLabelPatterns": [
+          "N° de pièce",
+          "金額",
+          "🔎 locator"
+        ],
+        "secondaryKey": "édition-2"
+      },
+      "envelope": {
+        "allowed_origins": [
+          "s3://synthetic-bucket/ledgers/2026/Qé.csv"
+        ],
+        "attribute_label_patterns": [
+          "N° de pièce",
+          "金額",
+          "🔎 locator"
+        ],
+        "credential_ref": "cred://synthetic/file-readonly",
+        "kind": "versioned-file",
+        "permitted_actions": [
+          "read-file",
+          "read-metadata"
+        ],
+        "secondary_key": "édition-2"
+      },
+      "canonicalText": "{\"allowed_origins\":[\"s3://synthetic-bucket/ledgers/2026/Qé.csv\"],\"attribute_label_patterns\":[\"N° de pièce\",\"金額\",\"🔎 locator\"],\"credential_ref\":\"cred://synthetic/file-readonly\",\"kind\":\"versioned-file\",\"permitted_actions\":[\"read-file\",\"read-metadata\"],\"secondary_key\":\"édition-2\"}",
+      "digest": "5cf4399eb637721e8c1cc4c587bc523454384d6423a471d87093e9f64836a038"
+    },
+    {
+      "name": "web-same-fields-different-kind",
+      "note": "Byte-identical to the first vector except for `kind`. Its digest must differ: the kind is inside the envelope, not metadata beside it.",
+      "input": {
+        "kind": "api",
+        "allowedOrigins": [
+          "https://northstar.synthetic.invalid",
+          "https://alpha.synthetic.invalid"
+        ],
+        "applicationIdentity": "",
+        "credentialRef": "cred://synthetic/northstar-readonly",
+        "permittedActions": [
+          "read-attribute",
+          "navigate",
+          "open-record"
+        ],
+        "attributeLabelPatterns": [
+          "Invoice *",
+          "Approved by"
+        ],
+        "secondaryKey": "branch-042"
+      },
+      "envelope": {
+        "allowed_origins": [
+          "https://alpha.synthetic.invalid",
+          "https://northstar.synthetic.invalid"
+        ],
+        "attribute_label_patterns": [
+          "Approved by",
+          "Invoice *"
+        ],
+        "credential_ref": "cred://synthetic/northstar-readonly",
+        "kind": "api",
+        "permitted_actions": [
+          "navigate",
+          "open-record",
+          "read-attribute"
+        ],
+        "secondary_key": "branch-042"
+      },
+      "canonicalText": "{\"allowed_origins\":[\"https://alpha.synthetic.invalid\",\"https://northstar.synthetic.invalid\"],\"attribute_label_patterns\":[\"Approved by\",\"Invoice *\"],\"credential_ref\":\"cred://synthetic/northstar-readonly\",\"kind\":\"api\",\"permitted_actions\":[\"navigate\",\"open-record\",\"read-attribute\"],\"secondary_key\":\"branch-042\"}",
+      "digest": "fa16f9d49b17747a6645b0068248dfdea8180ff583e99f8027620ecb99c321e7"
+    }
+  ]
+}

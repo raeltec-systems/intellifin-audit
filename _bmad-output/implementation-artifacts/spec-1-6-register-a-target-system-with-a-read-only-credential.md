@@ -111,6 +111,25 @@ deferred: []
 
 ## Spec Change Log
 
+**2026-09-02 — A non-digest change is audited after all.** The spec said, in three
+places, that a change to a field outside the six "publishes nothing". That was written
+about `RegistrationChanged`, whose only consumer is Epic 2's draft minting. Taken
+literally it left a real hole: renaming — or RETIRING — a registration wrote a row and
+appended no audit event at all, so a configuration change reached the database with
+nothing in the chain naming who made it. FR-45 records configuration activity, and a
+retirement is exactly the change an independent reviewer would ask about.
+
+The fix keeps both properties. A non-digest change now appends
+`configuration.registration-annotated`, an event type Epic 2 does not read and therefore
+cannot mint a draft from; `RegistrationChanged` stays reserved for the six. A save that
+moves one of the six AND a display name carries both halves in the one event
+(`changedFields` and `annotatedFields`), because it is one change. A save that moves
+nothing at all still appends nothing: an event per idle submit would fill the chain with
+entries saying a person changed nothing.
+
+This was raised by the implementer against the spec, not found in review. The spec was
+wrong; the code is right.
+
 ## Review Triage Log
 
 ## Design Notes

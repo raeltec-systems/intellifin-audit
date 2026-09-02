@@ -24,7 +24,7 @@ import type { Sql } from 'postgres';
  * `schema-range.test.ts` reads the migrations and fails when the two disagree.
  */
 export const SUPPORTED_SCHEMA_MIN = 1;
-export const SUPPORTED_SCHEMA_MAX = 4;
+export const SUPPORTED_SCHEMA_MAX = 5;
 
 /** The supported range as it is logged and reported: `min..max`. */
 export const SUPPORTED_SCHEMA_RANGE = `${SUPPORTED_SCHEMA_MIN}..${SUPPORTED_SCHEMA_MAX}`;

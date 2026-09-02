@@ -59,6 +59,21 @@ const CASES: readonly Case[] = [
     imports: '../../../../packages/infrastructure/src/db/migrate.js',
     rule: 'no-migrator-in-apps',
   },
+  {
+    // AD-10: the web process never probes a Target System, and the rule that says so is
+    // worth nothing until it has been seen to fire.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
+  {
+    // The same rule covers the worker. The worker WILL probe in Story 1.8, through the
+    // package's ./probe subpath as its own entry point — the way the release migrator is
+    // invoked — not by importing it into the heartbeat bundle.
+    plantIn: 'apps/worker/src',
+    imports: '../../../../packages/infrastructure/src/registrations/probe.js',
+    rule: 'no-target-system-probe-in-apps',
+  },
 ];
 
 const fixtureDirs = [...new Set(CASES.map((c) => path.join(repoRoot, c.plantIn, FIXTURE_DIR)))];

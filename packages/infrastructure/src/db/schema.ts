@@ -261,6 +261,133 @@ export const userRole = pgTable(
   ],
 );
 
+/**
+ * Target System registrations (generation 5, FR-8, AD-2).
+ *
+ * The digest is stored beside the row rather than computed on read. It is computed by
+ * `packages/domain/src/registrations/target-system.ts` and by nothing else — recomputing
+ * it in SQL would be a second implementation of the value a Procedure Version freezes,
+ * and the two would eventually disagree about a trimmed space or a sort order.
+ *
+ * Three vocabularies are spelled out here rather than imported from `@intellifin/domain`,
+ * for the reason `ROLE_VOCABULARY` gives above: `drizzle-kit generate` transpiles this
+ * file and resolves the workspace package to its BUILT output, so a value import would
+ * make migration generation depend on a prior `pnpm build`. `schema.test.ts` fails if any
+ * of them drifts from the domain list.
+ */
+export const TARGET_SYSTEM_KIND_VOCABULARY = ['web', 'desktop', 'api', 'versioned-file'] as const;
+
+export const REGISTRATION_STATUS_VOCABULARY = ['active', 'retired'] as const;
+
+/**
+ * Every action an audit credential may be permitted. All of them observe.
+ *
+ * This list is a CHECK constraint, not documentation: `permitted_actions <@ ARRAY[...]`
+ * means the database itself refuses a row containing anything else. FR-8's "write-capable
+ * credentials are rejected" then survives a bug in the command, a direct `INSERT` from a
+ * migration, and anything a later story adds — the one place it cannot be worked around
+ * is the table.
+ */
+export const PERMITTED_READ_ACTION_VOCABULARY = [
+  'navigate',
+  'search',
+  'list-records',
+  'open-record',
+  'read-attribute',
+  'read-metadata',
+  'read-file',
+  'capture-screenshot',
+] as const;
+
+export const PROBE_STATE_VOCABULARY = ['reachable', 'unreachable'] as const;
+
+const quoted = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(', ');
+
+export const targetSystemRegistration = pgTable(
+  'target_system_registration',
+  {
+    registrationId: uuid('registration_id').primaryKey(),
+    displayName: text('display_name').notNull(),
+    kind: text('kind').notNull(),
+    /** Allowlisted origins. Empty for a `desktop` system, which uses the identity below. */
+    allowedOrigins: text('allowed_origins').array().notNull().default(sql`'{}'::text[]`),
+    applicationIdentity: text('application_identity').notNull().default(''),
+    /** Opaque. This column holds a REFERENCE; no secret value ever reaches this database. */
+    credentialRef: text('credential_ref').notNull(),
+    permittedActions: text('permitted_actions').array().notNull(),
+    attributeLabelPatterns: text('attribute_label_patterns')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    secondaryKey: text('secondary_key').notNull().default(''),
+    note: text('note').notNull().default(''),
+    status: text('status').notNull().default('active'),
+    /** The AD-2 digest, lower-case SHA-256 hex. */
+    digest: text('digest').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // `sql.raw` is safe for all three: every member is lower-case ASCII and hyphens.
+    check(
+      'target_system_registration_kind_vocabulary',
+      sql`${table.kind} IN (${sql.raw(quoted(TARGET_SYSTEM_KIND_VOCABULARY))})`,
+    ),
+    check(
+      'target_system_registration_status_vocabulary',
+      sql`${table.status} IN (${sql.raw(quoted(REGISTRATION_STATUS_VOCABULARY))})`,
+    ),
+    /** FR-8, at the one layer nothing can route around: no write action, ever. */
+    check(
+      'target_system_registration_actions_read_only',
+      sql`${table.permittedActions} <@ ARRAY[${sql.raw(quoted(PERMITTED_READ_ACTION_VOCABULARY))}]::text[]`,
+    ),
+    /**
+     * `cardinality`, not `array_length(..., 1)`.
+     *
+     * `array_length` of an empty array is NULL, and a CHECK constraint that evaluates to
+     * NULL PASSES — so the obvious spelling of this rule accepts exactly the row it was
+     * written to refuse. `cardinality` returns 0. The integration suite inserts an empty
+     * array with raw SQL and expects the refusal by name, which is how this was caught.
+     */
+    check(
+      'target_system_registration_actions_present',
+      sql`cardinality(${table.permittedActions}) >= 1`,
+    ),
+    check('target_system_registration_digest_format', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+/**
+ * What the WORKER last observed about a Target System (AD-10).
+ *
+ * The web process only ever reads this table. A registration with no row here has never
+ * been probed, which is the state every registration is in until Story 1.8 brings the
+ * synthetic Northstar systems and the probing loop that writes here.
+ */
+export const targetSystemProbe = pgTable(
+  'target_system_probe',
+  {
+    registrationId: uuid('registration_id')
+      .primaryKey()
+      .references(() => targetSystemRegistration.registrationId, { onDelete: 'cascade' }),
+    state: text('state').notNull(),
+    observedAt: timestamp('observed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    /** The worker that wrote it. Never a payload, a URL or anything the probe read. */
+    observedBy: text('observed_by').notNull(),
+  },
+  (table) => [
+    check(
+      'target_system_probe_state_vocabulary',
+      sql`${table.state} IN (${sql.raw(quoted(PROBE_STATE_VOCABULARY))})`,
+    ),
+  ],
+);
+
 export type SchemaMetaRow = typeof schemaMeta.$inferSelect;
 export type WorkerHeartbeatRow = typeof workerHeartbeat.$inferSelect;
 export type AuditEventHeadRow = typeof auditEventHeads.$inferSelect;
@@ -269,3 +396,5 @@ export type AuthUserRow = typeof authUser.$inferSelect;
 export type AuthSessionRow = typeof authSession.$inferSelect;
 export type AuthRateLimitRow = typeof authRateLimit.$inferSelect;
 export type UserRoleRow = typeof userRole.$inferSelect;
+export type TargetSystemRegistrationRow = typeof targetSystemRegistration.$inferSelect;
+export type TargetSystemProbeRow = typeof targetSystemProbe.$inferSelect;

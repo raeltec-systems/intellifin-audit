@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 
 import { DrizzleUserDirectory, USER_LIST_LIMIT } from '@intellifin/infrastructure';
 
+import Link from 'next/link';
+
 import { UsersPanel } from '../../src/admin/UsersPanel';
 import { Banner } from '../../src/design/Banner';
 import { getRuntime } from '../../src/bootstrap';
@@ -29,8 +31,9 @@ export const dynamic = 'force-dynamic';
  * it reads its input; see `actions.ts`. Passing them from inside this branch is a
  * convenience of composition, never the control.
  *
- * Target System registrations, Population Source bindings and diagnostics are Stories
- * 1.6, 1.7 and 9.2. This surface deliberately says nothing about them.
+ * Target System registrations have their own surface at `/administration/registrations`
+ * (Story 1.6), which authorizes for itself in exactly the same way. Population Source
+ * bindings and diagnostics are Stories 1.7 and 9.2; this surface says nothing about them.
  */
 export default async function AdministrationPage(): Promise<React.JSX.Element> {
   const decision = await requireServerAction('administration.users.manage');
@@ -52,8 +55,10 @@ export default async function AdministrationPage(): Promise<React.JSX.Element> {
       <header className="ls-page-header">
         <h1>Administration</h1>
         <p>
-          Users and roles. Target System registrations, Population Source bindings and
-          platform diagnostics are not part of this release.
+          Users and roles, and{' '}
+          <Link href="/administration/registrations">Target System registrations</Link>.
+          Population Source bindings and platform diagnostics are not part of this
+          release.
         </p>
       </header>
       <UsersPanel

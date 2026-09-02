@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, credentialCapabilityManifest, loadConfig } from './config.js';
 
 const validEnv = {
   DATABASE_URL: 'postgres://user:pw@localhost:5432/intellifin',
@@ -188,5 +188,50 @@ describe('ConfigError.keys', () => {
 
   it('is empty rather than malformed when an issue names nothing', () => {
     expect(new ConfigError(['']).keys).toBe('');
+  });
+});
+
+describe('CREDENTIAL_CAPABILITIES', () => {
+  const base = {
+    DATABASE_URL: 'postgres://user:pw@localhost:5432/db',
+    SERVICE_NAME: 'web',
+    BETTER_AUTH_SECRET: 'a'.repeat(32),
+    BETTER_AUTH_URL: 'http://localhost:3000',
+  } as const;
+
+  it('is an empty manifest when absent, which refuses every registration', () => {
+    const config = loadConfig({ ...base });
+    expect(credentialCapabilityManifest(config).size).toBe(0);
+  });
+
+  it('reads a declared reference', () => {
+    const config = loadConfig({
+      ...base,
+      CREDENTIAL_CAPABILITIES: '{"cred://a":"read-only","cred://b":"write-capable"}',
+    });
+    const manifest = credentialCapabilityManifest(config);
+    expect(manifest.get('cred://a')).toBe('read-only');
+    expect(manifest.get('cred://b')).toBe('write-capable');
+  });
+
+  it.each([
+    ['not json', 'nonsense'],
+    ['an array', '["cred://a"]'],
+    ['a scalar', '"read-only"'],
+    ['a capability outside the vocabulary', '{"cred://a":"admin"}'],
+    ['a capability that is not a string', '{"cred://a":true}'],
+    ['an empty reference', '{"   ":"read-only"}'],
+  ])('refuses %s at boot rather than at the first registration', (_label, raw) => {
+    expect(() => loadConfig({ ...base, CREDENTIAL_CAPABILITIES: raw })).toThrow(ConfigError);
+  });
+
+  it('names the offending key and never the value', () => {
+    try {
+      loadConfig({ ...base, CREDENTIAL_CAPABILITIES: '{"cred://a":"admin"}' });
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect((error as ConfigError).keys).toContain('CREDENTIAL_CAPABILITIES');
+      expect((error as ConfigError).message).not.toContain('cred://a');
+    }
   });
 });

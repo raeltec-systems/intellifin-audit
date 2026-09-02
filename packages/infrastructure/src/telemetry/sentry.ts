@@ -35,6 +35,11 @@ export const TELEMETRY_MESSAGES = [
   // nothing was written; the person was told only that nothing changed.
   'Create user failed',
   'Set user role failed',
+  // Target System registrations (Story 1.6). Same reading: a refusal — including the
+  // read-only credential refusal — is an audit event, not a log line, so these two mean
+  // the command FAILED and nothing was written.
+  'Register Target System failed',
+  'Change Target System failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',
