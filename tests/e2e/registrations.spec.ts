@@ -181,7 +181,7 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('link', { name: systemName }).click();
 
     await expect(page.getByRole('heading', { name: systemName, level: 1 })).toBeVisible();
-    const shown = page.locator('dd.ls-digest');
+    const shown = page.locator('dd.ls-digest-cell .ls-digest');
     const before = await shown.innerText();
     expect(before).toMatch(/^[0-9a-f]{64}$/);
 
@@ -191,7 +191,7 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
     await expect(page.getByRole('status')).toContainText('The digest did not change');
     await page.reload();
-    await expect(page.locator('dd.ls-digest')).toHaveText(before);
+    await expect(page.locator('dd.ls-digest-cell .ls-digest')).toHaveText(before);
 
     // An origin is.
     await page.getByLabel('Allowed origins').fill('https://moved.synthetic.invalid');
@@ -202,7 +202,7 @@ test.describe('as a PoC Administrator', () => {
     // with the event never published.
     await expect(page.getByRole('status')).toContainText('The digest is now ');
     await page.reload();
-    await expect(page.locator('dd.ls-digest')).not.toHaveText(before);
+    await expect(page.locator('dd.ls-digest-cell .ls-digest')).not.toHaveText(before);
   });
 
   test('the populated surface has no WCAG 2.1 AA violation', async ({ page }) => {

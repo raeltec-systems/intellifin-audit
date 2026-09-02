@@ -939,6 +939,13 @@ a {
   color: var(--color-text-muted);
 }
 
+/* The digest cell: the full value plus its screen-reader equivalent. The equivalent is
+   `.ls-visually-hidden`, so the cell lays out as if it held the value alone. */
+.ls-digest-cell {
+  display: block;
+  margin: 0;
+}
+
 .ls-definition dd {
   margin: 0;
 }

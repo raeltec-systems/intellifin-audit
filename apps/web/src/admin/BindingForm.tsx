@@ -7,12 +7,15 @@ import type { PopulationSourceBinding } from '@intellifin/application';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
-import { DECLARED_COUNT_MISSING_SENTENCE, registrationChangeWarning } from '../design/copy';
+import {
+  DECLARED_COUNT_MISSING_SENTENCE,
+  MANUAL_UPLOAD_SENTENCE,
+  registrationChangeWarning,
+} from '../design/copy';
 import {
   BINDING_KIND_OPTIONS,
   BINDING_STATUS_OPTIONS,
   MECHANISM_OPTIONS,
-  UPLOAD_ONLY_SENTENCE,
   declaresNoCount,
   linesToList,
   listToLines,
@@ -70,7 +73,19 @@ export interface BindingFormProps {
   readonly onStart: () => void;
 }
 
-const FIRST_KIND = BINDING_KIND_OPTIONS[0]?.value ?? 'manual-upload';
+/**
+ * What an empty create form starts as.
+ *
+ * NOT the first option. The vocabulary is ordered `manual-upload, versioned-file,
+ * read-only-api`, so `[0]` made every fresh form open as the most restricted kind —
+ * showing the `once`-Schedule banner to somebody who has not chosen anything, which
+ * teaches people to read past it. A versioned file is also the ordinary case: the
+ * addendum's leavers export, RoleMatrix and ConfigRegistry are all versioned files.
+ */
+const DEFAULT_KIND = 'versioned-file';
+const FIRST_KIND = BINDING_KIND_OPTIONS.some((option) => option.value === DEFAULT_KIND)
+  ? DEFAULT_KIND
+  : (BINDING_KIND_OPTIONS[0]?.value ?? 'manual-upload');
 const FIRST_MECHANISM = MECHANISM_OPTIONS[0]?.value ?? 'cover-sheet';
 
 export function BindingForm({
@@ -349,7 +364,7 @@ export function BindingForm({
           </Banner>
         ) : null}
 
-        {uploadOnly ? <Banner tone="info" title={UPLOAD_ONLY_SENTENCE} /> : null}
+        {uploadOnly ? <Banner tone="info" title={MANUAL_UPLOAD_SENTENCE} /> : null}
 
         <div className="ls-dialog__field">
           <label htmlFor={noteId}>Operator note (optional)</label>

@@ -127,13 +127,18 @@ describe('the population_source_binding check constraints', () => {
    * routed around.
    */
   it('writes the sensitive-fields subset constraint into the generation-6 migration', () => {
-    expect(migration('0006_absent_thanos.sql')).toContain(
-      `CHECK ("population_source_binding"."sensitive_fields" <@ "population_source_binding"."declared_schema")`,
+    const sql = migration('0006_slim_sersi.sql');
+    expect(sql).toContain(
+      `"population_source_binding"."sensitive_fields" <@ "population_source_binding"."declared_schema"`,
+    );
+    // `<@` is NULL, and therefore PASSES, when the left array holds a NULL element.
+    expect(sql).toContain(
+      `array_position("population_source_binding"."sensitive_fields", NULL) IS NULL`,
     );
   });
 
   it('writes the digest-format constraint into the generation-6 migration', () => {
-    expect(migration('0006_absent_thanos.sql')).toContain(
+    expect(migration('0006_slim_sersi.sql')).toContain(
       `CHECK ("population_source_binding"."digest" ~ '^[0-9a-f]{64}$')`,
     );
   });
@@ -147,10 +152,14 @@ describe('the population_source_binding check constraints', () => {
    * masking designation could then mean anything against.
    */
   it('writes the schema-present constraint with cardinality, never array_length', () => {
-    const sql = migration('0006_absent_thanos.sql');
+    const sql = migration('0006_slim_sersi.sql');
+    // Cardinality counts ELEMENTS, so the rule needs two more clauses to mean "declares
+    // at least one NAME": `ARRAY[NULL]` and `ARRAY['']` both have cardinality 1.
+    expect(sql).toContain(`cardinality("population_source_binding"."declared_schema") >= 1`);
     expect(sql).toContain(
-      `CHECK (cardinality("population_source_binding"."declared_schema") >= 1)`,
+      `array_position("population_source_binding"."declared_schema", NULL) IS NULL`,
     );
+    expect(sql).toContain(`'' <> ALL ("population_source_binding"."declared_schema")`);
     // Statements only. The file's header comment names `array_length` to explain why it
     // is not used, and a naive search would match that and pass forever.
     const statements = sql
@@ -163,13 +172,13 @@ describe('the population_source_binding check constraints', () => {
   it('writes the location rule in BOTH directions into the generation-6 migration', () => {
     // A versioned file with no location points at nothing; a manual upload WITH one
     // holds a value the digest deliberately drops.
-    const sql = migration('0006_absent_thanos.sql');
+    const sql = migration('0006_slim_sersi.sql');
     expect(sql).toContain(`"population_source_binding"."kind" = 'manual-upload' AND "population_source_binding"."location" = ''`);
     expect(sql).toContain(`"population_source_binding"."kind" <> 'manual-upload' AND btrim("population_source_binding"."location") <> ''`);
   });
 
   it('seeds generation 6 by hand, because drizzle-kit does not write that line', () => {
-    expect(migration('0006_absent_thanos.sql')).toContain(
+    expect(migration('0006_slim_sersi.sql')).toContain(
       `INSERT INTO "schema_meta" ("version") VALUES (6) ON CONFLICT ("version") DO NOTHING;`,
     );
   });

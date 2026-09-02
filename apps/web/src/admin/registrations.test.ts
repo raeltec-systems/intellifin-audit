@@ -9,7 +9,6 @@ import {
   kindLabel,
   linesToList,
   listToLines,
-  spokenDigest,
   statusLabel,
 } from './registrations';
 
@@ -66,16 +65,3 @@ describe('the textarea list helpers', () => {
   });
 });
 
-describe('the spoken digest', () => {
-  const digest = 'a1b2c3d4'.repeat(8);
-
-  it('names the ends, so two digests can be told apart by ear', () => {
-    expect(digest).toHaveLength(64);
-    expect(spokenDigest(digest)).toContain('a 1 b 2');
-    expect(spokenDigest(digest)).toContain('c 3 d 4');
-  });
-
-  it('never reads all 64 characters aloud', () => {
-    expect(spokenDigest(digest)).not.toContain(digest);
-  });
-});

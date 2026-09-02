@@ -2,10 +2,10 @@
 title: 'Story 1.7: Register a Population Source binding'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '184ffa0'
 baseline_commit: '184ffa0'
-review_loop_iteration: 0
+review_loop_iteration: 1
 followup_review_recommended: false
 context:
   - '{project-root}/AGENTS.md'
@@ -105,6 +105,80 @@ Story 1.6 built every mechanism this story needs. Follow it, do not reinvent it:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Three review passes: the digest and the command, authorization and persistence, and the
+user-facing surface. **2 BLOCKER, 11 SHOULD, 10 CONSIDER.** Every finding reproduced
+before it was triaged. Four of them are defects in STORY 1.6, found because this story
+repeated its shape, and they are fixed here rather than left for a later story to inherit.
+
+### Blockers
+
+1. **`aria-label` was never applied, in either story.** Both digests shipped as
+   `<span aria-label={spoken}>` and `<dd aria-label={spoken}>`, and ARIA prohibits an
+   accessible name on a generic element — so the accessible name stayed the sixty-four
+   hex characters, read out once per table row. That is exactly the thing the label was
+   added to prevent, in Story 1.6, as a fix for the same complaint. axe reports
+   `aria-prohibited-attr` as INCOMPLETE rather than as a violation, and the browser gate
+   asserts only `results.violations`, so the accessibility check could not see it. One
+   `Digest` component now serves both stories: the full value, hidden from assistive
+   technology, beside a visually-hidden sentence. No ARIA role, so no role rule can drop
+   it. A source-scanning test refuses `aria-label` on any element that cannot carry one.
+
+2. **The manual-upload sentence was invented, under a comment claiming the contract was
+   silent.** EXPERIENCE.md's "Upload with scheduled frequency" row states it. It is now
+   in `copy.ts`, pinned to the file on disk, and used by all three surfaces that show it.
+
+### The SHOULDs that mattered
+
+- **A NUL character reached PostgreSQL.** `U+0000` is valid JSON, so it canonicalized and
+  hashed cleanly and then failed at the driver with `22021 invalid byte sequence`, which
+  the caller met as a framework 500. The canonicalizer now refuses it — for BOTH stories
+  and the audit chain — because a value with no storable form has no canonical form.
+- **`cardinality(x) >= 1` counts elements, not names.** `ARRAY[NULL]` and `ARRAY['']` both
+  passed a rule meaning "declares at least one field", and a NULL element then left the
+  repository typed `string[]`. `array_position(x, NULL) IS NULL` is the NULL test that
+  works: `NULL <> ALL(x)` returns NULL and a NULL CHECK PASSES — the same trap
+  `array_length` sets, one operator along. Generation 5's registration constraint had the
+  first hole too; generation 6 replaces it.
+- **`SUPPORTED_SCHEMA_MIN = 1` was a claim the build could not keep.** Every generation
+  since has added a table this build queries unconditionally, so a generation-6 image
+  passed the AD-15 guard against a generation-5 database and then failed per request on a
+  missing relation. MIN now equals MAX and the drift test asserts it.
+- **A malformed id was a 500 where a 404 belonged.** PostgreSQL raises `22P02` comparing a
+  `uuid` column against text that is not one, and the id comes from a URL. The guard is at
+  the REPOSITORY, not on each page: a guard every caller must remember is one the next
+  caller forgets. It fixes Story 1.6's registration page too.
+- **An idle save moved `updated_at`.** The UPDATE was unconditional, so a submit that
+  changed nothing left a row whose "Last changed" said somebody changed it, with no event
+  saying who or what. Both commands now write only when something moved.
+- **The stored `sensitiveFields` column was pinned to nothing.** With `setOf` no longer
+  sorting, all 1084 unit tests stayed green — yet retyping the same masked fields in
+  another order rewrote the row, moved the row version, and appended no event.
+- **Three e2e assertions could not fail.** The manual-upload case selected a kind the form
+  already defaulted to, so both its assertions were true before the selection; the create
+  form also opened on the most restricted kind, showing a restriction banner to somebody
+  who had chosen nothing. The default is now `versioned-file`, and the starting state is
+  asserted before the change.
+- **The Auditor was never refused the DETAIL surface**, which is the one with an id to look
+  up and therefore the one where a check placed after the lookup would disclose whether a
+  binding exists. The new case uses a well-formed id that does not exist, so a 404 fails it.
+- **The new breadcrumb label had no coverage.** Deleting it left the suite green.
+
+### Deferred, with reasons
+
+- **No index behind the list's ORDER BY, and no unique display name.** Both are real and
+  neither is this story's: the list is capped and the PoC has a handful of bindings, and a
+  unique name is a product decision nobody has taken. Recorded for the surface that first
+  has enough rows to care.
+- **`updated_at` comes from the Node clock rather than an injected one.** Nothing reads it
+  for a decision — the row version replaced the guard that might have — so it belongs with
+  a general clock-injection pass.
+- **`validateBindingFields` throws `TypeError` on a malformed shape.** Not reachable from
+  the web: the Server Action checks shape and bounds first.
+
+### Rejected
+
+- Nothing. Every finding was either fixed or deferred with a stated reason.
 
 ## Design Notes
 

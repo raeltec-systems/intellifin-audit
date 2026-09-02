@@ -5,8 +5,9 @@ import { useState } from 'react';
 import type { TargetSystemRegistration } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
+import { Digest } from '../design/Digest';
 import { RegistrationForm } from './RegistrationForm';
-import { NEVER_PROBED_SENTENCE, connectivityLabel, kindLabel, spokenDigest } from './registrations';
+import { NEVER_PROBED_SENTENCE, connectivityLabel, kindLabel } from './registrations';
 import type {
   ChangeRegistrationFormFields,
   RegistrationActionResult,
@@ -61,9 +62,7 @@ export function RegistrationEditor({
         </div>
         <div>
           <dt>Registration digest</dt>
-          <dd className="ls-mono ls-digest" aria-label={spokenDigest(registration.digest)}>
-            {registration.digest}
-          </dd>
+          <Digest as="dd" value={registration.digest} label="Registration" />
         </div>
         <div>
           <dt>Connectivity</dt>

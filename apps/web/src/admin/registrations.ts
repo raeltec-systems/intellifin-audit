@@ -119,18 +119,3 @@ export function listToLines(values: readonly string[]): string {
   return values.join('\n');
 }
 
-/**
- * How a 64-character hex digest is announced.
- *
- * Read verbatim, a digest is a minute of undifferentiated letters and numbers, and a
- * screen reader gives no way to tell where you are in it. The visible text stays the
- * full value — an auditor comparing one against a Procedure Version needs every
- * character — and this is what `aria-label` carries instead: the first and last four
- * groups, which is enough to distinguish two digests by ear, and an explicit offer of
- * the full value where it can be read at leisure.
- */
-export function spokenDigest(digest: string): string {
-  const head = digest.slice(0, 4).split('').join(' ');
-  const tail = digest.slice(-4).split('').join(' ');
-  return `Registration digest starting ${head}, ending ${tail}. The full 64-character value is shown.`;
-}

@@ -87,3 +87,19 @@ export function registrationChangeWarning(count: number): string {
  */
 export const DECLARED_COUNT_MISSING_SENTENCE =
   'Population Source must declare an expected record count.';
+
+/**
+ * What the surface says about a manual-upload binding (FR-6, AD-23).
+ *
+ * EXPERIENCE.md's "Upload with scheduled frequency" row fixes this sentence as the
+ * Builder's blocker. It shipped here as an INVENTED sentence, under a doc comment
+ * claiming the contract was silent about the restriction — it is not, and a surface
+ * that words a rule one way while the Builder words it another teaches an administrator
+ * a sentence they will never see again.
+ *
+ * It is stated at registration time as well as at submission because the Builder that
+ * enforces it does not exist until Epic 2, and somebody registering a manual upload for
+ * a weekly Schedule should not first learn the rule from a blocked Submit.
+ */
+export const MANUAL_UPLOAD_SENTENCE =
+  'A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs.';

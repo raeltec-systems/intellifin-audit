@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
+import { MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
+
 import { createSqlClient } from '@intellifin/infrastructure';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
@@ -188,6 +190,13 @@ test.describe('as a PoC Administrator', () => {
   test('marks a manual upload upload-only and states the `once` restriction', async ({ page }) => {
     await page.goto('/administration/sources');
 
+    // Both assertions below were true BEFORE the selection, because the form used to
+    // open on `manual-upload`: they could not fail from the branch they name. The
+    // starting state is asserted first, so the change is what is being tested.
+    const uploadNotice = page.locator('.ls-banner--info');
+    await expect(page.getByLabel('Location')).toBeVisible();
+    await expect(uploadNotice).toHaveCount(0);
+
     await page.getByLabel('Binding kind').selectOption('manual-upload');
     // A manual upload names nowhere: the file arrives with the Run, so the field is gone
     // rather than present and ignored.
@@ -195,10 +204,8 @@ test.describe('as a PoC Administrator', () => {
 
     // The restriction is stated where it can still be acted on. FR-6 and AD-23: the
     // Builder enforces it in Epic 2, but nobody should first learn about it from somebody
-    // else's blocked Submit.
-    const uploadNotice = page.locator('.ls-banner--info');
-    await expect(uploadNotice).toContainText('Upload-only');
-    await expect(uploadNotice).toContainText('only by a Schedule that runs once');
+    // else's blocked Submit. The sentence is EXPERIENCE.md's, character for character.
+    await expect(uploadNotice).toHaveText(MANUAL_UPLOAD_SENTENCE);
 
     await fillForm(page, {
       name: uploadName,
@@ -213,7 +220,7 @@ test.describe('as a PoC Administrator', () => {
     await page.reload();
     const row = page.getByRole('row', { name: new RegExp(uploadName) });
     await expect(row).toContainText('Manual upload');
-    await expect(row).toContainText('runs once');
+    await expect(row).toContainText('valid only for a `once` Schedule');
     // The location cell says what it means rather than being empty, which a reader takes
     // for a missing value.
     await expect(row).toContainText('Supplied with each Run');
@@ -276,7 +283,7 @@ test.describe('as a PoC Administrator', () => {
     await page.getByRole('link', { name: versionedName }).click();
 
     await expect(page.getByRole('heading', { name: versionedName, level: 1 })).toBeVisible();
-    const shown = page.locator('dd.ls-digest');
+    const shown = page.locator('dd.ls-digest-cell .ls-digest');
     const before = await shown.innerText();
     expect(before).toMatch(/^[0-9a-f]{64}$/);
 
@@ -285,7 +292,7 @@ test.describe('as a PoC Administrator', () => {
     await submitAndConfirm(page, 'Save changes');
     await expect(page.locator('.ls-banner--success')).toContainText('The digest did not change');
     await page.reload();
-    await expect(page.locator('dd.ls-digest')).toHaveText(before);
+    await expect(page.locator('dd.ls-digest-cell .ls-digest')).toHaveText(before);
 
     // Reordering the declared schema IS a change: a schema declares field positions, and a
     // parser told the other order reads the wrong column.
@@ -297,7 +304,7 @@ test.describe('as a PoC Administrator', () => {
     // chain" appears on the annotated path too, so this would pass with nothing published.
     await expect(page.locator('.ls-banner--success')).toContainText('The digest is now ');
     await page.reload();
-    await expect(page.locator('dd.ls-digest')).not.toHaveText(before);
+    await expect(page.locator('dd.ls-digest-cell .ls-digest')).not.toHaveText(before);
   });
 
   test('the populated surface has no WCAG 2.1 AA violation', async ({ page }) => {
@@ -352,5 +359,31 @@ test.describe('as an Auditor', () => {
     await expect(page.getByText('s3://')).toHaveCount(0);
     await expect(page.getByText('synthetic.invalid')).toHaveCount(0);
     await expect(page.getByText('employee_id')).toHaveCount(0);
+  });
+
+  test('is refused the DETAIL surface too, where authorize-before-lookup matters', async ({
+    page,
+  }) => {
+    // The list page refuses before it reads anything. The detail page has an id to look
+    // up, so it is the one where a check placed after the lookup would disclose whether
+    // a binding exists — and it was the surface with no test.
+    // A well-formed id that does not exist. That is the stronger case: if the role
+    // check ran AFTER the lookup, this would answer 404 and disclose that no such
+    // binding exists. It must answer the refusal instead.
+    await page.goto('/administration/sources/018f0000-0000-7000-8000-0000000000ff');
+
+    await expect(page.locator('main#content').getByRole('alert')).toHaveText(
+      'Your role does not permit this action.',
+    );
+    await expect(page.getByText(versionedName)).toHaveCount(0);
+    await expect(page.locator('.ls-digest')).toHaveCount(0);
+  });
+
+  test('a malformed id answers a page, never a 500', async ({ page }) => {
+    // `/administration/sources/<anything a person types>` reaches a `uuid` column, and
+    // PostgreSQL raises 22P02 on text that is not one. Unguarded that is a framework
+    // 500 for a mistyped link. The repository reports absence instead.
+    const response = await page.goto('/administration/sources/not-a-uuid');
+    expect(response?.status()).toBeLessThan(500);
   });
 });

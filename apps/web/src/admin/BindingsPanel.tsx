@@ -6,15 +6,14 @@ import type { PopulationSourceBinding } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { DataTable } from '../design/DataTable';
-import { DECLARED_COUNT_MISSING_SENTENCE } from '../design/copy';
+import { DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../design/copy';
+import { Digest } from '../design/Digest';
 import { BindingForm } from './BindingForm';
 import {
-  UPLOAD_ONLY_SENTENCE,
   bindingKindLabel,
   bindingStatusLabel,
   declaresNoCount,
   mechanismLabel,
-  spokenBindingDigest,
 } from './bindings';
 import type {
   BindingActionResult,
@@ -98,7 +97,7 @@ export function BindingsPanel({
                 row.kind === 'manual-upload' ? (
                   <>
                     <span>{bindingKindLabel(row.kind)}</span>
-                    <p className="ls-caption">{UPLOAD_ONLY_SENTENCE}</p>
+                    <p className="ls-caption">{MANUAL_UPLOAD_SENTENCE}</p>
                   </>
                 ) : (
                   bindingKindLabel(row.kind)
@@ -162,11 +161,7 @@ export function BindingsPanel({
             {
               key: 'digest',
               header: 'Binding digest',
-              render: (row) => (
-                <span className="ls-mono ls-digest" aria-label={spokenBindingDigest(row.digest)}>
-                  {row.digest}
-                </span>
-              ),
+              render: (row) => <Digest value={row.digest} label="Binding" />,
             },
           ]}
           empty={{

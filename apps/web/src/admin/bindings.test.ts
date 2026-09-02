@@ -7,14 +7,12 @@ import {
   BINDING_KIND_OPTIONS,
   MECHANISM_OPTIONS,
   UNKNOWN_LABEL,
-  UPLOAD_ONLY_SENTENCE,
   bindingKindLabel,
   bindingStatusLabel,
   declaresNoCount,
   linesToList,
   listToLines,
   mechanismLabel,
-  spokenBindingDigest,
 } from './bindings';
 
 /**
@@ -89,17 +87,6 @@ describe('the missing-count predicate', () => {
   });
 });
 
-describe('the upload-only sentence', () => {
-  it('names the one Schedule a manual upload may be used by', () => {
-    // FR-6 and AD-23: the Builder enforces this in Epic 2. It is stated here because an
-    // administrator who registers a manual upload for a weekly Schedule would otherwise
-    // learn about the restriction from somebody else's blocked Submit.
-    expect(UPLOAD_ONLY_SENTENCE).toContain('once');
-    expect(UPLOAD_ONLY_SENTENCE).toContain('Upload-only');
-    expect(UPLOAD_ONLY_SENTENCE).toContain('daily, weekly or monthly');
-  });
-});
-
 describe('the textarea list helpers', () => {
   it('round-trips a list through the text a person edits, in order', () => {
     const values = ['employee_id', 'employment_status', 'salary'];
@@ -115,16 +102,3 @@ describe('the textarea list helpers', () => {
   });
 });
 
-describe('the spoken binding digest', () => {
-  const digest = 'a1b2c3d4'.repeat(8);
-
-  it('names the ends, so two digests can be told apart by ear', () => {
-    expect(digest).toHaveLength(64);
-    expect(spokenBindingDigest(digest)).toContain('a 1 b 2');
-    expect(spokenBindingDigest(digest)).toContain('c 3 d 4');
-  });
-
-  it('never reads all 64 characters aloud', () => {
-    expect(spokenBindingDigest(digest)).not.toContain(digest);
-  });
-});

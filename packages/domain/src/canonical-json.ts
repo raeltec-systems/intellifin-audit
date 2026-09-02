@@ -42,6 +42,15 @@ export class NotCanonicalizableError extends TypeError {
 function assertWellFormed(text: string): void {
   for (let index = 0; index < text.length; index += 1) {
     const code = text.charCodeAt(index);
+    // U+0000 is valid JSON — `JSON.stringify` escapes it to `\u0000` — and it is NOT
+    // storable: PostgreSQL raises 22021 `invalid byte sequence for encoding "UTF8":
+    // 0x00` on any text value containing one, because a C string cannot hold it. So a
+    // value with a NUL canonicalizes cleanly, hashes cleanly, and then fails at the
+    // driver with a framework 500 for the caller most likely to be probing. It has no
+    // canonical STORABLE form, which is the property this function exists to assert.
+    if (code === 0) {
+      throw new NotCanonicalizableError('a NUL character cannot be stored');
+    }
     if (code >= 0xd800 && code <= 0xdbff) {
       const low = text.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {

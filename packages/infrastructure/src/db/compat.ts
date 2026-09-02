@@ -22,8 +22,22 @@ import type { Sql } from 'postgres';
  *
  * `MAX` must equal the highest generation seeded by `packages/infrastructure/drizzle`;
  * `schema-range.test.ts` reads the migrations and fails when the two disagree.
+ *
+ * **`MIN` equals `MAX`, and that is not laziness.** It read `1`, which claimed this
+ * image could serve a generation-1 database. It cannot: every generation since has
+ * added a table this build queries unconditionally, so against a generation-5 database
+ * a generation-6 image passes this guard and then fails with `relation
+ * "population_source_binding" does not exist` — a 500 per request instead of the clean
+ * refusal AD-15 exists to give. A range wider than the truth turns a startup guard into
+ * a delayed crash.
+ *
+ * The narrow range is also exactly right for how this product deploys: the release
+ * pipeline migrates and THEN deploys, so the database is always at the image's own
+ * generation. The cost is that a rollback to an older image now refuses to start
+ * against a newer database instead of half-working — which is the direction a
+ * fail-closed guard is supposed to fail.
  */
-export const SUPPORTED_SCHEMA_MIN = 1;
+export const SUPPORTED_SCHEMA_MIN = 6;
 export const SUPPORTED_SCHEMA_MAX = 6;
 
 /** The supported range as it is logged and reported: `min..max`. */

@@ -1,5 +1,5 @@
 {
-  "id": "dd8edd75-7916-412c-ad69-f0d7e9dc976a",
+  "id": "62995988-bb4a-4bc6-829a-6da2d3f18fa9",
   "prevId": "75f1c31c-5d13-4046-8f08-9f8108340c75",
   "version": "7",
   "dialect": "postgresql",
@@ -729,11 +729,11 @@
         },
         "population_source_binding_schema_present": {
           "name": "population_source_binding_schema_present",
-          "value": "cardinality(\"population_source_binding\".\"declared_schema\") >= 1"
+          "value": "cardinality(\"population_source_binding\".\"declared_schema\") >= 1\n        AND array_position(\"population_source_binding\".\"declared_schema\", NULL) IS NULL\n        AND '' <> ALL (\"population_source_binding\".\"declared_schema\")"
         },
         "population_source_binding_sensitive_fields_declared": {
           "name": "population_source_binding_sensitive_fields_declared",
-          "value": "\"population_source_binding\".\"sensitive_fields\" <@ \"population_source_binding\".\"declared_schema\""
+          "value": "\"population_source_binding\".\"sensitive_fields\" <@ \"population_source_binding\".\"declared_schema\"\n        AND array_position(\"population_source_binding\".\"sensitive_fields\", NULL) IS NULL"
         },
         "population_source_binding_location_matches_kind": {
           "name": "population_source_binding_location_matches_kind",
@@ -945,7 +945,7 @@
         },
         "target_system_registration_actions_present": {
           "name": "target_system_registration_actions_present",
-          "value": "cardinality(\"target_system_registration\".\"permitted_actions\") >= 1"
+          "value": "cardinality(\"target_system_registration\".\"permitted_actions\") >= 1\n        AND array_position(\"target_system_registration\".\"permitted_actions\", NULL) IS NULL"
         },
         "target_system_registration_digest_format": {
           "name": "target_system_registration_digest_format",

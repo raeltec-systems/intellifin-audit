@@ -42,7 +42,7 @@ development_status:
   1-4-application-shell-and-ledger-signal-tokens: done
   1-5-manage-users-and-roles: done
   1-6-register-a-target-system-with-a-read-only-credential: done
-  1-7-register-a-population-source-binding: backlog
+  1-7-register-a-population-source-binding: done
   1-8-synthetic-northstar-systems-seeded-with-golden-populations: backlog
   epic-1-retrospective: optional
 

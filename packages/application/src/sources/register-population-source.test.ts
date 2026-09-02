@@ -707,3 +707,51 @@ describe('the row version token', () => {
     expect(bindingRowVersion(RECORD)).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+describe('values PostgreSQL cannot store', () => {
+  it('refuses a NUL character rather than letting the driver raise 22021', async () => {
+    // U+0000 is valid JSON — `JSON.stringify` escapes it — so it canonicalized and
+    // hashed cleanly and then failed at the driver with `invalid byte sequence for
+    // encoding "UTF8": 0x00`, which reaches the caller as a framework 500. It has no
+    // storable form, so the canonicalizer refuses it and the command says so.
+    const test = harness();
+    for (const field of [
+      { displayName: `north\u0000star` },
+      { location: `https://a.invalid/\u0000` },
+      // No sensitive fields here: with a NUL inside a schema NAME the subset rule
+      // fires first, which is a correct refusal but not the one under test.
+      { declaredSchema: ['employee_id', `sal\u0000ary`], sensitiveFields: [] },
+      { note: `a\u0000note` },
+    ]) {
+      const outcome = await registerPopulationSource(test.dependencies, {
+        ...FIELDS,
+        ...field,
+        session: ADMIN,
+        correlationId: 'corr-nul',
+      });
+      expect(outcome).toEqual({ ok: false, reason: BINDING_REFUSALS.NOT_STORABLE });
+    }
+    expect(test.stored.size).toBe(0);
+  });
+});
+
+describe('what the row actually holds', () => {
+  it('stores the sensitive fields in the sorted form the digest hashes', async () => {
+    // Nothing pinned this. With `setOf` no longer sorting, every unit test stayed green
+    // — and then retyping the same masked fields in another order rewrote the row, moved
+    // the row version, and appended no event at all. The `<@` CHECK is order-blind and
+    // is no backstop.
+    const test = harness();
+    const created = await registerPopulationSource(test.dependencies, {
+      ...FIELDS,
+      declaredSchema: ['employee_id', 'salary', 'manager'],
+      sensitiveFields: ['salary', 'employee_id'],
+      session: ADMIN,
+      correlationId: 'corr-sorted',
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const record = test.stored.get(created.bindingId) as BindingRecord;
+    expect(record.sensitiveFields).toEqual(['employee_id', 'salary']);
+  });
+});

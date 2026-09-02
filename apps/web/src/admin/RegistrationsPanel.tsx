@@ -6,13 +6,13 @@ import type { TargetSystemRegistration } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { DataTable } from '../design/DataTable';
+import { Digest } from '../design/Digest';
 import { RegistrationForm } from './RegistrationForm';
 import {
   NEVER_PROBED_SENTENCE,
   actionLabel,
   connectivityLabel,
   kindLabel,
-  spokenDigest,
   statusLabel,
 } from './registrations';
 import type {
@@ -130,11 +130,7 @@ export function RegistrationsPanel({
             {
               key: 'digest',
               header: 'Registration digest',
-              render: (row) => (
-                <span className="ls-mono ls-digest" aria-label={spokenDigest(row.digest)}>
-                  {row.digest}
-                </span>
-              ),
+              render: (row) => <Digest value={row.digest} label="Registration" />,
             },
             {
               key: 'connectivity',

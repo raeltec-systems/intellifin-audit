@@ -1,5 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 
+import { isUuidText } from '../db/identifier.js';
+
 import type {
   ReferencingProcedureCounter,
   RegistrationConnectivity,
@@ -148,6 +150,9 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
   }
 
   async findRegistration(registrationId: string): Promise<TargetSystemRegistration | null> {
+    // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a
+    // `uuid` column against text that is not one, and this id comes from a URL.
+    if (!isUuidText(registrationId)) return null;
     const rows = await this.db
       .select({
         ...SELECTION,
@@ -181,6 +186,9 @@ export class DrizzleRegistrationWriter implements RegistrationWriter {
   constructor(private readonly transaction: Transaction) {}
 
   async findRegistration(registrationId: string): Promise<RegistrationRecord | null> {
+    // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a
+    // `uuid` column against text that is not one, and this id comes from a URL.
+    if (!isUuidText(registrationId)) return null;
     const rows = await this.transaction
       .select(SELECTION)
       .from(targetSystemRegistration)

@@ -630,7 +630,13 @@ export async function changeTargetSystem(
         if (changed.length > 0 && before.digest === next.digest) {
           throw new Error('a digest-bearing field changed without moving the digest');
         }
-        await registrations.updateRegistration(next);
+        // A save that moves nothing writes nothing. The UPDATE was unconditional,
+        // so an idle submit still moved `updated_at` — a registration whose
+        // "Last changed" said somebody changed it, with no event anywhere saying who
+        // or what. The honest record of a change that did not happen is silence.
+        if (changed.length > 0 || annotated.length > 0) {
+          await registrations.updateRegistration(next);
+        }
 
         if (changed.length === 0) {
           // The digest cannot have moved, so there is nothing for Epic 2 to mint a draft

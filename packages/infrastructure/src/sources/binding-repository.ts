@@ -1,5 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 
+import { isUuidText } from '../db/identifier.js';
+
 import type {
   BindingRecord,
   BindingRepository,
@@ -120,6 +122,9 @@ export class DrizzleBindingRepository implements BindingRepository {
   }
 
   async findBinding(bindingId: string): Promise<PopulationSourceBinding | null> {
+    // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a
+    // `uuid` column against text that is not one, and this id comes from a URL.
+    if (!isUuidText(bindingId)) return null;
     const rows = await this.db
       .select(SELECTION)
       .from(populationSourceBinding)
@@ -142,6 +147,9 @@ export class DrizzleBindingWriter implements BindingWriter {
   constructor(private readonly transaction: Transaction) {}
 
   async findBinding(bindingId: string): Promise<BindingRecord | null> {
+    // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a
+    // `uuid` column against text that is not one, and this id comes from a URL.
+    if (!isUuidText(bindingId)) return null;
     const rows = await this.transaction
       .select(SELECTION)
       .from(populationSourceBinding)

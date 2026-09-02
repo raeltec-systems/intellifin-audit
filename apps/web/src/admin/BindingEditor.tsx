@@ -5,14 +5,14 @@ import { useState } from 'react';
 import type { PopulationSourceBinding } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
+import { DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../design/copy';
+import { Digest } from '../design/Digest';
 import { BindingForm } from './BindingForm';
 import {
-  UPLOAD_ONLY_SENTENCE,
   bindingKindLabel,
   bindingStatusLabel,
   declaresNoCount,
   mechanismLabel,
-  spokenBindingDigest,
 } from './bindings';
 import type {
   BindingActionResult,
@@ -66,7 +66,7 @@ export function BindingEditor({
           <dd>
             {bindingKindLabel(binding.kind)}
             {binding.kind === 'manual-upload' ? (
-              <p className="ls-caption">{UPLOAD_ONLY_SENTENCE}</p>
+              <p className="ls-caption">{MANUAL_UPLOAD_SENTENCE}</p>
             ) : null}
           </dd>
         </div>
@@ -75,10 +75,7 @@ export function BindingEditor({
           <dd>
             {mechanismLabel(binding.declaredCountMechanism)}
             {declaresNoCount(binding.declaredCountMechanism) ? (
-              <p className="ls-caption">
-                No Procedure Version can be submitted against this binding until the count
-                is declared.
-              </p>
+              <p className="ls-caption">{DECLARED_COUNT_MISSING_SENTENCE}</p>
             ) : null}
           </dd>
         </div>
@@ -88,9 +85,7 @@ export function BindingEditor({
         </div>
         <div>
           <dt>Binding digest</dt>
-          <dd className="ls-mono ls-digest" aria-label={spokenBindingDigest(binding.digest)}>
-            {binding.digest}
-          </dd>
+          <Digest as="dd" value={binding.digest} label="Binding" />
         </div>
         <div>
           <dt>Last changed (UTC)</dt>

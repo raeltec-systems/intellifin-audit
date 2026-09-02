@@ -66,17 +66,6 @@ export function bindingStatusLabel(value: string): string {
     : UNKNOWN_LABEL;
 }
 
-/**
- * What the surface says about a manual upload (FR-6, AD-23).
- *
- * It is OUR sentence, not a quotation: EXPERIENCE.md fixes the missing-count warning but
- * says nothing about this restriction, and FR-6 states it as a rule rather than as copy.
- * It is stated at registration time because the Builder that enforces it does not exist
- * until Epic 2, and an administrator who registers a manual upload for a weekly Schedule
- * would otherwise learn about the restriction from somebody else's blocked Submit.
- */
-export const UPLOAD_ONLY_SENTENCE =
-  'Upload-only. A manual upload can be used only by a Schedule that runs once; the Builder refuses it for a daily, weekly or monthly Schedule.';
 
 export interface Option {
   readonly value: string;
@@ -114,17 +103,3 @@ export function listToLines(values: readonly string[]): string {
   return values.join('\n');
 }
 
-/**
- * How a 64-character hex digest is announced.
- *
- * Read verbatim, a digest is a minute of undifferentiated letters and numbers, and a
- * screen reader gives no way to tell where you are in it. The visible text stays the full
- * value — an auditor comparing one against a Procedure Version needs every character —
- * and this is what `aria-label` carries instead: the first and last four groups, which is
- * enough to distinguish two digests by ear.
- */
-export function spokenBindingDigest(digest: string): string {
-  const head = digest.slice(0, 4).split('').join(' ');
-  const tail = digest.slice(-4).split('').join(' ');
-  return `Binding digest starting ${head}, ending ${tail}. The full 64-character value is shown.`;
-}

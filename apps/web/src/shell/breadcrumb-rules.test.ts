@@ -63,6 +63,15 @@ describe('a named sub-route', () => {
     ]);
   });
 
+  it('names the Population Source bindings surface, and the id below it stays raw', () => {
+    // Every label in SECTION_LABELS needs a case: deleting this one left the suite
+    // green, which makes the table a list nothing checks.
+    expect(crumbsFor('/administration/sources')).toEqual([
+      { href: '/administration', label: 'Administration', mono: false },
+      { href: '/administration/sources', label: 'Population Source bindings', mono: false },
+    ]);
+  });
+
   it('still treats a real identifier under it as one', () => {
     const crumbs = crumbsFor('/administration/registrations/018f0000-0000-7000-8000-000000000001');
     expect(crumbs[2]).toEqual({

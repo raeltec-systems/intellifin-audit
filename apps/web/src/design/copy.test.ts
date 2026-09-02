@@ -7,6 +7,7 @@ import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
   DECLARED_COUNT_MISSING_SENTENCE,
+  MANUAL_UPLOAD_SENTENCE,
   EMPTY_STATES,
   ENVIRONMENT_RIBBON_SENTENCE,
   FULLY_QUOTED_EMPTY_STATES,
@@ -122,7 +123,13 @@ describe('the missing declared-count warning', () => {
   it('is rendered from this module and not retyped in the surface', () => {
     // The registration warning shipped first as an inline sentence that differed from the
     // contract in two places, and nothing noticed. This is the same guard one story on.
-    for (const surface of ['../admin/BindingsPanel.tsx', '../admin/BindingForm.tsx']) {
+    // Every surface that shows it, not two of the three: BindingEditor.tsx paraphrased
+    // it while these two quoted it, which is how one product says a rule two ways.
+    for (const surface of [
+      '../admin/BindingsPanel.tsx',
+      '../admin/BindingForm.tsx',
+      '../admin/BindingEditor.tsx',
+    ]) {
       const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
       expect(source, surface).toContain('DECLARED_COUNT_MISSING_SENTENCE');
       expect(source, surface).not.toContain('must declare an expected record count');
@@ -136,5 +143,27 @@ describe('the read-only credential refusal', () => {
     // helper and the surface — and each was only ever checked against another of them.
     // This one reads the contract off disk, the way `denial-strings.test.ts` does.
     expect(experience).toContain(`"${REGISTRATION_REFUSALS.CREDENTIAL_NOT_READ_ONLY}"`);
+  });
+});
+
+describe('the manual-upload restriction', () => {
+  it("is EXPERIENCE.md's blocker sentence, character for character", () => {
+    // It shipped as an invented sentence under a comment claiming the contract was
+    // silent about the restriction. The contract states it, in the Builder row, and a
+    // surface that words a rule one way while the Builder words it another teaches an
+    // administrator a sentence they will never see again.
+    expect(experience).toContain(`"${MANUAL_UPLOAD_SENTENCE}"`);
+  });
+
+  it('is rendered from this module by every surface that states it', () => {
+    for (const surface of [
+      '../admin/BindingsPanel.tsx',
+      '../admin/BindingForm.tsx',
+      '../admin/BindingEditor.tsx',
+    ]) {
+      const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
+      expect(source, surface).toContain('MANUAL_UPLOAD_SENTENCE');
+      expect(source, surface).not.toContain('Upload-only.');
+    }
   });
 });

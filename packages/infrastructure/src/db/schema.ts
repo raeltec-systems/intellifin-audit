@@ -356,7 +356,8 @@ export const targetSystemRegistration = pgTable(
      */
     check(
       'target_system_registration_actions_present',
-      sql`cardinality(${table.permittedActions}) >= 1`,
+      sql`cardinality(${table.permittedActions}) >= 1
+        AND array_position(${table.permittedActions}, NULL) IS NULL`,
     ),
     check('target_system_registration_digest_format', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
   ],
@@ -470,18 +471,29 @@ export const populationSourceBinding = pgTable(
       sql`${table.status} IN (${sql.raw(quoted(BINDING_STATUS_VOCABULARY))})`,
     ),
     /**
-     * `cardinality`, not `array_length(..., 1)`.
+     * A declared schema is a non-empty list of NAMES, and all three words are enforced.
      *
-     * `array_length` of an empty array is NULL, and a CHECK constraint that evaluates to
-     * NULL PASSES — so the obvious spelling of this rule accepts exactly the row it was
-     * written to refuse. `cardinality` returns 0. The integration suite inserts an empty
-     * array with raw SQL and expects the refusal by name.
+     * `cardinality`, not `array_length(..., 1)`: `array_length` of an empty array is
+     * NULL, and a CHECK that evaluates to NULL PASSES, so the obvious spelling accepts
+     * exactly the row it was written to refuse.
+     *
+     * But cardinality counts ELEMENTS, not names — `ARRAY[NULL]` and `ARRAY['']` both
+     * have cardinality 1 and were both accepted. A NULL element then flows out of the
+     * repository typed `string[]`, and an empty name is a field nothing can ever match.
+     * `array_position(x, NULL) IS NULL` is the NULL test that works: `NULL <> ALL(x)`
+     * returns NULL, which passes, one operator along from the same trap.
      */
-    check('population_source_binding_schema_present', sql`cardinality(${table.declaredSchema}) >= 1`),
+    check(
+      'population_source_binding_schema_present',
+      sql`cardinality(${table.declaredSchema}) >= 1
+        AND array_position(${table.declaredSchema}, NULL) IS NULL
+        AND '' <> ALL (${table.declaredSchema})`,
+    ),
     /** FR-41, at the one layer nothing can route around: no mask over an undeclared field. */
     check(
       'population_source_binding_sensitive_fields_declared',
-      sql`${table.sensitiveFields} <@ ${table.declaredSchema}`,
+      sql`${table.sensitiveFields} <@ ${table.declaredSchema}
+        AND array_position(${table.sensitiveFields}, NULL) IS NULL`,
     ),
     /**
      * A binding names somewhere, or it is a manual upload that names nowhere.
