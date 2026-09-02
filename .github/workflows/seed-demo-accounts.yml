@@ -62,9 +62,16 @@ jobs:
       - name: Create the two accounts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          # Not read by the seed script, which needs only a valid origin to construct
-          # Better Auth. Nothing here signs in and the host is never resolved.
-          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          # Generated per run, NOT the deployment's real secret, and that is safe: this
+          # secret signs session cookies and plays no part in how a password is stored.
+          # Proven rather than assumed — an account seeded under one secret signs in
+          # against an application running a different one (verified end to end before
+          # this was written). The first version of this workflow read
+          # `secrets.BETTER_AUTH_SECRET`, which does not exist in this repository, so
+          # `seed-identity` refused in two seconds with "BETTER_AUTH_SECRET is required".
+          BETTER_AUTH_SECRET: ${{ github.run_id }}-seeding-only-not-the-deployment-secret
+          # Only needs to be a valid https origin. Nothing here signs in, and the host
+          # is never resolved.
           BETTER_AUTH_URL: https://seed.invalid
         run: |
           set -euo pipefail
