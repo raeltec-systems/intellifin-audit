@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -22,8 +22,20 @@ const FIXTURES = join(REPO_ROOT, 'fixtures', 'northstar');
 
 export const SYNTHETIC_MARKER = 'SYNTHETIC-NORTHSTAR-FIXTURE';
 
-/** The folders whose every file is a fixture. `generate.py` and the README are not. */
-const FIXTURE_DIRS = ['datasets', 'expectations', 'generated'] as const;
+/**
+ * Files at the fixture root that are TOOLING, not fixtures. Everything else under
+ * `fixtures/northstar/` is a fixture and is checked.
+ *
+ * An allowlist of exclusions, never an allowlist of folders. It was
+ * `['datasets', 'expectations', 'generated']`, and a fourth folder added later was
+ * invisible: planting `fixtures/northstar/samples/` with a real bank domain, an email
+ * address and an account-shaped number, and no marker, left all 98 cases green. That is
+ * the same shape as "a glob that cannot match is a promise of coverage that does not
+ * exist" — a rule that names what it checks cannot notice what it was never told about.
+ * NFR-13 says no production or personal data anywhere in the fixtures, so the walk
+ * starts at the root and subtracts.
+ */
+const NOT_FIXTURES = new Set(['generate.py', 'README.md']);
 
 function walk(directory: string): readonly string[] {
   const found: string[] = [];
@@ -43,15 +55,25 @@ function walk(directory: string): readonly string[] {
   return found;
 }
 
-const FILES = FIXTURE_DIRS.flatMap((directory) => walk(join(FIXTURES, directory)));
+const FILES = walk(FIXTURES).filter((file) => !NOT_FIXTURES.has(basename(file)));
+
+/** The top-level folders actually present, derived rather than declared. */
+const FIXTURE_DIRS = [
+  ...new Set(
+    FILES.map((file) => relative(FIXTURES, file).split(sep)[0] ?? '').filter(
+      (segment) => segment !== '' && !NOT_FIXTURES.has(segment),
+    ),
+  ),
+].sort();
 
 describe('the fixture walk', () => {
   it('found files in every fixture folder', () => {
     // Vacuous coverage is the failure mode this guards. A directory renamed or a glob that
     // cannot match would otherwise leave every assertion below unexecuted and green.
-    for (const directory of FIXTURE_DIRS) {
-      const inside = FILES.filter((file) => file.startsWith(join(FIXTURES, directory)));
-      expect(inside.length, directory).toBeGreaterThan(0);
+    // The three folders that must exist. Any OTHER folder added under the fixture root
+    // is walked too, without anybody remembering to list it here.
+    for (const directory of ['datasets', 'expectations', 'generated']) {
+      expect(FIXTURE_DIRS, `fixtures/northstar/${directory} is missing`).toContain(directory);
     }
     expect(FILES.length).toBeGreaterThanOrEqual(20);
   });

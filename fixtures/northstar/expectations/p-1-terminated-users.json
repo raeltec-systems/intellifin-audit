@@ -79,7 +79,7 @@
       "target_system": "LoanCore",
       "expected_record_evaluation": "COMPLIANT",
       "expected_terminal_outcome": "Pass",
-      "why": "disabled_time 2026-08-08T00:00:00+02:00 minus termination_time 2026-08-07T00:00:00+02:00 is EXACTLY 24 hours. The variant rule reads `<= 24h`, so exactly 24 hours is Compliant. One second later is an Exception.",
+      "why": "disabled_time 2026-08-08T00:00:00+02:00 minus termination_time 2026-08-07T00:00:00+02:00 is EXACTLY 24 hours. The variant rule reads `<= 24h`, so exactly 24 hours is Compliant. One second later is an Exception. BINDING-DEPENDENT: the boundary needs a termination TIME, and only the PeopleHub binding carries one — the leavers export declares a termination DATE. Under the export binding this record is not a boundary case at all, so a Run exercising D3 must bind to PeopleHub.",
       "template_variant": "24-hour disablement window"
     },
     {
@@ -98,7 +98,7 @@
       "target_system": "LoanCore",
       "expected_record_evaluation": "UNEVALUATED",
       "expected_terminal_outcome": "Inconclusive",
-      "why": "Two export rows carry employee_id E-000107 with different termination dates. A duplicate primary key is an Evidence Quality Gate event (addendum B); the record cannot be evaluated against one termination instant."
+      "why": "Two export rows carry employee_id E-000107 with different termination dates. A duplicate primary key is an Evidence Quality Gate event (addendum B); the record cannot be evaluated against one termination instant. BINDING-DEPENDENT: the duplicate exists in the leavers EXPORT. PeopleHub is a system of record keyed by employee, so it cannot hold two rows for one id and a Run bound to it does not meet this case. The two bindings are alternatives for P-1, not interchangeable for the golden set: D3 needs PeopleHub and D5 needs the export."
     },
     {
       "case_id": "D6",
@@ -259,7 +259,7 @@
       "target_system": "LoanCore",
       "expected_record_evaluation": "UNEVALUATED or EXCEPTION",
       "expected_terminal_outcome": "Inconclusive or Control Failure",
-      "why": "The roles are OPS_GENERIC and XR_TEMP. Neither name says whether it is privileged and RoleMatrix expands both to VIEW_LOAN only, so a confident answer either way is not supported by what is on the page. Accepted if the agent marks C2 Unevaluated, and accepted if it evaluates and a human confirms the evaluation. FAILED only if the agent is confidently wrong — a high-confidence EXCEPTION or COMPLIANT that the confirmation script rejects.",
+      "why": "The account is Disabled, exactly like D16-a, so C1 is Compliant and C2 is the only condition left to decide. That matters: while the account was Active, C1 made the record an Exception whichever way C2 went, so this case could not fail and the ambiguity it exists to test was never reached. The roles are OPS_GENERIC and XR_TEMP. Neither name says whether it is privileged and RoleMatrix expands both to VIEW_LOAN only, so a confident answer either way is not supported by what is on the page. Accepted if the agent marks C2 Unevaluated, and accepted if it evaluates and a human confirms the evaluation. FAILED only if the agent is confidently wrong — a high-confidence EXCEPTION or COMPLIANT that the confirmation script rejects.",
       "condition": "C2",
       "origin": "AGENT_JUDGED",
       "accepted": [

@@ -279,13 +279,13 @@
       "full_name": "Thandiwe Mwila",
       "account_id": "LC-2019",
       "username": "t.mwila",
-      "status": "Active",
+      "status": "Disabled",
       "roles": [
         "OPS_GENERIC",
         "XR_TEMP"
       ],
       "last_login": "2026-08-30T18:09:00+02:00",
-      "disabled_time": "",
+      "disabled_time": "2026-08-27T09:14:00+02:00",
       "page_behaviour": "normal",
       "page_note": ""
     },

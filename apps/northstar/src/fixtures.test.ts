@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { ARTIFACTS } from './files.js';
+
 import { FIXTURES_ROOT, SYNTHETIC_MARKER, countDeclaration, datasets } from './fixtures.js';
 
 /**
@@ -187,5 +189,17 @@ describe('the leavers export', () => {
   it('carries the duplicate primary key the golden dataset requires', () => {
     const ids = datasets.leavers().rows.map((row) => row.employee_id);
     expect(ids.length).toBeGreaterThan(new Set(ids).size);
+  });
+});
+
+describe('the published artifact map', () => {
+  it('keys every artifact by the file it serves', () => {
+    // `ARTIFACTS` stores a `file` beside a key that must equal it. Nothing asserted
+    // that, so a copy-paste divergence would serve one artifact's bytes under another
+    // artifact's name — with a 200 and a cover sheet that does not match, which is the
+    // one failure a Gate would report as tampering.
+    for (const [key, artifact] of ARTIFACTS) {
+      expect(artifact.file, `ARTIFACTS key ${key}`).toBe(key);
+    }
   });
 });
