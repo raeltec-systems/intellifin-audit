@@ -51,7 +51,16 @@ export async function runMigrations(databaseUrl: string): Promise<number> {
   }
 }
 
-const isEntryPoint = process.argv[1] === fileURLToPath(import.meta.url);
+/**
+ * `import.meta.main`, never `process.argv[1] === fileURLToPath(import.meta.url)`.
+ *
+ * Those two are not the same test. `import.meta.url` is the RESOLVED path; `argv[1]` is
+ * the path as invoked. Run through a symlink — which is exactly what pnpm's
+ * `node_modules` is, and what a `--prod deploy` tree gives you — they differ, the guard
+ * is false, and the module loads and does NOTHING while exiting 0. For a release
+ * migrator that is a deploy that reports success against an unmigrated database.
+ */
+const isEntryPoint = import.meta.main;
 
 if (isEntryPoint) {
   const databaseUrl = process.env['DATABASE_URL'];

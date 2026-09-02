@@ -1,5 +1,4 @@
 import { hostname } from 'node:os';
-import { fileURLToPath } from 'node:url';
 
 import { createDb, createSqlClient } from '../db/client.js';
 import { assertPostgres18, assertSchemaSupported } from '../db/compat.js';
@@ -113,6 +112,15 @@ export async function probeOrigins(
       // recorded in any more detail than "unreachable".
     } finally {
       clearTimeout(timer);
+      // Abort AFTER the answer, always.
+      //
+      // `fetch` resolves as soon as the headers arrive; the body is a stream nobody
+      // here reads, and an unread body holds the socket open. So the timeout bounded
+      // the fetch and not the PROCESS: a target that answers and then holds its body
+      // kept the sweep alive for as long as it cared to — measured at 105 seconds past
+      // "Probe sweep complete", and unbounded against a server that never closes. The
+      // abort releases it. It is a no-op on a request that already finished.
+      controller.abort();
     }
   }
   return 'unreachable';
@@ -135,7 +143,8 @@ export async function runProbeSweep(
   const observedBy = dependencies.observedBy ?? hostname();
   const now = dependencies.now ?? ((): Date => new Date());
 
-  const registrations = await new DrizzleRegistrationRepository(db).listRegistrations();
+  // The job's read, not the surface's: active only, unpaged. See the repository.
+  const registrations = await new DrizzleRegistrationRepository(db).listActiveProbeTargets();
   const outcomes: ProbeOutcome[] = [];
   let reachable = 0;
   let unreachable = 0;
@@ -144,8 +153,6 @@ export async function runProbeSweep(
   for (const registration of registrations) {
     // A retired registration is not probed. Retirement is the control that stops a system
     // being used, and a retired row whose connectivity kept refreshing would read as live.
-    if (registration.status !== 'active') continue;
-
     const state = await probeOrigins(registration.allowedOrigins, fetcher, timeoutMs);
     if (state === 'no-probeable-origin') {
       // A desktop system has an application identity and no origin. There is nothing to
@@ -186,7 +193,16 @@ function log(level: 'info' | 'error', message: string, fields: Record<string, un
   else process.stdout.write(`${line}\n`);
 }
 
-const isEntryPoint = process.argv[1] === fileURLToPath(import.meta.url);
+/**
+ * `import.meta.main`, never `process.argv[1] === fileURLToPath(import.meta.url)`.
+ *
+ * Those two are not the same test. `import.meta.url` is the RESOLVED path; `argv[1]` is
+ * the path as invoked. Run through a symlink — which is exactly what pnpm's
+ * `node_modules` is, and what a `--prod deploy` tree gives you — they differ, the guard
+ * is false, and the module loads and does NOTHING while exiting 0. For a release
+ * migrator that is a deploy that reports success against an unmigrated database.
+ */
+const isEntryPoint = import.meta.main;
 
 if (isEntryPoint) {
   const databaseUrl = process.env['DATABASE_URL'];

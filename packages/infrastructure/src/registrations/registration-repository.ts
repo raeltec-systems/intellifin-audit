@@ -128,6 +128,41 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
     private readonly limit: number = REGISTRATION_LIST_LIMIT,
   ) {}
 
+  /**
+   * Every ACTIVE registration, unpaged, with only what a probe needs.
+   *
+   * NOT `listRegistrations`. That is the surface's read: it is capped at
+   * `REGISTRATION_LIST_LIMIT` and it includes retired rows, because a person looking at
+   * a page wants a page and wants to see what was retired. A sweep that borrowed it
+   * inherited both. With 201 retired registrations ahead of them alphabetically, every
+   * live system fell off the end of the page — the sweep probed nothing, exited 0, and
+   * every one of them went on saying "Never probed" for ever.
+   *
+   * A background job and a screen want different reads. This is the job's.
+   */
+  async listActiveProbeTargets(): Promise<
+    readonly {
+      readonly registrationId: string;
+      readonly displayName: string;
+      readonly allowedOrigins: readonly string[];
+    }[]
+  > {
+    const rows = await this.db
+      .select({
+        registrationId: targetSystemRegistration.registrationId,
+        displayName: targetSystemRegistration.displayName,
+        allowedOrigins: targetSystemRegistration.allowedOrigins,
+      })
+      .from(targetSystemRegistration)
+      .where(eq(targetSystemRegistration.status, 'active'))
+      .orderBy(asc(targetSystemRegistration.registrationId));
+    return rows.map((row) => ({
+      registrationId: row.registrationId,
+      displayName: row.displayName,
+      allowedOrigins: [...row.allowedOrigins],
+    }));
+  }
+
   async listRegistrations(): Promise<readonly TargetSystemRegistration[]> {
     const rows = await this.db
       .select({

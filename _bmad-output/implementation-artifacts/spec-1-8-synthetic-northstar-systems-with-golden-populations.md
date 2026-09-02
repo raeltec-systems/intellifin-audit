@@ -2,10 +2,10 @@
 title: 'Story 1.8: Synthetic Northstar systems seeded with golden populations'
 type: 'feature'
 created: '2026-09-02'
-status: 'planned'
+status: 'done'
 baseline_revision: '0ee0bc1'
 baseline_commit: '0ee0bc1'
-review_loop_iteration: 0
+review_loop_iteration: 1
 followup_review_recommended: false
 context:
   - '{project-root}/AGENTS.md'
@@ -97,6 +97,75 @@ deferred: []
 ## Spec Change Log
 
 ## Review Triage Log
+
+Two review passes: the synthetic systems and their fixtures, and the probe, the seeding
+path and the boundaries. **5 BLOCKER, 9 SHOULD, 9 CONSIDER.**
+
+### Blockers
+
+1. **The entry-point guard was disarmed by a symlink — including the RELEASE MIGRATOR.**
+   `process.argv[1] === fileURLToPath(import.meta.url)` compares the path as INVOKED with
+   the path as RESOLVED. Through a symlink they differ, and pnpm's `node_modules` is
+   symlinks, as is any `--prod deploy` tree: the module loads, does nothing, and exits 0.
+   For `db/migrate.ts` that is a release reporting success against an unmigrated database,
+   after which every process refuses to start on a schema range it does not have. Both
+   entry points use `import.meta.main` now, and `entry-point.test.ts` runs a real file
+   through a real symlink rather than asserting against a mock.
+
+2. **The probe sweep read the surface's paged list.** Capped at 200 and including retired
+   rows — right for a screen, wrong for a job. With enough retired registrations ahead of
+   them, every live system fell off the end: the sweep probed nothing, exited 0, and the
+   surface went on saying "Never probed". The sweep has its own read now, active-only and
+   unpaged.
+
+3. **The probe never released the response body**, so the timeout bounded the fetch and
+   not the process: a target that answers and then holds its body kept the sweep alive
+   105 seconds past its own completion log, and indefinitely against a server that never
+   closes. `controller.abort()` in the `finally`.
+
+4. **The synthetic-marker test walked three hard-coded folders**, so NFR-13 was enforced
+   over a list rather than over the fixtures. A planted fourth folder with a real bank
+   domain, an email address and an account-shaped number left all 98 cases green.
+
+5. **Addendum §D's ambiguous-role case could not fail** — the account was Active, so C1
+   made the record an Exception whichever way C2 went, and C2 is the case.
+
+### The SHOULDs taken
+
+- `telemetry.info(message, fields?: unknown)` let any caller write an undocumented field
+  that `sanitizeTelemetryFields` then dropped SILENTLY. It had already happened twice. The
+  parameter is typed now: the allowlist is the runtime guard, the type is the compile-time
+  one.
+- Re-running the seed script with a different base URL printed "seeded … against <the new
+  URL>" while every row still named the old one. It now says exactly which origin the row
+  has and why it was left alone — an origin is digest-bearing, so repointing it mints a
+  platform-authored draft for every Procedure that froze it, and that is a decision, not a
+  side effect of running a script twice.
+- The two P-1 bindings are alternatives, not interchangeable: the 24-hour boundary needs a
+  termination TIME that only PeopleHub carries, and the duplicate-key case exists only in
+  the export. Both expectations say so.
+- P-2, P-3 and P-4's stale-population case described a reconciliation that reconciles
+  exactly, without the "NAMED, NOT SEEDED AS DATA" label its siblings carry.
+- `ARTIFACTS` stored a `file` beside a key that must equal it, asserted by nothing.
+
+### Deferred, with reasons
+
+- **No scheduled sweep.** `.railway/railway.ts` schedules nothing and `pnpm --filter
+  @intellifin/worker probe` does not run inside the worker image. Both need a Railway
+  resource, which is the user's call, and the sweep has no consumer until a surface shows
+  staleness (Story 9.2, diagnostics). The entry point exists and is proven end to end.
+- **A transitive reach into a `dist` barrel is invisible to dependency-cruiser.** `dist`
+  is in `doNotFollow`, so a module inside it is rule-checked but not traversed. Every
+  direct spelling fires, including the `dist` path itself; closing the transitive case
+  means following built output, which is a boundary-tooling decision of its own.
+- **`defaultFetcher` is unexported**, so the test that describes it asserts a fake. Its
+  real behaviour was verified by observation during review — GET only, no credentials,
+  redirect not followed, loop safe. Exporting it for a test would widen the module's
+  surface to make a claim the review already checked.
+
+### Rejected
+
+- Nothing.
 
 ## Design Notes
 

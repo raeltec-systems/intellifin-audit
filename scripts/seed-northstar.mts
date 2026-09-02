@@ -190,9 +190,17 @@ async function main(): Promise<void> {
     };
     const bindingDeps = { roles, unitOfWork: new PostgresSourcesUnitOfWork(db), ids };
 
-    const existingSystems = new Set(
+    // Keyed by display name, and the ORIGINS are kept so a re-run can say when the row
+    // does not point where this run was told to point. Re-running with a different
+    // NORTHSTAR_BASE_URL used to print "seeded ... against <the new URL>" while every row
+    // still named the old one — an operator would have believed a configuration that was
+    // not there. The script does NOT silently repoint them: an origin is digest-bearing,
+    // so changing it is a real change that mints a platform-authored draft for every
+    // Procedure that froze the old digest, and that is a decision, not a side effect of
+    // running a seed script twice.
+    const existingSystems = new Map(
       (await new DrizzleRegistrationRepository(db).listRegistrations()).map(
-        (registration) => registration.displayName,
+        (registration) => [registration.displayName, registration.allowedOrigins] as const,
       ),
     );
     const existingBindings = new Set(
@@ -203,8 +211,20 @@ async function main(): Promise<void> {
     let bound = 0;
 
     for (const system of catalogue.target_systems) {
-      if (existingSystems.has(system.display_name)) {
-        say(`target system "${system.display_name}" already registered; leaving it alone`);
+      const already = existingSystems.get(system.display_name);
+      if (already !== undefined) {
+        const wanted = [origin(base, system.origin_path)];
+        const same =
+          already.length === wanted.length && wanted.every((value) => already.includes(value));
+        say(
+          same
+            ? `target system "${system.display_name}" already registered; leaving it alone`
+            : `target system "${system.display_name}" already registered, but it points at ` +
+                `${already.join(', ') || '(no origin)'} and this run wanted ` +
+                `${wanted.join(', ')}. Left alone: changing an origin is a ` +
+                `digest change and mints a draft for every Procedure that froze it. Change it ` +
+                `on the Administration surface, or retire this one and register a new system.`,
+        );
         continue;
       }
       if (!isTargetSystemKind(system.kind)) fail(`${system.id}: "${system.kind}" is not a system kind`);

@@ -37,10 +37,21 @@ export const STATIC_PINO_REDACTION_PATHS = [
 export type TelemetryLogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 
 export interface Telemetry {
-  info(message: TelemetryMessage, fields?: unknown): void;
-  warn(message: TelemetryMessage, fields?: unknown): void;
-  error(message: TelemetryMessage, fields?: unknown): void;
-  captureError(message: TelemetryMessage, error: unknown, fields?: unknown): void;
+/**
+ * `TelemetryFields`, never `unknown`.
+ *
+ * `sanitizeTelemetryFields` drops a key that is not in `TELEMETRY_FIELD_KEYS` SILENTLY —
+ * which is the right runtime behaviour, because a field nobody documented must not reach
+ * a log. But with `fields?: unknown` nothing stops the next caller writing one:
+ * `telemetry.info('...', { workerGeneration: 7 })` typechecks, and the line is emitted
+ * with the number gone. That has already happened twice — the probe sweep logged its
+ * completion with every count removed, and the migrator's refusal lost the reason that
+ * said why. The allowlist is the runtime guard; this is the compile-time one.
+ */
+  info(message: TelemetryMessage, fields?: TelemetryFields): void;
+  warn(message: TelemetryMessage, fields?: TelemetryFields): void;
+  error(message: TelemetryMessage, fields?: TelemetryFields): void;
+  captureError(message: TelemetryMessage, error: unknown, fields?: TelemetryFields): void;
   configureLevel(level: TelemetryLogLevel): void;
   configureSentry(options: {
     readonly dsn?: string;

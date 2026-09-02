@@ -15,6 +15,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 import { runProbeSweep, type Fetcher } from '@intellifin/infrastructure/probe-runner';
+import { REGISTRATION_LIST_LIMIT } from '@intellifin/infrastructure';
 import {
   registerTargetSystem,
   type CredentialCapability,
@@ -215,4 +216,48 @@ describe.skipIf(!databaseUrl)('the probe sweep against PostgreSQL 18', () => {
     });
     expect(written).toBe(false);
   });
+
+    it('probes a live system sitting behind more retired ones than a page holds', async () => {
+      // The sweep borrowed `listRegistrations`, which is capped at REGISTRATION_LIST_LIMIT
+      // and includes retired rows because a person looking at a page wants both. With
+      // enough retired registrations ahead of them, every live system fell off the end:
+      // the sweep probed nothing, exited 0, and the surface went on saying "Never probed".
+      //
+      // The retired rows are inserted with raw SQL rather than through the command: this
+      // test is about the READ, and 205 audited creates would be a slow way to say so.
+      const retiredPrefix = `${prefix}retired-`;
+      const values = Array.from({ length: REGISTRATION_LIST_LIMIT + 5 }, (_, index) => index);
+      for (const index of values) {
+        await sql`
+          INSERT INTO target_system_registration
+            (registration_id, display_name, kind, allowed_origins, credential_ref,
+             permitted_actions, digest, status)
+          VALUES (gen_random_uuid(),
+                  ${`${retiredPrefix}${String(index).padStart(4, '0')}`},
+                  'web', ARRAY[${DOWN}]::text[], 'cred://synthetic/x',
+                  ARRAY['navigate']::text[], ${'a'.repeat(64)}, 'retired')
+        `;
+      }
+
+      // Named so it sorts AFTER every retired row, which is where the page ended.
+      const live = await register({
+        displayName: `${prefix}zzz-live`,
+        allowedOrigins: [UP],
+      });
+
+      const result = await runProbeSweep(db, { fetcher, observedBy: 'integration-host' });
+
+      expect((await probeRow(live))?.state).toBe('reachable');
+      // And not one retired row was probed: retirement is the control that stops a system
+      // being used, and a retired row whose connectivity kept refreshing reads as live.
+      expect(result.probed).toBeGreaterThan(0);
+      const retiredRows = await sql<{ count: string }[]>`
+        SELECT count(*)::text AS count
+        FROM target_system_probe p
+        JOIN target_system_registration r ON r.registration_id = p.registration_id
+        WHERE r.display_name LIKE ${`${retiredPrefix}%`}
+      `;
+      expect(retiredRows[0]?.count).toBe('0');
+    });
+
 });
