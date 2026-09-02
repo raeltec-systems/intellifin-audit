@@ -40,6 +40,26 @@ export const configSchema = z
     SENTRY_DSN: optionalUrl,
     SENTRY_ENVIRONMENT: z.string().min(1).max(64).default('development'),
     SENTRY_TRACES_SAMPLE_RATE: sampleRate,
+    /**
+     * Better Auth signs session cookies with this. It is a secret: never logged,
+     * never echoed in an error, and never sent to telemetry.
+     *
+     * Optional HERE and required by `apps/web`. The worker has no identity surface,
+     * so demanding an authentication secret from it would make the worker refuse to
+     * start over a value it will never use. The web composition root checks for it.
+     */
+    BETTER_AUTH_SECRET: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(32, 'must be at least 32 characters').optional(),
+    ),
+    /** The public origin the browser reaches. Web-only, for the same reason. */
+    BETTER_AUTH_URL: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z
+        .string()
+        .regex(/^https?:\/\//, 'must start with http:// or https://')
+        .optional(),
+    ),
   });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -69,6 +89,8 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     SENTRY_DSN: env['SENTRY_DSN'],
     SENTRY_ENVIRONMENT: env['SENTRY_ENVIRONMENT'],
     SENTRY_TRACES_SAMPLE_RATE: env['SENTRY_TRACES_SAMPLE_RATE'],
+    BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
+    BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
   });
 
   if (!parsed.success) {

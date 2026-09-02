@@ -16,6 +16,9 @@ export const TELEMETRY_MESSAGES = [
   'Heartbeat loop started',
   'Fatal worker error',
   'Captured failure',
+  'Sign-in recorded',
+  'Sign-in refused',
+  'Authorization denied',
 ] as const;
 export type TelemetryMessage = (typeof TELEMETRY_MESSAGES)[number];
 

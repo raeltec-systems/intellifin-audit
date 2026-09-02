@@ -13,3 +13,4 @@ export const DOMAIN_LAYER = 'domain' as const;
 export type LayerName = 'domain' | 'application' | 'infrastructure';
 
 export * from './audit-event.js';
+export * from './identity/index.js';

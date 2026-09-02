@@ -35,7 +35,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
   it('finds an applied schema version', async () => {
     const version = await readSchemaVersion(sql);
     expect(version).not.toBeNull();
-    expect(version).toBeGreaterThanOrEqual(2);
+    expect(version).toBeGreaterThanOrEqual(3);
   });
 
   it('accepts a range that contains the applied version', async () => {
@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-2 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-3 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -70,7 +70,12 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     expect(names).toEqual([
       'audit_event_heads',
       'audit_events',
+      'auth_account',
+      'auth_session',
+      'auth_user',
+      'auth_verification',
       'schema_meta',
+      'user_role',
       'worker_heartbeat',
     ]);
   });

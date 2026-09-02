@@ -34,6 +34,7 @@
     "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@sentry/node": "10.73.0",
+    "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
     "pino": "10.3.1",
     "postgres": "3.4.9",

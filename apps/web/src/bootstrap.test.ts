@@ -6,7 +6,7 @@ import {
   UnsupportedSchemaError,
 } from '@intellifin/infrastructure';
 
-import { getRuntime, resetRuntimeForTests } from './bootstrap.js';
+import { getRuntime, resetRuntimeForTests } from './bootstrap';
 
 // `vi.mock` is hoisted above every import, so the doubles it closes over must be
 // hoisted with it -- a plain `const` above would still be in its temporal dead zone.
@@ -55,6 +55,8 @@ function config(overrides: Record<string, unknown> = {}) {
   return {
     DATABASE_URL: 'postgres://u:p@h:5432/d',
     SERVICE_NAME: 'web',
+    BETTER_AUTH_SECRET: 'x'.repeat(32),
+    BETTER_AUTH_URL: 'http://localhost:3000',
     ...overrides,
   };
 }
@@ -93,6 +95,22 @@ describe('web bootstrap', () => {
     await expect(getRuntime()).rejects.toBeInstanceOf(UnsupportedSchemaError);
     await expect(getRuntime()).rejects.toBeInstanceOf(UnsupportedSchemaError);
     expect(createSqlClient).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses at boot when the web process has no Better Auth secret', async () => {
+    loadConfig.mockReturnValue(config({ BETTER_AUTH_SECRET: undefined }));
+    createSqlClient.mockReturnValue(fakeSql());
+
+    await expect(getRuntime()).rejects.toThrow(/BETTER_AUTH_SECRET/);
+    expect(createSqlClient).not.toHaveBeenCalled();
+  });
+
+  it('refuses at boot when the web process has no Better Auth base URL', async () => {
+    loadConfig.mockReturnValue(config({ BETTER_AUTH_URL: undefined }));
+    createSqlClient.mockReturnValue(fakeSql());
+
+    await expect(getRuntime()).rejects.toThrow(/BETTER_AUTH_URL/);
+    expect(createSqlClient).not.toHaveBeenCalled();
   });
 
   it('refuses when SERVICE_NAME is not web', async () => {

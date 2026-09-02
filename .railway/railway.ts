@@ -46,6 +46,12 @@ export default defineRailway(() => {
       SERVICE_NAME: 'web',
       NODE_ENV: 'production',
       PORT: '3000',
+      // Better Auth signs the session cookie with this. It is a secret, so it is set
+      // once in the Railway dashboard and preserved here rather than written from
+      // code -- the same rule POSTGRES_PASSWORD follows.
+      BETTER_AUTH_SECRET: preserve(),
+      // The public origin a browser reaches, resolved by Railway at deploy time.
+      BETTER_AUTH_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
     },
   });
 

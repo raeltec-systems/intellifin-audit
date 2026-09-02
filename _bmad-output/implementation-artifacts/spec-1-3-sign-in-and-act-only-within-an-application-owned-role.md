@@ -2,7 +2,7 @@
 title: 'Story 1.3: Sign in and act only within an application-owned role'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: 'da944faf17c7c18f4d5e35d0f273b2b07d98fde2'
 baseline_commit: 'da944faf17c7c18f4d5e35d0f273b2b07d98fde2'
 review_loop_iteration: 0

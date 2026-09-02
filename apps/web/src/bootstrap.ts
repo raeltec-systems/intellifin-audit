@@ -5,11 +5,18 @@ import {
   SUPPORTED_SCHEMA_RANGE,
   assertPostgres18,
   assertSchemaSupported,
+  createAuth,
+  createDb,
   createSqlClient,
   loadConfig,
   type AppConfig,
+  type Auth,
+  type Database,
   type Sql,
+  type Telemetry,
 } from '@intellifin/infrastructure';
+
+import { telemetry } from './telemetry';
 
 /**
  * The web composition root (AD-1, AD-11).
@@ -23,6 +30,16 @@ import {
 export interface WebRuntime {
   readonly config: AppConfig;
   readonly sql: Sql;
+  /**
+   * The Drizzle handle over the SAME pool as `sql`, built on first use. Route
+   * handlers append audit events through it; opening a second pool per route would
+   * multiply connections and put the event outside the transaction that produced it.
+   */
+  readonly db: Database;
+  /** The shared telemetry facade, already configured by `instrumentation.ts`. */
+  readonly telemetry: Telemetry;
+  /** Better Auth, built on first use. Identity and session only — never roles (AD-7). */
+  readonly auth: Auth;
   readonly schemaVersion: number;
   readonly postgresMajor: number;
   /** The range this build accepts, for logging. Fixed by the build, never by the environment. */
@@ -48,6 +65,27 @@ export function isPermanentRefusal(error: unknown): boolean {
   );
 }
 
+/**
+ * `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are optional in the shared schema
+ * because the worker has no identity surface. This process does, and a web image
+ * without them can serve a sign-in page that cannot sign anybody in — so it refuses
+ * to start instead, at boot, with the offending keys named and no value echoed.
+ */
+function requireAuthConfig(config: AppConfig): { secret: string; baseUrl: string } {
+  const issues: string[] = [];
+  if (!config.BETTER_AUTH_SECRET) {
+    issues.push('BETTER_AUTH_SECRET: is required for the web process');
+  }
+  if (!config.BETTER_AUTH_URL) {
+    issues.push('BETTER_AUTH_URL: is required for the web process');
+  }
+  if (issues.length > 0) throw new ConfigError(issues);
+  return {
+    secret: config.BETTER_AUTH_SECRET as string,
+    baseUrl: config.BETTER_AUTH_URL as string,
+  };
+}
+
 async function start(): Promise<WebRuntime> {
   const config = loadConfig();
 
@@ -59,14 +97,31 @@ async function start(): Promise<WebRuntime> {
     ]);
   }
 
+  const authConfig = requireAuthConfig(config);
   const sql = createSqlClient(config.DATABASE_URL);
 
   try {
     const postgresMajor = await assertPostgres18(sql);
     const schemaVersion = await assertSchemaSupported(sql);
+    // Both are built on first use and then kept. Boot is a database check; a Drizzle
+    // handle and a Better Auth instance are only needed once a request arrives, and
+    // constructing them here would make the startup guards depend on two more things
+    // that cannot fail in a way boot could report.
+    let db: Database | undefined;
+    let auth: Auth | undefined;
+    const database = (): Database => (db ??= createDb(sql));
+
     return {
       config,
       sql,
+      get db(): Database {
+        return database();
+      },
+      telemetry,
+      get auth(): Auth {
+        auth ??= createAuth(database(), authConfig);
+        return auth;
+      },
       schemaVersion,
       postgresMajor,
       supportedSchemaRange: SUPPORTED_SCHEMA_RANGE,

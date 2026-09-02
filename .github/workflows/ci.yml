@@ -154,6 +154,8 @@ jobs:
           docker run -d --name web-smoke -p 3000:3000 \
             -e DATABASE_URL='postgres://x:y@127.0.0.1:1/z' \
             -e SERVICE_NAME=web \
+            -e BETTER_AUTH_SECRET='ci-smoke-secret-at-least-32-characters-long' \
+            -e BETTER_AUTH_URL='http://127.0.0.1:3000' \
             intellifin-web:ci
 
           code=000
