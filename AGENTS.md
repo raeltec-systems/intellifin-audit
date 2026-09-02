@@ -24,10 +24,12 @@ Planning workspace for IntelliFin Audit, an audit-execution platform where an Au
 
 ## Running and verifying
 
+- Use Node 24.20.0 and pnpm 11.25.0: `nvm use` (reads `.nvmrc`), then `corepack enable`. `engine-strict` is on, so another Node major fails the install.
+- Monorepo, from the repository root: `pnpm install`, `pnpm -r typecheck`, `pnpm boundaries` (AD-1 dependency-cruiser check), `pnpm test` (Vitest unit tests).
+- Needs a database: `pnpm db:migrate` and `pnpm test:integration` both read `DATABASE_URL` and require PostgreSQL 18. `pnpm db:generate` writes a new Drizzle migration.
 - Run BMAD scripts with `uv run <script>`, never plain `python`; they declare their own dependencies in PEP 723 headers.
 - Skill tests: `uv run --with pytest --with ruamel.yaml pytest .claude/skills/*/scripts/tests`.
 - Lint a spine with `uv run .claude/skills/bmad-architecture/scripts/lint_spine.py --workspace "<architecture folder>"`; passing the file path fails.
-- TODO after bootstrap: record the monorepo commands (`pnpm install`, per-package `tsc --noEmit`, Vitest, Playwright) once `package.json` exists; do not guess them before then.
 
 ## Conventions that differ from defaults
 

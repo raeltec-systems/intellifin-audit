@@ -1,0 +1,68 @@
+name: Release
+
+# AD-15: this is the ONLY workflow that applies migrations. Web and worker never
+# auto-migrate; each refuses to start against a schema outside its supported range.
+# Order is expand -> migrate -> deploy: migrations are backward compatible with the
+# build currently running, so the old processes keep serving while the new ones roll.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24.20.0'
+  PNPM_VERSION: '11.25.0'
+
+jobs:
+  migrate:
+    name: Apply migrations
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable corepack and pin pnpm
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply Drizzle migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:migrate
+
+  deploy:
+    name: Deploy ${{ matrix.service }}
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      # Deploy one service at a time so a failed web rollout does not race the worker.
+      max-parallel: 1
+      matrix:
+        service: [web, worker]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ matrix.service }}" --ci
