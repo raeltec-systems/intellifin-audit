@@ -34,6 +34,15 @@ import type {
 
 export const MANAGE_USERS_ACTION = 'administration.users.manage' as const;
 
+/**
+ * The role the deployment must never run out of.
+ *
+ * It is the only role that can grant a role, and there is no public sign-up endpoint and
+ * no user deletion. A deployment with zero holders cannot administer itself back into
+ * existence from the interface at all — recovery is a shell and `pnpm seed:identity`.
+ */
+export const IRREPLACEABLE_ROLE = 'poc-administrator' as const satisfies Role;
+
 /** The two event types this module appends. Both are in the `configuration` family. */
 export const USER_CREATED_EVENT = 'configuration.user-created' as const;
 export const ROLE_CHANGED_EVENT = 'configuration.role-changed' as const;
@@ -51,6 +60,17 @@ export const MANAGE_USERS_REFUSALS = {
   USER_REQUIRED: 'Choose a user.',
   UNKNOWN_USER: 'That user no longer exists.',
   DUPLICATE_EMAIL: 'That email address already has an account.',
+  /**
+   * Self-demotion and last-administrator removal are the two ways this surface could
+   * lock the deployment out of itself. There is no sign-up endpoint and no user
+   * deletion, so recovering from either needs shell access to re-run the seed script.
+   */
+  SELF_ROLE_CHANGE:
+    'You cannot change your own role. Ask another PoC Administrator to change it.',
+  LAST_ADMINISTRATOR:
+    'This would leave no PoC Administrator. Give another user that role first.',
+  STALE_ROLE:
+    "That user's role changed since this page was loaded. Reload the page and try again.",
 } as const;
 
 export type ManageUsersOutcome<TDetail> =
@@ -197,6 +217,19 @@ export interface SetUserRoleInput {
   readonly userId: string;
   /** `null` REVOKES the role. The account and its sessions are untouched (AD-7). */
   readonly role: Role | null;
+  /**
+   * The role the caller believes the subject holds — the value the surface rendered.
+   *
+   * It is optimistic concurrency, and it is about the audit event as much as the write.
+   * A stale tab that blind-overwrites produces an event whose `priorRole` is a value the
+   * administrator never saw and never intended to replace, so the chain records a
+   * decision nobody made. When this does not match the value read inside the
+   * transaction, the change is refused and the person is asked to reload.
+   *
+   * `undefined` means the caller did not state an expectation and the check is skipped;
+   * every caller in this application states one.
+   */
+  readonly expectedRole?: Role | null | undefined;
 }
 
 export type SetUserRoleResult = ManageUsersOutcome<{
@@ -230,33 +263,73 @@ export async function setUserRole(
     return refuse(MANAGE_USERS_REFUSALS.ROLE_INVALID);
   }
 
+  // Nobody changes their own role. Not because it is dangerous in itself, but because
+  // the two ways to lock this deployment out of administration are self-demotion and
+  // removing the last administrator, and this is the cheap half of that guard: it needs
+  // no lock, no count and no transaction, because who is asking cannot change under us.
+  if (userId === session.userId) return refuse(MANAGE_USERS_REFUSALS.SELF_ROLE_CHANGE);
+
   const subject = await dependencies.users.findUser(userId);
   if (subject === null) return refuse(MANAGE_USERS_REFUSALS.UNKNOWN_USER);
 
-  return dependencies.unitOfWork.execute(
-    async ({ auditEvents, roles }): Promise<SetUserRoleResult> => {
-      // Read inside the transaction. The prior value the event claims must be the value
-      // the write actually replaced, not one read a moment earlier from another
-      // connection.
-      const priorRole = await roles.findRole(userId);
+  try {
+    return await dependencies.unitOfWork.execute(
+      async ({ auditEvents, roles }): Promise<SetUserRoleResult> => {
+        // FIRST, before any write: lock every holder of the irreplaceable role, in a
+        // deterministic order. Two administrators demoting each other concurrently each
+        // count one remaining holder under READ COMMITTED — each sees its own
+        // uncommitted write and not the other's — and both commit into a locked-out
+        // deployment. Locking first makes the second transaction wait and then count
+        // after the first has committed. Locking BEFORE the write, rather than after,
+        // also keeps the acquisition order the same for every caller, so two of them
+        // queue instead of deadlocking.
+        await roles.lockHolders(IRREPLACEABLE_ROLE);
 
-      if (input.role === null) {
-        await roles.clearRole(userId);
-      } else {
-        await roles.setRole({ userId, role: input.role, assignedBy: session.userId });
-      }
+        // Read inside the transaction. The prior value the event claims must be the value
+        // the write actually replaced, not one read a moment earlier from another
+        // connection.
+        const priorRole = await roles.findRole(userId);
 
-      await auditEvents.append({
-        actor: { type: 'human', id: session.userId },
-        eventType: ROLE_CHANGED_EVENT,
-        source: 'web',
-        outcome: 'success',
-        sessionId: session.sessionId,
-        correlationId,
-        payload: { subjectUserId: userId, priorRole, newRole: input.role },
-      });
+        // The surface rendered a role; if it is no longer that, the administrator is
+        // deciding about a state that no longer exists.
+        if (input.expectedRole !== undefined && priorRole !== input.expectedRole) {
+          throw new CommandRefused(MANAGE_USERS_REFUSALS.STALE_ROLE);
+        }
 
-      return { ok: true, userId, priorRole, newRole: input.role };
-    },
-  );
+        // Setting the role somebody already holds is not a transition. Writing the row
+        // again would append an event claiming a change that did not happen, and the
+        // chain is the record of what changed — a disabled button is not the control.
+        if (priorRole === input.role) {
+          return { ok: true, userId, priorRole, newRole: input.role };
+        }
+
+        if (input.role === null) {
+          await roles.clearRole(userId);
+        } else {
+          await roles.setRole({ userId, role: input.role, assignedBy: session.userId });
+        }
+
+        // Counted AFTER the write, so it is the state this transaction would commit.
+        // Every holder is locked, so no concurrent transaction can remove one behind us.
+        if ((await roles.countHolders(IRREPLACEABLE_ROLE)) === 0) {
+          throw new CommandRefused(MANAGE_USERS_REFUSALS.LAST_ADMINISTRATOR);
+        }
+
+        await auditEvents.append({
+          actor: { type: 'human', id: session.userId },
+          eventType: ROLE_CHANGED_EVENT,
+          source: 'web',
+          outcome: 'success',
+          sessionId: session.sessionId,
+          correlationId,
+          payload: { subjectUserId: userId, priorRole, newRole: input.role },
+        });
+
+        return { ok: true, userId, priorRole, newRole: input.role };
+      },
+    );
+  } catch (error) {
+    if (error instanceof CommandRefused) return refuse(error.refusal);
+    throw error;
+  }
 }

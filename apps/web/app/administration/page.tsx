@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-import { DrizzleUserDirectory } from '@intellifin/infrastructure';
+import { DrizzleUserDirectory, USER_LIST_LIMIT } from '@intellifin/infrastructure';
 
 import { UsersPanel } from '../../src/admin/UsersPanel';
 import { Banner } from '../../src/design/Banner';
@@ -45,7 +45,7 @@ export default async function AdministrationPage(): Promise<React.JSX.Element> {
   }
 
   const runtime = await getRuntime();
-  const users = await new DrizzleUserDirectory(runtime.db).listUsers();
+  const users = await new DrizzleUserDirectory(runtime.db, USER_LIST_LIMIT).listUsers();
 
   return (
     <div className="ls-stack">
@@ -56,7 +56,13 @@ export default async function AdministrationPage(): Promise<React.JSX.Element> {
           platform diagnostics are not part of this release.
         </p>
       </header>
-      <UsersPanel users={users} createUser={createUserAction} setRole={setUserRoleAction} />
+      <UsersPanel
+        users={users}
+        currentUserId={decision.session.userId}
+        limit={USER_LIST_LIMIT}
+        createUser={createUserAction}
+        setRole={setUserRoleAction}
+      />
     </div>
   );
 }

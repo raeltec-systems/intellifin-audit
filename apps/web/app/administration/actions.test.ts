@@ -101,7 +101,7 @@ describe('the administration Server Actions', () => {
     requireServerAction.mockResolvedValue(decision);
 
     await expect(
-      setUserRoleAction({ userId: 'user-2', role: 'poc-administrator' }),
+      setUserRoleAction({ userId: 'user-2', role: 'poc-administrator', expectedRole: 'auditor' }),
     ).resolves.toEqual({ ok: false, reason: decision.allowed ? '' : decision.reason });
 
     expect(requireServerAction).toHaveBeenCalledWith('administration.users.manage');
@@ -117,7 +117,7 @@ describe('the administration Server Actions', () => {
     await expect(
       createUserAction({ email: '', name: '', password: '', role: 'superuser' }),
     ).resolves.toEqual({ ok: false, reason: AUDITOR_DENIED.reason });
-    await expect(setUserRoleAction({ userId: '', role: 'superuser' })).resolves.toEqual({
+    await expect(setUserRoleAction({ userId: '', role: 'superuser', expectedRole: '' })).resolves.toEqual({
       ok: false,
       reason: AUDITOR_DENIED.reason,
     });
@@ -128,7 +128,7 @@ describe('the administration Server Actions', () => {
   it('asks for exactly the administration action, never a weaker one', async () => {
     requireServerAction.mockResolvedValue(AUDITOR_DENIED);
     await createUserAction(VALID_CREATE);
-    await setUserRoleAction({ userId: 'user-2', role: '' });
+    await setUserRoleAction({ userId: 'user-2', role: '', expectedRole: 'auditor' });
     for (const call of requireServerAction.mock.calls) {
       expect(call).toEqual(['administration.users.manage']);
     }
@@ -172,7 +172,7 @@ describe('an authorized administrator', () => {
       newRole: null,
     });
 
-    await expect(setUserRoleAction({ userId: 'user-2', role: '' })).resolves.toEqual({
+    await expect(setUserRoleAction({ userId: 'user-2', role: '', expectedRole: 'auditor' })).resolves.toEqual({
       ok: true,
       message: 'Removed the role. The account and its sessions are unchanged.',
     });
@@ -180,7 +180,7 @@ describe('an authorized administrator', () => {
   });
 
   it('refuses a role outside the vocabulary without calling the command', async () => {
-    await expect(setUserRoleAction({ userId: 'user-2', role: 'superuser' })).resolves.toEqual({
+    await expect(setUserRoleAction({ userId: 'user-2', role: 'superuser', expectedRole: '' })).resolves.toEqual({
       ok: false,
       reason: 'Choose a role.',
     });
@@ -190,7 +190,7 @@ describe('an authorized administrator', () => {
   it('reports a thrown command as a failure that changed nothing, and never echoes it', async () => {
     setUserRole.mockRejectedValue(new Error('relation "user_role" does not exist'));
 
-    const outcome = await setUserRoleAction({ userId: 'user-2', role: 'auditor' });
+    const outcome = await setUserRoleAction({ userId: 'user-2', role: 'auditor', expectedRole: '' });
 
     expect(outcome).toEqual({
       ok: false,

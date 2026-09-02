@@ -1,7 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { ACCOUNTS, AUTH_STATE, PASSWORD, signIn } from './accounts';
+import { createSqlClient } from '@intellifin/infrastructure';
+
+import { ACCOUNTS, AUTH_STATE, PASSWORD, assertThrowawayDatabase, signIn } from './accounts';
 
 /**
  * Managing users through the real interface (FR-2, FR-7, NFR-11).
@@ -23,6 +25,30 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 const stamp = `${Date.now()}`;
 const newUserEmail = `e2e-created-${stamp}@synthetic.invalid`;
 const newUserName = `E2E Created ${stamp}`;
+
+/**
+ * Delete the accounts this file created.
+ *
+ * The surface has no user deletion, by design — removing a role is the revocation and
+ * deleting an account would orphan the audit history that names it. So a run that creates
+ * accounts and stops leaves them behind for every later run, and the database grows one
+ * unusable synthetic account per run per address. The integration suite cleans up after
+ * itself for the same reason; this does it the same way, over the same guard, and leaves
+ * the audit events alone because those are exactly what must survive.
+ */
+test.afterAll(async () => {
+  const databaseUrl = process.env['DATABASE_URL'];
+  if (databaseUrl === undefined || databaseUrl === '') return;
+  assertThrowawayDatabase(databaseUrl);
+
+  const sql = createSqlClient(databaseUrl, { max: 1 });
+  try {
+    await sql`DELETE FROM auth_user WHERE email LIKE ${`e2e-created-${stamp}%`}`;
+    await sql`DELETE FROM auth_user WHERE email LIKE ${`e2e-a11y-${stamp}%`}`;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+});
 
 async function scan(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -125,6 +151,26 @@ test.describe('as a PoC Administrator', () => {
     );
     // The account is still listed, now with no role.
     await expect(row).toContainText('No role');
+  });
+
+  test('cannot change their own role, and the reason is on the page', async ({ page }) => {
+    // The command refuses this — that is the control — but a person must not have to be
+    // refused to find out. Self-demotion and removing the last administrator are the two
+    // ways to lock this deployment out of itself, and recovery is shell access.
+    await page.goto('/administration');
+
+    const ownRow = page.getByRole('row', { name: /administrator@example\.test/ });
+    const ownSelect = ownRow.getByRole('combobox');
+    await expect(ownSelect).toBeDisabled();
+
+    const ownButton = ownRow.getByRole('button', { name: 'Change role' });
+    await expect(ownButton).toHaveAttribute('aria-disabled', 'true');
+    // The reason is reachable, not a tooltip: `aria-disabled` keeps it focusable.
+    const describedBy = await ownButton.getAttribute('aria-describedby');
+    expect(describedBy).not.toBeNull();
+    await expect(page.locator(`#${describedBy as string}`)).toHaveText(
+      'You cannot change your own role. Ask another PoC Administrator to change it.',
+    );
   });
 
   test('the populated surface has no WCAG 2.1 AA violation', async ({ page }) => {

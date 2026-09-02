@@ -19,6 +19,26 @@ export function roleLabel(role: Role | null): string {
   return role === null ? NO_ROLE_LABEL : ROLE_LABELS[role];
 }
 
+/**
+ * The label for a POSTED value — the empty string, or a role name.
+ *
+ * `Object.hasOwn`, not a plain lookup. The value reaching here comes from a `<select>`,
+ * which is to say from request input, and `ROLE_LABELS['constructor']` or
+ * `ROLE_LABELS['toString']` inherits a function from `Object.prototype`: the fallback
+ * would never run and a function would be rendered as a label. This is the fourth time
+ * that class of bug has appeared in this repository, which is why it is a rule in
+ * CLAUDE.md.
+ */
+export function roleLabelOfValue(value: string): string {
+  if (value === '') return NO_ROLE_LABEL;
+  return Object.hasOwn(ROLE_LABELS, value)
+    ? ROLE_LABELS[value as Role]
+    : UNKNOWN_ROLE_LABEL;
+}
+
+/** Shown for a value outside the vocabulary, which the server refuses anyway. */
+export const UNKNOWN_ROLE_LABEL = 'Unrecognized role';
+
 /** What an account with no `user_role` row shows. It is a state, never a default role. */
 export const NO_ROLE_LABEL = 'No role';
 

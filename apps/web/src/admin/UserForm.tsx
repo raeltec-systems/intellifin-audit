@@ -4,8 +4,8 @@ import { useId, useRef, useState, type FormEvent } from 'react';
 
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
-import { ASSIGNABLE_ROLE_OPTIONS, ROLE_LABELS } from './roles';
-import type { AdministrationActionResult } from '../../app/administration/actions';
+import { ASSIGNABLE_ROLE_OPTIONS, roleLabelOfValue } from './roles';
+import type { AdministrationActionResult, CreateUserFields } from '../../app/administration/actions';
 
 /**
  * Create a user (FR-2, FR-7).
@@ -27,18 +27,15 @@ import type { AdministrationActionResult } from '../../app/administration/action
 
 export interface UserFormProps {
   /** The Server Action. It authorizes on the server before it reads any of this. */
-  readonly onSubmit: (fields: {
-    email: string;
-    name: string;
-    password: string;
-    role: string;
-  }) => Promise<AdministrationActionResult>;
+  readonly onSubmit: (fields: CreateUserFields) => Promise<AdministrationActionResult>;
   readonly onResult: (result: AdministrationActionResult) => void;
+  /** Called before the action runs, so the surface can clear a stale banner. */
+  readonly onStart: () => void;
 }
 
 const FIRST_ROLE = ASSIGNABLE_ROLE_OPTIONS[0]?.value ?? 'auditor';
 
-export function UserForm({ onSubmit, onResult }: UserFormProps): React.JSX.Element {
+export function UserForm({ onSubmit, onResult, onStart }: UserFormProps): React.JSX.Element {
   const emailId = useId();
   const nameId = useId();
   const passwordId = useId();
@@ -64,6 +61,7 @@ export function UserForm({ onSubmit, onResult }: UserFormProps): React.JSX.Eleme
     submittingRef.current = true;
     setConfirming(false);
     setBusy(true);
+    onStart();
     try {
       const result = await onSubmit({ email, name, password, role });
       onResult(result);
@@ -75,13 +73,20 @@ export function UserForm({ onSubmit, onResult }: UserFormProps): React.JSX.Eleme
         setPassword('');
         setRole(FIRST_ROLE);
       }
+    } catch {
+      // A rejected Server Action — a network drop, a deploy mid-request, a framework
+      // error — must not end as a stopped spinner and no message. Silence after a
+      // mutating action reads as success, which is the defect the sign-out control was
+      // shipped with. The password field is deliberately NOT cleared here: nothing was
+      // created, so the person can confirm again without retyping a credential.
+      onResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
     } finally {
       submittingRef.current = false;
       setBusy(false);
     }
   }
 
-  const roleName = ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role;
+  const roleName = roleLabelOfValue(role);
 
   return (
     <>

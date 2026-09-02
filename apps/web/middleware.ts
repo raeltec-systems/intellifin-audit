@@ -35,9 +35,19 @@ export function middleware(request: NextRequest): NextResponse {
     }) as NextResponse;
   }
 
-  // `no-store` on the redirect too. A shared cache that stored this 307 for, say,
-  // `/runs/RUN-2437` would then serve it to a signed-in person who should have seen
-  // the page -- and, worse, could serve a cached page to somebody signed out.
+  // ABSOLUTE, and it has to be. `sign-out-route.ts` sends a RELATIVE `Location` so that a
+  // forged `Host` header cannot move the redirect to an attacker's origin, and that is
+  // the better construction — but it cannot be used here. Next parses a middleware
+  // response's `Location` as a URL and throws `TypeError: Invalid URL` on a relative one,
+  // which turns every protected path into a 500 and takes default-deny down with it.
+  // Verified against `next dev`, not reasoned about.
+  //
+  // What contains the risk instead is `no-store`, immediately below. An attacker cannot
+  // set the `Host` header of a victim's browser cross-origin; the way a Host-derived
+  // redirect reaches a victim is a shared cache that stored it under the path alone, and
+  // `no-store` is what stops that. It earns its place twice over: the same cache could
+  // otherwise pin a protected path to this redirect for a signed-in person, or serve a
+  // cached page to somebody signed out.
   const target = new URL(SIGN_IN_PATH, request.nextUrl);
   const redirect = NextResponse.redirect(target);
   redirect.headers.set('cache-control', 'no-store');

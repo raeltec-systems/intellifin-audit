@@ -31,6 +31,54 @@ import { handleSignOut, isSignOutPath } from './sign-out-route';
  *      would be exactly the gap FR-45 forbids.
  */
 
+/**
+ * The Better Auth endpoints this application actually serves.
+ *
+ * Better Auth mounts far more than the three below, and `/api/auth/**` is the ONE
+ * publicly allowlisted surface in the whole application. Probing the mounted handler
+ * (Story 1.5) found all of these live and reachable, none of them audited:
+ *
+ *   `revoke-session`, `revoke-sessions`, `revoke-other-sessions` — end sessions, which
+ *       is the exact gap `handleSignOut` exists to close: a session ending with nothing
+ *       in the chain;
+ *   `change-password`, `change-email`, `update-user` — change identity, and a password
+ *       change also silently revokes other sessions;
+ *   `delete-user` — removes an account, orphaning every audit event that names it, which
+ *       is why this story has no user deletion at all;
+ *   `reset-password`, `send-verification-email`, `verify-email` — password reset and
+ *       verification flows this product does not have and cannot send mail for.
+ *
+ * So this is an ALLOWLIST, not a denylist, for the same reason `route-access.ts` is: a
+ * denylist is a list somebody has to remember to extend, and a dependency upgrade that
+ * mounts a new endpoint would ship it publicly and unaudited. Anything not named here is
+ * answered 404 — which is also what it looks like to a prober, disclosing nothing about
+ * what the framework underneath does support.
+ *
+ * Adding one back means deciding how it is audited FIRST. That is the whole point.
+ */
+export const SERVED_AUTH_ENDPOINTS = [
+  // The sign-in form posts here; the wrapper below audits every attempt.
+  'sign-in/email',
+  // The sign-out form posts here; `handleSignOut` revokes and audits in one transaction.
+  'sign-out',
+  // Read-only, and it returns only the caller's own session.
+  'get-session',
+] as const;
+
+const SERVED = new Set<string>(SERVED_AUTH_ENDPOINTS);
+
+/** The endpoint name under `/api/auth/`, or `null` when the path is not under it. */
+export function authEndpointOf(pathname: string): string | null {
+  const match = /^\/api\/auth\/(.+?)\/?$/.exec(pathname);
+  return match?.[1] ?? null;
+}
+
+/** Whether this application serves that endpoint at all. */
+export function isServedAuthEndpoint(pathname: string): boolean {
+  const endpoint = authEndpointOf(pathname);
+  return endpoint !== null && SERVED.has(endpoint);
+}
+
 /** The one thing a failed sign-in is ever told. */
 export const SIGN_IN_FAILED_MESSAGE = 'Sign-in failed. Check your email address and password.';
 /**
@@ -160,14 +208,21 @@ async function revokeIssued(
  * Every other authentication endpoint passes straight through.
  */
 export async function handleAuthRequest(request: Request): Promise<Response> {
-  const runtime = await getRuntime();
   const { pathname } = new URL(request.url);
+
+  // Refused BEFORE the runtime is touched, so an unserved endpoint costs nothing and
+  // cannot be used to probe whether the database is up.
+  if (!isServedAuthEndpoint(pathname)) {
+    return new Response(null, { status: 404, headers: NO_STORE });
+  }
 
   // Sign-out is audited too, and it revokes the session in the same transaction as its
   // event rather than letting Better Auth commit the deletion on its own connection.
   if (request.method === 'POST' && isSignOutPath(pathname)) {
     return handleSignOut(request);
   }
+
+  const runtime = await getRuntime();
 
   if (request.method !== 'POST' || !isEmailSignInPath(pathname)) {
     return runtime.auth.handler(request);

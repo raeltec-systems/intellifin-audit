@@ -65,6 +65,21 @@ export interface RoleWriter {
   findRole(userId: string): Promise<Role | null>;
   setRole(assignment: RoleAssignment): Promise<void>;
   clearRole(userId: string): Promise<void>;
+  /**
+   * Take a row lock on every holder of `role` and return their user ids.
+   *
+   * This exists for one reason: counting holders is not enough to stop the deployment
+   * losing its last administrator. Two administrators demoting each other at the same
+   * moment each read a count of one under READ COMMITTED — each sees its own uncommitted
+   * write and not the other's — so both commit and nobody can administer anything.
+   * Locking the holders first serializes the two transactions, so the second one counts
+   * after the first has committed and is refused.
+   *
+   * Implementations must lock in a deterministic order, or two callers can deadlock.
+   */
+  lockHolders(role: Role): Promise<readonly string[]>;
+  /** Count holders of `role`, seeing this transaction's own uncommitted writes. */
+  countHolders(role: Role): Promise<number>;
 }
 
 export interface RoleAssignment {

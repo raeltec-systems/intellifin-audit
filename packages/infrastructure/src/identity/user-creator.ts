@@ -63,7 +63,7 @@ export class BetterAuthUserCreator implements UserCreator {
     } catch (error) {
       // A refusal it DOES raise. The message is ours: a provider's wording is not a
       // contract we control, and this one is read by an administrator.
-      if (isDuplicateAddress(error)) return duplicate();
+      if (isDuplicateAddress(error) || isUniqueViolation(error)) return duplicate();
       throw error;
     }
 
@@ -84,6 +84,27 @@ export class BetterAuthUserCreator implements UserCreator {
 /** One sentence, whichever way the duplicate was detected. */
 function duplicate(): UserCreationResult {
   return { created: false, reason: 'That email address already has an account.' };
+}
+
+/**
+ * A PostgreSQL unique violation (SQLSTATE 23505) anywhere in the error chain.
+ *
+ * The pre-check and Better Auth's own answer are both checks, and a check is not a
+ * constraint: two concurrent creates of `Dana@x` and `dana@x` can each find no existing
+ * row and each proceed. The `auth_user_email_lower_uidx` index added in generation 4 is
+ * what actually stops the second one, and this is what turns its error into the same
+ * sentence the administrator would have seen a moment earlier.
+ *
+ * Better Auth wraps driver errors, so the whole `cause` chain is walked rather than the
+ * top-level object alone.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  for (let current: unknown = error, depth = 0; current && depth < 5; depth += 1) {
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (candidate.code === '23505') return true;
+    current = candidate.cause;
+  }
+  return false;
 }
 
 /**

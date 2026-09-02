@@ -113,10 +113,22 @@ export function createAuth(db: Database, config: AuthConfig): Auth {
 }
 
 /**
- * The instance `scripts/seed-identity.mts` uses, and the ONLY one that can create a
- * user. It exists because somebody must be able to sign in before Story 1.5 builds
- * user administration; it is never constructed by `apps/web` or `apps/worker`.
- * It does not sign the new account in, so seeding never issues a session.
+ * The ONLY instance that can create a user, and the only one with sign-up enabled.
+ *
+ * Two callers construct it, and both are deliberate:
+ *
+ *   1. `scripts/seed-identity.mts`, the operator path — somebody has to exist before
+ *      anybody can sign in and use the administration surface at all; and
+ *   2. `BetterAuthUserCreator`, reached only from `createUserWithRole`, which runs only
+ *      after `administration.users.manage` has been authorized and audited, and only
+ *      inside the transaction that also writes the role and the audit event.
+ *
+ * It is never MOUNTED. `apps/web` serves {@link createAuth}, where sign-up is disabled
+ * in Better Auth itself, so the running application has no account-creation endpoint;
+ * `tests/integration/manage-users.test.ts` re-asserts that against the real handler
+ * precisely because this instance now exists inside the web process.
+ *
+ * It does not sign the new account in, so creating one never issues a session.
  */
 export function createSeedAuth(db: Database, config: AuthConfig): Auth {
   return buildAuth(db, config, { allowSignUp: true, autoSignIn: false });

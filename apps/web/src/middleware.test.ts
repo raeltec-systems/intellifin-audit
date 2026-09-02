@@ -49,6 +49,10 @@ describe('middleware', () => {
       const response = middleware(request(path));
 
       expect(response.status).toBe(307);
+      // Absolute, because Next throws `Invalid URL` on a relative middleware Location and
+      // every protected path becomes a 500. The host therefore follows the request, and
+      // the `no-store` asserted below is what stops a shared cache serving it to anybody
+      // else. `sign-out-route.ts`, a plain route handler, uses the relative form.
       expect(response.headers.get('location')).toBe('https://audit.example.com/sign-in');
       // Without this a shared cache can pin a protected path to the sign-in redirect.
       expect(response.headers.get('cache-control')).toBe('no-store');

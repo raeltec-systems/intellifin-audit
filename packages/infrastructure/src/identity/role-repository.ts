@@ -83,6 +83,35 @@ export class DrizzleRoleWriter implements RoleWriter {
   async clearRole(userId: string): Promise<void> {
     await this.transaction.delete(userRole).where(eq(userRole.userId, userId));
   }
+
+  /**
+   * `SELECT ... FOR UPDATE`, ordered.
+   *
+   * `ORDER BY user_id` is not cosmetic: `FOR UPDATE` locks rows as it scans them, so two
+   * transactions locking the same set in different orders deadlock. A deterministic order
+   * makes the second one queue behind the first instead, which is what the
+   * last-administrator guard needs to be able to count after the first has committed.
+   *
+   * Aggregates and `FOR UPDATE` cannot be combined in PostgreSQL, so this returns the ids
+   * and {@link countHolders} counts separately, after the write.
+   */
+  async lockHolders(role: Role): Promise<readonly string[]> {
+    const rows = await this.transaction
+      .select({ userId: userRole.userId })
+      .from(userRole)
+      .where(eq(userRole.role, role))
+      .orderBy(asc(userRole.userId))
+      .for('update');
+    return rows.map((row) => row.userId);
+  }
+
+  async countHolders(role: Role): Promise<number> {
+    const rows = await this.transaction
+      .select({ count: sql<number>`count(*)::int` })
+      .from(userRole)
+      .where(eq(userRole.role, role));
+    return rows[0]?.count ?? 0;
+  }
 }
 
 /**
@@ -99,6 +128,16 @@ export class DrizzleSessionWriter implements SessionWriter {
 }
 
 /**
+ * How many accounts the user list returns.
+ *
+ * An unbounded `SELECT` is a query whose cost is set by the data rather than by the code:
+ * it is fine at five accounts and renders a page nobody can use at five thousand. The
+ * surface says so when it is truncated rather than silently showing a prefix, and
+ * pagination is deferred to its own story.
+ */
+export const USER_LIST_LIMIT = 200;
+
+/**
  * The user list the Administration surface renders.
  *
  * It selects the four columns the surface shows and no others — in particular not
@@ -109,7 +148,11 @@ export class DrizzleSessionWriter implements SessionWriter {
  * role read (AD-7). `null` means the account holds no role.
  */
 export class DrizzleUserDirectory implements UserDirectory {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    /** How many rows the surface will render. See {@link USER_LIST_LIMIT}. */
+    private readonly limit: number = USER_LIST_LIMIT,
+  ) {}
 
   async listUsers(): Promise<readonly ManagedUser[]> {
     const rows = await this.db
@@ -122,7 +165,8 @@ export class DrizzleUserDirectory implements UserDirectory {
       })
       .from(authUser)
       .leftJoin(userRole, eq(userRole.userId, authUser.id))
-      .orderBy(asc(authUser.createdAt), asc(authUser.id));
+      .orderBy(asc(authUser.createdAt), asc(authUser.id))
+      .limit(this.limit);
     return rows.map(toManagedUser);
   }
 

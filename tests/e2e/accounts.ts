@@ -62,3 +62,34 @@ export async function signIn(page: Page, email: string): Promise<void> {
   // The shell is proof of a session: `layout.tsx` renders it only when one resolves.
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 }
+
+/**
+ * Refuse to write to anything that is not obviously a throwaway database.
+ *
+ * Local (`localhost`, a loopback address, a Docker service name) or a CI runner. It is a
+ * deliberately blunt allowlist: a hostname that is not plainly disposable is refused, and
+ * the fix is to point the suite at one rather than to widen this list.
+ */
+export function assertThrowawayDatabase(databaseUrl: string): void {
+  let host: string;
+  try {
+    host = new URL(databaseUrl).hostname;
+  } catch {
+    throw new Error('DATABASE_URL is not a URL; refusing to modify an unknown database.');
+  }
+  const disposable =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === 'postgres' ||
+    host === 'db' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.internal') ||
+    process.env['CI'] === 'true';
+  if (!disposable) {
+    throw new Error(
+      `Refusing to modify auth_rate_limit on "${host}": this suite runs only against a ` +
+        'throwaway database. Point DATABASE_URL at a local or CI database.',
+    );
+  }
+}

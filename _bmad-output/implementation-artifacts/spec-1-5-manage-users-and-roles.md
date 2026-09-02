@@ -13,7 +13,50 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 warnings:
   - oversized
-deferred: []
+deferred:
+  - id: 'ending-another-persons-session'
+    summary: >-
+      There is no way to end somebody else's session. `SessionWriter` exists and is wired
+      only to self sign-out, and role revocation deliberately leaves the session alive
+      (AD-7), so a departing or compromised account keeps whatever session it already
+      holds until that session expires.
+    evidence: >-
+      `packages/application/src/identity/ports.ts` declares `SessionWriter.revokeSession`;
+      the only caller is `signOut` in `record-sign-out.ts`, reached only from
+      `apps/web/src/sign-out-route.ts` for the caller's OWN session. Proven by
+      `tests/integration/manage-users.test.ts` — "clears a role, keeping the account and
+      its sessions" asserts the session row survives a revocation. Better Auth's own
+      `revoke-session`, `revoke-sessions` and `revoke-other-sessions` endpoints are now
+      refused (`SERVED_AUTH_ENDPOINTS` in `apps/web/src/sign-in-route.ts`) because they
+      end sessions with nothing in the audit chain; an audited administrator-facing
+      version needs its own story.
+    why_deferred: >-
+      It is a new audited command with its own surface, its own confirmation weight and
+      its own event type, on a session model this story does not otherwise touch.
+  - id: 'javascript-only-sign-in'
+    summary: >-
+      The sign-in form works only once React has hydrated. Its `method="post"` keeps a
+      pre-hydration submission from putting the password in a URL, so it fails safe and
+      visibly — the person stays on the sign-in page — but it does not work without
+      JavaScript, unlike the sign-out control this story rebuilt.
+    evidence: >-
+      `apps/web/src/sign-in-form.tsx` submits through `fetch`; the form's own comment
+      records that a native POST to `/sign-in` has no handler and answers 405.
+    why_deferred: >-
+      A server-side path means a POST route reproducing the non-disclosure rules and the
+      rate-limit handling that `handleAuthRequest` owns (Story 1.3), including the 429
+      and 503 answers. That is Story 1.3's surface, not this one's.
+  - id: 'user-list-pagination-and-search'
+    summary: >-
+      The user list returns at most `USER_LIST_LIMIT` (200) accounts, oldest first, and
+      says so when it truncates. There is no paging and no search.
+    evidence: >-
+      `USER_LIST_LIMIT` in `packages/infrastructure/src/identity/role-repository.ts`;
+      `UsersPanel` renders the truncation notice.
+    why_deferred: >-
+      The PoC has a handful of accounts. Paging is a surface change with its own query,
+      URL state and accessibility work, and the limit removes the unbounded query that
+      actually mattered.
 ---
 
 <intent-contract>
@@ -113,6 +156,15 @@ deferred: []
 - **2026-09-02 — `DataTable`'s first-cell `href` becomes optional.** The user list has no detail surface. The contract's rule ("every row's first cell is a link; no row-level click handlers") exists so a row is never a click target a keyboard cannot reach; a table with no target satisfies it, and inventing an `href` to a page that does not exist would satisfy the letter while sending people to a 404. There is still no `onRowClick` prop, so the structural guarantee is unchanged.
 - **2026-09-02 — the user creator does not trust Better Auth's answer.** Discovered while writing `tests/integration/manage-users.test.ts`: Better Auth 1.7.2 answers a sign-up for an ALREADY REGISTERED address with a fabricated user object — a fresh id, no row written, no error raised. Taken at its word the command would have written a role and a `configuration.user-created` event for a subject that never existed. `BetterAuthUserCreator` now checks the address before and re-reads the returned id after; the `user_role` foreign key is the third line of the same defence.
 - **2026-09-02 — the identity unit of work is new infrastructure.** `PostgresIdentityUnitOfWork` yields the audit appender plus `RoleWriter`, `UserCreator` and `SessionWriter`, all bound to one transaction. Better Auth joins that transaction because the Drizzle adapter uses whatever handle it is given, so an account, its role and their event commit together or not at all — proven by "creates no account when the audit append fails".
+### Review pass 2 (three review passes, applied 2026-09-02)
+
+- **Lockout guards.** Nothing stopped an administrator demoting themselves or removing the last `poc-administrator`, and with no sign-up endpoint and no user deletion, recovery from either is shell access plus `pnpm seed:identity`. `setUserRole` now refuses a self-change before it opens a transaction, and refuses any change leaving zero holders — counted INSIDE the transaction, after a `SELECT ... FOR UPDATE` over the holders taken BEFORE the write. The lock is the part that matters: under READ COMMITTED two administrators demoting each other each count one remaining holder and both commit. The integration test holds the first transaction open across the second, and fails when the lock is removed.
+- **Open redirect.** `sign-out-route.ts` built its `Location` from `request.url`, whose host behind a proxy comes from the client's `Host` header — a forged one redirects the browser to an attacker origin at the moment its cookies are cleared. Both redirects in `apps/web` now use a relative path; `middleware.ts` had the same construction via `request.nextUrl` and no longer uses `NextResponse.redirect`.
+- **The form-method guard did not guard.** It asserted `/\bmethod=/`, so `method="get"` — the credential-in-URL defect itself — passed; it matched tags with `[^>]*`, which truncates at the `=>` of a JSX handler; and it scanned `.tsx` only, missing `sign-out-route.ts`, which emits raw HTML. Rewritten to require `post`, parse the tag brace- and quote-aware, scan `.ts` too, and tolerate an unstatable path. Mutation-tested three ways.
+- **Silence after a Server Action.** `UserForm` and `RoleControl` wrapped the action in `try/finally` with no `catch`, so a rejection stopped the spinner and showed nothing — the sign-out defect class again. Both now catch and report a Banner.
+- **Unaudited auth endpoints.** Probing the mounted handler found `revoke-session`, `revoke-sessions`, `revoke-other-sessions`, `update-user`, `change-password`, `change-email`, `delete-user` and `reset-password` all live on the publicly allowlisted `/api/auth/**`, none audited. `/api/auth/` is now an ALLOWLIST of three (`sign-in/email`, `sign-out`, `get-session`); everything else answers 404 before the runtime is touched.
+- **Untrusted Server Action input**, a case-insensitive unique index on `lower(email)` in generation 4, a lazily built privileged auth instance, optimistic concurrency on the role change, a no-op that writes nothing, and a bounded user list — each recorded in CLAUDE.md.
+
 - **2026-09-02 — the sign-out control is a native form, after a defect found in review.** The first implementation was a `fetch` inside an `onClick` handler on a `'use client'` component. Before React hydrates that handler is not attached, so a click was swallowed entirely: no request, no navigation, no message — and at a shared workstation a person walks away believing the session ended. It is now `<form method="post" action="/api/auth/sign-out">` submitted by the browser, answering a 303 to `/sign-in`; the route is idempotent and the failure path answers HTML, because the caller is a browser and not a script. `tests/e2e/administration.spec.ts` runs the journey with `javaScriptEnabled: false`, which fails every time on the old implementation rather than intermittently (verified by reverting it).
 - **2026-09-02 — `UserForm` gains `method="post"`.** Found by the same audit. A `<form>` with no method submits as a GET, so a submission that beat hydration would have put the initial password in the URL, in browser history and in every access log — against this story's own "no password is ever ... placed in a URL". The administration controls still require JavaScript by contract (EXPERIENCE.md mandates a focus-trapping confirmation dialog on every administration mutation); the requirement met here is that a pre-hydration submission be safe and visibly do nothing.
 - **2026-09-02 — `auth.setup.ts` clears `auth_rate_limit` before the browser suite.** Three consecutive local runs exhausted the real ten-per-minute sign-in limit and the third failed at setup. CI gets a fresh database per run, so this only bites when one database serves repeated runs. The limiter stays enabled throughout; only the budget carried between runs is removed.
@@ -127,6 +179,22 @@ deferred: []
 **Why a Server Action needs its own check.** The Administration page calls `requireServerAction`, but a Server Action is a separate POST endpoint that Next exposes by id; reaching the page is not a precondition for invoking it. Each action authorizes first, before reading any input. The test asserts this against the action, not the page, because that is the surface an attacker has.
 
 **Prior value, and why `null` is a value.** A first assignment records `priorRole: null` and a revocation records `newRole: null`. Both are real transitions and both must be reconstructable from the chain alone, so the event always carries both keys rather than omitting one.
+
+**The administrator knows every password they set, and nothing forces a change.** This
+surface has the administrator type an initial password and hand it over directly — there
+are no invite emails and no reset flow, because this deployment sends no mail. The
+consequence is explicit and accepted: a PoC Administrator holds a working credential for
+every account they create, so "PoC Administrator cannot author Procedures" is a policy
+boundary rather than a cryptographic one, and the audit chain would attribute anything
+done with that credential to the account it belongs to rather than to the administrator.
+
+It is recorded here rather than solved because every solution is a story of its own: a
+forced change at first sign-in needs a password-change command, an audited event, and a
+gate on every other surface; an invite link needs mail. Neither is in this story's scope,
+and both are worse than useless if half-built. What this story does do is keep the blast
+radius honest — the password is never stored, logged, audited, echoed or placed in a URL,
+the field is cleared as soon as it is used, and the account it creates is one the chain
+names from its first request.
 
 `[ASSUMPTION]` The story adds no user deletion. Removing the role is the revocation mechanism; deleting an account would orphan the audit history that names it, which AD-22 forbids in spirit.
 

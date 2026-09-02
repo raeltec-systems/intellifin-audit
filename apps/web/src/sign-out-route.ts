@@ -6,6 +6,7 @@ import {
 import { signOut } from '@intellifin/application';
 
 import { getRuntime } from './bootstrap';
+import { SESSION_COOKIE_PREFIXES } from './session-cookie';
 import { correlationIdFrom } from './correlation';
 import { SIGN_IN_PATH, SIGN_OUT_PATH } from './route-access';
 
@@ -76,10 +77,16 @@ export function clearedSessionCookies(): string[] {
  * re-posts the sign-out, and a 307 — which would repeat the POST at `/sign-in` — cannot
  * happen.
  */
-function signedOut(request: Request): Response {
+function signedOut(): Response {
   const headers = new Headers(NO_STORE);
   for (const cookie of clearedSessionCookies()) headers.append('set-cookie', cookie);
-  headers.set('location', new URL(SIGN_IN_PATH, request.url).toString());
+  // A RELATIVE location, deliberately. `new URL(SIGN_IN_PATH, request.url)` reads the
+  // host out of the request, which behind a proxy comes from the `Host` header the
+  // client sent — so a forged Host would send the browser to an attacker's origin at the
+  // exact moment its session cookies are cleared and it is looking for somewhere to type
+  // a password. A relative Location is valid (RFC 9110 §10.2.2) and every browser
+  // resolves it against the origin it actually connected to, which no header can move.
+  headers.set('location', SIGN_IN_PATH);
   return new Response(null, { status: 303, headers });
 }
 
@@ -115,38 +122,80 @@ function signOutFailed(): Response {
  * an unauthenticated caller something about the state of a cookie they hold — as well as
  * turning an ordinary double submit into an error page.
  */
+/** Whether the request even carries something that could be a session. */
+export function carriesSessionCookie(request: Request): boolean {
+  const header = request.headers.get('cookie');
+  if (!header) return false;
+  return header
+    .split(';')
+    .some((pair) =>
+      SESSION_COOKIE_PREFIXES.some((prefix) => pair.trim().startsWith(`${prefix}=`)),
+    );
+}
+
+/**
+ * Report a failure without letting the reporting itself throw.
+ *
+ * The failure being reported may BE the runtime, so acquiring it to log can fail too.
+ * `instrumentation.ts` already reported a runtime that would not start.
+ */
+async function reportSignOutFailure(error: unknown, correlationId: string): Promise<void> {
+  try {
+    const runtime = await getRuntime();
+    runtime.telemetry.captureError('Sign-out failed', error, {
+      outcome: 'failure',
+      correlationId,
+    });
+  } catch {
+    // Nowhere left to write.
+  }
+}
+
 export async function handleSignOut(request: Request): Promise<Response> {
-  const runtime = await getRuntime();
   const correlationId = correlationIdFrom(request);
 
-  const session = await new BetterAuthSessionReader(
-    runtime.auth,
-    request.headers,
-  ).currentSession();
-  if (!session) return signedOut(request);
+  // No session cookie at all: nothing to revoke, nothing to audit, and no reason to open
+  // a connection. This matters because `/api/auth/**` is the one publicly allowlisted
+  // surface and this handler intercepts BEFORE Better Auth's rate limiter ever sees the
+  // path, so sign-out is not rate limited. Without this check every anonymous POST would
+  // cost a database round trip. With it, an unauthenticated flood is answered from
+  // memory, and an authenticated one limits itself: the first call deletes the session,
+  // so every call after it takes this branch.
+  if (!carriesSessionCookie(request)) return signedOut();
 
   try {
+    // INSIDE the try, both of them. `getRuntime()` reads configuration and opens the
+    // pool, and `currentSession()` queries it: a database that is down throws here, not
+    // in the append. Left outside, that throw escaped the route entirely and the caller
+    // got a framework 500 — an HTML page saying nothing, instead of the fail-closed page
+    // written for exactly this case, which says the session is unchanged.
+    const runtime = await getRuntime();
+    const session = await new BetterAuthSessionReader(
+      runtime.auth,
+      request.headers,
+    ).currentSession();
+    // A cookie that no longer resolves — expired, revoked, already signed out. Same
+    // answer as success: idempotent, and it discloses nothing about the cookie's state.
+    if (!session) return signedOut();
+
     await signOut(new PostgresIdentityUnitOfWork(runtime.db, runtime.authConfig), {
       userId: session.userId,
       sessionId: session.sessionId,
       correlationId,
     });
+
+    runtime.telemetry.info('Sign-out recorded', {
+      outcome: 'success',
+      userId: session.userId,
+      sessionId: session.sessionId,
+      correlationId,
+    });
+    return signedOut();
   } catch (error) {
     // Fail closed the only way a sign-out can: the transaction rolled back, so the
     // session is still live and still attributable. The person is told to try again
     // rather than being handed a cleared cookie over a session that still exists.
-    runtime.telemetry.captureError('Sign-out failed', error, {
-      outcome: 'failure',
-      correlationId,
-    });
+    await reportSignOutFailure(error, correlationId);
     return signOutFailed();
   }
-
-  runtime.telemetry.info('Sign-out recorded', {
-    outcome: 'success',
-    userId: session.userId,
-    sessionId: session.sessionId,
-    correlationId,
-  });
-  return signedOut(request);
 }

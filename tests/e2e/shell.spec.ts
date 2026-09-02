@@ -342,6 +342,21 @@ test.describe('breakpoints', () => {
     await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveCount(4);
   });
 
+  test("a table's first cell is a link when the row has somewhere to go", async ({ page }) => {
+    // `DataTable`'s first cell became a branch when the user list — which has no detail
+    // surface — needed plain text there. Nothing exercised the link arm, so inverting the
+    // ternary would turn every first cell in the product into text with a green suite.
+    // EXPERIENCE.md: "Every row's first cell is a link; no row-level click handlers."
+    await page.goto('/badges');
+
+    const firstCell = page.locator('.ls-table tbody tr:first-child th[scope="row"]');
+    const link = firstCell.getByRole('link');
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', '/runs');
+    // And the cell is the row header, not a cell with a link dropped into it.
+    await expect(firstCell).toHaveAttribute('scope', 'row');
+  });
+
   test('a table becomes a label/value stack below 900px, not a scroller', async ({ page }) => {
     await page.goto('/badges');
 

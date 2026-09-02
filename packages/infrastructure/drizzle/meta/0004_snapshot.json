@@ -1,5 +1,5 @@
 {
-  "id": "9b18a0ab-36f2-43d8-b99d-5b56a4badbbb",
+  "id": "04fd6c4c-2b76-4e9b-9971-97909554afbf",
   "prevId": "9f40a408-8127-4d2c-b8e9-85d850b4a516",
   "version": "7",
   "dialect": "postgresql",
@@ -543,7 +543,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "auth_user_email_lower_uidx": {
+          "name": "auth_user_email_lower_uidx",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {

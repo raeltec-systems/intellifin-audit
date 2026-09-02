@@ -2,7 +2,7 @@ import { test as setup } from '@playwright/test';
 
 import { createSqlClient } from '@intellifin/infrastructure';
 
-import { ACCOUNTS, AUTH_STATE, signIn } from './accounts';
+import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 
 /**
  * The two real sign-ins in the whole suite.
@@ -33,6 +33,13 @@ setup('clear the sign-in rate-limit counters', async () => {
     databaseUrl === undefined || databaseUrl === '',
     'DATABASE_URL is not set; the suite runs against whatever budget the database holds.',
   );
+
+  // A DELETE aimed at whatever `DATABASE_URL` happens to point at is one mistyped
+  // environment variable away from wiping a real deployment's rate-limit counters — and
+  // a limiter with no counters is a limiter that has forgotten every attacker mid-run.
+  // This suite only ever runs against a throwaway database, so it refuses anything else
+  // rather than trusting the operator to have exported the right URL.
+  assertThrowawayDatabase(databaseUrl as string);
 
   const sql = createSqlClient(databaseUrl as string, { max: 1 });
   try {

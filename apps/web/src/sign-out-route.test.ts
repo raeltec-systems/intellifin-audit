@@ -16,6 +16,9 @@ const state = vi.hoisted(() => ({
   appended: [] as AuditEventDraft[],
   revoked: [] as string[],
   failAppend: false,
+  runtimeFails: false,
+  /** How many times the session was resolved — i.e. how often the database was asked. */
+  reads: 0,
 }));
 
 vi.mock('@intellifin/infrastructure', async (importOriginal) => {
@@ -24,6 +27,7 @@ vi.mock('@intellifin/infrastructure', async (importOriginal) => {
     ...actual,
     BetterAuthSessionReader: class {
       currentSession() {
+        state.reads += 1;
         return Promise.resolve(state.session);
       }
     },
@@ -62,18 +66,23 @@ vi.mock('@intellifin/infrastructure', async (importOriginal) => {
 const telemetry = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), captureError: vi.fn() };
 vi.mock('./bootstrap', () => ({
   getRuntime: () =>
-    Promise.resolve({ db: {}, telemetry, authConfig: { secret: 's', baseUrl: 'http://x' } }),
+    state.runtimeFails
+      ? Promise.reject(new Error('database unreachable'))
+      : Promise.resolve({ db: {}, telemetry, authConfig: { secret: 's', baseUrl: 'http://x' } }),
 }));
 
-const { SIGN_OUT_PATH, clearedSessionCookies, handleSignOut, isSignOutPath } = await import(
-  './sign-out-route'
-);
+const { SIGN_OUT_PATH, handleSignOut, isSignOutPath } = await import('./sign-out-route');
 
 /** A native form submission, exactly as a browser sends one. */
 const formPost = () =>
   new Request('http://localhost:3000/api/auth/sign-out', {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      // A session cookie has to be present or the handler short-circuits before it ever
+      // looks for a session — see the anonymous case below.
+      cookie: 'better-auth.session_token=a-token.a-signature',
+    },
     body: '',
   });
 
@@ -102,6 +111,8 @@ describe('handleSignOut', () => {
     state.appended = [];
     state.revoked = [];
     state.failAppend = false;
+    state.runtimeFails = false;
+    state.reads = 0;
     vi.clearAllMocks();
   });
 
@@ -109,7 +120,10 @@ describe('handleSignOut', () => {
     const response = await handleSignOut(formPost());
 
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('http://localhost:3000/sign-in');
+    // RELATIVE. An absolute location would take its host from the request, which behind
+    // a proxy is the client's own `Host` header — a forged one would send the browser to
+    // an attacker's origin at the moment its cookies are cleared.
+    expect(response.headers.get('location')).toBe('/sign-in');
     expect(response.headers.get('cache-control')).toBe('no-store');
     // Nothing a script would have to interpret.
     expect(response.headers.get('content-type')).toBeNull();
@@ -129,11 +143,22 @@ describe('handleSignOut', () => {
     });
   });
 
-  it('expires both session cookie names', async () => {
+  it('expires both session cookie names, with the attributes a browser matches on', async () => {
     const response = await handleSignOut(formPost());
     const cookies = response.headers.getSetCookie();
 
-    expect(cookies).toEqual(clearedSessionCookies());
+    // Deliberately NOT compared with `clearedSessionCookies()`. Asserting the response
+    // equals the function that produced it proves only that the function was called: the
+    // attributes could all be wrong together and the test would still pass. Each one is
+    // checked for what a browser actually needs.
+    expect(cookies).toHaveLength(2);
+    // `Path=/` is the one nothing pinned before. A browser expires a cookie only when
+    // the name, domain AND path match the one it stored; Better Auth sets `Path=/`, so
+    // `Path=/api/auth` here would leave the session cookie in place on every page while
+    // every assertion still passed.
+    for (const cookie of cookies) expect(cookie).toContain('; Path=/;');
+    for (const cookie of cookies) expect(cookie).toContain('HttpOnly');
+    for (const cookie of cookies) expect(cookie).toContain('SameSite=Lax');
     expect(cookies.some((cookie) => cookie.startsWith('better-auth.session_token='))).toBe(true);
     expect(
       cookies.some((cookie) => cookie.startsWith('__Secure-better-auth.session_token=')),
@@ -151,10 +176,48 @@ describe('handleSignOut', () => {
     const response = await handleSignOut(formPost());
 
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('http://localhost:3000/sign-in');
+    expect(response.headers.get('location')).toBe('/sign-in');
     expect(response.headers.getSetCookie().length).toBeGreaterThan(0);
     expect(state.appended).toHaveLength(0);
     expect(state.revoked).toHaveLength(0);
+  });
+
+  it('ignores a forged Host header entirely', async () => {
+    const response = await handleSignOut(
+      new Request('http://localhost:3000/api/auth/sign-out', {
+        method: 'POST',
+        headers: { host: 'evil.example', cookie: 'better-auth.session_token=abc' },
+      }),
+    );
+
+    expect(response.headers.get('location')).toBe('/sign-in');
+    expect(response.headers.get('location')).not.toContain('evil.example');
+  });
+
+  it('answers a caller with no session cookie without touching the database', async () => {
+    // `/api/auth/**` is the one publicly allowlisted surface and this handler intercepts
+    // before Better Auth's rate limiter sees the path, so sign-out is not rate limited.
+    // An anonymous POST must therefore cost nothing.
+    const response = await handleSignOut(
+      new Request('http://localhost:3000/api/auth/sign-out', { method: 'POST' }),
+    );
+
+    expect(response.status).toBe(303);
+    expect(state.reads).toBe(0);
+    expect(state.appended).toHaveLength(0);
+  });
+
+  it('answers the fail-closed page when the runtime itself is unreachable', async () => {
+    // The riskiest work — acquiring the runtime and resolving the session — happens
+    // inside the route's own try. Left outside it, a database that is down threw through
+    // the route and the caller got a framework 500 instead of this page.
+    state.runtimeFails = true;
+
+    const response = await handleSignOut(formPost());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    await expect(response.text()).resolves.toContain('You are still signed in');
   });
 
   it('fails closed when the event cannot be appended: no revoke, no cleared cookie', async () => {

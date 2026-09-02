@@ -1,4 +1,8 @@
-import type { AuditUnitOfWork, IdentityUnitOfWorkContext } from '@intellifin/application';
+import type {
+  AuditUnitOfWork,
+  IdentityUnitOfWorkContext,
+  UserCreator,
+} from '@intellifin/application';
 
 import type { Database } from '../db/client.js';
 import {
@@ -39,13 +43,32 @@ export class PostgresIdentityUnitOfWork implements AuditUnitOfWork<IdentityUnitO
   execute<TResult>(
     work: (context: IdentityUnitOfWorkContext) => Promise<TResult>,
   ): Promise<TResult> {
-    return this.db.transaction(async (transaction) =>
-      work({
+    return this.db.transaction(async (transaction) => {
+      /**
+       * Built on first use, not on every transaction.
+       *
+       * `BetterAuthUserCreator` constructs `createSeedAuth` — the ONE sign-up-capable
+       * identity instance in the process. Constructing it eagerly meant every identity
+       * transaction built it: every sign-out, and every `security.denied` append from a
+       * refused authorization. A privileged object that exists on paths which never
+       * create a user is a privilege sitting where nothing needs it, and it is wasted
+       * work on the commonest path. It is now built only when a command actually asks
+       * for `users`.
+       */
+      let creator: UserCreator | undefined;
+      const users: UserCreator = {
+        createUser: (account) =>
+          (creator ??= new BetterAuthUserCreator(transaction, this.authConfig)).createUser(
+            account,
+          ),
+      };
+
+      return work({
         auditEvents: createAuditEventWriter(transaction, this.clock, this.ids),
         roles: new DrizzleRoleWriter(transaction),
-        users: new BetterAuthUserCreator(transaction, this.authConfig),
+        users,
         sessions: new DrizzleSessionWriter(transaction),
-      }),
-    );
+      });
+    });
   }
 }

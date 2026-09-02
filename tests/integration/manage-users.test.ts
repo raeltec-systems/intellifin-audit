@@ -4,6 +4,8 @@ import {
   createUserWithRole,
   setUserRole,
   signOut,
+  type AuditUnitOfWork,
+  type IdentityUnitOfWorkContext,
   type ManageUsersDependencies,
   type SessionSnapshot,
 } from '@intellifin/application';
@@ -88,6 +90,35 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
     return new DrizzleRoleRepository(db).findRole(userId);
   }
 
+  /**
+   * A session row, written directly.
+   *
+   * This suite is about managing roles, not about signing in — `identity.test.ts` owns
+   * that path and exercises it properly. Going through `/sign-in/email` here would spend
+   * this suite's share of a REAL production rule: ten attempts a minute, counted per
+   * address in `auth_rate_limit`, shared with every other file. Six sign-ins from here
+   * plus eight from there exceeds it, and the file that runs second fails on a limiter
+   * doing exactly its job. So all this needs is a session row, and it makes one.
+   *
+   * The one case that genuinely needs a Better Auth COOKIE — proving a live session sees
+   * a new role — signs in for real, once.
+   */
+  async function createSession(userId: string, label: string): Promise<SessionSnapshot> {
+    const sessionId = `${emailPrefix}session-${label}`;
+    await sql`
+      INSERT INTO auth_session (id, user_id, token, expires_at)
+      VALUES (
+        ${sessionId},
+        ${userId},
+        ${`${emailPrefix}token-${label}`},
+        now() + interval '1 hour'
+      )
+      ON CONFLICT (id) DO NOTHING
+    `;
+    return { userId, sessionId };
+  }
+
+  /** The real sign-in path, used once, where a signed cookie is the thing under test. */
   async function signIn(email: string): Promise<{ token: string; cookie: string }> {
     const response = await seedAuth.handler(
       new Request(`${BASE_URL}/api/auth/sign-in/email`, {
@@ -105,23 +136,27 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
     db = createDb(sql);
     seedAuth = createSeedAuth(db, AUTH_CONFIG);
 
+    // Scoped to this file's own rows, by the correlation-id prefix it stamps on every
+    // event it appends and the address prefix on every account it creates. A blanket
+    // `DELETE FROM audit_events WHERE aggregate_id = 'platform'` would delete another
+    // suite's events mid-run — and the head row would then point past the rows that
+    // remain, failing a chain verification that has nothing to do with either file.
     await sql`DELETE FROM auth_user WHERE email LIKE ${`${emailPrefix}%`}`;
-    await sql`DELETE FROM auth_rate_limit`;
-    await sql`DELETE FROM audit_events WHERE aggregate_id = 'platform'`;
-    await sql`DELETE FROM audit_event_heads WHERE aggregate_id = 'platform'`;
+    await sql`DELETE FROM audit_events WHERE correlation_id LIKE ${`${emailPrefix}%`}`;
 
     const created = await seedAuth.api.signUpEmail({
       body: { email: emailFor('admin'), name: 'Synthetic Administrator', password: PASSWORD },
     });
     await sql`INSERT INTO user_role (user_id, role) VALUES (${created.user.id}, 'poc-administrator')`;
-    const session = await findSessionByToken(db, (await signIn(emailFor('admin'))).token);
-    admin = session as SessionSnapshot;
+    admin = await createSession(created.user.id, 'admin');
   });
 
   afterAll(async () => {
     await sql`DELETE FROM auth_user WHERE email LIKE ${`${emailPrefix}%`}`;
-    await sql`DELETE FROM audit_events WHERE aggregate_id = 'platform'`;
-    await sql`DELETE FROM audit_event_heads WHERE aggregate_id = 'platform'`;
+    // The events stay. Deleting them would leave `audit_event_heads` pointing past the
+    // rows that remain, which is a corrupt chain — the very thing the last test in this
+    // file verifies is intact. They are namespaced by correlation id, so they cost
+    // nothing and prove the chain kept its shape across runs.
     await sql.end({ timeout: 5 });
   });
 
@@ -225,8 +260,7 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
   it('clears a role, keeping the account and its sessions, and records newRole null', async () => {
     const correlationId = `${emailPrefix}clear`;
     const userId = (await findUserIdByEmail(db, emailFor('created'))) as string;
-    const { token } = await signIn(emailFor('created'));
-    const session = await findSessionByToken(db, token);
+    const session = await createSession(userId, 'created');
     expect(session).not.toBeNull();
 
     const outcome = await setUserRole(dependencies(), {
@@ -248,7 +282,10 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
 
     // The account survives, and so does the session it already held.
     expect(await findUserIdByEmail(db, emailFor('created'))).toBe(userId);
-    await expect(findSessionByToken(db, token)).resolves.not.toBeNull();
+    const alive = await sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM auth_session WHERE id = ${session.sessionId}
+    `;
+    expect(alive[0]?.c).toBe(1);
   });
 
   it('takes effect on the subject next request without ending their session', async () => {
@@ -335,10 +372,7 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
       body: { email: emailFor('auditor'), name: 'Synthetic Auditor', password: PASSWORD },
     });
     await sql`INSERT INTO user_role (user_id, role) VALUES (${auditor.user.id}, 'auditor')`;
-    const session = (await findSessionByToken(
-      db,
-      (await signIn(emailFor('auditor'))).token,
-    )) as SessionSnapshot;
+    const session = await createSession(auditor.user.id, 'auditor');
 
     const outcome = await createUserWithRole(dependencies(), {
       session,
@@ -365,8 +399,7 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
   it('ends a session and appends security.sign-out in one transaction', async () => {
     const correlationId = `${emailPrefix}sign-out`;
     const userId = (await findUserIdByEmail(db, emailFor('auditor'))) as string;
-    const { token } = await signIn(emailFor('auditor'));
-    const session = (await findSessionByToken(db, token)) as SessionSnapshot;
+    const session = await createSession(userId, 'sign-out');
 
     await signOut(new PostgresIdentityUnitOfWork(db, AUTH_CONFIG), {
       userId,
@@ -374,7 +407,10 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
       correlationId,
     });
 
-    await expect(findSessionByToken(db, token)).resolves.toBeNull();
+    const gone = await sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM auth_session WHERE id = ${session.sessionId}
+    `;
+    expect(gone[0]?.c).toBe(0);
     const events = await eventsFor(correlationId);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -388,8 +424,7 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
   it('keeps the session alive when the sign-out event cannot be appended', async () => {
     const correlationId = `${emailPrefix}sign-out-fails`;
     const userId = (await findUserIdByEmail(db, emailFor('auditor'))) as string;
-    const { token } = await signIn(emailFor('auditor'));
-    const session = (await findSessionByToken(db, token)) as SessionSnapshot;
+    const session = await createSession(userId, 'sign-out-fails');
 
     await expect(
       signOut(new PostgresIdentityUnitOfWork(db, AUTH_CONFIG, { ids: { next: () => 'nope' } }), {
@@ -400,7 +435,10 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
     ).rejects.toThrow();
 
     // Still signed in, and still attributable — which is the fail-closed outcome.
-    await expect(findSessionByToken(db, token)).resolves.not.toBeNull();
+    const alive = await sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM auth_session WHERE id = ${session.sessionId}
+    `;
+    expect(alive[0]?.c).toBe(1);
   });
 
   it('lists users with their role and nothing that could be a credential', async () => {
@@ -418,6 +456,220 @@ describe.skipIf(!databaseUrl)('manage users against PostgreSQL 18', () => {
         'role',
         'userId',
       ]);
+    }
+  });
+
+  it('refuses an administrator changing their own role', async () => {
+    const correlationId = `${emailPrefix}self`;
+
+    const outcome = await setUserRole(dependencies(), {
+      session: admin,
+      correlationId,
+      userId: admin.userId,
+      role: 'auditor',
+      expectedRole: 'poc-administrator',
+    });
+
+    expect(outcome).toEqual({
+      ok: false,
+      reason: 'You cannot change your own role. Ask another PoC Administrator to change it.',
+    });
+    expect(await roleOf(admin.userId)).toBe('poc-administrator');
+    await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+  });
+
+  it('refuses a stale expected prior value', async () => {
+    const correlationId = `${emailPrefix}stale`;
+    const created = await createUserWithRole(dependencies(), {
+      session: admin,
+      correlationId: `${correlationId}-setup`,
+      email: emailFor('stale'),
+      name: 'Synthetic Stale',
+      password: PASSWORD,
+      role: 'auditor',
+    });
+    const userId = created.ok ? created.userId : '';
+
+    const outcome = await setUserRole(dependencies(), {
+      session: admin,
+      correlationId,
+      userId,
+      role: 'audit-manager',
+      // The page was rendered before the role existed.
+      expectedRole: null,
+    });
+
+    expect(outcome).toMatchObject({ ok: false });
+    expect(await roleOf(userId)).toBe('auditor');
+    await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+  });
+
+  it('writes and appends nothing when the requested role is the one already held', async () => {
+    const correlationId = `${emailPrefix}no-op`;
+    const userId = (await findUserIdByEmail(db, emailFor('stale'))) as string;
+
+    const outcome = await setUserRole(dependencies(), {
+      session: admin,
+      correlationId,
+      userId,
+      role: 'auditor',
+      expectedRole: 'auditor',
+    });
+
+    expect(outcome).toMatchObject({ ok: true, priorRole: 'auditor', newRole: 'auditor' });
+    // Success, and no event: the chain records transitions, and there was none.
+    await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+  });
+
+  it('refuses a duplicate address that differs only in case', async () => {
+    const correlationId = `${emailPrefix}case`;
+    const address = emailFor('case-test');
+    const first = await createUserWithRole(dependencies(), {
+      session: admin,
+      correlationId: `${correlationId}-1`,
+      email: address,
+      name: 'Synthetic Case',
+      password: PASSWORD,
+      role: 'auditor',
+    });
+    expect(first.ok).toBe(true);
+
+    const second = await createUserWithRole(dependencies(), {
+      session: admin,
+      correlationId,
+      email: address.toUpperCase(),
+      name: 'Synthetic Case Upper',
+      password: PASSWORD,
+      role: 'auditor',
+    });
+
+    expect(second).toEqual({
+      ok: false,
+      reason: 'That email address already has an account.',
+    });
+    const rows = await sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM auth_user WHERE lower(email) = lower(${address})
+    `;
+    expect(rows[0]?.c).toBe(1);
+  });
+
+  /**
+   * The lockout guard, against real concurrency.
+   *
+   * Two administrators demoting each other at the same moment is the case a count cannot
+   * catch on its own: under READ COMMITTED each transaction sees its own uncommitted
+   * write and not the other's, so both count one remaining holder and both commit into a
+   * deployment nobody can administer. Recovery would need shell access and the seed
+   * script, because there is no sign-up endpoint and no user deletion.
+   *
+   * Starting both commands at once does NOT reproduce this: they finish quickly enough
+   * that one commits before the other reads, and the test passes with the guard removed —
+   * which makes it evidence of nothing. So the first transaction is held OPEN after it
+   * has written and counted, and the second is run against it. That is the interleaving
+   * the guard exists for, and with the `SELECT ... FOR UPDATE` removed this test fails:
+   * the second transaction sails past, both commit, and no administrator is left.
+   */
+  it('lets only one of two administrators demoting each other succeed', async () => {
+    const correlationId = `${emailPrefix}race`;
+
+    // Park every administrator that is not part of this test, and restore them after.
+    // The guard counts every holder in the deployment, so the race cannot reach zero
+    // while the suite's own administrator and the seeded accounts still hold the role.
+    const parked = await sql<{ user_id: string; assigned_by: string | null }[]>`
+      SELECT user_id, assigned_by FROM user_role WHERE role = 'poc-administrator'
+    `;
+
+    /** Resolves when the test lets the first transaction commit. */
+    let openGate: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    /**
+     * The real unit of work, held open after the command's work is done.
+     *
+     * Everything inside — the lock, the read, the write, the count, the append — has
+     * happened; the COMMIT has not. That is precisely the window in which a second
+     * administrator's demotion must not be able to slip through.
+     */
+    const held: AuditUnitOfWork<IdentityUnitOfWorkContext> = {
+      execute: (work) =>
+        new PostgresIdentityUnitOfWork(db, AUTH_CONFIG).execute(async (context) => {
+          const result = await work(context);
+          await gate;
+          return result;
+        }),
+    };
+
+    try {
+      await sql`DELETE FROM user_role WHERE role = 'poc-administrator'`;
+
+      const a = await seedAuth.api.signUpEmail({
+        body: { email: emailFor('race-a'), name: 'Race A', password: PASSWORD },
+      });
+      const b = await seedAuth.api.signUpEmail({
+        body: { email: emailFor('race-b'), name: 'Race B', password: PASSWORD },
+      });
+      await sql`INSERT INTO user_role (user_id, role) VALUES (${a.user.id}, 'poc-administrator')`;
+      await sql`INSERT INTO user_role (user_id, role) VALUES (${b.user.id}, 'poc-administrator')`;
+
+      // A demotes B, and its transaction stays open.
+      const firstCall = setUserRole(
+        { ...dependencies(), unitOfWork: held },
+        {
+          session: { userId: a.user.id, sessionId: 'race-session-a' },
+          correlationId: `${correlationId}-a`,
+          userId: b.user.id,
+          role: 'auditor',
+          expectedRole: 'poc-administrator',
+        },
+      );
+      await wait(250);
+
+      // B demotes A, arriving inside that window.
+      const secondCall = setUserRole(dependencies(), {
+        session: { userId: b.user.id, sessionId: 'race-session-b' },
+        correlationId: `${correlationId}-b`,
+        userId: a.user.id,
+        role: 'auditor',
+        expectedRole: 'poc-administrator',
+      });
+
+      // Let the first commit. The second is blocked on its row locks until it does.
+      await wait(400);
+      openGate();
+
+      const outcomes = [await firstCall, await secondCall];
+      expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
+      expect(outcomes.find((outcome) => !outcome.ok)).toEqual({
+        ok: false,
+        reason: 'This would leave no PoC Administrator. Give another user that role first.',
+      });
+
+      // The invariant that actually matters: somebody can still administer.
+      const remaining = await sql<{ c: number }[]>`
+        SELECT count(*)::int AS c FROM user_role WHERE role = 'poc-administrator'
+      `;
+      expect(remaining[0]?.c).toBe(1);
+
+      // And exactly one event, for the one change that happened.
+      const events = await sql<{ event_type: string }[]>`
+        SELECT event_type FROM audit_events
+        WHERE correlation_id LIKE ${`${correlationId}-%`} ORDER BY sequence
+      `;
+      expect(events).toHaveLength(1);
+      expect(events[0]?.event_type).toBe('configuration.role-changed');
+    } finally {
+      openGate();
+      await sql`DELETE FROM user_role WHERE role = 'poc-administrator'`;
+      for (const row of parked) {
+        await sql`
+          INSERT INTO user_role (user_id, role, assigned_by)
+          VALUES (${row.user_id}, 'poc-administrator', ${row.assigned_by})
+          ON CONFLICT (user_id) DO UPDATE SET role = 'poc-administrator'
+        `;
+      }
     }
   });
 
@@ -447,7 +699,6 @@ describe.skipIf(!databaseUrl)('the mounted Better Auth instance after Story 1.5'
 
   afterAll(async () => {
     await sql`DELETE FROM auth_user WHERE email = ${email}`;
-    await sql`DELETE FROM auth_rate_limit`;
     await sql.end({ timeout: 5 });
   });
 
