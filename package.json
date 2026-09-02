@@ -16,11 +16,13 @@
     "boundaries": "node scripts/check-boundaries.mjs",
     "test": "vitest run",
     "test:integration": "vitest run --config tests/integration/vitest.config.ts",
+    "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @intellifin/infrastructure db:generate",
     "db:migrate": "pnpm --filter @intellifin/infrastructure db:migrate",
     "seed:identity": "node scripts/seed-identity.mts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@intellifin/domain": "workspace:*",
     "@intellifin/infrastructure": "workspace:*",
     "@playwright/test": "1.62.1",

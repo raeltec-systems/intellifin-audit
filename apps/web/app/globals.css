@@ -1,0 +1,921 @@
+/*
+ * The Ledger Signal base layer and the design-system component styles.
+ *
+ * Every value here is a token from `tokens.css`. A literal appears only where DESIGN.md
+ * states no token for it (hairline widths, the four numbers of a grid template, the one
+ * dialog shadow DESIGN.md spells out inline).
+ *
+ * The focus ring lives HERE, once, at the root. It is `{colors.focus}` (#0F766E) and it
+ * is never suppressed: a component cannot set `outline: none`, because a component has
+ * no stylesheet of its own to do it in. That is the point of a single stylesheet.
+ *
+ * Sections: reset · typography · focus · layout shell · components · breakpoints.
+ */
+
+/* ---------------------------------------------------------------- reset ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  /* DESIGN.md → Typography: tabular numerals everywhere a number can appear. */
+  font-feature-settings: 'tnum';
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-surface-page);
+  color: var(--color-text-primary);
+  font-family: var(--type-body-font-family);
+  font-size: var(--type-body-font-size);
+  line-height: var(--type-body-line-height);
+  font-weight: var(--type-body-font-weight);
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* ----------------------------------------------------------- typography ---- */
+
+h1 {
+  font-size: var(--type-page-title-font-size);
+  line-height: var(--type-page-title-line-height);
+  font-weight: var(--type-page-title-font-weight);
+}
+
+h2 {
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+h3 {
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+a {
+  /* DESIGN.md → Colors → Interaction: teal is the only interactive colour. */
+  color: var(--color-text-link);
+}
+
+/* Long identifiers wrap rather than truncate (EXPERIENCE.md → Accessibility Floor). */
+.ls-mono {
+  font-family: var(--type-mono-font-family);
+  overflow-wrap: anywhere;
+}
+
+.ls-overline {
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  /* EXPERIENCE.md → Voice and Tone: sentence case everywhere; headers uppercase by CSS only. */
+  text-transform: uppercase;
+}
+
+.ls-caption {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: var(--type-caption-font-weight);
+  color: var(--color-text-secondary);
+}
+
+.ls-body-sm-relaxed {
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+}
+
+/* Text for assistive technology only. Never used to hide a reason from sight: a
+ * disabled action's reason is ALSO visible in the "Unavailable actions" panel. */
+.ls-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------- focus ---- */
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--rounded-sm);
+}
+
+/* The ring is the same #0F766E on the navy sidebar, where teal-700 alone would sit at
+ * 2.7:1 against the ground. A white band at the element edge puts the ring against
+ * white instead (4.7:1), so the colour stays exactly the contract's without the
+ * indicator becoming invisible on the one dark surface in the product. */
+.ls-sidebar :focus-visible {
+  box-shadow: 0 0 0 2px var(--color-surface-card);
+}
+
+.ls-skip-link {
+  position: absolute;
+  left: var(--spacing-2);
+  top: calc(-1 * var(--spacing-6) - var(--spacing-6));
+  z-index: 40;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-surface-card);
+  color: var(--color-text-link);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-md);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-skip-link:focus {
+  top: var(--spacing-2);
+}
+
+/* ---------------------------------------------------------------- shell ---- */
+
+.ls-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ls-ribbon {
+  min-height: var(--spacing-ribbon);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: 0 var(--spacing-gutter);
+  background: var(--color-warning-bg);
+  border-bottom: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-shell {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--spacing-sidebar) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.ls-sidebar {
+  background: var(--color-surface-sidebar);
+  color: var(--color-navy-100);
+  padding: var(--spacing-5) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+.ls-sidebar__mark {
+  padding: 0 var(--spacing-5);
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-2);
+}
+
+.ls-sidebar__wordmark {
+  color: var(--color-text-inverse);
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+/* The one place gold appears: the IntelliFin mark. Never a status, never a control. */
+.ls-sidebar__mark-glyph {
+  color: var(--color-gold);
+}
+
+.ls-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: 0 var(--spacing-3);
+}
+
+.ls-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--rounded-md);
+  border-left: 2px solid transparent;
+  color: var(--color-navy-100);
+  text-decoration: none;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  font-weight: var(--type-row-title-font-weight);
+}
+
+.ls-nav-item:hover {
+  background: var(--color-navy-800);
+}
+
+.ls-nav-item[aria-current='page'] {
+  background: var(--color-navy-800);
+  color: var(--color-text-inverse);
+  /* The active marker is teal. `teal-500` rather than `teal-700` on this one dark
+   * ground for the same reason DESIGN.md moved the focus ring the other way: the
+   * document's contrast target is 3:1 for a non-text indicator, and teal-700 on navy
+   * is 2.7:1 while teal-500 is 5.8:1. The active item is also `aria-current`, so the
+   * marker is reinforcement and never the only signal. */
+  border-left-color: var(--color-teal-500);
+}
+
+.ls-nav-item__count {
+  margin-left: auto;
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-micro-font-size);
+  line-height: var(--type-micro-line-height);
+  color: var(--color-navy-100);
+}
+
+.ls-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ls-topbar {
+  min-height: var(--spacing-top-bar);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-3);
+  padding: 0 var(--spacing-gutter);
+  background: var(--color-surface-card);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.ls-bell-wrap {
+  position: relative;
+}
+
+.ls-bell-panel {
+  position: absolute;
+  right: 0;
+  top: calc(var(--spacing-control-sm) + var(--spacing-2));
+  z-index: 30;
+  width: min(360px, calc(100vw - var(--spacing-6)));
+}
+
+.ls-bell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-2);
+  border: 1px solid transparent;
+  border-radius: var(--rounded-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.ls-bell:hover {
+  background: var(--color-surface-sunken);
+}
+
+.ls-bell__count {
+  min-width: var(--spacing-badge-sm);
+  height: var(--spacing-badge-sm);
+  padding: 0 var(--spacing-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--rounded-full);
+  /* {components.status-badge-info-solid} — the top bar's unread count. */
+  background: var(--color-info-solid);
+  color: var(--color-text-inverse);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-micro-font-size);
+  line-height: var(--type-micro-line-height);
+}
+
+.ls-main {
+  flex: 1;
+  padding: var(--spacing-gutter);
+  max-width: var(--spacing-content-max);
+  width: 100%;
+}
+
+.ls-breadcrumbs {
+  margin-bottom: var(--spacing-4);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Breadcrumb links are teal. The prototype renders them muted, which contradicts
+ * "teal is the only interactive colour: links"; EXPERIENCE.md's precedence rule makes
+ * DESIGN.md the authority on a visual value, and both beat the prototype. */
+.ls-breadcrumbs a {
+  color: var(--color-text-link);
+}
+
+.ls-breadcrumbs__separator {
+  color: var(--color-text-muted);
+}
+
+.ls-breadcrumbs [aria-current='page'] {
+  color: var(--color-text-secondary);
+}
+
+.ls-page-header {
+  margin-bottom: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-page-header p {
+  color: var(--color-text-secondary);
+}
+
+.ls-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+/* ----------------------------------------------------------- components ---- */
+
+/* {components.card} */
+.ls-card {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+  box-shadow: none;
+}
+
+.ls-card__header {
+  padding: var(--spacing-card-header-padding);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.ls-card__body {
+  padding: var(--spacing-card-padding);
+}
+
+/* Button ------------------------------------------------------------------- */
+
+.ls-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  padding: 0 var(--spacing-3);
+  border-radius: var(--rounded-md);
+  border: 1px solid transparent;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  font-weight: var(--type-row-title-font-weight);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ls-button--sm {
+  height: var(--spacing-control-sm);
+}
+
+.ls-button--md {
+  height: var(--spacing-control-md);
+}
+
+.ls-button--primary {
+  background: var(--color-teal);
+  border-color: var(--color-teal);
+  color: var(--color-text-inverse);
+}
+
+.ls-button--primary:hover:not([aria-disabled='true']) {
+  background: var(--color-teal-800);
+  border-color: var(--color-teal-800);
+}
+
+.ls-button--secondary {
+  background: var(--color-surface-card);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.ls-button--secondary:hover:not([aria-disabled='true']) {
+  background: var(--color-surface-sunken);
+}
+
+.ls-button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-link);
+}
+
+.ls-button--ghost:hover:not([aria-disabled='true']) {
+  background: var(--color-surface-selected);
+}
+
+.ls-button--destructive {
+  background: var(--color-danger-solid);
+  border-color: var(--color-danger-solid);
+  color: var(--color-text-inverse);
+}
+
+/* A disabled action keeps its POSITION and its size; only its weight changes. It is
+ * still focusable, because its reason is its accessible description and a description
+ * nobody can reach by keyboard is the tooltip this rule exists to forbid. */
+.ls-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-default);
+  color: var(--color-text-muted);
+}
+
+/* StatusBadge -------------------------------------------------------------- */
+
+.ls-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 0 var(--spacing-2);
+  border: 1px solid transparent;
+  border-radius: var(--rounded-full);
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  white-space: nowrap;
+}
+
+.ls-badge--sm {
+  height: var(--spacing-badge-sm);
+}
+
+.ls-badge--md {
+  height: var(--spacing-badge-md);
+}
+
+/* Treatment names resolve exactly as DESIGN.md → Colors → Status states: a plain
+ * family fills with `-bg`, borders with `-border`, and writes in `-text`; `-solid`
+ * fills with `-solid` and writes in `text-inverse`; `-outline` has no fill. */
+.ls-badge--neutral {
+  background: var(--color-neutral-bg);
+  border-color: var(--color-neutral-border);
+  color: var(--color-neutral-text);
+}
+
+.ls-badge--neutral-solid {
+  background: var(--color-neutral-solid);
+  border-color: var(--color-neutral-solid);
+  color: var(--color-text-inverse);
+}
+
+.ls-badge--info {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.ls-badge--info-solid {
+  background: var(--color-info-solid);
+  border-color: var(--color-info-solid);
+  color: var(--color-text-inverse);
+}
+
+.ls-badge--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.ls-badge--warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.ls-badge--danger {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.ls-badge--danger-outline {
+  background: transparent;
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+/* Banner ------------------------------------------------------------------- */
+
+.ls-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid transparent;
+  border-radius: var(--rounded-md);
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+}
+
+.ls-banner--info {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.ls-banner--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.ls-banner--warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.ls-banner--danger {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.ls-banner__title {
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+/* EmptyState --------------------------------------------------------------- */
+
+.ls-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  padding: var(--spacing-6) var(--spacing-card-padding);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+  color: var(--color-text-secondary);
+}
+
+.ls-empty__icon {
+  color: var(--color-text-muted);
+}
+
+.ls-empty__headline {
+  color: var(--color-text-primary);
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-empty__sentence {
+  max-width: 68ch;
+}
+
+/* Tabs --------------------------------------------------------------------- */
+
+.ls-tabs {
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.ls-tabs ul {
+  display: flex;
+  gap: var(--spacing-5);
+}
+
+.ls-tab {
+  display: inline-flex;
+  align-items: center;
+  height: var(--spacing-tabs);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  font-weight: var(--type-row-title-font-weight);
+}
+
+.ls-tab[aria-current='page'] {
+  color: var(--color-text-link);
+  border-bottom-color: var(--color-teal);
+}
+
+/* Data table --------------------------------------------------------------- */
+
+.ls-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+  background: var(--color-surface-card);
+}
+
+.ls-table {
+  width: 100%;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-table caption {
+  padding: var(--spacing-card-header-padding);
+  text-align: left;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-table thead th {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  padding: 8px 20px;
+  text-align: left;
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  text-transform: uppercase;
+}
+
+.ls-table tbody th,
+.ls-table tbody td {
+  padding: var(--spacing-row-padding-dense);
+  border-top: 1px solid var(--color-surface-sunken);
+  text-align: left;
+  font-weight: var(--type-body-sm-font-weight);
+  vertical-align: top;
+}
+
+.ls-table tbody th {
+  font-size: var(--type-row-title-font-size);
+  line-height: var(--type-row-title-line-height);
+  font-weight: var(--type-row-title-font-weight);
+}
+
+.ls-table .ls-numeric {
+  text-align: right;
+  font-family: var(--type-mono-font-family);
+}
+
+/* Unavailable actions ------------------------------------------------------ */
+
+/* {components.unavailable-actions-panel} */
+.ls-unavailable {
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-md);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.ls-unavailable__heading {
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+.ls-unavailable li {
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+  color: var(--color-text-secondary);
+}
+
+.ls-unavailable li strong {
+  color: var(--color-text-primary);
+  font-weight: var(--type-row-title-font-weight);
+}
+
+/* Confirmation dialog ------------------------------------------------------ */
+
+.ls-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-gutter);
+  background: var(--color-scrim);
+  /* {spacing.scrim-opacity} */
+  background-color: color-mix(
+    in srgb,
+    var(--color-scrim) calc(var(--spacing-scrim-opacity) * 100%),
+    transparent
+  );
+}
+
+.ls-dialog {
+  width: 100%;
+  max-width: var(--spacing-dialog);
+  background: var(--color-surface-card);
+  border-radius: var(--rounded-lg);
+  /* {components.confirmation-dialog.shadow} — the only shadow in the product. */
+  box-shadow: 0 12px 32px rgba(16, 42, 67, 0.24);
+  padding: var(--spacing-card-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.ls-dialog__title {
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.ls-dialog__field label {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-text-secondary);
+}
+
+.ls-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
+}
+
+.ls-input,
+.ls-textarea {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.ls-field-error {
+  color: var(--color-danger-text);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+/* Sign-in ------------------------------------------------------------------ */
+
+.ls-signin {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-gutter);
+  background: var(--color-surface-page);
+}
+
+.ls-signin__card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-6);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+}
+
+.ls-signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.ls-badge-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+}
+
+/* ---------------------------------------------------------- breakpoints ---- */
+
+/* EXPERIENCE.md → Responsive & Platform. The rail widths and the two-column detail
+ * layouts arrive with the surfaces that have rails; what the shell owns is where the
+ * sidebar sits and whether a table may scroll. */
+
+/* 1240–1279px: rail stacked under the main column. */
+@media (max-width: 1279px) {
+  .ls-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 1024–1239px: a wide table scrolls horizontally instead of clipping. */
+@media (max-width: 1239px) {
+  .ls-table {
+    min-width: 720px;
+  }
+}
+
+/* Below 1024px: reading mode. Single column — the sidebar stacks above the content
+ * rather than narrowing, so every nav item stays reachable and nothing is clipped. */
+@media (max-width: 1023px) {
+  .ls-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-sidebar {
+    padding: var(--spacing-3) 0;
+    gap: var(--spacing-3);
+  }
+
+  .ls-sidebar__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .ls-nav-item {
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+
+  .ls-nav-item[aria-current='page'] {
+    border-left-color: transparent;
+    border-bottom-color: var(--color-teal-500);
+  }
+
+  .ls-main {
+    padding: var(--spacing-4);
+  }
+}
+
+/* Below 900px the same reading mode; the surfaces that cannot be authored on a narrow
+ * viewport say so themselves when they exist (Builder, Version review). */
+@media (max-width: 899px) {
+  .ls-topbar {
+    padding: 0 var(--spacing-4);
+  }
+
+  .ls-ribbon {
+    padding: var(--spacing-1) var(--spacing-4);
+  }
+}

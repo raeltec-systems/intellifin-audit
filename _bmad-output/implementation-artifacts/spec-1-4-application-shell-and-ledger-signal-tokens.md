@@ -2,7 +2,7 @@
 title: 'Story 1.4: Application shell and Ledger Signal tokens'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: 'c1f3716214748488c60d03a0d579d847b480f940'
 baseline_commit: 'c1f3716214748488c60d03a0d579d847b480f940'
 review_loop_iteration: 0

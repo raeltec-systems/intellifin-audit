@@ -232,3 +232,81 @@ jobs:
             echo "::error::worker stderr did not contain 'Refusing to start'"
             exit 1
           fi
+
+  e2e:
+    name: Accessibility and shell (Playwright, WCAG 2.1 AA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # NFR-11: core web workflows must stay keyboard accessible and pass automated
+    # WCAG 2.1 AA checks. axe runs against a real browser here, so a violation fails
+    # the pull request rather than being noticed in review or not at all.
+    services:
+      postgres:
+        image: ghcr.io/railwayapp-templates/postgres-ssl:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: intellifin_e2e
+          PGDATA: /var/lib/postgresql/data/pgdata
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/intellifin_e2e?sslmode=require
+      SERVICE_NAME: web
+      BETTER_AUTH_SECRET: ci-e2e-secret-at-least-32-characters-long
+      # http, not https: the suite runs `next dev`, where NODE_ENV is development and a
+      # plain-http origin is accepted. A production build refuses one, because Better
+      # Auth would not mark the session cookie Secure.
+      BETTER_AUTH_URL: http://localhost:3000
+      E2E_AUDITOR_EMAIL: auditor@example.test
+      E2E_ADMIN_EMAIL: administrator@example.test
+      E2E_PASSWORD: ci-e2e-password-not-a-real-credential
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable corepack and pin pnpm
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The workspace packages export `dist` for runtime, so the dev server and the
+      # seed script both need a build first.
+      - name: Build workspace packages
+        run: pnpm build
+
+      - name: Apply migrations (throwaway CI database)
+        run: pnpm db:migrate
+
+      # Better Auth has sign-up disabled, so this script is the only way an account
+      # exists at all. Two accounts, two roles: the shell spec needs both.
+      - name: Seed the two test accounts
+        env:
+          SEED_PASSWORD: ${{ env.E2E_PASSWORD }}
+        run: |
+          pnpm seed:identity --email "$E2E_AUDITOR_EMAIL" --name 'CI Auditor' --role auditor
+          pnpm seed:identity --email "$E2E_ADMIN_EMAIL" --name 'CI Administrator' --role poc-administrator
+
+      - name: Install the Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end and accessibility suite
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
