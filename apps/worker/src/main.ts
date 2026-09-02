@@ -38,6 +38,7 @@ async function main(): Promise<void> {
     telemetry.captureError(
       'Refusing to start',
       new ConfigError(['SERVICE_NAME: must be "worker" for this process']),
+      { configKeys: 'SERVICE_NAME' },
     );
     process.exit(1);
   }
@@ -80,6 +81,10 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  telemetry.captureError('Fatal worker error', error);
+  // `loadConfig` throws before telemetry is configured, so a bad environment reaches
+  // here. Name the variables that failed; sanitized telemetry drops the message.
+  telemetry.captureError('Fatal worker error', error, {
+    configKeys: error instanceof ConfigError ? error.keys : null,
+  });
   process.exit(1);
 });

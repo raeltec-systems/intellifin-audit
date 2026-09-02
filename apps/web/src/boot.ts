@@ -37,6 +37,8 @@ export async function runStartupChecks(): Promise<void> {
       error instanceof UnsupportedSchemaError;
 
     telemetry.captureError(permanent ? 'Refusing to start' : 'Startup checks deferred', error, {
+      // Names only. Without this the log says "ConfigError" and nothing else.
+      configKeys: error instanceof ConfigError ? error.keys : null,
       supportedSchemaRange:
         error instanceof UnsupportedSchemaError ? error.supportedSchemaRange : null,
       foundSchemaVersion: error instanceof UnsupportedSchemaError ? error.found : null,
