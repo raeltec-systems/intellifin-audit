@@ -2,7 +2,7 @@
 title: 'Story 1.1: Bootstrap the monorepo and deploy web and worker'
 type: 'chore'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '8cf07a45efdee0e84579d06fbc19c7021fbeaf91'
 context:
@@ -85,3 +85,69 @@ Greenfield: no code exists. Sources of truth for this story:
 
 **Manual checks (if no CLI):**
 - Railway dashboard shows `web` and `worker` healthy; `GET https://<web-domain>/api/health` returns `{"status":"ok","schema":1}`; `worker_heartbeat` has a row with `seen_at` within the last minute.
+
+## Suggested Review Order
+
+**Entry point: the dependency direction the whole repository must keep**
+
+- The AD-1 layer rules and the vendor ban, enforced in CI rather than by prose
+  [`.dependency-cruiser.cjs:65`](../../.dependency-cruiser.cjs#L65)
+- Vendor pattern anchored to bare specifiers and node_modules to avoid false positives
+  [`.dependency-cruiser.cjs:92`](../../.dependency-cruiser.cjs#L92)
+- One root script CI and humans both run
+  [`package.json:16`](../../package.json#L16)
+
+**Startup guards (AD-11, AD-15)**
+
+- Pure, unit-testable refusal for a non-18 PostgreSQL
+  [`compat.ts:65`](../../packages/infrastructure/src/db/compat.ts#L65)
+- Schema range check that never migrates
+  [`compat.ts:95`](../../packages/infrastructure/src/db/compat.ts#L95)
+- Configuration schema; blank range bounds are rejected, not coerced to 0
+  [`config.ts:18`](../../packages/infrastructure/src/config.ts#L18)
+- Web runs the asserts at boot and exits non-zero on a permanent refusal
+  [`instrumentation.ts:18`](../../apps/web/instrumentation.ts#L18)
+- Only successes and permanent refusals are cached; transient errors retry
+  [`bootstrap.ts:48`](../../apps/web/src/bootstrap.ts#L48)
+- Worker startup checks with structured refusal logging
+  [`startup.ts:31`](../../apps/worker/src/startup.ts#L31)
+
+**Schema and migrations (AD-8)**
+
+- The only two tables this story owns
+  [`schema.ts:13`](../../packages/infrastructure/src/db/schema.ts#L13)
+- Migration that stamps schema generation 1
+  [`0001_worker_heartbeat.sql:8`](../../packages/infrastructure/drizzle/0001_worker_heartbeat.sql#L8)
+
+**Liveness surfaces**
+
+- Health route maps known refusals and hides driver errors; 5-second bound
+  [`route.ts:58`](../../apps/web/app/api/health/route.ts#L58)
+- Heartbeat upsert lives in infrastructure, not the composition root
+  [`heartbeat.ts:10`](../../packages/infrastructure/src/db/heartbeat.ts#L10)
+- Heartbeat loop with in-flight guard; a failed beat logs and retries
+  [`startup.ts:68`](../../apps/worker/src/startup.ts#L68)
+- Worker composition root wiring
+  [`main.ts:33`](../../apps/worker/src/main.ts#L33)
+
+**Pipelines and deployment**
+
+- Release runs only after CI succeeds on main and migrates before deploying
+  [`release.yml:13`](../../.github/workflows/release.yml#L13)
+- Images are built and smoke-started in CI
+  [`ci.yml:114`](../../.github/workflows/ci.yml#L114)
+- Web runtime layer from Next standalone output, no migrate step
+  [`Dockerfile:29`](../../apps/web/Dockerfile#L29)
+- Worker runtime from a pruned pnpm deploy
+  [`Dockerfile:28`](../../apps/worker/Dockerfile#L28)
+- Declared Railway shape; no auto-deploy source so migrations precede deploys
+  [`railway.ts:40`](../../.railway/railway.ts#L40)
+
+**Tests and supporting changes**
+
+- Each AD-1 rule proven by name with a resolvable planted import
+  [`boundaries.test.ts:86`](../../tests/unit/boundaries.test.ts#L86)
+- Web startup guard sequence with a fake sql
+  [`bootstrap.test.ts:1`](../../apps/web/src/bootstrap.test.ts#L1)
+- Worker refusal and retry contract
+  [`startup.test.ts:1`](../../apps/worker/src/startup.test.ts#L1)
