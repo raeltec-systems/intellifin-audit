@@ -6,8 +6,9 @@ import {
   createDb,
   createSqlClient,
   loadConfig,
-  workerHeartbeat,
 } from '@intellifin/infrastructure';
+
+import { HEARTBEAT_INTERVAL_MS, upsertHeartbeat } from './heartbeat.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -16,9 +17,6 @@ import {
  * schema-range check, and only then starts polling. It never migrates: a database
  * outside the supported range makes the process exit non-zero before any work runs.
  */
-
-/** How often the liveness row is refreshed. */
-export const HEARTBEAT_INTERVAL_MS = 30_000;
 
 function log(level: 'info' | 'error', message: string, extra: Record<string, unknown> = {}): void {
   const line = JSON.stringify({
@@ -74,12 +72,8 @@ async function main(): Promise<void> {
   }
 
   const beat = async (): Promise<void> => {
-    const seenAt = new Date();
     try {
-      await db
-        .insert(workerHeartbeat)
-        .values({ hostname: host, seenAt })
-        .onConflictDoUpdate({ target: workerHeartbeat.hostname, set: { seenAt } });
+      await upsertHeartbeat(db, host, new Date());
     } catch (error) {
       // A failed beat is logged and retried on the next tick; it never stops the loop.
       log('error', 'Heartbeat upsert failed', {

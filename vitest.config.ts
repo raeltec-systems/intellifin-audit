@@ -17,7 +17,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['packages/**/src/**/*.test.ts', 'apps/**/src/**/*.test.ts'],
+    include: ['packages/**/src/**/*.test.ts', 'apps/**/src/**/*.test.ts', 'tests/unit/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', 'tests/integration/**'],
     reporters: ['default'],
   },

@@ -52,19 +52,19 @@ Greenfield: no code exists. Sources of truth for this story:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, `.npmrc`, `tsconfig.base.json`, `.gitignore` -- root workspace with `packageManager: pnpm@11.25.0`, `engines.node: 24.20.0`, scripts `typecheck`, `boundaries`, `test`, `db:migrate`, `db:generate` -- one entry point for CI and humans.
-- [ ] `packages/domain`, `packages/application`, `packages/infrastructure` -- each `package.json`, `tsconfig.json`, `src/index.ts` exporting a named placeholder; `application` depends on `domain`, `infrastructure` on both -- the seed the spine fixes.
-- [ ] `packages/infrastructure/src/config.ts` -- Zod schema for `DATABASE_URL`, `SERVICE_NAME`, `SCHEMA_RANGE_MIN`, `SCHEMA_RANGE_MAX`; exported `loadConfig()` called only by composition roots -- AD-11.
-- [ ] `packages/infrastructure/src/db/{client.ts,schema.ts,compat.ts}`, `drizzle.config.ts`, `packages/infrastructure/drizzle/0000_schema_meta.sql`, `0001_worker_heartbeat.sql` -- postgres.js client, Drizzle tables `schema_meta(version int, applied_at)` and `worker_heartbeat(hostname pk, seen_at)`, `assertSchemaSupported()` and `assertPostgres18()` -- AD-8, AD-15.
-- [ ] `apps/web` -- Next.js 16 app with `app/page.tsx` placeholder and `app/api/health/route.ts` returning status and schema version; composition root `src/bootstrap.ts` runs both asserts on first request -- health route AC.
-- [ ] `apps/worker/src/main.ts` -- composition root: `loadConfig()`, asserts, then a 30 s heartbeat upsert loop; graceful SIGTERM -- heartbeat AC.
-- [ ] `.dependency-cruiser.cjs` -- AD-1 rules as listed under Always; `pnpm boundaries` runs it over `apps/` and `packages/`.
-- [ ] `tests/fixtures/.gitkeep`, `tests/integration/vitest.config.ts`, `tests/e2e/.gitkeep`, `packages/infrastructure/src/config.test.ts`, `tests/integration/schema-compat.test.ts` -- unit test for config validation; integration test for the range and version asserts against `DATABASE_URL` -- proves the refusal path.
-- [ ] `.github/workflows/ci.yml` -- on PR: pnpm 11.25.0 via corepack, Node 24.20.0, install, `typecheck`, `boundaries`, `test`, then `db:migrate` and integration tests against a `postgres:18` service.
-- [ ] `.github/workflows/release.yml` -- on push to `main`: `db:migrate` against `DATABASE_URL` secret, then `railway up` for `web` and `worker` with `RAILWAY_TOKEN` -- AD-15 release-only migrations.
-- [ ] `apps/web/Dockerfile`, `apps/worker/Dockerfile`, `apps/web/railway.json`, `apps/worker/railway.json` -- multi-stage Node 24 images; web health check path `/api/health`; no migrate step in either image.
-- [ ] Railway: project `intellifin-audit` with services `web`, `worker`, PostgreSQL 18 (`ghcr.io/railwayapp-templates/postgres-ssl:18`); `DATABASE_URL` and `SERVICE_NAME` set per service -- via the Railway connector once enabled (Ask First).
-- [ ] `AGENTS.md` -- replace the Running and verifying TODO with the four root scripts -- keeps the agent block true.
+- [x] `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, `.npmrc`, `tsconfig.base.json`, `.gitignore` -- root workspace with `packageManager: pnpm@11.25.0`, `engines.node: 24.20.0`, scripts `typecheck`, `boundaries`, `test`, `db:migrate`, `db:generate` -- one entry point for CI and humans.
+- [x] `packages/domain`, `packages/application`, `packages/infrastructure` -- each `package.json`, `tsconfig.json`, `src/index.ts` exporting a named placeholder; `application` depends on `domain`, `infrastructure` on both -- the seed the spine fixes.
+- [x] `packages/infrastructure/src/config.ts` -- Zod schema for `DATABASE_URL`, `SERVICE_NAME`, `SCHEMA_RANGE_MIN`, `SCHEMA_RANGE_MAX`; exported `loadConfig()` called only by composition roots -- AD-11.
+- [x] `packages/infrastructure/src/db/{client.ts,schema.ts,compat.ts}`, `drizzle.config.ts`, `packages/infrastructure/drizzle/0000_schema_meta.sql`, `0001_worker_heartbeat.sql` -- postgres.js client, Drizzle tables `schema_meta(version int, applied_at)` and `worker_heartbeat(hostname pk, seen_at)`, `assertSchemaSupported()` and `assertPostgres18()` -- AD-8, AD-15.
+- [x] `apps/web` -- Next.js 16 app with `app/page.tsx` placeholder and `app/api/health/route.ts` returning status and schema version; composition root `src/bootstrap.ts` runs both asserts on first request -- health route AC.
+- [x] `apps/worker/src/main.ts` -- composition root: `loadConfig()`, asserts, then a 30 s heartbeat upsert loop; graceful SIGTERM -- heartbeat AC.
+- [x] `.dependency-cruiser.cjs` -- AD-1 rules as listed under Always; `pnpm boundaries` runs it over `apps/` and `packages/`.
+- [x] `tests/fixtures/.gitkeep`, `tests/integration/vitest.config.ts`, `tests/e2e/.gitkeep`, `packages/infrastructure/src/config.test.ts`, `tests/integration/schema-compat.test.ts`, plus `tests/unit/boundaries.test.ts`, `apps/web/src/health-route.test.ts`, `tests/integration/heartbeat.test.ts` -- unit test for config validation; integration test for the range and version asserts against `DATABASE_URL`; one covering test per matrix row -- proves the refusal path.
+- [x] `.github/workflows/ci.yml` -- on PR: pnpm 11.25.0 via corepack, Node 24.20.0, install, `typecheck`, `boundaries`, `test`, then `db:migrate` and integration tests against a `postgres:18` service.
+- [x] `.github/workflows/release.yml` -- on push to `main`: `db:migrate` against `DATABASE_URL` secret, then `railway up` for `web` and `worker` with `RAILWAY_TOKEN` -- AD-15 release-only migrations.
+- [x] `apps/web/Dockerfile`, `apps/worker/Dockerfile`, `.railway/railway.ts` -- multi-stage Node 24 images; web health check path `/api/health`; no migrate step in either image. Railway config-as-code (`railway.json`) is deprecated for new services, so the environment shape lives in the IaC file instead.
+- [x] Railway: project `intellifin-audit` with services `web`, `worker`, PostgreSQL 18 (`ghcr.io/railwayapp-templates/postgres-ssl:18`); `DATABASE_URL` and `SERVICE_NAME` set per service -- via the Railway connector once enabled (Ask First).
+- [x] `AGENTS.md` -- replace the Running and verifying TODO with the four root scripts -- keeps the agent block true.
 
 **Acceptance Criteria:**
 - Given a fresh clone, when `pnpm install`, `pnpm -r typecheck`, `pnpm boundaries`, and `pnpm test` run, then all exit 0 and the workspace has the eight seed directories.

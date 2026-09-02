@@ -17,7 +17,7 @@ COPY apps/worker/package.json apps/worker/
 COPY packages/domain/package.json packages/domain/
 COPY packages/application/package.json packages/application/
 COPY packages/infrastructure/package.json packages/infrastructure/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # ---- build ------------------------------------------------------------------
 FROM deps AS build
