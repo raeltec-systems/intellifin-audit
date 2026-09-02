@@ -1,0 +1,33 @@
+{
+  "source": "audit-chain-golden.json",
+  "cases": [
+    {
+      "name": "stored actor field changed",
+      "column": "actor_id",
+      "replacement": "attacker",
+      "expectedFirstInvalidSequence": 1,
+      "expectedReason": "EVENT_HASH_MISMATCH"
+    },
+    {
+      "name": "payload changed",
+      "column": "payload",
+      "replacement": { "method": "changed" },
+      "expectedFirstInvalidSequence": 1,
+      "expectedReason": "EVENT_HASH_MISMATCH"
+    },
+    {
+      "name": "link changed",
+      "column": "previous_hash",
+      "replacement": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "expectedFirstInvalidSequence": 1,
+      "expectedReason": "PREVIOUS_HASH_MISMATCH"
+    },
+    {
+      "name": "sequence changed",
+      "column": "sequence",
+      "replacement": 7,
+      "expectedFirstInvalidSequence": 1,
+      "expectedReason": "SEQUENCE_MISMATCH"
+    }
+  ]
+}

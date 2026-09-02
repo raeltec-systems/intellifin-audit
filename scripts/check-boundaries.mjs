@@ -6,12 +6,43 @@
 // dead check, so this wrapper runs the cruise in JSON mode, refuses an empty result,
 // and prints every violation as `error <rule>: <from> → <to>`.
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
+// On Windows `pnpm` is a .CMD shim that spawnSync cannot exec directly, and running
+// it through a shell mangles the JSON report. Call corepack's pnpm.js with this same
+// Node instead. Everywhere else keep the plain PATH lookup the CI gate already uses.
+const corepackCandidates =
+  process.platform === 'win32'
+    ? [
+        join(dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'pnpm.js'),
+        resolve(dirname(process.execPath), '..', 'lib', 'node_modules', 'corepack', 'dist', 'pnpm.js'),
+      ]
+    : [];
+const corepackPnpm = corepackCandidates.find(existsSync);
+const command = corepackPnpm ? process.execPath : 'pnpm';
+const commandArgs = [
+  ...(corepackPnpm ? [corepackPnpm] : []),
+  'exec',
+  'depcruise',
+  '--config',
+  '.dependency-cruiser.cjs',
+  '--no-cache',
+  '--output-type',
+  'json',
+  ...args,
+  'apps',
+  'packages',
+];
 const result = spawnSync(
-  'pnpm',
-  ['exec', 'depcruise', '--config', '.dependency-cruiser.cjs', '--no-cache', '--output-type', 'json', ...args, 'apps', 'packages'],
-  { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+  command,
+  commandArgs,
+  {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    shell: process.platform === 'win32' && !corepackPnpm,
+  },
 );
 
 let report;

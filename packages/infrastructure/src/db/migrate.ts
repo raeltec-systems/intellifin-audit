@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
 import { createDb, createSqlClient } from './client.js';
 import { assertPostgres18, readSchemaVersion } from './compat.js';
+import { classifyTelemetryError, sanitizeTelemetryFields } from '../telemetry/sanitize.js';
 
 /**
  * AD-15: the release pipeline's migrator. Web and worker never call this; they only
@@ -30,7 +31,7 @@ function log(level: 'info' | 'error', message: string, fields: Record<string, un
     time: new Date().toISOString(),
     service: 'migrate',
     message,
-    ...fields,
+    ...sanitizeTelemetryFields(fields),
   });
   if (level === 'error') process.stderr.write(`${line}\n`);
   else process.stdout.write(`${line}\n`);
@@ -40,7 +41,7 @@ export async function runMigrations(databaseUrl: string): Promise<number> {
   const sql = createSqlClient(databaseUrl, { max: 1 });
   try {
     const major = await assertPostgres18(sql);
-    log('info', 'Connected', { postgresMajor: major, migrationsFolder: MIGRATIONS_FOLDER });
+    log('info', 'Connected', { postgresMajor: major });
     await migrate(createDb(sql), { migrationsFolder: MIGRATIONS_FOLDER });
     const version = await readSchemaVersion(sql);
     log('info', 'Migrations applied', { schemaVersion: version });
@@ -62,8 +63,7 @@ if (isEntryPoint) {
     await runMigrations(databaseUrl);
   } catch (error) {
     log('error', 'Migration failed', {
-      reason: error instanceof Error ? error.message : String(error),
-      code: error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined,
+      ...classifyTelemetryError(error),
     });
     process.exit(1);
   }

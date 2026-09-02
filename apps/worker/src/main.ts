@@ -1,8 +1,14 @@
 import { hostname } from 'node:os';
 
-import { createDb, createSqlClient, loadConfig } from '@intellifin/infrastructure';
+import {
+  ConfigError,
+  createDb,
+  createSqlClient,
+  createTelemetry,
+  loadConfig,
+} from '@intellifin/infrastructure';
 
-import { createHeartbeatLoop, runStartupChecks, type LogLevel } from './startup.js';
+import { createHeartbeatLoop, runStartupChecks } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -15,30 +21,24 @@ import { createHeartbeatLoop, runStartupChecks, type LogLevel } from './startup.
 /** How often the liveness row is refreshed. */
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 
-function log(level: LogLevel, message: string, extra: Record<string, unknown> = {}): void {
-  const line = JSON.stringify({
-    level,
-    time: new Date().toISOString(),
-    service: 'worker',
-    message,
-    ...extra,
-  });
-  if (level === 'error') {
-    process.stderr.write(`${line}\n`);
-  } else {
-    process.stdout.write(`${line}\n`);
-  }
-}
+const telemetry = createTelemetry({ serviceName: 'worker' });
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  telemetry.configureLevel(config.LOG_LEVEL);
+  telemetry.configureSentry({
+    dsn: config.SENTRY_DSN,
+    environment: config.SENTRY_ENVIRONMENT,
+    tracesSampleRate: config.SENTRY_TRACES_SAMPLE_RATE,
+  });
 
   // This image is the worker. Started with the web service's environment it would
   // quietly write heartbeats under the wrong identity, so refuse instead.
   if (config.SERVICE_NAME !== 'worker') {
-    log('error', 'Refusing to start', {
-      reason: `SERVICE_NAME must be "worker" for this process, found "${config.SERVICE_NAME}".`,
-    });
+    telemetry.captureError(
+      'Refusing to start',
+      new ConfigError(['SERVICE_NAME: must be "worker" for this process']),
+    );
     process.exit(1);
   }
 
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log('info', 'Shutting down', { signal });
+    telemetry.info('Shutting down', { signal });
     if (interval) clearInterval(interval);
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(0);
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   try {
-    await runStartupChecks(config, sql, log);
+    await runStartupChecks(config, sql, telemetry);
   } catch {
     // runStartupChecks already logged the refusal, the declared range, and the
     // version it found. Nothing here is recoverable.
@@ -70,18 +70,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const loop = createHeartbeatLoop(db, host, log);
+  const loop = createHeartbeatLoop(db, host, telemetry);
   await loop.beat();
 
   // The interval is the process's keep-alive; SIGTERM clears it and the process ends.
   interval = setInterval(() => void loop.beat(), HEARTBEAT_INTERVAL_MS);
 
-  log('info', 'Heartbeat loop started', { hostname: host, intervalMs: HEARTBEAT_INTERVAL_MS });
+  telemetry.info('Heartbeat loop started', { hostname: host, intervalMs: HEARTBEAT_INTERVAL_MS });
 }
 
 void main().catch((error: unknown) => {
-  log('error', 'Fatal worker error', {
-    reason: error instanceof Error ? error.message : String(error),
-  });
+  telemetry.captureError('Fatal worker error', error);
   process.exit(1);
 });

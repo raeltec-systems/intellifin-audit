@@ -6,6 +6,7 @@ import {
   type AppConfig,
   type Database,
   type Sql,
+  type Telemetry,
 } from '@intellifin/infrastructure';
 
 /**
@@ -14,9 +15,7 @@ import {
  * a thin composition root: read config, wire, install signal handlers, exit.
  */
 
-export type LogLevel = 'info' | 'error';
-
-export type Logger = (level: LogLevel, message: string, extra?: Record<string, unknown>) => void;
+export type Logger = Pick<Telemetry, 'info' | 'error' | 'captureError'>;
 
 export interface StartupResult {
   readonly postgresMajor: number;
@@ -31,7 +30,7 @@ export interface StartupResult {
 export async function runStartupChecks(
   config: AppConfig,
   sql: Sql,
-  log: Logger,
+  telemetry: Logger,
 ): Promise<StartupResult> {
   const supportedSchemaRange = `${config.SCHEMA_RANGE_MIN}..${config.SCHEMA_RANGE_MAX}`;
   try {
@@ -41,11 +40,10 @@ export async function runStartupChecks(
       config.SCHEMA_RANGE_MIN,
       config.SCHEMA_RANGE_MAX,
     );
-    log('info', 'Startup checks passed', { postgresMajor, schemaVersion, supportedSchemaRange });
+    telemetry.info('Startup checks passed', { postgresMajor, schemaVersion, supportedSchemaRange });
     return { postgresMajor, schemaVersion };
   } catch (error) {
-    log('error', 'Refusing to start', {
-      reason: error instanceof Error ? error.message : String(error),
+    telemetry.captureError('Refusing to start', error, {
       supportedSchemaRange,
       foundSchemaVersion: error instanceof UnsupportedSchemaError ? error.found : null,
     });
@@ -65,14 +63,14 @@ export interface HeartbeatLoop {
  * a slow or wedged database would otherwise pile up connections until the pool is
  * exhausted, and a heartbeat that cannot finish is not made truer by starting again.
  */
-export function createHeartbeatLoop(db: Database, host: string, log: Logger): HeartbeatLoop {
+export function createHeartbeatLoop(db: Database, host: string, telemetry: Logger): HeartbeatLoop {
   let inFlight = false;
   let skipped = 0;
 
   const beat = async (): Promise<void> => {
     if (inFlight) {
       skipped += 1;
-      log('info', 'Heartbeat skipped: the previous beat is still in flight', {
+      telemetry.info('Heartbeat skipped', {
         hostname: host,
         skippedBeats: skipped,
       });
@@ -84,9 +82,8 @@ export function createHeartbeatLoop(db: Database, host: string, log: Logger): He
       await upsertHeartbeat(db, host, new Date());
     } catch (error) {
       // A failed beat is logged and retried on the next tick; it never stops the loop.
-      log('error', 'Heartbeat upsert failed', {
+      telemetry.captureError('Heartbeat upsert failed', error, {
         hostname: host,
-        reason: error instanceof Error ? error.message : String(error),
       });
     } finally {
       inFlight = false;

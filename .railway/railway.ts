@@ -45,7 +45,7 @@ export default defineRailway(() => {
       DATABASE_URL: postgres.env.DATABASE_URL,
       SERVICE_NAME: 'web',
       SCHEMA_RANGE_MIN: '1',
-      SCHEMA_RANGE_MAX: '1',
+      SCHEMA_RANGE_MAX: '2',
       NODE_ENV: 'production',
       PORT: '3000',
     },
@@ -58,7 +58,7 @@ export default defineRailway(() => {
       DATABASE_URL: postgres.env.DATABASE_URL,
       SERVICE_NAME: 'worker',
       SCHEMA_RANGE_MIN: '1',
-      SCHEMA_RANGE_MAX: '1',
+      SCHEMA_RANGE_MAX: '2',
       NODE_ENV: 'production',
     },
   });
