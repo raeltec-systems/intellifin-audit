@@ -133,8 +133,9 @@ test.describe('as an Auditor', () => {
 
       await expect(page.getByLabel('Period start')).toBeVisible();
       await expect(page.getByLabel('Population Source', { exact: true })).toBeVisible();
-      // Compliance Rule conditions are editable too (Story 2.4). Four sections remain
-      // read-only: Control, Objective, Evidence Requirements, Schedule.
+      // Compliance Rule conditions are editable too (Story 2.4). Evidence Requirements
+      // and the Schedule are editable now too (Story 2.5): exactly TWO sections remain
+      // read-only — Control, Objective.
       await expect(page.getByLabel('Add a Target System')).toBeVisible();
       await expect(page.getByLabel('Condition text C1', { exact: true })).toBeVisible();
       await expect(page.getByLabel('Agent-Judged confidence threshold')).toHaveValue('0.80');
@@ -144,7 +145,12 @@ test.describe('as an Auditor', () => {
         await expect(page.getByLabel('Applicability C1', { exact: true })).toHaveValue('all records');
         await expect(page.getByLabel('Applicability C2', { exact: true })).toHaveValue('found = true');
       }
-      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(4);
+      await expect(page.getByLabel('Frequency')).toBeVisible();
+      await expect(page.getByLabel('Fixed UTC start time')).toBeVisible();
+      if (template.id === 'P-1') {
+        await expect(page.getByLabel('Attribute name').first()).toBeVisible();
+      }
+      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(2);
       const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_NOT_EDITABLE_SENTENCE });
       await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
 

@@ -12,8 +12,10 @@ import {
   updatePopulationDraft,
   updateTargetDraft,
   updateComplianceDraft,
+  updateEvidenceDraft,
   type DraftPopulationEdit,
   type DraftTargetEdit,
+  type DraftEvidenceEdit,
   type ComplianceDraftInput,
   type AuditUnitOfWork,
   type ProcedureDependencies,
@@ -30,8 +32,11 @@ import {
   registrationDigest,
   initialDraftPopulation,
   initialDraftCompliance,
+  initialDraftEvidence,
+  evidenceBlockersFor,
   complianceInputFromFields,
   COMPLIANCE_MESSAGES,
+  EVIDENCE_DRAFT_MESSAGES,
   POPULATION_DRAFT_MESSAGES,
   TARGET_DRAFT_MESSAGES,
 } from '@intellifin/domain';
@@ -94,6 +99,26 @@ describe('generation 10 Compliance Rule backfill', () => {
     // population, targets, instructions, or retained section payload.
     const update = /UPDATE "procedure_version"([\s\S]*?)END;/.exec(migration)?.[0] ?? '';
     expect(update).not.toMatch(/"(?:period|scope|targets|instructions|sections)"\s*=/);
+  });
+});
+
+describe('generation 11 Evidence Requirements backfill', () => {
+  it('contains the exact typed defaults for P-1 and an empty array for every other Template', () => {
+    const migration = readFileSync(
+      new URL('../../packages/infrastructure/drizzle/0011_quick_nighthawk.sql', import.meta.url),
+      'utf8',
+    );
+    const match = /WHEN 'P-1' THEN \$json\$(.*?)\$json\$::jsonb/s.exec(migration);
+    expect(match?.[1]).toBeDefined();
+    expect(JSON.parse(match![1]!)).toEqual(initialDraftEvidence('P-1').evidenceRequirements);
+    // Every other Template falls through to the ELSE branch — an empty array, not a
+    // second WHEN clause somebody has to keep pinned as more Templates are added.
+    expect(migration).toMatch(/ELSE '\[\]'::jsonb/);
+    // The migration promotes only Evidence Requirements. Schedule stays NULL — it is
+    // now a real, auditor-set field, not a Template default — and no prior authored
+    // section is rewritten.
+    const update = /UPDATE "procedure_version"([\s\S]*?)END;/.exec(migration)?.[0] ?? '';
+    expect(update).not.toMatch(/"(?:period|scope|targets|instructions|sections|schedule)"\s*=/);
   });
 });
 
@@ -1330,6 +1355,254 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(sql`UPDATE procedure_version SET compliance_conditions = '[]'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_compliance_shape/);
       await expect(sql`UPDATE procedure_version SET agent_judged_threshold = '1.01' WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_confidence_range/);
       await expect(sql`UPDATE procedure_version SET agent_judged_threshold = '0.8000' WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
+    });
+  });
+
+  describe('Evidence Requirements and Schedule authoring', () => {
+    interface RegisteredWeb {
+      readonly id: string;
+      readonly digest: string;
+    }
+
+    async function registerWeb(name: string): Promise<RegisteredWeb> {
+      const registrationId = new CryptoUuidV7Generator().next();
+      const fields = {
+        kind: 'web' as const,
+        allowedOrigins: [`http://localhost:4300/${name.toLowerCase()}`],
+        applicationIdentity: '',
+        credentialRef: `vault://audit/${name.toLowerCase()}`,
+        permittedActions: ['navigate', 'read-attribute'] as const,
+        attributeLabelPatterns: ['Status'],
+        secondaryKey: '',
+      };
+      const digest = registrationDigest(fields);
+      await sql`
+        INSERT INTO target_system_registration
+          (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
+        VALUES
+          (${registrationId}, ${name}, ${fields.kind}, ${fields.allowedOrigins}, ${fields.applicationIdentity}, ${fields.credentialRef}, ${fields.permittedActions}, ${fields.attributeLabelPatterns}, ${fields.secondaryKey}, '', 'active', ${digest})
+      `;
+      targetRegistrationIds.push(registrationId);
+      return { id: registrationId, digest };
+    }
+
+    async function waitForProcedureVersionLock(): Promise<void> {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const rows = await sql<{ waiting: boolean }[]>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock' AND query ILIKE '%procedure_version%'
+          ) AS waiting
+        `;
+        if (rows[0]?.waiting === true) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('No query waited for the held procedure_version row lock');
+    }
+
+    async function setupEvidence(templateId: 'P-1' | 'P-2' = 'P-2') {
+      const seed = await createProcedure(dependencies(), createInput({ templateId }, `${prefix}evidence-create-${crypto.randomUUID()}`));
+      if (!seed.ok) throw new Error(seed.reason);
+      created.push(seed.procedureId);
+      const read = async (): Promise<ProcedureVersionView> => {
+        const row = await new DrizzleProcedureRepository(db).findVersion(seed.versionId);
+        if (row === null) throw new Error('the Evidence Draft is missing');
+        return row;
+      };
+      const save = (
+        edit: DraftEvidenceEdit,
+        expectedRowVersion: string,
+        correlationId = `${prefix}evidence-${seed.versionId}-${crypto.randomUUID()}`,
+        procedureDependencies: ProcedureDependencies = dependencies(),
+      ) => updateEvidenceDraft(procedureDependencies, {
+        session: auditor, procedureId: seed.procedureId, versionId: seed.versionId,
+        expectedRowVersion, correlationId, edit,
+      });
+      const selectTargets = (registrationId: string, digest: string, token: string) =>
+        updateTargetDraft(dependencies(), {
+          session: auditor, procedureId: seed.procedureId, versionId: seed.versionId,
+          expectedRowVersion: token, correlationId: `${prefix}evidence-target-${seed.versionId}-${crypto.randomUUID()}`,
+          edit: { section: 'target-systems', selections: [{ mode: 'bind', registrationId, expectedDigest: digest }] },
+        });
+      return { seed, read, save, selectTargets };
+    }
+
+    const requirement = (over: Partial<{ attributeName: string; modelRead: boolean; groundedBy: readonly ('structural-snapshot' | 'source-file-excerpt')[]; screenshot: boolean; recordingSegment: boolean }> = {}) =>
+      ({ attributeName: 'account_status', modelRead: false, groundedBy: ['structural-snapshot'] as const, screenshot: true, recordingSegment: false, ...over });
+
+    it('saves typed Evidence Requirements and a Schedule that survive a repository reload', async () => {
+      const { seed, read, save } = await setupEvidence();
+      const before = await read();
+      const requirementsOutcome = await save({ section: 'evidence-requirements', requirements: [requirement()] }, procedureVersionRowVersion(before));
+      expect(requirementsOutcome).toMatchObject({ ok: true, changed: true });
+      const afterRequirements = await read();
+      expect(afterRequirements.evidenceRequirements).toEqual([{ ...requirement(), platformCaptured: false }]);
+
+      const correlationId = `${prefix}evidence-schedule-${seed.versionId}`;
+      const scheduleOutcome = await save({ section: 'schedule', frequency: 'weekly', startTime: '02:00' }, procedureVersionRowVersion(afterRequirements), correlationId);
+      expect(scheduleOutcome).toMatchObject({ ok: true, changed: true });
+      const reloaded = await read();
+      expect(reloaded.schedule).toEqual({ frequency: 'weekly', startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' });
+
+      const events = await eventsFor(correlationId);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ event_type: PROCEDURE_DRAFT_CHANGED_EVENT, outcome: 'success' });
+    });
+
+    it('refuses an attribute grounded only by a screenshot or a recording segment, naming the attribute, and writes nothing', async () => {
+      const { read, save } = await setupEvidence();
+      const before = await read();
+      const correlationId = `${prefix}evidence-grounding-${before.versionId}`;
+      const outcome = await save(
+        { section: 'evidence-requirements', requirements: [requirement({ groundedBy: [], screenshot: true, recordingSegment: true })] },
+        procedureVersionRowVersion(before),
+        correlationId,
+      );
+      expect(outcome).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.GROUNDING });
+      expect(await read()).toEqual(before);
+      expect(await eventsFor(correlationId)).toHaveLength(0);
+    });
+
+    it('accepts and records a model-read attribute, exempt from deterministic grounding, surviving reload', async () => {
+      const { read, save } = await setupEvidence();
+      const before = await read();
+      const modelRead = requirement({ modelRead: true, groundedBy: [], screenshot: false });
+      expect(await save({ section: 'evidence-requirements', requirements: [modelRead] }, procedureVersionRowVersion(before))).toMatchObject({ ok: true, changed: true });
+      expect((await read()).evidenceRequirements).toEqual([{ ...modelRead, platformCaptured: false }]);
+    });
+
+    it('records platformCaptured from the Draft’s CURRENT Target System selection in the database, never from the caller', async () => {
+      const { read, save, selectTargets } = await setupEvidence();
+      const web = await registerWeb('LoanCore');
+      const before = await read();
+      const bound = await selectTargets(web.id, web.digest, procedureVersionRowVersion(before));
+      expect(bound).toMatchObject({ ok: true });
+      const afterBind = await read();
+
+      const asked = requirement({ groundedBy: ['source-file-excerpt'], screenshot: false });
+      const outcome = await save({ section: 'evidence-requirements', requirements: [asked] }, procedureVersionRowVersion(afterBind));
+      expect(outcome).toMatchObject({ ok: true, changed: true });
+      const stored = (await read()).evidenceRequirements[0];
+      expect(stored).toMatchObject({ groundedBy: expect.arrayContaining(['source-file-excerpt', 'structural-snapshot']), screenshot: true, platformCaptured: true });
+    });
+
+    it('never refuses the manual-upload/recurring-Schedule pairing; the repository surfaces it as a blocker instead', async () => {
+      const bindingId = new CryptoUuidV7Generator().next();
+      const fields = { kind: 'manual-upload' as const, location: '', declaredSchema: ['status'], declaredCountMechanism: 'none' as const, sensitiveFields: [] };
+      const digest = bindingDigest(fields);
+      await sql`
+        INSERT INTO population_source_binding (binding_id, display_name, kind, location, declared_schema, declared_count_mechanism, sensitive_fields, note, status, digest)
+        VALUES (${bindingId}, ${`${prefix}manual leavers`}, ${fields.kind}, ${fields.location}, ${fields.declaredSchema}, ${fields.declaredCountMechanism}, ${fields.sensitiveFields}, '', 'active', ${digest})
+      `;
+      sourceIds.push(bindingId);
+      const { read, save } = await setupEvidence();
+      const before = await read();
+      const bound = await updatePopulationDraft(dependencies(), {
+        session: auditor, procedureId: before.procedureId, versionId: before.versionId,
+        expectedRowVersion: procedureVersionRowVersion(before), correlationId: `${prefix}evidence-manual-bind-${before.versionId}`,
+        edit: { section: 'population-source', source: { mode: 'bind', bindingId, expectedDigest: digest }, inclusionRule: { schemaVersion: 1, all: [] }, zeroRecordPass: true, allowVersionedDuplicates: false },
+      });
+      expect(bound).toMatchObject({ ok: true, changed: true });
+      const withSource = await read();
+      expect(withSource.evidenceBlockers).toEqual([]);
+
+      const scheduled = await save({ section: 'schedule', frequency: 'weekly', startTime: '02:00' }, procedureVersionRowVersion(withSource));
+      expect(scheduled).toMatchObject({ ok: true, changed: true });
+      const withSchedule = await read();
+      expect(withSchedule.evidenceBlockers).toEqual(['upload-frequency-mismatch']);
+      expect(evidenceBlockersFor(withSchedule.sourceSnapshot, withSchedule.schedule)).toEqual(['upload-frequency-mismatch']);
+    });
+
+    it('refuses an unknown frequency, a malformed start time, non-Draft, and a stale row token', async () => {
+      const { seed, read, save } = await setupEvidence();
+      const before = await read();
+      expect(await save({ section: 'schedule', frequency: 'yearly' as never, startTime: '02:00' }, procedureVersionRowVersion(before))).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.FREQUENCY });
+      expect(await save({ section: 'schedule', frequency: 'daily', startTime: 'noon' }, procedureVersionRowVersion(before))).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.START });
+      expect(await save({ section: 'schedule', frequency: 'daily', startTime: '00:00' }, 'stale')).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+
+      await sql`UPDATE procedure_version SET state = 'SUBMITTED' WHERE version_id = ${seed.versionId}`;
+      const submitted = await read();
+      expect(await save({ section: 'schedule', frequency: 'once', startTime: '00:00' }, procedureVersionRowVersion(submitted))).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+      await sql`UPDATE procedure_version SET state = 'DRAFT' WHERE version_id = ${seed.versionId}`;
+    });
+
+    it('blocks a concurrent target save made while the first Evidence transaction is held open, then refuses its stale token', async () => {
+      const { seed, read, save } = await setupEvidence();
+      const web = await registerWeb('LoanCore-race');
+      const before = await read();
+      const token = procedureVersionRowVersion(before);
+      let openedResolve: () => void = () => undefined;
+      const opened = new Promise<void>((resolve) => { openedResolve = resolve; });
+      let releaseResolve: () => void = () => undefined;
+      const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+      const held: AuditUnitOfWork<never> = {
+        execute: (work: (context: never) => Promise<unknown>) =>
+          new PostgresProceduresUnitOfWork(db).execute(async (context) => {
+            const result = await work(context as never);
+            openedResolve();
+            await release;
+            return result;
+          }) as never,
+      };
+      const winnerCorrelation = `${prefix}evidence-race-winner-${seed.versionId}`;
+      const loserCorrelation = `${prefix}evidence-race-loser-${seed.versionId}`;
+      const winner = save(
+        { section: 'schedule', frequency: 'daily', startTime: '01:00' },
+        token,
+        winnerCorrelation,
+        dependencies({ unitOfWork: held as never }),
+      );
+      await opened;
+      const loser = updateTargetDraft(dependencies(), {
+        session: auditor, procedureId: seed.procedureId, versionId: seed.versionId,
+        expectedRowVersion: token, correlationId: loserCorrelation,
+        edit: { section: 'target-systems', selections: [{ mode: 'bind', registrationId: web.id, expectedDigest: web.digest }] },
+      });
+      try {
+        await waitForProcedureVersionLock();
+      } finally {
+        releaseResolve();
+      }
+
+      expect(await winner).toMatchObject({ ok: true, changed: true });
+      expect(await loser).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+      expect((await read()).targets).toHaveLength(0);
+      await expect(eventsFor(loserCorrelation)).resolves.toHaveLength(0);
+    });
+
+    it('rolls back the Evidence edit when its audit append fails', async () => {
+      const { read, save } = await setupEvidence();
+      const before = await read();
+      await expect(save({ section: 'schedule', frequency: 'once', startTime: '00:00' }, procedureVersionRowVersion(before), undefined, dependencies({ failIds: true }))).rejects.toThrow();
+      expect(await read()).toEqual(before);
+    });
+
+    it('seeds P-1 with the structured, platform-captured Template defaults at creation', async () => {
+      const seed = await createProcedure(dependencies(), createInput({ templateId: 'P-1' }, `${prefix}evidence-p1-create`));
+      if (!seed.ok) throw new Error(seed.reason);
+      created.push(seed.procedureId);
+      const row = await new DrizzleProcedureRepository(db).findVersion(seed.versionId);
+      expect(row?.evidenceRequirements.map((r) => r.attributeName).sort()).toEqual(['account_status', 'roles', 'username']);
+      expect(row?.evidenceRequirements.every((r) => r.platformCaptured)).toBe(true);
+      expect(row?.schedule).toBeNull();
+    });
+
+    it('the database refuses a non-array, an over-shaped array, and a malformed Schedule', async () => {
+      const { seed } = await setupEvidence();
+      await expect(sql`UPDATE procedure_version SET evidence_requirements = '"nope"'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_evidence_shape/);
+      await expect(sql`UPDATE procedure_version SET evidence_schema_version = 2 WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_evidence_schema/);
+      await expect(sql`UPDATE procedure_version SET schedule = '{"frequency":"yearly","startTime":"02:00","periodDerivationRule":"explicit-period"}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_schedule_shape/);
+      await expect(sql`UPDATE procedure_version SET schedule = '{"frequency":"weekly","startTime":"2:00","periodDerivationRule":"previous-monday-sunday"}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_schedule_shape/);
+      // The value the command writes is accepted.
+      await expect(sql`UPDATE procedure_version SET schedule = '{"frequency":"weekly","startTime":"02:00","periodDerivationRule":"previous-monday-sunday"}'::jsonb WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
+    });
+
+    it('reads a row whose deep Evidence Requirement shape was corrupted as null', async () => {
+      const { seed } = await setupEvidence();
+      await sql`UPDATE procedure_version SET evidence_requirements = '[{"attributeName":"x"}]'::jsonb WHERE version_id = ${seed.versionId}`;
+      await expect(new DrizzleProcedureRepository(db).findVersion(seed.versionId)).resolves.toBeNull();
     });
   });
 

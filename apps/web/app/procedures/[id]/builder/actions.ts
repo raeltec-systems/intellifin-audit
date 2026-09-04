@@ -9,14 +9,16 @@ import {
   updatePopulationDraft,
   updateTargetDraft,
   updateComplianceDraft,
+  updateEvidenceDraft,
   type DraftPopulationEdit,
   type DraftTargetEdit,
   type UpdatePopulationDraftResult,
   type UpdateTargetDraftResult,
   type UpdateComplianceDraftResult,
+  type UpdateEvidenceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { COMPLIANCE_LIMITS, TARGET_DRAFT_LIMITS, type ComplianceDraftInput } from '@intellifin/domain';
+import { COMPLIANCE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -274,6 +276,73 @@ function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields
       Object.hasOwn(comparison, 'tolerance') && (comparison['boundary'] === 'inclusive' || comparison['boundary'] === 'exclusive') &&
       typeof comparison['threshold'] === 'string' && typeof comparison['tolerance'] === 'string';
   });
+}
+
+/** Only authored inputs cross the action boundary; the command derives `platformCaptured`. */
+export interface EvidenceDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly edit: DraftEvidenceEdit;
+}
+
+function isEvidenceDraftFields(input: unknown): input is EvidenceDraftFields {
+  if (typeof input !== 'object' || input === null) return false;
+  const f = input as Record<string, unknown>;
+  if (!isUuid(f['procedureId']) || !isUuid(f['versionId']) || typeof f['expectedRowVersion'] !== 'string' || !/^[0-9a-f]{64}$/.test(f['expectedRowVersion'])) {
+    return false;
+  }
+  if (typeof f['edit'] !== 'object' || f['edit'] === null) return false;
+  const edit = f['edit'] as Record<string, unknown>;
+  if (edit['section'] === 'evidence-requirements') {
+    if (!Array.isArray(edit['requirements']) || edit['requirements'].length > EVIDENCE_DRAFT_LIMITS.requirements) return false;
+    return edit['requirements'].every((candidate: unknown) => {
+      if (typeof candidate !== 'object' || candidate === null) return false;
+      const requirement = candidate as Record<string, unknown>;
+      if (
+        typeof requirement['attributeName'] !== 'string' ||
+        requirement['attributeName'].length > EVIDENCE_DRAFT_LIMITS.attributeName ||
+        typeof requirement['modelRead'] !== 'boolean' ||
+        typeof requirement['screenshot'] !== 'boolean' ||
+        typeof requirement['recordingSegment'] !== 'boolean' ||
+        !Array.isArray(requirement['groundedBy'])
+      ) {
+        return false;
+      }
+      return requirement['groundedBy'].every(
+        (kind: unknown) => typeof kind === 'string' && (GROUNDING_EVIDENCE_TYPES as readonly string[]).includes(kind),
+      );
+    });
+  }
+  if (edit['section'] === 'schedule') {
+    return (
+      typeof edit['frequency'] === 'string' &&
+      (FREQUENCIES as readonly string[]).includes(edit['frequency']) &&
+      typeof edit['startTime'] === 'string' &&
+      edit['startTime'].length <= 5
+    );
+  }
+  return false;
+}
+
+export async function updateEvidenceDraftAction(fields: EvidenceDraftFields): Promise<UpdateEvidenceDraftResult> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!isEvidenceDraftFields(fields)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await updateEvidenceDraft(await dependencies(), { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch (error) {
+    try {
+      (await getRuntime()).telemetry.captureError('Update Evidence Draft failed', error, { outcome: 'failure', correlationId });
+    } catch { /* Boot failures are already reported. */ }
+    return { ok: false, reason: UNAVAILABLE };
+  }
 }
 
 export async function updateComplianceDraftAction(fields: ComplianceDraftFields): Promise<UpdateComplianceDraftResult> {
