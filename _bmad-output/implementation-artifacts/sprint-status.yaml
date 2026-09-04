@@ -48,9 +48,9 @@ development_status:
 
   epic-2: in-progress
   2-1-create-a-procedure-from-a-template: done
-  2-2-bind-the-population-source-with-an-inclusion-rule-and-declar: review
-  2-3-select-target-systems-and-write-audit-instructions-with-the: review
-  2-4-author-the-compliance-rule-with-compiled-and-agent-judged-co: in-progress
+  2-2-bind-the-population-source-with-an-inclusion-rule-and-declar: done
+  2-3-select-target-systems-and-write-audit-instructions-with-the: done
+  2-4-author-the-compliance-rule-with-compiled-and-agent-judged-co: done
   2-5-specify-evidence-requirements-and-set-the-schedule: backlog
   2-6-read-the-re-derived-executable-plan-before-submitting: backlog
   2-7-submit-for-approval-and-approve-or-reject-with-a-diff: backlog

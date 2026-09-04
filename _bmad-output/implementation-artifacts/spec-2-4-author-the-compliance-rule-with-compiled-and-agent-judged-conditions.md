@@ -2,8 +2,9 @@
 title: 'Author the Compliance Rule with compiled and Agent-Judged conditions'
 type: 'feature'
 created: '2026-09-04'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
+followup_review_recommended: false
 baseline_commit: '17fff4b5c1d2401d8346bb47f0085815d569bf24'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
@@ -73,3 +74,27 @@ Run `pnpm typecheck`, `pnpm boundaries`, `pnpm test`, `pnpm db:generate`, `pnpm 
 ## Design Notes
 
 Pure compilation precedes Story 2.6's queued plan derivation. Later model-read Evidence can change evaluation origin (addendum §B.1); confidence/confirmation and Gate enforcement remain Run work. No unresolved product decision.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change.** The Compliance Rule editor: typed conditions with compiled applicability predicates, the Rule-Classified / Agent-Judged distinction, explicit boundary semantics, and one per-version Agent-Judged confidence threshold. Implemented on this branch, then taken over and verified here.
+
+**Verification performed — against real PostgreSQL 18.4 and a real browser.**
+- `pnpm typecheck` — pass. `pnpm boundaries` — pass, 247 modules, no violations.
+- `pnpm test` — 1721 passed, 61 files.
+- `pnpm db:migrate` — applied through the product migrator, `schemaVersion: 10`.
+- `pnpm db:generate` — no drift.
+- `pnpm test:integration` — **139/139 passed**, re-run five times with no flakiness, including both concurrency cases.
+- `pnpm build`, `pnpm --filter @intellifin/web build` — both pass.
+- `pnpm test:e2e` — 86/86 passed, including every WCAG 2.1 AA scan.
+
+**Findings.** The production code was sound. FIVE defects were found in this story's own tests, none of which had ever been executed:
+1. The generation-10 backfill test force-cast a postgres.js TRANSACTION handle into drizzle's driver (`as unknown as Sql`); drizzle reads `sql.options.parsers` and threw. TEMP tables are session-scoped, so it now uses a dedicated single-connection client.
+2. The audit-metadata assertion listed one condition where Template P-1 seeds two, and `toMatchObject` on an array requires matching length.
+3. and 4. Two tests passed `period: null` and expected a stale-token refusal. Input validation correctly precedes the whole-row guard, so the Period refusal fired first — the stale-token path was never exercised, and in the concurrency test the loser was refused before opening a transaction, so it never contended for the row lock. A concurrency test whose loser never contends proves nothing.
+5. `${JSON.stringify(x)}::jsonb` double-encoded six columns: postgres.js infers the wire type from the cast and stringifies again, so `[]` was stored as the string `"[]"` and violated `procedure_version_count_blocker`.
+
+**Residual risks.** None outstanding for this story. The `plan-compiler.ts` module added here is the COMPLIANCE compiler despite its name; Story 2.6's executable-plan derivation is a separate module, recorded in that spec so the two are not conflated.
