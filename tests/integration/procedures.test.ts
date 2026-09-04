@@ -1178,11 +1178,14 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
              allow_versioned_duplicates, population_blockers, targets, instructions)
           VALUES
             (${versionId}, ${procedureId}, 1, 'DRAFT', 'Edited generation-9 Draft', 'P-3',
-             ${JSON.stringify(editedSections)}::jsonb, ${JSON.stringify(editedPopulation.period)}::jsonb,
-             ${editedPopulation.scope}, NULL, ${JSON.stringify(editedPopulation.inclusionRule)}::jsonb,
+             ${dedicated.json(editedSections as unknown as Parameters<typeof dedicated.json>[0])},
+             ${dedicated.json(editedPopulation.period)},
+             ${editedPopulation.scope}, NULL,
+             ${dedicated.json(editedPopulation.inclusionRule as unknown as Parameters<typeof dedicated.json>[0])},
              ${editedPopulation.zeroRecordPass}, ${editedPopulation.allowVersionedDuplicates},
-             ${JSON.stringify(editedPopulation.populationBlockers)}::jsonb,
-             ${JSON.stringify(editedTargets)}::jsonb, ${JSON.stringify(editedInstructions)}::jsonb)
+             ${dedicated.json(editedPopulation.populationBlockers as unknown as Parameters<typeof dedicated.json>[0])},
+             ${dedicated.json(editedTargets as unknown as Parameters<typeof dedicated.json>[0])},
+             ${dedicated.json(editedInstructions as unknown as Parameters<typeof dedicated.json>[0])})
         `;
         for (const statement of statements) await dedicated.unsafe(statement);
 
