@@ -216,9 +216,26 @@ test.describe('as an Auditor', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
     await page.getByLabel('Population Source', { exact: true }).selectOption(manualId);
-    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toBeVisible();
+    // No Schedule is set yet (Story 2.5: it is a real, auditor-set field now), so the
+    // upload/frequency pairing does not show — and it is never a save-time refusal, so
+    // the save succeeds and opens the confirmation dialog like any other.
+    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
+    await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
+
+    // Saving a recurring Schedule now surfaces the pairing as a completeness blocker on
+    // BOTH sections, never as a refusal on either.
+    await page.getByLabel('Frequency').selectOption('weekly');
+    await page.getByLabel('Fixed UTC start time').fill('02:00');
+    await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Schedule', exact: true }).click();
+    await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(2);
+
     await page.getByLabel('Population Source', { exact: true }).selectOption(sourceId);
     await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
     await expect(page.getByLabel('Declared column 2')).toHaveValue('termination_effective_date');
@@ -235,6 +252,9 @@ test.describe('as an Auditor', () => {
     await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
     await expect(page.getByLabel('Permit versioned duplicate primary keys')).not.toBeChecked();
     await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
+    // The bound source is now versioned-file, so the upload/frequency blocker is gone —
+    // it moves with the CURRENT binding kind, not the one that once triggered it.
+    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(0);
     await scan(page);
   });
 
@@ -393,6 +413,68 @@ test.describe('as an Auditor', () => {
     await page.reload();
     await expect(amount).toHaveValue('24');
     await expect(tolerance).toHaveValue('0.001');
+    await scan(page);
+  });
+
+  test('authors Evidence Requirements and the Schedule, refusing ungrounded attributes and recording model-read', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E evidence control ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+
+    // P-1's structured defaults are platform-captured: no agent-driven Target System is
+    // selected yet, so nothing here starts platform-captured, but the Template still
+    // seeds three attributes.
+    const attributeNames = page.getByLabel('Attribute name');
+    await expect(attributeNames).toHaveCount(3);
+
+    // The grounding rule: a screenshot or a recording segment alone never grounds an
+    // attribute value.
+    const first = page.locator('fieldset', { hasText: 'Evidence Requirement 1' });
+    await first.getByLabel('Structural Snapshot').uncheck();
+    await first.getByLabel('Source file excerpt').uncheck();
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText(/never grounds an attribute value/).first()).toBeVisible();
+
+    // Declaring model-read exempts it from deterministic grounding.
+    await first.getByLabel('Declare model-read (exempt from deterministic grounding)').check();
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(first.getByLabel('Declare model-read (exempt from deterministic grounding)')).toBeChecked();
+    await expect(first.getByLabel('Structural Snapshot')).not.toBeChecked();
+
+    // Adding a new Evidence Requirement is keyboard reachable and focuses its name field.
+    const add = page.getByRole('button', { name: 'Add Evidence Requirement', exact: true });
+    await add.focus();
+    await page.keyboard.press('Enter');
+    const added = page.getByLabel('Attribute name').last();
+    await expect(added).toBeFocused();
+    await added.fill('note');
+    const addedFieldset = page.locator('fieldset', { hasText: 'Evidence Requirement 4' });
+    await addedFieldset.getByLabel('Source file excerpt').check();
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Attribute name')).toHaveCount(4);
+
+    // The Schedule: a frequency, a fixed UTC start, and the recorded period-derivation
+    // rule — this Procedure Version records it and never runs it.
+    await page.getByLabel('Frequency').selectOption('daily');
+    await page.getByLabel('Fixed UTC start time').fill('06:00');
+    await expect(page.getByText('Recorded period-derivation rule: previous-calendar-day.')).toBeVisible();
+    await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Schedule', exact: true }).click();
+    await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Frequency')).toHaveValue('daily');
+    await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('06:00');
     await scan(page);
   });
 
