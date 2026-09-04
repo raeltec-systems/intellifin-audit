@@ -110,6 +110,14 @@ test.describe('as an Auditor', () => {
       await page.getByLabel('Control name').fill(controlName);
       await page.getByRole('button', { name: 'Create Procedure' }).click();
 
+      // EXPERIENCE.md requires a confirmation dialog on every mutating action, and
+      // creating a Draft writes two rows and an immutable audit event. The dialog
+      // stands between the click and the change, and states the consequence.
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText(template.label);
+      await dialog.getByRole('button', { name: 'Create Procedure' }).click();
+
       // Creation lands on the Builder for the new Draft, with the Control name and
       // Template identity in the header (UX-DR7).
       await expect(page.getByRole('heading', { level: 1, name: controlName })).toBeVisible();
@@ -130,6 +138,24 @@ test.describe('as an Auditor', () => {
       await expect(page.locator('form.ls-admin__form')).toHaveAttribute('method', 'post');
     });
   }
+
+  test('a cancelled confirmation creates nothing', async ({ page }) => {
+    const abandoned = `${nameFor('P-1')} abandoned`;
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(abandoned);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+
+    // Reload first: a list rendered BEFORE the click cannot prove nothing was stored.
+    await page.goto('/procedures');
+    await page.reload();
+    await expect(page.locator('.ls-card').filter({ hasText: abandoned })).toHaveCount(0);
+  });
 
   test('the four pre-fills differ where §C says they differ', async ({ page }) => {
     // Read each Builder's Objective section after the creates above; the objectives are
@@ -165,7 +191,10 @@ test.describe('as an Auditor', () => {
       .filter({ hasText: nameFor('P-1') })
       .first();
     await expect(card).toBeVisible();
+    // "Active version: Draft" would be worse than the dash the rule forbids: it states
+    // a fact that is not true. Nothing this story writes is ever ACTIVE.
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.activeVersion);
+    await expect(card).not.toContainText('Draft');
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.schedule);
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.nextRun);
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.lastOutcome);
@@ -276,7 +305,7 @@ test.describe('as a PoC Administrator', () => {
     await page.goto(`${href}/builder`);
 
     await expect(page.locator('main#content').getByRole('alert')).toHaveText(
-      'Your role does not permit this action.',
+      DENIAL_REASONS.ADMIN_CANNOT_AUTHOR,
     );
     // No section content, no editable field.
     await expect(page.getByLabel('New Control name')).toHaveCount(0);

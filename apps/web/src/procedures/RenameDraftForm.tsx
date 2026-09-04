@@ -4,6 +4,8 @@ import { useId, useRef, useState } from 'react';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { PROCEDURE_REFUSALS } from '@intellifin/application';
+
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import type { RenameActionResult } from '../../app/procedures/[id]/builder/actions';
 
@@ -87,7 +89,7 @@ export function RenameDraftForm({
   function onRequestSubmit(): void {
     if (submittingRef.current) return;
     if (controlName.trim() === '') {
-      setResult({ ok: false, reason: 'Enter a Control name.' });
+      setResult({ ok: false, reason: PROCEDURE_REFUSALS.NAME_REQUIRED });
       setAnnouncement((count) => count + 1);
       return;
     }

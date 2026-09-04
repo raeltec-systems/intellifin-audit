@@ -20,13 +20,13 @@ export interface ProcedureSummary {
   readonly createdAt: string;
   readonly updatedAt: string;
   /**
-   * The state of the version a reader would act on: the ACTIVE one when one exists,
-   * else the newest version whatever its state. `null` only when the Procedure has no
-   * version at all, which creation makes unreachable — the invariant is asserted by the
-   * one writer that could break it.
+   * The state of the ACTIVE version, and `null` when no version is ACTIVE — which is
+   * every Procedure this story creates, because Story 2.1 writes only DRAFT. It never
+   * falls back to the newest version: the cell it feeds is labelled "Active version",
+   * so a Draft answered there would assert an Active version that does not exist.
    */
   readonly activeVersionState: ProcedureVersionState | null;
-  /** Version number of that version, or `null` when there is no version. */
+  /** Version number of the ACTIVE version, or `null` when no version is ACTIVE. */
   readonly activeVersionNumber: number | null;
 }
 

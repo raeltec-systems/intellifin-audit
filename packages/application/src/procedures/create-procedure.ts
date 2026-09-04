@@ -149,7 +149,15 @@ function refuse(reason: string): { readonly ok: false; readonly reason: string }
   return { ok: false, reason };
 }
 
-/** Trim and bound the Control name, or say which rule it broke. */
+/**
+ * Trim, bound and prove storable, or say which rule the Control name broke.
+ *
+ * The storability check lives HERE and not at one call site. It was in the create path
+ * only, so a rename carrying a NUL or a lone surrogate walked past it and threw a raw
+ * `NotCanonicalizableError` from inside the transaction — a framework 500 where the
+ * spec requires a sentence. Every path that stores a Control name goes through this
+ * function, so this is the one place the check cannot be forgotten by the next caller.
+ */
 function validatedControlName(
   controlName: string,
 ): { readonly ok: true; readonly value: string } | { readonly ok: false; readonly refusal: string } {
@@ -158,6 +166,11 @@ function validatedControlName(
   if (trimmed.length > PROCEDURE_LIMITS.controlName) {
     return { ok: false, refusal: PROCEDURE_REFUSALS.TOO_LONG };
   }
+  try {
+    canonicalJson(trimmed);
+  } catch {
+    return { ok: false, refusal: PROCEDURE_REFUSALS.NOT_STORABLE };
+  }
   return { ok: true, value: trimmed };
 }
 
@@ -165,9 +178,10 @@ function validatedControlName(
  * Everything a create can decide without touching a database.
  *
  * The Template id is validated FIRST — the form does not default it, so its absence is
- * the one refusal a person who submits without choosing must see. Strings that will be
- * stored are checked against the canonicalizer so a lone surrogate or a NUL is refused
- * with a sentence instead of surfacing as a driver error.
+ * the one refusal a person who submits without choosing must see. The Control name is
+ * checked against the canonicalizer inside `validatedControlName`, so a lone surrogate
+ * or a NUL is refused with a sentence instead of surfacing as a driver error — on the
+ * rename path too, which is where that check used to be missing.
  */
 export function validateCreateProcedureInput(
   input: Pick<CreateProcedureInput, 'templateId' | 'controlName'>,
@@ -175,14 +189,8 @@ export function validateCreateProcedureInput(
   if (!isTemplateId(input.templateId)) return { refusal: PROCEDURE_REFUSALS.TEMPLATE_REQUIRED };
   const name = validatedControlName(input.controlName);
   if (!name.ok) return { refusal: name.refusal };
-  const controlName = name.value;
-  const storable = [controlName];
-  try {
-    for (const value of storable) canonicalJson(value);
-  } catch {
-    return { refusal: PROCEDURE_REFUSALS.NOT_STORABLE };
-  }
-  return { templateId: input.templateId, controlName };
+  // `validatedControlName` has already proved the name storable.
+  return { templateId: input.templateId, controlName: name.value };
 }
 
 /**

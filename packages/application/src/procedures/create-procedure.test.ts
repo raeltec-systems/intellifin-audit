@@ -351,6 +351,32 @@ describe('renameProcedureDraft', () => {
     expect(test.transactions).toEqual({ committed: 1, rolledBack: 0 });
   });
 
+  it('refuses an unstorable Control name with a sentence, not a driver error', async () => {
+    // The storability check lived in the create path only, so a NUL or a lone surrogate
+    // walked past the rename guard and threw a raw NotCanonicalizableError from inside
+    // the transaction — a framework 500 where the spec's matrix requires a refusal.
+    const { test, procedureId, versionId, rowVersion } = await seeded();
+
+    for (const unstorable of ['A name with a NUL\u0000in it', 'A lone surrogate \ud800 here']) {
+      const outcome = await renameProcedureDraft(test.dependencies, {
+        session: AUDITOR,
+        procedureId,
+        versionId,
+        controlName: unstorable,
+        expectedRowVersion: rowVersion,
+        correlationId: 'corr-unstorable',
+      });
+
+      expect(outcome).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_STORABLE });
+    }
+
+    // Refused before the transaction opened: nothing written, nothing rolled back.
+    expect(test.transactions).toEqual({ committed: 0, rolledBack: 0 });
+    expect((test.storedVersions.get(versionId) as ProcedureVersionRecord).controlName).not.toContain(
+      'NUL',
+    );
+  });
+
   it('refuses a stale row version and changes nothing', async () => {
     const { test, procedureId, versionId, version, rowVersion } = await seeded();
 

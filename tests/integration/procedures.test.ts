@@ -212,6 +212,20 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     // Every section pre-filled from the Template, in Builder order.
     expect(versions[0]?.sections).toEqual(initialDraftSections('P-1'));
 
+    // UX-DR7 labels the card's cell "Active version". Answering it with the newest
+    // version instead makes a Procedure whose only version is a Draft render
+    // "Active version: Draft" — an absent value reading as present, which is what the
+    // card's own wording rule exists to prevent. Story 2.1 writes only DRAFT.
+    const repository = new DrizzleProcedureRepository(db);
+    const summary = (await repository.listProcedures()).find(
+      (candidate) => candidate.procedureId === outcome.procedureId,
+    );
+    expect(summary?.activeVersionState).toBeNull();
+    expect(summary?.activeVersionNumber).toBeNull();
+    expect((await repository.findProcedure(outcome.procedureId))?.activeVersionState).toBeNull();
+    // The version really is there — the null above is a judgement, not an empty read.
+    expect(await repository.listVersions(outcome.procedureId)).toHaveLength(1);
+
     const events = await eventsFor(correlationId);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
