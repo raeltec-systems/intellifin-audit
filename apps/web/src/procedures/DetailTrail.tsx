@@ -12,8 +12,10 @@ import Link from 'next/link';
  * Only the last crumb is current; every earlier one is a link, and each crumb is an
  * `<li>` with the separator inside it, exactly as the shell's trail renders — a
  * separator as a direct child of the `<ol>` would be invalid HTML and an axe finding.
- * `aria-label` matches the shell's so a screen reader hears one kind of navigation,
- * not two.
+ * `aria-label` matches the shell's, which is exactly why the shell must NOT also render
+ * its trail here: two `<nav aria-label="Breadcrumb">` on one page are two landmarks a
+ * screen reader cannot tell apart, and the shell's would show a raw UUID. `crumbsFor`
+ * returns nothing for a self-trailed path (`rendersOwnTrail` in `breadcrumb-rules.ts`).
  */
 export function DetailTrail({
   trail,

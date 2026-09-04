@@ -15,7 +15,11 @@ import {
   type ProcedureVersionView,
   type SessionSnapshot,
 } from '@intellifin/application';
-import { PROCEDURE_VERSION_STATES, initialDraftSections } from '@intellifin/domain';
+import {
+  DENIAL_REASONS,
+  PROCEDURE_VERSION_STATES,
+  initialDraftSections,
+} from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleProcedureRepository,
@@ -206,10 +210,21 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     });
     expect(versions[0]?.control_name).toBe(`${prefix}Terminated users retain no access`);
     // Every section pre-filled from the Template, in Builder order.
-    expect(versions[0]?.sections).toEqual({
-      templateId: 'P-1',
-      sections: initialDraftSections('P-1'),
-    });
+    expect(versions[0]?.sections).toEqual(initialDraftSections('P-1'));
+
+    // UX-DR7 labels the card's cell "Active version". Answering it with the newest
+    // version instead makes a Procedure whose only version is a Draft render
+    // "Active version: Draft" — an absent value reading as present, which is what the
+    // card's own wording rule exists to prevent. Story 2.1 writes only DRAFT.
+    const repository = new DrizzleProcedureRepository(db);
+    const summary = (await repository.listProcedures()).find(
+      (candidate) => candidate.procedureId === outcome.procedureId,
+    );
+    expect(summary?.activeVersionState).toBeNull();
+    expect(summary?.activeVersionNumber).toBeNull();
+    expect((await repository.findProcedure(outcome.procedureId))?.activeVersionState).toBeNull();
+    // The version really is there — the null above is a judgement, not an empty read.
+    expect(await repository.listVersions(outcome.procedureId)).toHaveLength(1);
 
     const events = await eventsFor(correlationId);
     expect(events).toHaveLength(1);
@@ -237,10 +252,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
 
       const { versions } = await rowsFor(outcome.procedureId);
       expect(versions[0]?.template_id).toBe(templateId);
-      expect(versions[0]?.sections).toEqual({
-        templateId,
-        sections: initialDraftSections(templateId as never),
-      });
+      expect(versions[0]?.sections).toEqual(initialDraftSections(templateId as never));
     },
   );
 
@@ -280,7 +292,10 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       session: administrator,
     });
 
-    expect(outcome).toEqual({ ok: false, reason: 'Your role does not permit this action.' });
+    expect(outcome).toEqual({
+      ok: false,
+      reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR,
+    });
     const rows = await sql<{ c: number }[]>`
       SELECT count(*)::int AS c FROM procedure
       WHERE control_name = ${`${prefix}Should not exist`}

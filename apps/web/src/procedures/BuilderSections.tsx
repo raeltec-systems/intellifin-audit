@@ -29,9 +29,14 @@ export function BuilderSections({
           ) : (
             <p className="ls-whitespace">{section.content}</p>
           )}
-          <p className="ls-caption" aria-hidden="true">
-            {BUILDER_SECTION_NOT_EDITABLE_SENTENCE}
-          </p>
+          {/*
+            Not `aria-hidden`. This sentence is the only thing that says the section is
+            read-only, so hiding it from assistive technology tells a screen-reader user
+            the opposite of what the page tells everyone else: they meet a section of
+            content with no indication that it cannot yet be edited. The repetition
+            across sections is the cost of saying it where it applies.
+          */}
+          <p className="ls-caption">{BUILDER_SECTION_NOT_EDITABLE_SENTENCE}</p>
         </section>
       ))}
     </div>

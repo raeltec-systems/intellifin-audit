@@ -126,21 +126,25 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
 }
 
 /**
- * The ACTIVE version when one exists, else the newest — the version a reader would act
- * on. A Procedure whose versions all fail the vocabulary guards is listed as having
- * none, which the surfaces word honestly ("No active version"); it is never shown as a
- * state nobody can interpret.
+ * The ACTIVE version, or nothing.
+ *
+ * There is no fallback to the newest version, deliberately. The cell this feeds is
+ * labelled "Active version" (UX-DR7), so answering it with a Draft states that a
+ * Procedure has an Active version when it has none — the absent-reads-as-present
+ * defect the card's own wording rule exists to prevent, and worse than the dash that
+ * rule forbids, because "Active version: Draft" reads as a fact rather than a gap.
+ * Story 2.1 writes only DRAFT, so this is `null` for every Procedure it creates and
+ * the surface says "No active version" in words. A later story that wants "the newest
+ * version whatever its state" wants a differently-named field, not this one.
  */
-function displayVersion(versions: readonly ProcedureVersionView[]): {
+function activeVersion(versions: readonly ProcedureVersionView[]): {
   state: ProcedureVersionState | null;
   versionNumber: number | null;
 } {
   const active = versions.find((version) => version.state === 'ACTIVE');
-  if (active) return { state: active.state, versionNumber: active.versionNumber };
-  const newest = [...versions].sort((a, b) => b.versionNumber - a.versionNumber)[0];
-  return newest === undefined
+  return active === undefined
     ? { state: null, versionNumber: null }
-    : { state: newest.state, versionNumber: newest.versionNumber };
+    : { state: active.state, versionNumber: active.versionNumber };
 }
 
 /** Reads Procedures and their versions for the surfaces. Outside any transaction. */
@@ -176,7 +180,7 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
       const templateId = toTemplateId(row.templateId);
       if (templateId === null) continue;
       const versions = byProcedure.get(row.procedureId) ?? [];
-      const display = displayVersion(versions);
+      const display = activeVersion(versions);
       summaries.push({
         procedureId: row.procedureId,
         controlName: row.controlName,
@@ -213,7 +217,7 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
     const versions = versionRows
       .map(toVersionView)
       .filter((version): version is ProcedureVersionView => version !== null);
-    const display = displayVersion(versions);
+    const display = activeVersion(versions);
 
     return {
       procedureId: row.procedureId,

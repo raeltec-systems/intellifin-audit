@@ -74,7 +74,17 @@ export default async function BuilderPage({
         ]}
       />
       <header className="ls-page-header">
-        <h1>{procedure.controlName}</h1>
+        {/*
+          The DRAFT's Control name, not the Procedure's.
+
+          `renameProcedureDraft` is scoped to the version on purpose — the Procedure row
+          is deliberately untouched, which `create-procedure.test.ts` asserts by name.
+          Reading `procedure.controlName` here therefore showed the name the Draft used
+          to have: the rename committed, the audit chain recorded it and the banner said
+          "The Control name is now …", while this heading, directly above the field that
+          had just changed it, still said the old one.
+        */}
+        <h1>{draft.controlName}</h1>
         <p>
           Template {procedure.templateId} · {templateLabel(procedure.templateId)} · Version{' '}
           {draft.versionNumber} · Draft

@@ -4,9 +4,11 @@ import { useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { heroProcedureTemplate, PROCEDURE_TEMPLATES, type TemplateId } from '@intellifin/domain';
+import { PROCEDURE_REFUSALS } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { ConfirmDialog } from '../design/ConfirmDialog';
 import type { NewProcedureActionResult, NewProcedureFormFields } from '../../app/procedures/new/actions';
 
 /**
@@ -49,12 +51,14 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
   const [result, setResult] = useState<NewProcedureActionResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   /** Written and read in the same tick; `busy` is a render behind. See `BindingForm`. */
   const submittingRef = useRef(false);
 
   async function submit(): Promise<void> {
     if (submittingRef.current) return;
     submittingRef.current = true;
+    setConfirming(false);
     setBusy(true);
     try {
       const outcome = await onCreate({ templateId: template, controlName });
@@ -80,12 +84,15 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
     if (submittingRef.current) return;
     if (template === UNCHOSEN) {
       // The refusal the spec asks for: no sentence, no stored row — and a refusal the
-      // person can act on, stated where the choice is.
-      setResult({ ok: false, reason: 'Choose a Template.' });
+      // person can act on, stated where the choice is. Read from the command's own
+      // constant, never retyped: a client copy of a refusal drifts from the server's.
+      setResult({ ok: false, reason: PROCEDURE_REFUSALS.TEMPLATE_REQUIRED });
       setAnnouncement((count) => count + 1);
       return;
     }
-    void submit();
+    // EXPERIENCE.md requires a confirmation dialog on every mutating action. Creating a
+    // Draft is a mutation: it writes two rows and an immutable audit event.
+    setConfirming(true);
   }
 
   return (
@@ -119,7 +126,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
               value={template}
               onChange={(event) => {
                 setTemplate(event.target.value);
-                if (result !== null && !result.ok && result.reason === 'Choose a Template.') {
+                if (result !== null && !result.ok && result.reason === PROCEDURE_REFUSALS.TEMPLATE_REQUIRED) {
                   setResult(null);
                 }
               }}
@@ -168,6 +175,24 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
           </Button>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirming}
+        weight="routine"
+        title="Create this Procedure?"
+        consequence={`A Draft Procedure Version is created from ${chosenTemplateName(template)}, pre-filled from the Template. Nothing runs, and the creation is recorded in the audit chain against your name.`}
+        confirmLabel="Create Procedure"
+        onConfirm={() => {
+          void submit();
+        }}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
+}
+
+/** The chosen Template's name, for the dialog's consequence sentence. */
+function chosenTemplateName(templateId: string): string {
+  const template = PROCEDURE_TEMPLATES.find((candidate) => candidate.id === templateId);
+  return template === undefined ? 'the chosen Template' : template.name;
 }

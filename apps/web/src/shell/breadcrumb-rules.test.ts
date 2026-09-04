@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { crumbsFor, readableSegment, sectionLabel, subsectionLabel } from './breadcrumb-rules';
+import {
+  crumbsFor,
+  readableSegment,
+  rendersOwnTrail,
+  sectionLabel,
+  subsectionLabel,
+} from './breadcrumb-rules';
 
 /**
  * The breadcrumb rules, including the two ways a path from the address bar can be
@@ -84,5 +90,42 @@ describe('a named sub-route', () => {
   it('does not inherit a label from Object.prototype', () => {
     expect(subsectionLabel('/administration/constructor')).toBeUndefined();
     expect(subsectionLabel('/toString')).toBeUndefined();
+  });
+});
+
+describe('surfaces that trail themselves', () => {
+  const id = '018f4d0a-1c2b-7e3d-9a4b-5c6d7e8f9a0b';
+
+  it('renders NO shell trail for a Procedure detail surface', () => {
+    // Both trails are `<nav aria-label="Breadcrumb">`. Two of them on one page is two
+    // landmarks a screen reader cannot tell apart, and the shell's shows a raw UUID
+    // where UX-DR7 asks for the Control name. axe cannot catch it: `landmark-unique`
+    // is a best-practice rule, so it never reaches `results.violations`.
+    expect(rendersOwnTrail(`/procedures/${id}`)).toBe(true);
+    expect(crumbsFor(`/procedures/${id}`)).toEqual([]);
+    expect(rendersOwnTrail(`/procedures/${id}/builder`)).toBe(true);
+    expect(crumbsFor(`/procedures/${id}/builder`)).toEqual([]);
+  });
+
+  it('still trails a NAMED route under Procedures, which renders no trail of its own', () => {
+    expect(rendersOwnTrail('/procedures/new')).toBe(false);
+    expect(crumbsFor('/procedures/new')).toEqual([
+      { href: '/procedures', label: 'Procedures', mono: false },
+      { href: '/procedures/new', label: 'new', mono: true },
+    ]);
+  });
+
+  it('leaves every other section alone', () => {
+    expect(rendersOwnTrail('/runs/RUN-2437')).toBe(false);
+    expect(rendersOwnTrail('/administration/sources')).toBe(false);
+    expect(rendersOwnTrail('/procedures')).toBe(false);
+  });
+
+  it('answers a prototype-shaped segment as an identifier, not an inherited value', () => {
+    // `PROCEDURE_NAMED_ROUTES['constructor']` inherits a truthy function from
+    // Object.prototype; a bare index would call `/procedures/constructor` a named
+    // route and let the shell render a second trail on a self-trailed page.
+    expect(rendersOwnTrail('/procedures/constructor')).toBe(true);
+    expect(rendersOwnTrail('/procedures/toString')).toBe(true);
   });
 });
