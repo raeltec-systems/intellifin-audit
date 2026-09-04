@@ -2,9 +2,10 @@
 title: 'Select Target Systems and write Audit Instructions with the scope-widening check'
 type: 'feature'
 created: '2026-09-04'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 baseline_commit: 'de0b636058f0d11ac45820ed99b987e963ebe413'
+baseline_revision: '6da838d01b467e5d36e544b6fe8938d16bd0960f'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
 ---
