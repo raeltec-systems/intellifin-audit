@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { findProcedureTemplate } from './templates.js';
+import { registrationDigest } from '../registrations/target-system.js';
 import {
   defaultTargetsFor,
   isDraftTargetFields,
@@ -8,7 +9,10 @@ import {
   scopeWideningWarnings,
   snapshotFromRegistration,
   targetBlockersFor,
-  type ProcedureTargetSnapshot,
+  validateDraftTargetEdit,
+  validateInstructionSelection,
+  TARGET_DRAFT_LIMITS,
+  TARGET_DRAFT_MESSAGES,
   type RegistrationSixFields,
   type ScopeCheckSystem,
 } from './target-draft.js';
@@ -20,7 +24,11 @@ import {
  * file off disk; this package has no `@types/node` and reads nothing.
  */
 
-const LOANCORE: RegistrationSixFields = {
+function registration(fields: Omit<RegistrationSixFields, 'digest'>): RegistrationSixFields {
+  return { ...fields, digest: registrationDigest(fields) };
+}
+
+const LOANCORE = registration({
   registrationId: '018f0000-0000-7000-8000-0000000000a1',
   displayName: 'LoanCore',
   kind: 'web',
@@ -30,9 +38,9 @@ const LOANCORE: RegistrationSixFields = {
   permittedActions: ['navigate', 'search', 'read-attribute'],
   attributeLabelPatterns: ['Status', 'Username', 'Roles'],
   secondaryKey: 'Full name',
-};
+});
 
-const LEDGERDESK: RegistrationSixFields = {
+const LEDGERDESK = registration({
   registrationId: '018f0000-0000-7000-8000-0000000000a2',
   displayName: 'LedgerDesk',
   kind: 'desktop',
@@ -42,7 +50,7 @@ const LEDGERDESK: RegistrationSixFields = {
   permittedActions: ['navigate', 'read-attribute'],
   attributeLabelPatterns: ['Status'],
   secondaryKey: '',
-};
+});
 
 const loancoreSystem: ScopeCheckSystem = {
   displayName: 'LoanCore',
@@ -75,12 +83,29 @@ describe('the frozen Target System snapshot', () => {
       }),
     ).toBe(false);
   });
+
+  it('preserves a stored digest instead of silently repairing an inconsistent registration', () => {
+    const snapshot = snapshotFromRegistration({ ...LOANCORE, digest: '0'.repeat(64) });
+    expect(snapshot.digest).toBe('0'.repeat(64));
+    expect(isProcedureTargetSnapshot(snapshot)).toBe(false);
+  });
+
+  it('refuses a digest-consistent contract with an invalid read action or no locator', () => {
+    for (const fields of [
+      { ...LOANCORE, permittedActions: ['delete'] },
+      { ...LOANCORE, allowedOrigins: [] },
+      { ...LOANCORE, credentialRef: '' },
+    ]) {
+      const unsafe = registration(fields as Omit<RegistrationSixFields, 'digest'>);
+      expect(isProcedureTargetSnapshot(snapshotFromRegistration(unsafe))).toBe(false);
+    }
+  });
 });
 
 describe('the target fields validator', () => {
   const web = snapshotFromRegistration(LOANCORE);
   const desktop = snapshotFromRegistration(LEDGERDESK);
-  const api = snapshotFromRegistration({ ...LOANCORE, registrationId: '018f0000-0000-7000-8000-0000000000a3', kind: 'api', displayName: 'AccessGate' });
+  const api = snapshotFromRegistration(registration({ ...LOANCORE, registrationId: '018f0000-0000-7000-8000-0000000000a3', kind: 'api', displayName: 'AccessGate' }));
 
   it('accepts an ordered unique selection with instructions for agent systems only', () => {
     expect(
@@ -100,6 +125,29 @@ describe('the target fields validator', () => {
     expect(isDraftTargetFields({ targets: [web], instructions: [{ registrationId: desktop.registrationId, text: 'x' }] })).toBe(false);
     // An API system is selectable but takes no agent instructions.
     expect(isDraftTargetFields({ targets: [api], instructions: [{ registrationId: api.registrationId, text: 'x' }] })).toBe(false);
+  });
+});
+
+describe('untrusted Target System edits', () => {
+  it.each([null, undefined, 3, [], {}, { section: 'unknown' },
+    { section: 'target-systems', selections: [{ mode: 'bind', registrationId: 'not-a-uuid', expectedDigest: LOANCORE.digest }] },
+    { section: 'target-systems', selections: [{ mode: 'bind', registrationId: LOANCORE.registrationId, expectedDigest: 'wrong' }] },
+    { section: 'target-systems', selections: Array(33).fill({ mode: 'retain', registrationId: LOANCORE.registrationId }) },
+  ])('refuses malformed or oversized selection %j', (edit) => {
+    expect(validateDraftTargetEdit(edit)).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.SELECTION });
+  });
+
+  it('bounds and checks blank instructions before treating them as a clear', () => {
+    const edit = (text: string) => ({ section: 'audit-instructions', instructions: [{ registrationId: LOANCORE.registrationId, text }] });
+    expect(validateDraftTargetEdit(edit(' '.repeat(TARGET_DRAFT_LIMITS.instruction + 1)))).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.INSTRUCTION_TOO_LONG });
+    expect(validateDraftTargetEdit(edit('\ud800'))).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.NOT_STORABLE });
+    const duplicated = { section: 'audit-instructions', instructions: [
+      { registrationId: LOANCORE.registrationId, text: '' },
+      { registrationId: LOANCORE.registrationId, text: 'Read the status.' },
+    ] };
+    expect(validateDraftTargetEdit(duplicated)).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION });
+    expect(validateDraftTargetEdit({ section: 'audit-instructions', instructions: Array(33).fill({ registrationId: LOANCORE.registrationId, text: '' }) })).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION });
+    expect(validateInstructionSelection([snapshotFromRegistration(LOANCORE)], [{ registrationId: LEDGERDESK.registrationId, text: '' }])).toBe(TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION);
   });
 });
 
@@ -162,6 +210,25 @@ describe('the scope-widening check', () => {
     );
     expect(unregistered).toHaveLength(1);
     expect(unregistered[0]).toMatchObject({ kind: 'unregistered-system', offending: 'PayrollVault' });
+  });
+
+  it('normalizes dot segments and default ports before comparing origins', () => {
+    const selected = [{ displayName: 'LoanCore', kind: 'web' as const, allowedOrigins: ['https://loancore.synthetic.invalid/loancore'] }];
+    expect(scopeWideningWarnings('Read https://loancore.synthetic.invalid:443/loancore/account', selected)).toEqual([]);
+    for (const path of ['/loancore/../payroll', '/loancore/%2E%2e/payroll']) {
+      expect(scopeWideningWarnings(`Read https://loancore.synthetic.invalid${path}`, selected)).toEqual([
+        expect.objectContaining({ kind: 'out-of-scope-origin' }),
+      ]);
+    }
+  });
+
+  it('names an unselected registered system with spaces and does not accept a name prefix', () => {
+    expect(scopeWideningWarnings('Open the payroll vault and read the account.', [loancoreSystem], [{ displayName: 'Payroll Vault' }])).toEqual([
+      expect.objectContaining({ kind: 'unregistered-system', offending: 'Payroll Vault' }),
+    ]);
+    expect(scopeWideningWarnings('Open LoanCore.', [{ ...loancoreSystem, displayName: 'LoanCoreArchive' }])).toEqual([
+      expect.objectContaining({ kind: 'unregistered-system', offending: 'LoanCore' }),
+    ]);
   });
 
   it('is empty for a plainly in-scope instruction', () => {

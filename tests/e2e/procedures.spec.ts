@@ -1,8 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
-import { targetCoverageMissing } from '../../apps/web/src/procedures/labels';
+import { BUILDER_DESKTOP_ONLY_SENTENCE, BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
+import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
 import { DENIAL_REASONS, bindingDigest, registrationDigest } from '@intellifin/domain';
 
@@ -213,6 +213,8 @@ test.describe('as an Auditor', () => {
     await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Confirmation closes before the command resolves; reload only after persistence.
+    await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
     await page.reload();
     await expect(page.getByLabel('Period start')).toHaveValue('2026-08-01');
     await expect(page.getByLabel('Scope statement')).toHaveValue('  All terminated staff in August.  ');
@@ -249,6 +251,16 @@ test.describe('as an Auditor', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page.getByLabel('Add a Target System')).toBeVisible();
 
+    // Template guidance is visible, but no registration is selected or silently inferred.
+    await expect(page.getByText('LoanCore (web)')).toBeVisible();
+    await expect(page.getByText('LedgerDesk (desktop)')).toBeVisible();
+    await expect(page.getByText('Template default Audit Instructions (read-only)')).toBeVisible();
+    const unavailableSave = page.getByRole('button', { name: 'Save Target Systems', exact: true });
+    await expect(unavailableSave).toHaveAttribute('aria-disabled', 'true');
+    const unavailableSaveDescription = await unavailableSave.getAttribute('aria-describedby');
+    expect(unavailableSaveDescription).toBeTruthy();
+    await expect(page.locator(`[id="${unavailableSaveDescription}"]`)).toContainText(TARGET_SELECTION_MISSING);
+
     // P-1 names web AND desktop coverage; with nothing selected, both diagnostics show.
     await expect(page.getByText(targetCoverageMissing('web'))).toBeVisible();
     await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
@@ -270,6 +282,14 @@ test.describe('as an Auditor', () => {
     await page.getByRole('button', { name: 'Add Target System' }).click();
     await expect(page.getByText(targetCoverageMissing('desktop'))).toHaveCount(0);
 
+    const pendingName = `E2E targets control ${stamp} pending`;
+    await page.getByLabel('New Control name').fill(pendingName);
+    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1, name: pendingName })).toBeVisible();
+    await expect(loancoreCard).toBeVisible();
+    await expect(page.locator('li.ls-card').filter({ hasText: `E2E LedgerDesk ${stamp}` })).toBeVisible();
+
     await page.getByRole('button', { name: 'Save Target Systems' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems' }).click();
     await expect(page.getByText('The Target System selection is recorded in the audit chain.')).toBeVisible();
@@ -279,6 +299,16 @@ test.describe('as an Auditor', () => {
     const instruction = page.getByLabel(`Audit Instructions for E2E LoanCore ${stamp}`);
     await expect(instruction).toBeVisible();
     await expect(page.getByLabel(`Audit Instructions for E2E LedgerDesk ${stamp}`)).toBeVisible();
+
+    // A refresh caused by a different section must not discard prose that has not been
+    // saved yet. Renaming is a separate guarded Draft edit and forces that refresh.
+    const unsavedInstruction = 'Open the account record and keep this unsaved note.';
+    await instruction.fill(unsavedInstruction);
+    await page.getByLabel('New Control name').fill(`E2E targets control ${stamp} renamed`);
+    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1, name: `E2E targets control ${stamp} renamed` })).toBeVisible();
+    await expect(instruction).toHaveValue(unsavedInstruction);
 
     // A scope-widening instruction is flagged inline on blur — advisory, never blocking.
     //
@@ -290,16 +320,22 @@ test.describe('as an Auditor', () => {
     // single-shot form passes alone and fails under full-suite load. The assertion
     // itself is unchanged: the warning must still name the write verb.
     const scopeWarning = page.getByText('write action "disable"');
+    const originWarning = page.getByText('outside the selected Target Systems\' allowed origins');
+    const systemWarning = page.getByText('This instruction names UnknownSystem, which is not a selected Target System.');
     await expect(async () => {
-      await instruction.fill('Where you find an active account for a terminated employee, disable it.');
+      await instruction.fill('Where you find an active account, disable it, check UnknownSystem, and open https://evil.invalid/admin.');
       await instruction.blur();
       await expect(scopeWarning).toBeVisible({ timeout: 1_000 });
+      await expect(originWarning).toBeVisible({ timeout: 1_000 });
+      await expect(systemWarning).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
 
     // Correcting the text and re-checking clears the warning; no stale warning.
     await instruction.fill('Open the account record and note its status, username, and roles.');
     await instruction.blur();
     await expect(page.getByText('write action "disable"')).toHaveCount(0);
+    await expect(originWarning).toHaveCount(0);
+    await expect(systemWarning).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Save Audit Instructions' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Audit Instructions' }).click();
@@ -310,6 +346,12 @@ test.describe('as an Auditor', () => {
       'Open the account record and note its status, username, and roles.',
     );
     await scan(page);
+    await page.setViewportSize({ width: 899, height: 900 });
+    await expect(page.getByText(BUILDER_DESKTOP_ONLY_SENTENCE)).toBeVisible();
+    await expect(instruction).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Save Target Systems', exact: true })).toHaveCount(0);
+    await page.setViewportSize({ width: 900, height: 900 });
+    await expect(instruction).toBeVisible();
   });
 
   test('the four pre-fills differ where §C says they differ', async ({ page }) => {

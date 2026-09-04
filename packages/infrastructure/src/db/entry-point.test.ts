@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,8 +31,11 @@ function run(path: string): string {
 }
 
 describe('the entry-point guard', () => {
-  const real = join(workspace, 'module.mjs');
-  const link = join(workspace, 'linked.mjs');
+  const realDirectory = join(workspace, 'real');
+  const linkedDirectory = join(workspace, 'linked');
+  mkdirSync(realDirectory);
+  const real = join(realDirectory, 'module.mjs');
+  const link = join(linkedDirectory, 'module.mjs');
 
   writeFileSync(
     real,
@@ -43,7 +46,9 @@ describe('the entry-point guard', () => {
       '',
     ].join('\n'),
   );
-  symlinkSync(real, link);
+  // A junction exercises Node's real-path resolution on Windows without requiring
+  // administrator privileges to create a file symlink.
+  symlinkSync(realDirectory, linkedDirectory, process.platform === 'win32' ? 'junction' : 'dir');
 
   it('agrees with `import.meta.main` when the file is run directly', () => {
     expect(JSON.parse(run(real))).toEqual({ byArgv: true, byMeta: true });

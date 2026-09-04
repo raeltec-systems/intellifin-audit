@@ -68,7 +68,7 @@ export default async function BuilderPage({
 
   return (
     <div className="ls-stack">
-      {/* NFR-11 responsive floor: below 900px the Builder is reading mode and says so. */}
+      {/* NFR-11: below 900px the desktop note replaces the authoring controls. */}
       <p className="ls-desktop-only" role="note">
         {BUILDER_DESKTOP_ONLY_SENTENCE}
       </p>
@@ -97,15 +97,17 @@ export default async function BuilderPage({
         </p>
       </header>
 
-      <DraftBuilder
-        draft={draft}
-        sources={sources}
-        registrations={registrations}
-        rowVersion={procedureVersionRowVersion(draft)}
-        onSave={updatePopulationDraftAction}
-        onSaveTargets={updateTargetDraftAction}
-        onRename={renameProcedureDraftAction}
-      />
+      <div className="ls-builder-authoring">
+        <DraftBuilder
+          draft={draft}
+          sources={sources}
+          registrations={registrations}
+          rowVersion={procedureVersionRowVersion(draft)}
+          onSave={updatePopulationDraftAction}
+          onSaveTargets={updateTargetDraftAction}
+          onRename={renameProcedureDraftAction}
+        />
+      </div>
     </div>
   );
 }

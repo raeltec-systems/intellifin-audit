@@ -32,9 +32,11 @@ import {
 import {
   CryptoUuidV7Generator,
   DrizzleProcedureRepository,
+  DrizzleRegistrationRepository,
   DrizzleRoleRepository,
   PostgresAuditChainReader,
   PostgresProceduresUnitOfWork,
+  PostgresRegistrationsUnitOfWork,
   createDb,
   createSeedAuth,
   createSqlClient,
@@ -738,8 +740,13 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         if (draft === null) throw new Error('the Draft is missing');
         return draft;
       };
-      const save = (edit: DraftTargetEdit, token: string, correlationId: string) =>
-        updateTargetDraft(dependencies(), {
+      const save = (
+        edit: DraftTargetEdit,
+        token: string,
+        correlationId: string,
+        procedureDependencies: ProcedureDependencies = dependencies(),
+      ) =>
+        updateTargetDraft(procedureDependencies, {
           session: auditor,
           procedureId: seed.procedureId,
           versionId: seed.versionId,
@@ -751,6 +758,37 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         ({ mode: 'bind', registrationId: system.id, expectedDigest: system.digest }) as const;
       return { seed, web, desktop, read, save, bind };
     }
+
+    async function waitForBlockedQuery(table: string): Promise<void> {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const rows = await sql<{ waiting: boolean }[]>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock' AND query ILIKE ${`%${table}%`}
+          ) AS waiting
+        `;
+        if (rows[0]?.waiting === true) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`No query waited for the held ${table} row lock`);
+    }
+
+    it('lists every active registration for a picker, even when administration reads are capped', async () => {
+      const { web, desktop } = await setupTargets();
+      const picker = new DrizzleRegistrationRepository(db, 1);
+
+      const active = await picker.listActiveRegistrations();
+      expect(active.map((registration) => registration.registrationId)).toEqual(
+        expect.arrayContaining([web.id, desktop.id]),
+      );
+
+      await sql`UPDATE target_system_registration SET status = 'retired' WHERE registration_id = ${web.id}`;
+      const afterRetirement = await picker.listActiveRegistrations();
+      expect(afterRetirement.map((registration) => registration.registrationId)).not.toContain(web.id);
+      expect(afterRetirement.map((registration) => registration.registrationId)).toContain(desktop.id);
+    });
 
     it('freezes the six-field contract per system, keeps credentials out of the chain, and survives reload', async () => {
       const { seed, web, desktop, read, save, bind } = await setupTargets();
@@ -789,6 +827,22 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
     });
 
+    it('refuses a retired registration when binding a new target without writing', async () => {
+      const { seed, web, read, save, bind } = await setupTargets();
+      await sql`UPDATE target_system_registration SET status = 'retired' WHERE registration_id = ${web.id}`;
+      const correlationId = `${prefix}retired-bind-${seed.versionId}`;
+
+      expect(
+        await save(
+          { section: 'target-systems', selections: [bind(web)] },
+          procedureVersionRowVersion(await read()),
+          correlationId,
+        ),
+      ).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.INELIGIBLE });
+      expect((await read()).targets).toHaveLength(0);
+      await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+    });
+
     it('retains a saved snapshot verbatim after the registration is retired', async () => {
       const { seed, web, read, save, bind } = await setupTargets();
       await save({ section: 'target-systems', selections: [bind(web)] }, procedureVersionRowVersion(await read()), `${prefix}retain-a-${seed.versionId}`);
@@ -818,20 +872,143 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(eventsFor(correlationId)).resolves.toHaveLength(1);
     });
 
+    it('rolls back a target edit when the audit append fails', async () => {
+      const { seed, web, read, save, bind } = await setupTargets();
+      const before = await read();
+      const correlationId = `${prefix}target-rollback-${seed.versionId}`;
+
+      await expect(
+        save(
+          { section: 'target-systems', selections: [bind(web)] },
+          procedureVersionRowVersion(before),
+          correlationId,
+          dependencies({ failIds: true }),
+        ),
+      ).rejects.toThrow();
+      expect(await read()).toEqual(before);
+      await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+    });
+
+    it('rolls back an instruction edit when the audit append fails', async () => {
+      const { seed, web, read, save, bind } = await setupTargets();
+      await save(
+        { section: 'target-systems', selections: [bind(web)] },
+        procedureVersionRowVersion(await read()),
+        `${prefix}instruction-rollback-selection-${seed.versionId}`,
+      );
+      const before = await read();
+      const correlationId = `${prefix}instruction-rollback-${seed.versionId}`;
+
+      await expect(
+        save(
+          {
+            section: 'audit-instructions',
+            instructions: [{ registrationId: web.id, text: 'Read the account status.' }],
+          },
+          procedureVersionRowVersion(before),
+          correlationId,
+          dependencies({ failIds: true }),
+        ),
+      ).rejects.toThrow();
+      expect(await read()).toEqual(before);
+      await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+    });
+
+    it('waits for an in-flight registration change before refusing an unseen bind', async () => {
+      const { seed, web, read, save, bind } = await setupTargets();
+      const before = await read();
+
+      let writerOpenedResolve: () => void = () => undefined;
+      const writerOpened = new Promise<void>((resolve) => {
+        writerOpenedResolve = resolve;
+      });
+      let releaseWriterResolve: () => void = () => undefined;
+      const releaseWriter = new Promise<void>((resolve) => {
+        releaseWriterResolve = resolve;
+      });
+      const writer = new PostgresRegistrationsUnitOfWork(db).execute(async ({ registrations }) => {
+        const current = await registrations.findRegistration(web.id);
+        if (current === null) throw new Error('the registration is missing');
+        const credentialRef = 'vault://audit/rotated';
+        await registrations.updateRegistration({
+          ...current,
+          credentialRef,
+          digest: registrationDigest({
+            kind: current.kind,
+            allowedOrigins: current.allowedOrigins,
+            applicationIdentity: current.applicationIdentity,
+            credentialRef,
+            permittedActions: current.permittedActions,
+            attributeLabelPatterns: current.attributeLabelPatterns,
+            secondaryKey: current.secondaryKey,
+          }),
+        });
+        writerOpenedResolve();
+        await releaseWriter;
+      });
+      await writerOpened;
+
+      let bindingLockStartedResolve: () => void = () => undefined;
+      const bindingLockStarted = new Promise<void>((resolve) => {
+        bindingLockStartedResolve = resolve;
+      });
+      const waitingUnitOfWork: AuditUnitOfWork<ProceduresUnitOfWorkContext> = {
+        execute: (work) =>
+          new PostgresProceduresUnitOfWork(db).execute(async (context) =>
+            work({
+              ...context,
+              targetRegistrations: {
+                lockForSelection: (registrationIds) => {
+                  bindingLockStartedResolve();
+                  return context.targetRegistrations.lockForSelection(registrationIds);
+                },
+              },
+            }),
+          ),
+      };
+      const correlationId = `${prefix}registration-lock-${seed.versionId}`;
+      const attempt = save(
+        { section: 'target-systems', selections: [bind(web)] },
+        procedureVersionRowVersion(before),
+        correlationId,
+        dependencies({ unitOfWork: waitingUnitOfWork }),
+      );
+      await bindingLockStarted;
+      try {
+        await waitForBlockedQuery('target_system_registration');
+      } finally {
+        releaseWriterResolve();
+      }
+
+      await writer;
+      expect(await attempt).toEqual({ ok: false, reason: TARGET_DRAFT_MESSAGES.UNSEEN });
+      expect((await read()).targets).toHaveLength(0);
+      await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+    });
+
     it('refuses a second target save made while the first transaction is still open', async () => {
       const { seed, web, desktop, read, bind } = await setupTargets();
       const token = procedureVersionRowVersion(await read());
 
-      let openGate: () => void = () => undefined;
-      const gate = new Promise<void>((resolve) => {
-        openGate = resolve;
+      let enteredGateResolve: () => void = () => undefined;
+      const enteredGate = new Promise<void>((resolve) => {
+        enteredGateResolve = resolve;
       });
-      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      let openGateResolve: () => void = () => undefined;
+      const openGate = new Promise<void>((resolve) => {
+        openGateResolve = resolve;
+      });
+      let releaseGateResolve: () => void = () => undefined;
+      const releaseGate = new Promise<void>((resolve) => {
+        releaseGateResolve = resolve;
+      });
       const held: AuditUnitOfWork<never> = {
         execute: (work: (context: never) => Promise<unknown>) =>
           new PostgresProceduresUnitOfWork(db).execute(async (context) => {
+            enteredGateResolve();
             const result = await work(context as never);
-            await gate;
+            openGateResolve();
+            await releaseGate;
             return result;
           }) as never,
       };
@@ -840,7 +1017,8 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         { ...dependencies(), unitOfWork: held as never },
         { session: auditor, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: token, correlationId: `${prefix}race-t-a`, edit: { section: 'target-systems', selections: [bind(web)] } },
       );
-      await wait(250);
+      await enteredGate;
+      await openGate;
       const second = updateTargetDraft(dependencies(), {
         session: auditor,
         procedureId: seed.procedureId,
@@ -849,8 +1027,11 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         correlationId: `${prefix}race-t-b`,
         edit: { section: 'target-systems', selections: [bind(desktop)] },
       });
-      await wait(250);
-      openGate();
+      try {
+        await waitForBlockedQuery('procedure_version');
+      } finally {
+        releaseGateResolve();
+      }
 
       expect(await first).toMatchObject({ ok: true, changed: true });
       expect(await second).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
@@ -864,6 +1045,14 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(sql`UPDATE procedure_version SET instructions = '{}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_instructions_shape/);
       // The empty array the command writes is accepted.
       await expect(sql`UPDATE procedure_version SET targets = '[]'::jsonb WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
+    });
+
+    it('reads a raw snapshot array that fails domain validation as null', async () => {
+      const { seed } = await setupTargets();
+      await expect(
+        sql`UPDATE procedure_version SET targets = '[{"invalid":true}]'::jsonb WHERE version_id = ${seed.versionId}`,
+      ).resolves.toBeDefined();
+      await expect(new DrizzleProcedureRepository(db).findVersion(seed.versionId)).resolves.toBeNull();
     });
   });
 

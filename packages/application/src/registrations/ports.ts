@@ -122,7 +122,7 @@ export interface RegistrationRepository {
    * NOT a filter over `listRegistrations`: that read is capped at
    * `REGISTRATION_LIST_LIMIT` and includes retired rows, so filtering its result would
    * silently drop live systems past the cap — the same trap the probe sweep hit. A
-   * selectable-systems read is active-only and takes its own limit.
+   * selectable-systems read is active-only and unpaged; every eligible system is offered.
    */
   listActiveRegistrations(): Promise<readonly TargetSystemRegistration[]>;
   findRegistration(registrationId: string): Promise<TargetSystemRegistration | null>;

@@ -1,9 +1,14 @@
 import {
   isAgentDrivenKind,
-  isTargetInstruction,
+  isDraftTargetFields,
+  isProcedureTargetSnapshot,
   snapshotFromRegistration,
-  TARGET_DRAFT_LIMITS,
+  sha256Hex,
   TARGET_DRAFT_MESSAGES,
+  validateDraftTargetEdit,
+  validateInstructionSelection,
+  type DraftTargetEdit,
+  type TargetSelectionInput,
   type JsonValue,
   type ProcedureTargetSnapshot,
   type TargetInstruction,
@@ -47,16 +52,7 @@ import type { ProcedureVersionRecord } from './ports.js';
  * never consulted here, because FR-8 makes it advisory and it must never refuse a save.
  */
 
-export type TargetSelectionInput =
-  | { readonly mode: 'bind'; readonly registrationId: string; readonly expectedDigest: string }
-  | { readonly mode: 'retain'; readonly registrationId: string };
-
-export type DraftTargetEdit =
-  | { readonly section: 'target-systems'; readonly selections: readonly TargetSelectionInput[] }
-  | {
-      readonly section: 'audit-instructions';
-      readonly instructions: readonly { readonly registrationId: string; readonly text: string }[];
-    };
+export type { DraftTargetEdit, TargetSelectionInput } from '@intellifin/domain';
 
 export interface UpdateTargetDraftInput {
   readonly session: SessionSnapshot;
@@ -74,14 +70,6 @@ export type UpdateTargetDraftResult = ProcedureOutcome<{
 
 /** A refusal thrown from inside the unit of work, so the transaction rolls back. */
 class Refused extends Error {}
-
-function isSelection(value: unknown): value is TargetSelectionInput {
-  if (typeof value !== 'object' || value === null) return false;
-  const selection = value as Record<string, unknown>;
-  if (typeof selection['registrationId'] !== 'string') return false;
-  if (selection['mode'] === 'retain') return true;
-  return selection['mode'] === 'bind' && typeof selection['expectedDigest'] === 'string';
-}
 
 /** Resolve the ordered selection into snapshots, refusing an ineligible or unseen one. */
 async function resolveSelection(
@@ -105,12 +93,13 @@ async function resolveSelection(
       if (record === undefined || record.status !== 'active') {
         throw new Refused(TARGET_DRAFT_MESSAGES.INELIGIBLE);
       }
-      const snapshot = snapshotFromRegistration(record);
       // The surface rendered a digest; if the registration moved since, the auditor never
       // saw what they would be freezing. Refuse rather than attach unseen data.
-      if (snapshot.digest !== selection.expectedDigest) {
+      if (record.digest !== selection.expectedDigest) {
         throw new Refused(TARGET_DRAFT_MESSAGES.UNSEEN);
       }
+      const snapshot = snapshotFromRegistration(record);
+      if (!isProcedureTargetSnapshot(snapshot)) throw new Refused(TARGET_DRAFT_MESSAGES.INVALID_SNAPSHOT);
       targets.push(snapshot);
     }
   }
@@ -122,33 +111,10 @@ function resolveInstructions(
   before: ProcedureVersionRecord,
   raw: readonly { readonly registrationId: string; readonly text: string }[],
 ): readonly TargetInstruction[] {
-  const agentIds = new Set(
-    before.targets
-      .filter((target) => isAgentDrivenKind(target.contract.kind))
-      .map((target) => target.registrationId),
-  );
-  const seen = new Set<string>();
-  const instructions: TargetInstruction[] = [];
-  for (const entry of raw) {
-    if (typeof entry?.registrationId !== 'string' || typeof entry?.text !== 'string') {
-      throw new Refused(TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION);
-    }
-    // A blank instruction is a cleared one: it is dropped, which is how removing an
-    // instruction clears its scope warning (the row simply no longer carries it).
-    if (entry.text.trim() === '') continue;
-    if (!agentIds.has(entry.registrationId) || seen.has(entry.registrationId)) {
-      throw new Refused(TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION);
-    }
-    seen.add(entry.registrationId);
-    if (entry.text.length > TARGET_DRAFT_LIMITS.instruction) {
-      throw new Refused(TARGET_DRAFT_MESSAGES.INSTRUCTION_TOO_LONG);
-    }
-    // Stored VERBATIM; `isTargetInstruction` proves it storable (no NUL, no lone surrogate).
-    const instruction: TargetInstruction = { registrationId: entry.registrationId, text: entry.text };
-    if (!isTargetInstruction(instruction)) throw new Refused(TARGET_DRAFT_MESSAGES.NOT_STORABLE);
-    instructions.push(instruction);
-  }
-  return instructions;
+  const reason = validateInstructionSelection(before.targets, raw);
+  if (reason !== null) throw new Refused(reason);
+  // Clearing is allowed only after shape, size, text and membership validation.
+  return raw.filter((entry) => entry.text.trim() !== '');
 }
 
 /** The credential-free projection of the targets, for the audit payload. */
@@ -166,7 +132,10 @@ function targetValues(targets: readonly ProcedureTargetSnapshot[]): JsonValue {
 function instructionValues(instructions: readonly TargetInstruction[]): JsonValue {
   return instructions.map((instruction) => ({
     registrationId: instruction.registrationId,
-    text: instruction.text,
+    // Instructions may themselves name credential references. Keep the verbatim text on
+    // the version; an audit event identifies the change without copying it into the chain.
+    textDigest: sha256Hex(instruction.text),
+    textLength: instruction.text.length,
   })) as unknown as JsonValue;
 }
 
@@ -180,23 +149,9 @@ export async function updateTargetDraft(
   );
   if (!decision.allowed) return { ok: false, reason: decision.reason };
 
-  const edit = input.edit;
-  if (edit.section === 'target-systems') {
-    if (!Array.isArray(edit.selections) || !edit.selections.every(isSelection)) {
-      return { ok: false, reason: TARGET_DRAFT_MESSAGES.SELECTION };
-    }
-    if (edit.selections.length > TARGET_DRAFT_LIMITS.targets) {
-      return { ok: false, reason: TARGET_DRAFT_MESSAGES.SELECTION };
-    }
-    const ids = edit.selections.map((selection) => selection.registrationId);
-    if (new Set(ids).size !== ids.length) return { ok: false, reason: TARGET_DRAFT_MESSAGES.DUPLICATE };
-  } else if (edit.section === 'audit-instructions') {
-    if (!Array.isArray(edit.instructions)) {
-      return { ok: false, reason: TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION };
-    }
-  } else {
-    return { ok: false, reason: TARGET_DRAFT_MESSAGES.SELECTION };
-  }
+  const validation = validateDraftTargetEdit(input.edit);
+  if (!validation.ok) return validation;
+  const edit = validation.edit;
 
   try {
     return await dependencies.unitOfWork.execute(async ({ procedures, targetRegistrations, auditEvents }) => {
@@ -231,6 +186,7 @@ export async function updateTargetDraft(
         after = { ...before, instructions: resolveInstructions(before, edit.instructions) };
       }
 
+      if (!isDraftTargetFields(after)) throw new Refused(TARGET_DRAFT_MESSAGES.INVALID_SNAPSHOT);
       const rowVersion = procedureVersionRowVersion(after);
       if (rowVersion === input.expectedRowVersion) return { ok: true, rowVersion, changed: false };
 

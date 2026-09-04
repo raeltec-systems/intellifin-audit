@@ -188,10 +188,10 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
   /**
    * Every ACTIVE registration, for the Builder's Target System picker.
    *
-   * Active-only and its own limit, NOT a filter over `listRegistrations`. Retired rows
+   * Active-only and unpaged, NOT a filter over `listRegistrations`. Retired rows
    * cannot be newly selected — a Draft that names one keeps it as a retained snapshot, it
    * does not pick it fresh — and a filter over the surface read would silently drop live
-   * systems past its 200-row cap. A screen and a picker want different reads.
+   * systems past its 200-row cap. The picker must offer every eligible registration.
    */
   async listActiveRegistrations(): Promise<readonly TargetSystemRegistration[]> {
     const rows = await this.db
@@ -206,8 +206,7 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
         eq(targetSystemProbe.registrationId, targetSystemRegistration.registrationId),
       )
       .where(eq(targetSystemRegistration.status, 'active'))
-      .orderBy(asc(targetSystemRegistration.displayName), asc(targetSystemRegistration.registrationId))
-      .limit(this.limit);
+      .orderBy(asc(targetSystemRegistration.displayName), asc(targetSystemRegistration.registrationId));
     return rows
       .map((row) =>
         toRegistration(row, toConnectivity({ state: row.probeState, observedAt: row.probeObservedAt })),

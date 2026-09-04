@@ -8,7 +8,12 @@ import {
   TARGET_DRAFT_LIMITS,
   type ScopeCheckSystem,
 } from '@intellifin/domain';
-import type { ProcedureVersionView, DraftTargetEdit, UpdateTargetDraftResult } from '@intellifin/application';
+import type {
+  ProcedureVersionView,
+  DraftTargetEdit,
+  TargetSystemRegistration,
+  UpdateTargetDraftResult,
+} from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
@@ -29,6 +34,8 @@ import { AUDIT_INSTRUCTIONS_NO_AGENT } from './labels';
 export interface AuditInstructionsFormProps {
   readonly draft: ProcedureVersionView;
   readonly rowVersion: string;
+  /** Active registrations, used to name known-but-unselected systems in SW-1 warnings. */
+  readonly registrations?: readonly Pick<TargetSystemRegistration, 'displayName'>[];
   readonly onSave: (
     fields: { readonly procedureId: string; readonly versionId: string; readonly expectedRowVersion: string; readonly edit: DraftTargetEdit },
   ) => Promise<UpdateTargetDraftResult>;
@@ -40,13 +47,56 @@ function initialTexts(draft: ProcedureVersionView): Record<string, string> {
   return texts;
 }
 
-export function AuditInstructionsForm({ draft, rowVersion, onSave }: AuditInstructionsFormProps): React.JSX.Element {
+function agentRegistrationIds(draft: ProcedureVersionView): readonly string[] {
+  return draft.targets
+    .filter((target) => isAgentDrivenKind(target.contract.kind))
+    .map((target) => target.registrationId);
+}
+
+export function AuditInstructionsForm({
+  draft,
+  rowVersion,
+  registrations = [],
+  onSave,
+}: AuditInstructionsFormProps): React.JSX.Element {
   const id = useId();
   const [token, setToken] = useState(rowVersion);
   useEffect(() => setToken(rowVersion), [rowVersion]);
-  const [texts, setTexts] = useState<Record<string, string>>(() => initialTexts(draft));
-  useEffect(() => setTexts(initialTexts(draft)), [draft]);
+  const initial = initialTexts(draft);
+  const [texts, setTexts] = useState<Record<string, string>>(() => initial);
+  const textsRef = useRef(initial);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  /**
+   * A Server Action re-renders the whole Builder, including this form. Keep a local value
+   * while it is dirty; replace only fields whose server value has caught up. Without this
+   * per-field merge, saving a different Builder section silently discarded typed prose.
+   */
+  const dirtyRef = useRef(new Set<string>());
+  useEffect(() => {
+    const serverTexts = initialTexts(draft);
+    const next: Record<string, string> = {};
+    const nextDirty = new Set<string>();
+    for (const registrationId of agentRegistrationIds(draft)) {
+      const serverText = serverTexts[registrationId] ?? '';
+      const localText = textsRef.current[registrationId] ?? '';
+      if (dirtyRef.current.has(registrationId) && localText !== serverText) {
+        next[registrationId] = localText;
+        nextDirty.add(registrationId);
+      } else {
+        next[registrationId] = serverText;
+      }
+    }
+    dirtyRef.current = nextDirty;
+    textsRef.current = next;
+    setTexts(next);
+    setTouched((current) => {
+      const retained: Record<string, boolean> = {};
+      for (const registrationId of agentRegistrationIds(draft)) {
+        if (current[registrationId] === true) retained[registrationId] = true;
+      }
+      return retained;
+    });
+  }, [draft]);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateTargetDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
@@ -54,11 +104,22 @@ export function AuditInstructionsForm({ draft, rowVersion, onSave }: AuditInstru
   const saving = useRef(false);
 
   const agentTargets = draft.targets.filter((target) => isAgentDrivenKind(target.contract.kind));
+  const templateInstructions = draft.sections.find((section) => section.heading === 'Audit Instructions')?.content ?? null;
+  const templateInstructionsId = `${id}-template-instructions`;
   const scopeSystems: readonly ScopeCheckSystem[] = draft.targets.map((target) => ({
     displayName: target.displayName,
     kind: target.contract.kind,
     allowedOrigins: target.contract.kind === 'desktop' ? [] : target.contract.allowed_origins,
   }));
+
+  function setText(registrationId: string, text: string): void {
+    dirtyRef.current.add(registrationId);
+    setTexts((current) => {
+      const next = { ...current, [registrationId]: text };
+      textsRef.current = next;
+      return next;
+    });
+  }
 
   async function save(): Promise<void> {
     if (saving.current) return;
@@ -69,7 +130,7 @@ export function AuditInstructionsForm({ draft, rowVersion, onSave }: AuditInstru
       section: 'audit-instructions',
       instructions: agentTargets.map((target) => ({
         registrationId: target.registrationId,
-        text: texts[target.registrationId] ?? '',
+        text: textsRef.current[target.registrationId] ?? '',
       })),
     };
     try {
@@ -85,12 +146,20 @@ export function AuditInstructionsForm({ draft, rowVersion, onSave }: AuditInstru
     }
   }
 
-  if (agentTargets.length === 0) {
-    return <p>{AUDIT_INSTRUCTIONS_NO_AGENT}</p>;
-  }
-
   return (
     <div className="ls-stack">
+      {templateInstructions === null ? null : (
+        <div className="ls-card">
+          <p className="ls-card__title">Template default Audit Instructions (read-only)</p>
+          <p className="ls-whitespace" id={templateInstructionsId}>{templateInstructions}</p>
+          <p className="ls-caption">
+            These are the Template&apos;s pinned instructions. Use them for a selected agent-driven Target System only when they fit its registered contract.
+          </p>
+        </div>
+      )}
+
+      {agentTargets.length === 0 ? <p>{AUDIT_INSTRUCTIONS_NO_AGENT}</p> : null}
+
       {result === null ? null : (
         <Banner
           key={announcement}
@@ -105,47 +174,59 @@ export function AuditInstructionsForm({ draft, rowVersion, onSave }: AuditInstru
         />
       )}
 
-      <form
-        method="post"
-        className="ls-admin__form ls-stack"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setResult(null);
-          setConfirming(true);
-        }}
-      >
-        {agentTargets.map((target) => {
-          const text = texts[target.registrationId] ?? '';
-          const warnings = (touched[target.registrationId] ?? false) ? scopeWideningWarnings(text, scopeSystems) : [];
-          const fieldId = `${id}-${target.registrationId}`;
-          return (
-            <div key={target.registrationId} className="ls-dialog__field">
-              <label htmlFor={fieldId}>Audit Instructions for {target.displayName}</label>
-              <textarea
-                className="ls-input"
-                id={fieldId}
-                value={text}
-                maxLength={TARGET_DRAFT_LIMITS.instruction}
-                aria-describedby={`${fieldId}-scope`}
-                onChange={(event) =>
-                  setTexts((current) => ({ ...current, [target.registrationId]: event.target.value }))
-                }
-                onBlur={() => setTouched((current) => ({ ...current, [target.registrationId]: true }))}
-              />
-              <div id={`${fieldId}-scope`} aria-live="polite" className="ls-stack">
-                {warnings.map((warning) => (
-                  <Banner key={`${warning.kind}:${warning.offending}`} tone="warning" title={warning.message} />
-                ))}
+      {agentTargets.length === 0 ? null : (
+        <form
+          method="post"
+          className="ls-admin__form ls-stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (saving.current) return;
+            setResult(null);
+            setConfirming(true);
+          }}
+        >
+          {agentTargets.map((target) => {
+            const text = texts[target.registrationId] ?? '';
+            const warnings = (touched[target.registrationId] ?? false)
+              ? scopeWideningWarnings(text, scopeSystems, registrations)
+              : [];
+            const fieldId = `${id}-${target.registrationId}`;
+            const scopeId = `${fieldId}-scope`;
+            const describedBy = templateInstructions === null
+              ? scopeId
+              : `${templateInstructionsId} ${scopeId}`;
+            return (
+              <div key={target.registrationId} className="ls-dialog__field">
+                <label htmlFor={fieldId}>Audit Instructions for {target.displayName}</label>
+                {templateInstructions === null ? null : (
+                  <Button type="button" onClick={() => setText(target.registrationId, templateInstructions)}>
+                    Use Template instructions for {target.displayName}
+                  </Button>
+                )}
+                <textarea
+                  className="ls-input"
+                  id={fieldId}
+                  value={text}
+                  maxLength={TARGET_DRAFT_LIMITS.instruction}
+                  aria-describedby={describedBy}
+                  onChange={(event) => setText(target.registrationId, event.target.value)}
+                  onBlur={() => setTouched((current) => ({ ...current, [target.registrationId]: true }))}
+                />
+                <div id={scopeId} aria-live="polite" className="ls-stack">
+                  {warnings.map((warning) => (
+                    <Banner key={`${warning.kind}:${warning.offending}`} tone="warning" title={warning.message} />
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
-        <div className="ls-admin__actions">
-          <Button type="submit" variant="primary" size="md" busy={busy}>
-            {busy ? 'Saving…' : 'Save Audit Instructions'}
-          </Button>
-        </div>
-      </form>
+            );
+          })}
+          <div className="ls-admin__actions">
+            <Button type="submit" variant="primary" size="md" busy={busy}>
+              {busy ? 'Saving…' : 'Save Audit Instructions'}
+            </Button>
+          </div>
+        </form>
+      )}
 
       <ConfirmDialog
         open={confirming}

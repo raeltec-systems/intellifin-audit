@@ -1132,4 +1132,8 @@ a {
   .ls-desktop-only {
     display: block;
   }
+
+  .ls-builder-authoring {
+    display: none;
+  }
 }

@@ -1,6 +1,7 @@
 import { canonicalJson, type JsonValue } from '../canonical-json.js';
 import {
   MUTATING_VERBS,
+  isPermittedReadAction,
   isTargetSystemKind,
   registrationDigest,
   registrationDigestEnvelope,
@@ -78,6 +79,14 @@ export interface DraftTargetFields {
   readonly instructions: readonly TargetInstruction[];
 }
 
+export type TargetSelectionInput =
+  | { readonly mode: 'bind'; readonly registrationId: string; readonly expectedDigest: string }
+  | { readonly mode: 'retain'; readonly registrationId: string };
+
+export type DraftTargetEdit =
+  | { readonly section: 'target-systems'; readonly selections: readonly TargetSelectionInput[] }
+  | { readonly section: 'audit-instructions'; readonly instructions: readonly TargetInstruction[] };
+
 /**
  * Completeness diagnostics for the Target System section (FR-7).
  *
@@ -95,6 +104,7 @@ export const TARGET_DRAFT_MESSAGES = {
   UNSEEN:
     'That Target System changed since this page was loaded. Reload the page and try again.',
   INELIGIBLE: 'That Target System is not available. Choose an active registration.',
+  INVALID_SNAPSHOT: 'That Target System registration has an invalid contract. Ask a PoC Administrator to check it.',
   RETAIN_UNKNOWN: 'That saved Target System is no longer part of this Draft.',
   ORPHAN_INSTRUCTION:
     'An instruction names a Target System that is not selected, or one that takes no agent instructions.',
@@ -174,7 +184,12 @@ export function isProcedureTargetSnapshot(value: unknown): value is ProcedureTar
     !(contract['secondary_key'] === null || typeof contract['secondary_key'] === 'string') ||
     !isStringArray(contract['allowed_origins']) ||
     !isStringArray(contract['attribute_label_patterns']) ||
-    !isStringArray(contract['permitted_actions'])
+    !isStringArray(contract['permitted_actions']) ||
+    contract['permitted_actions'].length === 0 ||
+    !contract['permitted_actions'].every(isPermittedReadAction) ||
+    contract['credential_ref'].trim() === '' ||
+    contract['allowed_origins'].length === 0 ||
+    (contract['kind'] === 'desktop' && contract['allowed_origins'].length !== 1)
   ) {
     return false;
   }
@@ -226,7 +241,8 @@ export function initialDraftTargets(): DraftTargetFields {
  * file system is an orphan the row must not carry. A row that fails this reads as nothing,
  * the same rule the repository applies to the population fields.
  */
-export function isDraftTargetFields(value: DraftTargetFields): boolean {
+export function isDraftTargetFields(value: unknown): value is DraftTargetFields {
+  if (!object(value)) return false;
   if (!Array.isArray(value.targets) || value.targets.length > TARGET_DRAFT_LIMITS.targets) {
     return false;
   }
@@ -248,6 +264,63 @@ export function isDraftTargetFields(value: DraftTargetFields): boolean {
     if (target === undefined || !isAgentDrivenKind(target.contract.kind)) return false;
   }
   return true;
+}
+
+/** Parse untrusted authoring values after authorization, before taking row locks. */
+export function validateDraftTargetEdit(value: unknown):
+  | { readonly ok: true; readonly edit: DraftTargetEdit }
+  | { readonly ok: false; readonly reason: string } {
+  const refuse = (reason: string) => ({ ok: false, reason }) as const;
+  if (!object(value)) return refuse(TARGET_DRAFT_MESSAGES.SELECTION);
+  if (value['section'] === 'target-systems') {
+    if (!exact(value, ['section', 'selections']) || !Array.isArray(value['selections']) ||
+        value['selections'].length > TARGET_DRAFT_LIMITS.targets) {
+      return refuse(TARGET_DRAFT_MESSAGES.SELECTION);
+    }
+    const seen = new Set<string>();
+    for (const entry of value['selections']) {
+      if (!object(entry) || typeof entry['registrationId'] !== 'string' || !UUID.test(entry['registrationId'])) {
+        return refuse(TARGET_DRAFT_MESSAGES.SELECTION);
+      }
+      if (entry['mode'] === 'retain') {
+        if (!exact(entry, ['mode', 'registrationId'])) return refuse(TARGET_DRAFT_MESSAGES.SELECTION);
+      } else if (entry['mode'] !== 'bind' || !exact(entry, ['mode', 'registrationId', 'expectedDigest']) ||
+                 typeof entry['expectedDigest'] !== 'string' || !SHA256.test(entry['expectedDigest'])) {
+        return refuse(TARGET_DRAFT_MESSAGES.SELECTION);
+      }
+      if (seen.has(entry['registrationId'])) return refuse(TARGET_DRAFT_MESSAGES.DUPLICATE);
+      seen.add(entry['registrationId']);
+    }
+  } else if (value['section'] === 'audit-instructions') {
+    if (!exact(value, ['section', 'instructions']) || !Array.isArray(value['instructions']) ||
+        value['instructions'].length > TARGET_DRAFT_LIMITS.targets) {
+      return refuse(TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION);
+    }
+    const seen = new Set<string>();
+    for (const entry of value['instructions']) {
+      if (!object(entry) || !exact(entry, ['registrationId', 'text']) ||
+          typeof entry['registrationId'] !== 'string' || !UUID.test(entry['registrationId']) ||
+          typeof entry['text'] !== 'string' || seen.has(entry['registrationId'])) {
+        return refuse(TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION);
+      }
+      seen.add(entry['registrationId']);
+      if (entry['text'].length > TARGET_DRAFT_LIMITS.instruction) return refuse(TARGET_DRAFT_MESSAGES.INSTRUCTION_TOO_LONG);
+      if (!storable(entry['text'])) return refuse(TARGET_DRAFT_MESSAGES.NOT_STORABLE);
+    }
+  } else {
+    return refuse(TARGET_DRAFT_MESSAGES.SELECTION);
+  }
+  return { ok: true, edit: value as unknown as DraftTargetEdit };
+}
+
+/** Even clearing text must name one selected agent-driven system, exactly once. */
+export function validateInstructionSelection(
+  targets: readonly ProcedureTargetSnapshot[],
+  instructions: readonly TargetInstruction[],
+): string | null {
+  const agentIds = new Set(targets.filter((target) => isAgentDrivenKind(target.contract.kind)).map((target) => target.registrationId));
+  return instructions.every((instruction) => agentIds.has(instruction.registrationId))
+    ? null : TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION;
 }
 
 /**
@@ -301,14 +374,14 @@ export interface RegistrationSixFields {
   readonly permittedActions: readonly PermittedReadAction[];
   readonly attributeLabelPatterns: readonly string[];
   readonly secondaryKey: string;
+  readonly digest: string;
 }
 
 /**
  * Build the frozen snapshot from a resolved registration.
  *
- * The digest is RECOMPUTED here through the domain module, so the snapshot is always
- * self-consistent (`isProcedureTargetSnapshot` passes it). The command compares this
- * recomputed digest against the one the surface rendered before it stores anything.
+ * Preserve the registration's stored digest. Validation can refuse a mismatched contract;
+ * it must never repair it silently by substituting a recomputed digest.
  */
 export function snapshotFromRegistration(record: RegistrationSixFields): ProcedureTargetSnapshot {
   const input: RegistrationDigestInput = {
@@ -323,7 +396,7 @@ export function snapshotFromRegistration(record: RegistrationSixFields): Procedu
   return {
     registrationId: record.registrationId,
     displayName: record.displayName,
-    digest: registrationDigest(input),
+    digest: record.digest,
     contract: registrationDigestEnvelope(input),
   };
 }
@@ -376,12 +449,20 @@ interface ParsedOrigin {
 
 /** Split `scheme://authority/path` into a lower-cased authority and a path, or `null`. */
 function parseOrigin(raw: string): ParsedOrigin | null {
-  const match = /^(https?):\/\/([^/?#\s]+)([^?#\s]*)/i.exec(raw);
+  const match = /^(https?):\/\/([^/?#\s]+)([^?#\s]*)/i.exec(raw.replace(/\\/g, '/'));
   if (match === null) return null;
   const scheme = (match[1] ?? '').toLowerCase();
-  const host = (match[2] ?? '').toLowerCase();
-  let path = match[3] ?? '';
-  // Drop a single trailing slash so `/loancore` and `/loancore/` compare equal.
+  const host = (match[2] ?? '').toLowerCase().replace(/^.*@/, '')
+    .replace(scheme === 'https' ? /:443$/ : /:80$/, '');
+  const segments: string[] = [];
+  // Browsers resolve literal and percent-encoded dot segments before navigation.
+  // Checking the original spelling would admit /loancore/../outside as a child path.
+  for (const segment of (match[3] ?? '').split('/').slice(1)) {
+    const dots = segment.replace(/%2e/gi, '.');
+    if (dots === '..') segments.pop();
+    else if (dots !== '.') segments.push(segment);
+  }
+  let path = `/${segments.join('/')}`;
   if (path.endsWith('/') && path !== '/') path = path.slice(0, -1);
   return { authority: `${scheme}://${host}`, path };
 }
@@ -412,7 +493,7 @@ function trimTrailingPunctuation(url: string): string {
 
 /** `true` when `word` occurs as a whole word in `text`, case-insensitively. */
 function containsWord(text: string, word: string): boolean {
-  return new RegExp(`\\b${word}\\b`, 'i').test(text);
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^\\p{L}\\p{N}])`, 'iu').test(text);
 }
 
 /**
@@ -427,6 +508,7 @@ function containsWord(text: string, word: string): boolean {
 export function scopeWideningWarnings(
   text: string,
   systems: readonly ScopeCheckSystem[],
+  registeredSystems: readonly Pick<ScopeCheckSystem, 'displayName'>[] = [],
 ): readonly ScopeWarning[] {
   const warnings: ScopeWarning[] = [];
 
@@ -461,16 +543,20 @@ export function scopeWideningWarnings(
     }
   }
 
-  // SW-1 — unregistered system. A named token is in scope when it appears in a selected
-  // system's display name.
+  // Name matching uses word boundaries: LoanCoreArchive does not select LoanCore.
+  // Registered names can include spaces or lowercase letters; internal-caps names also
+  // catch references to a synthetic system that has never been registered.
   const known = systems.map((system) => system.displayName.toLowerCase());
   const seenTokens = new Set<string>();
-  for (const match of text.matchAll(SYSTEM_TOKEN)) {
-    const token = match[0];
+  const candidates = [
+    ...registeredSystems.filter((system) => containsWord(text, system.displayName)).map((system) => system.displayName),
+    ...Array.from(text.matchAll(SYSTEM_TOKEN), (match) => match[0]),
+  ];
+  for (const token of candidates) {
     const lower = token.toLowerCase();
     if (seenTokens.has(lower)) continue;
     seenTokens.add(lower);
-    if (!known.some((name) => name.includes(lower))) {
+    if (!known.some((name) => containsWord(name, lower))) {
       warnings.push({
         kind: 'unregistered-system',
         offending: token,

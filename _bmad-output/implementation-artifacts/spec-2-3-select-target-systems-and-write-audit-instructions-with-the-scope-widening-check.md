@@ -2,7 +2,7 @@
 title: 'Select Target Systems and write Audit Instructions with the scope-widening check'
 type: 'feature'
 created: '2026-09-04'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: 'de0b636058f0d11ac45820ed99b987e963ebe413'
 baseline_revision: '6da838d01b467e5d36e544b6fe8938d16bd0960f'
@@ -51,14 +51,14 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `packages/domain/src/procedures/target-draft.ts` — add snapshots, instructions, bounds, validation, completeness diagnostics, and pure scope checker.
-- [ ] `packages/domain/src/procedures/{templates,procedure-version}.ts` — add explicit default names/kinds and instructions; preserve pinned prose.
-- [ ] `packages/application/src/registrations/ports.ts`, mapped adapters — add eligible reads and shared locks in stable id order.
-- [ ] `packages/application/src/procedures/update-target-draft.ts` and existing ports/token — implement audited guarded save with explicit bind/retain semantics, no-op detection, and returned token.
-- [ ] `packages/infrastructure/src/db/{schema,compat}.ts`, `packages/infrastructure/drizzle/`, Procedures repository — migrate typed fields, preserve existing Drafts, add shape constraints, and raise schema compatibility together.
-- [ ] Builder files above — render defaults, snapshots and instructions; validate on blur, confirm saves, preserve edits, keyboard access, and desktop-width rule.
-- [ ] `packages/domain/src/procedures/target-draft.test.ts`, command tests, `tests/integration/procedures.test.ts`, `tests/e2e/procedures.spec.ts` — cover matrix, rollback, concurrency, reloads, accessibility.
-- [ ] `fixtures/northstar/expectations/scope-widening-instructions.json` and `CLAUDE.md` — align only stale authoring-expectation prose with advisory FR-8; preserve seed ids/text and execution outcomes; record reusable decisions.
+- [x] `packages/domain/src/procedures/target-draft.ts` — add snapshots, instructions, bounds, validation, completeness diagnostics, and pure scope checker.
+- [x] `packages/domain/src/procedures/{templates,procedure-version}.ts` — add explicit default names/kinds and instructions; preserve pinned prose.
+- [x] `packages/application/src/registrations/ports.ts`, mapped adapters — add eligible reads and shared locks in stable id order.
+- [x] `packages/application/src/procedures/update-target-draft.ts` and existing ports/token — implement audited guarded save with explicit bind/retain semantics, no-op detection, and returned token.
+- [x] `packages/infrastructure/src/db/{schema,compat}.ts`, `packages/infrastructure/drizzle/`, Procedures repository — migrate typed fields, preserve existing Drafts, add shape constraints, and raise schema compatibility together.
+- [x] Builder files above — render defaults, snapshots and instructions; validate on blur, confirm saves, preserve edits, keyboard access, and desktop-width rule.
+- [x] `packages/domain/src/procedures/target-draft.test.ts`, command tests, `tests/integration/procedures.test.ts`, `tests/e2e/procedures.spec.ts` — cover matrix, rollback, concurrency, reloads, accessibility.
+- [x] `fixtures/northstar/expectations/scope-widening-instructions.json` and `CLAUDE.md` — align only stale authoring-expectation prose with advisory FR-8; preserve seed ids/text and execution outcomes; record reusable decisions.
 
 **Acceptance Criteria:**
 - Given each Template, when its Draft opens, then its default targets are offered by name; unavailable or ambiguous matches require explicit selection, and P-1 identifies required web and desktop coverage.

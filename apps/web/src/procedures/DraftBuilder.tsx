@@ -129,7 +129,7 @@ export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave
     return outcome;
   };
   const targetSystemsEditor = <TargetSelectionForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} />;
-  const auditInstructionsEditor = <AuditInstructionsForm draft={draft} rowVersion={token} onSave={saveTargets} />;
+  const auditInstructionsEditor = <AuditInstructionsForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} />;
   return <div className="ls-stack">
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
     <BuilderSections sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} />

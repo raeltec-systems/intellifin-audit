@@ -810,6 +810,68 @@ describe('Draft Target System and Audit Instruction changes', () => {
     });
   });
 
+  it('refuses a stored digest that disagrees with its contract without repairing it', async () => {
+    const { test, record, save, bind } = await setup();
+    const inconsistent = { ...webReg, digest: '0'.repeat(64) };
+    test.registrations.set(WEB, inconsistent);
+    // The rendered stored digest matches, but the contract is not the one it attests to.
+    expect(await save({ section: 'target-systems', selections: [bind(inconsistent)] })).toEqual({
+      ok: false, reason: TARGET_DRAFT_MESSAGES.INVALID_SNAPSHOT,
+    });
+    // Posting the recomputed value instead must not bypass the stored digest guard.
+    expect(await save({ section: 'target-systems', selections: [bind(webReg)] })).toEqual({
+      ok: false, reason: TARGET_DRAFT_MESSAGES.UNSEEN,
+    });
+    expect(record().targets).toEqual([]);
+    expect(test.events).toEqual([]);
+  });
+
+  it('returns domain refusals for malformed edits before writing or appending an event', async () => {
+    const { test, record, save, bind } = await setup();
+    await save({ section: 'target-systems', selections: [bind(webReg), bind(apiReg)] });
+    test.events.length = 0;
+    const before = record();
+    for (const edit of [null, undefined, { section: 'audit-instructions', instructions: null },
+      { section: 'audit-instructions', instructions: [{ registrationId: API, text: '' }] },
+      { section: 'audit-instructions', instructions: [{ registrationId: DESKTOP, text: '' }] },
+      { section: 'audit-instructions', instructions: [{ registrationId: WEB, text: '' }, { registrationId: WEB, text: 'Read it.' }] },
+      { section: 'audit-instructions', instructions: [{ registrationId: WEB, text: ' '.repeat(10001) }] },
+    ]) {
+      expect(await save(edit as DraftTargetEdit)).toMatchObject({ ok: false, reason: expect.any(String) });
+      expect(record()).toEqual(before);
+      expect(test.events).toEqual([]);
+    }
+  });
+
+  it('refuses target and instruction edits to a non-Draft version', async () => {
+    const { test, record, save, bind, created } = await setup();
+    test.storedVersions.set(created.versionId, { ...record(), state: 'SUBMITTED' });
+    for (const edit of [
+      { section: 'target-systems', selections: [bind(webReg)] },
+      { section: 'audit-instructions', instructions: [] },
+    ] as const) {
+      expect(await save(edit)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+    }
+    expect(test.events).toEqual([]);
+  });
+
+  it('saves advisory text verbatim, then clears it without a stale warning or event on an idle clear', async () => {
+    const { test, record, save, bind } = await setup();
+    await save({ section: 'target-systems', selections: [bind(webReg)] });
+    const text = '  Open PayrollVault with vault://audit/loancore, then disable the account.\n';
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: WEB, text }] })).toMatchObject({ ok: true, changed: true });
+    expect(record().instructions).toEqual([{ registrationId: WEB, text }]);
+    expect(JSON.stringify(test.events.at(-1)?.payload)).not.toContain('vault://');
+    expect(test.events.at(-1)?.payload).toMatchObject({ current: { instructions: [
+      { registrationId: WEB, textDigest: expect.stringMatching(/^[0-9a-f]{64}$/), textLength: text.length },
+    ] } });
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: WEB, text: '' }] })).toMatchObject({ ok: true, changed: true });
+    expect(record().instructions).toEqual([]);
+    test.events.length = 0;
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: WEB, text: '' }] })).toMatchObject({ ok: true, changed: false });
+    expect(test.events).toEqual([]);
+  });
+
   it('stores instructions verbatim for agent systems and refuses an orphan or an API instruction', async () => {
     const { test, record, save, bind } = await setup();
     await save({ section: 'target-systems', selections: [bind(webReg), bind(apiReg)] });
