@@ -14,7 +14,7 @@ import { DraftBuilder } from '../../../../src/procedures/DraftBuilder';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { templateLabel } from '../../../../src/procedures/labels';
 import { requireServerAction } from '../../../../src/server-session';
-import { renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction } from './actions';
+import { renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction, updateComplianceDraftAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Builder · IntelliFin Audit',
@@ -105,6 +105,7 @@ export default async function BuilderPage({
           rowVersion={procedureVersionRowVersion(draft)}
           onSave={updatePopulationDraftAction}
           onSaveTargets={updateTargetDraftAction}
+          onSaveCompliance={updateComplianceDraftAction}
           onRename={renameProcedureDraftAction}
         />
       </div>

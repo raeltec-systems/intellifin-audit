@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, initialDraftTargets, bindingDigest, registrationDigest, POPULATION_DRAFT_MESSAGES, TARGET_DRAFT_MESSAGES, type AuditEventDraft } from '@intellifin/domain';
+import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, initialDraftTargets, initialDraftCompliance, complianceInputFromFields, COMPLIANCE_MESSAGES, bindingDigest, registrationDigest, POPULATION_DRAFT_MESSAGES, TARGET_DRAFT_MESSAGES, type AuditEventDraft, type ComplianceDraftInput } from '@intellifin/domain';
 import type { BindingRecord } from '../sources/ports.js';
 import type { RegistrationRecord } from '../registrations/ports.js';
 import { updatePopulationDraft, type DraftPopulationEdit } from './update-population-draft.js';
 import { updateTargetDraft, type DraftTargetEdit } from './update-target-draft.js';
+import { updateComplianceDraft } from './update-compliance-draft.js';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
 import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
@@ -175,6 +176,98 @@ function create(
   });
 }
 
+describe('updateComplianceDraft', () => {
+  async function setup() {
+    const test = harness();
+    const created = await create(test);
+    if (!created.ok) throw new Error(created.reason);
+    const record = () => test.storedVersions.get(created.versionId)!;
+    const save = (edit: ComplianceDraftInput, expectedRowVersion = procedureVersionRowVersion(record())) =>
+      updateComplianceDraft(test.dependencies, {
+        session: AUDITOR, correlationId: 'compliance-save', procedureId: created.procedureId,
+        versionId: created.versionId, expectedRowVersion, edit,
+      });
+    test.events.length = 0;
+    return { test, created, record, save };
+  }
+
+  it('stores verbatim edited text and an exact threshold, discards old compilation, and audits metadata', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    const text = '  Check vault://private/compliance using human judgment.  ';
+    const edit = complianceInputFromFields(before);
+    const changed = { ...edit, confidenceThreshold: '0.9000', conditions: edit.conditions.map((condition, index) => index === 0 ? { ...condition, text } : condition) };
+    const result = await save(changed);
+    expect(result).toMatchObject({ ok: true, changed: true, rowVersion: procedureVersionRowVersion(record()) });
+    expect(record().complianceConditions[0]).toMatchObject({ text, status: 'AGENT_JUDGED', rule: null });
+    expect(record().agentJudgedThreshold).toBe('0.9000');
+    expect(record().inclusionRule).toEqual(before.inclusionRule);
+    expect(test.events).toHaveLength(1);
+    expect(test.events[0]).toMatchObject({ eventType: PROCEDURE_DRAFT_CHANGED_EVENT, payload: { section: 'compliance-rule' } });
+    expect(JSON.stringify(test.events)).not.toContain('vault://');
+    expect(test.events[0]?.payload).toMatchObject({ current: { conditions: [
+      expect.objectContaining({ conditionId: changed.conditions[0]!.conditionId, textLength: text.length, textDigest: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+      expect.anything(),
+    ] } });
+  });
+
+  it('does not write or append when an unchanged save recompiles identically', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    expect(await save(complianceInputFromFields(before))).toEqual({ ok: true, changed: false, rowVersion: procedureVersionRowVersion(before) });
+    expect(record()).toBe(before);
+    expect(test.events).toEqual([]);
+  });
+
+  it('refuses malformed authored input and client compilation claims without an event', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    const edit = complianceInputFromFields(before);
+    const first = edit.conditions[0]!;
+    for (const invalid of [
+      { ...edit, conditions: [first, first] },
+      { ...edit, conditions: [{ ...first, applicability: 'do arbitrary code()' }] },
+      { ...edit, conditions: [{ ...first, status: 'RULE', rule: { kind: 'constant', value: true } }] },
+      { ...edit, confidenceThreshold: 'NaN' },
+      { ...edit, confidenceThreshold: '1.00001' },
+      { ...edit, conditions: [{ ...first, text: 'bad\u0000text' }] },
+    ]) {
+      expect(await save(invalid as ComplianceDraftInput)).toMatchObject({ ok: false });
+      expect(record()).toEqual(before);
+    }
+    expect(test.events).toEqual([]);
+  });
+
+  it('refuses stale, unknown, non-Draft and unsupported-compiler rows', async () => {
+    const { test, created, record, save } = await setup();
+    const before = record(), edit = complianceInputFromFields(before);
+    expect(await save(edit, 'old')).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+    test.storedVersions.set(created.versionId, { ...before, state: 'SUBMITTED' });
+    expect(await save(edit)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+    test.storedVersions.set(created.versionId, { ...before, complianceCompilerVersion: 'future' } as unknown as ProcedureVersionRecord);
+    expect(await save(edit)).toEqual({ ok: false, reason: COMPLIANCE_MESSAGES.COMPILER });
+    test.storedVersions.delete(created.versionId);
+    expect(await save(edit, 'token')).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.UNKNOWN_VERSION });
+    expect(test.events).toEqual([]);
+  });
+
+  it('rolls the whole change back after a failed audit append', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    test.failAppend = true;
+    await expect(save({ ...complianceInputFromFields(before), confidenceThreshold: '0.95' })).rejects.toThrow('the audit append failed');
+    expect(record()).toEqual(before);
+    expect(test.events).toEqual([]);
+    expect(test.transactions.rolledBack).toBe(1);
+  });
+
+  it('refuses a forbidden role before reading the authored input', async () => {
+    const test = harness('poc-administrator');
+    const input = { session: POC_ADMIN, correlationId: 'denied-compliance', get edit(): never { throw new Error('must not parse'); } };
+    await expect(updateComplianceDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
+  });
+});
+
 describe('createProcedure', () => {
   it('stores the Procedure, its DRAFT version 1, and one created event', async () => {
     const test = harness();
@@ -205,6 +298,7 @@ describe('createProcedure', () => {
       expect(outcome.sections).toEqual(initialDraftSections(templateId));
       const version = [...test.storedVersions.values()][0] as ProcedureVersionRecord;
       expect(version.sections).toEqual(initialDraftSections(templateId));
+      expect(version).toMatchObject(initialDraftCompliance(templateId));
     },
   );
 
@@ -534,6 +628,7 @@ describe('renameProcedureDraft', () => {
 
 describe('the row version token', () => {
   const RECORD: ProcedureVersionRecord = {
+    ...initialDraftCompliance('P-1'),
     ...initialDraftPopulation('P-1'),
     ...initialDraftTargets(),
     versionId: '018f0000-0000-7000-8000-000000000001',
@@ -559,6 +654,8 @@ describe('the row version token', () => {
       { ...RECORD, inclusionRule: { schemaVersion: 1, all: [] } },
       { ...RECORD, zeroRecordPass: true },
       { ...RECORD, allowVersionedDuplicates: true },
+      { ...RECORD, agentJudgedThreshold: '0.90' },
+      { ...RECORD, complianceConditions: initialDraftCompliance('P-3').complianceConditions },
       { ...RECORD, populationBlockers: ['declared-count-missing'] },
       {
         ...RECORD,

@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { DraftSection, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, ProcedureTargetSnapshot, PopulationBlocker, TargetInstruction, JsonObject } from '@intellifin/domain';
+import type { CompiledComplianceCondition, DraftSection, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, ProcedureTargetSnapshot, PopulationBlocker, TargetInstruction, JsonObject } from '@intellifin/domain';
 
 const ZERO_SHA256 = '0'.repeat(64);
 
@@ -611,6 +611,11 @@ export const procedureVersion = pgTable(
      */
     targets: jsonb('targets').$type<readonly ProcedureTargetSnapshot[]>().notNull().default([]),
     instructions: jsonb('instructions').$type<readonly TargetInstruction[]>().notNull().default([]),
+    complianceSchemaVersion: integer('compliance_schema_version').notNull().default(1),
+    complianceCompilerVersion: text('compliance_compiler_version').notNull().default('1'),
+    complianceConditions: jsonb('compliance_conditions').$type<readonly CompiledComplianceCondition[]>().notNull(),
+    // Text preserves the author's exact decimal, including its trailing zeroes.
+    agentJudgedThreshold: text('agent_judged_threshold').notNull().default('0.80'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -644,6 +649,10 @@ export const procedureVersion = pgTable(
     // the domain's `isDraftTargetFields`, which a raw writer cannot be made to run.
     check('procedure_version_targets_shape', sql`coalesce(jsonb_typeof(${table.targets}) = 'array' AND jsonb_array_length(${table.targets}) <= 32, false)`),
     check('procedure_version_instructions_shape', sql`coalesce(jsonb_typeof(${table.instructions}) = 'array' AND jsonb_array_length(${table.instructions}) <= 32, false)`),
+    check('procedure_version_compliance_schema', sql`${table.complianceSchemaVersion} = 1`),
+    check('procedure_version_compliance_compiler', sql`${table.complianceCompilerVersion} = '1'`),
+    check('procedure_version_compliance_shape', sql`coalesce(jsonb_typeof(${table.complianceConditions}) = 'array' AND jsonb_array_length(${table.complianceConditions}) BETWEEN 1 AND 32, false)`),
+    check('procedure_version_confidence_range', sql`CASE WHEN length(${table.agentJudgedThreshold}) <= 100 AND ${table.agentJudgedThreshold} ~ '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' THEN ${table.agentJudgedThreshold}::numeric BETWEEN 0 AND 1 ELSE false END`),
   ],
 );
 

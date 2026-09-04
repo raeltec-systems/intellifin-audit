@@ -8,13 +8,15 @@ import {
   renameProcedureDraft,
   updatePopulationDraft,
   updateTargetDraft,
+  updateComplianceDraft,
   type DraftPopulationEdit,
   type DraftTargetEdit,
   type UpdatePopulationDraftResult,
   type UpdateTargetDraftResult,
+  type UpdateComplianceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { TARGET_DRAFT_LIMITS } from '@intellifin/domain';
+import { COMPLIANCE_LIMITS, TARGET_DRAFT_LIMITS, type ComplianceDraftInput } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -235,6 +237,67 @@ export async function updateTargetDraftAction(fields: TargetDraftFields): Promis
   } catch (error) {
     try {
       (await getRuntime()).telemetry.captureError('Update Target Draft failed', error, { outcome: 'failure', correlationId });
+    } catch { /* Boot failures are already reported. */ }
+    return { ok: false, reason: UNAVAILABLE };
+  }
+}
+
+/** Only authored inputs cross the action boundary; the command derives all compilation. */
+export interface ComplianceDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly edit: ComplianceDraftInput;
+}
+
+function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return false;
+  const fields = input as Record<string, unknown>;
+  if (Object.keys(fields).length !== 4 || !Object.hasOwn(fields, 'procedureId') || !Object.hasOwn(fields, 'versionId') ||
+    !Object.hasOwn(fields, 'expectedRowVersion') || !Object.hasOwn(fields, 'edit') ||
+    !isUuid(fields['procedureId']) || !isUuid(fields['versionId']) ||
+    typeof fields['expectedRowVersion'] !== 'string' || !/^[0-9a-f]{64}$/.test(fields['expectedRowVersion']) ||
+    typeof fields['edit'] !== 'object' || fields['edit'] === null || Array.isArray(fields['edit'])) return false;
+  const edit = fields['edit'] as Record<string, unknown>;
+  if (Object.keys(edit).length !== 2 || !Object.hasOwn(edit, 'conditions') || !Object.hasOwn(edit, 'confidenceThreshold') ||
+    !Array.isArray(edit['conditions']) || edit['conditions'].length > COMPLIANCE_LIMITS.conditions || typeof edit['confidenceThreshold'] !== 'string') return false;
+  return edit['conditions'].every((candidate: unknown) => {
+    if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return false;
+    const condition = candidate as Record<string, unknown>;
+    if (Object.keys(condition).length !== 4 || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
+      !Object.hasOwn(condition, 'applicability') || !Object.hasOwn(condition, 'comparison') || typeof condition['conditionId'] !== 'string' ||
+      typeof condition['text'] !== 'string' || typeof condition['applicability'] !== 'string') return false;
+    if (condition['comparison'] === null) return true;
+    if (typeof condition['comparison'] !== 'object' || Array.isArray(condition['comparison'])) return false;
+    const comparison = condition['comparison'] as Record<string, unknown>;
+    return Object.keys(comparison).length === 3 && Object.hasOwn(comparison, 'boundary') && Object.hasOwn(comparison, 'threshold') &&
+      Object.hasOwn(comparison, 'tolerance') && (comparison['boundary'] === 'inclusive' || comparison['boundary'] === 'exclusive') &&
+      typeof comparison['threshold'] === 'string' && typeof comparison['tolerance'] === 'string';
+  });
+}
+
+export async function updateComplianceDraftAction(fields: ComplianceDraftFields): Promise<UpdateComplianceDraftResult> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!isComplianceDraftFields(fields)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await updateComplianceDraft(await dependencies(), {
+      procedureId: fields.procedureId,
+      versionId: fields.versionId,
+      expectedRowVersion: fields.expectedRowVersion,
+      edit: fields.edit,
+      session: decision.session,
+      correlationId,
+    });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch (error) {
+    try {
+      (await getRuntime()).telemetry.captureError('Update Compliance Draft failed', error, { outcome: 'failure', correlationId });
     } catch { /* Boot failures are already reported. */ }
     return { ok: false, reason: UNAVAILABLE };
   }

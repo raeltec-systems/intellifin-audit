@@ -1,4 +1,4 @@
-import type { DraftPopulationFields, DraftSection, DraftTargetFields, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
+import type { DraftComplianceFields, DraftPopulationFields, DraftSection, DraftTargetFields, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
 import type { PopulationSourceReader } from '../sources/ports.js';
 import type { TargetSystemRegistrationReader } from '../registrations/ports.js';
 
@@ -33,7 +33,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields {
+export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -61,7 +61,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields {
+export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;

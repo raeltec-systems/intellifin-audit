@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { BUILDER_DESKTOP_ONLY_SENTENCE, BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
 import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
-import { DENIAL_REASONS, bindingDigest, registrationDigest } from '@intellifin/domain';
+import { DENIAL_REASONS, COMPLIANCE_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -133,11 +133,18 @@ test.describe('as an Auditor', () => {
 
       await expect(page.getByLabel('Period start')).toBeVisible();
       await expect(page.getByLabel('Population Source', { exact: true })).toBeVisible();
-      // Target System selection and Audit Instructions are now editable too (Story 2.3),
-      // so five sections remain read-only: Control, Objective, Compliance Rule conditions,
-      // Evidence Requirements, Schedule.
+      // Compliance Rule conditions are editable too (Story 2.4). Four sections remain
+      // read-only: Control, Objective, Evidence Requirements, Schedule.
       await expect(page.getByLabel('Add a Target System')).toBeVisible();
-      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(5);
+      await expect(page.getByLabel('Condition text C1', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Agent-Judged confidence threshold')).toHaveValue('0.80');
+      await expect(page.locator('[data-condition-id="C1"]').getByText('Rule-Classified', { exact: true })).toBeVisible();
+      if (template.id === 'P-1') {
+        await expect(page.locator('[data-condition-id="C2"]').getByText('Agent-Judged (pending)', { exact: true })).toBeVisible();
+        await expect(page.getByLabel('Applicability C1', { exact: true })).toHaveValue('all records');
+        await expect(page.getByLabel('Applicability C2', { exact: true })).toHaveValue('found = true');
+      }
+      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(4);
       const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_NOT_EDITABLE_SENTENCE });
       await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
 
@@ -222,6 +229,164 @@ test.describe('as an Auditor', () => {
     await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
     await expect(page.getByLabel('Permit versioned duplicate primary keys')).not.toBeChecked();
     await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
+    await scan(page);
+  });
+
+  test('authors Compliance Rule conditions, preserves dirty sections, and saves with the keyboard', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    const controlName = `E2E compliance control ${stamp}`;
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(controlName);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    await expect(page).toHaveURL(/\/procedures\/[^/]+\/builder$/);
+    await expect(page).toHaveTitle('Builder · IntelliFin Audit');
+    const c1 = page.locator('[data-condition-id="C1"]');
+    const c1Text = page.getByLabel('Condition text C1', { exact: true });
+    const applicability = page.getByLabel('Applicability C1', { exact: true });
+    const threshold = page.getByLabel('Agent-Judged confidence threshold');
+    await expect(c1.getByText('Rule-Classified', { exact: true })).toBeVisible();
+
+    // No prior compiled badge may survive an unsupported prose edit. Retrying this
+    // first interaction covers a fill that arrives before React hydration completes.
+    const prose = '  Check whether this account has a justified business need.  ';
+    await expect(async () => {
+      await c1Text.fill(prose);
+      await c1Text.blur();
+      await expect(c1.getByText('Agent-Judged (pending)', { exact: true })).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await threshold.fill('0.8500');
+    await page.getByLabel('New Control name').fill(`${controlName} renamed`);
+    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1, name: `${controlName} renamed` })).toBeVisible();
+    await expect(c1Text).toHaveValue(prose);
+    await expect(threshold).toHaveValue('0.8500');
+
+    await applicability.fill('unknown_observation = true');
+    await applicability.blur();
+    await expect(c1.getByText(COMPLIANCE_MESSAGES.APPLICABILITY)).toBeVisible();
+    await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(c1Text).toHaveValue(prose);
+    await applicability.fill('all records');
+    await threshold.fill('NaN');
+    await threshold.blur();
+    await expect(page.getByText(COMPLIANCE_MESSAGES.CONFIDENCE, { exact: true })).toBeVisible();
+    await threshold.fill('0.8500');
+    await threshold.blur();
+
+    // Add is keyboard reachable and puts focus in the new condition. Its stable id
+    // survives deletion of an earlier row, saves, and a server reload.
+    const add = page.getByRole('button', { name: 'Add condition', exact: true });
+    await add.focus();
+    await page.keyboard.press('Enter');
+    const added = page.locator('[data-condition-id]').last();
+    const addedId = await added.getAttribute('data-condition-id');
+    expect(addedId).toBeTruthy();
+    await expect(added.getByRole('textbox', { name: /^Condition text/ })).toBeFocused();
+    await added.getByRole('textbox', { name: /^Condition text/ }).fill('account_status in [disabled] else [active]');
+    await expect(added.getByText('Rule-Classified', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Remove condition C2', exact: true }).click();
+    await expect(page.locator('[data-condition-id="C2"]')).toHaveCount(0);
+
+    // The reverse direction matters too: a Compliance Rule save must retain dirty
+    // Period inputs and move the token used by that later save.
+    await page.getByLabel('Period start').fill('2026-08-01');
+    await page.getByLabel('Period end').fill('2026-08-31');
+    await page.getByLabel('Scope statement').fill('Unsaved August scope');
+    const save = page.getByRole('button', { name: 'Save Compliance Rule', exact: true });
+    await save.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await scan(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(save).toBeFocused();
+    await expect(c1Text).toHaveValue(prose);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Save Compliance Rule', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Scope statement')).toHaveValue('Unsaved August scope');
+    await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
+    await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.', { exact: true })).toBeVisible();
+
+    await page.reload();
+    await expect(c1Text).toHaveValue(prose);
+    await expect(threshold).toHaveValue('0.8500');
+    await expect(page.locator(`[data-condition-id="${addedId}"]`).getByRole('textbox', { name: /^Condition text/ })).toHaveValue('account_status in [disabled] else [active]');
+    await expect(page.locator('[data-condition-id="C2"]')).toHaveCount(0);
+    await expect(page.getByLabel('Scope statement')).toHaveValue('Unsaved August scope');
+    await scan(page);
+    await testInfo.attach('compliance-editor-desktop', { body: await page.screenshot({ fullPage: false }), contentType: 'image/png' });
+    await page.setViewportSize({ width: 899, height: 900 });
+    await expect(page.getByText(BUILDER_DESKTOP_ONLY_SENTENCE)).toBeVisible();
+    await expect(c1Text).toBeHidden();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(c1Text).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('saves exact numeric boundaries and the optional 24-hour condition', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-3');
+    await page.getByLabel('Control name').fill(`E2E comparison control ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    const boundary = page.getByLabel('Comparison boundary C1', { exact: true });
+    const amount = page.getByLabel('Comparison threshold C1', { exact: true });
+    const tolerance = page.getByLabel('Numeric tolerance C1', { exact: true });
+    await expect(boundary).toHaveValue('inclusive');
+    await expect(amount).toHaveValue('100000');
+    await expect(tolerance).toHaveValue('0');
+    await expect(page.getByLabel('Applicability C1', { exact: true })).toHaveValue('all records');
+    await expect(async () => {
+      await amount.fill('1e5');
+      await amount.blur();
+      await expect(page.getByText(COMPLIANCE_MESSAGES.NUMBER, { exact: true })).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await amount.fill('100000.0100');
+    await tolerance.fill('0.0100');
+    await boundary.selectOption('exclusive');
+    await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+    await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(boundary).toHaveValue('exclusive');
+    await expect(amount).toHaveValue('100000.0100');
+    await expect(tolerance).toHaveValue('0.0100');
+
+    // The P-3 comparison edit must not change the separate Population inclusion rule.
+    await expect(page.getByLabel('Comparison value 2')).toHaveValue('100000');
+    await expect(page.getByLabel('Decimal operator 2')).toHaveValue('gte');
+
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E window control ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('button', { name: 'Use 24-hour disablement window', exact: true }).click();
+    await expect(page.getByLabel('Condition text C1', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
+    await expect(page.locator('[data-condition-id="C1"]').getByText('Rule-Classified', { exact: true })).toBeVisible();
+    await expect(amount).toHaveValue('24');
+    await expect(boundary).toHaveValue('inclusive');
+    await tolerance.fill('0.001');
+    await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+    await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(amount).toHaveValue('24');
+    await expect(tolerance).toHaveValue('0.001');
     await scan(page);
   });
 

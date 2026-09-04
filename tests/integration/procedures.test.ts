@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import {
   createProcedure,
@@ -10,8 +11,10 @@ import {
   renameProcedureDraft,
   updatePopulationDraft,
   updateTargetDraft,
+  updateComplianceDraft,
   type DraftPopulationEdit,
   type DraftTargetEdit,
+  type ComplianceDraftInput,
   type AuditUnitOfWork,
   type ProcedureDependencies,
   type ProceduresUnitOfWorkContext,
@@ -26,6 +29,9 @@ import {
   bindingDigest,
   registrationDigest,
   initialDraftPopulation,
+  initialDraftCompliance,
+  complianceInputFromFields,
+  COMPLIANCE_MESSAGES,
   POPULATION_DRAFT_MESSAGES,
   TARGET_DRAFT_MESSAGES,
 } from '@intellifin/domain';
@@ -72,6 +78,24 @@ const SECRET = 'integration-test-secret-not-a-real-one';
 const BASE_URL = 'http://localhost:3000';
 const PASSWORD = 'correct horse battery staple';
 const AUTH_CONFIG = { secret: SECRET, baseUrl: BASE_URL };
+
+describe('generation 10 Compliance Rule backfill', () => {
+  it('contains the exact typed defaults for all four Templates', () => {
+    const migration = readFileSync(
+      new URL('../../packages/infrastructure/drizzle/0010_lethal_hedge_knight.sql', import.meta.url),
+      'utf8',
+    );
+    for (const templateId of ['P-1', 'P-2', 'P-3', 'P-4'] as const) {
+      const match = new RegExp(`WHEN '${templateId}' THEN \\$json\\$(.*?)\\$json\\$::jsonb`, 's').exec(migration);
+      expect(match?.[1], `${templateId} backfill`).toBeDefined();
+      expect(JSON.parse(match![1]!)).toEqual(initialDraftCompliance(templateId).complianceConditions);
+    }
+    // The migration promotes this one section. It does not rewrite an older Draft's
+    // population, targets, instructions, or retained section payload.
+    const update = /UPDATE "procedure_version"([\s\S]*?)END;/.exec(migration)?.[0] ?? '';
+    expect(update).not.toMatch(/"(?:period|scope|targets|instructions|sections)"\s*=/);
+  });
+});
 
 describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
   let sql: Sql;
@@ -525,13 +549,13 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await sql`DELETE FROM procedure_version WHERE version_id = ${versionId}`;
       await sql`
         INSERT INTO procedure_version
-          (version_id, procedure_id, version_number, state, control_name, template_id, sections)
+          (version_id, procedure_id, version_number, state, control_name, template_id, sections, compliance_conditions)
         VALUES (${versionId}, ${procedureId}, ${overrides.versionNumber ?? 1},
                 ${overrides.state ?? 'DRAFT'}, ${overrides.controlName ?? `${prefix}Raw draft`},
                 'P-1', ${JSON.stringify({
                   templateId: 'P-1',
                   sections: initialDraftSections('P-1'),
-                })}::jsonb)
+                })}::jsonb, ${JSON.stringify(initialDraftCompliance('P-1').complianceConditions)}::jsonb)
       `;
     }
 
@@ -585,9 +609,9 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(
         sql`
           INSERT INTO procedure_version
-            (version_id, procedure_id, version_number, state, control_name, template_id, sections)
+            (version_id, procedure_id, version_number, state, control_name, template_id, sections, compliance_conditions)
           VALUES ('018f0000-0000-7000-8000-0000000000cf', ${procedureId}, 1, 'DRAFT',
-                  ${`${prefix}Duplicate number`}, 'P-1', '{}'::jsonb)
+                  ${`${prefix}Duplicate number`}, 'P-1', '{}'::jsonb, ${JSON.stringify(initialDraftCompliance('P-1').complianceConditions)}::jsonb)
         `,
       ).rejects.toThrow(/procedure_version_procedure_number_uidx/);
       await sql`DELETE FROM procedure_version WHERE version_id = ${versionId}`;
@@ -1053,6 +1077,245 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         sql`UPDATE procedure_version SET targets = '[{"invalid":true}]'::jsonb WHERE version_id = ${seed.versionId}`,
       ).resolves.toBeDefined();
       await expect(new DrizzleProcedureRepository(db).findVersion(seed.versionId)).resolves.toBeNull();
+    });
+  });
+
+  describe('Compliance Rule authoring', () => {
+    async function waitForProcedureVersionLock(): Promise<void> {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const rows = await sql<{ waiting: boolean }[]>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock' AND query ILIKE '%procedure_version%'
+          ) AS waiting
+        `;
+        if (rows[0]?.waiting === true) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('No query waited for the held procedure_version row lock');
+    }
+
+    async function setupCompliance(templateId: 'P-1' | 'P-2' | 'P-3' | 'P-4' = 'P-1') {
+      const seed = await createProcedure(dependencies(), createInput({ templateId }, `${prefix}compliance-create-${crypto.randomUUID()}`));
+      if (!seed.ok) throw new Error(seed.reason);
+      created.push(seed.procedureId);
+      const read = async (): Promise<ProcedureVersionView> => {
+        const row = await new DrizzleProcedureRepository(db).findVersion(seed.versionId);
+        if (row === null) throw new Error('the Compliance Draft is missing');
+        return row;
+      };
+      const save = (
+        edit: ComplianceDraftInput,
+        expectedRowVersion: string,
+        correlationId = `${prefix}compliance-${seed.versionId}`,
+        procedureDependencies: ProcedureDependencies = dependencies(),
+      ) => updateComplianceDraft(procedureDependencies, {
+        session: auditor, procedureId: seed.procedureId, versionId: seed.versionId,
+        expectedRowVersion, correlationId, edit,
+      });
+      return { seed, read, save };
+    }
+
+    it('applies generation 10 to a generation-9 row and preserves every prior authored section', async () => {
+      const migration = readFileSync(
+        new URL('../../packages/infrastructure/drizzle/0010_lethal_hedge_knight.sql', import.meta.url),
+        'utf8',
+      );
+      const statements = migration
+        .split('--> statement-breakpoint')
+        .map((statement) => statement.trim())
+        .filter((statement) => statement !== '');
+      const versionId = '018f0000-0000-7000-8000-000000002410';
+      const procedureId = '018f0000-0000-7000-8000-000000002411';
+      const registrationFields = {
+        kind: 'web' as const,
+        allowedOrigins: ['https://edited.example.invalid'],
+        applicationIdentity: '',
+        credentialRef: 'vault://edited-target',
+        permittedActions: ['navigate', 'read-attribute'] as const,
+        attributeLabelPatterns: ['Account status'],
+        secondaryKey: 'Employee ID',
+      };
+      const registrationId = '018f0000-0000-7000-8000-000000002412';
+      const editedTargets = [{
+        registrationId,
+        displayName: 'Edited target',
+        digest: registrationDigest(registrationFields),
+        contract: {
+          kind: registrationFields.kind,
+          allowed_origins: registrationFields.allowedOrigins,
+          credential_ref: registrationFields.credentialRef,
+          permitted_actions: registrationFields.permittedActions,
+          attribute_label_patterns: registrationFields.attributeLabelPatterns,
+          secondary_key: registrationFields.secondaryKey,
+        },
+      }];
+      const editedInstructions = [{ registrationId, text: 'Read the edited account status.' }];
+      const editedSections = initialDraftSections('P-3').map((section) =>
+        section.heading === 'Objective' ? { ...section, content: 'Edited objective retained from generation 9.' } : section,
+      );
+      const editedPopulation = {
+        period: { from: '2026-07-01', to: '2026-07-31' },
+        scope: 'Edited population scope retained from generation 9.',
+        inclusionRule: initialDraftPopulation('P-3').inclusionRule,
+        zeroRecordPass: true,
+        allowVersionedDuplicates: true,
+        populationBlockers: [] as const,
+      };
+
+      await sql.begin(async (transactionSql) => {
+        await transactionSql`CREATE TEMP TABLE procedure_version (LIKE public.procedure_version INCLUDING ALL) ON COMMIT DROP`;
+        await transactionSql`ALTER TABLE procedure_version DROP COLUMN compliance_schema_version, DROP COLUMN compliance_compiler_version, DROP COLUMN compliance_conditions, DROP COLUMN agent_judged_threshold`;
+        await transactionSql`CREATE TEMP TABLE schema_meta (LIKE public.schema_meta INCLUDING ALL) ON COMMIT DROP`;
+        await transactionSql`INSERT INTO schema_meta (version) VALUES (9)`;
+        await transactionSql`
+          INSERT INTO procedure_version
+            (version_id, procedure_id, version_number, state, control_name, template_id,
+             sections, period, scope, source_snapshot, inclusion_rule, zero_record_pass,
+             allow_versioned_duplicates, population_blockers, targets, instructions)
+          VALUES
+            (${versionId}, ${procedureId}, 1, 'DRAFT', 'Edited generation-9 Draft', 'P-3',
+             ${JSON.stringify(editedSections)}::jsonb, ${JSON.stringify(editedPopulation.period)}::jsonb,
+             ${editedPopulation.scope}, NULL, ${JSON.stringify(editedPopulation.inclusionRule)}::jsonb,
+             ${editedPopulation.zeroRecordPass}, ${editedPopulation.allowVersionedDuplicates},
+             ${JSON.stringify(editedPopulation.populationBlockers)}::jsonb,
+             ${JSON.stringify(editedTargets)}::jsonb, ${JSON.stringify(editedInstructions)}::jsonb)
+        `;
+        for (const statement of statements) await transactionSql.unsafe(statement);
+
+        const repository = new DrizzleProcedureRepository(createDb(transactionSql as unknown as Sql));
+        const migrated = await repository.findVersion(versionId);
+        expect(migrated).not.toBeNull();
+        expect(migrated).toMatchObject({
+          ...initialDraftCompliance('P-3'),
+          ...editedPopulation,
+          sections: editedSections,
+          targets: editedTargets,
+          instructions: editedInstructions,
+        });
+        await expect(transactionSql`SELECT version FROM schema_meta ORDER BY version`).resolves.toEqual(
+          expect.arrayContaining([{ version: 9 }, { version: 10 }]),
+        );
+      });
+    });
+
+    it.each(['P-1', 'P-2', 'P-3', 'P-4'] as const)('creates %s with typed Template conditions', async (templateId) => {
+      const { read } = await setupCompliance(templateId);
+      expect(await read()).toMatchObject(initialDraftCompliance(templateId));
+    });
+
+    it('persists edits and exact decimals across a repository reload with text-free audit metadata', async () => {
+      const { seed, read, save } = await setupCompliance('P-1');
+      const before = await read();
+      const text = 'Inspect using vault://secret-reference and professional judgment.';
+      const input = complianceInputFromFields(before);
+      const edit = { ...input, confidenceThreshold: '0.8500', conditions: input.conditions.map((condition, index) => index === 0 ? { ...condition, text } : condition) };
+      const correlationId = `${prefix}compliance-edit-${seed.versionId}`;
+      expect(await save(edit, procedureVersionRowVersion(before), correlationId)).toMatchObject({ ok: true, changed: true });
+      const reloaded = await read();
+      expect(reloaded.agentJudgedThreshold).toBe('0.8500');
+      expect(reloaded.complianceConditions[0]).toMatchObject({ text, status: 'AGENT_JUDGED', rule: null });
+      const events = await eventsFor(correlationId);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.payload).toMatchObject({ section: 'compliance-rule', current: { conditions: [expect.objectContaining({ textLength: text.length })] } });
+      expect(JSON.stringify(events)).not.toContain('vault://');
+    });
+
+    it('makes an unchanged save idle and refuses malformed input without a row or event', async () => {
+      const { seed, read, save } = await setupCompliance();
+      const before = await read(), input = complianceInputFromFields(before);
+      const correlationId = `${prefix}compliance-idle-${seed.versionId}`;
+      expect(await save(input, procedureVersionRowVersion(before), correlationId)).toMatchObject({ ok: true, changed: false });
+      expect(await save({ ...input, confidenceThreshold: '1.01' }, procedureVersionRowVersion(before), correlationId)).toEqual({ ok: false, reason: COMPLIANCE_MESSAGES.CONFIDENCE });
+      expect(await read()).toEqual(before);
+      expect(await eventsFor(correlationId)).toHaveLength(0);
+    });
+
+    it('refuses a non-Draft, stale cross-section token, and forbidden role', async () => {
+      const { seed, read, save } = await setupCompliance();
+      const before = await read(), input = complianceInputFromFields(before);
+      expect(await save(input, 'stale')).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+      await sql`UPDATE procedure_version SET state = 'SUBMITTED' WHERE version_id = ${seed.versionId}`;
+      const submitted = await read();
+      expect(await save(input, procedureVersionRowVersion(submitted))).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+      await sql`UPDATE procedure_version SET state = 'DRAFT' WHERE version_id = ${seed.versionId}`;
+      const restored = await read();
+      await expect(updateComplianceDraft(dependencies(), { session: administrator, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: procedureVersionRowVersion(restored), correlationId: `${prefix}compliance-denied-${seed.versionId}`, edit: input })).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
+
+      const oldToken = procedureVersionRowVersion(restored);
+      expect(await save({ ...input, confidenceThreshold: '0.91' }, oldToken)).toMatchObject({ ok: true, changed: true });
+      expect(await updatePopulationDraft(dependencies(), { session: auditor, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: oldToken, correlationId: `${prefix}compliance-cross-section-${seed.versionId}`, edit: { section: 'period-scope', period: null, scope: 'stale save' } })).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+    });
+
+    it('blocks a concurrent population save, then refuses its stale whole-row token', async () => {
+      const { seed, read, save } = await setupCompliance();
+      const before = await read();
+      const token = procedureVersionRowVersion(before);
+      let openedResolve: () => void = () => undefined;
+      const opened = new Promise<void>((resolve) => { openedResolve = resolve; });
+      let releaseResolve: () => void = () => undefined;
+      const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+      const held: AuditUnitOfWork<never> = {
+        execute: (work: (context: never) => Promise<unknown>) =>
+          new PostgresProceduresUnitOfWork(db).execute(async (context) => {
+            const result = await work(context as never);
+            openedResolve();
+            await release;
+            return result;
+          }) as never,
+      };
+      const complianceCorrelation = `${prefix}compliance-race-winner-${seed.versionId}`;
+      const populationCorrelation = `${prefix}compliance-race-loser-${seed.versionId}`;
+      const winner = save(
+        { ...complianceInputFromFields(before), confidenceThreshold: '0.92' },
+        token,
+        complianceCorrelation,
+        dependencies({ unitOfWork: held as never }),
+      );
+      await opened;
+      const loser = updatePopulationDraft(dependencies(), {
+        session: auditor,
+        procedureId: seed.procedureId,
+        versionId: seed.versionId,
+        expectedRowVersion: token,
+        correlationId: populationCorrelation,
+        edit: { section: 'period-scope', period: null, scope: 'must not win' },
+      });
+      try {
+        await waitForProcedureVersionLock();
+      } finally {
+        releaseResolve();
+      }
+
+      expect(await winner).toMatchObject({ ok: true, changed: true });
+      expect(await loser).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+      expect((await read()).scope).toBe(before.scope);
+      await expect(eventsFor(populationCorrelation)).resolves.toHaveLength(0);
+    });
+
+    it('rolls back the Compliance edit when its audit append fails', async () => {
+      const { seed, read, save } = await setupCompliance();
+      const before = await read(), input = complianceInputFromFields(before);
+      const correlationId = `${prefix}compliance-rollback-${seed.versionId}`;
+      await expect(save({ ...input, confidenceThreshold: '0.91' }, procedureVersionRowVersion(before), correlationId, dependencies({ failIds: true }))).rejects.toThrow();
+      expect(await read()).toEqual(before);
+      expect(await eventsFor(correlationId)).toHaveLength(0);
+    });
+
+    it('reads a row whose deep condition shape was corrupted as null', async () => {
+      const { seed } = await setupCompliance();
+      await sql`UPDATE procedure_version SET compliance_conditions = '[{"conditionId":"C1"}]'::jsonb WHERE version_id = ${seed.versionId}`;
+      await expect(new DrizzleProcedureRepository(db).findVersion(seed.versionId)).resolves.toBeNull();
+    });
+
+    it('enforces the version, count, and exact confidence range in PostgreSQL', async () => {
+      const { seed } = await setupCompliance();
+      await expect(sql`UPDATE procedure_version SET compliance_schema_version = 2 WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_compliance_schema/);
+      await expect(sql`UPDATE procedure_version SET compliance_conditions = '[]'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_compliance_shape/);
+      await expect(sql`UPDATE procedure_version SET agent_judged_threshold = '1.01' WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_confidence_range/);
+      await expect(sql`UPDATE procedure_version SET agent_judged_threshold = '0.8000' WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
     });
   });
 

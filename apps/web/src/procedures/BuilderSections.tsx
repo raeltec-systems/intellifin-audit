@@ -18,18 +18,21 @@ export function BuilderSections({
   populationSource,
   targetSystems,
   auditInstructions,
+  complianceRule,
 }: {
   readonly sections: readonly { readonly heading: string; readonly content: string | null }[];
   readonly periodScope?: React.ReactNode;
   readonly populationSource?: React.ReactNode;
   readonly targetSystems?: React.ReactNode;
   readonly auditInstructions?: React.ReactNode;
+  readonly complianceRule?: React.ReactNode;
 }): React.JSX.Element {
   const editors: Readonly<Record<string, React.ReactNode>> = {
     'Period and scope': periodScope,
     'Population Source binding': populationSource,
     'Target System selection': targetSystems,
     'Audit Instructions': auditInstructions,
+    'Compliance Rule conditions': complianceRule,
   };
   return (
     <div className="ls-stack">

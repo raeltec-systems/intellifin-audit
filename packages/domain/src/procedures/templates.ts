@@ -28,6 +28,7 @@
 /** The evaluation origin a condition is authored with. `HUMAN` arises only later, from a rejection. */
 import type { TargetSystemKind } from '../registrations/target-system.js';
 import type { InclusionRule } from './population-draft.js';
+import type { ComplianceRule } from './compliance-draft.js';
 
 export const CONDITION_ORIGINS = ['RULE', 'AGENT_JUDGED'] as const;
 export type ConditionOrigin = (typeof CONDITION_ORIGINS)[number];
@@ -53,6 +54,8 @@ export interface TemplateCondition {
   readonly unevaluated: string | null;
   /** Anything else §C pins to this condition — matching keys, boundaries, pair lists — verbatim. */
   readonly also: readonly string[];
+  /** Structured default paired with this exact pinned prose. Text edits invalidate it. */
+  readonly rule?: ComplianceRule;
 }
 
 export const PROCEDURE_TEMPLATE_IDS = ['P-1', 'P-2', 'P-3', 'P-4'] as const;
@@ -105,6 +108,10 @@ const P1_C1: TemplateCondition = {
   exception: 'Exception when `account_status = active`',
   unevaluated: 'any other status → Unevaluated (unnamed value)',
   also: [],
+  rule: { kind: 'predicate', predicate: { kind: 'any', expressions: [
+    { kind: 'boolean', field: 'found', value: false },
+    { kind: 'named-set', field: 'account_status', compliant: ['disabled'], exception: ['active'] },
+  ] } },
 };
 
 const P1_C2: TemplateCondition = {
@@ -189,6 +196,9 @@ const P2: ProcedureTemplate = {
         'Role name to the versioned RoleMatrix; expand roles to permissions before comparison.',
         '`CREATE_VENDOR` + `APPROVE_VENDOR`; `CREATE_PAYMENT` + `RELEASE_PAYMENT`; `CONFIGURE_LIMITS` + `APPROVE_LOAN`',
       ],
+      rule: { kind: 'permission-pairs', rolesField: 'roles', prohibitedPairs: [
+        ['CREATE_VENDOR', 'APPROVE_VENDOR'], ['CREATE_PAYMENT', 'RELEASE_PAYMENT'], ['CONFIGURE_LIMITS', 'APPROVE_LOAN'],
+      ] },
     },
   ],
   declaredAttributeLabels: null,
@@ -235,6 +245,7 @@ const P3: ProcedureTemplate = {
         'Exact transaction ID, with approval ID used as corroboration.',
         'USD 100,000 requires approval (inclusive); this is the PoC\'s exercised tolerance boundary (FR-9).',
       ],
+      rule: { kind: 'approval', amountField: 'amount', currencyField: 'currency', decisionField: 'decision', decisionTimeField: 'decided_at', processedTimeField: 'processed_time', limitField: 'approver_limit', threshold: '100000', boundary: 'inclusive', tolerance: '0' },
     },
   ],
   declaredAttributeLabels: null,
@@ -276,6 +287,7 @@ const P4: ProcedureTemplate = {
         'Exact parameter name.',
         '`max_manual_approval_amount`, `mfa_required_for_admin`, `session_timeout_minutes`, and `production_debug_mode`',
       ],
+      rule: { kind: 'baseline', parameterField: 'parameter', observedField: 'observed_value', observationTimeField: 'observation_time', tolerance: '0' },
     },
   ],
   declaredAttributeLabels: null,

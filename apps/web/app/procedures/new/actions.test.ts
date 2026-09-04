@@ -29,6 +29,7 @@ const currentCorrelationId = vi.fn(async () => 'corr-test');
 const createProcedure = vi.fn();
 const renameProcedureDraft = vi.fn();
 const updatePopulationDraft = vi.fn();
+const updateComplianceDraft = vi.fn();
 const getRuntime = vi.fn(() => {
   throw new Error('the runtime must not be reached on a refusal');
 });
@@ -50,11 +51,12 @@ vi.mock('@intellifin/application', async (importOriginal) => {
     createProcedure: (...args: unknown[]) => createProcedure(...args),
     renameProcedureDraft: (...args: unknown[]) => renameProcedureDraft(...args),
     updatePopulationDraft: (...args: unknown[]) => updatePopulationDraft(...args),
+    updateComplianceDraft: (...args: unknown[]) => updateComplianceDraft(...args),
   };
 });
 
 const { createProcedureAction } = await import('./actions');
-const { renameProcedureDraftAction, updatePopulationDraftAction } = await import('../[id]/builder/actions');
+const { renameProcedureDraftAction, updatePopulationDraftAction, updateComplianceDraftAction } = await import('../[id]/builder/actions');
 
 const PROCEDURE_ID = '018f0000-0000-7000-8000-000000000001';
 const VERSION_ID = '018f0000-0000-7000-8000-000000000002';
@@ -69,6 +71,16 @@ const VALID_RENAME = {
   versionId: VERSION_ID,
   controlName: 'Renamed',
   expectedRowVersion: 'a'.repeat(64),
+} as const;
+
+const VALID_COMPLIANCE = {
+  procedureId: PROCEDURE_ID,
+  versionId: VERSION_ID,
+  expectedRowVersion: 'a'.repeat(64),
+  edit: {
+    conditions: [{ conditionId: 'C1', text: 'amount >= 100000', applicability: 'all records', comparison: { boundary: 'inclusive', threshold: '100000', tolerance: '0' } }],
+    confidenceThreshold: '0.80',
+  },
 } as const;
 
 const AUDITOR_DENIED: ActionDecision = {
@@ -92,6 +104,47 @@ const ALLOWED: ActionDecision = {
 const MALFORMED = 'That request was not valid. Nothing was changed.';
 
 describe('the Procedure Server Actions', () => {
+  it('authorizes the compliance edit before reading any input or reaching runtime', async () => {
+    requireServerAction.mockResolvedValue(UNAUTHENTICATED);
+    const hostile = new Proxy({}, { get: () => { throw new Error('input read before authorization'); } });
+    await expect(updateComplianceDraftAction(hostile as never)).resolves.toEqual({ ok: false, reason: UNAUTHENTICATED.reason });
+    expect(updateComplianceDraft).not.toHaveBeenCalled();
+    expect(getRuntime).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    null,
+    {},
+    { ...VALID_COMPLIANCE, procedureId: 'bad' },
+    { ...VALID_COMPLIANCE, expectedRowVersion: 'bad' },
+    { ...VALID_COMPLIANCE, edit: [] },
+  ])('refuses malformed compliance fields before the command: %s', async (fields) => {
+    requireServerAction.mockResolvedValue(ALLOWED);
+    await expect(updateComplianceDraftAction(fields as never)).resolves.toEqual({ ok: false, reason: MALFORMED });
+    expect(updateComplianceDraft).not.toHaveBeenCalled();
+    expect(getRuntime).not.toHaveBeenCalled();
+  });
+
+  it('rejects client-supplied compliance compilation claims at the action boundary', async () => {
+    requireServerAction.mockResolvedValue(ALLOWED);
+    await expect(updateComplianceDraftAction({
+      ...VALID_COMPLIANCE,
+      edit: { ...VALID_COMPLIANCE.edit, complianceCompilerVersion: 'hostile', compiledRule: { executable: true } },
+    } as never)).resolves.toEqual({ ok: false, reason: MALFORMED });
+    expect(updateComplianceDraft).not.toHaveBeenCalled();
+    expect(getRuntime).not.toHaveBeenCalled();
+  });
+
+  it('rejects top-level compliance compilation claims at the action boundary', async () => {
+    requireServerAction.mockResolvedValue(ALLOWED);
+    await expect(updateComplianceDraftAction({
+      ...VALID_COMPLIANCE,
+      complianceCompilerVersion: 'hostile',
+    } as never)).resolves.toEqual({ ok: false, reason: MALFORMED });
+    expect(updateComplianceDraft).not.toHaveBeenCalled();
+    expect(getRuntime).not.toHaveBeenCalled();
+  });
+
   it('authorizes the population edit before reading any input or reaching runtime', async () => {
     requireServerAction.mockResolvedValue(UNAUTHENTICATED);
     const hostile = new Proxy({}, { get: () => { throw new Error('input read before authorization'); } });

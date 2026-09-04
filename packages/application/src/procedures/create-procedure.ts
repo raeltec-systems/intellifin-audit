@@ -4,6 +4,7 @@ import {
   initialDraftSections,
   initialDraftPopulation,
   initialDraftTargets,
+  initialDraftCompliance,
   isTemplateId,
   sha256Hex,
   type DraftSection,
@@ -225,6 +226,10 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       // edited the population fields does.
       targets: record.targets,
       instructions: record.instructions,
+      complianceSchemaVersion: record.complianceSchemaVersion,
+      complianceCompilerVersion: record.complianceCompilerVersion,
+      complianceConditions: record.complianceConditions,
+      agentJudgedThreshold: record.agentJudgedThreshold,
     } as unknown as JsonValue),
   );
 }
@@ -262,6 +267,7 @@ export async function createProcedure(
   const version: ProcedureVersionRecord = {
     ...initialDraftPopulation(validated.templateId),
     ...initialDraftTargets(),
+    ...initialDraftCompliance(validated.templateId),
     versionId,
     procedureId,
     versionNumber: 1,

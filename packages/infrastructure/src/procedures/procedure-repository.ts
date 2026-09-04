@@ -16,10 +16,12 @@ import {
   isValidDraftSectionsPayload,
   isDraftPopulationFields,
   isDraftTargetFields,
+  isDraftComplianceFields,
   targetBlockersFor,
   type DraftPopulationFields,
   type DraftSection,
   type DraftTargetFields,
+  type DraftComplianceFields,
   type ProcedureTargetSnapshot,
   type ProcedureVersionState,
   type TargetInstruction,
@@ -70,6 +72,10 @@ const VERSION_SELECTION = {
   populationBlockers: procedureVersion.populationBlockers,
   targets: procedureVersion.targets,
   instructions: procedureVersion.instructions,
+  complianceSchemaVersion: procedureVersion.complianceSchemaVersion,
+  complianceCompilerVersion: procedureVersion.complianceCompilerVersion,
+  complianceConditions: procedureVersion.complianceConditions,
+  agentJudgedThreshold: procedureVersion.agentJudgedThreshold,
   createdAt: procedureVersion.createdAt,
   updatedAt: procedureVersion.updatedAt,
 } as const;
@@ -83,6 +89,10 @@ interface ProcedureSelectedRow {
 }
 
 interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields {
+  complianceSchemaVersion: number;
+  complianceCompilerVersion: string;
+  complianceConditions: unknown;
+  agentJudgedThreshold: string;
   versionId: string;
   procedureId: string;
   versionNumber: number;
@@ -112,10 +122,11 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
-  if (state === null || templateId === null || sections === null) return null;
+  if (state === null || templateId === null || sections === null || !isDraftComplianceFields(row, templateId)) return null;
   return {
     ...populationFields(row),
     ...targetFields(row),
+    ...complianceFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -136,10 +147,11 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
-  if (state === null || templateId === null || sections === null) return null;
+  if (state === null || templateId === null || sections === null || !isDraftComplianceFields(row, templateId)) return null;
   return {
     ...populationFields(row),
     ...targetFields(row),
+    ...complianceFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -156,6 +168,15 @@ function populationFields(row: DraftPopulationFields): DraftPopulationFields {
 
 function targetFields(row: DraftTargetFields): DraftTargetFields {
   return { targets: row.targets, instructions: row.instructions };
+}
+
+function complianceFields(row: DraftComplianceFields): DraftComplianceFields {
+  return {
+    complianceSchemaVersion: row.complianceSchemaVersion,
+    complianceCompilerVersion: row.complianceCompilerVersion,
+    complianceConditions: row.complianceConditions,
+    agentJudgedThreshold: row.agentJudgedThreshold,
+  };
 }
 
 /**
@@ -310,6 +331,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
   async insertVersion(record: ProcedureVersionRecord): Promise<void> {
     await this.transaction.insert(procedureVersion).values({
       ...populationFields(record),
+      ...complianceFields(record),
       versionId: record.versionId,
       procedureId: record.procedureId,
       versionNumber: record.versionNumber,
@@ -356,6 +378,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
       .update(procedureVersion)
       .set({
         ...populationFields(record),
+        ...complianceFields(record),
         state: record.state,
         controlName: record.controlName,
         sections: [...record.sections],
