@@ -34,6 +34,10 @@ When in doubt, assume it's a question. Answer first. Act when I say go.
 
 ## Speed and model routing
 
+The model families named below describe Claude environments. Other agents use the
+platform-specific adaptation in `AGENTS.md` after its managed context block; active
+runtime instructions and available capabilities take precedence.
+
 When running as a frontier-tier model (Fable, Opus, or their successors): optimize for wall-clock speed. Finish tasks quickly.
 
 Route work to the cheapest model family that does it well. Never burn top-tier intelligence on routine work. The tiers, from cheapest to most capable — use whichever models from each tier are available:
