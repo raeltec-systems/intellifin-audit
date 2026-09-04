@@ -54,6 +54,7 @@ export const TELEMETRY_MESSAGES = [
   // returned sentence, so these mean the command FAILED and nothing was written.
   'Create Procedure failed',
   'Rename Procedure Draft failed',
+  'Update Population Draft failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',

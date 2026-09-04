@@ -14,14 +14,19 @@ import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE } from '../design/copy';
  */
 export function BuilderSections({
   sections,
+  periodScope,
+  populationSource,
 }: {
   readonly sections: readonly { readonly heading: string; readonly content: string | null }[];
+  readonly periodScope?: React.ReactNode;
+  readonly populationSource?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className="ls-stack">
       {sections.map((section) => (
         <section key={section.heading} className="ls-card">
           <h2 className="ls-card__title">{section.heading}</h2>
+          {section.heading === 'Period and scope' && periodScope ? periodScope : section.heading === 'Population Source binding' && populationSource ? populationSource : <>
           {section.content === null ? (
             // §C gives some Templates nothing for a section. An empty section says so in
             // words — a blank panel reads as a rendering failure or as "fine".
@@ -37,6 +42,7 @@ export function BuilderSections({
             across sections is the cost of saying it where it applies.
           */}
           <p className="ls-caption">{BUILDER_SECTION_NOT_EDITABLE_SENTENCE}</p>
+          </>}
         </section>
       ))}
     </div>

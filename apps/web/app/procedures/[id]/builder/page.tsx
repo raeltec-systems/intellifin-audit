@@ -5,16 +5,15 @@ import {
   procedureVersionRowVersion,
   PROCEDURE_AUTHOR_ACTION,
 } from '@intellifin/application';
-import { DrizzleProcedureRepository } from '@intellifin/infrastructure';
+import { DrizzleProcedureRepository, DrizzleBindingRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
-import { BuilderSections } from '../../../../src/procedures/BuilderSections';
+import { DraftBuilder } from '../../../../src/procedures/DraftBuilder';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
-import { RenameDraftForm } from '../../../../src/procedures/RenameDraftForm';
 import { templateLabel } from '../../../../src/procedures/labels';
 import { requireServerAction } from '../../../../src/server-session';
-import { renameProcedureDraftAction } from './actions';
+import { renameProcedureDraftAction, updatePopulationDraftAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Builder · IntelliFin Audit',
@@ -63,6 +62,7 @@ export default async function BuilderPage({
   // is nothing editable on this surface at all.
   const draft = versions.find((version) => version.state === 'DRAFT') ?? null;
   if (draft === null) notFound();
+  const sources = await new DrizzleBindingRepository(runtime.db).listActiveBindings();
 
   return (
     <div className="ls-stack">
@@ -91,20 +91,11 @@ export default async function BuilderPage({
         </p>
       </header>
 
-      <BuilderSections sections={draft.sections} />
-
-      <RenameDraftForm
-        procedureId={procedure.procedureId}
-        versionId={draft.versionId}
-        rowVersion={procedureVersionRowVersion({
-          versionId: draft.versionId,
-          procedureId: draft.procedureId,
-          versionNumber: draft.versionNumber,
-          state: draft.state,
-          controlName: draft.controlName,
-          templateId: draft.templateId,
-          sections: draft.sections,
-        })}
+      <DraftBuilder
+        draft={draft}
+        sources={sources}
+        rowVersion={procedureVersionRowVersion(draft)}
+        onSave={updatePopulationDraftAction}
         onRename={renameProcedureDraftAction}
       />
     </div>

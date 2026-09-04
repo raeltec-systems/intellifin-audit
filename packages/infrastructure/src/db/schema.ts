@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { DraftSection, JsonObject } from '@intellifin/domain';
+import type { DraftSection, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, PopulationBlocker, JsonObject } from '@intellifin/domain';
 
 const ZERO_SHA256 = '0'.repeat(64);
 
@@ -593,6 +593,13 @@ export const procedureVersion = pgTable(
     controlName: text('control_name').notNull(),
     templateId: text('template_id').notNull(),
     sections: jsonb('sections').$type<readonly DraftSection[]>().notNull(),
+    period: jsonb('period').$type<ExplicitPeriod>(),
+    scope: text('scope').notNull().default(''),
+    sourceSnapshot: jsonb('source_snapshot').$type<ProcedureSourceSnapshot>(),
+    inclusionRule: jsonb('inclusion_rule').$type<InclusionRule>().notNull().default({ schemaVersion: 1, all: [] }),
+    zeroRecordPass: boolean('zero_record_pass').notNull().default(false),
+    allowVersionedDuplicates: boolean('allow_versioned_duplicates').notNull().default(false),
+    populationBlockers: jsonb('population_blockers').$type<readonly PopulationBlocker[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -616,6 +623,11 @@ export const procedureVersion = pgTable(
     // The same btrim rule as the parent table: whitespace is blank.
     check('procedure_version_control_name_present', sql`btrim(${table.controlName}) <> ''`),
     check('procedure_version_number_at_least_one', sql`${table.versionNumber} >= 1`),
+    check('procedure_version_period_shape', sql`${table.period} IS NULL OR coalesce(jsonb_typeof(${table.period}) = 'object' AND ${table.period} - 'from' - 'to' = '{}'::jsonb AND ${table.period}->>'from' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND ${table.period}->>'to' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND (${table.period}->>'from')::date <= (${table.period}->>'to')::date AND (${table.period}->>'from')::date >= date '0001-01-01', false)`),
+    check('procedure_version_scope_bound', sql`length(${table.scope}) <= 10000`),
+    check('procedure_version_source_shape', sql`${table.sourceSnapshot} IS NULL OR coalesce(jsonb_typeof(${table.sourceSnapshot}) = 'object' AND ${table.sourceSnapshot} - 'bindingId' - 'displayName' - 'digest' - 'contract' = '{}'::jsonb AND ${table.sourceSnapshot}->>'bindingId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.sourceSnapshot}->>'digest' ~ '^[0-9a-f]{64}$' AND length(${table.sourceSnapshot}->>'displayName') BETWEEN 1 AND 200 AND jsonb_typeof(${table.sourceSnapshot}->'contract') = 'object' AND ${table.sourceSnapshot}->'contract' ?& ARRAY['kind','location','declared_schema','declared_count_mechanism','sensitive_fields'] AND (${table.sourceSnapshot}->'contract') - 'kind' - 'location' - 'declared_schema' - 'declared_count_mechanism' - 'sensitive_fields' = '{}'::jsonb AND ${table.sourceSnapshot}->'contract'->>'kind' IN ('manual-upload','versioned-file','read-only-api') AND ${table.sourceSnapshot}->'contract'->>'declared_count_mechanism' IN ('cover-sheet','count-endpoint','none') AND jsonb_typeof(${table.sourceSnapshot}->'contract'->'declared_schema') = 'array' AND jsonb_typeof(${table.sourceSnapshot}->'contract'->'sensitive_fields') = 'array', false)`),
+    check('procedure_version_rule_shape', sql`coalesce(jsonb_typeof(${table.inclusionRule}) = 'object' AND ${table.inclusionRule} - 'schemaVersion' - 'all' = '{}'::jsonb AND ${table.inclusionRule}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.inclusionRule}->'all') = 'array' AND jsonb_array_length(${table.inclusionRule}->'all') <= 32, false)`),
+    check('procedure_version_count_blocker', sql`${table.populationBlockers} = CASE WHEN ${table.sourceSnapshot}->'contract'->>'declared_count_mechanism' = 'none' THEN '["declared-count-missing"]'::jsonb ELSE '[]'::jsonb END`),
   ],
 );
 

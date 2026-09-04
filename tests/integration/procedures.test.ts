@@ -8,6 +8,8 @@ import {
   PROCEDURE_REFUSALS,
   procedureVersionRowVersion,
   renameProcedureDraft,
+  updatePopulationDraft,
+  type DraftPopulationEdit,
   type AuditUnitOfWork,
   type ProcedureDependencies,
   type ProceduresUnitOfWorkContext,
@@ -19,6 +21,9 @@ import {
   DENIAL_REASONS,
   PROCEDURE_VERSION_STATES,
   initialDraftSections,
+  bindingDigest,
+  initialDraftPopulation,
+  POPULATION_DRAFT_MESSAGES,
 } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
@@ -73,6 +78,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
   let administrator: SessionSnapshot;
   /** Procedure ids this suite created, deleted in `afterAll`. */
   const created: string[] = [];
+  const sourceIds: string[] = [];
 
   function dependencies(
     options: {
@@ -174,6 +180,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`;
     }
     await sql`DELETE FROM procedure WHERE control_name LIKE ${`${prefix}%`}`;
+    for (const id of sourceIds) await sql`DELETE FROM population_source_binding WHERE binding_id = ${id}`;
     await sql`DELETE FROM auth_user WHERE email LIKE ${`${prefix}%`}`;
     // The events stay: deleting them would leave `audit_event_heads` pointing past the
     // rows that remain, which is a corrupt chain — the thing the last test verifies.
@@ -343,6 +350,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       versionId: draft.versionId,
       controlName: `${prefix}Renamed by the auditor`,
       expectedRowVersion: procedureVersionRowVersion({
+        ...draft,
         versionId: draft.versionId,
         procedureId: draft.procedureId,
         versionNumber: draft.versionNumber,
@@ -381,6 +389,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     const draft = listed[0];
     if (draft === undefined) throw new Error('the seeded Draft is missing');
     const token = procedureVersionRowVersion({
+      ...draft,
       versionId: draft.versionId,
       procedureId: draft.procedureId,
       versionNumber: draft.versionNumber,
@@ -434,6 +443,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     const draft = listed[0];
     if (draft === undefined) throw new Error('the seeded Draft is missing');
     const token = procedureVersionRowVersion({
+      ...draft,
       versionId: draft.versionId,
       procedureId: draft.procedureId,
       versionNumber: draft.versionNumber,
@@ -582,6 +592,86 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       expect(procedures).toBe(1);
       expect(versions).toHaveLength(1);
       await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`;
+    });
+  });
+
+  describe('generation 8 population authoring', () => {
+    async function setupPopulation() {
+      const bindingId = new CryptoUuidV7Generator().next();
+      sourceIds.push(bindingId);
+      const fields = { kind: 'versioned-file' as const, location: 'https://source.synthetic.invalid/leavers.csv', declaredSchema: ['employment_status', 'termination_effective_date'], declaredCountMechanism: 'none' as const, sensitiveFields: [] };
+      const digest = bindingDigest(fields);
+      await sql`INSERT INTO population_source_binding (binding_id, display_name, kind, location, declared_schema, declared_count_mechanism, sensitive_fields, note, status, digest) VALUES (${bindingId}, ${`${prefix}source`}, ${fields.kind}, ${fields.location}, ${fields.declaredSchema}, ${fields.declaredCountMechanism}, ${fields.sensitiveFields}, '', 'active', ${digest})`;
+      const seed = await createProcedure(dependencies(), createInput({}, `${prefix}population-create-${bindingId}`));
+      if (!seed.ok) throw new Error(seed.reason);
+      created.push(seed.procedureId);
+      const read = async () => {
+        const draft = await new DrizzleProcedureRepository(db).findVersion(seed.versionId);
+        if (draft === null) throw new Error('Draft missing');
+        return draft;
+      };
+      const edit: DraftPopulationEdit = { section: 'population-source', source: { mode: 'bind', bindingId, expectedDigest: digest }, inclusionRule: initialDraftPopulation('P-1').inclusionRule, zeroRecordPass: true, allowVersionedDuplicates: false };
+      const input = { session: auditor, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: procedureVersionRowVersion(await read()), correlationId: `${prefix}bind-${bindingId}`, edit };
+      return { seed, bindingId, digest, input, read };
+    }
+    it('persists the exact snapshot, independent flags and missing-count blocker with one event', async () => {
+      const { input, digest, bindingId, read } = await setupPopulation();
+      expect(await updatePopulationDraft(dependencies(), input)).toMatchObject({ ok: true, changed: true });
+      const saved = await read();
+      expect(saved).toMatchObject({ sourceSnapshot: { bindingId, digest, contract: { declared_count_mechanism: 'none' } }, zeroRecordPass: true, allowVersionedDuplicates: false, populationBlockers: ['declared-count-missing'] });
+      expect(await eventsFor(input.correlationId)).toHaveLength(1);
+      await sql`UPDATE population_source_binding SET status = 'retired' WHERE binding_id = ${bindingId}`;
+      const fresh = { ...input, expectedRowVersion: procedureVersionRowVersion(saved) };
+      expect(await updatePopulationDraft(dependencies(), fresh)).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.SOURCE });
+      expect(await updatePopulationDraft(dependencies(), { ...fresh, edit: { ...input.edit, source: { mode: 'retain' }, zeroRecordPass: false, allowVersionedDuplicates: true } as DraftPopulationEdit })).toMatchObject({ ok: true });
+      const retained = await read();
+      expect(retained.sourceSnapshot).toEqual(saved.sourceSnapshot);
+      expect(retained.zeroRecordPass).toBe(false);
+      expect(retained.allowVersionedDuplicates).toBe(true);
+    });
+    it('rolls back population fields if the audit append fails and refuses an old whole-row token', async () => {
+      const { input, read } = await setupPopulation();
+      const before = await read();
+      await expect(updatePopulationDraft(dependencies({ failIds: true }), input)).rejects.toThrow();
+      expect(await read()).toEqual(before);
+      expect(await eventsFor(input.correlationId)).toHaveLength(0);
+      const periodEdit = { ...input, edit: { section: 'period-scope' as const, period: { from: '2026-08-01', to: '2026-08-31' }, scope: '  Verbatim scope\n  ' } };
+      expect(await updatePopulationDraft(dependencies(), periodEdit)).toMatchObject({ ok: true });
+      expect(await read()).toMatchObject({ period: periodEdit.edit.period, scope: periodEdit.edit.scope });
+      expect(await updatePopulationDraft(dependencies(), input)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+      expect((await read()).sourceSnapshot).toBeNull();
+    });
+    it('waits for a source update and refuses the changed digest instead of binding unseen data', async () => {
+      const { input, bindingId, read } = await setupPopulation();
+      let locked!: () => void, release!: () => void;
+      const lockedGate = new Promise<void>((resolve) => { locked = resolve; });
+      const releaseGate = new Promise<void>((resolve) => { release = resolve; });
+      const writer = sql.begin(async (tx) => {
+        await tx`UPDATE population_source_binding SET digest = ${'f'.repeat(64)} WHERE binding_id = ${bindingId}`;
+        locked();
+        await releaseGate;
+      });
+      await lockedGate;
+      const attempt = updatePopulationDraft(dependencies(), input);
+      try {
+        const finishedEarly = await Promise.race([attempt.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 75))]);
+        expect(finishedEarly).toBe(false);
+      } finally { release(); }
+      await writer;
+      expect(await attempt).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.STALE_SOURCE });
+      expect((await read()).sourceSnapshot).toBeNull();
+      expect(await eventsFor(input.correlationId)).toHaveLength(0);
+    });
+    it('refuses invalid raw SQL Period, rule, scope, snapshot and blocker data', async () => {
+      const { seed } = await setupPopulation();
+      for (const period of [{ from: '2025-02-29', to: '2025-03-01' }, { from: '2026-02-01', to: '2026-01-01' }, { from: '2026-01-01' }]) {
+        await expect(sql`UPDATE procedure_version SET period = ${sql.json(period)} WHERE version_id = ${seed.versionId}`).rejects.toThrow();
+      }
+      await expect(sql`UPDATE procedure_version SET inclusion_rule = '{"schemaVersion":2,"all":[]}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_rule_shape/);
+      await expect(sql`UPDATE procedure_version SET source_snapshot = '{}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_source_shape/);
+      await expect(sql`UPDATE procedure_version SET population_blockers = '["declared-count-missing"]'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_count_blocker/);
+      await expect(sql`UPDATE procedure_version SET scope = ${'x'.repeat(10001)} WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_scope_bound/);
+      await expect(sql`UPDATE procedure_version SET period = '{"from":"2024-02-29","to":"2024-02-29"}'::jsonb WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
     });
   });
 

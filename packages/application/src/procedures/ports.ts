@@ -1,4 +1,5 @@
-import type { DraftSection, ProcedureVersionState, TemplateId } from '@intellifin/domain';
+import type { DraftPopulationFields, DraftSection, ProcedureVersionState, TemplateId } from '@intellifin/domain';
+import type { PopulationSourceReader } from '../sources/ports.js';
 
 import type { AuditUnitOfWorkContext } from '../audit/ports.js';
 
@@ -31,7 +32,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView {
+export interface ProcedureVersionView extends DraftPopulationFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -54,7 +55,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord {
+export interface ProcedureVersionRecord extends DraftPopulationFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -103,4 +104,5 @@ export interface ProcedureRecord {
  */
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
   readonly procedures: ProcedureWriter;
+  readonly populationSources: PopulationSourceReader;
 }

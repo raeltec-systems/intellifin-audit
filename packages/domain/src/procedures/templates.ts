@@ -26,6 +26,8 @@
  */
 
 /** The evaluation origin a condition is authored with. `HUMAN` arises only later, from a rejection. */
+import type { InclusionRule } from './population-draft.js';
+
 export const CONDITION_ORIGINS = ['RULE', 'AGENT_JUDGED'] as const;
 export type ConditionOrigin = (typeof CONDITION_ORIGINS)[number];
 
@@ -67,6 +69,7 @@ export interface ProcedureTemplate {
   readonly controlStatement: string | null;
   readonly objective: string;
   readonly populationSource: string;
+  readonly inclusionRule: InclusionRule;
   readonly targetSystems: string;
   readonly workItemCoverage: string;
   readonly auditInstructions: string | null;
@@ -109,6 +112,11 @@ const P1_C2: TemplateCondition = {
 
 const P1: ProcedureTemplate = {
   id: 'P-1',
+  // Explicit mapping from the prose's termination_date to the registered field.
+  inclusionRule: { schemaVersion: 1, all: [
+    { column: 'employment_status', kind: 'text', operator: 'eq', value: 'Terminated' },
+    { column: 'termination_effective_date', kind: 'within-period' },
+  ] },
   name: 'Terminated Users Retaining Access',
   hero: true,
   controlStatement: 'Terminated employees must have their system access revoked.',
@@ -145,6 +153,7 @@ const P1: ProcedureTemplate = {
 
 const P2: ProcedureTemplate = {
   id: 'P-2',
+  inclusionRule: { schemaVersion: 1, all: [{ column: 'status', kind: 'text', operator: 'eq', value: 'Active' }] },
   name: 'Segregation-of-Duties Conflicts',
   hero: false,
   controlStatement: null,
@@ -183,6 +192,11 @@ const P2: ProcedureTemplate = {
 
 const P3: ProcedureTemplate = {
   id: 'P-3',
+  inclusionRule: { schemaVersion: 1, all: [
+    { column: 'currency', kind: 'text', operator: 'eq', value: 'USD' },
+    { column: 'amount', kind: 'decimal', operator: 'gte', value: '100000' },
+    { column: 'processed_time', kind: 'within-period' },
+  ] },
   name: 'High-Value Transactions Without Required Approval',
   hero: false,
   controlStatement: null,
@@ -223,6 +237,7 @@ const P3: ProcedureTemplate = {
 
 const P4: ProcedureTemplate = {
   id: 'P-4',
+  inclusionRule: { schemaVersion: 1, all: [] },
   name: 'Production Configuration Deviation',
   hero: false,
   controlStatement: null,

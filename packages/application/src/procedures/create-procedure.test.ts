@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { DENIAL_REASONS, initialDraftSections, type AuditEventDraft } from '@intellifin/domain';
+import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, bindingDigest, POPULATION_DRAFT_MESSAGES, type AuditEventDraft } from '@intellifin/domain';
+import type { BindingRecord } from '../sources/ports.js';
+import { updatePopulationDraft, type DraftPopulationEdit } from './update-population-draft.js';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
 import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
@@ -32,6 +34,7 @@ const AUDITOR: SessionSnapshot = { userId: 'auditor-1', sessionId: 'session-1' }
 const POC_ADMIN: SessionSnapshot = { userId: 'poc-admin-1', sessionId: 'session-2' };
 
 interface Harness {
+  readonly bindings: Map<string, BindingRecord>;
   readonly dependencies: ProcedureDependencies;
   /** Committed procedure rows, by id. A rolled-back transaction never reaches this. */
   readonly storedProcedures: Map<string, ProcedureRecord>;
@@ -46,6 +49,7 @@ interface Harness {
 }
 
 function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
+  const bindings = new Map<string, BindingRecord>();
   const storedProcedures = new Map<string, ProcedureRecord>();
   const storedVersions = new Map<string, ProcedureVersionRecord>();
   const events: AuditEventDraft[] = [];
@@ -64,6 +68,7 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
       const draftVersions = new Map(storedVersions);
       const draftEvents: AuditEventDraft[] = [];
       const context: ProceduresUnitOfWorkContext = {
+        populationSources: { findBindingForShare: async (id) => bindings.get(id) ?? null },
         auditEvents: {
           append: async (event) => {
             if (state.failAppend) throw new Error('the audit append failed');
@@ -128,6 +133,7 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
   };
 
   return {
+    bindings,
     dependencies: { roles, unitOfWork, ids } satisfies ProcedureDependencies,
     storedProcedures,
     storedVersions,
@@ -515,6 +521,7 @@ describe('renameProcedureDraft', () => {
 
 describe('the row version token', () => {
   const RECORD: ProcedureVersionRecord = {
+    ...initialDraftPopulation('P-1'),
     versionId: '018f0000-0000-7000-8000-000000000001',
     procedureId: '018f0000-0000-7000-8000-000000000002',
     versionNumber: 1,
@@ -533,6 +540,12 @@ describe('the row version token', () => {
       { ...RECORD, templateId: 'P-2' },
       { ...RECORD, versionId: '018f0000-0000-7000-8000-000000000003' },
       { ...RECORD, procedureId: '018f0000-0000-7000-8000-000000000004' },
+      { ...RECORD, period: { from: '2026-01-01', to: '2026-01-31' } },
+      { ...RECORD, scope: 'Scope' },
+      { ...RECORD, inclusionRule: { schemaVersion: 1, all: [] } },
+      { ...RECORD, zeroRecordPass: true },
+      { ...RECORD, allowVersionedDuplicates: true },
+      { ...RECORD, populationBlockers: ['declared-count-missing'] },
     ];
     for (const variant of variants) {
       expect(procedureVersionRowVersion(variant)).not.toBe(procedureVersionRowVersion(RECORD));
@@ -541,5 +554,91 @@ describe('the row version token', () => {
 
   it('is 64 lower-case hex characters', () => {
     expect(procedureVersionRowVersion(RECORD)).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('Draft Period and Population Source changes', () => {
+  const bindingFields = { kind: 'versioned-file' as const, location: 'https://data.synthetic.invalid/leavers.csv', declaredSchema: ['employment_status', 'termination_effective_date'], declaredCountMechanism: 'cover-sheet' as const, sensitiveFields: [] };
+  const binding: BindingRecord = { ...bindingFields, bindingId: '018f0000-0000-7000-8000-000000000099', displayName: 'Synthetic leavers', status: 'active', note: '', digest: bindingDigest(bindingFields) };
+  const bindEdit: DraftPopulationEdit = { section: 'population-source', source: { mode: 'bind', bindingId: binding.bindingId, expectedDigest: binding.digest }, inclusionRule: initialDraftPopulation('P-1').inclusionRule, zeroRecordPass: false, allowVersionedDuplicates: false };
+  async function setup() {
+    const test = harness();
+    const created = await create(test);
+    if (!created.ok) throw new Error(created.reason);
+    test.bindings.set(binding.bindingId, binding);
+    const record = () => test.storedVersions.get(created.versionId)!;
+    const save = (edit: DraftPopulationEdit, token = procedureVersionRowVersion(record())) => updatePopulationDraft(test.dependencies, { session: AUDITOR, correlationId: 'population-save', procedureId: created.procedureId, versionId: created.versionId, expectedRowVersion: token, edit });
+    return { test, record, save };
+  }
+  it('saves a date-only Period and verbatim scope, and guards the shared row', async () => {
+    const { test, record, save } = await setup();
+    const token = procedureVersionRowVersion(record());
+    const edit: DraftPopulationEdit = { section: 'period-scope', period: { from: '2024-02-29', to: '2024-03-01' }, scope: '  All terminated staff.\nExcept contractors.  ' };
+    expect(await save(edit)).toMatchObject({ ok: true, changed: true });
+    expect(record().period).toEqual(edit.period);
+    expect(record().scope).toBe(edit.scope);
+    expect(await save(edit)).toMatchObject({ ok: true, changed: false });
+    expect(await save(bindEdit, token)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+    expect(test.events).toHaveLength(2);
+  });
+  it('freezes the exact source contract and keeps independent flags and blockers', async () => {
+    const { test, record, save } = await setup();
+    const noCount = { ...binding, declaredCountMechanism: 'none' as const };
+    const digest = bindingDigest(noCount);
+    test.bindings.set(binding.bindingId, { ...noCount, digest });
+    expect(await save({ ...bindEdit, source: { mode: 'bind', bindingId: binding.bindingId, expectedDigest: digest }, zeroRecordPass: true })).toMatchObject({ ok: true });
+    expect(record()).toMatchObject({ sourceSnapshot: { bindingId: binding.bindingId, digest, contract: { declared_count_mechanism: 'none', declared_schema: binding.declaredSchema, kind: binding.kind, location: binding.location, sensitive_fields: [] } }, populationBlockers: ['declared-count-missing'], zeroRecordPass: true, allowVersionedDuplicates: false });
+    expect(await save({ ...bindEdit, source: { mode: 'retain' }, zeroRecordPass: false, allowVersionedDuplicates: true })).toMatchObject({ ok: true });
+    expect(record()).toMatchObject({ zeroRecordPass: false, allowVersionedDuplicates: true });
+    expect(test.events.at(-1)?.eventType).toBe(PROCEDURE_DRAFT_CHANGED_EVENT);
+  });
+  it('refuses a retired new selection and changed digest without writes, but retains a historical snapshot', async () => {
+    const { test, record, save } = await setup();
+    expect(await save(bindEdit)).toMatchObject({ ok: true });
+    const snapshot = record().sourceSnapshot;
+    test.bindings.set(binding.bindingId, { ...binding, status: 'retired' });
+    expect(await save(bindEdit)).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.SOURCE });
+    expect(await save({ ...bindEdit, source: { mode: 'retain' }, zeroRecordPass: true })).toMatchObject({ ok: true });
+    expect(record().sourceSnapshot).toEqual(snapshot);
+    test.bindings.set(binding.bindingId, { ...binding, digest: '0'.repeat(64) });
+    const count = test.events.length;
+    expect(await save(bindEdit)).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.STALE_SOURCE });
+    expect(record().sourceSnapshot).toEqual(snapshot);
+    expect(test.events).toHaveLength(count);
+  });
+  it('refuses the exact manual-upload blocker for recurring Schedule and accepts once', async () => {
+    const { test, record, save } = await setup();
+    const manual = { ...binding, kind: 'manual-upload' as const, location: '' };
+    const digest = bindingDigest(manual);
+    test.bindings.set(binding.bindingId, { ...manual, digest });
+    const edit = { ...bindEdit, source: { mode: 'bind' as const, bindingId: binding.bindingId, expectedDigest: digest } };
+    expect(await save(edit)).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD });
+    expect(test.events).toHaveLength(1);
+    const before = record();
+    test.storedVersions.set(before.versionId, { ...before, sections: before.sections.map((s) => s.heading === 'Schedule' ? { ...s, content: 'once' } : s) });
+    expect(await save(edit)).toMatchObject({ ok: true });
+  });
+  it('rejects an incompatible Template column without falling back to include-all', async () => {
+    const { test, record, save } = await setup();
+    const other = { ...binding, declaredSchema: ['employee_id'] };
+    const digest = bindingDigest(other);
+    test.bindings.set(binding.bindingId, { ...other, digest });
+    expect(await save({ ...bindEdit, source: { mode: 'bind', bindingId: binding.bindingId, expectedDigest: digest } })).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.RULE });
+    expect(record().sourceSnapshot).toBeNull();
+    expect(record().inclusionRule.all).toHaveLength(2);
+    expect(test.events).toHaveLength(1);
+  });
+  it('rolls the changed row back when the audit append fails', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    test.failAppend = true;
+    await expect(save(bindEdit)).rejects.toThrow('audit append failed');
+    expect(record()).toEqual(before);
+    expect(test.events).toHaveLength(1);
+  });
+  it('authorizes before reading an edit', async () => {
+    const test = harness('poc-administrator');
+    const input = { session: POC_ADMIN, correlationId: 'denied', get edit(): never { throw new Error('must not parse'); } };
+    await expect(updatePopulationDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
   });
 });

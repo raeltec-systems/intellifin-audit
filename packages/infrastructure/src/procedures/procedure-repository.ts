@@ -14,6 +14,8 @@ import {
   isProcedureVersionState,
   isTemplateId,
   isValidDraftSectionsPayload,
+  isDraftPopulationFields,
+  type DraftPopulationFields,
   type DraftSection,
   type ProcedureVersionState,
   type TemplateId,
@@ -54,6 +56,13 @@ const VERSION_SELECTION = {
   controlName: procedureVersion.controlName,
   templateId: procedureVersion.templateId,
   sections: procedureVersion.sections,
+  period: procedureVersion.period,
+  scope: procedureVersion.scope,
+  sourceSnapshot: procedureVersion.sourceSnapshot,
+  inclusionRule: procedureVersion.inclusionRule,
+  zeroRecordPass: procedureVersion.zeroRecordPass,
+  allowVersionedDuplicates: procedureVersion.allowVersionedDuplicates,
+  populationBlockers: procedureVersion.populationBlockers,
   createdAt: procedureVersion.createdAt,
   updatedAt: procedureVersion.updatedAt,
 } as const;
@@ -66,7 +75,7 @@ interface ProcedureSelectedRow {
   updatedAt: Date;
 }
 
-interface VersionSelectedRow {
+interface VersionSelectedRow extends DraftPopulationFields {
   versionId: string;
   procedureId: string;
   versionNumber: number;
@@ -92,11 +101,13 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 }
 
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
+  if (!isDraftPopulationFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
   if (state === null || templateId === null || sections === null) return null;
   return {
+    ...populationFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -110,11 +121,13 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
 }
 
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
+  if (!isDraftPopulationFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
   if (state === null || templateId === null || sections === null) return null;
   return {
+    ...populationFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -123,6 +136,10 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
     templateId,
     sections,
   };
+}
+
+function populationFields(row: DraftPopulationFields): DraftPopulationFields {
+  return { period: row.period, scope: row.scope, sourceSnapshot: row.sourceSnapshot, inclusionRule: row.inclusionRule, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates, populationBlockers: row.populationBlockers };
 }
 
 /**
@@ -276,6 +293,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
 
   async insertVersion(record: ProcedureVersionRecord): Promise<void> {
     await this.transaction.insert(procedureVersion).values({
+      ...populationFields(record),
       versionId: record.versionId,
       procedureId: record.procedureId,
       versionNumber: record.versionNumber,
@@ -319,6 +337,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
     await this.transaction
       .update(procedureVersion)
       .set({
+        ...populationFields(record),
         state: record.state,
         controlName: record.controlName,
         sections: [...record.sections],

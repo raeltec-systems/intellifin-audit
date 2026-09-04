@@ -1,3 +1,5 @@
+import { POPULATION_DRAFT_MESSAGES } from '@intellifin/domain';
+
 /**
  * Copy this application reproduces verbatim from the UX contract.
  *
@@ -86,7 +88,7 @@ export function registrationChangeWarning(count: number): string {
  * it in the Builder later recognizes it.
  */
 export const DECLARED_COUNT_MISSING_SENTENCE =
-  'Population Source must declare an expected record count.';
+  POPULATION_DRAFT_MESSAGES.COUNT_MISSING;
 
 /**
  * What the surface says about a manual-upload binding (FR-6, AD-23).
@@ -102,7 +104,7 @@ export const DECLARED_COUNT_MISSING_SENTENCE =
  * a weekly Schedule should not first learn the rule from a blocked Submit.
  */
 export const MANUAL_UPLOAD_SENTENCE =
-  'A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs.';
+  POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD;
 
 /**
  * The four UX-DR7 cells of a Procedure card, stated in words when absent.

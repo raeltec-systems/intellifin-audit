@@ -28,6 +28,7 @@ const requireServerAction = vi.fn<() => Promise<ActionDecision>>();
 const currentCorrelationId = vi.fn(async () => 'corr-test');
 const createProcedure = vi.fn();
 const renameProcedureDraft = vi.fn();
+const updatePopulationDraft = vi.fn();
 const getRuntime = vi.fn(() => {
   throw new Error('the runtime must not be reached on a refusal');
 });
@@ -48,11 +49,12 @@ vi.mock('@intellifin/application', async (importOriginal) => {
     ...actual,
     createProcedure: (...args: unknown[]) => createProcedure(...args),
     renameProcedureDraft: (...args: unknown[]) => renameProcedureDraft(...args),
+    updatePopulationDraft: (...args: unknown[]) => updatePopulationDraft(...args),
   };
 });
 
 const { createProcedureAction } = await import('./actions');
-const { renameProcedureDraftAction } = await import('../[id]/builder/actions');
+const { renameProcedureDraftAction, updatePopulationDraftAction } = await import('../[id]/builder/actions');
 
 const PROCEDURE_ID = '018f0000-0000-7000-8000-000000000001';
 const VERSION_ID = '018f0000-0000-7000-8000-000000000002';
@@ -90,6 +92,19 @@ const ALLOWED: ActionDecision = {
 const MALFORMED = 'That request was not valid. Nothing was changed.';
 
 describe('the Procedure Server Actions', () => {
+  it('authorizes the population edit before reading any input or reaching runtime', async () => {
+    requireServerAction.mockResolvedValue(UNAUTHENTICATED);
+    const hostile = new Proxy({}, { get: () => { throw new Error('input read before authorization'); } });
+    await expect(updatePopulationDraftAction(hostile as never)).resolves.toEqual({ ok: false, reason: UNAUTHENTICATED.reason });
+    expect(updatePopulationDraft).not.toHaveBeenCalled();
+    expect(getRuntime).not.toHaveBeenCalled();
+  });
+  it.each([null, {}, { procedureId: 'bad' }, { procedureId: PROCEDURE_ID, versionId: VERSION_ID, expectedRowVersion: 'a'.repeat(64), edit: { section: 'population-source', source: { mode: 'bind', bindingId: PROCEDURE_ID, expectedDigest: 'bad' } } }])('refuses malformed population fields before the command: %s', async (fields) => {
+    requireServerAction.mockResolvedValue(ALLOWED);
+    await expect(updatePopulationDraftAction(fields as never)).resolves.toEqual({ ok: false, reason: MALFORMED });
+    expect(updatePopulationDraft).not.toHaveBeenCalled();
+    expect(getRuntime).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

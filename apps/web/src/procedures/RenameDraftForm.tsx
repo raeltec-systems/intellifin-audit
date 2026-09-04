@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
@@ -50,6 +50,7 @@ export function RenameDraftForm({
 
   const [controlName, setControlName] = useState('');
   const [token, setToken] = useState(rowVersion);
+  useEffect(() => setToken(rowVersion), [rowVersion]);
   const [result, setResult] = useState<RenameActionResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [confirming, setConfirming] = useState(false);
@@ -139,8 +140,7 @@ export function RenameDraftForm({
             onChange={(event) => setControlName(event.target.value)}
           />
           <p className="ls-caption">
-            The one field this release edits. Everything else in the Builder arrives
-            editable in later releases.
+            The Control name is saved on this Draft.
           </p>
         </div>
         <div className="ls-admin__actions">

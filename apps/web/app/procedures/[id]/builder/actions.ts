@@ -6,6 +6,9 @@ import {
   PROCEDURE_AUTHOR_ACTION,
   PROCEDURE_LIMITS,
   renameProcedureDraft,
+  updatePopulationDraft,
+  type DraftPopulationEdit,
+  type UpdatePopulationDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
 import {
@@ -126,6 +129,7 @@ export async function renameProcedureDraftAction(
     // commits. The command returns the token over the row as it left it, and the form
     // adopts it — this file recomputes nothing.
     revalidatePath(`/procedures/${fields.procedureId}`);
+    revalidatePath(`/procedures/${fields.procedureId}/builder`);
     revalidatePath('/procedures');
     return {
       ok: true,
@@ -135,5 +139,43 @@ export async function renameProcedureDraftAction(
     };
   } catch (error) {
     return unavailable(error, correlationId);
+  }
+}
+
+export interface PopulationDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly edit: DraftPopulationEdit;
+}
+
+function isPopulationDraftFields(input: unknown): input is PopulationDraftFields {
+  if (typeof input !== 'object' || input === null) return false;
+  const f = input as Record<string, unknown>;
+  if (!isUuid(f['procedureId']) || !isUuid(f['versionId']) || typeof f['expectedRowVersion'] !== 'string' || !/^[0-9a-f]{64}$/.test(f['expectedRowVersion']) || typeof f['edit'] !== 'object' || f['edit'] === null) return false;
+  const edit = f['edit'] as Record<string, unknown>;
+  if (edit['section'] === 'period-scope') return true; // The domain validates the values.
+  if (edit['section'] !== 'population-source' || typeof edit['source'] !== 'object' || edit['source'] === null) return false;
+  const source = edit['source'] as Record<string, unknown>;
+  return source['mode'] === 'retain' || (source['mode'] === 'bind' && isUuid(source['bindingId']) && typeof source['expectedDigest'] === 'string' && /^[0-9a-f]{64}$/.test(source['expectedDigest']));
+}
+
+export async function updatePopulationDraftAction(fields: PopulationDraftFields): Promise<UpdatePopulationDraftResult> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!isPopulationDraftFields(fields)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await updatePopulationDraft(await dependencies(), { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch (error) {
+    try {
+      (await getRuntime()).telemetry.captureError('Update Population Draft failed', error, { outcome: 'failure', correlationId });
+    } catch { /* Boot failures are already reported. */ }
+    return { ok: false, reason: UNAVAILABLE };
   }
 }

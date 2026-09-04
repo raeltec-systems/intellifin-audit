@@ -50,7 +50,14 @@ export interface PopulationSourceBinding {
 /** Reads bindings for the surface. Outside any transaction; it changes nothing. */
 export interface BindingRepository {
   listBindings(): Promise<readonly PopulationSourceBinding[]>;
+  /** Filter active rows before applying the surface limit. */
+  listActiveBindings(): Promise<readonly PopulationSourceBinding[]>;
   findBinding(bindingId: string): Promise<PopulationSourceBinding | null>;
+}
+
+/** Source-owned contract read, held stable until the caller's transaction finishes. */
+export interface PopulationSourceReader {
+  findBindingForShare(bindingId: string): Promise<BindingRecord | null>;
 }
 
 /** The digest-bearing fields plus the ones that are not, as one write. */

@@ -1,9 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT } from '../../apps/web/src/design/copy';
+import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
 
-import { DENIAL_REASONS } from '@intellifin/domain';
+import { DENIAL_REASONS, bindingDigest } from '@intellifin/domain';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -55,6 +55,7 @@ test.afterAll(async () => {
   const sql = createSqlClient(databaseUrl, { max: 1 });
   try {
     await sql`DELETE FROM procedure WHERE control_name LIKE ${`E2E %${stamp}%`}`;
+    await sql`DELETE FROM population_source_binding WHERE display_name LIKE ${`E2E population ${stamp}%`}`;
   } finally {
     await sql.end({ timeout: 5 });
   }
@@ -128,11 +129,11 @@ test.describe('as an Auditor', () => {
       await expect(sections.first()).toBeVisible();
       await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE).first()).toBeVisible();
 
-      // No edit controls anywhere in the sections: there is no editable section input
-      // in this release. The one editable field is the Control name below.
-      await expect(page.locator('.ls-card input, .ls-card select, .ls-card textarea')).toHaveCount(
-        0,
-      );
+      await expect(page.getByLabel('Period start')).toBeVisible();
+      await expect(page.getByLabel('Population Source', { exact: true })).toBeVisible();
+      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(7);
+      const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_NOT_EDITABLE_SENTENCE });
+      await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
 
       // The Builder form is a real form and posts.
       await expect(page.locator('form.ls-admin__form')).toHaveAttribute('method', 'post');
@@ -155,6 +156,57 @@ test.describe('as an Auditor', () => {
     await page.goto('/procedures');
     await page.reload();
     await expect(page.locator('.ls-card').filter({ hasText: abandoned })).toHaveCount(0);
+  });
+
+  test('edits Period and Population Source with accessible confirmation and persistent blockers', async ({ page }) => {
+    test.setTimeout(90_000);
+    const databaseUrl = process.env['DATABASE_URL'];
+    if (!databaseUrl) throw new Error('The Builder journey requires the throwaway database.');
+    assertThrowawayDatabase(databaseUrl);
+    const { createSqlClient, CryptoUuidV7Generator } = await import('@intellifin/infrastructure');
+    const sql = createSqlClient(databaseUrl, { max: 1 });
+    const sourceId = new CryptoUuidV7Generator().next();
+    const manualId = new CryptoUuidV7Generator().next();
+    const fields = { kind: 'versioned-file' as const, location: 'https://population.synthetic.invalid/leavers.csv', declaredSchema: ['employment_status', 'termination_effective_date'], declaredCountMechanism: 'none' as const, sensitiveFields: [] };
+    try {
+      for (const [id, kind, location] of [[sourceId, 'versioned-file', fields.location], [manualId, 'manual-upload', '']] as const) {
+        const digest = bindingDigest({ ...fields, kind, location });
+        await sql`INSERT INTO population_source_binding (binding_id, display_name, kind, location, declared_schema, declared_count_mechanism, sensitive_fields, note, status, digest) VALUES (${id}, ${`E2E population ${stamp} ${kind}`}, ${kind}, ${location}, ${fields.declaredSchema}, 'none', ${fields.sensitiveFields}, '', 'active', ${digest})`;
+      }
+    } finally { await sql.end({ timeout: 5 }); }
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E population control ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    await expect(page.getByLabel('Period start')).toBeVisible();
+    await page.getByLabel('Period start').fill('2026-08-01');
+    await page.getByLabel('Period end').fill('2026-08-31');
+    await page.getByLabel('Scope statement').fill('  All terminated staff in August.  ');
+    await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await scan(page);
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
+    await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
+    await page.getByLabel('Population Source', { exact: true }).selectOption(manualId);
+    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByLabel('Population Source', { exact: true }).selectOption(sourceId);
+    await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Declared column 2')).toHaveValue('termination_effective_date');
+    await page.getByLabel('Permit a zero-record Pass').check();
+    await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByLabel('Period start')).toHaveValue('2026-08-01');
+    await expect(page.getByLabel('Scope statement')).toHaveValue('  All terminated staff in August.  ');
+    await expect(page.getByLabel('Population Source', { exact: true })).toHaveValue('retain');
+    await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
+    await expect(page.getByLabel('Permit versioned duplicate primary keys')).not.toBeChecked();
+    await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
+    await scan(page);
   });
 
   test('the four pre-fills differ where §C says they differ', async ({ page }) => {

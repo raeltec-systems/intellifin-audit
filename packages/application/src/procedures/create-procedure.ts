@@ -2,6 +2,7 @@ import {
   CONTROL_NAME_LIMIT,
   canonicalJson,
   initialDraftSections,
+  initialDraftPopulation,
   isTemplateId,
   sha256Hex,
   type DraftSection,
@@ -211,6 +212,13 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       templateId: record.templateId,
       versionId: record.versionId,
       versionNumber: record.versionNumber,
+      period: record.period,
+      scope: record.scope,
+      sourceSnapshot: record.sourceSnapshot,
+      inclusionRule: record.inclusionRule,
+      zeroRecordPass: record.zeroRecordPass,
+      allowVersionedDuplicates: record.allowVersionedDuplicates,
+      populationBlockers: record.populationBlockers,
     } as unknown as JsonValue),
   );
 }
@@ -246,6 +254,7 @@ export async function createProcedure(
     templateId: validated.templateId,
   };
   const version: ProcedureVersionRecord = {
+    ...initialDraftPopulation(validated.templateId),
     versionId,
     procedureId,
     versionNumber: 1,

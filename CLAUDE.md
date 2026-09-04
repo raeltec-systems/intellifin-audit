@@ -396,6 +396,13 @@ There is no lint step yet.
 - **`displayStateOf` in the command module and `displayVersion` in the repository both compute "ACTIVE, else newest".** The duplication is deliberate and tested on both sides: the repository's is the read path, the command's is exported for callers that hold versions in hand; a third copy is not wanted.
 - **Telemetry messages for Procedure commands are in the closed union** (`'Create Procedure failed'`, `'Rename Procedure Draft failed'`). A new command's failure message needs a new entry or it will not typecheck — same rule as every story since 1.5.
 
+### Population authoring (Story 2.2)
+
+- **A Draft retains its source snapshot explicitly.** A new binding selection is resolved through the source-owned `PopulationSourceReader` under a shared row lock and must match the rendered digest; retaining a saved snapshot never resolves or rewrites its historical contract after retirement.
+- **Period, scope, source snapshot, inclusion rule and both Gate flags are part of the full version token.** The Builder shares each command's returned token across its editors; an edit to one section must make an older tab's edit to another section stale.
+- **Inclusion rules are schema-version-1 typed data.** Decimal constants remain strings; UTC Period dates are real Gregorian date-only values. P-1 explicitly maps `termination_date` prose to `termination_effective_date`; a replacement source keeps incompatible clauses visible for the author to select a declared column. No automatic include-all fallback or name mapping.
+- **Generation 8 backfills Template rules without binding a source.** The runtime requires schema 8 because the new version columns are read unconditionally. Only the existing release/CI migrator applies the SQL.
+
 ### Story 2.1 review findings (applied 2026-09-04)
 
 The implementing agent could run neither `pnpm test:integration` nor `pnpm test:e2e` — no hostable PostgreSQL, and `next build` fails from a path containing a space — and said so plainly rather than claiming a result it had not seen. Everything else it reported reproduced exactly. Both gates were run here against a real PostgreSQL 18.6: **5 integration failures and 7 browser failures**, none of which any other gate could have caught.
