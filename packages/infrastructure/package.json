@@ -36,7 +36,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "pnpm build && node dist/db/migrate.js",
+    "db:migrate": "pnpm --filter @intellifin/infrastructure... build && node dist/db/migrate.js",
     "probe": "pnpm build && node dist/registrations/probe-runner.js"
   },
   "dependencies": {

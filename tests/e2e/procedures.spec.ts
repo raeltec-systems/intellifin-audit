@@ -93,6 +93,11 @@ test.describe('as an Auditor', () => {
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page.getByRole('heading', { level: 2, name: 'Executable plan preview' })).toBeVisible();
+    await expect(async () => {
+      await page.getByLabel('Scope statement').focus();
+      await page.getByLabel('Scope statement').blur();
+      await expect(page.getByText(POPULATION_DRAFT_MESSAGES.PERIOD, { exact: true })).toBeVisible();
+    }).toPass();
     await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');
     await page.getByLabel('Period end', { exact: true }).fill('2026-08-31');
     await page.getByLabel('Scope statement').fill('Local unsaved scope');
@@ -115,7 +120,10 @@ test.describe('as an Auditor', () => {
       await other.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
       await other.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
       await expect(other.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
-      await expect(page.getByText('Period and scope changed in another session. Review the saved values before replacing them.')).toBeVisible();
+      // Chromium may throttle a background tab. Resume the edited tab, then allow
+      // the bounded poll's ten-second backoff plus its server response to finish.
+      await page.bringToFront();
+      await expect(page.getByText('Period and scope changed in another session. Review the saved values before replacing them.')).toBeVisible({ timeout: 20_000 });
       await expect(page.getByLabel('Scope statement')).toHaveValue('Local unsaved scope');
       await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
