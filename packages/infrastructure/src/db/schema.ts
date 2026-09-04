@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { JsonObject } from '@intellifin/domain';
+import type { DraftSection, JsonObject } from '@intellifin/domain';
 
 const ZERO_SHA256 = '0'.repeat(64);
 
@@ -510,6 +510,115 @@ export const populationSourceBinding = pgTable(
   ],
 );
 
+/**
+ * The Procedure vocabularies (generation 7, FR-4, FR-5).
+ *
+ * Spelled out here rather than imported from `@intellifin/domain`, for the reason
+ * `ROLE_VOCABULARY` gives above: `drizzle-kit generate` resolves the workspace package
+ * to its BUILT output, so a value import would make migration generation depend on a
+ * prior `pnpm build`. `schema.test.ts` fails if either drifts.
+ */
+export const PROCEDURE_VERSION_STATE_VOCABULARY = [
+  'DRAFT',
+  'SUBMITTED',
+  'APPROVED',
+  'REJECTED',
+  'ACTIVE',
+  'RETIRED',
+] as const;
+
+export const PROCEDURE_TEMPLATE_VOCABULARY = ['P-1', 'P-2', 'P-3', 'P-4'] as const;
+
+/**
+ * Procedures (generation 7, FR-4).
+ *
+ * The Control name here is the Procedure's current heading, which for a one-version
+ * Procedure is the Draft's own name. A Procedure with two versions that disagree still
+ * has ONE current heading, and this column holds it; the version row holds the name the
+ * version was authored under. Both are non-blank; the CHECK is the layer nothing can
+ * route around.
+ *
+ * `template_id` is a CHECK over the four shipped Templates and not a foreign key:
+ * the Templates are build constants owned by the domain module (AD-2), not rows, so
+ * there is no `template` table to reference — and no Template row an operator could
+ * edit to drift a deployment from the contract its own tests assert.
+ */
+export const procedure = pgTable(
+  'procedure',
+  {
+    procedureId: uuid('procedure_id').primaryKey(),
+    controlName: text('control_name').notNull(),
+    templateId: text('template_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // `sql.raw` is safe for both: every member is upper-case ASCII, digits and hyphens.
+    check(
+      'procedure_template_vocabulary',
+      sql`${table.templateId} IN (${sql.raw(quoted(PROCEDURE_TEMPLATE_VOCABULARY))})`,
+    ),
+    // `btrim`, not `<> ''`: a Control name of three spaces is blank, and a rule written
+    // without the trim accepts exactly the row it was written to refuse.
+    check('procedure_control_name_present', sql`btrim(${table.controlName}) <> ''`),
+  ],
+);
+
+/**
+ * Procedure Versions (generation 7, FR-5).
+ *
+ * The state vocabulary is the whole of addendum §E from the first commit, so the
+ * machine never grows an arrow per story; this story writes only `DRAFT`. The
+ * sections payload is `jsonb` and `NOT NULL` — never read untyped, because the domain
+ * owns its shape and its validator, and each later story promotes its part of it to
+ * typed columns when it authors that section.
+ *
+ * `version_number` starts at 1 and no two versions of one Procedure share a number:
+ * the UNIQUE constraint is the whole of "version numbering" this story needs, and
+ * stories 2.7 and 2.8 build on it rather than renumbering anything.
+ */
+export const procedureVersion = pgTable(
+  'procedure_version',
+  {
+    versionId: uuid('version_id').primaryKey(),
+    procedureId: uuid('procedure_id')
+      .notNull()
+      .references(() => procedure.procedureId, { onDelete: 'cascade' }),
+    versionNumber: integer('version_number').notNull(),
+    state: text('state').notNull(),
+    controlName: text('control_name').notNull(),
+    templateId: text('template_id').notNull(),
+    sections: jsonb('sections').$type<readonly DraftSection[]>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('procedure_version_procedure_number_uidx').on(
+      table.procedureId,
+      table.versionNumber,
+    ),
+    check(
+      'procedure_version_state_vocabulary',
+      sql`${table.state} IN (${sql.raw(quoted(PROCEDURE_VERSION_STATE_VOCABULARY))})`,
+    ),
+    check(
+      'procedure_version_template_vocabulary',
+      sql`${table.templateId} IN (${sql.raw(quoted(PROCEDURE_TEMPLATE_VOCABULARY))})`,
+    ),
+    // The same btrim rule as the parent table: whitespace is blank.
+    check('procedure_version_control_name_present', sql`btrim(${table.controlName}) <> ''`),
+    check('procedure_version_number_at_least_one', sql`${table.versionNumber} >= 1`),
+  ],
+);
+
 export type SchemaMetaRow = typeof schemaMeta.$inferSelect;
 export type WorkerHeartbeatRow = typeof workerHeartbeat.$inferSelect;
 export type AuditEventHeadRow = typeof auditEventHeads.$inferSelect;
@@ -521,3 +630,5 @@ export type UserRoleRow = typeof userRole.$inferSelect;
 export type TargetSystemRegistrationRow = typeof targetSystemRegistration.$inferSelect;
 export type TargetSystemProbeRow = typeof targetSystemProbe.$inferSelect;
 export type PopulationSourceBindingRow = typeof populationSourceBinding.$inferSelect;
+export type ProcedureRow = typeof procedure.$inferSelect;
+export type ProcedureVersionRow = typeof procedureVersion.$inferSelect;

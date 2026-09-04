@@ -26,6 +26,37 @@ export const SUBSECTION_LABELS: Readonly<Record<string, string>> = {
   '/administration/sources': 'Population Source bindings',
 };
 
+/**
+ * Routes under `/procedures` that are NOT a Procedure identifier.
+ *
+ * A plain object indexed by a URL segment, so the lookup below uses `Object.hasOwn`:
+ * `/procedures/constructor` is a path anybody can type, and a bare index would answer
+ * it with an inherited function.
+ */
+export const PROCEDURE_NAMED_ROUTES: Readonly<Record<string, true>> = {
+  new: true,
+};
+
+/**
+ * Whether the page at this path renders its own breadcrumb trail server-side.
+ *
+ * A Procedure detail surface does, because UX-DR7 puts the Control name in the trail
+ * and the shell — a client component reading only the pathname — can only say the raw
+ * identifier. Both trails are `<nav aria-label="Breadcrumb">`, so rendering both gives
+ * one page two landmarks with the same accessible name: a screen reader offers two
+ * identical "Breadcrumb" navigations and the first one is a UUID. The accessibility
+ * gate cannot catch it — `landmark-unique` is a best-practice rule, not a WCAG-tagged
+ * one, so axe reports it nowhere near `results.violations`. The shell therefore stands
+ * down here rather than the page dropping its `aria-label`, because the trail that
+ * carries the Control name is the one worth keeping.
+ */
+export function rendersOwnTrail(pathname: string): boolean {
+  const segments = pathname.split('/').filter((segment) => segment !== '');
+  if (segments.length < 2) return false;
+  if (segments[0] !== 'procedures') return false;
+  return !Object.hasOwn(PROCEDURE_NAMED_ROUTES, segments[1] as string);
+}
+
 export interface Crumb {
   readonly href: string;
   readonly label: string;
@@ -70,6 +101,8 @@ export function subsectionLabel(href: string): string | undefined {
 export function crumbsFor(pathname: string): Crumb[] {
   const segments = pathname.split('/').filter((segment) => segment !== '');
   if (segments.length < 2) return [];
+  // The page trails itself; a second trail would be a duplicate landmark.
+  if (rendersOwnTrail(pathname)) return [];
 
   const crumbs: Crumb[] = [];
   let href = '';

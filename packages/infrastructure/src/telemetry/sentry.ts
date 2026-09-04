@@ -50,6 +50,10 @@ export const TELEMETRY_MESSAGES = [
   // not a log line, so these two mean the command FAILED and nothing was written.
   'Register Population Source failed',
   'Change Population Source failed',
+  // Procedures (Story 2.1). Same reading once more: a refusal is an audit event or a
+  // returned sentence, so these mean the command FAILED and nothing was written.
+  'Create Procedure failed',
+  'Rename Procedure Draft failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',

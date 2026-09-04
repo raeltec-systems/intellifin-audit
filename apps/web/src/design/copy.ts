@@ -103,3 +103,32 @@ export const DECLARED_COUNT_MISSING_SENTENCE =
  */
 export const MANUAL_UPLOAD_SENTENCE =
   'A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs.';
+
+/**
+ * The four UX-DR7 cells of a Procedure card, stated in words when absent.
+ *
+ * The spec fixes these four sentences because a dash or an empty cell is something a
+ * reader takes for "fine": a Procedure with no Active version yet, no Schedule yet, no
+ * Run yet and no outcome yet must SAY so, exactly as Story 1.6's "Never probed" says
+ * what a registration that has never been probed is. In this story every one of the
+ * four is always absent — no version can leave DRAFT and no Run exists — so every card
+ * renders all four sentences; they are data here so the day a cell can be filled, the
+ * fill and the fallback live in the same place.
+ */
+export const PROCEDURE_CARD_ABSENT = {
+  activeVersion: 'No active version',
+  schedule: 'Not scheduled',
+  nextRun: 'No Runs yet',
+  lastOutcome: 'No outcome',
+} as const;
+
+/**
+ * What the Builder says under every section this story renders read-only.
+ *
+ * Stories 2.2–2.5 make each section editable in turn; until then a pre-filled value
+ * must not read as an editable field, and the sentence says when it will be. It lives
+ * here, not inline in the component, because it is a contract sentence about what this
+ * release does not do — the same class of sentence as the empty states.
+ */
+export const BUILDER_SECTION_NOT_EDITABLE_SENTENCE =
+  'This section is pre-filled from the Template and is not editable yet. A later release makes it editable.';

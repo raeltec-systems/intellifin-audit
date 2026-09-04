@@ -8,6 +8,8 @@ import {
   DECLARED_COUNT_MECHANISMS,
   PERMITTED_READ_ACTIONS,
   POPULATION_SOURCE_KINDS,
+  PROCEDURE_TEMPLATE_IDS,
+  PROCEDURE_VERSION_STATES,
   ROLES,
   TARGET_SYSTEM_KINDS,
 } from '@intellifin/domain';
@@ -17,6 +19,8 @@ import {
   DECLARED_COUNT_MECHANISM_VOCABULARY,
   PERMITTED_READ_ACTION_VOCABULARY,
   POPULATION_SOURCE_KIND_VOCABULARY,
+  PROCEDURE_TEMPLATE_VOCABULARY,
+  PROCEDURE_VERSION_STATE_VOCABULARY,
   REGISTRATION_STATUS_VOCABULARY,
   ROLE_VOCABULARY,
   TARGET_SYSTEM_KIND_VOCABULARY,
@@ -180,6 +184,61 @@ describe('the population_source_binding check constraints', () => {
   it('seeds generation 6 by hand, because drizzle-kit does not write that line', () => {
     expect(migration('0006_slim_sersi.sql')).toContain(
       `INSERT INTO "schema_meta" ("version") VALUES (6) ON CONFLICT ("version") DO NOTHING;`,
+    );
+  });
+});
+
+describe('the procedure and procedure_version check constraints', () => {
+  it('lists exactly the domain version states, in the same order', () => {
+    expect([...PROCEDURE_VERSION_STATE_VOCABULARY]).toEqual([...PROCEDURE_VERSION_STATES]);
+  });
+
+  it('lists exactly the domain Template ids, in the same order', () => {
+    expect([...PROCEDURE_TEMPLATE_VOCABULARY]).toEqual([...PROCEDURE_TEMPLATE_IDS]);
+  });
+
+  /**
+   * The whole §E state vocabulary has to be in the MIGRATION, not only in `schema.ts`.
+   * A machine that grows one arrow per story ends up with no machine at all; a
+   * half-spelled vocabulary invites a future state spelled to fit whatever the first
+   * caller typed. The words are legal from the first commit even though this story
+   * writes only DRAFT.
+   */
+  it('writes the whole state vocabulary into the generation-7 migration', () => {
+    const values = PROCEDURE_VERSION_STATES.map((state) => `'${state}'`).join(', ');
+    expect(migration('0007_shallow_lockheed.sql')).toContain(
+      `CHECK ("procedure_version"."state" IN (${values}))`,
+    );
+  });
+
+  it('writes the Template vocabulary into the generation-7 migration on both tables', () => {
+    const values = PROCEDURE_TEMPLATE_IDS.map((id) => `'${id}'`).join(', ');
+    const sql = migration('0007_shallow_lockheed.sql');
+    expect(sql).toContain(`CHECK ("procedure"."template_id" IN (${values}))`);
+    expect(sql).toContain(`CHECK ("procedure_version"."template_id" IN (${values}))`);
+  });
+
+  /**
+   * `btrim`, not `<> ''`: a Control name of three spaces is blank, and a rule written
+   * without the trim accepts exactly the row it was written to refuse.
+   */
+  it('writes the Control-name presence rule with a trim, on both tables', () => {
+    const sql = migration('0007_shallow_lockheed.sql');
+    expect(sql).toContain(`btrim("procedure"."control_name") <> ''`);
+    expect(sql).toContain(`btrim("procedure_version"."control_name") <> ''`);
+  });
+
+  it('writes version_number >= 1 and the UNIQUE (procedure_id, version_number) index', () => {
+    const sql = migration('0007_shallow_lockheed.sql');
+    expect(sql).toContain(`CHECK ("procedure_version"."version_number" >= 1)`);
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "procedure_version_procedure_number_uidx" ON "procedure_version" USING btree ("procedure_id","version_number")`,
+    );
+  });
+
+  it('seeds generation 7 by hand, because drizzle-kit does not write that line', () => {
+    expect(migration('0007_shallow_lockheed.sql')).toContain(
+      `INSERT INTO "schema_meta" ("version") VALUES (7) ON CONFLICT ("version") DO NOTHING;`,
     );
   });
 });

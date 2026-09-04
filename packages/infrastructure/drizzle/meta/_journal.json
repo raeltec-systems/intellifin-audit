@@ -50,6 +50,13 @@
       "when": 1788375486419,
       "tag": "0006_slim_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788444633191,
+      "tag": "0007_shallow_lockheed",
+      "breakpoints": true
     }
   ]
 }

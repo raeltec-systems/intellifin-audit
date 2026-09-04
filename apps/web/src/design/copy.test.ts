@@ -6,11 +6,13 @@ import { describe, expect, it } from 'vitest';
 import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
+  BUILDER_SECTION_NOT_EDITABLE_SENTENCE,
   DECLARED_COUNT_MISSING_SENTENCE,
   MANUAL_UPLOAD_SENTENCE,
   EMPTY_STATES,
   ENVIRONMENT_RIBBON_SENTENCE,
   FULLY_QUOTED_EMPTY_STATES,
+  PROCEDURE_CARD_ABSENT,
   REGISTRATION_CHANGE_WARNING_TEMPLATE,
   registrationChangeWarning,
 } from './copy';
@@ -143,6 +145,44 @@ describe('the read-only credential refusal', () => {
     // helper and the surface — and each was only ever checked against another of them.
     // This one reads the contract off disk, the way `denial-strings.test.ts` does.
     expect(experience).toContain(`"${REGISTRATION_REFUSALS.CREDENTIAL_NOT_READ_ONLY}"`);
+  });
+});
+
+describe('the Procedure card absent-cells', () => {
+  it('are the four UX-DR7 sentences, in words, never a dash', () => {
+    // UX-DR7 (epics.md): the card shows Active version, Schedule, next Run, last
+    // outcome. The spec fixes these four sentences because an empty cell reads as
+    // "fine". Each is pinned here as a worded sentence: one that ends in a dash, an
+    // empty string, or a bare "—" fails this test.
+    expect(PROCEDURE_CARD_ABSENT.activeVersion).toBe('No active version');
+    expect(PROCEDURE_CARD_ABSENT.schedule).toBe('Not scheduled');
+    expect(PROCEDURE_CARD_ABSENT.nextRun).toBe('No Runs yet');
+    expect(PROCEDURE_CARD_ABSENT.lastOutcome).toBe('No outcome');
+    for (const sentence of Object.values(PROCEDURE_CARD_ABSENT)) {
+      expect(sentence.length).toBeGreaterThan(3);
+      expect(sentence).not.toMatch(/^[-—\s]*$/);
+    }
+  });
+
+  it('are rendered from this module by the Procedures list, not retyped', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../../app/procedures/page.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('PROCEDURE_CARD_ABSENT');
+    expect(source).not.toContain('No active version');
+  });
+});
+
+describe('the Builder read-only sentence', () => {
+  it('states that the section is not editable yet, and is rendered from this module', () => {
+    expect(BUILDER_SECTION_NOT_EDITABLE_SENTENCE).toContain('not editable yet');
+    const source = readFileSync(
+      fileURLToPath(new URL('../procedures/BuilderSections.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('BUILDER_SECTION_NOT_EDITABLE_SENTENCE');
+    expect(source).not.toContain('not editable yet. A later release');
   });
 });
 

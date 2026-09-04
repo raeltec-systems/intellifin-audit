@@ -117,6 +117,13 @@ a {
   color: var(--color-text-secondary);
 }
 
+/* §C's section text can hold multi-line content (one condition per line). Pre-formatted
+   text is the honest rendering: collapsing the newlines would make one condition read
+   as a run-on sentence. */
+.ls-whitespace {
+  white-space: pre-line;
+}
+
 /* Text for assistive technology only. Never used to hide a reason from sight: a
  * disabled action's reason is ALSO visible in the "Unavailable actions" panel. */
 .ls-visually-hidden {
@@ -385,6 +392,53 @@ a {
 }
 
 /* ----------------------------------------------------------- components ---- */
+
+/* Procedure card ----------------------------------------------------------- */
+
+/* UX-DR7's Procedure card. One card per Procedure: the Control name and Template
+   identity in the header, the four UX-DR7 cells beneath. EXPERIENCE.md gives no card
+   pattern of its own, so it takes the EmptyState's card ground: the page surface, the
+   default border, the large radius. Every value here is a token; there is no literal
+   for this card to introduce. */
+.ls-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-card-padding);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+}
+
+.ls-card__title {
+  font-size: var(--type-card-title-font-size);
+  line-height: var(--type-card-title-line-height);
+  font-weight: var(--type-card-title-font-weight);
+}
+
+.ls-card__title a {
+  color: inherit;
+}
+
+.ls-card__cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-4);
+  margin: 0;
+}
+
+.ls-card__cells dt {
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: var(--type-caption-font-weight);
+  color: var(--color-text-muted);
+}
+
+.ls-card__cells dd {
+  margin: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
 
 /* Button ------------------------------------------------------------------- */
 

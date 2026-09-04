@@ -6,6 +6,7 @@
 export * from './config.js';
 export * from './db/index.js';
 export * from './identity/index.js';
+export * from './procedures/index.js';
 export * from './registrations/index.js';
 export * from './sources/index.js';
 export * from './telemetry/index.js';
