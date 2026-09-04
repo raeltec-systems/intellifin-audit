@@ -19,6 +19,8 @@ export function BuilderSections({
   targetSystems,
   auditInstructions,
   complianceRule,
+  evidenceRequirements,
+  schedule,
 }: {
   readonly sections: readonly { readonly heading: string; readonly content: string | null }[];
   readonly periodScope?: React.ReactNode;
@@ -26,6 +28,8 @@ export function BuilderSections({
   readonly targetSystems?: React.ReactNode;
   readonly auditInstructions?: React.ReactNode;
   readonly complianceRule?: React.ReactNode;
+  readonly evidenceRequirements?: React.ReactNode;
+  readonly schedule?: React.ReactNode;
 }): React.JSX.Element {
   const editors: Readonly<Record<string, React.ReactNode>> = {
     'Period and scope': periodScope,
@@ -33,6 +37,8 @@ export function BuilderSections({
     'Target System selection': targetSystems,
     'Audit Instructions': auditInstructions,
     'Compliance Rule conditions': complianceRule,
+    'Evidence Requirements': evidenceRequirements,
+    Schedule: schedule,
   };
   return (
     <div className="ls-stack">

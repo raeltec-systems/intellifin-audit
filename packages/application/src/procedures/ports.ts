@@ -1,4 +1,4 @@
-import type { DraftComplianceFields, DraftPopulationFields, DraftSection, DraftTargetFields, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
+import type { DraftComplianceFields, DraftEvidenceFields, DraftPopulationFields, DraftSection, DraftTargetFields, EvidenceBlocker, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
 import type { PopulationSourceReader } from '../sources/ports.js';
 import type { TargetSystemRegistrationReader } from '../registrations/ports.js';
 
@@ -33,7 +33,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields {
+export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -47,6 +47,13 @@ export interface ProcedureVersionView extends DraftPopulationFields, DraftTarget
    * (missing selection, missing P-1 web/desktop coverage). Not stored — computed on read.
    */
   readonly targetBlockers: readonly TargetBlocker[];
+  /**
+   * Evidence Requirements / Schedule completeness diagnostics (the upload/frequency
+   * pairing), derived from the current Population Source binding and Schedule. Not
+   * stored — computed on read, the same discipline as `targetBlockers`, and surfaced on
+   * both the Population Source section and this one.
+   */
+  readonly evidenceBlockers: readonly EvidenceBlocker[];
   /** ISO 8601 UTC. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -61,7 +68,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields {
+export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;

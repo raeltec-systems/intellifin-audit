@@ -30,6 +30,22 @@ import type { TargetSystemKind } from '../registrations/target-system.js';
 import type { InclusionRule } from './population-draft.js';
 import type { ComplianceRule } from './compliance-draft.js';
 
+/**
+ * A structural echo of `evidence-draft.js`'s `EvidenceRequirementInput`, NOT an import of
+ * it: `evidence-draft.js` reads `findProcedureTemplate` from this module (for
+ * `initialDraftEvidence`), so an import the other way would be a circular dependency
+ * `pnpm boundaries` refuses to cruise. TypeScript's structural typing makes the two
+ * interchangeable at every call site; `procedure-templates.test.ts` still pins every
+ * value against the addendum on disk.
+ */
+export interface TemplateEvidenceRequirement {
+  readonly attributeName: string;
+  readonly modelRead: boolean;
+  readonly groundedBy: readonly ('structural-snapshot' | 'source-file-excerpt')[];
+  readonly screenshot: boolean;
+  readonly recordingSegment: boolean;
+}
+
 export const CONDITION_ORIGINS = ['RULE', 'AGENT_JUDGED'] as const;
 export type ConditionOrigin = (typeof CONDITION_ORIGINS)[number];
 
@@ -87,6 +103,13 @@ export interface ProcedureTemplate {
   readonly declaredAttributeLabels: Readonly<Record<string, string>> | null;
   readonly secondaryKey: string | null;
   readonly evidenceRequirements: string | null;
+  /**
+   * The structured Evidence Requirements the auditor starts from, one per attribute this
+   * Template names (§C's "each grounded" attributes). Empty where §C states no evidence
+   * requirement — the auditor authors it explicitly. `withPlatformCaptured` applies the
+   * platform-captured flag from the Template's own `defaultTargets`.
+   */
+  readonly evidenceDefaults: readonly TemplateEvidenceRequirement[];
   readonly schedule: string | null;
   /** The Template-level Inconclusive rule, where §C states one. */
   readonly inconclusive: string | null;
@@ -157,6 +180,11 @@ const P1: ProcedureTemplate = {
   secondaryKey: 'full name',
   evidenceRequirements:
     'username, account_status, roles (each grounded), Structural Snapshot and platform screenshot of the account page bound to the read, source export row.',
+  evidenceDefaults: [
+    { attributeName: 'username', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
+    { attributeName: 'account_status', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
+    { attributeName: 'roles', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
+  ],
   schedule: 'weekly',
   inconclusive:
     'any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.',
@@ -204,6 +232,7 @@ const P2: ProcedureTemplate = {
   declaredAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
+  evidenceDefaults: [],
   schedule: null,
   inconclusive: null,
   also: ['Reference Source: RoleMatrix.'],
@@ -251,6 +280,7 @@ const P3: ProcedureTemplate = {
   declaredAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
+  evidenceDefaults: [],
   schedule: null,
   inconclusive: null,
   also: [],
@@ -293,6 +323,7 @@ const P4: ProcedureTemplate = {
   declaredAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
+  evidenceDefaults: [],
   schedule: null,
   inconclusive: null,
   also: [],

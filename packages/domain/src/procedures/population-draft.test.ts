@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bindingDigest, bindingDigestEnvelope } from '../sources/population-source.js';
 import { findProcedureTemplate } from './templates.js';
 import { initialDraftPopulation } from './procedure-version.js';
-import { isDraftPopulationFields, isExplicitPeriod, isGregorianDate, isInclusionRule, isProcedureSourceSnapshot, isRuleDecimal, isScopeStatement, validatePopulationBinding, POPULATION_DRAFT_MESSAGES } from './population-draft.js';
+import { isDraftPopulationFields, isExplicitPeriod, isGregorianDate, isInclusionRule, isProcedureSourceSnapshot, isRuleDecimal, isScopeStatement, validatePopulationBinding } from './population-draft.js';
 
 describe('explicit Period and scope', () => {
   it.each(['0001-01-01', '2000-02-29', '2024-02-29', '9999-12-31'])('accepts %s', (date) => expect(isGregorianDate(date)).toBe(true));
@@ -54,12 +54,14 @@ describe('version-owned source contract', () => {
     expect(isProcedureSourceSnapshot({ ...source, digest: '0'.repeat(64) })).toBe(false);
     expect(isProcedureSourceSnapshot({ ...source, contract: { ...source.contract, extra: 'field' } })).toBe(false);
   });
-  it('requires once for manual upload for every other Schedule value', () => {
+  it('validates a manual-upload binding on its own terms — the Schedule pairing moved to evidenceBlockersFor (Story 2.5)', () => {
     const fields = { ...source.contract, kind: 'manual-upload' as const, location: null };
     const input = { kind: fields.kind, location: '', declaredSchema: fields.declared_schema, sensitiveFields: fields.sensitive_fields, declaredCountMechanism: fields.declared_count_mechanism };
     const manual = { ...source, contract: fields, digest: bindingDigest(input) };
-    for (const schedule of ['daily', 'weekly', 'monthly', null]) expect(validatePopulationBinding(manual, { schemaVersion: 1, all: [] }, schedule)).toBe(POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD);
-    expect(validatePopulationBinding(manual, { schemaVersion: 1, all: [] }, 'once')).toBeNull();
+    // `validatePopulationBinding` no longer refuses on the Schedule at all — it is a
+    // real, auditor-set field now (`evidence-draft.js`'s `DraftSchedule`), and the
+    // upload/frequency pairing is a completeness blocker, never a save-time refusal.
+    expect(validatePopulationBinding(manual, { schemaVersion: 1, all: [] })).toBeNull();
   });
   it('validates a saved source and its count blocker without reading a live registration', () => {
     const initial = initialDraftPopulation('P-1');

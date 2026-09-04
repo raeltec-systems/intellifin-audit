@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, initialDraftTargets, initialDraftCompliance, complianceInputFromFields, COMPLIANCE_MESSAGES, bindingDigest, registrationDigest, POPULATION_DRAFT_MESSAGES, TARGET_DRAFT_MESSAGES, type AuditEventDraft, type ComplianceDraftInput } from '@intellifin/domain';
+import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, initialDraftTargets, initialDraftCompliance, initialDraftEvidence, evidenceBlockersFor, complianceInputFromFields, COMPLIANCE_MESSAGES, EVIDENCE_DRAFT_MESSAGES, EVIDENCE_DRAFT_LIMITS, bindingDigest, registrationDigest, POPULATION_DRAFT_MESSAGES, TARGET_DRAFT_MESSAGES, type AuditEventDraft, type ComplianceDraftInput } from '@intellifin/domain';
 import type { BindingRecord } from '../sources/ports.js';
 import type { RegistrationRecord } from '../registrations/ports.js';
 import { updatePopulationDraft, type DraftPopulationEdit } from './update-population-draft.js';
 import { updateTargetDraft, type DraftTargetEdit } from './update-target-draft.js';
 import { updateComplianceDraft } from './update-compliance-draft.js';
+import { updateEvidenceDraft } from './update-evidence-draft.js';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
 import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
@@ -631,6 +632,7 @@ describe('the row version token', () => {
     ...initialDraftCompliance('P-1'),
     ...initialDraftPopulation('P-1'),
     ...initialDraftTargets(),
+    ...initialDraftEvidence('P-1'),
     versionId: '018f0000-0000-7000-8000-000000000001',
     procedureId: '018f0000-0000-7000-8000-000000000002',
     versionNumber: 1,
@@ -676,6 +678,8 @@ describe('the row version token', () => {
         ],
       },
       { ...RECORD, instructions: [{ registrationId: '018f0000-0000-7000-8000-0000000000a1', text: 'Open the record and read the status.' }] },
+      { ...RECORD, evidenceRequirements: [{ attributeName: 'notes', modelRead: true, groundedBy: [], screenshot: false, recordingSegment: false, platformCaptured: false }] },
+      { ...RECORD, schedule: { frequency: 'weekly', startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' } },
     ];
     for (const variant of variants) {
       expect(procedureVersionRowVersion(variant)).not.toBe(procedureVersionRowVersion(RECORD));
@@ -736,17 +740,40 @@ describe('Draft Period and Population Source changes', () => {
     expect(record().sourceSnapshot).toEqual(snapshot);
     expect(test.events).toHaveLength(count);
   });
-  it('refuses the exact manual-upload blocker for recurring Schedule and accepts once', async () => {
+  it('the manual-upload/recurring-Schedule pairing is a completeness blocker, not a save-time refusal (Story 2.5)', async () => {
     const { test, record, save } = await setup();
     const manual = { ...binding, kind: 'manual-upload' as const, location: '' };
     const digest = bindingDigest(manual);
     test.bindings.set(binding.bindingId, { ...manual, digest });
     const edit = { ...bindEdit, source: { mode: 'bind' as const, bindingId: binding.bindingId, expectedDigest: digest } };
-    expect(await save(edit)).toEqual({ ok: false, reason: POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD });
-    expect(test.events).toHaveLength(1);
-    const before = record();
-    test.storedVersions.set(before.versionId, { ...before, sections: before.sections.map((s) => s.heading === 'Schedule' ? { ...s, content: 'once' } : s) });
-    expect(await save(edit)).toMatchObject({ ok: true });
+    // A Draft starts with no Schedule (`initialDraftEvidence`), so binding manual-upload
+    // BEFORE a Schedule is chosen succeeds — `validatePopulationBinding` no longer reads
+    // the Schedule at all.
+    expect(await save(edit)).toMatchObject({ ok: true, changed: true });
+    expect(evidenceBlockersFor(record().sourceSnapshot, null)).toEqual([]);
+    // Saving a recurring Schedule afterwards ALSO succeeds — the pairing is advisory —
+    // and the blocker now shows on both sections.
+    const scheduled = await updateEvidenceDraft(test.dependencies, {
+      session: AUDITOR,
+      correlationId: 'schedule-save',
+      procedureId: record().procedureId,
+      versionId: record().versionId,
+      expectedRowVersion: procedureVersionRowVersion(record()),
+      edit: { section: 'schedule', frequency: 'weekly', startTime: '02:00' },
+    });
+    expect(scheduled).toMatchObject({ ok: true, changed: true });
+    expect(evidenceBlockersFor(record().sourceSnapshot, record().schedule)).toEqual(['upload-frequency-mismatch']);
+    // A `once` Schedule clears the blocker.
+    const onceSaved = await updateEvidenceDraft(test.dependencies, {
+      session: AUDITOR,
+      correlationId: 'schedule-save-once',
+      procedureId: record().procedureId,
+      versionId: record().versionId,
+      expectedRowVersion: procedureVersionRowVersion(record()),
+      edit: { section: 'schedule', frequency: 'once', startTime: '02:00' },
+    });
+    expect(onceSaved).toMatchObject({ ok: true, changed: true });
+    expect(evidenceBlockersFor(record().sourceSnapshot, record().schedule)).toEqual([]);
   });
   it('rejects an incompatible Template column without falling back to include-all', async () => {
     const { test, record, save } = await setup();
@@ -1032,5 +1059,164 @@ describe('Draft Target System and Audit Instruction changes', () => {
     const test = harness('poc-administrator');
     const input = { session: POC_ADMIN, correlationId: 'denied', get edit(): never { throw new Error('must not parse'); } };
     await expect(updateTargetDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
+  });
+});
+
+describe('Draft Evidence Requirements and Schedule changes', () => {
+  const WEB = '018f0000-0000-7000-8000-0000000000e1';
+  const API = '018f0000-0000-7000-8000-0000000000e2';
+
+  function reg(registrationId: string, over: Partial<RegistrationRecord> & Pick<RegistrationRecord, 'kind'>): RegistrationRecord {
+    const fields = {
+      kind: over.kind,
+      allowedOrigins: over.allowedOrigins ?? ['http://localhost:4300/loancore'],
+      applicationIdentity: over.applicationIdentity ?? '',
+      credentialRef: over.credentialRef ?? 'vault://audit/loancore',
+      permittedActions: over.permittedActions ?? (['navigate', 'read-attribute'] as const),
+      attributeLabelPatterns: over.attributeLabelPatterns ?? ['Status'],
+      secondaryKey: over.secondaryKey ?? '',
+    };
+    return { registrationId, displayName: over.displayName ?? 'LoanCore', note: '', status: over.status ?? 'active', ...fields, digest: registrationDigest(fields) };
+  }
+  const webReg = reg(WEB, { kind: 'web', displayName: 'LoanCore' });
+  const apiReg = reg(API, { kind: 'api', displayName: 'AccessGate', allowedOrigins: ['https://accessgate.synthetic.invalid'], permittedActions: ['list-records', 'read-attribute'] });
+
+  function requirement(over: Partial<{ attributeName: string; modelRead: boolean; groundedBy: readonly ('structural-snapshot' | 'source-file-excerpt')[]; screenshot: boolean; recordingSegment: boolean }> = {}) {
+    return { attributeName: 'account_status', modelRead: false, groundedBy: ['structural-snapshot'] as const, screenshot: true, recordingSegment: false, ...over };
+  }
+
+  async function setup(templateId: 'P-1' | 'P-2' = 'P-2') {
+    const test = harness();
+    for (const record of [webReg, apiReg]) test.registrations.set(record.registrationId, record);
+    const created = await create(test, { templateId });
+    if (!created.ok) throw new Error(created.reason);
+    test.events.length = 0;
+    const record = () => test.storedVersions.get(created.versionId)!;
+    const save = (edit: Parameters<typeof updateEvidenceDraft>[1]['edit'], token = procedureVersionRowVersion(record())) =>
+      updateEvidenceDraft(test.dependencies, { session: AUDITOR, correlationId: 'evidence-save', procedureId: created.procedureId, versionId: created.versionId, expectedRowVersion: token, edit });
+    const selectTargets = (selections: readonly { readonly mode: 'bind'; readonly registrationId: string; readonly expectedDigest: string }[]) =>
+      updateTargetDraft(test.dependencies, { session: AUDITOR, correlationId: 'target-save', procedureId: created.procedureId, versionId: created.versionId, expectedRowVersion: procedureVersionRowVersion(record()), edit: { section: 'target-systems', selections } });
+    return { test, created, record, save, selectTargets };
+  }
+
+  it('saves typed Evidence Requirements that survive a reload, grounded by a Structural Snapshot', async () => {
+    const { test, record, save } = await setup();
+    const outcome = await save({ section: 'evidence-requirements', requirements: [requirement()] });
+    expect(outcome).toMatchObject({ ok: true, changed: true });
+    expect(record().evidenceRequirements).toEqual([{ ...requirement(), platformCaptured: false }]);
+    expect(test.events).toHaveLength(1);
+    expect(test.events[0]?.eventType).toBe(PROCEDURE_DRAFT_CHANGED_EVENT);
+  });
+
+  it('refuses an attribute grounded only by a screenshot or a recording segment, naming the attribute, and writes nothing', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    const outcome = await save({ section: 'evidence-requirements', requirements: [requirement({ groundedBy: [], screenshot: true, recordingSegment: true })] });
+    expect(outcome).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.GROUNDING });
+    expect(record()).toEqual(before);
+    expect(test.events).toEqual([]);
+  });
+
+  it('accepts and records a model-read attribute, exempt from deterministic grounding, and it survives reload', async () => {
+    const { record, save } = await setup();
+    const outcome = await save({ section: 'evidence-requirements', requirements: [requirement({ modelRead: true, groundedBy: [], screenshot: false })] });
+    expect(outcome).toMatchObject({ ok: true, changed: true });
+    expect(record().evidenceRequirements).toEqual([{ ...requirement({ modelRead: true, groundedBy: [], screenshot: false }), platformCaptured: false }]);
+  });
+
+  it('records platformCaptured from the CURRENT Target System selection, never from the caller', async () => {
+    const { record, save, selectTargets } = await setup();
+    await selectTargets([{ mode: 'bind', registrationId: WEB, expectedDigest: webReg.digest }]);
+    // The caller asks for grounding by a source file excerpt and no screenshot; the
+    // command overrides the screenshot flag and adds Structural Snapshot grounding
+    // because a web system is agent-driven and that capture is the platform's, not a
+    // choice offered here.
+    const asked = requirement({ groundedBy: ['source-file-excerpt'], screenshot: false });
+    const outcome = await save({ section: 'evidence-requirements', requirements: [asked] }, procedureVersionRowVersion(record()));
+    expect(outcome).toMatchObject({ ok: true, changed: true });
+    expect(record().evidenceRequirements).toEqual([
+      { ...asked, groundedBy: ['source-file-excerpt', 'structural-snapshot'], screenshot: true, platformCaptured: true },
+    ]);
+
+    // Deselecting the agent-driven system and re-saving the SAME asked requirement drops
+    // the platform-captured flag and the forced grounding — it is recomputed every save.
+    await selectTargets([{ mode: 'bind', registrationId: API, expectedDigest: apiReg.digest }]);
+    const outcome2 = await save({ section: 'evidence-requirements', requirements: [requirement()] }, procedureVersionRowVersion(record()));
+    expect(outcome2).toMatchObject({ ok: true });
+    expect(record().evidenceRequirements[0]?.platformCaptured).toBe(false);
+  });
+
+  it('saves a frequency and fixed UTC start with the matching recorded period-derivation rule, surviving reload', async () => {
+    const { record, save } = await setup();
+    const outcome = await save({ section: 'schedule', frequency: 'weekly', startTime: '02:00' });
+    expect(outcome).toMatchObject({ ok: true, changed: true });
+    expect(record().schedule).toEqual({ frequency: 'weekly', startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' });
+  });
+
+  it('never refuses the manual-upload/recurring-Schedule pairing on either section; it is surfaced as a blocker only', async () => {
+    const { record, save } = await setup();
+    expect(await save({ section: 'schedule', frequency: 'daily', startTime: '00:00' })).toMatchObject({ ok: true });
+    expect(record().schedule).toMatchObject({ frequency: 'daily' });
+  });
+
+  it('refuses an unknown frequency, a malformed start time, a duplicate attribute, and too many requirements', async () => {
+    const { test, record, save } = await setup();
+    const before = record();
+    for (const edit of [
+      { section: 'schedule', frequency: 'yearly', startTime: '02:00' },
+      { section: 'schedule', frequency: 'daily', startTime: 'noon' },
+      { section: 'evidence-requirements', requirements: [requirement({ attributeName: 'Status' }), requirement({ attributeName: ' status ' })] },
+      { section: 'evidence-requirements', requirements: Array.from({ length: EVIDENCE_DRAFT_LIMITS.requirements + 1 }, (_, i) => requirement({ attributeName: `a${i}` })) },
+    ]) {
+      expect(await save(edit as never)).toMatchObject({ ok: false, reason: expect.any(String) });
+    }
+    expect(record()).toEqual(before);
+    expect(test.events).toEqual([]);
+  });
+
+  it('refuses evidence and schedule edits to a non-Draft version', async () => {
+    const { test, created, record, save } = await setup();
+    test.storedVersions.set(created.versionId, { ...record(), state: 'SUBMITTED' });
+    for (const edit of [
+      { section: 'evidence-requirements', requirements: [requirement()] },
+      { section: 'schedule', frequency: 'once', startTime: '00:00' },
+    ] as const) {
+      expect(await save(edit)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+    }
+    expect(test.events).toEqual([]);
+  });
+
+  it('writes nothing on an idle save, refuses a stale token, and rolls back a failed append', async () => {
+    const { test, record, save } = await setup();
+    await save({ section: 'schedule', frequency: 'once', startTime: '00:00' });
+    const token = procedureVersionRowVersion(record());
+    test.events.length = 0;
+
+    expect(await save({ section: 'schedule', frequency: 'once', startTime: '00:00' }, token)).toMatchObject({ ok: true, changed: false });
+    expect(test.events).toHaveLength(0);
+
+    expect(await save({ section: 'schedule', frequency: 'weekly', startTime: '00:00' }, '0'.repeat(64))).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+
+    const before = record();
+    test.failAppend = true;
+    await expect(save({ section: 'schedule', frequency: 'weekly', startTime: '00:00' }, token)).rejects.toThrow('audit append failed');
+    expect(record()).toEqual(before);
+  });
+
+  it('refuses a PoC Administrator before reading the edit', async () => {
+    const test = harness('poc-administrator');
+    const input = { session: POC_ADMIN, correlationId: 'denied', get edit(): never { throw new Error('must not parse'); } };
+    await expect(updateEvidenceDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
+  });
+
+  it('seeds P-1 with the structured, platform-captured Template defaults at creation', async () => {
+    const test = harness();
+    for (const record of [webReg, apiReg]) test.registrations.set(record.registrationId, record);
+    const created = await create(test, { templateId: 'P-1' });
+    if (!created.ok) throw new Error(created.reason);
+    const record = test.storedVersions.get(created.versionId)!;
+    expect(record.evidenceRequirements.map((r) => r.attributeName).sort()).toEqual(['account_status', 'roles', 'username']);
+    expect(record.evidenceRequirements.every((r) => r.platformCaptured)).toBe(true);
+    expect(record.schedule).toBeNull();
   });
 });

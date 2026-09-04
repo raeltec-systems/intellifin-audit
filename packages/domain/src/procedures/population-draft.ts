@@ -22,6 +22,13 @@ export const POPULATION_DRAFT_MESSAGES = {
   SOURCE: 'Choose an active Population Source.',
   STALE_SOURCE: 'That Population Source changed since this page was loaded. Reload the page and try again.',
   FLAGS: 'Choose valid values for the Population Source Gate policies.',
+  /**
+   * Story 2.5 makes the Schedule a real, auditor-set field (`evidence-draft.js`'s
+   * `DraftSchedule`) rather than pinned Template prose, and the upload/frequency pairing
+   * moves from a save-time refusal here to that module's `evidenceBlockersFor` — a
+   * completeness blocker surfaced inline on both sections, never silent, but never a
+   * refusal either. This sentence stays exported so the two sections use one wording.
+   */
   MANUAL_UPLOAD: 'A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs.',
   COUNT_MISSING: 'Population Source must declare an expected record count.',
 } as const;
@@ -85,9 +92,17 @@ export function isProcedureSourceSnapshot(value: unknown): value is ProcedureSou
 export function populationBlockersFor(source: ProcedureSourceSnapshot | null): readonly PopulationBlocker[] {
   return source?.contract.declared_count_mechanism === 'none' ? ['declared-count-missing'] : [];
 }
-export function validatePopulationBinding(source: ProcedureSourceSnapshot, rule: unknown, schedule: string | null): string | null {
+/**
+ * The Population Source's own validity, independent of the Schedule.
+ *
+ * The upload/frequency pairing used to be checked here, against the Schedule's PINNED
+ * Template prose — the only Schedule that existed before this story. Now that the
+ * Schedule is a real, auditor-set field (`evidence-draft.js`'s `DraftSchedule`), that
+ * pairing is a completeness blocker (`evidenceBlockersFor`) surfaced on both sections,
+ * never a save-time refusal here.
+ */
+export function validatePopulationBinding(source: ProcedureSourceSnapshot, rule: unknown): string | null {
   if (!isProcedureSourceSnapshot(source)) return POPULATION_DRAFT_MESSAGES.SOURCE;
-  if (source.contract.kind === 'manual-upload' && schedule !== 'once') return POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD;
   if (!isInclusionRule(rule, source.contract.declared_schema)) return POPULATION_DRAFT_MESSAGES.RULE;
   return null;
 }

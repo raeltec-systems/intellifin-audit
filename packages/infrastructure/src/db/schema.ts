@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { CompiledComplianceCondition, DraftSection, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, ProcedureTargetSnapshot, PopulationBlocker, TargetInstruction, JsonObject } from '@intellifin/domain';
+import type { CompiledComplianceCondition, DraftSchedule, DraftSection, EvidenceRequirement, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, ProcedureTargetSnapshot, PopulationBlocker, TargetInstruction, JsonObject } from '@intellifin/domain';
 
 const ZERO_SHA256 = '0'.repeat(64);
 
@@ -616,6 +616,20 @@ export const procedureVersion = pgTable(
     complianceConditions: jsonb('compliance_conditions').$type<readonly CompiledComplianceCondition[]>().notNull(),
     // Text preserves the author's exact decimal, including its trailing zeroes.
     agentJudgedThreshold: text('agent_judged_threshold').notNull().default('0.80'),
+    /**
+     * Evidence Requirements and the Schedule (generation 11, FR-9, FR-10).
+     *
+     * `evidenceRequirements` is an array of typed, per-attribute requirements; the
+     * domain's `isDraftEvidenceFields` is the one reader, and a row that fails it reads
+     * as nothing — the same discipline `targets`/`instructions` use. `schedule` is
+     * `jsonb`, nullable: a Draft starts with no Schedule and the auditor sets it
+     * explicitly. The CHECKs below are the shallow shape guard the one layer nothing can
+     * route around; the deep validation (the grounding rule, the platform-captured
+     * invariant, the period-derivation rule matching the frequency) is the domain's.
+     */
+    evidenceSchemaVersion: integer('evidence_schema_version').notNull().default(1),
+    evidenceRequirements: jsonb('evidence_requirements').$type<readonly EvidenceRequirement[]>().notNull().default([]),
+    schedule: jsonb('schedule').$type<DraftSchedule>(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -653,6 +667,12 @@ export const procedureVersion = pgTable(
     check('procedure_version_compliance_compiler', sql`${table.complianceCompilerVersion} = '1'`),
     check('procedure_version_compliance_shape', sql`coalesce(jsonb_typeof(${table.complianceConditions}) = 'array' AND jsonb_array_length(${table.complianceConditions}) BETWEEN 1 AND 32, false)`),
     check('procedure_version_confidence_range', sql`CASE WHEN length(${table.agentJudgedThreshold}) <= 100 AND ${table.agentJudgedThreshold} ~ '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' THEN ${table.agentJudgedThreshold}::numeric BETWEEN 0 AND 1 ELSE false END`),
+    check('procedure_version_evidence_schema', sql`${table.evidenceSchemaVersion} = 1`),
+    // Shallow shape guard (generation 11): an array, bounded. The deep validation — the
+    // grounding rule, the platform-captured invariant — is the domain's
+    // `isDraftEvidenceFields`, which a raw writer cannot be made to run.
+    check('procedure_version_evidence_shape', sql`coalesce(jsonb_typeof(${table.evidenceRequirements}) = 'array' AND jsonb_array_length(${table.evidenceRequirements}) <= 32, false)`),
+    check('procedure_version_schedule_shape', sql`${table.schedule} IS NULL OR coalesce(jsonb_typeof(${table.schedule}) = 'object' AND ${table.schedule} - 'frequency' - 'startTime' - 'periodDerivationRule' = '{}'::jsonb AND ${table.schedule}->>'frequency' IN ('once','daily','weekly','monthly') AND ${table.schedule}->>'startTime' ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$', false)`),
   ],
 );
 

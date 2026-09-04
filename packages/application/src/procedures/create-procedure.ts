@@ -5,6 +5,7 @@ import {
   initialDraftPopulation,
   initialDraftTargets,
   initialDraftCompliance,
+  initialDraftEvidence,
   isTemplateId,
   sha256Hex,
   type DraftSection,
@@ -230,6 +231,12 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       complianceCompilerVersion: record.complianceCompilerVersion,
       complianceConditions: record.complianceConditions,
       agentJudgedThreshold: record.agentJudgedThreshold,
+      // Evidence Requirements and the Schedule are saved fields too (Story 2.5); a stale
+      // tab that edited either must lose to a concurrent save exactly as every other
+      // saved field does.
+      evidenceSchemaVersion: record.evidenceSchemaVersion,
+      evidenceRequirements: record.evidenceRequirements,
+      schedule: record.schedule,
     } as unknown as JsonValue),
   );
 }
@@ -268,6 +275,7 @@ export async function createProcedure(
     ...initialDraftPopulation(validated.templateId),
     ...initialDraftTargets(),
     ...initialDraftCompliance(validated.templateId),
+    ...initialDraftEvidence(validated.templateId),
     versionId,
     procedureId,
     versionNumber: 1,

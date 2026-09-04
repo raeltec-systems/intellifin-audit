@@ -17,11 +17,14 @@ import {
   isDraftPopulationFields,
   isDraftTargetFields,
   isDraftComplianceFields,
+  isDraftEvidenceFields,
   targetBlockersFor,
+  evidenceBlockersFor,
   type DraftPopulationFields,
   type DraftSection,
   type DraftTargetFields,
   type DraftComplianceFields,
+  type DraftEvidenceFields,
   type ProcedureTargetSnapshot,
   type ProcedureVersionState,
   type TargetInstruction,
@@ -76,6 +79,9 @@ const VERSION_SELECTION = {
   complianceCompilerVersion: procedureVersion.complianceCompilerVersion,
   complianceConditions: procedureVersion.complianceConditions,
   agentJudgedThreshold: procedureVersion.agentJudgedThreshold,
+  evidenceSchemaVersion: procedureVersion.evidenceSchemaVersion,
+  evidenceRequirements: procedureVersion.evidenceRequirements,
+  schedule: procedureVersion.schedule,
   createdAt: procedureVersion.createdAt,
   updatedAt: procedureVersion.updatedAt,
 } as const;
@@ -93,6 +99,13 @@ interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields {
   complianceCompilerVersion: string;
   complianceConditions: unknown;
   agentJudgedThreshold: string;
+  // `evidence_schema_version` is a plain `integer` column, so Drizzle's select type is
+  // `number`, not the domain's literal `1` — the same reason `complianceSchemaVersion`
+  // above is `number` rather than extending `DraftComplianceFields`. `isDraftEvidenceFields`
+  // is what narrows it.
+  evidenceSchemaVersion: number;
+  evidenceRequirements: unknown;
+  schedule: unknown;
   versionId: string;
   procedureId: string;
   versionNumber: number;
@@ -118,7 +131,7 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 }
 
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
-  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row)) return null;
+  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
@@ -127,6 +140,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
     ...populationFields(row),
     ...targetFields(row),
     ...complianceFields(row),
+    ...evidenceFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -137,13 +151,16 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
     // Derived, not stored: the Template names the required agent coverage and the
     // selection either covers it or does not.
     targetBlockers: targetBlockersFor(templateId, row.targets),
+    // Derived, not stored: the upload/frequency pairing, surfaced on both the
+    // Population Source section and this one.
+    evidenceBlockers: evidenceBlockersFor(row.sourceSnapshot, row.schedule),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
-  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row)) return null;
+  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
@@ -152,6 +169,7 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
     ...populationFields(row),
     ...targetFields(row),
     ...complianceFields(row),
+    ...evidenceFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -176,6 +194,14 @@ function complianceFields(row: DraftComplianceFields): DraftComplianceFields {
     complianceCompilerVersion: row.complianceCompilerVersion,
     complianceConditions: row.complianceConditions,
     agentJudgedThreshold: row.agentJudgedThreshold,
+  };
+}
+
+function evidenceFields(row: DraftEvidenceFields): DraftEvidenceFields {
+  return {
+    evidenceSchemaVersion: row.evidenceSchemaVersion,
+    evidenceRequirements: row.evidenceRequirements,
+    schedule: row.schedule,
   };
 }
 
@@ -332,6 +358,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
     await this.transaction.insert(procedureVersion).values({
       ...populationFields(record),
       ...complianceFields(record),
+      ...evidenceFields(record),
       versionId: record.versionId,
       procedureId: record.procedureId,
       versionNumber: record.versionNumber,
@@ -379,6 +406,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
       .set({
         ...populationFields(record),
         ...complianceFields(record),
+        ...evidenceFields(record),
         state: record.state,
         controlName: record.controlName,
         sections: [...record.sections],

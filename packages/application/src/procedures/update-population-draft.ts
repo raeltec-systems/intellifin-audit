@@ -50,7 +50,7 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
           source = { bindingId: binding.bindingId, displayName: binding.displayName, digest: binding.digest, contract: bindingDigestEnvelope(binding) };
         } else if (edit.source.mode !== 'retain') throw new Refused(POPULATION_DRAFT_MESSAGES.SOURCE);
         if (source === null) throw new Refused(POPULATION_DRAFT_MESSAGES.SOURCE);
-        const refusal = validatePopulationBinding(source, edit.inclusionRule, before.sections.find((s) => s.heading === 'Schedule')?.content ?? null);
+        const refusal = validatePopulationBinding(source, edit.inclusionRule);
         if (refusal !== null) throw new Refused(refusal);
         if (!isInclusionRule(edit.inclusionRule) || typeof edit.zeroRecordPass !== 'boolean' || typeof edit.allowVersionedDuplicates !== 'boolean') throw new Refused(POPULATION_DRAFT_MESSAGES.RULE);
         after = { ...before, sourceSnapshot: source, inclusionRule: edit.inclusionRule, zeroRecordPass: edit.zeroRecordPass, allowVersionedDuplicates: edit.allowVersionedDuplicates, populationBlockers: populationBlockersFor(source) };

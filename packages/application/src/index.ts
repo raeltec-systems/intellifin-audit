@@ -28,6 +28,7 @@ export * from './procedures/create-procedure.js';
 export * from './procedures/update-population-draft.js';
 export * from './procedures/update-target-draft.js';
 export * from './procedures/update-compliance-draft.js';
+export * from './procedures/update-evidence-draft.js';
 export * from './registrations/ports.js';
 export * from './registrations/register-target-system.js';
 export * from './sources/ports.js';
