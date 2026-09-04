@@ -1,0 +1,139 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+
+import {
+  PROCEDURE_AUTHOR_ACTION,
+  PROCEDURE_LIMITS,
+  renameProcedureDraft,
+  type ProcedureDependencies,
+} from '@intellifin/application';
+import {
+  CryptoUuidV7Generator,
+  DrizzleRoleRepository,
+  PostgresProceduresUnitOfWork,
+} from '@intellifin/infrastructure';
+
+import { getRuntime } from '../../../../src/bootstrap';
+import { currentCorrelationId, requireServerAction } from '../../../../src/server-session';
+
+/**
+ * The Builder's Server Action (FR-7, scoped to this story: the Control name).
+ *
+ * **It authorizes first, before it reads its input** — same rule, same reason as the
+ * New-procedure action beside this folder: a Server Action is its own POST endpoint,
+ * and reaching the Builder page is not a precondition for invoking it.
+ *
+ * **The argument is untrusted.** The row version, the procedure id and the version id
+ * are strings from a POST body until this file says otherwise, and each is checked for
+ * shape before the command is reached.
+ */
+
+export type RenameActionResult =
+  | {
+      readonly ok: true;
+      readonly controlName: string;
+      readonly rowVersion: string;
+      readonly changed: boolean;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/** Said when the command threw. It never names a driver, a table or a host. */
+const UNAVAILABLE = 'The change could not be saved. Nothing was changed.';
+
+/** Said when the request was not the shape this action accepts. One sentence for all. */
+const MALFORMED = 'That request was not valid. Nothing was changed.';
+
+/** The id shape this application mints: a UUID v7 from `CryptoUuidV7Generator`. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
+/** What the Builder's one editable field posts. */
+export interface RenameDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly controlName: string;
+  /**
+   * The version of the whole version row the surface rendered. Optimistic concurrency,
+   * exactly as `expectedRowVersion` on the binding change.
+   */
+  readonly expectedRowVersion: string;
+}
+
+function isRenameDraftFields(input: unknown): input is RenameDraftFields {
+  if (typeof input !== 'object' || input === null) return false;
+  const fields = input as Record<string, unknown>;
+  return (
+    isUuid(fields['procedureId']) &&
+    isUuid(fields['versionId']) &&
+    typeof fields['controlName'] === 'string' &&
+    fields['controlName'].length <= PROCEDURE_LIMITS.controlName &&
+    typeof fields['expectedRowVersion'] === 'string' &&
+    fields['expectedRowVersion'].length <= 64
+  );
+}
+
+async function dependencies(): Promise<ProcedureDependencies> {
+  const runtime = await getRuntime();
+  return {
+    roles: new DrizzleRoleRepository(runtime.db),
+    unitOfWork: new PostgresProceduresUnitOfWork(runtime.db),
+    ids: new CryptoUuidV7Generator(),
+  };
+}
+
+/** Report a failure and refuse. The person gets one sentence; the operator gets the error. */
+async function unavailable(error: unknown, correlationId: string): Promise<RenameActionResult> {
+  try {
+    const runtime = await getRuntime();
+    runtime.telemetry.captureError('Rename Procedure Draft failed', error, {
+      outcome: 'failure',
+      correlationId,
+    });
+  } catch {
+    // The runtime is what failed. `instrumentation.ts` reported that at boot.
+  }
+  return { ok: false, reason: UNAVAILABLE };
+}
+
+/** Rename a Draft's Control name. One `lifecycle.procedure-draft-changed` event when it moves. */
+export async function renameProcedureDraftAction(
+  fields: RenameDraftFields,
+): Promise<RenameActionResult> {
+  // FIRST, before the input is read at all.
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+
+  if (!isRenameDraftFields(fields)) return { ok: false, reason: MALFORMED };
+
+  const correlationId = await currentCorrelationId();
+
+  try {
+    const outcome = await renameProcedureDraft(await dependencies(), {
+      procedureId: fields.procedureId,
+      versionId: fields.versionId,
+      controlName: fields.controlName,
+      expectedRowVersion: fields.expectedRowVersion,
+      session: decision.session,
+      correlationId,
+    });
+    if (!outcome.ok) return { ok: false, reason: outcome.reason };
+
+    // The row changed, so the token the open tab holds is stale the moment this
+    // commits. The command returns the token over the row as it left it, and the form
+    // adopts it — this file recomputes nothing.
+    revalidatePath(`/procedures/${fields.procedureId}`);
+    revalidatePath('/procedures');
+    return {
+      ok: true,
+      controlName: outcome.controlName,
+      rowVersion: outcome.rowVersion,
+      changed: outcome.changed,
+    };
+  } catch (error) {
+    return unavailable(error, correlationId);
+  }
+}

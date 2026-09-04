@@ -15,6 +15,7 @@ export type LayerName = 'domain' | 'application' | 'infrastructure';
 export * from './audit-event.js';
 export * from './canonical-json.js';
 export * from './identity/index.js';
+export * from './procedures/index.js';
 export * from './registrations/index.js';
 export * from './sha256.js';
 export * from './sources/index.js';
