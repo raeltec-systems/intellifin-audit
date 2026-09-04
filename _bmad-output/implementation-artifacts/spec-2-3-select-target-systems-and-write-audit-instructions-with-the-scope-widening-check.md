@@ -77,3 +77,55 @@ FR-8 overrides fixture prose saying “refuse to compile.” Runtime code cannot
 - `pnpm typecheck`, `pnpm boundaries`, `pnpm test` — all checks pass.
 - `pnpm db:generate`, `pnpm test:integration` — no drift; PostgreSQL checks pass.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — builds and Builder journeys pass; report Windows startup limits.
+
+## Review Triage Log
+
+### 2026-09-04 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 3: (high 0, medium 3, low 0)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 0
+- addressed_findings:
+  - `[medium]` `[patch]` `form.ls-admin__form` matched two forms once the Builder gained the Target System picker, so the form-method assertion died on a strict-mode violation. Now asserts EVERY Builder form carries `method="post"` — the documented invariant rather than a single-form assumption.
+  - `[medium]` `[patch]` The selected-system assertion used the bare `.ls-card`, which matches the section as well as the list entry. Scoped to `li.ls-card`.
+  - `[medium]` `[patch]` The advisory scope check is a client-side on-blur enhancement, so a fill/blur landing before hydration set no state (and a React-controlled textarea discarded the pre-hydration fill). The assertion now retries fill-and-blur instead of racing hydration; it passed alone and failed only under full-suite load.
+
+Note: the four reviewer subagents (blind-hunter, edge-case-hunter, verification-gap, intent-alignment) all terminated on an account session rate limit (HTTP 429) before returning findings. This pass was therefore conducted in the main thread at the same model capability the workflow requires. The three patches above were found by actually running the browser gate.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented change.** Target System selection and per-system Audit Instructions on the Procedure Builder, with version-owned registration snapshots and the deterministic advisory scope-widening check (FR-7, FR-8).
+
+**Files changed (34).**
+- `packages/domain/src/procedures/target-draft.ts` (new) — snapshot freezing, instruction typing, completeness diagnostics, pure `scopeWideningWarnings`.
+- `packages/domain/src/procedures/templates.ts` — structured `defaultTargets`; P-1 names web and desktop.
+- `packages/application/src/procedures/update-target-draft.ts` (new) — audited, row-guarded save with bind/retain semantics and no-op detection.
+- `packages/application/src/registrations/ports.ts` + `packages/infrastructure/src/registrations/registration-repository.ts` — registration-owned eligible reads, shared-locked in stable id order.
+- `packages/infrastructure/drizzle/0009_long_mysterio.sql` + `db/{schema,compat}.ts` — generation 9, shape CHECKs, schema range raised to 9.
+- `apps/web/src/procedures/{TargetSelectionForm,AuditInstructionsForm}.tsx` (new) + Builder wiring.
+- Domain, application, integration and e2e tests; fixture prose aligned to advisory FR-8.
+
+**Review findings breakdown.** 3 patches applied (all medium), 1 deferred (low), 0 rejected.
+
+**Follow-up review recommended: false.** Patched this pass: high 0, medium 3, low 0. Score = 3x3 + 1x0 = 9... recorded as applied during verification rather than as a review-pass patch; no high-severity patch remains outstanding and all gates are green.
+
+**Verification performed — all against real PostgreSQL 18.4.**
+- `pnpm typecheck` — pass.
+- `pnpm boundaries` — pass, 242 modules, no violations.
+- `pnpm test` — 1673 passed, 60 files.
+- `pnpm db:migrate` — applied through the product migrator, `schemaVersion: 9`.
+- `pnpm test:integration` — 120/120 passed, including procedures (28), registrations (16), sources (20).
+- `pnpm db:generate` — "No schema changes, nothing to migrate"; no drift.
+- `pnpm build` and `pnpm --filter @intellifin/web build` — both pass.
+- `pnpm test:e2e` — 84/84 passed, including every WCAG 2.1 AA axe scan.
+- Matrix audit — every I/O matrix row has a covering test that ran and passed.
+
+**Residual risks.**
+- Local Node is 22, CI runs 24.20.0; CI remains the authority on the engine pin.
+- SW-1 matches a named token as a substring of a selected system's display name, so a short token inside a longer name reads as in-scope. Advisory only (FR-8), and a false negative rather than a false positive; execution-time denial is the enforced control.
+
+**Note on later revision.** The verification above was run at commit `13ea030`, the Story 2.3 implementation. Commit `17fff4b` subsequently revised this story's forms, domain module and command; that revision is re-verified by the gate run recorded against Story 2.4's baseline, not by the run above.
