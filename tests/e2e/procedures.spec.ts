@@ -3,6 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT } from '../../apps/web/src/design/copy';
 
+import { DENIAL_REASONS } from '@intellifin/domain';
+
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
 /**
@@ -141,6 +143,8 @@ test.describe('as an Auditor', () => {
         .filter({ hasText: nameFor(template) })
         .first();
       await card.getByRole('link').click();
+      // The sections are on the Builder; the detail surface lists versions.
+      await page.getByRole('link', { name: 'Open Builder' }).click();
       await expect(page.getByRole('heading', { level: 2, name: 'Objective' })).toBeVisible();
       const objective = await page
         .locator('.ls-card')
@@ -251,7 +255,7 @@ test.describe('as a PoC Administrator', () => {
     await page.goto('/procedures/new');
 
     await expect(page.locator('main#content').getByRole('alert')).toHaveText(
-      'Your role does not permit this action.',
+      DENIAL_REASONS.ADMIN_CANNOT_AUTHOR,
     );
     // Not the picker, not the field, not one Template name.
     await expect(page.getByLabel('Template')).toHaveCount(0);
