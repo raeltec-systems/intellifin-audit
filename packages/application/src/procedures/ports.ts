@@ -1,3 +1,4 @@
+import type { PlanDerivationFields, PlanDerivationQueue } from './plan-ports.js';
 import type { DraftComplianceFields, DraftEvidenceFields, DraftPopulationFields, DraftSection, DraftTargetFields, EvidenceBlocker, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
 import type { PopulationSourceReader } from '../sources/ports.js';
 import type { TargetSystemRegistrationReader } from '../registrations/ports.js';
@@ -33,7 +34,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields {
+export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -68,7 +69,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields {
+export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -117,6 +118,7 @@ export interface ProcedureRecord {
  */
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
   readonly procedures: ProcedureWriter;
+  readonly derivationJobs: PlanDerivationQueue;
   readonly populationSources: PopulationSourceReader;
   /** Registration-owned read, bound to this transaction, for resolving Target selections. */
   readonly targetRegistrations: TargetSystemRegistrationReader;

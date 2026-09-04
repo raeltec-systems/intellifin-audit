@@ -6,10 +6,10 @@ altitude: feature
 paradigm: 'ports-and-adapters modular monolith with durable asynchronous, human-interruptible Audit Runner execution'
 scope: 'Exploratory PoC and reusable commercial-product foundations'
 status: final
-revision: 2
+revision: 3
 created: '2026-09-01'
-updated: 2026-09-01
-supersedes: 'revision 1 (finalized 2026-09-01, derived from PRD revision 1)'
+updated: 2026-09-04
+supersedes: 'revision 2; revision 3 applies the owner-approved activation-time handover correction of 2026-09-04'
 binds:
   - 'PRD FR-1..FR-50'
   - 'PRD NFR-1..NFR-15'
@@ -24,6 +24,10 @@ companions: []
 ---
 
 # Architecture Spine — IntelliFin Audit
+
+## 0. Owner-approved timing correction — 2026-09-04
+
+Approval of a regression-gated successor records pending regression and its successor relationship without a speculative handover date. Actual activation after regression passes sets the authoritative boundary strictly after activation. The owner explicitly selected this behavior. This supersedes approval-time wording and invalidates prior downstream timing reviews: Story 2.8 and later Regression Run/scheduler contracts require revalidation. Execution and scheduler handover remain outside Epic 2.
 
 ## Design Paradigm
 
@@ -184,7 +188,7 @@ flowchart TD
 
 - **Binds:** FR-11, FR-14, FR-15, FR-17, NFR-9, apps/worker
 - **Prevents:** duplicate or skipped scheduled Runs, two versions running the same period, and the queue library becoming the Schedule of record
-- **Rule:** a Schedule (frequency, fixed UTC start, period derivation) is frozen on the Procedure Version. A worker-side scheduler polls due Schedules and enqueues one Run per (Procedure Version, effective period) under a unique constraint, recording the derived period and initiator; a missed or failed start is recorded as an event and surfaced, never skipped silently. `handover_at` is computed once by the approval command as the first period start (per the successor's Schedule) strictly after activation and stored on both versions; the predecessor owns every effective period starting before `handover_at` and the successor every period starting at or after it; the scheduler performs `ACTIVE → RETIRED` for the predecessor, with actor "Schedule", in the transaction that enqueues the first Run the successor owns or on the first tick after `handover_at`. A `REGRESSION` Run is started only by the approval command when configuration digests differ, runs on the `APPROVED` version with the Template's golden Population Source binding substituted for that Run only and the version's frozen registrations kept (golden Target System fixtures are the synthetic systems seeded with the golden dataset), is exempt from the overlap rule, never enters Review, never notifies, is labeled on the dashboard and recorded on the version; the approver confirms its Agent-Judged evaluations from the Template's confirmation script; the procedures module compares terminal outcome and evaluations to the golden expectations, every expected terminal outcome must reproduce except records addendum D exempts, and it records `RegressionPassed | RegressionFailed` on the version; only `RegressionPassed` (or no regression needed) moves `APPROVED → ACTIVE`. Manual initiation targets the version owning the requested period; a `once` Schedule creates no scheduler entry and is run manually. Reference Sources are acquired at Run start, before any Work Item. pg-boss cron may drive the poll tick but is never the Schedule of record.
+- **Rule:** a Schedule (frequency, fixed UTC start, period derivation) is frozen on the Procedure Version. A worker-side scheduler polls due Schedules and enqueues one Run per (Procedure Version, effective period) under a unique constraint, recording the derived period and initiator; a missed or failed start is recorded as an event and surfaced, never skipped silently. Approval requiring regression records pending regression and the successor relationship with no speculative date. `handover_at` is computed once by the command that actually activates the successor (approval when no regression is needed, activation after `RegressionPassed` otherwise) as the first period start (per the successor's Schedule) strictly after activation and stored on both versions; the predecessor owns every effective period starting before `handover_at` and the successor every period starting at or after it; the scheduler performs `ACTIVE → RETIRED` for the predecessor, with actor "Schedule", in the transaction that enqueues the first Run the successor owns or on the first tick after `handover_at`. A `REGRESSION` Run is started only by the approval command when configuration digests differ, runs on the `APPROVED` version with the Template's golden Population Source binding substituted for that Run only and the version's frozen registrations kept (golden Target System fixtures are the synthetic systems seeded with the golden dataset), is exempt from the overlap rule, never enters Review, never notifies, is labeled on the dashboard and recorded on the version; the approver confirms its Agent-Judged evaluations from the Template's confirmation script; the procedures module compares terminal outcome and evaluations to the golden expectations, every expected terminal outcome must reproduce except records addendum D exempts, and it records `RegressionPassed | RegressionFailed` on the version; only `RegressionPassed` (or no regression needed) moves `APPROVED → ACTIVE`. Manual initiation targets the version owning the requested period; a `once` Schedule creates no scheduler entry and is run manually. Reference Sources are acquired at Run start, before any Work Item. pg-boss cron may drive the poll tick but is never the Schedule of record.
 
 ### AD-20 — Notifications are audited product events behind one port
 

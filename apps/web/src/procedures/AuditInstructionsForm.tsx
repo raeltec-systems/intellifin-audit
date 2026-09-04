@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import {
   isAgentDrivenKind,
@@ -19,6 +19,9 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { AUDIT_INSTRUCTIONS_NO_AGENT } from './labels';
+import { useSection } from './use-section';
+import { SectionConflict } from './SectionConflict';
+import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
 /**
  * The per-system Audit Instructions editor (FR-7, FR-8, scoped to this story).
@@ -47,12 +50,6 @@ function initialTexts(draft: ProcedureVersionView): Record<string, string> {
   return texts;
 }
 
-function agentRegistrationIds(draft: ProcedureVersionView): readonly string[] {
-  return draft.targets
-    .filter((target) => isAgentDrivenKind(target.contract.kind))
-    .map((target) => target.registrationId);
-}
-
 export function AuditInstructionsForm({
   draft,
   rowVersion,
@@ -60,47 +57,15 @@ export function AuditInstructionsForm({
   onSave,
 }: AuditInstructionsFormProps): React.JSX.Element {
   const id = useId();
-  const [token, setToken] = useState(rowVersion);
-  useEffect(() => setToken(rowVersion), [rowVersion]);
-  const initial = initialTexts(draft);
-  const [texts, setTexts] = useState<Record<string, string>>(() => initial);
-  const textsRef = useRef(initial);
+  const section = useSection(initialTexts(draft), rowVersion);
+  const texts = section.value;
+  const textsRef = { get current() { return section.current.current.value; } };
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  /**
-   * A Server Action re-renders the whole Builder, including this form. Keep a local value
-   * while it is dirty; replace only fields whose server value has caught up. Without this
-   * per-field merge, saving a different Builder section silently discarded typed prose.
-   */
-  const dirtyRef = useRef(new Set<string>());
-  useEffect(() => {
-    const serverTexts = initialTexts(draft);
-    const next: Record<string, string> = {};
-    const nextDirty = new Set<string>();
-    for (const registrationId of agentRegistrationIds(draft)) {
-      const serverText = serverTexts[registrationId] ?? '';
-      const localText = textsRef.current[registrationId] ?? '';
-      if (dirtyRef.current.has(registrationId) && localText !== serverText) {
-        next[registrationId] = localText;
-        nextDirty.add(registrationId);
-      } else {
-        next[registrationId] = serverText;
-      }
-    }
-    dirtyRef.current = nextDirty;
-    textsRef.current = next;
-    setTexts(next);
-    setTouched((current) => {
-      const retained: Record<string, boolean> = {};
-      for (const registrationId of agentRegistrationIds(draft)) {
-        if (current[registrationId] === true) retained[registrationId] = true;
-      }
-      return retained;
-    });
-  }, [draft]);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateTargetDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const saving = useRef(false);
 
   const agentTargets = draft.targets.filter((target) => isAgentDrivenKind(target.contract.kind));
@@ -113,16 +78,11 @@ export function AuditInstructionsForm({
   }));
 
   function setText(registrationId: string, text: string): void {
-    dirtyRef.current.add(registrationId);
-    setTexts((current) => {
-      const next = { ...current, [registrationId]: text };
-      textsRef.current = next;
-      return next;
-    });
+    section.edit({ ...textsRef.current, [registrationId]: text });
   }
 
   async function save(): Promise<void> {
-    if (saving.current) return;
+    if (saving.current || unknownOutcome || section.current.current.conflict) return;
     saving.current = true;
     setConfirming(false);
     setBusy(true);
@@ -133,12 +93,14 @@ export function AuditInstructionsForm({
         text: textsRef.current[target.registrationId] ?? '',
       })),
     };
+    section.begin(Object.fromEntries(edit.instructions.map((instruction) => [instruction.registrationId, instruction.text])));
     try {
-      const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: token, edit });
+      const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
       setResult(outcome);
-      if (outcome.ok) setToken(outcome.rowVersion);
+      section.finish(outcome.ok ? outcome.rowVersion : undefined);
     } catch {
-      setResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
+      section.finish();
+      setUnknownOutcome(true); setResult(null);
     } finally {
       setAnnouncement((count) => count + 1);
       saving.current = false;
@@ -148,6 +110,8 @@ export function AuditInstructionsForm({
 
   return (
     <div className="ls-stack">
+      <SectionConflict conflict={section.conflict} name="Audit Instructions" reset={() => section.reset()} />
+      <UnknownSaveOutcome visible={unknownOutcome} />
       {templateInstructions === null ? null : (
         <div className="ls-card">
           <p className="ls-card__title">Template default Audit Instructions (read-only)</p>
@@ -180,7 +144,7 @@ export function AuditInstructionsForm({
           className="ls-admin__form ls-stack"
           onSubmit={(event) => {
             event.preventDefault();
-            if (saving.current) return;
+            if (saving.current || unknownOutcome || section.current.current.conflict) return;
             setResult(null);
             setConfirming(true);
           }}
@@ -221,7 +185,7 @@ export function AuditInstructionsForm({
             );
           })}
           <div className="ls-admin__actions">
-            <Button type="submit" variant="primary" size="md" busy={busy}>
+            <Button type="submit" disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary" size="md" busy={busy}>
               {busy ? 'Saving…' : 'Save Audit Instructions'}
             </Button>
           </div>

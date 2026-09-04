@@ -1,8 +1,11 @@
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { z } from 'zod';
+import { planAuthoringDigest, planAuthoringInputs } from '@intellifin/application';
 
 import { isUuidText } from '../db/identifier.js';
 
 import type {
+  PlanDerivationFields,
   ProcedureRecord,
   ProcedureRepository,
   ProcedureSummary,
@@ -11,6 +14,9 @@ import type {
   ProcedureWriter,
 } from '@intellifin/application';
 import {
+  ExecutablePlanSchema,
+  canonicalJson,
+  type JsonValue,
   isProcedureVersionState,
   isTemplateId,
   isValidDraftSectionsPayload,
@@ -82,6 +88,14 @@ const VERSION_SELECTION = {
   evidenceSchemaVersion: procedureVersion.evidenceSchemaVersion,
   evidenceRequirements: procedureVersion.evidenceRequirements,
   schedule: procedureVersion.schedule,
+  planCompilerVersion: procedureVersion.planCompilerVersion,
+  derivationModel: procedureVersion.derivationModel,
+  compiledPlan: procedureVersion.compiledPlan,
+  planInputDigest: procedureVersion.planInputDigest,
+  planStatus: procedureVersion.planStatus,
+  planFailureReason: procedureVersion.planFailureReason,
+  planDerivable: procedureVersion.planDerivable,
+  planAttempts: procedureVersion.planAttempts,
   createdAt: procedureVersion.createdAt,
   updatedAt: procedureVersion.updatedAt,
 } as const;
@@ -94,7 +108,7 @@ interface ProcedureSelectedRow {
   updatedAt: Date;
 }
 
-interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields {
+interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields, PlanDerivationFields {
   complianceSchemaVersion: number;
   complianceCompilerVersion: string;
   complianceConditions: unknown;
@@ -131,6 +145,7 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 }
 
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
+  if (!validPlanMetadata(row)) return null;
   if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
@@ -141,6 +156,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
     ...targetFields(row),
     ...complianceFields(row),
     ...evidenceFields(row),
+    ...readPlanFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -160,6 +176,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
 }
 
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
+  if (!validPlanMetadata(row)) return null;
   if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
@@ -170,6 +187,7 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
     ...targetFields(row),
     ...complianceFields(row),
     ...evidenceFields(row),
+    ...readPlanFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -197,6 +215,51 @@ function complianceFields(row: DraftComplianceFields): DraftComplianceFields {
   };
 }
 
+const modelIdentitySchema = z.strictObject({ provider: z.string().min(1).max(100), modelId: z.string().min(1).max(200), promptVersion: z.string().min(1).max(100) });
+const planMetadataSchema = z.object({
+  planCompilerVersion: z.string().min(1).max(64),
+  derivationModel: modelIdentitySchema.nullable(),
+  planInputDigest: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  planStatus: z.enum(['pending', 'succeeded', 'failed']),
+  planFailureReason: z.string().min(1).max(1000).nullable(),
+  planDerivable: z.boolean(),
+  planAttempts: z.array(z.strictObject({
+    attemptId: z.uuid(), inputDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    attemptedAt: z.iso.datetime(), outcome: z.enum(['started', 'success', 'failure', 'stale']), jobId: z.uuid().optional(), completedAt: z.iso.datetime().optional(), published: z.boolean().optional(),
+    reason: z.string().min(1).max(1000).nullable(), model: modelIdentitySchema.nullable(),
+  })),
+});
+function validPlanMetadata(row: PlanDerivationFields): boolean {
+  return planMetadataSchema.safeParse(row).success;
+}
+
+function planFields(row: PlanDerivationFields): PlanDerivationFields {
+  return {
+    planCompilerVersion: row.planCompilerVersion,
+    derivationModel: row.derivationModel,
+    compiledPlan: row.compiledPlan,
+    planInputDigest: row.planInputDigest,
+    planStatus: row.planStatus,
+    planFailureReason: row.planFailureReason,
+    planDerivable: row.planDerivable,
+    planAttempts: row.planAttempts,
+  };
+}
+
+/** Invalid durable payload never becomes an executable/derivable result. */
+function readPlanFields(row: VersionSelectedRow): PlanDerivationFields {
+  const parsed = ExecutablePlanSchema.safeParse(row.compiledPlan);
+  if (row.compiledPlan === null && !row.planDerivable) return planFields(row);
+  // Called only after all authored fields and the state have passed their validators.
+  const authored = row as ProcedureVersionRecord;
+  if (parsed.success && row.planStatus === 'succeeded' && row.planDerivable &&
+      parsed.data.compilerVersion === row.planCompilerVersion && row.planInputDigest === planAuthoringDigest(authored) &&
+      canonicalJson(parsed.data.inputs as unknown as JsonValue) === canonicalJson(planAuthoringInputs(authored) as unknown as JsonValue)) {
+    return { ...planFields(row), compiledPlan: parsed.data };
+  }
+  return { ...planFields(row), compiledPlan: null, planDerivable: false, planStatus: 'failed', planFailureReason: 'Stored executable plan does not satisfy its durable contract' };
+}
+
 function evidenceFields(row: DraftEvidenceFields): DraftEvidenceFields {
   return {
     evidenceSchemaVersion: row.evidenceSchemaVersion,
@@ -217,16 +280,6 @@ function evidenceFields(row: DraftEvidenceFields): DraftEvidenceFields {
  * the surface says "No active version" in words. A later story that wants "the newest
  * version whatever its state" wants a differently-named field, not this one.
  */
-function activeVersion(versions: readonly ProcedureVersionView[]): {
-  state: ProcedureVersionState | null;
-  versionNumber: number | null;
-} {
-  const active = versions.find((version) => version.state === 'ACTIVE');
-  return active === undefined
-    ? { state: null, versionNumber: null }
-    : { state: active.state, versionNumber: active.versionNumber };
-}
-
 /** Reads Procedures and their versions for the surfaces. Outside any transaction. */
 export class DrizzleProcedureRepository implements ProcedureRepository {
   constructor(
@@ -241,26 +294,13 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
       .orderBy(desc(procedure.updatedAt), asc(procedure.procedureId))
       .limit(this.limit);
 
-    const versionRows = await this.db
-      .select(VERSION_SELECTION)
-      .from(procedureVersion)
-      .orderBy(asc(procedureVersion.procedureId), asc(procedureVersion.versionNumber));
-
-    const byProcedure = new Map<string, ProcedureVersionView[]>();
-    for (const row of versionRows) {
-      const view = toVersionView(row);
-      if (view === null) continue;
-      const list = byProcedure.get(row.procedureId) ?? [];
-      list.push(view);
-      byProcedure.set(row.procedureId, list);
-    }
+    const active = await this.activeSummaries(procedureRows.map((row) => row.procedureId));
 
     const summaries: ProcedureSummary[] = [];
     for (const row of procedureRows) {
       const templateId = toTemplateId(row.templateId);
       if (templateId === null) continue;
-      const versions = byProcedure.get(row.procedureId) ?? [];
-      const display = activeVersion(versions);
+      const display = active.get(row.procedureId) ?? { state: null, versionNumber: null };
       summaries.push({
         procedureId: row.procedureId,
         controlName: row.controlName,
@@ -288,16 +328,7 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
     const templateId = toTemplateId(row.templateId);
     if (templateId === null) return null;
 
-    const versionRows = await this.db
-      .select(VERSION_SELECTION)
-      .from(procedureVersion)
-      .where(eq(procedureVersion.procedureId, procedureId))
-      .orderBy(asc(procedureVersion.versionNumber))
-      .limit(VERSION_LIST_LIMIT);
-    const versions = versionRows
-      .map(toVersionView)
-      .filter((version): version is ProcedureVersionView => version !== null);
-    const display = activeVersion(versions);
+    const display = (await this.activeSummaries([procedureId])).get(procedureId) ?? { state: null, versionNumber: null };
 
     return {
       procedureId: row.procedureId,
@@ -308,6 +339,24 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
       activeVersionState: display.state,
       activeVersionNumber: display.versionNumber,
     };
+  }
+
+  /** Only displayed metadata is selected; full plans/history never enter summary reads. */
+  private async activeSummaries(procedureIds: readonly string[]): Promise<Map<string, { state: 'ACTIVE'; versionNumber: number }>> {
+    if (procedureIds.length === 0) return new Map();
+    const rows = await this.db.selectDistinctOn([procedureVersion.procedureId], {
+      procedureId: procedureVersion.procedureId, state: procedureVersion.state, versionNumber: procedureVersion.versionNumber,
+    }).from(procedureVersion)
+      .where(and(inArray(procedureVersion.procedureId, [...procedureIds]), eq(procedureVersion.state, 'ACTIVE')))
+      .orderBy(asc(procedureVersion.procedureId), desc(procedureVersion.versionNumber), desc(procedureVersion.versionId));
+    const selected = new Set(procedureIds);
+    const result = new Map<string, { state: 'ACTIVE'; versionNumber: number }>();
+    for (const row of rows) {
+      if (selected.has(row.procedureId) && row.state === 'ACTIVE' && Number.isSafeInteger(row.versionNumber) && row.versionNumber >= 1) {
+        result.set(row.procedureId, { state: 'ACTIVE', versionNumber: row.versionNumber });
+      }
+    }
+    return result;
   }
 
   async listVersions(procedureId: string): Promise<readonly ProcedureVersionView[]> {
@@ -359,6 +408,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
       ...populationFields(record),
       ...complianceFields(record),
       ...evidenceFields(record),
+      ...planFields(record),
       versionId: record.versionId,
       procedureId: record.procedureId,
       versionNumber: record.versionNumber,
@@ -407,6 +457,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
         ...populationFields(record),
         ...complianceFields(record),
         ...evidenceFields(record),
+      ...planFields(record),
         state: record.state,
         controlName: record.controlName,
         sections: [...record.sections],

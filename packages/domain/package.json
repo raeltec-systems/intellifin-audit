@@ -19,6 +19,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "zod": "4.5.4"
+  },
   "devDependencies": {
     "typescript": "7.0.2",
     "vitest": "4.1.11"

@@ -1,3 +1,4 @@
+import { queuePlanDerivation } from './plan-state.js';
 import { bindingDigestEnvelope, isExplicitPeriod, isScopeStatement, isInclusionRule, populationBlockersFor, validatePopulationBinding, POPULATION_DRAFT_MESSAGES, type ProcedureSourceSnapshot, type JsonValue } from '@intellifin/domain';
 import { authorizeCommand } from '../identity/authorize.js';
 import type { SessionSnapshot } from '../identity/ports.js';
@@ -31,7 +32,7 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
     if (typeof edit.zeroRecordPass !== 'boolean' || typeof edit.allowVersionedDuplicates !== 'boolean') return { ok: false, reason: POPULATION_DRAFT_MESSAGES.FLAGS };
   } else return { ok: false, reason: POPULATION_DRAFT_MESSAGES.RULE };
   try {
-    return await dependencies.unitOfWork.execute(async ({ procedures, populationSources, auditEvents }) => {
+    return await dependencies.unitOfWork.execute(async ({ derivationJobs, procedures, populationSources, auditEvents }) => {
       const before = await procedures.findVersionForUpdate(input.versionId);
       if (before === null || before.procedureId !== input.procedureId) throw new Refused(PROCEDURE_REFUSALS.UNKNOWN_VERSION);
       if (before.state !== 'DRAFT') throw new Refused(PROCEDURE_REFUSALS.NOT_A_DRAFT);
@@ -55,8 +56,10 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
         if (!isInclusionRule(edit.inclusionRule) || typeof edit.zeroRecordPass !== 'boolean' || typeof edit.allowVersionedDuplicates !== 'boolean') throw new Refused(POPULATION_DRAFT_MESSAGES.RULE);
         after = { ...before, sourceSnapshot: source, inclusionRule: edit.inclusionRule, zeroRecordPass: edit.zeroRecordPass, allowVersionedDuplicates: edit.allowVersionedDuplicates, populationBlockers: populationBlockersFor(source) };
       }
-      const rowVersion = procedureVersionRowVersion(after);
+      let rowVersion = procedureVersionRowVersion(after);
       if (rowVersion === input.expectedRowVersion) return { ok: true, rowVersion, changed: false };
+      after = await queuePlanDerivation(after, derivationJobs);
+      rowVersion = procedureVersionRowVersion(after);
       await procedures.updateVersion(after);
       const values = (row: ProcedureVersionRecord): JsonValue => edit.section === 'period-scope'
         ? { period: row.period as unknown as JsonValue, scope: row.scope }

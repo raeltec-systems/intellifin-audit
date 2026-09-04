@@ -1,3 +1,5 @@
+import { initialPlanDerivation, queuePlanDerivation } from './plan-state.js';
+import type { ModelIdentity } from './plan-ports.js';
 import {
   CONTROL_NAME_LIMIT,
   canonicalJson,
@@ -89,6 +91,7 @@ export interface ProcedureDependencies {
   readonly roles: RoleRepository;
   readonly unitOfWork: AuditUnitOfWork<ProceduresUnitOfWorkContext>;
   readonly ids: UuidV7Generator;
+  readonly derivationModel?: ModelIdentity | null;
 }
 
 export interface CreateProcedureInput {
@@ -237,6 +240,9 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       evidenceSchemaVersion: record.evidenceSchemaVersion,
       evidenceRequirements: record.evidenceRequirements,
       schedule: record.schedule,
+      planCompilerVersion: record.planCompilerVersion, derivationModel: record.derivationModel,
+      compiledPlan: record.compiledPlan, planInputDigest: record.planInputDigest, planStatus: record.planStatus,
+      planFailureReason: record.planFailureReason, planDerivable: record.planDerivable, planAttempts: record.planAttempts,
     } as unknown as JsonValue),
   );
 }
@@ -276,6 +282,7 @@ export async function createProcedure(
     ...initialDraftTargets(),
     ...initialDraftCompliance(validated.templateId),
     ...initialDraftEvidence(validated.templateId),
+    ...initialPlanDerivation(dependencies.derivationModel ?? null),
     versionId,
     procedureId,
     versionNumber: 1,
@@ -286,9 +293,9 @@ export async function createProcedure(
   };
 
   return dependencies.unitOfWork.execute(
-    async ({ auditEvents, procedures }): Promise<CreateProcedureResult> => {
+    async ({ auditEvents, procedures, derivationJobs }): Promise<CreateProcedureResult> => {
       await procedures.insertProcedure(procedure);
-      await procedures.insertVersion(version);
+      await procedures.insertVersion(await queuePlanDerivation(version, derivationJobs));
       await auditEvents.append({
         actor: { type: 'human', id: session.userId },
         eventType: PROCEDURE_CREATED_EVENT,
@@ -336,7 +343,7 @@ export async function renameProcedureDraft(
 
   try {
     return await dependencies.unitOfWork.execute(
-      async ({ auditEvents, procedures }): Promise<RenameProcedureDraftResult> => {
+      async ({ auditEvents, procedures, derivationJobs }): Promise<RenameProcedureDraftResult> => {
         // Read inside the transaction, under a row lock, so the token the guard checks
         // is the one the write actually replaces.
         const before = await procedures.findVersionForUpdate(input.versionId);
@@ -351,7 +358,7 @@ export async function renameProcedureDraft(
 
         // The Control name is the one editable field; the sections and the state are
         // refused if a caller tried to change them, rather than silently dropped.
-        const after: ProcedureVersionRecord = { ...before, controlName };
+        let after: ProcedureVersionRecord = { ...before, controlName };
         if (procedureVersionRowVersion(after) === input.expectedRowVersion) {
           // An idle save. The honest record of a change that did not happen is silence.
           return {
@@ -363,6 +370,7 @@ export async function renameProcedureDraft(
           };
         }
 
+        after = await queuePlanDerivation(after, derivationJobs);
         await procedures.updateVersion(after);
         await auditEvents.append({
           actor: { type: 'human', id: session.userId },

@@ -70,6 +70,7 @@ async function dependencies(): Promise<ProcedureDependencies> {
     roles: new DrizzleRoleRepository(runtime.db),
     unitOfWork: new PostgresProceduresUnitOfWork(runtime.db),
     ids: new CryptoUuidV7Generator(),
+    derivationModel: runtime.derivationModel,
   };
 }
 

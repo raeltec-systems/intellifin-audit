@@ -33,3 +33,7 @@ export * from './registrations/ports.js';
 export * from './registrations/register-target-system.js';
 export * from './sources/ports.js';
 export * from './sources/register-population-source.js';
+export * from './procedures/plan-ports.js';
+export * from './procedures/plan-state.js';
+export * from './procedures/derive-plan.js';
+export * from './procedures/retry-plan-derivation.js';

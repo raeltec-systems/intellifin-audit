@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import {
   defaultTargetsFor,
@@ -20,6 +20,9 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { Digest } from '../design/Digest';
 import { UnavailableActions } from '../design/UnavailableActions';
 import { TARGET_SELECTION_MISSING, targetCoverageMissing, kindLabel } from './labels';
+import { useSection } from './use-section';
+import { SectionConflict } from './SectionConflict';
+import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
 /**
  * The Target System selection editor (FR-7, FR-8, scoped to this story).
@@ -77,17 +80,6 @@ function fromSnapshot(draft: ProcedureVersionView): readonly SelectedTarget[] {
   }));
 }
 
-function sameSelection(left: readonly SelectedTarget[], right: readonly SelectedTarget[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((target, index) => {
-    const other = right[index];
-    return other !== undefined
-      && target.registrationId === other.registrationId
-      && target.displayName === other.displayName
-      && target.digest === other.digest;
-  });
-}
-
 export function TargetSelectionForm({
   draft,
   registrations,
@@ -95,29 +87,18 @@ export function TargetSelectionForm({
   onSave,
 }: TargetSelectionFormProps): React.JSX.Element {
   const id = useId();
-  const [token, setToken] = useState(rowVersion);
-  useEffect(() => setToken(rowVersion), [rowVersion]);
-  const initialSelection = fromSnapshot(draft);
-  const [selected, setSelected] = useState<readonly SelectedTarget[]>(() => initialSelection);
-  const selectedRef = useRef<readonly SelectedTarget[]>(initialSelection);
-  /** Keep edits made in this form while another Builder section causes an RSC refresh. */
-  const selectionDirtyRef = useRef(false);
-  useEffect(() => {
-    const serverSelection = fromSnapshot(draft);
-    // A matching server selection confirms our local save. Otherwise the server is
-    // refreshing another section (or a concurrent update), so a local unsaved choice wins
-    // visually until the guarded save either succeeds or is explicitly retried.
-    if (!selectionDirtyRef.current || sameSelection(selectedRef.current, serverSelection)) {
-      selectionDirtyRef.current = false;
-      selectedRef.current = serverSelection;
-      setSelected(serverSelection);
-    }
-  }, [draft]);
+  const section = useSection(fromSnapshot(draft), rowVersion);
+  const selected = section.value;
+  const selectedRef = { get current() { return section.current.current.value; } };
+  function setSelected(update: (current: readonly SelectedTarget[]) => readonly SelectedTarget[]): void {
+    section.edit(update(selectedRef.current));
+  }
   const [pick, setPick] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateTargetDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const saving = useRef(false);
 
   const selectedIds = new Set(selected.map((target) => target.registrationId));
@@ -161,8 +142,6 @@ export function TargetSelectionForm({
           expectedDigest: registration.digest,
         },
       ];
-      selectedRef.current = next;
-      selectionDirtyRef.current = true;
       return next;
     });
     setPick('');
@@ -172,15 +151,13 @@ export function TargetSelectionForm({
   function remove(registrationId: string): void {
     setSelected((current) => {
       const next = current.filter((entry) => entry.registrationId !== registrationId);
-      selectedRef.current = next;
-      selectionDirtyRef.current = true;
       return next;
     });
     setResult(null);
   }
 
   async function save(): Promise<void> {
-    if (saving.current) return;
+    if (saving.current || unknownOutcome || section.current.current.conflict) return;
     saving.current = true;
     setConfirming(false);
     setBusy(true);
@@ -192,12 +169,14 @@ export function TargetSelectionForm({
           : { mode: 'bind', registrationId: target.registrationId, expectedDigest: target.expectedDigest },
       ),
     };
+    section.begin(selectedRef.current.map((target) => ({ ...target, mode: 'retain' as const })));
     try {
-      const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: token, edit });
+      const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
       setResult(outcome);
-      if (outcome.ok) setToken(outcome.rowVersion);
+      section.finish(outcome.ok ? outcome.rowVersion : undefined);
     } catch {
-      setResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
+      section.finish();
+      setUnknownOutcome(true); setResult(null);
     } finally {
       setAnnouncement((count) => count + 1);
       saving.current = false;
@@ -207,6 +186,8 @@ export function TargetSelectionForm({
 
   return (
     <div className="ls-stack">
+      <SectionConflict conflict={section.conflict} name="Target Systems" reset={() => section.reset()} />
+      <UnknownSaveOutcome visible={unknownOutcome} />
       {result === null ? null : (
         <Banner
           key={announcement}
@@ -298,7 +279,7 @@ export function TargetSelectionForm({
         className="ls-admin__form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (saving.current) return;
+          if (saving.current || unknownOutcome || section.current.current.conflict) return;
           if (selected.length === 0 && draft.targets.length === 0) return;
           setResult(null);
           setConfirming(true);
@@ -334,8 +315,8 @@ export function TargetSelectionForm({
             variant="primary"
             size="md"
             busy={busy}
-            disabledReason={selected.length === 0 && draft.targets.length === 0 ? TARGET_SELECTION_MISSING : undefined}
-            disabledReasonId={selected.length === 0 && draft.targets.length === 0 ? `${id}-unavailable-save` : undefined}
+            disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : selected.length === 0 && draft.targets.length === 0 ? TARGET_SELECTION_MISSING : undefined}
+            disabledReasonId={!unknownOutcome && selected.length === 0 && draft.targets.length === 0 ? `${id}-unavailable-save` : undefined}
           >
             {busy ? 'Saving…' : 'Save Target Systems'}
           </Button>

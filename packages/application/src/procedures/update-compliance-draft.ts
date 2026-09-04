@@ -1,3 +1,4 @@
+import { queuePlanDerivation } from './plan-state.js';
 import {
   canonicalJson,
   compileComplianceDraft,
@@ -71,7 +72,7 @@ export async function updateComplianceDraft(
   if (!decision.allowed) return { ok: false, reason: decision.reason };
 
   try {
-    return await dependencies.unitOfWork.execute(async ({ procedures, auditEvents }) => {
+    return await dependencies.unitOfWork.execute(async ({ derivationJobs, procedures, auditEvents }) => {
       const before = await procedures.findVersionForUpdate(input.versionId);
       if (before === null || before.procedureId !== input.procedureId) {
         throw new Refused(PROCEDURE_REFUSALS.UNKNOWN_VERSION);
@@ -83,10 +84,12 @@ export async function updateComplianceDraft(
 
       const compiled = compileComplianceDraft(before.templateId, input.edit, before.complianceCompilerVersion);
       if (!compiled.ok) throw new Refused(compiled.reason);
-      const after = { ...before, ...compiled.value };
-      const rowVersion = procedureVersionRowVersion(after);
+      let after = { ...before, ...compiled.value };
+      let rowVersion = procedureVersionRowVersion(after);
       if (rowVersion === input.expectedRowVersion) return { ok: true, rowVersion, changed: false };
 
+      after = await queuePlanDerivation(after, derivationJobs);
+      rowVersion = procedureVersionRowVersion(after);
       await procedures.updateVersion(after);
       await auditEvents.append({
         actor: { type: 'human', id: input.session.userId },

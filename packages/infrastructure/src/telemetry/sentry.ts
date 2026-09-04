@@ -15,6 +15,7 @@ export const TELEMETRY_MESSAGES = [
   'Heartbeat upsert failed',
   'Heartbeat loop started',
   'Fatal worker error',
+  'Plan derivation queue failed',
   'Captured failure',
   'Sign-in recorded',
   'Sign-in refused',

@@ -7,6 +7,30 @@ const edited = { frequency: 'monthly', startTime: '09:00' };
 const state = (value = original): SectionState<typeof original> => ({ value, baseline: original, token: 'original-token', conflict: false });
 
 describe('Builder section refreshes', () => {
+  it('preserves incomplete non-storable input so field validation can explain it', () => {
+    const machine = createSectionMachine({ text: 'saved' }, 'a');
+    machine.edit({ text: '\ud800' });
+    expect(() => machine.observe({ text: 'saved' }, 'b')).not.toThrow();
+    expect(machine.state.value.text).toBe('\ud800');
+    expect(machine.state.conflict).toBe(false);
+  });
+  it('accepts reordered source-contract object keys without losing dirty authoring or acknowledgement', () => {
+    const snapshot = { source: { digest: 'digest', contract: { location: 'source', declared_schema: ['id', 'name'] } }, scope: 'saved' };
+    const reordered = { scope: 'saved', source: { contract: { declared_schema: ['id', 'name'], location: 'source' }, digest: 'digest' } };
+    const machine = createSectionMachine(snapshot, 'a');
+    machine.edit({ ...snapshot, scope: 'local' });
+    machine.observe(reordered, 'b');
+    expect(machine.state.conflict).toBe(false);
+    expect(machine.state.token).toBe('b');
+    expect(machine.state.value.scope).toBe('local');
+    machine.begin({ ...snapshot, scope: 'local' });
+    machine.observe({ ...reordered, scope: 'local' }, 'c');
+    expect(machine.finish('c')).toBe(true);
+    expect(machine.state.conflict).toBe(false);
+    machine.edit({ ...snapshot, scope: 'later local' });
+    machine.observe({ ...reordered, source: { ...reordered.source, contract: { ...reordered.source.contract, declared_schema: ['name', 'id'] } } }, 'd');
+    expect(machine.state.conflict).toBe(true);
+  });
   it('refreshes pristine fields together with their token', () => {
     expect(reconcileSection(state(), remote, 'remote-token')).toEqual({ value: remote, baseline: remote, token: 'remote-token', conflict: false });
   });

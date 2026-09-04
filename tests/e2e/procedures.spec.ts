@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { BUILDER_DESKTOP_ONLY_SENTENCE, BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
 import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
-import { DENIAL_REASONS, COMPLIANCE_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
+import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -83,6 +83,101 @@ test.describe('as an Auditor', () => {
     await expect(link).toHaveAttribute('href', '/procedures/new');
     // ONLY that action.
     await expect(empty.getByRole('link')).toHaveCount(1);
+  });
+
+  test('a pending plan refresh preserves dirty Period edits, blocks overwrites and recovers a lost response', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-4');
+    await page.getByLabel('Control name').fill(`E2E period conflict ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    await expect(page.getByRole('heading', { level: 2, name: 'Executable plan preview' })).toBeVisible();
+    await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');
+    await page.getByLabel('Period end', { exact: true }).fill('2026-08-31');
+    await page.getByLabel('Scope statement').fill('Local unsaved scope');
+    const other = await page.context().newPage();
+    try {
+      await other.goto(page.url());
+      // A full-page load can show server markup before React hydrates. This visible
+      // blur validation proves the handler is active before entering authoring values.
+      await expect(async () => {
+        await other.getByLabel('Scope statement').focus();
+        await other.getByLabel('Scope statement').blur();
+        await expect(other.getByText(POPULATION_DRAFT_MESSAGES.PERIOD, { exact: true })).toBeVisible();
+      }).toPass();
+      await other.getByLabel('Period start', { exact: true }).fill('2026-07-01');
+      await other.getByLabel('Period end', { exact: true }).fill('2026-07-31');
+      await other.getByLabel('Scope statement').fill('Saved in another session');
+      await expect(other.getByLabel('Period start', { exact: true })).toHaveValue('2026-07-01');
+      await expect(other.getByLabel('Period end', { exact: true })).toHaveValue('2026-07-31');
+      await expect(other.getByLabel('Scope statement')).toHaveValue('Saved in another session');
+      await other.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
+      await other.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
+      await expect(other.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
+      await expect(page.getByText('Period and scope changed in another session. Review the saved values before replacing them.')).toBeVisible();
+      await expect(page.getByLabel('Scope statement')).toHaveValue('Local unsaved scope');
+      await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Use saved Period and scope' }).click();
+      await expect(page.getByLabel('Scope statement')).toHaveValue('Saved in another session');
+      await expect(page.getByLabel('Period start', { exact: true })).toHaveValue('2026-07-01');
+      await scan(page);
+      // Commit, then lose the acknowledgement: inspect persisted state before retrying.
+      await page.getByLabel('Scope statement').fill('Committed despite lost response');
+      const builderUrl = page.url();
+      await page.route(builderUrl, async (route) => {
+        if (route.request().method() !== 'POST') return route.continue();
+        await route.fetch();
+        await route.abort('failed');
+      });
+      await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
+      await expect(page.getByRole('paragraph').filter({ hasText: 'The save response was lost.' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Save Period and scope', exact: true })).toHaveAttribute('aria-disabled', 'true');
+      await page.unroute(builderUrl);
+      await page.getByRole('button', { name: 'Reload saved version' }).click();
+      await expect(page.getByLabel('Scope statement')).toHaveValue('Committed despite lost response');
+    } finally { await other.close(); }
+  });
+
+  test('blocks Compliance Rule retry after a committed save loses its response', async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E compliance lost response ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    const conditionText = page.getByLabel('Condition text C1', { exact: true });
+    const savedText = 'Confirm that each retained access right has a documented business reason.';
+    await expect(async () => {
+      await conditionText.fill(savedText);
+      await conditionText.blur();
+      await expect(page.locator('[data-condition-id="C1"]').getByText('Agent-Judged (pending)', { exact: true })).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 20000 });
+    const builderUrl = page.url();
+    let posts = 0;
+    await page.route(builderUrl, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      posts += 1;
+      await route.fetch();
+      await route.abort('failed');
+    });
+    try {
+      const save = page.getByRole('button', { name: 'Save Compliance Rule', exact: true });
+      await save.click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
+      await expect(page.getByRole('paragraph').filter({ hasText: 'The save response was lost.' })).toBeVisible();
+      await expect(save).toHaveAttribute('aria-disabled', 'true');
+      await save.press('Enter');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      expect(posts).toBe(1);
+      await page.unroute(builderUrl);
+      await page.getByRole('button', { name: 'Reload saved version' }).click();
+      await expect(conditionText).toHaveValue(savedText);
+      await expect(save).not.toHaveAttribute('aria-disabled', 'true');
+      await scan(page);
+    } finally { if (!page.isClosed()) await page.unroute(builderUrl); }
   });
 
   for (const [index, template] of [

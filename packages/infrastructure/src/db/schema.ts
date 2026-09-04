@@ -1,3 +1,4 @@
+import type { PlanDerivationFields } from '@intellifin/application';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -630,6 +631,14 @@ export const procedureVersion = pgTable(
     evidenceSchemaVersion: integer('evidence_schema_version').notNull().default(1),
     evidenceRequirements: jsonb('evidence_requirements').$type<readonly EvidenceRequirement[]>().notNull().default([]),
     schedule: jsonb('schedule').$type<DraftSchedule>(),
+    planCompilerVersion: text('plan_compiler_version').notNull().default('1'),
+    derivationModel: jsonb('derivation_model').$type<PlanDerivationFields['derivationModel']>(),
+    compiledPlan: jsonb('compiled_plan').$type<PlanDerivationFields['compiledPlan']>(),
+    planInputDigest: text('plan_input_digest'),
+    planStatus: text('plan_status').$type<PlanDerivationFields['planStatus']>().notNull().default('pending'),
+    planFailureReason: text('plan_failure_reason'),
+    planDerivable: boolean('plan_derivable').notNull().default(false),
+    planAttempts: jsonb('plan_attempts').$type<PlanDerivationFields['planAttempts']>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -667,6 +676,14 @@ export const procedureVersion = pgTable(
     check('procedure_version_compliance_compiler', sql`${table.complianceCompilerVersion} = '1'`),
     check('procedure_version_compliance_shape', sql`coalesce(jsonb_typeof(${table.complianceConditions}) = 'array' AND jsonb_array_length(${table.complianceConditions}) BETWEEN 1 AND 32, false)`),
     check('procedure_version_confidence_range', sql`CASE WHEN length(${table.agentJudgedThreshold}) <= 100 AND ${table.agentJudgedThreshold} ~ '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' THEN ${table.agentJudgedThreshold}::numeric BETWEEN 0 AND 1 ELSE false END`),
+    check('procedure_version_plan_compiler', sql`length(${table.planCompilerVersion}) BETWEEN 1 AND 64`),
+    check('procedure_version_plan_model', sql`${table.derivationModel} IS NULL OR coalesce(jsonb_typeof(${table.derivationModel}) = 'object' AND ${table.derivationModel} - 'provider' - 'modelId' - 'promptVersion' = '{}'::jsonb AND jsonb_typeof(${table.derivationModel}->'provider') = 'string' AND jsonb_typeof(${table.derivationModel}->'modelId') = 'string' AND jsonb_typeof(${table.derivationModel}->'promptVersion') = 'string' AND length(${table.derivationModel}->>'provider') BETWEEN 1 AND 100 AND length(${table.derivationModel}->>'modelId') BETWEEN 1 AND 200 AND length(${table.derivationModel}->>'promptVersion') BETWEEN 1 AND 100, false)`),
+    check('procedure_version_plan_shape', sql`${table.compiledPlan} IS NULL OR coalesce(jsonb_typeof(${table.compiledPlan}) = 'object' AND ${table.compiledPlan}->'schemaVersion' = '1'::jsonb, false)`),
+    check('procedure_version_plan_digest', sql`${table.planInputDigest} IS NULL OR ${table.planInputDigest} ~ '^[0-9a-f]{64}$'`),
+    check('procedure_version_plan_status', sql`${table.planStatus} IN ('pending','succeeded','failed')`),
+    check('procedure_version_plan_failure', sql`${table.planFailureReason} IS NULL OR length(${table.planFailureReason}) BETWEEN 1 AND 1000`),
+    check('procedure_version_plan_attempts', sql`coalesce(jsonb_typeof(${table.planAttempts}) = 'array', false)`),
+    check('procedure_version_plan_consistency', sql`coalesce((${table.planDerivable} = (${table.planStatus} = 'succeeded')) AND (${table.planStatus} <> 'succeeded' OR (${table.compiledPlan} IS NOT NULL AND ${table.planInputDigest} IS NOT NULL AND ${table.planFailureReason} IS NULL)) AND (${table.planStatus} <> 'failed' OR (${table.compiledPlan} IS NULL AND ${table.planFailureReason} IS NOT NULL)), false)`),
     check('procedure_version_evidence_schema', sql`${table.evidenceSchemaVersion} = 1`),
     // Shallow shape guard (generation 11): an array, bounded. The deep validation — the
     // grounding rule, the platform-captured invariant — is the domain's

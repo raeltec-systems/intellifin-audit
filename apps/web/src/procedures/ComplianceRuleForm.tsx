@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import {
   COMPLIANCE_LIMITS,
   COMPLIANCE_MESSAGES,
@@ -19,6 +19,9 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { StatusBadge } from '../design/StatusBadge';
+import { useSection } from './use-section';
+import { SectionConflict } from './SectionConflict';
+import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
 interface ComplianceRuleFormProps {
   readonly draft: ProcedureVersionView;
@@ -40,9 +43,9 @@ function comparisonFor(draft: ProcedureVersionView, condition: ComplianceConditi
 
 export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRuleFormProps): React.JSX.Element {
   const id = useId();
-  const [input, setInput] = useState<ComplianceDraftInput>(() => complianceInputFromFields(draft));
-  const inputRef = useRef(input);
-  const dirtyRef = useRef(false);
+  const section = useSection(complianceInputFromFields(draft), rowVersion);
+  const input = section.value;
+  const inputRef = { get current() { return section.current.current.value; } };
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
   const [thresholdTouched, setThresholdTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -50,24 +53,12 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   const [result, setResult] = useState<UpdateComplianceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const saving = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // An unrelated section save refreshes this component. Adopt server values only when
-  // clean or caught up; edits made while this save is in flight must also survive.
-  useEffect(() => {
-    const incoming = complianceInputFromFields(draft);
-    if (!dirtyRef.current || JSON.stringify(inputRef.current) === JSON.stringify(incoming)) {
-      inputRef.current = incoming;
-      dirtyRef.current = false;
-      setInput(incoming);
-    }
-  }, [draft]);
-
   function change(next: ComplianceDraftInput): void {
-    dirtyRef.current = true;
-    inputRef.current = next;
-    setInput(next);
+    section.edit(next);
     setResult(null);
   }
 
@@ -86,16 +77,19 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   const limitReached = input.conditions.length >= COMPLIANCE_LIMITS.conditions;
 
   async function save(): Promise<void> {
-    if (saving.current || confirming === null) return;
+    if (saving.current || unknownOutcome || confirming === null || section.current.current.conflict) return;
     saving.current = true;
     setBusy(true);
     const edit = confirming;
     setConfirming(null);
+    section.begin(edit);
     try {
-      const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: rowVersion, edit });
+      const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
+      section.finish(outcome.ok ? outcome.rowVersion : undefined);
       setResult(outcome);
     } catch {
-      setResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
+      section.finish();
+      setUnknownOutcome(true); setResult(null);
     } finally {
       setAnnouncement((count) => count + 1);
       saving.current = false;
@@ -104,6 +98,8 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   }
 
   return <div className="ls-stack">
+    <SectionConflict conflict={section.conflict} name="Compliance Rule" reset={() => section.reset()} />
+      <UnknownSaveOutcome visible={unknownOutcome} />
     {templateText === null ? null : <details>
       <summary>Template default Compliance Rule (read-only)</summary>
       <p className="ls-whitespace">{templateText}</p>
@@ -119,7 +115,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
       : result.reason} />}
     <form method="post" className="ls-admin__form ls-stack" ref={formRef} onSubmit={(event) => {
       event.preventDefault();
-      if (saving.current) return;
+      if (saving.current || unknownOutcome || section.current.current.conflict) return;
       setResult(null);
       setSubmitted(true);
       setThresholdTouched(true);
@@ -201,7 +197,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
         <div id={`${id}-confidence-error`} aria-live="polite">{thresholdTouched && confidenceError !== null ? <Banner tone="warning" title={confidenceError} /> : null}</div>
       </div>
       {submitted && !validation.ok ? <div tabIndex={-1} data-compliance-error><Banner tone="warning" title={`The Compliance Rule was not saved. ${validation.reason}`} /></div> : null}
-      <Button type="submit" variant="primary" busy={busy}>{busy ? 'Saving…' : 'Save Compliance Rule'}</Button>
+      <Button type="submit" disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary" busy={busy}>{busy ? 'Saving…' : 'Save Compliance Rule'}</Button>
     </form>
     <ConfirmDialog open={confirming !== null} weight="routine" title="Save the Compliance Rule?"
       consequence={`This sets ${confirming?.conditions.length ?? 0} conditions and one Agent-Judged confidence threshold for Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`}

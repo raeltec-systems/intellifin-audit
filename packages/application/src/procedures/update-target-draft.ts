@@ -1,3 +1,4 @@
+import { queuePlanDerivation } from './plan-state.js';
 import {
   isAgentDrivenKind,
   hasAgentDrivenTarget,
@@ -157,7 +158,7 @@ export async function updateTargetDraft(
   const edit = validation.edit;
 
   try {
-    return await dependencies.unitOfWork.execute(async ({ procedures, targetRegistrations, auditEvents }) => {
+    return await dependencies.unitOfWork.execute(async ({ derivationJobs, procedures, targetRegistrations, auditEvents }) => {
       const before = await procedures.findVersionForUpdate(input.versionId);
       if (before === null || before.procedureId !== input.procedureId) {
         throw new Refused(PROCEDURE_REFUSALS.UNKNOWN_VERSION);
@@ -195,9 +196,11 @@ export async function updateTargetDraft(
       }
 
       if (!isDraftTargetFields(after)) throw new Refused(TARGET_DRAFT_MESSAGES.INVALID_SNAPSHOT);
-      const rowVersion = procedureVersionRowVersion(after);
+      let rowVersion = procedureVersionRowVersion(after);
       if (rowVersion === input.expectedRowVersion) return { ok: true, rowVersion, changed: false };
 
+      after = await queuePlanDerivation(after, derivationJobs);
+      rowVersion = procedureVersionRowVersion(after);
       await procedures.updateVersion(after);
       const project = (row: ProcedureVersionRecord): JsonValue =>
         (edit.section === 'target-systems'

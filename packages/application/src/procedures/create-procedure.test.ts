@@ -1,3 +1,5 @@
+import { initialPlanDerivation, planAuthoringDigest } from './plan-state.js';
+import type { PlanDerivationJob } from './plan-ports.js';
 import { describe, expect, it } from 'vitest';
 
 import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, initialDraftTargets, initialDraftCompliance, initialDraftEvidence, evidenceBlockersFor, complianceInputFromFields, COMPLIANCE_MESSAGES, EVIDENCE_DRAFT_MESSAGES, EVIDENCE_DRAFT_LIMITS, bindingDigest, registrationDigest, POPULATION_DRAFT_MESSAGES, TARGET_DRAFT_MESSAGES, type AuditEventDraft, type ComplianceDraftInput } from '@intellifin/domain';
@@ -47,6 +49,7 @@ interface Harness {
   readonly storedVersions: Map<string, ProcedureVersionRecord>;
   /** Committed audit events, in order. */
   readonly events: AuditEventDraft[];
+  readonly jobs: PlanDerivationJob[];
   /** Set to make the append throw, so a failed append can be observed. */
   failAppend: boolean;
   /** How many transactions committed, and how many rolled back. */
@@ -59,6 +62,7 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
   const storedProcedures = new Map<string, ProcedureRecord>();
   const storedVersions = new Map<string, ProcedureVersionRecord>();
   const events: AuditEventDraft[] = [];
+  const jobs: PlanDerivationJob[] = [];
   const state = { failAppend: false };
   const transactions = { committed: 0, rolledBack: 0 };
 
@@ -73,7 +77,9 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
       const draftProcedures = new Map(storedProcedures);
       const draftVersions = new Map(storedVersions);
       const draftEvents: AuditEventDraft[] = [];
+      const draftJobs: PlanDerivationJob[] = [];
       const context: ProceduresUnitOfWorkContext = {
+        derivationJobs: { enqueue: async (job) => { draftJobs.push(job); } },
         populationSources: { findBindingForShare: async (id) => bindings.get(id) ?? null },
         targetRegistrations: {
           // Sorted, deduplicated, present-only — the same contract the Drizzle reader keeps.
@@ -131,12 +137,16 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
         transactions.rolledBack += 1;
         throw error;
       }
+      // Every changed authored version has one transactional job; idle/refused saves have none.
+      expect(draftJobs).toHaveLength(draftEvents.filter((event) => event.eventType === 'lifecycle.procedure-created' || event.eventType === PROCEDURE_DRAFT_CHANGED_EVENT).length);
+      for (const job of draftJobs) expect(job.inputDigest).toBe(planAuthoringDigest(draftVersions.get(job.versionId)!));
       transactions.committed += 1;
       storedProcedures.clear();
       for (const [id, record] of draftProcedures) storedProcedures.set(id, record);
       storedVersions.clear();
       for (const [id, record] of draftVersions) storedVersions.set(id, record);
       events.push(...draftEvents);
+      jobs.push(...draftJobs);
       return result;
     },
   };
@@ -153,6 +163,7 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
     storedProcedures,
     storedVersions,
     events,
+    jobs,
     transactions,
     get failAppend() {
       return state.failAppend;
@@ -415,10 +426,7 @@ describe('renameProcedureDraft', () => {
       changed: true,
       // The token comes back over the row as the command left it, so the surface's
       // next save guards against the row as it now is.
-      rowVersion: procedureVersionRowVersion({
-        ...version,
-        controlName: 'Renamed by the auditor',
-      }),
+      rowVersion: procedureVersionRowVersion(test.storedVersions.get(versionId)!),
     });
     expect(test.events).toHaveLength(1);
     expect(test.events[0]?.eventType).toBe(PROCEDURE_DRAFT_CHANGED_EVENT);
@@ -633,6 +641,7 @@ describe('the row version token', () => {
     ...initialDraftPopulation('P-1'),
     ...initialDraftTargets(),
     ...initialDraftEvidence('P-1'),
+    ...initialPlanDerivation(),
     versionId: '018f0000-0000-7000-8000-000000000001',
     procedureId: '018f0000-0000-7000-8000-000000000002',
     versionNumber: 1,

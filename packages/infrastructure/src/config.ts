@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_MODEL_OUTPUT_TOKENS, MAX_CONFIGURED_MODEL_OUTPUT_TOKENS, SUPPORTED_MODEL_PROMPT_VERSION } from './procedures/model-policy.js';
 
 /**
  * AD-11: runtime configuration is read only here, in infrastructure, and only on
@@ -141,8 +142,19 @@ export const configSchema = z
      * of the build (see `db/compat.ts`), not of the environment.
      */
     NODE_ENV: z.string().optional(),
+    MODEL_PROVIDER: z.preprocess((value) => value === '' ? undefined : value, z.enum(['anthropic', 'openai']).optional()),
+    MODEL_ID: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).max(200).optional()),
+    MODEL_PROMPT_VERSION: z.preprocess((value) => value === '' ? undefined : value, z.literal(SUPPORTED_MODEL_PROMPT_VERSION).default(SUPPORTED_MODEL_PROMPT_VERSION)),
+    MODEL_MAX_OUTPUT_TOKENS: z.preprocess((value) => value === '' || value === undefined ? String(DEFAULT_MODEL_OUTPUT_TOKENS) : value, z.string().regex(/^[0-9]+$/).transform(Number).pipe(z.number().int().min(1024).max(MAX_CONFIGURED_MODEL_OUTPUT_TOKENS))),
+    MODEL_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
   })
   .superRefine((config, ctx) => {
+    if (config.MODEL_PROVIDER !== undefined) {
+      if (!config.MODEL_ID) ctx.addIssue({ code: 'custom', path: ['MODEL_ID'], message: 'is required when MODEL_PROVIDER is configured' });
+      if (config.SERVICE_NAME === 'worker' && !config.MODEL_API_KEY) ctx.addIssue({ code: 'custom', path: ['MODEL_API_KEY'], message: 'is required by the configured worker model' });
+    } else if (config.MODEL_ID !== undefined || config.MODEL_API_KEY !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['MODEL_PROVIDER'], message: 'is required when model settings are supplied' });
+    }
     // Better Auth marks the session cookie `Secure` only for an https base URL. Over
     // http in production the cookie travels in clear text and any network hop can
     // replay it, so a plain-http production origin is refused rather than warned about.
@@ -205,6 +217,12 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
     CREDENTIAL_CAPABILITIES: env['CREDENTIAL_CAPABILITIES'],
     NODE_ENV: env['NODE_ENV'],
+    MODEL_PROVIDER: env['MODEL_PROVIDER'],
+    MODEL_ID: env['MODEL_ID'],
+    MODEL_PROMPT_VERSION: env['MODEL_PROMPT_VERSION'],
+    MODEL_API_KEY: env['MODEL_API_KEY'],
+    MODEL_MAX_OUTPUT_TOKENS: env['MODEL_MAX_OUTPUT_TOKENS'],
+
   });
 
   if (!parsed.success) {

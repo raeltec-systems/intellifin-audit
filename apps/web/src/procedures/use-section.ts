@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 export interface SectionState<T> { value: T; baseline: T; token: string; conflict: boolean }
-const equal = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
+// PostgreSQL jsonb can reorder object keys; ordered authored arrays still retain meaning.
+// Unlike the durable JSON validator this also accepts incomplete text while it is edited.
+const sectionKey = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) =>
+  item !== null && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, (item as Record<string, unknown>)[key]])) : item) ?? 'undefined';
+const equal = (left: unknown, right: unknown): boolean => sectionKey(left) === sectionKey(right);
 
 /** A whole-row token may move safely only when this section's authoring baseline agrees. */
 export function reconcileSection<T>(state: SectionState<T>, server: T, token: string): SectionState<T> {
@@ -87,7 +92,7 @@ export function useSection<T>(server: T, rowVersion: string, normalizeBaseline?:
   const [state, render] = useState(section.state);
   const current = useRef(state);
   const publish = () => { current.current = section.state; render(section.state); };
-  const serverKey = JSON.stringify(server);
+  const serverKey = sectionKey(server);
   useEffect(() => {
     section.observe(server, rowVersion, normalizeBaseline);
     publish();

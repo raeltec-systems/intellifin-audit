@@ -1,3 +1,4 @@
+import { queuePlanDerivation } from './plan-state.js';
 import {
   EVIDENCE_DRAFT_MESSAGES,
   PERIOD_DERIVATION_RULES,
@@ -100,7 +101,7 @@ export async function updateEvidenceDraft(
   const edit = validation.edit;
 
   try {
-    return await dependencies.unitOfWork.execute(async ({ procedures, auditEvents }) => {
+    return await dependencies.unitOfWork.execute(async ({ derivationJobs, procedures, auditEvents }) => {
       const before = await procedures.findVersionForUpdate(input.versionId);
       if (before === null || before.procedureId !== input.procedureId) {
         throw new Refused(PROCEDURE_REFUSALS.UNKNOWN_VERSION);
@@ -132,9 +133,11 @@ export async function updateEvidenceDraft(
       }
 
       if (!isDraftEvidenceFields(after)) throw new Refused(EVIDENCE_DRAFT_MESSAGES.SHAPE);
-      const rowVersion = procedureVersionRowVersion(after);
+      let rowVersion = procedureVersionRowVersion(after);
       if (rowVersion === input.expectedRowVersion) return { ok: true, rowVersion, changed: false };
 
+      after = await queuePlanDerivation(after, derivationJobs);
+      rowVersion = procedureVersionRowVersion(after);
       await procedures.updateVersion(after);
       const project = (row: ProcedureVersionRecord): JsonValue =>
         (edit.section === 'evidence-requirements'

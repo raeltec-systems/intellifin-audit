@@ -6,6 +6,7 @@ import {
   PROCEDURE_AUTHOR_ACTION,
   PROCEDURE_LIMITS,
   renameProcedureDraft,
+  retryPlanDerivation,
   updatePopulationDraft,
   updateTargetDraft,
   updateComplianceDraft,
@@ -370,4 +371,18 @@ export async function updateComplianceDraftAction(fields: ComplianceDraftFields)
     } catch { /* Boot failures are already reported. */ }
     return { ok: false, reason: UNAVAILABLE };
   }
+}
+
+/** Explicit retry preserves all frozen authoring/compiler/model fields. */
+export async function retryPlanDerivationAction(fields: { readonly procedureId: string; readonly versionId: string; readonly expectedRowVersion: string }): Promise<{ readonly ok: true; readonly rowVersion: string } | { readonly ok: false; readonly reason: string }> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (typeof fields !== 'object' || fields === null || Object.keys(fields).length !== 3 || !isUuid(fields.procedureId) || !isUuid(fields.versionId) || typeof fields.expectedRowVersion !== 'string' || !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  const outcome = await retryPlanDerivation(await dependencies(), { ...fields, session: decision.session, correlationId });
+  if (outcome.ok) {
+    revalidatePath(`/procedures/${fields.procedureId}/builder`);
+    revalidatePath(`/procedures/${fields.procedureId}`);
+  }
+  return outcome;
 }
