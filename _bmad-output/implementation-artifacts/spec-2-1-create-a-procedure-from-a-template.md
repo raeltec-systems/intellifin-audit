@@ -2,11 +2,11 @@
 title: 'Story 2.1: Create a Procedure from a Template'
 type: 'feature'
 created: '2026-09-03'
-status: 'ready-for-dev'
+status: 'done'
 baseline_revision: 'f5fb9deb3bd751ffa48d0b8ba79da960cc34235a'
 baseline_commit: 'f5fb9deb3bd751ffa48d0b8ba79da960cc34235a'
-review_loop_iteration: 0
-followup_review_recommended: true
+review_loop_iteration: 1
+followup_review_recommended: false
 context:
   - '{project-root}/AGENTS.md'
   - '{project-root}/CLAUDE.md'
