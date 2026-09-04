@@ -2,9 +2,9 @@
 title: 'Specify Evidence Requirements and set the Schedule'
 type: 'feature'
 created: '2026-09-04'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
-baseline_commit: 'ed763b8'
+baseline_commit: '0c744fab107e0346a586c49fed461aaf737399a2'
 deferred: []
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
