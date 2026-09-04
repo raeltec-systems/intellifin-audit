@@ -7,10 +7,14 @@ import {
   PROCEDURE_LIMITS,
   renameProcedureDraft,
   updatePopulationDraft,
+  updateTargetDraft,
   type DraftPopulationEdit,
+  type DraftTargetEdit,
   type UpdatePopulationDraftResult,
+  type UpdateTargetDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
+import { TARGET_DRAFT_LIMITS } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -175,6 +179,62 @@ export async function updatePopulationDraftAction(fields: PopulationDraftFields)
   } catch (error) {
     try {
       (await getRuntime()).telemetry.captureError('Update Population Draft failed', error, { outcome: 'failure', correlationId });
+    } catch { /* Boot failures are already reported. */ }
+    return { ok: false, reason: UNAVAILABLE };
+  }
+}
+
+/** What the Builder's Target System and Audit Instruction editors post. */
+export interface TargetDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly edit: DraftTargetEdit;
+}
+
+/** The argument is untrusted whatever its type says; the shape is checked before the command. */
+function isTargetDraftFields(input: unknown): input is TargetDraftFields {
+  if (typeof input !== 'object' || input === null) return false;
+  const f = input as Record<string, unknown>;
+  if (!isUuid(f['procedureId']) || !isUuid(f['versionId']) || typeof f['expectedRowVersion'] !== 'string' || !/^[0-9a-f]{64}$/.test(f['expectedRowVersion'])) return false;
+  if (typeof f['edit'] !== 'object' || f['edit'] === null) return false;
+  const edit = f['edit'] as Record<string, unknown>;
+  if (edit['section'] === 'target-systems') {
+    if (!Array.isArray(edit['selections']) || edit['selections'].length > TARGET_DRAFT_LIMITS.targets) return false;
+    return edit['selections'].every((selection: unknown) => {
+      if (typeof selection !== 'object' || selection === null) return false;
+      const entry = selection as Record<string, unknown>;
+      if (!isUuid(entry['registrationId'])) return false;
+      if (entry['mode'] === 'retain') return true;
+      return entry['mode'] === 'bind' && typeof entry['expectedDigest'] === 'string' && /^[0-9a-f]{64}$/.test(entry['expectedDigest']);
+    });
+  }
+  if (edit['section'] === 'audit-instructions') {
+    if (!Array.isArray(edit['instructions']) || edit['instructions'].length > TARGET_DRAFT_LIMITS.targets) return false;
+    return edit['instructions'].every((instruction: unknown) => {
+      if (typeof instruction !== 'object' || instruction === null) return false;
+      const entry = instruction as Record<string, unknown>;
+      return isUuid(entry['registrationId']) && typeof entry['text'] === 'string' && entry['text'].length <= TARGET_DRAFT_LIMITS.instruction;
+    });
+  }
+  return false;
+}
+
+export async function updateTargetDraftAction(fields: TargetDraftFields): Promise<UpdateTargetDraftResult> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!isTargetDraftFields(fields)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await updateTargetDraft(await dependencies(), { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch (error) {
+    try {
+      (await getRuntime()).telemetry.captureError('Update Target Draft failed', error, { outcome: 'failure', correlationId });
     } catch { /* Boot failures are already reported. */ }
     return { ok: false, reason: UNAVAILABLE };
   }

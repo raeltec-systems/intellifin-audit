@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { DraftSection, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, PopulationBlocker, JsonObject } from '@intellifin/domain';
+import type { DraftSection, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, ProcedureTargetSnapshot, PopulationBlocker, TargetInstruction, JsonObject } from '@intellifin/domain';
 
 const ZERO_SHA256 = '0'.repeat(64);
 
@@ -600,6 +600,17 @@ export const procedureVersion = pgTable(
     zeroRecordPass: boolean('zero_record_pass').notNull().default(false),
     allowVersionedDuplicates: boolean('allow_versioned_duplicates').notNull().default(false),
     populationBlockers: jsonb('population_blockers').$type<readonly PopulationBlocker[]>().notNull().default([]),
+    /**
+     * Target System selection and per-system Audit Instructions (generation 9, FR-7, FR-8).
+     *
+     * `targets` is an ordered array of frozen six-key registration snapshots; `instructions`
+     * is the verbatim per-system text. Both are `jsonb NOT NULL` and never read untyped —
+     * the domain's `isDraftTargetFields` is the one reader, and a row that fails it reads as
+     * nothing. The CHECKs below are the shallow shape guard (array, bounded length) the one
+     * layer nothing can route around; the domain validator does the deep validation.
+     */
+    targets: jsonb('targets').$type<readonly ProcedureTargetSnapshot[]>().notNull().default([]),
+    instructions: jsonb('instructions').$type<readonly TargetInstruction[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -628,6 +639,11 @@ export const procedureVersion = pgTable(
     check('procedure_version_source_shape', sql`${table.sourceSnapshot} IS NULL OR coalesce(jsonb_typeof(${table.sourceSnapshot}) = 'object' AND ${table.sourceSnapshot} - 'bindingId' - 'displayName' - 'digest' - 'contract' = '{}'::jsonb AND ${table.sourceSnapshot}->>'bindingId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.sourceSnapshot}->>'digest' ~ '^[0-9a-f]{64}$' AND length(${table.sourceSnapshot}->>'displayName') BETWEEN 1 AND 200 AND jsonb_typeof(${table.sourceSnapshot}->'contract') = 'object' AND ${table.sourceSnapshot}->'contract' ?& ARRAY['kind','location','declared_schema','declared_count_mechanism','sensitive_fields'] AND (${table.sourceSnapshot}->'contract') - 'kind' - 'location' - 'declared_schema' - 'declared_count_mechanism' - 'sensitive_fields' = '{}'::jsonb AND ${table.sourceSnapshot}->'contract'->>'kind' IN ('manual-upload','versioned-file','read-only-api') AND ${table.sourceSnapshot}->'contract'->>'declared_count_mechanism' IN ('cover-sheet','count-endpoint','none') AND jsonb_typeof(${table.sourceSnapshot}->'contract'->'declared_schema') = 'array' AND jsonb_typeof(${table.sourceSnapshot}->'contract'->'sensitive_fields') = 'array', false)`),
     check('procedure_version_rule_shape', sql`coalesce(jsonb_typeof(${table.inclusionRule}) = 'object' AND ${table.inclusionRule} - 'schemaVersion' - 'all' = '{}'::jsonb AND ${table.inclusionRule}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.inclusionRule}->'all') = 'array' AND jsonb_array_length(${table.inclusionRule}->'all') <= 32, false)`),
     check('procedure_version_count_blocker', sql`${table.populationBlockers} = CASE WHEN ${table.sourceSnapshot}->'contract'->>'declared_count_mechanism' = 'none' THEN '["declared-count-missing"]'::jsonb ELSE '[]'::jsonb END`),
+    // Shallow shape guard (generation 9): an array, bounded. The deep validation — every
+    // snapshot self-consistent, every instruction for a selected agent-driven system — is
+    // the domain's `isDraftTargetFields`, which a raw writer cannot be made to run.
+    check('procedure_version_targets_shape', sql`coalesce(jsonb_typeof(${table.targets}) = 'array' AND jsonb_array_length(${table.targets}) <= 32, false)`),
+    check('procedure_version_instructions_shape', sql`coalesce(jsonb_typeof(${table.instructions}) = 'array' AND jsonb_array_length(${table.instructions}) <= 32, false)`),
   ],
 );
 

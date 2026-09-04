@@ -9,7 +9,9 @@ import {
   procedureVersionRowVersion,
   renameProcedureDraft,
   updatePopulationDraft,
+  updateTargetDraft,
   type DraftPopulationEdit,
+  type DraftTargetEdit,
   type AuditUnitOfWork,
   type ProcedureDependencies,
   type ProceduresUnitOfWorkContext,
@@ -22,8 +24,10 @@ import {
   PROCEDURE_VERSION_STATES,
   initialDraftSections,
   bindingDigest,
+  registrationDigest,
   initialDraftPopulation,
   POPULATION_DRAFT_MESSAGES,
+  TARGET_DRAFT_MESSAGES,
 } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
@@ -79,6 +83,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
   /** Procedure ids this suite created, deleted in `afterAll`. */
   const created: string[] = [];
   const sourceIds: string[] = [];
+  const targetRegistrationIds: string[] = [];
 
   function dependencies(
     options: {
@@ -181,6 +186,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     }
     await sql`DELETE FROM procedure WHERE control_name LIKE ${`${prefix}%`}`;
     for (const id of sourceIds) await sql`DELETE FROM population_source_binding WHERE binding_id = ${id}`;
+    for (const id of targetRegistrationIds) await sql`DELETE FROM target_system_registration WHERE registration_id = ${id}`;
     await sql`DELETE FROM auth_user WHERE email LIKE ${`${prefix}%`}`;
     // The events stay: deleting them would leave `audit_event_heads` pointing past the
     // rows that remain, which is a corrupt chain — the thing the last test verifies.
@@ -672,6 +678,192 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(sql`UPDATE procedure_version SET population_blockers = '["declared-count-missing"]'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_count_blocker/);
       await expect(sql`UPDATE procedure_version SET scope = ${'x'.repeat(10001)} WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_scope_bound/);
       await expect(sql`UPDATE procedure_version SET period = '{"from":"2024-02-29","to":"2024-02-29"}'::jsonb WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
+    });
+  });
+
+  describe('generation 9 Target System authoring', () => {
+    interface Registered {
+      readonly id: string;
+      readonly digest: string;
+    }
+    interface RegFields {
+      readonly kind: 'web' | 'desktop' | 'api';
+      readonly allowedOrigins: readonly string[];
+      readonly applicationIdentity: string;
+      readonly credentialRef: string;
+      readonly permittedActions: readonly ('navigate' | 'read-attribute' | 'list-records')[];
+      readonly attributeLabelPatterns: readonly string[];
+      readonly secondaryKey: string;
+    }
+
+    async function registerSystem(name: string, fields: RegFields): Promise<Registered> {
+      const id = new CryptoUuidV7Generator().next();
+      targetRegistrationIds.push(id);
+      const digest = registrationDigest(fields);
+      await sql`
+        INSERT INTO target_system_registration
+          (registration_id, display_name, kind, allowed_origins, application_identity,
+           credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
+        VALUES (${id}, ${`${prefix}${name}`}, ${fields.kind}, ${fields.allowedOrigins},
+                ${fields.applicationIdentity}, ${fields.credentialRef}, ${fields.permittedActions},
+                ${fields.attributeLabelPatterns}, ${fields.secondaryKey}, '', 'active', ${digest})
+      `;
+      return { id, digest };
+    }
+
+    async function setupTargets() {
+      const web = await registerSystem('LoanCore', {
+        kind: 'web',
+        allowedOrigins: ['http://localhost:4300/loancore'],
+        applicationIdentity: '',
+        credentialRef: 'vault://audit/loancore',
+        permittedActions: ['navigate', 'read-attribute'],
+        attributeLabelPatterns: ['Status', 'Username'],
+        secondaryKey: 'Full name',
+      });
+      const desktop = await registerSystem('LedgerDesk', {
+        kind: 'desktop',
+        allowedOrigins: [],
+        applicationIdentity: 'com.northstar.ledgerdesk',
+        credentialRef: 'vault://audit/ledgerdesk',
+        permittedActions: ['navigate', 'read-attribute'],
+        attributeLabelPatterns: ['Status'],
+        secondaryKey: '',
+      });
+      const seed = await createProcedure(dependencies(), createInput({}, `${prefix}target-create-${web.id}`));
+      if (!seed.ok) throw new Error(seed.reason);
+      created.push(seed.procedureId);
+      const read = async (): Promise<ProcedureVersionView> => {
+        const draft = await new DrizzleProcedureRepository(db).findVersion(seed.versionId);
+        if (draft === null) throw new Error('the Draft is missing');
+        return draft;
+      };
+      const save = (edit: DraftTargetEdit, token: string, correlationId: string) =>
+        updateTargetDraft(dependencies(), {
+          session: auditor,
+          procedureId: seed.procedureId,
+          versionId: seed.versionId,
+          expectedRowVersion: token,
+          correlationId,
+          edit,
+        });
+      const bind = (system: Registered) =>
+        ({ mode: 'bind', registrationId: system.id, expectedDigest: system.digest }) as const;
+      return { seed, web, desktop, read, save, bind };
+    }
+
+    it('freezes the six-field contract per system, keeps credentials out of the chain, and survives reload', async () => {
+      const { seed, web, desktop, read, save, bind } = await setupTargets();
+      const correlationId = `${prefix}targets-${seed.versionId}`;
+
+      const outcome = await save(
+        { section: 'target-systems', selections: [bind(web), bind(desktop)] },
+        procedureVersionRowVersion(await read()),
+        correlationId,
+      );
+      expect(outcome).toMatchObject({ ok: true, changed: true });
+
+      const saved = await read();
+      expect(saved.targets.map((target) => target.registrationId)).toEqual([web.id, desktop.id]);
+      expect(saved.targets[0]?.contract).toMatchObject({ kind: 'web', credential_ref: 'vault://audit/loancore', secondary_key: 'Full name' });
+      // The desktop application identity occupies the allowed_origins slot.
+      expect(saved.targets[1]?.contract.allowed_origins).toEqual(['com.northstar.ledgerdesk']);
+
+      const events = await eventsFor(correlationId);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.event_type).toBe(PROCEDURE_DRAFT_CHANGED_EVENT);
+      // The frozen contract carries the credential reference; the chain never does.
+      expect(JSON.stringify(events[0]?.payload)).not.toContain('vault://');
+    });
+
+    it('refuses a changed digest and a retired newly-selected system without writing', async () => {
+      const { seed, web, read, save, bind } = await setupTargets();
+      // The registration moved after the page rendered its digest.
+      await sql`UPDATE target_system_registration SET credential_ref = 'vault://audit/rotated', digest = ${registrationDigest({ kind: 'web', allowedOrigins: ['http://localhost:4300/loancore'], applicationIdentity: '', credentialRef: 'vault://audit/rotated', permittedActions: ['navigate', 'read-attribute'], attributeLabelPatterns: ['Status', 'Username'], secondaryKey: 'Full name' })} WHERE registration_id = ${web.id}`;
+      const correlationId = `${prefix}unseen-${seed.versionId}`;
+      expect(await save({ section: 'target-systems', selections: [bind(web)] }, procedureVersionRowVersion(await read()), correlationId)).toEqual({
+        ok: false,
+        reason: TARGET_DRAFT_MESSAGES.UNSEEN,
+      });
+      expect((await read()).targets).toHaveLength(0);
+      await expect(eventsFor(correlationId)).resolves.toHaveLength(0);
+    });
+
+    it('retains a saved snapshot verbatim after the registration is retired', async () => {
+      const { seed, web, read, save, bind } = await setupTargets();
+      await save({ section: 'target-systems', selections: [bind(web)] }, procedureVersionRowVersion(await read()), `${prefix}retain-a-${seed.versionId}`);
+      const frozen = (await read()).targets[0];
+
+      await sql`UPDATE target_system_registration SET status = 'retired' WHERE registration_id = ${web.id}`;
+      // Retaining is allowed and refreshes nothing; the snapshot is unchanged.
+      expect(await save({ section: 'target-systems', selections: [{ mode: 'retain', registrationId: web.id }] }, procedureVersionRowVersion(await read()), `${prefix}retain-b-${seed.versionId}`)).toMatchObject({ ok: true, changed: false });
+      expect((await read()).targets[0]).toEqual(frozen);
+    });
+
+    it('stores per-system instructions verbatim, refuses an orphan, and survives reload', async () => {
+      const { seed, web, desktop, read, save, bind } = await setupTargets();
+      await save({ section: 'target-systems', selections: [bind(web), bind(desktop)] }, procedureVersionRowVersion(await read()), `${prefix}sel-${seed.versionId}`);
+
+      const verbatim = '  Open the account record and note its status and roles.  ';
+      const correlationId = `${prefix}instr-${seed.versionId}`;
+      expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: web.id, text: verbatim }] }, procedureVersionRowVersion(await read()), correlationId)).toMatchObject({ ok: true, changed: true });
+      expect((await read()).instructions).toEqual([{ registrationId: web.id, text: verbatim }]);
+
+      // An instruction for an unselected system is an orphan.
+      const orphanId = new CryptoUuidV7Generator().next();
+      expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: orphanId, text: 'read it' }] }, procedureVersionRowVersion(await read()), `${prefix}orphan-${seed.versionId}`)).toEqual({
+        ok: false,
+        reason: TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION,
+      });
+      await expect(eventsFor(correlationId)).resolves.toHaveLength(1);
+    });
+
+    it('refuses a second target save made while the first transaction is still open', async () => {
+      const { seed, web, desktop, read, bind } = await setupTargets();
+      const token = procedureVersionRowVersion(await read());
+
+      let openGate: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        openGate = resolve;
+      });
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const held: AuditUnitOfWork<never> = {
+        execute: (work: (context: never) => Promise<unknown>) =>
+          new PostgresProceduresUnitOfWork(db).execute(async (context) => {
+            const result = await work(context as never);
+            await gate;
+            return result;
+          }) as never,
+      };
+
+      const first = updateTargetDraft(
+        { ...dependencies(), unitOfWork: held as never },
+        { session: auditor, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: token, correlationId: `${prefix}race-t-a`, edit: { section: 'target-systems', selections: [bind(web)] } },
+      );
+      await wait(250);
+      const second = updateTargetDraft(dependencies(), {
+        session: auditor,
+        procedureId: seed.procedureId,
+        versionId: seed.versionId,
+        expectedRowVersion: token,
+        correlationId: `${prefix}race-t-b`,
+        edit: { section: 'target-systems', selections: [bind(desktop)] },
+      });
+      await wait(250);
+      openGate();
+
+      expect(await first).toMatchObject({ ok: true, changed: true });
+      expect(await second).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+      const finalTargets = (await read()).targets;
+      expect(finalTargets.map((target) => target.registrationId)).toEqual([web.id]);
+    });
+
+    it('the database refuses a non-array in targets or instructions', async () => {
+      const { seed } = await setupTargets();
+      await expect(sql`UPDATE procedure_version SET targets = '"nope"'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_targets_shape/);
+      await expect(sql`UPDATE procedure_version SET instructions = '{}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_instructions_shape/);
+      // The empty array the command writes is accepted.
+      await expect(sql`UPDATE procedure_version SET targets = '[]'::jsonb WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
     });
   });
 

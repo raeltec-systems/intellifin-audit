@@ -15,9 +15,14 @@ import {
   isTemplateId,
   isValidDraftSectionsPayload,
   isDraftPopulationFields,
+  isDraftTargetFields,
+  targetBlockersFor,
   type DraftPopulationFields,
   type DraftSection,
+  type DraftTargetFields,
+  type ProcedureTargetSnapshot,
   type ProcedureVersionState,
+  type TargetInstruction,
   type TemplateId,
 } from '@intellifin/domain';
 
@@ -63,6 +68,8 @@ const VERSION_SELECTION = {
   zeroRecordPass: procedureVersion.zeroRecordPass,
   allowVersionedDuplicates: procedureVersion.allowVersionedDuplicates,
   populationBlockers: procedureVersion.populationBlockers,
+  targets: procedureVersion.targets,
+  instructions: procedureVersion.instructions,
   createdAt: procedureVersion.createdAt,
   updatedAt: procedureVersion.updatedAt,
 } as const;
@@ -75,7 +82,7 @@ interface ProcedureSelectedRow {
   updatedAt: Date;
 }
 
-interface VersionSelectedRow extends DraftPopulationFields {
+interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields {
   versionId: string;
   procedureId: string;
   versionNumber: number;
@@ -101,13 +108,14 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 }
 
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
-  if (!isDraftPopulationFields(row)) return null;
+  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
   if (state === null || templateId === null || sections === null) return null;
   return {
     ...populationFields(row),
+    ...targetFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -115,19 +123,23 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
     controlName: row.controlName,
     templateId,
     sections,
+    // Derived, not stored: the Template names the required agent coverage and the
+    // selection either covers it or does not.
+    targetBlockers: targetBlockersFor(templateId, row.targets),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
-  if (!isDraftPopulationFields(row)) return null;
+  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
   if (state === null || templateId === null || sections === null) return null;
   return {
     ...populationFields(row),
+    ...targetFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -140,6 +152,10 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
 
 function populationFields(row: DraftPopulationFields): DraftPopulationFields {
   return { period: row.period, scope: row.scope, sourceSnapshot: row.sourceSnapshot, inclusionRule: row.inclusionRule, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates, populationBlockers: row.populationBlockers };
+}
+
+function targetFields(row: DraftTargetFields): DraftTargetFields {
+  return { targets: row.targets, instructions: row.instructions };
 }
 
 /**
@@ -301,6 +317,8 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
       controlName: record.controlName,
       templateId: record.templateId,
       sections: [...record.sections],
+      targets: [...record.targets],
+      instructions: [...record.instructions],
     });
   }
 
@@ -341,6 +359,8 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
         state: record.state,
         controlName: record.controlName,
         sections: [...record.sections],
+        targets: [...record.targets],
+        instructions: [...record.instructions],
         updatedAt: new Date(),
       })
       .where(eq(procedureVersion.versionId, record.versionId));

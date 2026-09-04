@@ -116,6 +116,15 @@ export interface TargetSystemRegistration {
 /** Reads registrations for the surface. Outside any transaction; it changes nothing. */
 export interface RegistrationRepository {
   listRegistrations(): Promise<readonly TargetSystemRegistration[]>;
+  /**
+   * Every ACTIVE registration, for a surface that selects from them (the Builder).
+   *
+   * NOT a filter over `listRegistrations`: that read is capped at
+   * `REGISTRATION_LIST_LIMIT` and includes retired rows, so filtering its result would
+   * silently drop live systems past the cap — the same trap the probe sweep hit. A
+   * selectable-systems read is active-only and takes its own limit.
+   */
+  listActiveRegistrations(): Promise<readonly TargetSystemRegistration[]>;
   findRegistration(registrationId: string): Promise<TargetSystemRegistration | null>;
 }
 
@@ -133,6 +142,26 @@ export interface RegistrationRecord {
   readonly note: string;
   readonly status: RegistrationStatus;
   readonly digest: string;
+}
+
+/**
+ * A registration-owned read that a Procedure command resolves a Target System selection
+ * through (AD-2, AD-8).
+ *
+ * `procedures` must never read the registration table itself, exactly as it never reads
+ * the Population Source table — it goes through this port the way it goes through
+ * {@link PopulationSourceReader}. The read is under a SHARE lock and in a STABLE (sorted)
+ * id order: a Draft can select several systems at once, and two concurrent saves locking
+ * overlapping sets in different orders would deadlock, so the lock order is the id order
+ * and never the order the auditor happened to select them in.
+ */
+export interface TargetSystemRegistrationReader {
+  /**
+   * The named registrations, each held under a shared lock until the caller's transaction
+   * finishes, read in ascending id order. Ids that resolve to no row are simply absent
+   * from the result; the command decides what a missing selection means.
+   */
+  lockForSelection(registrationIds: readonly string[]): Promise<readonly RegistrationRecord[]>;
 }
 
 /**

@@ -1,5 +1,6 @@
-import type { DraftPopulationFields, DraftSection, ProcedureVersionState, TemplateId } from '@intellifin/domain';
+import type { DraftPopulationFields, DraftSection, DraftTargetFields, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
 import type { PopulationSourceReader } from '../sources/ports.js';
+import type { TargetSystemRegistrationReader } from '../registrations/ports.js';
 
 import type { AuditUnitOfWorkContext } from '../audit/ports.js';
 
@@ -32,7 +33,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView extends DraftPopulationFields {
+export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -41,6 +42,11 @@ export interface ProcedureVersionView extends DraftPopulationFields {
   readonly templateId: TemplateId;
   /** The Template pre-fill and any edit a later story saves, validated by the domain. */
   readonly sections: readonly DraftSection[];
+  /**
+   * Target System completeness diagnostics, derived from the Template and the selection
+   * (missing selection, missing P-1 web/desktop coverage). Not stored — computed on read.
+   */
+  readonly targetBlockers: readonly TargetBlocker[];
   /** ISO 8601 UTC. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -55,7 +61,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord extends DraftPopulationFields {
+export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -105,4 +111,6 @@ export interface ProcedureRecord {
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
   readonly procedures: ProcedureWriter;
   readonly populationSources: PopulationSourceReader;
+  /** Registration-owned read, bound to this transaction, for resolving Target selections. */
+  readonly targetRegistrations: TargetSystemRegistrationReader;
 }

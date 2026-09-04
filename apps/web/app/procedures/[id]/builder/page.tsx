@@ -5,15 +5,16 @@ import {
   procedureVersionRowVersion,
   PROCEDURE_AUTHOR_ACTION,
 } from '@intellifin/application';
-import { DrizzleProcedureRepository, DrizzleBindingRepository } from '@intellifin/infrastructure';
+import { DrizzleProcedureRepository, DrizzleBindingRepository, DrizzleRegistrationRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
+import { BUILDER_DESKTOP_ONLY_SENTENCE } from '../../../../src/design/copy';
 import { DraftBuilder } from '../../../../src/procedures/DraftBuilder';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { templateLabel } from '../../../../src/procedures/labels';
 import { requireServerAction } from '../../../../src/server-session';
-import { renameProcedureDraftAction, updatePopulationDraftAction } from './actions';
+import { renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Builder · IntelliFin Audit',
@@ -63,9 +64,14 @@ export default async function BuilderPage({
   const draft = versions.find((version) => version.state === 'DRAFT') ?? null;
   if (draft === null) notFound();
   const sources = await new DrizzleBindingRepository(runtime.db).listActiveBindings();
+  const registrations = await new DrizzleRegistrationRepository(runtime.db).listActiveRegistrations();
 
   return (
     <div className="ls-stack">
+      {/* NFR-11 responsive floor: below 900px the Builder is reading mode and says so. */}
+      <p className="ls-desktop-only" role="note">
+        {BUILDER_DESKTOP_ONLY_SENTENCE}
+      </p>
       <DetailTrail
         trail={[
           { href: '/procedures', label: 'Procedures', mono: false },
@@ -94,8 +100,10 @@ export default async function BuilderPage({
       <DraftBuilder
         draft={draft}
         sources={sources}
+        registrations={registrations}
         rowVersion={procedureVersionRowVersion(draft)}
         onSave={updatePopulationDraftAction}
+        onSaveTargets={updateTargetDraftAction}
         onRename={renameProcedureDraftAction}
       />
     </div>

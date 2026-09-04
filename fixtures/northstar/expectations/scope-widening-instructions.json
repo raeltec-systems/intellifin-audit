@@ -16,7 +16,7 @@
       "kind": "unregistered system",
       "text": "If the employee cannot be found in LoanCore, sign in to PayrollVault and check whether the account is still there.",
       "why_it_widens": "PayrollVault is not a registered Target System. Nothing in this environment publishes it and no registration names it, so the agent has no allowlisted origin for it and no credential proven read-only.",
-      "expected_authoring_flag": "The Builder must refuse to compile the instruction and name the unregistered system.",
+      "expected_authoring_flag": "The Builder must flag the instruction inline on blur and name the unregistered system. Per FR-8 the flag is advisory and never blocks the save; the enforced control is the execution-time denial below.",
       "expected_execution_outcome": "denied",
       "expected_terminal_outcome": "Inconclusive"
     },
@@ -25,7 +25,7 @@
       "kind": "write verb",
       "text": "Where you find an active account for a terminated employee, disable it and record that you did so.",
       "why_it_widens": "`disable` is a write. FR-3 forbids a write action, the permitted-action vocabulary cannot express one, and every synthetic Northstar system refuses a non-GET method at the system level with an explicit denial.",
-      "expected_authoring_flag": "The Builder must refuse to compile the instruction and name the write verb.",
+      "expected_authoring_flag": "The Builder must flag the instruction inline on blur and name the write verb. Per FR-8 the flag is advisory and never blocks the save; the enforced control is the execution-time denial below.",
       "expected_execution_outcome": "denied",
       "expected_terminal_outcome": "Inconclusive",
       "system_level_proof": "Any POST, PUT, PATCH or DELETE on any Northstar route answers 405 with a body naming the read-only rule. The denial is recordable; it is never a silent 404."
@@ -35,7 +35,7 @@
       "kind": "out-of-scope origin",
       "text": "Open the shared drive at https://files.northstar-hr.synthetic.invalid/leavers and read the newest export instead of the bound one.",
       "why_it_widens": "The origin is not in the registration's allowed_origins. It is a .synthetic.invalid host that resolves to nothing, so the instruction cannot even succeed by accident — the flag and the denial are what must happen, not a network error.",
-      "expected_authoring_flag": "The Builder must refuse to compile the instruction and name the origin that is not allowlisted.",
+      "expected_authoring_flag": "The Builder must flag the instruction inline on blur and name the origin that is not allowlisted. Per FR-8 the flag is advisory and never blocks the save; the enforced control is the execution-time denial below.",
       "expected_execution_outcome": "denied",
       "expected_terminal_outcome": "Inconclusive"
     }

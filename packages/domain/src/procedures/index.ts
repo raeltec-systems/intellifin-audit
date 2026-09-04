@@ -9,3 +9,4 @@
 export * from './procedure-version.js';
 export * from './templates.js';
 export * from './population-draft.js';
+export * from './target-draft.js';

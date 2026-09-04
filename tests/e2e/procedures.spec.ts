@@ -2,8 +2,9 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
+import { targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
-import { DENIAL_REASONS, bindingDigest } from '@intellifin/domain';
+import { DENIAL_REASONS, bindingDigest, registrationDigest } from '@intellifin/domain';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
@@ -56,6 +57,7 @@ test.afterAll(async () => {
   try {
     await sql`DELETE FROM procedure WHERE control_name LIKE ${`E2E %${stamp}%`}`;
     await sql`DELETE FROM population_source_binding WHERE display_name LIKE ${`E2E population ${stamp}%`}`;
+    await sql`DELETE FROM target_system_registration WHERE display_name LIKE ${`E2E %${stamp}%`}`;
   } finally {
     await sql.end({ timeout: 5 });
   }
@@ -131,12 +133,24 @@ test.describe('as an Auditor', () => {
 
       await expect(page.getByLabel('Period start')).toBeVisible();
       await expect(page.getByLabel('Population Source', { exact: true })).toBeVisible();
-      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(7);
+      // Target System selection and Audit Instructions are now editable too (Story 2.3),
+      // so five sections remain read-only: Control, Objective, Compliance Rule conditions,
+      // Evidence Requirements, Schedule.
+      await expect(page.getByLabel('Add a Target System')).toBeVisible();
+      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(5);
       const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_NOT_EDITABLE_SENTENCE });
       await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
 
-      // The Builder form is a real form and posts.
-      await expect(page.locator('form.ls-admin__form')).toHaveAttribute('method', 'post');
+      // The Builder forms are real forms and post. Story 2.3 added a second one (the
+      // Target System picker), so this asserts EVERY form on the surface names
+      // `method="post"` rather than assuming a single one: a form with no method
+      // submits as a GET and puts whatever was typed into the URL and the access log.
+      const builderForms = page.locator('form.ls-admin__form');
+      const builderFormCount = await builderForms.count();
+      expect(builderFormCount).toBeGreaterThan(0);
+      for (let formIndex = 0; formIndex < builderFormCount; formIndex += 1) {
+        await expect(builderForms.nth(formIndex)).toHaveAttribute('method', 'post');
+      }
     });
   }
 
@@ -206,6 +220,95 @@ test.describe('as an Auditor', () => {
     await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
     await expect(page.getByLabel('Permit versioned duplicate primary keys')).not.toBeChecked();
     await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
+    await scan(page);
+  });
+
+  test('selects Target Systems, freezes their contracts, and flags a scope-widening instruction', async ({ page }) => {
+    test.setTimeout(90_000);
+    const databaseUrl = process.env['DATABASE_URL'];
+    if (!databaseUrl) throw new Error('The Builder journey requires the throwaway database.');
+    assertThrowawayDatabase(databaseUrl);
+    const { createSqlClient, CryptoUuidV7Generator } = await import('@intellifin/infrastructure');
+    const sql = createSqlClient(databaseUrl, { max: 1 });
+    const webId = new CryptoUuidV7Generator().next();
+    const desktopId = new CryptoUuidV7Generator().next();
+    const web = { kind: 'web' as const, allowedOrigins: ['http://localhost:4300/loancore'], applicationIdentity: '', credentialRef: 'vault://audit/loancore', permittedActions: ['navigate', 'read-attribute'] as const, attributeLabelPatterns: ['Status', 'Username'], secondaryKey: 'Full name' };
+    const desktop = { kind: 'desktop' as const, allowedOrigins: [] as string[], applicationIdentity: 'com.northstar.ledgerdesk', credentialRef: 'vault://audit/ledgerdesk', permittedActions: ['navigate', 'read-attribute'] as const, attributeLabelPatterns: ['Status'], secondaryKey: '' };
+    try {
+      for (const [id, name, f] of [[webId, `E2E LoanCore ${stamp}`, web], [desktopId, `E2E LedgerDesk ${stamp}`, desktop]] as const) {
+        await sql`INSERT INTO target_system_registration (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest) VALUES (${id}, ${name}, ${f.kind}, ${f.allowedOrigins}, ${f.applicationIdentity}, ${f.credentialRef}, ${f.permittedActions}, ${f.attributeLabelPatterns}, ${f.secondaryKey}, '', 'active', ${registrationDigest(f)})`;
+      }
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E targets control ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    await expect(page.getByLabel('Add a Target System')).toBeVisible();
+
+    // P-1 names web AND desktop coverage; with nothing selected, both diagnostics show.
+    await expect(page.getByText(targetCoverageMissing('web'))).toBeVisible();
+    await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
+
+    // Select LoanCore (web); the section shows its credential reference and frozen digest.
+    await page.getByLabel('Add a Target System').selectOption(webId);
+    await page.getByRole('button', { name: 'Add Target System' }).click();
+    // `li.ls-card`, not `.ls-card`: the selected systems are list items INSIDE the
+    // section's own `.ls-card`, so the bare class matches the section as well as the
+    // entry and the assertion would be ambiguous rather than about this one system.
+    const loancoreCard = page.locator('li.ls-card').filter({ hasText: `E2E LoanCore ${stamp}` });
+    await expect(loancoreCard).toContainText('vault://audit/loancore');
+    await expect(loancoreCard.locator('.ls-digest')).toContainText(registrationDigest(web));
+    // Web coverage is now met; desktop is still missing.
+    await expect(page.getByText(targetCoverageMissing('web'))).toHaveCount(0);
+    await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
+
+    await page.getByLabel('Add a Target System').selectOption(desktopId);
+    await page.getByRole('button', { name: 'Add Target System' }).click();
+    await expect(page.getByText(targetCoverageMissing('desktop'))).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Save Target Systems' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems' }).click();
+    await expect(page.getByText('The Target System selection is recorded in the audit chain.')).toBeVisible();
+
+    // Reload from the server; the frozen selection and the instruction editors survive.
+    await page.reload();
+    const instruction = page.getByLabel(`Audit Instructions for E2E LoanCore ${stamp}`);
+    await expect(instruction).toBeVisible();
+    await expect(page.getByLabel(`Audit Instructions for E2E LedgerDesk ${stamp}`)).toBeVisible();
+
+    // A scope-widening instruction is flagged inline on blur — advisory, never blocking.
+    //
+    // Retry the fill-and-blur rather than asserting once. The advisory check is a
+    // client-side enhancement (FR-8 makes it advisory; execution-time denial is the
+    // enforced control), so it only runs once React has hydrated after the reload
+    // above. A blur that lands first sets no state, and because the textarea is
+    // React-controlled a fill that lands first is overwritten by hydration — so the
+    // single-shot form passes alone and fails under full-suite load. The assertion
+    // itself is unchanged: the warning must still name the write verb.
+    const scopeWarning = page.getByText('write action "disable"');
+    await expect(async () => {
+      await instruction.fill('Where you find an active account for a terminated employee, disable it.');
+      await instruction.blur();
+      await expect(scopeWarning).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+
+    // Correcting the text and re-checking clears the warning; no stale warning.
+    await instruction.fill('Open the account record and note its status, username, and roles.');
+    await instruction.blur();
+    await expect(page.getByText('write action "disable"')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Save Audit Instructions' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Audit Instructions' }).click();
+    await expect(page.getByText('The Audit Instructions are recorded in the audit chain.')).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByLabel(`Audit Instructions for E2E LoanCore ${stamp}`)).toHaveValue(
+      'Open the account record and note its status, username, and roles.',
+    );
     await scan(page);
   });
 

@@ -10,6 +10,7 @@ import type { Clock, UuidV7Generator } from '@intellifin/application';
 import type { Database } from '../db/client.js';
 import { DrizzleProcedureWriter } from './procedure-repository.js';
 import { DrizzlePopulationSourceReader } from '../sources/binding-repository.js';
+import { DrizzleTargetSystemRegistrationReader } from '../registrations/registration-repository.js';
 
 /**
  * One PostgreSQL transaction carrying the audit appender AND the Procedure writer
@@ -40,6 +41,7 @@ export class PostgresProceduresUnitOfWork implements AuditUnitOfWork<ProceduresU
         auditEvents: createAuditEventWriter(transaction, this.clock, this.ids),
         procedures: new DrizzleProcedureWriter(transaction),
         populationSources: new DrizzlePopulationSourceReader(transaction),
+        targetRegistrations: new DrizzleTargetSystemRegistrationReader(transaction),
       }),
     );
   }

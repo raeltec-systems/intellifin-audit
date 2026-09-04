@@ -2,19 +2,23 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
-import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult } from '@intellifin/application';
-import type { PopulationDraftFields, RenameActionResult, RenameDraftFields } from '../../app/procedures/[id]/builder/actions';
+import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult } from '@intellifin/application';
+import type { PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { BuilderSections } from './BuilderSections';
 import { RenameDraftForm } from './RenameDraftForm';
+import { TargetSelectionForm } from './TargetSelectionForm';
+import { AuditInstructionsForm } from './AuditInstructionsForm';
 
-export function DraftBuilder({ draft, sources, rowVersion, onSave, onRename }: {
+export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave, onSaveTargets, onRename }: {
   readonly draft: ProcedureVersionView;
   readonly sources: readonly PopulationSourceBinding[];
+  readonly registrations: readonly TargetSystemRegistration[];
   readonly rowVersion: string;
   readonly onSave: (fields: PopulationDraftFields) => Promise<UpdatePopulationDraftResult>;
+  readonly onSaveTargets: (fields: TargetDraftFields) => Promise<UpdateTargetDraftResult>;
   readonly onRename: (fields: RenameDraftFields) => Promise<RenameActionResult>;
 }): React.JSX.Element {
   const id = useId();
@@ -117,9 +121,18 @@ export function DraftBuilder({ draft, sources, rowVersion, onSave, onRename }: {
     <div id={`${id}-binding-error`} aria-live="polite">{(ruleTouched || contract?.kind === 'manual-upload') && bindingError !== null ? <Banner tone="warning" title={bindingError} /> : null}</div>
     <Button type="submit" busy={busy} variant="primary">Save Population Source binding</Button>
   </form>;
+  // Every target editor shares the Draft's row-version token: a save through one moves the
+  // token every other editor guards against, exactly as the population and rename saves do.
+  const saveTargets = async (fields: TargetDraftFields): Promise<UpdateTargetDraftResult> => {
+    const outcome = await onSaveTargets(fields);
+    if (outcome.ok) setToken(outcome.rowVersion);
+    return outcome;
+  };
+  const targetSystemsEditor = <TargetSelectionForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} />;
+  const auditInstructionsEditor = <AuditInstructionsForm draft={draft} rowVersion={token} onSave={saveTargets} />;
   return <div className="ls-stack">
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <BuilderSections sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} />
+    <BuilderSections sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} />
     <RenameDraftForm procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async (fields) => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} />
     <ConfirmDialog open={confirming !== null} weight="routine" title={confirming?.section === 'period-scope' ? 'Save Period and scope?' : 'Save Population Source binding?'} consequence={`This changes Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`} confirmLabel="Save Draft changes" onConfirm={() => { void save(); }} onCancel={() => setConfirming(null)} />
   </div>;

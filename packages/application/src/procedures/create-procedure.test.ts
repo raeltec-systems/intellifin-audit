@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, bindingDigest, POPULATION_DRAFT_MESSAGES, type AuditEventDraft } from '@intellifin/domain';
+import { DENIAL_REASONS, initialDraftSections, initialDraftPopulation, initialDraftTargets, bindingDigest, registrationDigest, POPULATION_DRAFT_MESSAGES, TARGET_DRAFT_MESSAGES, type AuditEventDraft } from '@intellifin/domain';
 import type { BindingRecord } from '../sources/ports.js';
+import type { RegistrationRecord } from '../registrations/ports.js';
 import { updatePopulationDraft, type DraftPopulationEdit } from './update-population-draft.js';
+import { updateTargetDraft, type DraftTargetEdit } from './update-target-draft.js';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
 import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
@@ -35,6 +37,7 @@ const POC_ADMIN: SessionSnapshot = { userId: 'poc-admin-1', sessionId: 'session-
 
 interface Harness {
   readonly bindings: Map<string, BindingRecord>;
+  readonly registrations: Map<string, RegistrationRecord>;
   readonly dependencies: ProcedureDependencies;
   /** Committed procedure rows, by id. A rolled-back transaction never reaches this. */
   readonly storedProcedures: Map<string, ProcedureRecord>;
@@ -50,6 +53,7 @@ interface Harness {
 
 function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
   const bindings = new Map<string, BindingRecord>();
+  const registrations = new Map<string, RegistrationRecord>();
   const storedProcedures = new Map<string, ProcedureRecord>();
   const storedVersions = new Map<string, ProcedureVersionRecord>();
   const events: AuditEventDraft[] = [];
@@ -69,6 +73,14 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
       const draftEvents: AuditEventDraft[] = [];
       const context: ProceduresUnitOfWorkContext = {
         populationSources: { findBindingForShare: async (id) => bindings.get(id) ?? null },
+        targetRegistrations: {
+          // Sorted, deduplicated, present-only — the same contract the Drizzle reader keeps.
+          lockForSelection: async (ids) =>
+            [...new Set(ids)]
+              .sort()
+              .map((id) => registrations.get(id))
+              .filter((record): record is RegistrationRecord => record !== undefined),
+        },
         auditEvents: {
           append: async (event) => {
             if (state.failAppend) throw new Error('the audit append failed');
@@ -134,6 +146,7 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
 
   return {
     bindings,
+    registrations,
     dependencies: { roles, unitOfWork, ids } satisfies ProcedureDependencies,
     storedProcedures,
     storedVersions,
@@ -522,6 +535,7 @@ describe('renameProcedureDraft', () => {
 describe('the row version token', () => {
   const RECORD: ProcedureVersionRecord = {
     ...initialDraftPopulation('P-1'),
+    ...initialDraftTargets(),
     versionId: '018f0000-0000-7000-8000-000000000001',
     procedureId: '018f0000-0000-7000-8000-000000000002',
     versionNumber: 1,
@@ -546,6 +560,25 @@ describe('the row version token', () => {
       { ...RECORD, zeroRecordPass: true },
       { ...RECORD, allowVersionedDuplicates: true },
       { ...RECORD, populationBlockers: ['declared-count-missing'] },
+      {
+        ...RECORD,
+        targets: [
+          {
+            registrationId: '018f0000-0000-7000-8000-0000000000a1',
+            displayName: 'LoanCore',
+            digest: '0'.repeat(64),
+            contract: {
+              allowed_origins: ['http://localhost:4300/loancore'],
+              attribute_label_patterns: ['Status'],
+              credential_ref: 'vault://loancore',
+              kind: 'web',
+              permitted_actions: ['navigate'],
+              secondary_key: null,
+            },
+          },
+        ],
+      },
+      { ...RECORD, instructions: [{ registrationId: '018f0000-0000-7000-8000-0000000000a1', text: 'Open the record and read the status.' }] },
     ];
     for (const variant of variants) {
       expect(procedureVersionRowVersion(variant)).not.toBe(procedureVersionRowVersion(RECORD));
@@ -640,5 +673,205 @@ describe('Draft Period and Population Source changes', () => {
     const test = harness('poc-administrator');
     const input = { session: POC_ADMIN, correlationId: 'denied', get edit(): never { throw new Error('must not parse'); } };
     await expect(updatePopulationDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
+  });
+});
+
+describe('Draft Target System and Audit Instruction changes', () => {
+  const WEB = '018f0000-0000-7000-8000-0000000000d1';
+  const DESKTOP = '018f0000-0000-7000-8000-0000000000d2';
+  const API = '018f0000-0000-7000-8000-0000000000d3';
+
+  function reg(
+    registrationId: string,
+    over: Partial<RegistrationRecord> & Pick<RegistrationRecord, 'kind'>,
+  ): RegistrationRecord {
+    const fields = {
+      kind: over.kind,
+      allowedOrigins: over.allowedOrigins ?? ['http://localhost:4300/loancore'],
+      applicationIdentity: over.applicationIdentity ?? '',
+      credentialRef: over.credentialRef ?? 'vault://audit/loancore',
+      permittedActions: over.permittedActions ?? (['navigate', 'read-attribute'] as const),
+      attributeLabelPatterns: over.attributeLabelPatterns ?? ['Status', 'Username'],
+      secondaryKey: over.secondaryKey ?? '',
+    };
+    return {
+      registrationId,
+      displayName: over.displayName ?? 'LoanCore',
+      note: '',
+      status: over.status ?? 'active',
+      ...fields,
+      digest: registrationDigest(fields),
+    };
+  }
+
+  const webReg = reg(WEB, { kind: 'web', displayName: 'LoanCore' });
+  const desktopReg = reg(DESKTOP, {
+    kind: 'desktop',
+    displayName: 'LedgerDesk',
+    allowedOrigins: [],
+    applicationIdentity: 'com.northstar.ledgerdesk',
+    credentialRef: 'vault://audit/ledgerdesk',
+  });
+  const apiReg = reg(API, {
+    kind: 'api',
+    displayName: 'AccessGate',
+    allowedOrigins: ['https://accessgate.synthetic.invalid'],
+    permittedActions: ['list-records', 'read-attribute'],
+  });
+
+  async function setup() {
+    const test = harness();
+    for (const record of [webReg, desktopReg, apiReg]) test.registrations.set(record.registrationId, record);
+    const created = await create(test);
+    if (!created.ok) throw new Error(created.reason);
+    test.events.length = 0;
+    const record = () => test.storedVersions.get(created.versionId)!;
+    const save = (edit: DraftTargetEdit, token = procedureVersionRowVersion(record())) =>
+      updateTargetDraft(test.dependencies, {
+        session: AUDITOR,
+        correlationId: 'target-save',
+        procedureId: created.procedureId,
+        versionId: created.versionId,
+        expectedRowVersion: token,
+        edit,
+      });
+    const bind = (registration: RegistrationRecord) =>
+      ({ mode: 'bind', registrationId: registration.registrationId, expectedDigest: registration.digest }) as const;
+    return { test, created, record, save, bind };
+  }
+
+  it('freezes the exact six-field contract per selected system and keeps credentials out of the chain', async () => {
+    const { test, record, save, bind } = await setup();
+    const outcome = await save({ section: 'target-systems', selections: [bind(webReg), bind(desktopReg)] });
+    expect(outcome).toMatchObject({ ok: true, changed: true });
+
+    const targets = record().targets;
+    expect(targets.map((target) => target.registrationId)).toEqual([WEB, DESKTOP]);
+    expect(targets[0]).toMatchObject({
+      registrationId: WEB,
+      displayName: 'LoanCore',
+      digest: webReg.digest,
+      contract: { kind: 'web', credential_ref: 'vault://audit/loancore', secondary_key: null },
+    });
+    // The desktop application identity occupies the allowed_origins slot.
+    expect(targets[1]?.contract).toMatchObject({ kind: 'desktop', allowed_origins: ['com.northstar.ledgerdesk'] });
+
+    // One event, and no credential reference anywhere in its payload.
+    expect(test.events).toHaveLength(1);
+    expect(test.events[0]?.eventType).toBe(PROCEDURE_DRAFT_CHANGED_EVENT);
+    expect(JSON.stringify(test.events[0]?.payload)).not.toContain('vault://');
+  });
+
+  it('refuses a duplicate selection and stores nothing', async () => {
+    const { record, save, bind } = await setup();
+    const before = record().targets;
+    expect(await save({ section: 'target-systems', selections: [bind(webReg), bind(webReg)] })).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.DUPLICATE,
+    });
+    expect(record().targets).toEqual(before);
+  });
+
+  it('refuses a changed digest (unseen data) and a retired selection (ineligible) without writes', async () => {
+    const { test, record, save, bind } = await setup();
+    // The registration moved after the page rendered its digest.
+    test.registrations.set(WEB, reg(WEB, { kind: 'web', displayName: 'LoanCore', credentialRef: 'vault://audit/rotated' }));
+    expect(await save({ section: 'target-systems', selections: [bind(webReg)] })).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.UNSEEN,
+    });
+    // A retired registration cannot be newly selected.
+    test.registrations.set(API, { ...apiReg, status: 'retired' });
+    expect(await save({ section: 'target-systems', selections: [bind(apiReg)] })).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.INELIGIBLE,
+    });
+    expect(record().targets).toHaveLength(0);
+    expect(test.events).toHaveLength(0);
+  });
+
+  it('retains a saved snapshot unchanged after the registration changes or retires', async () => {
+    const { test, record, save, bind } = await setup();
+    expect(await save({ section: 'target-systems', selections: [bind(webReg)] })).toMatchObject({ ok: true });
+    const frozen = record().targets[0];
+
+    // The registration is changed and then retired; the retained snapshot never refreshes.
+    test.registrations.set(WEB, reg(WEB, { kind: 'web', displayName: 'LoanCore renamed', credentialRef: 'vault://audit/new', status: 'retired' }));
+    expect(await save({ section: 'target-systems', selections: [{ mode: 'retain', registrationId: WEB }] })).toMatchObject({
+      ok: true,
+      changed: false,
+    });
+    expect(record().targets[0]).toEqual(frozen);
+
+    // Retaining a system that was never saved is refused.
+    expect(await save({ section: 'target-systems', selections: [{ mode: 'retain', registrationId: DESKTOP }] })).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.RETAIN_UNKNOWN,
+    });
+  });
+
+  it('stores instructions verbatim for agent systems and refuses an orphan or an API instruction', async () => {
+    const { test, record, save, bind } = await setup();
+    await save({ section: 'target-systems', selections: [bind(webReg), bind(apiReg)] });
+    const token = procedureVersionRowVersion(record());
+
+    // An API system takes no agent instructions.
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: API, text: 'read it' }] }, token)).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION,
+    });
+    // An instruction for a system that is not selected at all is an orphan.
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: DESKTOP, text: 'read it' }] }, token)).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.ORPHAN_INSTRUCTION,
+    });
+
+    const verbatim = '  Open the account record and note its status.  ';
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: WEB, text: verbatim }] }, token)).toMatchObject({ ok: true, changed: true });
+    expect(record().instructions).toEqual([{ registrationId: WEB, text: verbatim }]);
+    expect(test.events.at(-1)?.eventType).toBe(PROCEDURE_DRAFT_CHANGED_EVENT);
+  });
+
+  it('prunes an instruction when its system is deselected, and refuses an unstorable one', async () => {
+    const { record, save, bind } = await setup();
+    await save({ section: 'target-systems', selections: [bind(webReg), bind(desktopReg)] });
+    await save({ section: 'audit-instructions', instructions: [{ registrationId: WEB, text: 'Read the status.' }, { registrationId: DESKTOP, text: 'Read the roles.' }] }, procedureVersionRowVersion(record()));
+    expect(record().instructions).toHaveLength(2);
+
+    // Deselect LoanCore; its instruction is pruned, LedgerDesk's survives.
+    await save({ section: 'target-systems', selections: [{ mode: 'retain', registrationId: DESKTOP }] }, procedureVersionRowVersion(record()));
+    expect(record().instructions).toEqual([{ registrationId: DESKTOP, text: 'Read the roles.' }]);
+
+    // A NUL cannot be stored: a sentence, not a driver error.
+    expect(await save({ section: 'audit-instructions', instructions: [{ registrationId: DESKTOP, text: 'bad\u0000text' }] }, procedureVersionRowVersion(record()))).toEqual({
+      ok: false,
+      reason: TARGET_DRAFT_MESSAGES.NOT_STORABLE,
+    });
+  });
+
+  it('writes nothing on an idle save, refuses a stale token, and rolls back a failed append', async () => {
+    const { test, record, save, bind } = await setup();
+    await save({ section: 'target-systems', selections: [bind(webReg)] });
+    const token = procedureVersionRowVersion(record());
+    test.events.length = 0;
+
+    // Idle re-save of the same selection.
+    expect(await save({ section: 'target-systems', selections: [{ mode: 'retain', registrationId: WEB }] }, token)).toMatchObject({ ok: true, changed: false });
+    expect(test.events).toHaveLength(0);
+
+    // A stale tab loses.
+    expect(await save({ section: 'target-systems', selections: [] }, '0'.repeat(64))).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+
+    // A failed append rolls the change back.
+    const before = record();
+    test.failAppend = true;
+    await expect(save({ section: 'target-systems', selections: [] }, token)).rejects.toThrow('audit append failed');
+    expect(record()).toEqual(before);
+  });
+
+  it('refuses a PoC Administrator before reading the edit', async () => {
+    const test = harness('poc-administrator');
+    const input = { session: POC_ADMIN, correlationId: 'denied', get edit(): never { throw new Error('must not parse'); } };
+    await expect(updateTargetDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
   });
 });

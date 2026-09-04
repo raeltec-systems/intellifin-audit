@@ -3,6 +3,7 @@ import {
   canonicalJson,
   initialDraftSections,
   initialDraftPopulation,
+  initialDraftTargets,
   isTemplateId,
   sha256Hex,
   type DraftSection,
@@ -219,6 +220,11 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       zeroRecordPass: record.zeroRecordPass,
       allowVersionedDuplicates: record.allowVersionedDuplicates,
       populationBlockers: record.populationBlockers,
+      // Target System selection and per-system Audit Instructions are saved fields, so a
+      // stale tab that edited them must lose to a concurrent save exactly as one that
+      // edited the population fields does.
+      targets: record.targets,
+      instructions: record.instructions,
     } as unknown as JsonValue),
   );
 }
@@ -255,6 +261,7 @@ export async function createProcedure(
   };
   const version: ProcedureVersionRecord = {
     ...initialDraftPopulation(validated.templateId),
+    ...initialDraftTargets(),
     versionId,
     procedureId,
     versionNumber: 1,

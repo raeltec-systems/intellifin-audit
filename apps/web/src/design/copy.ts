@@ -134,3 +134,12 @@ export const PROCEDURE_CARD_ABSENT = {
  */
 export const BUILDER_SECTION_NOT_EDITABLE_SENTENCE =
   'This section is pre-filled from the Template and is not editable yet. A later release makes it editable.';
+
+/**
+ * The responsive floor for the Builder (NFR-11, EXPERIENCE.md → Responsive breakpoints).
+ *
+ * Below 900px the Builder is reading mode and shows this sentence rather than degrading the
+ * authoring flow. It is a contract sentence, quoted verbatim: `copy.test.ts` reads it off
+ * EXPERIENCE.md.
+ */
+export const BUILDER_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to author or approve.';
