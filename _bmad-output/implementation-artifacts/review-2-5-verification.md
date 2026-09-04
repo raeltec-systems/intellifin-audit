@@ -1,0 +1,18 @@
+### Generation-11 backfill is checked as text, not against an existing version
+
+- **Changed surface:** `packages/infrastructure/drizzle/0011_quick_nighthawk.sql:13` backfills Evidence Requirements and Schedule on existing procedure versions.
+- **Impacted consumer or site:** `packages/infrastructure/src/procedures/procedure-repository.ts:133` reads the migrated fields for the Builder.
+- **Existing test evidence:** `Broken-verification gap`: `tests/integration/procedures.test.ts:105` extracts a JSON literal from the SQL, compares it with creation defaults, and searches SQL text for forbidden assignments. It never executes generation 11 against a pre-existing row. `tests/integration/migrate.test.ts:14` checks migration generation/idempotence without inserting a pre-upgrade version. The executable old-row fixture at `tests/integration/procedures.test.ts:1145` applies generation 10 only. Repository-wide searches for `0011_quick`, `generation 11`, `initialDraftEvidence`, migration references and backfill tests found these paths; the new persistence tests create their versions after migration.
+- **Missing verification:** Execute generation 11 on generation-10 rows and assert persisted evidence, Schedule, and preservation of previously authored fields through the repository reader.
+- **Demonstration:** Adding `WHERE false` to the backfill UPDATE would retain every literal the text assertions inspect while updating no existing rows. The negative assignment regex also passes when it fails to match and falls back to an empty string. Fresh creation and ordinary migration-generation tests would still pass.
+- **Consequence:** Upgraded P-1 versions could silently retain empty Evidence Requirements and no Schedule while newly created versions behave correctly.
+- **Suggested test shape:** Reuse the existing generation-10 temporary-table migration fixture pattern, with P-1 and non-P-1 pre-upgrade rows and edited authoring fields.
+
+### Agent-driven capture controls are not verified in the Builder
+
+- **Changed surface:** `apps/web/src/procedures/EvidenceScheduleForm.tsx:227` and `:238` force Structural Snapshot and screenshot controls checked and disabled for an agent-driven Target selection.
+- **Impacted consumer or site:** `EvidenceRequirementsForm`, rendered by `apps/web/src/procedures/DraftBuilder.tsx`, is the Auditor's evidence editor after saving a web or desktop Target System.
+- **Existing test evidence:** `Regression gap`: `tests/e2e/procedures.spec.ts:418` exercises evidence authoring with no selected targets and explicitly unchecks Structural Snapshot. The target-selection journey at `tests/e2e/procedures.spec.ts:480` saves web/desktop targets but checks target cards and instruction editors, not evidence controls. The domain and command tests verify persisted capture flags, but do not render these controls. Repository-wide component/import searches for `EvidenceRequirementsForm`, `ScheduleForm`, and `EvidenceScheduleForm`, plus searches of web tests for capture and evidence assertions, found no component test for this branch.
+- **Missing verification:** Assert that both capture controls are checked and unavailable after saving an agent-driven target, including on an added evidence row, and that the controls become editable when the last agent-driven target is removed.
+- **Demonstration:** Removing the two `disabled` bindings leaves the domain's persisted capture behavior unchanged and passes the evidence journey with no selected target; the target journey never observes these controls.
+- **Consequence:** The Builder would offer capture choices that the command silently overrides, violating the requirement that platform capture is recorded rather than offered as an Auditor choice.

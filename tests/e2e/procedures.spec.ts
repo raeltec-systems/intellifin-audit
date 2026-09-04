@@ -216,10 +216,9 @@ test.describe('as an Auditor', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
     await page.getByLabel('Population Source', { exact: true }).selectOption(manualId);
-    // No Schedule is set yet (Story 2.5: it is a real, auditor-set field now), so the
-    // upload/frequency pairing does not show — and it is never a save-time refusal, so
-    // the save succeeds and opens the confirmation dialog like any other.
-    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(0);
+    // P-1 starts weekly. The selected upload immediately shows the pairing warning,
+    // and saving remains available because it is a completeness blocker.
+    await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(1);
     await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Draft changes' }).click();
@@ -437,7 +436,7 @@ test.describe('as an Auditor', () => {
     await first.getByLabel('Source file excerpt').uncheck();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByText(/never grounds an attribute value/).first()).toBeVisible();
+    await expect(page.getByText(/Attribute "username": Ground every attribute value/)).toBeVisible();
 
     // Declaring model-read exempts it from deterministic grounding.
     await first.getByLabel('Declare model-read (exempt from deterministic grounding)').check();
@@ -455,26 +454,160 @@ test.describe('as an Auditor', () => {
     await page.keyboard.press('Enter');
     const added = page.getByLabel('Attribute name').last();
     await expect(added).toBeFocused();
-    await added.fill('note');
+    await added.fill(' USERNAME ');
     const addedFieldset = page.locator('fieldset', { hasText: 'Evidence Requirement 4' });
     await addedFieldset.getByLabel('Source file excerpt').check();
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(addedFieldset.getByText(/An attribute can appear only once/)).toBeVisible();
+    await added.fill('note');
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.reload();
     await expect(page.getByLabel('Attribute name')).toHaveCount(4);
+    const stableId = await page.getByLabel('Attribute name').nth(1).getAttribute('id');
+    await page.getByRole('button', { name: 'Remove Evidence Requirement 1', exact: true }).click();
+    await expect(page.getByLabel('Attribute name').first()).toHaveAttribute('id', stableId!);
+    await expect(page.getByLabel('Attribute name').first()).toBeFocused();
+    for (let count = 3; count > 0; count -= 1) {
+      await page.getByRole('button', { name: `Remove Evidence Requirement ${count}`, exact: true }).click();
+    }
+    await expect(add).toBeFocused();
+    await page.reload();
 
     // The Schedule: a frequency, a fixed UTC start, and the recorded period-derivation
     // rule — this Procedure Version records it and never runs it.
     await page.getByLabel('Frequency').selectOption('daily');
     await page.getByLabel('Fixed UTC start time').fill('06:00');
-    await expect(page.getByText('Recorded period-derivation rule: previous-calendar-day.')).toBeVisible();
+    await expect(page.getByText('Period covered: Previous calendar day, in UTC.')).toBeVisible();
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.getByLabel('Frequency').selectOption('');
+    await page.getByLabel('Frequency').blur();
+    await expect(page.getByLabel('Frequency')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByLabel('Fixed UTC start time')).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toHaveCount(0);
     await page.reload();
     await expect(page.getByLabel('Frequency')).toHaveValue('daily');
     await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('06:00');
+    await scan(page);
+  });
+
+  test('preserves pending Schedule edits across refreshes and reports a lost committed response honestly', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E schedule refresh ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByLabel('Frequency').selectOption('daily');
+    await page.getByLabel('Fixed UTC start time').fill('06:00');
+    await page.getByLabel('New Control name').fill(`E2E schedule refresh renamed ${stamp}`);
+    await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Control name', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1, name: `E2E schedule refresh renamed ${stamp}` })).toBeVisible();
+    await expect(page.getByLabel('Frequency')).toHaveValue('daily');
+    await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('06:00');
+
+    let committed!: () => void;
+    const committedResponse = new Promise<void>((resolve) => { committed = resolve; });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const builderUrl = page.url();
+    await page.route(builderUrl, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      const response = await route.fetch();
+      committed();
+      await released;
+      await route.fulfill({ response });
+    });
+    try {
+      await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Save Schedule', exact: true }).click();
+      await committedResponse;
+      await page.getByLabel('Fixed UTC start time').fill('07:00');
+      release();
+      await expect(page.getByRole('button', { name: 'Save Schedule', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+      await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('07:00');
+      await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.')).toHaveCount(0);
+    } finally { release(); await page.unroute(builderUrl); }
+
+    // Commit the pending edit but deliberately lose its response. A retry is blocked
+    // until the auditor reloads and sees that the transaction actually committed.
+    await page.route(builderUrl, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await route.fetch();
+      await route.abort('failed');
+    });
+    await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Schedule', exact: true }).click();
+    await expect(page.getByText(/The save response was lost/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save Schedule', exact: true })).toHaveAttribute('aria-disabled', 'true');
+    await page.unroute(builderUrl);
+    await page.getByRole('button', { name: 'Reload saved version' }).click();
+    await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('07:00');
+    await expect(page.getByLabel('Frequency')).toHaveValue('daily');
+    await scan(page);
+  });
+
+  test('normalizes dirty Evidence after target selection and retains that saved state after deselection', async ({ page }) => {
+    test.setTimeout(90_000);
+    const databaseUrl = process.env['DATABASE_URL'];
+    if (!databaseUrl) throw new Error('The Builder journey requires the throwaway database.');
+    assertThrowawayDatabase(databaseUrl);
+    const { createSqlClient, CryptoUuidV7Generator } = await import('@intellifin/infrastructure');
+    const sql = createSqlClient(databaseUrl, { max: 1 });
+    const webId = new CryptoUuidV7Generator().next();
+    const apiId = new CryptoUuidV7Generator().next();
+    try {
+      for (const [id, kind] of [[webId, 'web'], [apiId, 'api']] as const) {
+        const fields = { kind, allowedOrigins: ['https://capture.synthetic.invalid'], applicationIdentity: '', credentialRef: 'vault://audit/capture', permittedActions: ['read-attribute'] as const, attributeLabelPatterns: ['Status'], secondaryKey: '' };
+        await sql`INSERT INTO target_system_registration (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest) VALUES (${id}, ${`Capture ${kind} ${stamp}`}, ${kind}, ${fields.allowedOrigins}, '', ${fields.credentialRef}, ${fields.permittedActions}, ${fields.attributeLabelPatterns}, '', '', 'active', ${registrationDigest(fields)})`;
+      }
+    } finally { await sql.end({ timeout: 5 }); }
+    await page.goto('/procedures/new');
+    await page.getByLabel('Template').selectOption('P-1');
+    await page.getByLabel('Control name').fill(`E2E capture ${stamp}`);
+    await page.getByRole('button', { name: 'Create Procedure' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    const first = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence Requirement 1$/ }) });
+    await first.getByLabel('Structural Snapshot').uncheck();
+    await first.getByLabel('Screenshot', { exact: true }).uncheck();
+    await first.getByLabel('Declare model-read (exempt from deterministic grounding)').check();
+    await first.getByLabel('Attribute name').fill('retained_name');
+    await page.getByLabel('Add a Target System').selectOption(webId);
+    await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
+    await expect(first.getByLabel('Attribute name')).toHaveValue('retained_name');
+    await expect(first.getByLabel('Structural Snapshot')).toBeDisabled();
+    await expect(first.getByLabel('Structural Snapshot')).toBeChecked();
+    await expect(first.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeChecked();
+    await expect(first.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Add Evidence Requirement', exact: true }).click();
+    const addedCapture = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence Requirement 4$/ }) });
+    await addedCapture.getByLabel('Attribute name').fill('capture_note');
+    await expect(addedCapture.getByLabel('Structural Snapshot')).toBeChecked();
+    await expect(addedCapture.getByLabel('Structural Snapshot')).toBeDisabled();
+    await expect(addedCapture.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeChecked();
+    await expect(addedCapture.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: `Remove Capture web ${stamp}`, exact: true }).click();
+    await page.getByLabel('Add a Target System').selectOption(apiId);
+    await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
+    await expect(first.getByLabel('Structural Snapshot')).toBeEnabled();
+    await expect(first.getByLabel('Structural Snapshot')).toBeChecked();
+    await expect(first.getByLabel('Screenshot', { exact: true })).toBeChecked();
+    await expect(first.getByLabel('Screenshot', { exact: true })).toBeEnabled();
+    await expect(first.getByLabel('Attribute name')).toHaveValue('retained_name');
+    await page.reload();
+    await expect(first.getByLabel('Declare model-read (exempt from deterministic grounding)')).toBeChecked();
     await scan(page);
   });
 

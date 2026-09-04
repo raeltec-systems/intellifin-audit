@@ -1,5 +1,8 @@
 import {
   isAgentDrivenKind,
+  hasAgentDrivenTarget,
+  withPlatformCaptured,
+  canonicalJson,
   isDraftTargetFields,
   isProcedureTargetSnapshot,
   snapshotFromRegistration,
@@ -181,7 +184,12 @@ export async function updateTargetDraft(
         const instructions = before.instructions.filter((instruction) =>
           agentIds.has(instruction.registrationId),
         );
-        after = { ...before, targets, instructions };
+        // Capture requirements follow the saved selection in the same audited write.
+        // Preserve authored grounding, model-read declarations and optional recordings.
+        const evidenceRequirements = before.evidenceRequirements.map((requirement) =>
+          withPlatformCaptured(requirement, hasAgentDrivenTarget(targets)),
+        );
+        after = { ...before, targets, instructions, evidenceRequirements };
       } else {
         after = { ...before, instructions: resolveInstructions(before, edit.instructions) };
       }
@@ -193,7 +201,8 @@ export async function updateTargetDraft(
       await procedures.updateVersion(after);
       const project = (row: ProcedureVersionRecord): JsonValue =>
         (edit.section === 'target-systems'
-          ? { targets: targetValues(row.targets), instructions: instructionValues(row.instructions) }
+          ? { targets: targetValues(row.targets), instructions: instructionValues(row.instructions),
+              evidenceRequirementsDigest: sha256Hex(canonicalJson(row.evidenceRequirements as unknown as JsonValue)) }
           : { instructions: instructionValues(row.instructions) }) as unknown as JsonValue;
       await auditEvents.append({
         actor: { type: 'human', id: input.session.userId },

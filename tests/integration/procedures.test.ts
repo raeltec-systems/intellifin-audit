@@ -30,6 +30,7 @@ import {
   initialDraftSections,
   bindingDigest,
   registrationDigest,
+  registrationDigestEnvelope,
   initialDraftPopulation,
   initialDraftCompliance,
   initialDraftEvidence,
@@ -99,26 +100,6 @@ describe('generation 10 Compliance Rule backfill', () => {
     // population, targets, instructions, or retained section payload.
     const update = /UPDATE "procedure_version"([\s\S]*?)END;/.exec(migration)?.[0] ?? '';
     expect(update).not.toMatch(/"(?:period|scope|targets|instructions|sections)"\s*=/);
-  });
-});
-
-describe('generation 11 Evidence Requirements backfill', () => {
-  it('contains the exact typed defaults for P-1 and an empty array for every other Template', () => {
-    const migration = readFileSync(
-      new URL('../../packages/infrastructure/drizzle/0011_quick_nighthawk.sql', import.meta.url),
-      'utf8',
-    );
-    const match = /WHEN 'P-1' THEN \$json\$(.*?)\$json\$::jsonb/s.exec(migration);
-    expect(match?.[1]).toBeDefined();
-    expect(JSON.parse(match![1]!)).toEqual(initialDraftEvidence('P-1').evidenceRequirements);
-    // Every other Template falls through to the ELSE branch — an empty array, not a
-    // second WHEN clause somebody has to keep pinned as more Templates are added.
-    expect(migration).toMatch(/ELSE '\[\]'::jsonb/);
-    // The migration promotes only Evidence Requirements. Schedule stays NULL — it is
-    // now a real, auditor-set field, not a Template default — and no prior authored
-    // section is rewritten.
-    const update = /UPDATE "procedure_version"([\s\S]*?)END;/.exec(migration)?.[0] ?? '';
-    expect(update).not.toMatch(/"(?:period|scope|targets|instructions|sections|schedule)"\s*=/);
   });
 });
 
@@ -1359,6 +1340,85 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
   });
 
   describe('Evidence Requirements and Schedule authoring', () => {
+    it('applies generation 11 to authored generation-10 versions in every lifecycle state using persisted targets', async () => {
+      const migration = readFileSync(new URL('../../packages/infrastructure/drizzle/0011_quick_nighthawk.sql', import.meta.url), 'utf8');
+      const statements = migration.split('--> statement-breakpoint').map((statement) => statement.trim()).filter(Boolean);
+      const seed = await createProcedure(dependencies(), createInput({ templateId: 'P-2' }, `${prefix}generation-11-seed`));
+      if (!seed.ok) throw new Error(seed.reason);
+      created.push(seed.procedureId);
+      const dedicated = createSqlClient(databaseUrl as string, { max: 1 });
+      const fixtures: { versionId: string; templateId: 'P-1' | 'P-2' | 'P-3' | 'P-4'; platformCaptured: boolean }[] = [];
+      try {
+        await dedicated`CREATE TEMP TABLE procedure_version (LIKE public.procedure_version INCLUDING ALL)`;
+        await dedicated`ALTER TABLE procedure_version DROP COLUMN evidence_schema_version, DROP COLUMN evidence_requirements, DROP COLUMN schedule`;
+        await dedicated`CREATE TEMP TABLE schema_meta (LIKE public.schema_meta INCLUDING ALL)`;
+        await dedicated`INSERT INTO schema_meta (version) VALUES (10)`;
+        for (const templateId of ['P-1', 'P-2', 'P-3', 'P-4'] as const) {
+          for (const state of PROCEDURE_VERSION_STATES) {
+            // The empty selection represents targets removed during prior authoring;
+            // API-only coverage must not accidentally count as agent-driven either.
+            for (const kind of ['web', 'desktop', 'api', null] as const) {
+              const versionId = new CryptoUuidV7Generator().next();
+              const registrationId = new CryptoUuidV7Generator().next();
+              const fields = {
+                kind: kind ?? 'web', allowedOrigins: kind === 'desktop' ? [] : ['https://edited.example.invalid'],
+                applicationIdentity: kind === 'desktop' ? 'com.edited.audit' : '',
+                credentialRef: 'vault://edited-target', permittedActions: ['read-attribute'] as const,
+                attributeLabelPatterns: ['Status'], secondaryKey: '',
+              };
+              const targets = kind === null ? [] : [{
+                registrationId, displayName: 'Previously authored target', digest: registrationDigest(fields),
+                contract: registrationDigestEnvelope(fields),
+              }];
+              const instructions = kind === 'web' || kind === 'desktop' ? [{ registrationId, text: 'Preserve this authored instruction.' }] : [];
+              const sections = initialDraftSections(templateId).map((section) => section.heading === 'Objective' ? { ...section, content: 'Preserve this authored objective.' } : section);
+              const compliance = initialDraftCompliance(templateId);
+              // Copy a complete valid row without depending on column defaults, then
+              // author generation-10 values in the isolated table before migration.
+              await dedicated`
+                INSERT INTO procedure_version SELECT (jsonb_populate_record(NULL::pg_temp.procedure_version,
+                  to_jsonb(source) || jsonb_build_object('version_id', ${versionId}::text, 'procedure_id', ${versionId}::text))) .*
+                FROM public.procedure_version AS source WHERE source.version_id = ${seed.versionId}
+              `;
+              await dedicated`
+                UPDATE procedure_version SET template_id = ${templateId}, state = ${state},
+                  control_name = 'Previously authored control', scope = 'Previously authored scope',
+                  period = '{"from":"2026-07-01","to":"2026-07-31"}'::jsonb,
+                  zero_record_pass = true, allow_versioned_duplicates = true,
+                  sections = ${dedicated.json(sections as unknown as Parameters<typeof dedicated.json>[0])},
+                  targets = ${dedicated.json(targets as unknown as Parameters<typeof dedicated.json>[0])},
+                  instructions = ${dedicated.json(instructions as unknown as Parameters<typeof dedicated.json>[0])},
+                  compliance_conditions = ${dedicated.json(compliance.complianceConditions as unknown as Parameters<typeof dedicated.json>[0])},
+                  agent_judged_threshold = '0.8500'
+                WHERE version_id = ${versionId}
+              `;
+              fixtures.push({ versionId, templateId, platformCaptured: kind === 'web' || kind === 'desktop' });
+            }
+          }
+        }
+        const before = await dedicated`SELECT version_id, to_jsonb(procedure_version) AS fields FROM procedure_version ORDER BY version_id`;
+        for (const statement of statements) await dedicated.unsafe(statement);
+        const after = await dedicated`
+          SELECT version_id, to_jsonb(procedure_version) - 'evidence_schema_version' - 'evidence_requirements' - 'schedule' AS fields
+          FROM procedure_version ORDER BY version_id
+        `;
+        expect(after).toEqual(before);
+        const repository = new DrizzleProcedureRepository(createDb(dedicated));
+        for (const fixture of fixtures) {
+          const expected = initialDraftEvidence(fixture.templateId);
+          const migrated = await repository.findVersion(fixture.versionId);
+          expect(migrated, `${fixture.templateId} ${fixture.versionId}`).not.toBeNull();
+          expect(migrated).toMatchObject({
+            evidenceSchemaVersion: 1, schedule: expected.schedule,
+            evidenceRequirements: expected.evidenceRequirements.map((requirement) => ({ ...requirement, platformCaptured: fixture.platformCaptured })),
+          });
+        }
+        await expect(dedicated`SELECT version FROM schema_meta ORDER BY version`).resolves.toEqual([{ version: 10 }, { version: 11 }]);
+      } finally {
+        await dedicated.end({ timeout: 5 });
+      }
+    });
+
     interface RegisteredWeb {
       readonly id: string;
       readonly digest: string;
@@ -1460,7 +1520,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         procedureVersionRowVersion(before),
         correlationId,
       );
-      expect(outcome).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.GROUNDING });
+      expect(outcome).toEqual({ ok: false, reason: 'Attribute "account_status": ' + EVIDENCE_DRAFT_MESSAGES.GROUNDING });
       expect(await read()).toEqual(before);
       expect(await eventsFor(correlationId)).toHaveLength(0);
     });
@@ -1579,14 +1639,15 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       expect(await read()).toEqual(before);
     });
 
-    it('seeds P-1 with the structured, platform-captured Template defaults at creation', async () => {
+    it('seeds P-1 evidence suggestions without claiming platform capture before target selection', async () => {
       const seed = await createProcedure(dependencies(), createInput({ templateId: 'P-1' }, `${prefix}evidence-p1-create`));
       if (!seed.ok) throw new Error(seed.reason);
       created.push(seed.procedureId);
       const row = await new DrizzleProcedureRepository(db).findVersion(seed.versionId);
       expect(row?.evidenceRequirements.map((r) => r.attributeName).sort()).toEqual(['account_status', 'roles', 'username']);
-      expect(row?.evidenceRequirements.every((r) => r.platformCaptured)).toBe(true);
-      expect(row?.schedule).toBeNull();
+      expect(row?.targets).toEqual([]);
+      expect(row?.evidenceRequirements.every((r) => !r.platformCaptured)).toBe(true);
+      expect(row?.schedule).toEqual({ frequency: 'weekly', startTime: '00:00', periodDerivationRule: 'previous-monday-sunday' });
     });
 
     it('the database refuses a non-array, an over-shaped array, and a malformed Schedule', async () => {
@@ -1595,6 +1656,13 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       await expect(sql`UPDATE procedure_version SET evidence_schema_version = 2 WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_evidence_schema/);
       await expect(sql`UPDATE procedure_version SET schedule = '{"frequency":"yearly","startTime":"02:00","periodDerivationRule":"explicit-period"}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_schedule_shape/);
       await expect(sql`UPDATE procedure_version SET schedule = '{"frequency":"weekly","startTime":"2:00","periodDerivationRule":"previous-monday-sunday"}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_schedule_shape/);
+      for (const malformed of [
+        { frequency: 'weekly', startTime: '02:00' },
+        { frequency: 'weekly', startTime: '02:00', periodDerivationRule: null },
+        { frequency: 'weekly', startTime: '02:00', periodDerivationRule: 'explicit-period' },
+      ]) {
+        await expect(sql`UPDATE procedure_version SET schedule = ${JSON.stringify(malformed)}::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_schedule_shape/);
+      }
       // The value the command writes is accepted.
       await expect(sql`UPDATE procedure_version SET schedule = '{"frequency":"weekly","startTime":"02:00","periodDerivationRule":"previous-monday-sunday"}'::jsonb WHERE version_id = ${seed.versionId}`).resolves.toBeDefined();
     });

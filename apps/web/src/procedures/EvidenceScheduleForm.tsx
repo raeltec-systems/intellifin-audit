@@ -9,7 +9,8 @@ import {
   GROUNDING_EVIDENCE_TYPES,
   PERIOD_DERIVATION_RULES,
   hasAgentDrivenTarget,
-  withPlatformCaptured,
+  evidenceGroundingMessage,
+  evidenceBlockersFor,
   type EvidenceRequirementInput,
   type Frequency,
   type GroundingEvidenceType,
@@ -20,6 +21,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
+import { useSection } from './use-section';
 
 /**
  * Evidence Requirements and the Schedule (FR-9, FR-10, scoped to this story).
@@ -54,9 +56,13 @@ function inputsFrom(draft: ProcedureVersionView): readonly EvidenceRequirementIn
   }));
 }
 
-function sameRequirements(left: readonly EvidenceRequirementInput[], right: readonly EvidenceRequirementInput[]): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
+const PERIOD_LABEL: Readonly<Record<Frequency, string>> = {
+  once: 'The explicit Period entered for this Procedure.',
+  daily: 'Previous calendar day, in UTC.',
+  weekly: 'Previous Monday through Sunday, in UTC.',
+  monthly: 'Previous calendar month, in UTC.',
+};
+const UNKNOWN_OUTCOME = 'The save response was lost. The change may have been saved. Reload to review the saved version before trying again.';
 
 export interface EvidenceRequirementsFormProps {
   readonly draft: ProcedureVersionView;
@@ -68,21 +74,24 @@ export interface EvidenceRequirementsFormProps {
 
 export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: EvidenceRequirementsFormProps): React.JSX.Element {
   const id = useId();
-  const [token, setToken] = useState(rowVersion);
-  useEffect(() => setToken(rowVersion), [rowVersion]);
-  const initial = inputsFrom(draft);
-  const [requirements, setRequirements] = useState<readonly EvidenceRequirementInput[]>(() => initial);
-  const requirementsRef = useRef(requirements);
-  const dirtyRef = useRef(false);
-  useEffect(() => {
-    const server = inputsFrom(draft);
-    if (!dirtyRef.current || sameRequirements(requirementsRef.current, server)) {
-      requirementsRef.current = server;
-      dirtyRef.current = false;
-      setRequirements(server);
-    }
-  }, [draft]);
-  const [touched, setTouched] = useState<ReadonlySet<number>>(() => new Set());
+  const platformCaptured = hasAgentDrivenTarget(draft.targets);
+  const normalize = (requirements: readonly EvidenceRequirementInput[]): readonly EvidenceRequirementInput[] => requirements.map((requirement) => ({
+    ...requirement,
+    groundedBy: platformCaptured && !requirement.groundedBy.includes('structural-snapshot')
+      ? [...requirement.groundedBy, 'structural-snapshot'] : requirement.groundedBy,
+    screenshot: platformCaptured || requirement.screenshot,
+  }));
+  const section = useSection(inputsFrom(draft), rowVersion, normalize);
+  const requirements = section.value;
+  const requirementsRef = { get current() { return section.current.current.value; } };
+  const setRequirements = (value: readonly EvidenceRequirementInput[]) => section.edit(value);
+  const nextId = useRef(0);
+  const rowIds = useRef<string[]>([]);
+  if (rowIds.current.length > requirements.length) rowIds.current.length = requirements.length;
+  while (rowIds.current.length < requirements.length) rowIds.current.push(`${id}-row-${nextId.current++}`);
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => { setTouched(new Set()); }, [section.baseline]);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
@@ -94,12 +103,9 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
   // choice offered here. The command recomputes it authoritatively at save time; this
   // preview disables the fields it would force so nobody is asked a question with no
   // effect on the outcome.
-  const platformCaptured = hasAgentDrivenTarget(draft.targets);
 
   function change(index: number, edit: Partial<EvidenceRequirementInput>): void {
-    dirtyRef.current = true;
     const next = requirementsRef.current.map((requirement, i) => (i === index ? { ...requirement, ...edit } : requirement));
-    requirementsRef.current = next;
     setRequirements(next);
     setResult(null);
   }
@@ -115,28 +121,33 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
 
   function errorFor(requirement: EvidenceRequirementInput): string | null {
     if (requirement.attributeName.trim() === '') return EVIDENCE_DRAFT_MESSAGES.ATTRIBUTE;
-    if (!requirement.modelRead && requirement.groundedBy.length === 0) return EVIDENCE_DRAFT_MESSAGES.GROUNDING;
+    if (requirements.filter((other) => other.attributeName.trim().toLowerCase() === requirement.attributeName.trim().toLowerCase()).length > 1) return `Attribute "${requirement.attributeName}": ${EVIDENCE_DRAFT_MESSAGES.DUPLICATE}`;
+    if (!platformCaptured && !requirement.modelRead && requirement.groundedBy.length === 0) return evidenceGroundingMessage(requirement.attributeName);
     return null;
   }
 
   const limitReached = requirements.length >= EVIDENCE_DRAFT_LIMITS.requirements;
 
   async function save(): Promise<void> {
-    if (saving.current) return;
+    if (saving.current || section.conflict || unknownOutcome) return;
     saving.current = true;
     setConfirming(false);
     setBusy(true);
+    const normalized = normalize(requirementsRef.current);
+    section.begin(normalized);
     try {
       const outcome = await onSave({
         procedureId: draft.procedureId,
         versionId: draft.versionId,
-        expectedRowVersion: token,
-        edit: { section: 'evidence-requirements', requirements: requirementsRef.current },
+        expectedRowVersion: section.current.current.token,
+        edit: { section: 'evidence-requirements', requirements: normalized },
       });
-      setResult(outcome);
-      if (outcome.ok) setToken(outcome.rowVersion);
+      const unchanged = section.finish(outcome.ok ? outcome.rowVersion : undefined);
+      setResult(outcome.ok && !unchanged ? null : outcome);
     } catch {
-      setResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
+      section.finish();
+      setUnknownOutcome(true);
+      setResult(null);
     } finally {
       setAnnouncement((count) => count + 1);
       saving.current = false;
@@ -148,6 +159,8 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
 
   return (
     <div className="ls-stack">
+      {section.conflict ? <><Banner tone="warning" title="Evidence Requirements changed in another session. Review the saved values before replacing them." /><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Evidence Requirements</Button></> : null}
+      {unknownOutcome ? <><Banner tone="warning" title={UNKNOWN_OUTCOME} /><Button type="button" onClick={() => window.location.reload()}>Reload saved version</Button></> : null}
       {result === null ? null : (
         <Banner
           key={announcement}
@@ -176,21 +189,22 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
         className="ls-admin__form ls-stack"
         onSubmit={(event) => {
           event.preventDefault();
-          if (saving.current) return;
+          if (saving.current || section.conflict || unknownOutcome) return;
           setResult(null);
           setSubmitted(true);
-          setTouched(new Set(requirements.map((_, index) => index)));
+          setTouched(new Set(rowIds.current));
           if (anyError) return;
           setConfirming(true);
         }}
       >
         {requirements.length === 0 ? <p>No Evidence Requirement is defined yet.</p> : null}
         {requirements.map((requirement, index) => {
-          const fieldId = `${id}-${index}`;
-          const error = (submitted || touched.has(index)) ? errorFor(requirement) : null;
+          const fieldId = rowIds.current[index]!;
+          const error = (submitted || touched.has(fieldId)) ? errorFor(requirement) : null;
+          const nameError = requirement.attributeName.trim() === '' || requirements.filter((other) => other.attributeName.trim().toLowerCase() === requirement.attributeName.trim().toLowerCase()).length > 1;
           const forced = platformCaptured;
           return (
-            <fieldset className="ls-stack" key={index} onBlur={() => setTouched((current) => new Set([...current, index]))}>
+            <fieldset className="ls-stack" key={fieldId} onBlur={() => setTouched((current) => new Set([...current, fieldId]))}>
               <legend>Evidence Requirement {index + 1}</legend>
               <div className="ls-dialog__field">
                 <label htmlFor={`${fieldId}-name`}>Attribute name</label>
@@ -200,7 +214,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                   value={requirement.attributeName}
                   maxLength={EVIDENCE_DRAFT_LIMITS.attributeName}
                   aria-describedby={`${fieldId}-error`}
-                  aria-invalid={error !== null || undefined}
+                  aria-invalid={(error !== null && nameError) || undefined}
                   onChange={(event) => change(index, { attributeName: event.target.value })}
                 />
               </div>
@@ -212,7 +226,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                 />{' '}
                 Declare model-read (exempt from deterministic grounding)
               </label>
-              <fieldset>
+              <fieldset aria-invalid={(error !== null && !nameError) || undefined} aria-describedby={`${fieldId}-error`}>
                 <legend>Grounded by</legend>
                 {GROUNDING_EVIDENCE_TYPES.map((kind) => (
                   <label key={kind}>
@@ -249,11 +263,16 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
               <Button
                 type="button"
                 onClick={() => {
-                  dirtyRef.current = true;
+
                   const next = requirementsRef.current.filter((_, i) => i !== index);
-                  requirementsRef.current = next;
+                  rowIds.current.splice(index, 1);
                   setRequirements(next);
                   setResult(null);
+                  const focusId = rowIds.current[index] ?? rowIds.current[index - 1];
+                  requestAnimationFrame(() => {
+                    if (focusId === undefined) document.getElementById(`${id}-add`)?.querySelector('button')?.focus();
+                    else document.getElementById(`${focusId}-name`)?.focus();
+                  });
                 }}
               >
                 Remove Evidence Requirement {index + 1}
@@ -262,21 +281,28 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           );
         })}
         {limitReached ? <p id={`${id}-limit`}>Evidence Requirements supports at most {EVIDENCE_DRAFT_LIMITS.requirements} attributes.</p> : null}
-        <Button
+        <div id={`${id}-add`}><Button
           type="button"
           disabledReason={limitReached ? `Evidence Requirements supports at most ${EVIDENCE_DRAFT_LIMITS.requirements} attributes.` : undefined}
           disabledReasonId={`${id}-limit`}
           onClick={() => {
-            dirtyRef.current = true;
-            const next = [...requirementsRef.current, withPlatformCaptured({ attributeName: '', modelRead: false, groundedBy: [], screenshot: false, recordingSegment: false }, platformCaptured)];
-            requirementsRef.current = next;
+
+            const next: readonly EvidenceRequirementInput[] = [...requirementsRef.current, {
+              attributeName: '', modelRead: false, groundedBy: platformCaptured ? ['structural-snapshot'] : [],
+              screenshot: platformCaptured, recordingSegment: false,
+            }];
+
+            const rowId = `${id}-row-${nextId.current++}`;
+            rowIds.current.push(rowId);
             setRequirements(next);
-            requestAnimationFrame(() => document.getElementById(`${id}-${next.length - 1}-name`)?.focus());
+            setResult(null);
+            requestAnimationFrame(() => document.getElementById(`${rowId}-name`)?.focus());
           }}
         >
           Add Evidence Requirement
-        </Button>
-        <Button type="submit" variant="primary" busy={busy}>
+        </Button></div>
+        {(section.conflict || unknownOutcome) ? <p id={`${id}-save-blocker`}>Review the saved version before saving Evidence Requirements again.</p> : null}
+        <Button type="submit" variant="primary" busy={busy} disabledReason={section.conflict || unknownOutcome ? 'Review the saved version before saving Evidence Requirements again.' : undefined} disabledReasonId={`${id}-save-blocker`}>
           {busy ? 'Saving…' : 'Save Evidence Requirements'}
         </Button>
       </form>
@@ -305,10 +331,9 @@ export interface ScheduleFormProps {
 
 export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): React.JSX.Element {
   const id = useId();
-  const [token, setToken] = useState(rowVersion);
-  useEffect(() => setToken(rowVersion), [rowVersion]);
-  const [frequency, setFrequency] = useState<Frequency | ''>(draft.schedule?.frequency ?? '');
-  const [startTime, setStartTime] = useState(draft.schedule?.startTime ?? '');
+  const section = useSection<{ frequency: Frequency | ''; startTime: string }>({ frequency: draft.schedule?.frequency ?? '', startTime: draft.schedule?.startTime ?? '' }, rowVersion);
+  const { frequency, startTime } = section.value;
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [touched, setTouched] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
@@ -316,26 +341,29 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
 
-  const error = frequency === '' ? EVIDENCE_DRAFT_MESSAGES.FREQUENCY
-    : !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(startTime) ? EVIDENCE_DRAFT_MESSAGES.START
-    : null;
+  const frequencyError = frequency === '' ? EVIDENCE_DRAFT_MESSAGES.FREQUENCY : null;
+  const startError = !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(startTime) ? EVIDENCE_DRAFT_MESSAGES.START : null;
+  const error = frequencyError ?? startError;
 
   async function save(): Promise<void> {
-    if (saving.current || frequency === '') return;
+    if (saving.current || frequency === '' || section.conflict || unknownOutcome) return;
     saving.current = true;
     setConfirming(false);
     setBusy(true);
+    section.begin({ frequency, startTime });
     try {
       const outcome = await onSave({
         procedureId: draft.procedureId,
         versionId: draft.versionId,
-        expectedRowVersion: token,
+        expectedRowVersion: section.current.current.token,
         edit: { section: 'schedule', frequency, startTime },
       });
-      setResult(outcome);
-      if (outcome.ok) setToken(outcome.rowVersion);
+      const unchanged = section.finish(outcome.ok ? outcome.rowVersion : undefined);
+      setResult(outcome.ok && !unchanged ? null : outcome);
     } catch {
-      setResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
+      section.finish();
+      setUnknownOutcome(true);
+      setResult(null);
     } finally {
       setAnnouncement((count) => count + 1);
       saving.current = false;
@@ -345,6 +373,8 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
 
   return (
     <div className="ls-stack">
+      {section.conflict ? <><Banner tone="warning" title="The Schedule changed in another session. Review the saved values before replacing them." /><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Schedule</Button></> : null}
+      {unknownOutcome ? <><Banner tone="warning" title={UNKNOWN_OUTCOME} /><Button type="button" onClick={() => window.location.reload()}>Reload saved version</Button></> : null}
       {result === null ? null : (
         <Banner
           key={announcement}
@@ -358,7 +388,9 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
           }
         />
       )}
-      {draft.evidenceBlockers.includes('upload-frequency-mismatch') ? (
+      {evidenceBlockersFor(draft.sourceSnapshot, frequency === '' ? null : {
+        frequency, startTime, periodDerivationRule: PERIOD_DERIVATION_RULES[frequency],
+      }).includes('upload-frequency-mismatch') ? (
         <Banner tone="warning" title={MANUAL_UPLOAD_SENTENCE} />
       ) : null}
       <form
@@ -366,7 +398,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
         className="ls-admin__form ls-stack"
         onSubmit={(event) => {
           event.preventDefault();
-          if (saving.current) return;
+          if (saving.current || section.conflict || unknownOutcome) return;
           setResult(null);
           setTouched(true);
           if (error !== null) return;
@@ -381,7 +413,8 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             id={`${id}-frequency`}
             value={frequency}
             aria-describedby={`${id}-derivation ${id}-error`}
-            onChange={(event) => setFrequency(event.target.value as Frequency)}
+            aria-invalid={(touched && frequencyError !== null) || undefined}
+            onChange={(event) => { section.edit({ ...section.value, frequency: event.target.value as Frequency | '' }); setResult(null); }}
           >
             <option value="">Choose a frequency</option>
             {FREQUENCIES.map((candidate) => (
@@ -399,19 +432,20 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             type="time"
             value={startTime}
             aria-describedby={`${id}-error`}
-            aria-invalid={(touched && error !== null) || undefined}
-            onChange={(event) => setStartTime(event.target.value)}
+            aria-invalid={(touched && startError !== null) || undefined}
+            onChange={(event) => { section.edit({ ...section.value, startTime: event.target.value }); setResult(null); }}
           />
         </div>
         <p id={`${id}-derivation`} className="ls-caption">
           {frequency === ''
-            ? 'The recorded period-derivation rule depends on the chosen frequency.'
-            : `Recorded period-derivation rule: ${PERIOD_DERIVATION_RULES[frequency]}. This Procedure Version records the rule; it never runs it.`}
+            ? 'Choose a frequency to see the Period each Run will cover.'
+            : `Period covered: ${PERIOD_LABEL[frequency]}`}
         </p>
         <div id={`${id}-error`} aria-live="polite">
           {touched && error !== null ? <Banner tone="warning" title={error} /> : null}
         </div>
-        <Button type="submit" variant="primary" busy={busy}>
+        {(section.conflict || unknownOutcome) ? <p id={`${id}-save-blocker`}>Review the saved version before saving the Schedule again.</p> : null}
+        <Button type="submit" variant="primary" busy={busy} disabledReason={section.conflict || unknownOutcome ? 'Review the saved version before saving the Schedule again.' : undefined} disabledReasonId={`${id}-save-blocker`}>
           {busy ? 'Saving…' : 'Save Schedule'}
         </Button>
       </form>

@@ -111,6 +111,8 @@ export interface ProcedureTemplate {
    */
   readonly evidenceDefaults: readonly TemplateEvidenceRequirement[];
   readonly schedule: string | null;
+  /** Editable midnight UTC seed for the pinned P-1 weekly Schedule; no Run is created. */
+  readonly scheduleDefault: { readonly frequency: 'weekly'; readonly startTime: '00:00'; readonly periodDerivationRule: 'previous-monday-sunday' } | null;
   /** The Template-level Inconclusive rule, where §C states one. */
   readonly inconclusive: string | null;
   /** Anything else §C pins to the whole Template — escalation seeds, the P-1 variant — verbatim. */
@@ -186,6 +188,7 @@ const P1: ProcedureTemplate = {
     { attributeName: 'roles', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
   ],
   schedule: 'weekly',
+  scheduleDefault: { frequency: 'weekly', startTime: '00:00', periodDerivationRule: 'previous-monday-sunday' },
   inconclusive:
     'any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.',
   also: [
@@ -234,6 +237,7 @@ const P2: ProcedureTemplate = {
   evidenceRequirements: null,
   evidenceDefaults: [],
   schedule: null,
+  scheduleDefault: null,
   inconclusive: null,
   also: ['Reference Source: RoleMatrix.'],
   goldenBindingReference: 'accessgate-active-accounts',
@@ -282,6 +286,7 @@ const P3: ProcedureTemplate = {
   evidenceRequirements: null,
   evidenceDefaults: [],
   schedule: null,
+  scheduleDefault: null,
   inconclusive: null,
   also: [],
   goldenBindingReference: 'ledgerflow-transactions',
@@ -325,6 +330,7 @@ const P4: ProcedureTemplate = {
   evidenceRequirements: null,
   evidenceDefaults: [],
   schedule: null,
+  scheduleDefault: null,
   inconclusive: null,
   also: [],
   goldenBindingReference: 'configregistry-baseline',

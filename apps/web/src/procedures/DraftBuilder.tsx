@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
+import { POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, evidenceBlockersFor, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
 import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult, UpdateComplianceDraftResult, UpdateEvidenceDraftResult } from '@intellifin/application';
 import type { PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields, ComplianceDraftFields, EvidenceDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { Banner } from '../design/Banner';
@@ -101,7 +101,7 @@ export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave
     {contract === undefined ? null : <p>Declared columns: {contract.declared_schema.join(', ')}. Count declaration: {contract.declared_count_mechanism}.</p>}
     {selection === 'retain' ? <p>The saved source contract is retained, including after its registration is retired.</p> : null}
     <div id={`${id}-count`} aria-live="polite">{missingCount ? <Banner tone="warning" title={POPULATION_DRAFT_MESSAGES.COUNT_MISSING} /> : null}</div>
-    {draft.evidenceBlockers.includes('upload-frequency-mismatch') ? <Banner tone="warning" title={MANUAL_UPLOAD_SENTENCE} /> : null}
+    {evidenceBlockersFor(contract === undefined ? null : { contract }, draft.schedule).includes('upload-frequency-mismatch') ? <Banner tone="warning" title={MANUAL_UPLOAD_SENTENCE} /> : null}
     <fieldset className="ls-stack"><legend>Inclusion rule</legend>
       <p>Include records that match all clauses. An empty rule includes all records. Changing a source keeps every clause for you to check.</p>
       {predicates.map((predicate, index) => <fieldset key={index} className="ls-stack"><legend>Clause {index + 1}</legend>

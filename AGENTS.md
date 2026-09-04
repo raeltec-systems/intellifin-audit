@@ -101,3 +101,9 @@ requirement to emulate unavailable models. For Codex:
   `_bmad-output/implementation-artifacts/` that states what changed, how it was
   verified, decisions made, and any remaining user action. Link that report in the PR
   summary; it is the human-readable review surface, not a substitute for the diff.
+- Commit and push each story only after implementation, validation, and required tests
+  pass. Continue through the authorized epic without asking for routine approvals.
+  The epic report must explain delivered behavior, actual verification results,
+  important decisions, and remaining user action. For a decision that needs the user,
+  present at most two options with reasons and a recommendation. Do not expect the
+  user to read the full PR diff to understand the delivery.

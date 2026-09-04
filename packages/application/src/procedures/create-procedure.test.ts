@@ -1112,7 +1112,7 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     const { test, record, save } = await setup();
     const before = record();
     const outcome = await save({ section: 'evidence-requirements', requirements: [requirement({ groundedBy: [], screenshot: true, recordingSegment: true })] });
-    expect(outcome).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.GROUNDING });
+    expect(outcome).toEqual({ ok: false, reason: 'Attribute "account_status": ' + EVIDENCE_DRAFT_MESSAGES.GROUNDING });
     expect(record()).toEqual(before);
     expect(test.events).toEqual([]);
   });
@@ -1122,6 +1122,16 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     const outcome = await save({ section: 'evidence-requirements', requirements: [requirement({ modelRead: true, groundedBy: [], screenshot: false })] });
     expect(outcome).toMatchObject({ ok: true, changed: true });
     expect(record().evidenceRequirements).toEqual([{ ...requirement({ modelRead: true, groundedBy: [], screenshot: false }), platformCaptured: false }]);
+  });
+
+  it('derives mandatory grounding before validation for an agent-driven target', async () => {
+    const { record, save, selectTargets } = await setup();
+    await selectTargets([{ mode: 'bind', registrationId: WEB, expectedDigest: webReg.digest }]);
+    const asked = requirement({ groundedBy: [], screenshot: false });
+    expect(await save({ section: 'evidence-requirements', requirements: [asked] })).toMatchObject({ ok: true, changed: true });
+    expect(record().evidenceRequirements).toEqual([
+      { ...asked, groundedBy: ['structural-snapshot'], screenshot: true, platformCaptured: true },
+    ]);
   });
 
   it('records platformCaptured from the CURRENT Target System selection, never from the caller', async () => {
@@ -1151,6 +1161,20 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     const outcome = await save({ section: 'schedule', frequency: 'weekly', startTime: '02:00' });
     expect(outcome).toMatchObject({ ok: true, changed: true });
     expect(record().schedule).toEqual({ frequency: 'weekly', startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' });
+  });
+
+  it('updates capture metadata atomically when targets change, preserving authored evidence', async () => {
+    const { test, record, save, selectTargets } = await setup();
+    const authored = requirement({ attributeName: 'notes', modelRead: true, groundedBy: [], screenshot: false, recordingSegment: true });
+    await save({ section: 'evidence-requirements', requirements: [authored] });
+    const token = procedureVersionRowVersion(record());
+    test.events.length = 0;
+    await selectTargets([{ mode: 'bind', registrationId: WEB, expectedDigest: webReg.digest }]);
+    expect(record().evidenceRequirements).toEqual([{ ...authored, groundedBy: ['structural-snapshot'], screenshot: true, platformCaptured: true }]);
+    expect(test.events).toHaveLength(1);
+    expect(await save({ section: 'evidence-requirements', requirements: [authored] }, token)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+    await selectTargets([{ mode: 'bind', registrationId: API, expectedDigest: apiReg.digest }]);
+    expect(record().evidenceRequirements[0]).toMatchObject({ attributeName: 'notes', modelRead: true, recordingSegment: true, platformCaptured: false });
   });
 
   it('never refuses the manual-upload/recurring-Schedule pairing on either section; it is surfaced as a blocker only', async () => {
@@ -1209,14 +1233,15 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     await expect(updateEvidenceDraft(test.dependencies, input as never)).resolves.toEqual({ ok: false, reason: DENIAL_REASONS.ADMIN_CANNOT_AUTHOR });
   });
 
-  it('seeds P-1 with the structured, platform-captured Template defaults at creation', async () => {
+  it('seeds P-1 evidence suggestions without claiming platform capture before target selection', async () => {
     const test = harness();
     for (const record of [webReg, apiReg]) test.registrations.set(record.registrationId, record);
     const created = await create(test, { templateId: 'P-1' });
     if (!created.ok) throw new Error(created.reason);
     const record = test.storedVersions.get(created.versionId)!;
     expect(record.evidenceRequirements.map((r) => r.attributeName).sort()).toEqual(['account_status', 'roles', 'username']);
-    expect(record.evidenceRequirements.every((r) => r.platformCaptured)).toBe(true);
-    expect(record.schedule).toBeNull();
+    expect(record.targets).toEqual([]);
+    expect(record.evidenceRequirements.every((r) => !r.platformCaptured)).toBe(true);
+    expect(record.schedule).toEqual({ frequency: 'weekly', startTime: '00:00', periodDerivationRule: 'previous-monday-sunday' });
   });
 });

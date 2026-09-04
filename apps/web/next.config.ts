@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
     '@intellifin/infrastructure',
   ],
   reactStrictMode: true,
+  // Server Action arguments can contain passwords or authored text. Framework logs
+  // bypass the application telemetry sanitizer, including during local development.
+  logging: { serverFunctions: false },
   // `next dev` otherwise writes its own AGENTS.md and CLAUDE.md into apps/web. This
   // repository already owns both file names as the shared decision log and the agent
   // block, so a generated pair beside them is at best untracked noise and at worst a

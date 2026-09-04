@@ -672,7 +672,7 @@ export const procedureVersion = pgTable(
     // grounding rule, the platform-captured invariant — is the domain's
     // `isDraftEvidenceFields`, which a raw writer cannot be made to run.
     check('procedure_version_evidence_shape', sql`coalesce(jsonb_typeof(${table.evidenceRequirements}) = 'array' AND jsonb_array_length(${table.evidenceRequirements}) <= 32, false)`),
-    check('procedure_version_schedule_shape', sql`${table.schedule} IS NULL OR coalesce(jsonb_typeof(${table.schedule}) = 'object' AND ${table.schedule} - 'frequency' - 'startTime' - 'periodDerivationRule' = '{}'::jsonb AND ${table.schedule}->>'frequency' IN ('once','daily','weekly','monthly') AND ${table.schedule}->>'startTime' ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$', false)`),
+    check('procedure_version_schedule_shape', sql`${table.schedule} IS NULL OR coalesce(jsonb_typeof(${table.schedule}) = 'object' AND ${table.schedule} - 'frequency' - 'startTime' - 'periodDerivationRule' = '{}'::jsonb AND ${table.schedule}->>'frequency' IN ('once','daily','weekly','monthly') AND jsonb_typeof(${table.schedule}->'periodDerivationRule') = 'string' AND ${table.schedule}->>'periodDerivationRule' = CASE ${table.schedule}->>'frequency' WHEN 'once' THEN 'explicit-period' WHEN 'daily' THEN 'previous-calendar-day' WHEN 'weekly' THEN 'previous-monday-sunday' WHEN 'monthly' THEN 'previous-calendar-month' END AND ${table.schedule}->>'startTime' ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$', false)`),
   ],
 );
 

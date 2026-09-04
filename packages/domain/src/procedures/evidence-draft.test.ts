@@ -124,7 +124,8 @@ describe('the grounding rule', () => {
     const ungrounded = { ...requirement({ groundedBy: [] }), platformCaptured: false };
     expect(isEvidenceRequirement(ungrounded)).toBe(false);
     const validation = validateDraftEvidenceEdit({ section: 'evidence-requirements', requirements: [requirement({ groundedBy: [] })] });
-    expect(validation).toEqual({ ok: false, reason: EVIDENCE_DRAFT_MESSAGES.GROUNDING });
+    // Parsing accepts the shape; mandatory capture is determined under the row lock.
+    expect(validation.ok).toBe(true);
   });
   it('accepts a model-read attribute with no grounding source, recorded as model-read', () => {
     const modelRead = { ...requirement({ modelRead: true, groundedBy: [], screenshot: false }), platformCaptured: false };
@@ -189,15 +190,15 @@ describe('the upload/frequency pairing — a completeness blocker, never a refus
     }
   });
   it('is empty for a manual-upload binding paired with once', () => {
-    const schedule = { frequency: 'once' as const, startTime: '02:00', periodDerivationRule: 'explicit-period' };
+    const schedule = { frequency: 'once' as const, startTime: '02:00', periodDerivationRule: 'explicit-period' as const };
     expect(evidenceBlockersFor(MANUAL_SOURCE, schedule)).toEqual([]);
   });
   it('is empty for a versioned-file binding at any frequency', () => {
-    const schedule = { frequency: 'weekly' as const, startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' };
+    const schedule = { frequency: 'weekly' as const, startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' as const };
     expect(evidenceBlockersFor(VERSIONED_SOURCE, schedule)).toEqual([]);
   });
   it('is empty with no Population Source bound at all', () => {
-    const schedule = { frequency: 'weekly' as const, startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' };
+    const schedule = { frequency: 'weekly' as const, startTime: '02:00', periodDerivationRule: 'previous-monday-sunday' as const };
     expect(evidenceBlockersFor(null, schedule)).toEqual([]);
   });
 });
@@ -236,12 +237,12 @@ describe('the stored Draft shape', () => {
 });
 
 describe('initial Draft state', () => {
-  it('seeds P-1 with the structured evidence defaults, platform-captured because P-1 targets web and desktop', () => {
+  it('seeds P-1 evidence suggestions without claiming capture before targets are selected', () => {
     const fields = initialDraftEvidence('P-1');
-    expect(fields.schedule).toBeNull();
+    expect(fields.schedule).toEqual({ frequency: 'weekly', startTime: '00:00', periodDerivationRule: 'previous-monday-sunday' });
     expect(fields.evidenceRequirements.map((r) => r.attributeName).sort()).toEqual(['account_status', 'roles', 'username']);
     for (const r of fields.evidenceRequirements) {
-      expect(r.platformCaptured).toBe(true);
+      expect(r.platformCaptured).toBe(false);
       expect(r.groundedBy).toContain('structural-snapshot');
       expect(r.screenshot).toBe(true);
     }

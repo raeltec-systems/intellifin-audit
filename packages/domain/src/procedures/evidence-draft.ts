@@ -1,4 +1,4 @@
-import { canonicalJson, type JsonValue } from '../canonical-json.js';
+import { complianceObject as object, complianceExactKeys as exact, isComplianceText } from './compliance-draft.js';
 import { isAgentDrivenKind, type ProcedureTargetSnapshot } from './target-draft.js';
 import { POPULATION_DRAFT_MESSAGES, type ProcedureSourceSnapshot } from './population-draft.js';
 import { findProcedureTemplate, type TemplateId } from './templates.js';
@@ -94,12 +94,12 @@ export function isFrequency(value: unknown): value is Frequency {
  * Period from Story 2.2, the rest name the previous calendar unit. RECORDED on the
  * version; a scheduled Run's own period derivation, and `handover_at`, are later epics.
  */
-export const PERIOD_DERIVATION_RULES: Readonly<Record<Frequency, string>> = {
+export const PERIOD_DERIVATION_RULES = {
   once: 'explicit-period',
   daily: 'previous-calendar-day',
   weekly: 'previous-monday-sunday',
   monthly: 'previous-calendar-month',
-};
+} as const satisfies Readonly<Record<Frequency, string>>;
 
 const START_TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
@@ -108,7 +108,7 @@ export interface DraftSchedule {
   /** Fixed UTC time of day, `HH:MM`, 24-hour. */
   readonly startTime: string;
   /** `PERIOD_DERIVATION_RULES[frequency]` — the command computes it, never the caller. */
-  readonly periodDerivationRule: string;
+  readonly periodDerivationRule: (typeof PERIOD_DERIVATION_RULES)[Frequency];
 }
 
 export function isDraftSchedule(value: unknown): value is DraftSchedule {
@@ -126,7 +126,7 @@ export type EvidenceBlocker = 'upload-frequency-mismatch';
  * never a refusal by itself.
  */
 export function evidenceBlockersFor(
-  sourceSnapshot: ProcedureSourceSnapshot | null,
+  sourceSnapshot: { readonly contract: Pick<ProcedureSourceSnapshot['contract'], 'kind'> } | null,
   schedule: DraftSchedule | null,
 ): readonly EvidenceBlocker[] {
   return sourceSnapshot !== null &&
@@ -143,27 +143,12 @@ export interface DraftEvidenceFields {
   readonly schedule: DraftSchedule | null;
 }
 
-function object(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-function exact(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
-}
-function storable(value: unknown): boolean {
-  try {
-    canonicalJson(value as JsonValue);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function isEvidenceAttributeName(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.trim() !== '' &&
     value.length <= EVIDENCE_DRAFT_LIMITS.attributeName &&
-    storable(value)
+    isComplianceText(value, EVIDENCE_DRAFT_LIMITS.attributeName)
   );
 }
 
@@ -255,6 +240,10 @@ export type DraftEvidenceEdit =
   | { readonly section: 'evidence-requirements'; readonly requirements: readonly EvidenceRequirementInput[] }
   | { readonly section: 'schedule'; readonly frequency: Frequency; readonly startTime: string };
 
+export function evidenceGroundingMessage(attributeName: string): string {
+  return `Attribute "${attributeName}": ${EVIDENCE_DRAFT_MESSAGES.GROUNDING}`;
+}
+
 /** Parse untrusted authoring values after authorization, before taking row locks. */
 export function validateDraftEvidenceEdit(
   value: unknown,
@@ -275,7 +264,8 @@ export function validateDraftEvidenceEdit(
       const key = entry.attributeName.trim().toLowerCase();
       if (seen.has(key)) return refuse(EVIDENCE_DRAFT_MESSAGES.DUPLICATE);
       seen.add(key);
-      if (!entry.modelRead && entry.groundedBy.length === 0) return refuse(EVIDENCE_DRAFT_MESSAGES.GROUNDING);
+      // Grounding depends on the locked version's current targets. The command
+      // checks the invariant after deriving mandatory platform capture.
     }
   } else if (value['section'] === 'schedule') {
     if (!exact(value, ['section', 'frequency', 'startTime'])) return refuse(EVIDENCE_DRAFT_MESSAGES.FREQUENCY);
@@ -292,10 +282,12 @@ export function validateDraftEvidenceEdit(
 /** The Draft's Evidence Requirements state at creation: the Template's structured defaults. */
 export function initialDraftEvidence(templateId: TemplateId): DraftEvidenceFields {
   const template = findProcedureTemplate(templateId);
-  const platformCaptured = template.defaultTargets.some((target) => isAgentDrivenKind(target.kind));
+  // A new Draft has no bound Target Systems. Template suggestions are not a
+  // persisted selection; target authoring derives capture when systems are bound.
+  const platformCaptured = false;
   return {
     evidenceSchemaVersion: 1,
     evidenceRequirements: template.evidenceDefaults.map((input) => withPlatformCaptured(input, platformCaptured)),
-    schedule: null,
+    schedule: template.scheduleDefault,
   };
 }

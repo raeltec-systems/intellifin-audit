@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 2 — Procedure Builder delivery report</title>
+<style>
+:root{color-scheme:light;--ink:#142b39;--muted:#49616d;--line:#d9e3e7;--accent:#176b65;--paper:#fff;--bg:#f3f6f7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:56px 32px 80px}header{border-top:6px solid var(--accent);padding-top:28px;margin-bottom:40px}.eyebrow{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:750}h1{font-size:42px;line-height:1.15;max-width:850px;margin:14px 0 20px}h2{font-size:26px;line-height:1.3;margin:0 0 18px}h3{font-size:19px;margin:0 0 8px}p{margin:0 0 16px}.lead{font-size:21px;max-width:900px}.muted,small{color:var(--muted)}section{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:28px;margin:24px 0}.status{display:inline-block;border-radius:6px;background:#fff0cf;color:#684900;padding:5px 10px;font-weight:700;font-size:14px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.metric{border-left:3px solid var(--accent);padding-left:16px}.metric strong{display:block;font-size:30px;line-height:1.3}table{border-collapse:collapse;width:100%;font-size:16px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:14px 10px}th{font-size:14px;color:var(--muted)}th:first-child,td:first-child{padding-left:0}a{color:#075c96;text-underline-offset:3px}li{margin-bottom:10px}code{font-size:.9em;background:#edf2f4;padding:2px 5px;border-radius:4px}.note{border-left:4px solid #bb8400;padding:12px 18px;background:#fff7e6}footer{color:var(--muted);font-size:14px;margin-top:30px}@media(max-width:700px){main{padding:24px 16px}h1{font-size:32px}section{padding:20px}.grid{grid-template-columns:1fr}table{font-size:14px}}@media print{body{background:white}main{padding:0}section{break-inside:avoid}a{color:inherit}}
+</style>
+</head>
+<body><main>
+<header>
+<div class="eyebrow">IntelliFin Audit · Engineering delivery</div>
+<h1>From an audit definition to an approved, frozen Procedure Version</h1>
+<p class="lead">Epic 2 builds the authoring and human-review workflow that later Runs will execute against.</p>
+<span class="status">Work in progress — not an acceptance sign-off</span>
+<p class="muted" style="margin-top:16px">Updated 4 September 2026 · Branch <code>codex/epic-2-procedure-builder</code></p>
+</header>
+
+<section aria-labelledby="delivery"><h2 id="delivery">What is being delivered</h2>
+<table><thead><tr><th scope="col">Story</th><th scope="col">What this means for an Auditor</th><th scope="col">Current state</th></tr></thead><tbody>
+<tr><th scope="row">2.1–2.4</th><td>Create from one of four Templates; bind the population; select registered Target Systems; write instructions; author deterministic or Agent-Judged compliance conditions.</td><td>Existing implementation, included in regression checks.</td></tr>
+<tr><th scope="row">2.5</th><td>Declare evidence and grounding requirements; choose a UTC Schedule; see incompatible upload/frequency choices before submission.</td><td>Implemented and verified.</td></tr>
+<tr><th scope="row">2.6</th><td>Read the worker-derived executable plan, its derivation status and model provenance before submitting.</td><td>Implementation pending.</td></tr>
+<tr><th scope="row">2.7</th><td>Submit for independent approval; review the changes; approve or reject with an audit record and in-app notifications.</td><td>Implementation pending.</td></tr>
+<tr><th scope="row">2.8</th><td>Protect approved definitions from edits; create successor versions; route relevant platform changes through the same approval process.</td><td>Implementation pending.</td></tr>
+</tbody></table>
+<p class="muted" style="margin-top:18px">Actual audit execution, Regression Runs and scheduled handover execution belong to later epics. Epic 2 must supply their approved, versioned input contracts.</p>
+</section>
+
+<section aria-labelledby="verification"><h2 id="verification">Verification observed so far</h2>
+<div class="grid">
+<div class="metric"><strong>1,797</strong>unit tests passed in the latest full run.</div>
+<div class="metric"><strong>151</strong>integration tests passed against PostgreSQL 18.6.</div>
+<div class="metric"><strong>96</strong>upgrade combinations checked for preserved authored data.</div>
+</div>
+<p style="margin-top:24px">Type checking, dependency boundaries, migration, schema drift checking, workspace builds and the production web build passed. The final full browser run passed 89 tests, including accessibility scans and the new concurrency, response-loss and capture-control regressions.</p>
+<p class="note">These results describe the current Story 2.5 checkpoint. They do not prove that Stories 2.6–2.8 or the complete epic are delivered.</p>
+</section>
+
+<section aria-labelledby="decisions"><h2 id="decisions">Important decisions and lessons</h2>
+<ul>
+<li><strong>Native PostgreSQL removed the Docker blocker.</strong> Docker Desktop failed during startup. Verification now uses an isolated native PostgreSQL 18.6 test cluster with TLS and password authentication. No application database was used.</li>
+<li><strong>Concurrency protects the values as well as the save token.</strong> A refreshed token must not give stale local values permission to overwrite another auditor’s section. Delayed save responses also need to preserve newly detected conflicts.</li>
+<li><strong>Capture follows saved targets.</strong> Mandatory Structural Snapshot and screenshot requirements are derived from current Target selections, including during upgrades. Grounding validation runs after this authoritative derivation.</li>
+<li><strong>A lost response is not proof of a failed save.</strong> The editor must ask the Auditor to reload and inspect the saved state rather than claim that nothing changed.</li>
+<li><strong>Development logs must not expose action arguments.</strong> Next’s Server Action argument logging was disabled after verification showed it could include submitted credentials. A further browser check confirmed that account creation still worked without those argument traces.</li>
+</ul>
+<p>Reusable details are recorded in <a href="../../CLAUDE.md">CLAUDE.md</a>. The final report will include the remaining stories’ decisions and verification evidence.</p>
+</section>
+
+<section aria-labelledby="owner"><h2 id="owner">What needs your attention</h2>
+<p>No decision is blocking the current implementation. The completed epic report will identify any remaining deployment action and provide a recommendation with options if a product decision is needed.</p>
+<p class="muted">This report will be finalized and linked from the pull request after all eight stories are implemented, validated and wired end to end.</p>
+</section>
+<footer>Review surface for the product owner. The source diff, story specifications and tests remain the technical evidence.</footer>
+</main></body></html>

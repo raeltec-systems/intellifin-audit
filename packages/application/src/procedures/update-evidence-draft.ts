@@ -2,6 +2,7 @@ import {
   EVIDENCE_DRAFT_MESSAGES,
   PERIOD_DERIVATION_RULES,
   hasAgentDrivenTarget,
+  evidenceGroundingMessage,
   isDraftEvidenceFields,
   isEvidenceRequirement,
   validateDraftEvidenceEdit,
@@ -117,7 +118,7 @@ export async function updateEvidenceDraft(
           // Shape-validated already; recompute `platformCaptured` from the CURRENT
           // selection rather than trusting whatever the surface rendered.
           const requirement = withPlatformCaptured(entry, platformCaptured);
-          if (!isEvidenceRequirement(requirement)) throw new Refused(EVIDENCE_DRAFT_MESSAGES.GROUNDING);
+          if (!isEvidenceRequirement(requirement)) throw new Refused(evidenceGroundingMessage(entry.attributeName));
           requirements.push(requirement);
         }
         after = { ...before, evidenceRequirements: requirements };
