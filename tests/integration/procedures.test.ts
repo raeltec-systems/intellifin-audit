@@ -1165,12 +1165,13 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         populationBlockers: [] as const,
       };
 
-      await sql.begin(async (transactionSql) => {
-        await transactionSql`CREATE TEMP TABLE procedure_version (LIKE public.procedure_version INCLUDING ALL) ON COMMIT DROP`;
-        await transactionSql`ALTER TABLE procedure_version DROP COLUMN compliance_schema_version, DROP COLUMN compliance_compiler_version, DROP COLUMN compliance_conditions, DROP COLUMN agent_judged_threshold`;
-        await transactionSql`CREATE TEMP TABLE schema_meta (LIKE public.schema_meta INCLUDING ALL) ON COMMIT DROP`;
-        await transactionSql`INSERT INTO schema_meta (version) VALUES (9)`;
-        await transactionSql`
+      const dedicated = createSqlClient(databaseUrl as string, { max: 1 });
+      try {
+        await dedicated`CREATE TEMP TABLE procedure_version (LIKE public.procedure_version INCLUDING ALL)`;
+        await dedicated`ALTER TABLE procedure_version DROP COLUMN compliance_schema_version, DROP COLUMN compliance_compiler_version, DROP COLUMN compliance_conditions, DROP COLUMN agent_judged_threshold`;
+        await dedicated`CREATE TEMP TABLE schema_meta (LIKE public.schema_meta INCLUDING ALL)`;
+        await dedicated`INSERT INTO schema_meta (version) VALUES (9)`;
+        await dedicated`
           INSERT INTO procedure_version
             (version_id, procedure_id, version_number, state, control_name, template_id,
              sections, period, scope, source_snapshot, inclusion_rule, zero_record_pass,
@@ -1183,9 +1184,9 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
              ${JSON.stringify(editedPopulation.populationBlockers)}::jsonb,
              ${JSON.stringify(editedTargets)}::jsonb, ${JSON.stringify(editedInstructions)}::jsonb)
         `;
-        for (const statement of statements) await transactionSql.unsafe(statement);
+        for (const statement of statements) await dedicated.unsafe(statement);
 
-        const repository = new DrizzleProcedureRepository(createDb(transactionSql as unknown as Sql));
+        const repository = new DrizzleProcedureRepository(createDb(dedicated));
         const migrated = await repository.findVersion(versionId);
         expect(migrated).not.toBeNull();
         expect(migrated).toMatchObject({
@@ -1195,10 +1196,12 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
           targets: editedTargets,
           instructions: editedInstructions,
         });
-        await expect(transactionSql`SELECT version FROM schema_meta ORDER BY version`).resolves.toEqual(
+        await expect(dedicated`SELECT version FROM schema_meta ORDER BY version`).resolves.toEqual(
           expect.arrayContaining([{ version: 9 }, { version: 10 }]),
         );
-      });
+      } finally {
+        await dedicated.end({ timeout: 5 });
+      }
     });
 
     it.each(['P-1', 'P-2', 'P-3', 'P-4'] as const)('creates %s with typed Template conditions', async (templateId) => {
@@ -1219,7 +1222,15 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       expect(reloaded.complianceConditions[0]).toMatchObject({ text, status: 'AGENT_JUDGED', rule: null });
       const events = await eventsFor(correlationId);
       expect(events).toHaveLength(1);
-      expect(events[0]?.payload).toMatchObject({ section: 'compliance-rule', current: { conditions: [expect.objectContaining({ textLength: text.length })] } });
+      expect(events[0]?.payload).toMatchObject({
+        section: 'compliance-rule',
+        current: {
+          conditions: [
+            expect.objectContaining({ textLength: text.length }),
+            expect.objectContaining({ conditionId: 'C2' }),
+          ],
+        },
+      });
       expect(JSON.stringify(events)).not.toContain('vault://');
     });
 
@@ -1246,7 +1257,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
 
       const oldToken = procedureVersionRowVersion(restored);
       expect(await save({ ...input, confidenceThreshold: '0.91' }, oldToken)).toMatchObject({ ok: true, changed: true });
-      expect(await updatePopulationDraft(dependencies(), { session: auditor, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: oldToken, correlationId: `${prefix}compliance-cross-section-${seed.versionId}`, edit: { section: 'period-scope', period: null, scope: 'stale save' } })).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+      expect(await updatePopulationDraft(dependencies(), { session: auditor, procedureId: seed.procedureId, versionId: seed.versionId, expectedRowVersion: oldToken, correlationId: `${prefix}compliance-cross-section-${seed.versionId}`, edit: { section: 'period-scope', period: { from: '2026-07-01', to: '2026-07-31' }, scope: 'stale save' } })).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
     });
 
     it('blocks a concurrent population save, then refuses its stale whole-row token', async () => {
@@ -1281,7 +1292,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         versionId: seed.versionId,
         expectedRowVersion: token,
         correlationId: populationCorrelation,
-        edit: { section: 'period-scope', period: null, scope: 'must not win' },
+        edit: { section: 'period-scope', period: { from: '2026-07-01', to: '2026-07-31' }, scope: 'must not win' },
       });
       try {
         await waitForProcedureVersionLock();
