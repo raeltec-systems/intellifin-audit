@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.47",
+    "@ai-sdk/openai": "4.0.58",
     "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@sentry/node": "10.73.0",
