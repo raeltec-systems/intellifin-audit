@@ -171,9 +171,6 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           platform-captured for every attribute here and cannot be unset.
         </p>
       ) : null}
-      {draft.evidenceBlockers.includes('upload-frequency-mismatch') ? (
-        <Banner tone="warning" title={MANUAL_UPLOAD_SENTENCE} />
-      ) : null}
       <form
         method="post"
         className="ls-admin__form ls-stack"
