@@ -206,6 +206,7 @@ Additional database coverage enforces the persisted overall execution timeout af
 - `pnpm build` and production web build: passed. Browser checks preceded the production build; generated-only `next-env.d.ts` restored afterward.
 - Logs: `C:/Users/opc/tools/intellifin-epic2-test/verification/epic3/story32-reviewed-*.log`, plus `story32-review-browser.log`. Prereview results remain separate. All local verification processes finished.
 - Remote refs rechecked before commit: origin/main `12ec596dc3d23907a80a7d395c343a54c4375d5a`; feature branch had no remote divergence. Remote CI is reported on PR #23 after push, separately from these local outcomes.
+- Final test-only refinement: hold the replacement claim in ACQUIRING while releasing the superseded success/failure, so status checks alone cannot satisfy the test. The 23-case population suite and root test typecheck passed again. No production behavior changed; this completes the original stale-claim verification finding. The implementation commit's remote unit/type/boundary and 252-case database jobs also passed; final-head CI remains authoritative on the PR.
 
 ## Auto Run Result
 

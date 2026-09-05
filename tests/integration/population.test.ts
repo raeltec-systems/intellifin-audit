@@ -539,9 +539,12 @@ describe.skipIf(!url)('durable population execution', () => {
 
   it.each(['success', 'failure'] as const)('ignores stale %s after another handler takes over the lease', async outcome => {
     const job = await seed(), deps = dependencies();
-    let entered!: () => void, release!: () => void;
+    let entered!: () => void, release!: () => void, enteredNew!: () => void, releaseNew!: () => void;
     const started = new Promise<void>(resolve => { entered = resolve; });
     const held = new Promise<void>(resolve => { release = resolve; });
+    const startedNew = new Promise<void>(resolve => { enteredNew = resolve; });
+    const heldNew = new Promise<void>(resolve => { releaseNew = resolve; });
+    let newer: Promise<{ retry: boolean }> | undefined;
     const old = acquirePopulation({ ...deps, acquisition: { acquire: async () => {
       entered(); await held;
       if (outcome === 'failure') throw new PopulationAcquisitionError('transport');
@@ -550,17 +553,27 @@ describe.skipIf(!url)('durable population execution', () => {
     await started;
     try {
       await sql`UPDATE population_execution SET lease_until=now()-interval '1 second' WHERE run_id=${job.runId}`;
-      await acquirePopulation(deps, job);
+      newer = acquirePopulation({ ...deps, acquisition: { acquire: async () => {
+        enteredNew(); await heldNew;
+        return { bytes: raw, mediaType: 'text/csv', declaration };
+      } } }, job);
+      await startedNew;
       const before = await sql`SELECT * FROM population_execution WHERE run_id=${job.runId}`;
       const events = await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} ORDER BY sequence`;
-      expect(before[0]).toMatchObject({ revision: 2, attempts: 2, status: 'POPULATION_READY' });
+      // Both attempts are live. Status alone cannot reject the old completion;
+      // this interleaving specifically requires the revision/ownership guard.
+      expect(before[0]).toMatchObject({ revision: 2, attempts: 2, status: 'ACQUIRING' });
       release();
       expect(await old).toEqual({ retry: false });
       expect(await sql`SELECT * FROM population_execution WHERE run_id=${job.runId}`).toEqual(before);
       expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} ORDER BY sequence`).toEqual(events);
       expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUNNING');
+      expect(await sql`SELECT ordinal FROM population_row WHERE run_id=${job.runId}`).toHaveLength(0);
+      releaseNew();
+      expect(await newer).toEqual({ retry: false });
+      expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'POPULATION_READY', attempts: 2 });
       expect(await sql`SELECT ordinal FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual([{ ordinal: 1 }, { ordinal: 2 }, { ordinal: 3 }]);
-    } finally { release(); await old; }
+    } finally { release(); releaseNew(); await old; await newer; }
   });
 
   it('pages all reasons once in source order with included rows interspersed', async () => {
