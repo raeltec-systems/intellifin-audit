@@ -2,7 +2,7 @@
 title: 'Story 3.4: Register Observations in the one wire schema, in batches'
 type: 'feature'
 created: '2026-09-05'
-status: 'draft'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
