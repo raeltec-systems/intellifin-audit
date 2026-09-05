@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-18 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-19 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -89,7 +89,16 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'procedure_configuration',
       'procedure_succession',
       'procedure_version',
+      // Story 3.3. The adapter execution stage: its claim, its Reference Source Session
+      // Steps, its Work Items, their Step Executions, their Evidence and the §B.1
+      // Observations. An unlisted table is a migration nobody reviewed.
+      'run_evidence',
+      'run_execution',
       'run_initiation_request',
+      'run_observation',
+      'run_session_step',
+      'run_step_execution',
+      'run_work_item',
       'schema_meta',
       'target_system_probe',
       'target_system_registration',

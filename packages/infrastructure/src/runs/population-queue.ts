@@ -1,5 +1,5 @@
 import type { PgBoss } from 'pg-boss';
-import type { PopulationJob, PopulationExecutionRepository } from '@intellifin/application';
+import type { PopulationJob } from '@intellifin/application';
 import type { Database } from '../db/client.js';
 import { DrizzleRunRepository } from './run-repository.js';
 import { RUNS_QUEUE } from './runs-unit-of-work.js';
@@ -14,7 +14,10 @@ export async function startPopulationWorker(queue:PgBoss,handler:(job:Population
     }
   });
 }
-export function startPopulationRecovery(db:Database,repository:PopulationExecutionRepository,handler:(job:PopulationJob)=>Promise<unknown>,onError:()=>void):()=>Promise<void> {
+/** Any stage's own read of the Runs it may resume. Population and adapter extraction
+ * each supply their own: a stage that borrowed another's would sweep the wrong set. */
+export interface RecoverableRuns { recoverableRunIds(limit:number):Promise<string[]> }
+export function startPopulationRecovery(db:Database,repository:RecoverableRuns,handler:(job:PopulationJob)=>Promise<unknown>,onError:()=>void):()=>Promise<void> {
   let pending:Promise<void>|undefined;
   let stopping = false;
   const tick=()=>{

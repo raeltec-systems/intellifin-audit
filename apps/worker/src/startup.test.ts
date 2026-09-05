@@ -9,7 +9,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 
-import { createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
+import { adapterExtraction, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
 import { readFileSync } from 'node:fs';
 import type { AppConfig } from '@intellifin/infrastructure';
 
@@ -238,6 +238,35 @@ describe('population execution', () => {
     // No unconditional refusal on the storage settings.
     expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*EVIDENCE_S3/);
     // The worker still beats: the heartbeat wiring is outside the branch.
+    expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
+  });
+});
+
+describe('adapterExtraction', () => {
+  it('is disabled, with a named reason, when no audit credential is declared', () => {
+    // An empty manifest is not "extraction with no credentials": every Work Item would
+    // fail closed with `credential-unresolved`, which reads as a Target System problem
+    // and is not one. Say so once, at boot, where an operator can act on it.
+    expect(adapterExtraction({ CREDENTIAL_TOKENS: '{}' } as unknown as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'CREDENTIAL_TOKENS declares no audit credential',
+    });
+  });
+
+  it('is enabled with the declared manifest', () => {
+    const decision = adapterExtraction({ CREDENTIAL_TOKENS: '{"cred://a":"token"}' } as unknown as AppConfig);
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.credentials.get('cred://a')).toBe('token');
+  });
+
+  it('never lets a missing manifest stop the rest of the worker', () => {
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const credentials = adapterExtraction(config);');
+    expect(main).toMatch(/Adapter extraction disabled/);
+    // Composed only where it is used, and never unconditionally refused.
+    expect(main).toContain('new ManifestCredentialResolver(credentials.credentials)');
+    expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*CREDENTIAL_TOKENS/);
     expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
   });
 });

@@ -36,6 +36,8 @@ export default defineConfig(() => {
         '@intellifin/infrastructure/probe': sub('infrastructure/src/registrations/probe'),
         '@intellifin/infrastructure/acquisition': sub('infrastructure/src/runs/population-acquisition-http'),
         '@intellifin/infrastructure/evidence': sub('infrastructure/src/evidence/s3-evidence-store'),
+        '@intellifin/infrastructure/extraction': sub('infrastructure/src/runs/adapter-extraction-http'),
+        '@intellifin/infrastructure/credentials': sub('infrastructure/src/runs/credential-resolver'),
         '@intellifin/infrastructure': pkg('infrastructure'),
       },
     },

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import {
@@ -17,7 +18,7 @@ import { startSyntheticS3 } from '../fixtures/s3-server';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { NORTHSTAR_BASE_URL } from './northstar';
-import { READ_ONLY_CREDENTIAL } from './credentials';
+import { CREDENTIAL_TOKENS, READ_ONLY_CREDENTIAL, READ_ONLY_TOKEN } from './credentials';
 
 const ids = new CryptoUuidV7Generator();
 const procedures = [ids.next(), ids.next(), ids.next(), ids.next(), ids.next()];
@@ -38,11 +39,25 @@ function inputs(templateId: 'P-2' | 'P-3', index: number): FrozenPlanInputs {
     declaredSchema, sensitiveFields: [],
     declaredCountMechanism: index !== 2 ? 'cover-sheet' as const : 'count-endpoint' as const,
   };
+  // The frozen allowed origin IS the extraction location (adapter-extraction-v1). Here it
+  // is the system's read-only service index, which the adapter follows exactly one hop —
+  // the shape `scripts/seed-northstar.mts` registers, so the seeded rows are executable.
   const registration = {
     registrationId: ids.next(), displayName: templateId === 'P-2' ? 'AccessGate' : 'ApproveNow',
-    kind: 'api' as const, allowedOrigins: [NORTHSTAR_BASE_URL], applicationIdentity: '',
+    kind: 'api' as const,
+    allowedOrigins: [`${NORTHSTAR_BASE_URL}/${templateId === 'P-2' ? 'accessgate' : 'approvenow'}`],
+    applicationIdentity: '',
     credentialRef: READ_ONLY_CREDENTIAL, permittedActions: ['list-records', 'read-attribute'] as const,
     attributeLabelPatterns: declaredSchema, secondaryKey: '',
+  };
+  // RoleMatrix: a `versioned-file` Target System, so a Reference Source Session Step and
+  // no Work Item at all. Only the first P-2 Procedure carries it; the others are the
+  // Story 3.2 population cases and stay as they were.
+  const referenceSource = {
+    registrationId: ids.next(), displayName: 'RoleMatrix', kind: 'versioned-file' as const,
+    allowedOrigins: [`${NORTHSTAR_BASE_URL}/files/role-matrix.csv`], applicationIdentity: '',
+    credentialRef: READ_ONLY_CREDENTIAL, permittedActions: ['read-file', 'read-metadata'] as const,
+    attributeLabelPatterns: ['entry', 'role', 'permission'], secondaryKey: '',
   };
   return {
     ...initialDraftPopulation(templateId), ...initialDraftCompliance(templateId), ...initialDraftEvidence(templateId),
@@ -50,7 +65,13 @@ function inputs(templateId: 'P-2' | 'P-3', index: number): FrozenPlanInputs {
     scope: 'The independently declared synthetic population for August 2026.',
     period: { from: '2026-08-01', to: '2026-08-31' },
     sourceSnapshot: { bindingId: ids.next(), displayName: 'Synthetic source', digest: bindingDigest(source), contract: bindingDigestEnvelope(source) },
-    targets: [snapshotFromRegistration({ ...registration, digest: registrationDigest(registration) })], instructions: [],
+    targets: [
+      ...(index === 0
+        ? [snapshotFromRegistration({ ...referenceSource, digest: registrationDigest(referenceSource) })]
+        : []),
+      snapshotFromRegistration({ ...registration, digest: registrationDigest(registration) }),
+    ],
+    instructions: [],
     schedule: { frequency: 'once', startTime: '00:00', periodDerivationRule: 'explicit-period' },
   };
 }
@@ -77,7 +98,7 @@ async function startWorker(): Promise<void> {
   workerLog = '';
   const worker = spawn(process.execPath, [resolve('apps/worker/dist/main.js')], {
     cwd: process.cwd(), windowsHide: true,
-    env: { ...process.env, ...storage.env, SERVICE_NAME: 'worker', MODEL_PROVIDER: '', MODEL_ID: '' },
+    env: { ...process.env, ...storage.env, SERVICE_NAME: 'worker', MODEL_PROVIDER: '', MODEL_ID: '', CREDENTIAL_TOKENS },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let failure: string | null = null;
@@ -95,6 +116,12 @@ test.afterAll(async () => {
   if (sql) {
     try {
       await sql`DELETE FROM pgboss.job WHERE data->>'runId' IN (SELECT run_id::text FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_observation WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_step_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_session_step WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_work_item WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM population_row WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM population_snapshot WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM population_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
@@ -147,6 +174,67 @@ test.describe('Auditor population acquisition', () => {
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath('population-ready.png'), fullPage: true });
   });
+  test('freezes the Reference Source first, then observes the AccessGate extraction', async ({ page }) => {
+    test.setTimeout(120_000);
+    // The population Run is the one above; wait for its execution stage to finish.
+    await expect.poll(async () => (await sql`SELECT status FROM run_execution WHERE run_id=${firstRunId}`)[0]?.status,
+      { timeout: 60_000 }).toBe('EXTRACTION_COMPLETE');
+
+    const [step] = await sql`SELECT step_id,state,attempts,evidence_id FROM run_session_step WHERE run_id=${firstRunId}`;
+    expect(step).toMatchObject({ state: 'ACQUIRED', attempts: 1 });
+    const [referenceEvidence] = await sql`SELECT object_key,digest,size,state,kind FROM run_evidence WHERE evidence_id=${step!.evidence_id}`;
+    expect(referenceEvidence).toMatchObject({ state: 'REGISTERED', kind: 'reference-source' });
+    // The bytes the synthetic system actually served, unchanged — including the `entry`
+    // ordinals that keep two conflicting RoleMatrix policy entries distinguishable.
+    const served = await readFile(join(process.cwd(), 'fixtures/northstar/generated/role-matrix.csv'));
+    expect(Buffer.from(storage.objects.get(String(referenceEvidence!.object_key))!)).toEqual(served);
+    expect(String(referenceEvidence!.digest)).toBe(createHash('sha256').update(served).digest('hex'));
+
+    const [item] = await sql`SELECT work_item_id,state,attempts,observations,evidence_id FROM run_work_item WHERE run_id=${firstRunId}`;
+    expect(item).toMatchObject({ state: 'OBSERVED', attempts: 1 });
+    // Twelve Active accounts, eleven distinct: AG-1007 is seeded twice.
+    expect(Number(item!.observations)).toBe(11);
+    const observations = await sql`SELECT population_record_key,found,identity FROM run_observation WHERE run_id=${firstRunId} ORDER BY population_record_key`;
+    expect(observations).toHaveLength(11);
+    expect(observations.filter(row => row.found === 'true')).toHaveLength(10);
+    const ambiguous = observations.find(row => row.population_record_key === 'AG-1007')!;
+    expect(ambiguous.found).toBe('ambiguous');
+    expect(ambiguous.identity).toBeNull();
+    const grounded = observations.find(row => row.population_record_key === 'AG-1001')!;
+    expect((grounded.identity as { grounding: { evidenceId: string } }).grounding.evidenceId).toBe(item!.evidence_id);
+    const [roles] = await sql`SELECT attributes FROM run_observation WHERE run_id=${firstRunId} AND population_record_key='AG-1001'`;
+    expect((roles!.attributes as { name: string; originalValue: unknown }[]).find(a => a.name === 'roles')?.originalValue).toEqual(['AP_CLERK']);
+
+    // The one Session Step ran before the one Work Item, in the chain itself.
+    const events = await sql`SELECT payload->>'diagnostic' AS diagnostic FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='lifecycle.adapter-execution' ORDER BY sequence`;
+    const order = events.map(row => String(row.diagnostic));
+    expect(order.indexOf('reference-source-acquired')).toBeLessThan(order.indexOf('work-item-attempt-started'));
+
+    // The token appears in NOTHING the Run stored, and not in the worker's own log.
+    const stored = await sql`
+      SELECT string_agg(t, ' ') AS text FROM (
+        SELECT payload::text AS t FROM audit_events WHERE aggregate_id=${firstRunId}
+        UNION ALL SELECT row_to_json(e)::text FROM run_evidence e WHERE run_id=${firstRunId}
+        UNION ALL SELECT row_to_json(x)::text FROM run_execution x WHERE run_id=${firstRunId}
+        UNION ALL SELECT row_to_json(w)::text FROM run_work_item w WHERE run_id=${firstRunId}
+        UNION ALL SELECT row_to_json(s)::text FROM run_step_execution s WHERE run_id=${firstRunId}
+        UNION ALL SELECT row_to_json(o)::text FROM run_observation o WHERE run_id=${firstRunId}
+      ) AS rows(t)`;
+    expect(String(stored[0]?.text ?? '')).not.toContain(READ_ONLY_TOKEN);
+    for (const bytes of storage.objects.values()) {
+      expect(Buffer.from(bytes).toString('utf8')).not.toContain(READ_ONLY_TOKEN);
+    }
+    expect(workerLog).not.toContain(READ_ONLY_TOKEN);
+
+    await page.goto(`/runs/${firstRunId}`);
+    const section = page.getByRole('region', { name: 'Target System execution' });
+    await expect(section.getByRole('cell', { name: 'RoleMatrix', exact: true })).toBeVisible();
+    await expect(section.getByRole('cell', { name: 'Acquired', exact: true })).toBeVisible();
+    await expect(section.getByRole('cell', { name: 'AccessGate', exact: true })).toBeVisible();
+    await expect(section.getByText('Observed', { exact: true })).toBeVisible();
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
+  });
+
   test('truncated file retains Evidence and reports failed independent count and digest', async ({ page }) => {
     test.setTimeout(90_000);
     const runId = await start(page, 1);

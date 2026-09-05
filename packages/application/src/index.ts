@@ -48,3 +48,4 @@ export * from './runs/ports.js';
 export * from './runs/initiate-run.js';
 export * from './runs/execution-ports.js';
 export * from './runs/acquire-population.js';
+export * from './runs/execute-adapter-steps.js';

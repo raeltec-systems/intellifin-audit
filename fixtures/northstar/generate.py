@@ -405,12 +405,21 @@ def main() -> int:
 
     # ------------------------------------------------------------------- RoleMatrix
     matrix = read_dataset("rolematrix.json")
+    matrix_schema = matrix["declared_schema"]
+    # The leading `entry` ordinal is the 1-based position of the policy ENTRY the row was
+    # flattened from, and it is what keeps a duplicate conflicting entry expressible in a
+    # flat file. AMBIGUOUS_DUAL is declared twice, once expanding to CREATE_PAYMENT and
+    # once to RELEASE_PAYMENT; without the ordinal its four rows union to a permission set
+    # that CONTAINS the prohibited pair CREATE_PAYMENT + RELEASE_PAYMENT, so the account
+    # the expectations require to be Unevaluated (p-2 case D5-c) would be reported as an
+    # Exception instead. An acquirer must be able to see the entry boundary in the bytes
+    # it froze, because nothing downstream can recover a boundary the artifact never had.
     matrix_rows = [
-        [entry["role"], permission]
-        for entry in matrix["entries"]
+        [str(ordinal), entry["role"], permission]
+        for ordinal, entry in enumerate(matrix["entries"], start=1)
         for permission in entry["permissions"]
     ]
-    matrix_bytes = csv_bytes(["role", "permission"], matrix_rows, matrix["title"], matrix["generation"])
+    matrix_bytes = csv_bytes(matrix_schema, matrix_rows, matrix["title"], matrix["generation"])
     write_bytes("role-matrix.csv", matrix_bytes)
     write_json(
         "role-matrix.cover-sheet.json",
@@ -422,7 +431,7 @@ def main() -> int:
             effective_period={"from": "2026-01-01", "to": "2026-12-31"},
             row_count=len(matrix_rows),
             payload=matrix_bytes,
-            declared_schema=["role", "permission"],
+            declared_schema=matrix_schema,
             generated_at=CURRENT_FILE_GENERATED_AT,
         ),
     )

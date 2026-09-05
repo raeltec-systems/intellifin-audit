@@ -16,12 +16,13 @@
   "complete": true,
   "row_count": 36,
   "declared_schema": [
+    "entry",
     "role",
     "permission"
   ],
   "content_digest": {
     "algorithm": "sha256",
-    "value": "47e8cc9834c1780a41e5ce539cd8cd1a378b19fb784f29197c731603ec45e4d7"
+    "value": "9c1af52cd1b0ead8285a76400f0d32d21ada1e5be9ee044b5f1c9ff936c3ff21"
   },
   "format": {
     "media_type": "text/csv",
@@ -34,7 +35,7 @@
     "scheme": "synthetic-hmac-sha256",
     "key_id": "northstar-cover-sheet-2026",
     "key_is_published": true,
-    "value": "6233abfdf6b93c7c94780887ccf67fe468f991ed1ea2abe849adcdff0c3e583f"
+    "value": "c197dbfd23d2010818c81c31e3756e95f38944b0acdd28884a3de26840e75705"
   },
   "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
 }

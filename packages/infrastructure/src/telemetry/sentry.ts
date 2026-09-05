@@ -15,6 +15,10 @@ export const TELEMETRY_MESSAGES = [
   'Heartbeat upsert failed',
   'Heartbeat loop started',
   'Population execution disabled',
+  // Story 3.3. Said once at boot when no audit credential has been declared to this
+  // deployment: every adapter Work Item would then fail closed with `credential-unresolved`,
+  // which reads as a Target System problem and is not one.
+  'Adapter extraction disabled',
   'Fatal worker error',
   'Plan derivation queue failed',
   'Retry Plan Derivation failed',

@@ -136,6 +136,30 @@ module.exports = {
       to: { path: '^packages/infrastructure/(src|dist)/evidence/', reachable: true },
     },
     {
+      name: 'no-adapter-extraction-in-web',
+      comment:
+        'AD-10: the worker reads a registered Target System and writes what it got; the web ' +
+        'only reads those rows. Nothing under apps/web may reach the extraction adapter, which ' +
+        'also presents an audit credential on the wire. It is exported through the ' +
+        "package's ./extraction subpath and deliberately kept out of the barrel, because the " +
+        'web imports the barrel and a re-export would make the module reachable transitively. ' +
+        '`reachable: true`, so an import through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/adapter-extraction-http', reachable: true },
+    },
+    {
+      name: 'no-credential-resolver-in-web',
+      comment:
+        'The credential resolver is the only module that turns an opaque reference into a ' +
+        'usable audit credential. The web process must never be able to reach one: it makes no ' +
+        'outbound call to a Target System, so it has no use for a token and every reason not to ' +
+        'hold one. Composed by the worker through the ./credentials subpath. `reachable: true`.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/credential-resolver', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +

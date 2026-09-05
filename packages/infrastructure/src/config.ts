@@ -101,6 +101,42 @@ export function parseCredentialCapabilities(
   return manifest;
 }
 
+/**
+ * Parse `CREDENTIAL_TOKENS`: a JSON object mapping an opaque credential reference to the
+ * token an adapter presents. `null` means the value is not that shape.
+ *
+ * This function is a SHAPE check and holds nothing: it lives here so that validation can
+ * run in `loadConfig` without dragging `runs/credential-resolver.ts` — the one module
+ * that turns a manifest into a usable credential — into the barrel the web imports.
+ *
+ * The duplicate-key rule is `parseCredentialCapabilities`'s, for the same reason:
+ * `{"prod":"a"," prod":"b"}` trimmed to one key would silently take the LAST entry, so
+ * two keys that look different in the JSON would resolve to one credential nobody chose.
+ * A deployment whose manifest is ambiguous has declared nothing, and the whole manifest
+ * is refused — which resolves nothing and fails every extraction closed.
+ *
+ * An absent variable is an empty manifest. Nothing here is ever logged or echoed; a
+ * refusal names the variable, never its content.
+ */
+export function parseCredentialTokens(raw: string): Map<string, string> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const manifest = new Map<string, string>();
+  for (const [reference, token] of Object.entries(parsed)) {
+    const key = reference.trim();
+    if (key === '' || key.length > 512) return null;
+    if (typeof token !== 'string' || token === '' || token.length > 4096) return null;
+    if (manifest.has(key)) return null;
+    manifest.set(key, token);
+  }
+  return manifest;
+}
+
 export const configSchema = z
   .object({
     DATABASE_URL: z
@@ -152,6 +188,27 @@ export const configSchema = z
         ),
     ),
     /**
+     * Audit credential VALUES, as JSON, for the just-in-time resolver (Story 3.3).
+     *
+     * A secret. Set it on the WORKER service only: the worker is the only process that
+     * composes `ManifestCredentialResolver`, and `no-credential-resolver-in-web` fails
+     * the build on any import of that module from the web. In production a non-empty
+     * value on any other service is refused outright below, so the guarantee does not
+     * rest on a deployment remembering.
+     *
+     * Absent means an empty manifest, which resolves nothing and fails every adapter
+     * Work Item closed. See {@link parseCredentialTokens}.
+     */
+    CREDENTIAL_TOKENS: z.preprocess(
+      (value) => (value === '' || value === undefined ? '{}' : value),
+      z
+        .string()
+        .refine(
+          (raw) => parseCredentialTokens(raw) !== null,
+          'must be a JSON object mapping a credential reference to its token, with no duplicate reference',
+        ),
+    ),
+    /**
      * Read only to decide whether `http://` is acceptable for BETTER_AUTH_URL. It is
      * not otherwise application configuration: what the build supports is a property
      * of the build (see `db/compat.ts`), not of the environment.
@@ -193,6 +250,23 @@ export const configSchema = z
         path: ['BETTER_AUTH_URL'],
         message:
           'must use https:// when NODE_ENV is production; an http origin yields a session cookie with no Secure attribute',
+      });
+    }
+
+    // The token manifest is the worker's alone. A production web container started with
+    // it would hold audit credentials in memory for a process AD-10 forbids an outbound
+    // call, so it refuses to start instead. Outside production one environment file is
+    // routinely shared by both processes, and refusing there would break local runs for
+    // a value the web has no code path to use.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.SERVICE_NAME !== 'worker' &&
+      config.CREDENTIAL_TOKENS !== '{}'
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CREDENTIAL_TOKENS'],
+        message: 'must not be set on any process other than the worker',
       });
     }
 
@@ -264,6 +338,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
     CREDENTIAL_CAPABILITIES: env['CREDENTIAL_CAPABILITIES'],
+    CREDENTIAL_TOKENS: env['CREDENTIAL_TOKENS'],
     NODE_ENV: env['NODE_ENV'],
     MODEL_PROVIDER: env['MODEL_PROVIDER'],
     MODEL_ID: env['MODEL_ID'],
@@ -313,6 +388,16 @@ export function evidenceS3Config(config: AppConfig): EvidenceS3Config | null {
  * `loadConfig` has already refused anything that is not the right shape, so this cannot
  * fail; the fallback is an empty manifest, which refuses every registration.
  */
+/**
+ * The declared token manifest, as the resolver needs it.
+ *
+ * `loadConfig` has already refused anything that is not the right shape, so this cannot
+ * fail; the fallback is an empty manifest, which resolves nothing.
+ */
+export function credentialTokenManifest(config: AppConfig): ReadonlyMap<string, string> {
+  return parseCredentialTokens(config.CREDENTIAL_TOKENS) ?? new Map();
+}
+
 export function credentialCapabilityManifest(
   config: AppConfig,
 ): ReadonlyMap<string, DeclaredCredentialCapability> {

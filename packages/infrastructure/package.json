@@ -33,6 +33,14 @@
     "./evidence": {
       "types": "./src/evidence/s3-evidence-store.ts",
       "default": "./dist/evidence/s3-evidence-store.js"
+    },
+    "./extraction": {
+      "types": "./src/runs/adapter-extraction-http.ts",
+      "default": "./dist/runs/adapter-extraction-http.js"
+    },
+    "./credentials": {
+      "types": "./src/runs/credential-resolver.ts",
+      "default": "./dist/runs/credential-resolver.js"
     }
   },
   "files": [

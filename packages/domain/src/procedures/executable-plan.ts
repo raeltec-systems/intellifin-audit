@@ -68,9 +68,12 @@ const shape = z.strictObject({
 });
 export type ExecutablePlan = z.infer<typeof shape>;
 
-const LOOKUP_COLUMNS: Readonly<Record<TemplateId, readonly string[]>> = {
+/** The frozen per-Template lookup binding (contract v1). The executor reads THIS table,
+ * not a second copy of it: two tables agree on every value anybody thinks to try. */
+export const PLAN_LOOKUP_COLUMNS: Readonly<Record<TemplateId, readonly string[]>> = {
   'P-1': ['employee_id', 'full_name'], 'P-2': ['account_id'], 'P-3': ['transaction_id'], 'P-4': ['parameter'],
 };
+const LOOKUP_COLUMNS = PLAN_LOOKUP_COLUMNS;
 const LOOKUP_EXPLANATION: Readonly<Record<TemplateId, string>> = {
   'P-1': 'Search by the population employee_id, then by full_name when the ID search has no match. Resolve only one grounded exact normalized employee_id match; a name-only candidate needs human resolution.',
   'P-2': 'Join each population account_id to its grounded extracted role list by exact normalized account_id. Expand role names through the versioned RoleMatrix before evaluating permission pairs; missing or conflicting expansion remains Unevaluated.',

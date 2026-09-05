@@ -29,6 +29,18 @@ export const UNDECLARED_CREDENTIAL = 'cred://synthetic/e2e-nobody-vouched-for-th
 /** The verbatim refusal. FR-8 fixes this string; the specs hold it to the character. */
 export const READ_ONLY_REFUSAL = 'Audit credentials must be read-only.';
 
+/**
+ * The token the worker presents for the read-only reference (Story 3.3).
+ *
+ * A synthetic value with no meaning to anything: every Northstar system is read-only at
+ * the system level and ignores the header. It is here so the browser run can assert the
+ * containment claim positively — this exact string must appear in NOTHING the Run stores.
+ */
+export const READ_ONLY_TOKEN = 'synthetic-e2e-adapter-token-4f21-never-store-me';
+
+/** What `CREDENTIAL_TOKENS` is set to for the WORKER the population spec starts. */
+export const CREDENTIAL_TOKENS = JSON.stringify({ [READ_ONLY_CREDENTIAL]: READ_ONLY_TOKEN });
+
 /** What `CREDENTIAL_CAPABILITIES` is set to for the server the specs drive. */
 export const CREDENTIAL_CAPABILITIES = JSON.stringify({
   [READ_ONLY_CREDENTIAL]: 'read-only',

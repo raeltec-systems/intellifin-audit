@@ -36,6 +36,26 @@ attempt id, retry count, original start time and revisioned lease before externa
 `POPULATION_READY` completes only that Session Step. The Run remains Running and the
 next ordered action is pending; no Target extraction or Result is manufactured.
 
+### Reference-versus-adapter classification
+
+`extract-adapter` binds an API **or** a file registration, and the frozen
+`inputs.targets[].contract.kind` says which. That distinction is interpreter semantics, not
+a new action: a `versioned-file` Target System is a **Reference Source**, consulted by the
+evaluator, acquired as a Session Step before any Work Item and owning **no** Work Items
+(addendum C P-2 names RoleMatrix exactly that way); an `api` Target System is
+**adapter-acquired** and owns exactly one Work Item. A `web` or `desktop` Target System is
+agent-driven and is not executed by the adapter interpreter at all.
+
+Both readings come from bytes that are already frozen, so no canonical plan byte moves and
+every ACTIVE version stays executable. The adapter interpreter implements
+[adapter extraction v1](adapter-extraction-v1.md), which also fixes the extraction
+location, the just-in-time credential boundary, the reserve/upload/verify Evidence sequence
+and the §B.1 Observation projection.
+
+Execution order is: every Reference Source in authored order, then every adapter Work Item
+in authored order, sequentially. A Session Step failure after bounded retries is
+`RUN_FAILED`; a Work Item failure never stops the Run.
+
 ## Per-target actions
 
 Each Target's plan has `inspect-record`, `capture-observation`, then `evaluate-conditions`. The executor expands this work according to the Template's coverage: P-1 covers every included employee in every selected Target; P-2 covers the full account extraction with per-account role coverage; P-3 covers extraction with a grounded approval result per included transaction; P-4 covers the page/extraction with one grounded Observation per baseline parameter. Expansion must preserve these frozen action ids in Step Execution provenance.

@@ -1,9 +1,9 @@
-import { acquirePopulation, derivePlan, reconcilePlanDerivation, deliverNotifications } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
-  PostgresPopulationRepository, startPopulationWorker, startPopulationRecovery, SystemClock,
+  PostgresPopulationRepository, PostgresAdapterExecutionRepository, startPopulationWorker, startPopulationRecovery, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender,
   createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
@@ -16,8 +16,10 @@ import {
 // web imports that barrel. See packages/infrastructure/src/index.ts.
 import { HttpPopulationAcquisition } from '@intellifin/infrastructure/acquisition';
 import { createS3EvidenceStore } from '@intellifin/infrastructure/evidence';
+import { HttpAdapterExtraction } from '@intellifin/infrastructure/extraction';
+import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentials';
 
-import { createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
+import { adapterExtraction, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -99,11 +101,43 @@ async function main(): Promise<void> {
     () => telemetry.captureError('Plan derivation queue failed', new Error('Plan recovery failed'), {}));
 
   const evidence = populationExecution(config);
+  const credentials = adapterExtraction(config);
+  if (!credentials.enabled) telemetry.info('Adapter extraction disabled', { reason: credentials.reason });
   if (evidence.enabled) {
     const populationRepository = new PostgresPopulationRepository(db);
-    const population = { repository:populationRepository, acquisition:new HttpPopulationAcquisition(), store:createS3EvidenceStore(evidence.config), clock:new SystemClock(), ids:new CryptoUuidV7Generator() };
-    await startPopulationWorker(queue,job=>acquirePopulation(population,job));
-    stopPopulationRecovery=startPopulationRecovery(db,populationRepository,job=>acquirePopulation(population,job),()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));
+    const store = createS3EvidenceStore(evidence.config);
+    const clock = new SystemClock();
+    const ids = new CryptoUuidV7Generator();
+    const population = { repository:populationRepository, acquisition:new HttpPopulationAcquisition(), store, clock, ids };
+    const adapterRepository = new PostgresAdapterExecutionRepository(db);
+    // The extraction adapter and the resolver are composed HERE and nowhere else: the
+    // worker is the only process AD-10 lets make an outbound call to a registered Target
+    // System, and the only one that may hold an audit credential at all.
+    const http = new HttpAdapterExtraction();
+    const adapter = credentials.enabled
+      ? { repository:adapterRepository, reference:http, extraction:http,
+          credentials:new ManifestCredentialResolver(credentials.credentials), store, clock, ids }
+      : null;
+    // One job carries a Run through both stages. An extraction retry is NOT propagated
+    // to the queue: a redelivery re-verifies the population Evidence and can consume one
+    // of that stage's four durable attempts, so a transient extraction failure would
+    // spend the population's budget. It becomes a RETRY checkpoint instead, which the
+    // extraction recovery sweep picks up.
+    const handle = async (job: PopulationJob): Promise<{ retry: boolean }> => {
+      const acquired = await acquirePopulation(population, job);
+      if (acquired.retry || adapter === null) return acquired;
+      await executeAdapterSteps(adapter, job);
+      return { retry: false };
+    };
+    await startPopulationWorker(queue,handle);
+    stopPopulationRecovery=startPopulationRecovery(db,populationRepository,handle,()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));
+    if (adapter !== null) {
+      // Its own sweep, on its own read: after POPULATION_READY the population sweep no
+      // longer selects the Run, so a stalled extraction would be recovered by nothing.
+      const stopAdapterRecovery = startPopulationRecovery(db,adapterRepository,job=>executeAdapterSteps(adapter,job),()=>telemetry.captureError('Fatal worker error',new Error('Adapter recovery failed'),{}));
+      const stopPopulation = stopPopulationRecovery;
+      stopPopulationRecovery = async () => { await stopAdapterRecovery(); await stopPopulation(); };
+    }
   } else {
     telemetry.info('Population execution disabled', { reason: evidence.reason });
   }

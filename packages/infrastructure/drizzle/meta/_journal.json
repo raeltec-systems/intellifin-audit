@@ -134,6 +134,13 @@
       "when": 1788615106742,
       "tag": "0018_jittery_scream",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788625115341,
+      "tag": "0019_curvy_lord_tyger",
+      "breakpoints": true
     }
   ]
 }

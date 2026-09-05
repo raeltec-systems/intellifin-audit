@@ -108,6 +108,32 @@ const CASES: readonly Case[] = [
     requires: 'packages/infrastructure/dist/runs/population-acquisition-http.js',
   },
   {
+    // Story 3.3: the adapter that reads a registered Target System and presents an audit
+    // credential on the wire. The web composes neither.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/adapter-extraction-http.js',
+    rule: 'no-adapter-extraction-in-web',
+  },
+  {
+    // The built spelling, which an `exclude` would silently stop rule-checking.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/adapter-extraction-http.js',
+    rule: 'no-adapter-extraction-in-web',
+    requires: 'packages/infrastructure/dist/runs/adapter-extraction-http.js',
+  },
+  {
+    // The only module that turns a credential reference into a usable credential.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/credential-resolver.js',
+    rule: 'no-credential-resolver-in-web',
+  },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/credential-resolver.js',
+    rule: 'no-credential-resolver-in-web',
+    requires: 'packages/infrastructure/dist/runs/credential-resolver.js',
+  },
+  {
     // The evidence store holds the object credentials, so the web has no business
     // reaching it either.
     plantIn: 'apps/web/src',

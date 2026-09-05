@@ -8,7 +8,7 @@ import {
   type Sql,
   type Telemetry,
 } from '@intellifin/infrastructure';
-import { evidenceS3Config, type AppConfig, type EvidenceS3Config } from '@intellifin/infrastructure';
+import { credentialTokenManifest, evidenceS3Config, type AppConfig, type EvidenceS3Config } from '@intellifin/infrastructure';
 
 /**
  * The worker's startup and loop mechanics, separated from `main.ts` so both can be
@@ -63,6 +63,28 @@ export function populationExecution(
   return evidence
     ? { enabled: true, config: evidence }
     : { enabled: false, reason: 'EVIDENCE_S3_ENDPOINT is not configured' };
+}
+
+/**
+ * Whether this worker can run adapter extraction, and why not when it cannot.
+ *
+ * Same trade as `populationExecution`, one stage along. Extraction needs a declared
+ * credential manifest, which a deployment supplies separately; refusing to BOOT without
+ * it would stop plan derivation, notification delivery and the liveness row as well —
+ * every duty this worker already performs — for a stage that could not run anyway. So
+ * the worker starts, says once and by name that extraction is off, and keeps going.
+ *
+ * An empty manifest is not silently accepted as "extraction with no credentials": every
+ * Work Item would fail closed with `credential-unresolved`, which reads as a Target
+ * System problem and is not one.
+ */
+export function adapterExtraction(
+  config: AppConfig,
+): { readonly enabled: true; readonly credentials: ReadonlyMap<string, string> } | { readonly enabled: false; readonly reason: string } {
+  const credentials = credentialTokenManifest(config);
+  return credentials.size > 0
+    ? { enabled: true, credentials }
+    : { enabled: false, reason: 'CREDENTIAL_TOKENS declares no audit credential' };
 }
 
 export interface HeartbeatLoop {

@@ -2,7 +2,7 @@
 title: 'Story 3.3: Extract adapter-acquired Target Systems and freeze Reference Sources'
 type: 'feature'
 created: '2026-09-05'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -106,3 +106,38 @@ P-2's extraction reads the same AccessGate API the population came from, because
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build` and `pnpm --filter @intellifin/web build` — expected: pass.
 - `pnpm test:e2e` — expected: all pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** The execution stage after population acquisition: Reference Sources
+acquired as Session Steps before any Work Item and frozen into Evidence, one adapter Work
+Item per `api` Target System, Step Executions, Observations in the §B.1 wire schema, and
+just-in-time credential resolution. Generation 19 adds six tables.
+
+**Two deliberate deviations from the spec's letter, both correct:**
+- The spec named the Population Source binding vocabulary. A Target System's frozen kind
+  is `web | desktop | api | versioned-file`; `manual-upload` is not one. Implemented as
+  `api` -> one Work Item, `versioned-file` -> Reference Source, `web`/`desktop` -> the
+  stage refuses the plan rather than skipping a Target nobody observed.
+- "Audited by reference" could not mean putting the reference in the payload:
+  `FORBIDDEN_PAYLOAD_KEYS` refuses `credentialref` and would throw. The event names the
+  Target System; the frozen `credentialReferences` entry is already in the plan.
+
+**One addition:** a single bounded hop through a system's read-only service index, so a
+registration written for the Story 1.8 probe is executable without guessing a path.
+Closed shape, same frozen origin, path-boundary matched, second index refused.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18.4:**
+typecheck PASS; boundaries PASS (348 modules); `db:migrate` schemaVersion 19; unit
+2184/2184; integration 262/262; `db:generate` no drift; package and web builds PASS;
+browser + axe 109/109 with zero accessibility violations. The browser gate was re-run here
+against a worker rebuilt after the implementation's three late refinements, which its own
+full run predated.
+
+**Residual risks.** `systems.json`'s rolematrix-file `attribute_label_patterns` does not
+mention the new `entry` column; adding it would move a seeded registration digest, so it
+is deliberately out of scope. The Evidence tamper check fires on re-claim, not
+continuously; later stages must verify Evidence when they consume it.

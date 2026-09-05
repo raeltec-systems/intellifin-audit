@@ -812,3 +812,112 @@ export const populationRow = pgTable('population_row', {
   runId:uuid('run_id').notNull().references(()=>populationSnapshot.runId),ordinal:integer('ordinal').notNull(),
   values:jsonb('values').$type<Record<string,import('@intellifin/domain').JsonValue>>().notNull(), disposition:text('disposition').$type<import('@intellifin/domain').PopulationRow['disposition']>().notNull(), reasons:jsonb('reasons').$type<string[]>().notNull(),
 },t=>[primaryKey({columns:[t.runId,t.ordinal]}),check('population_row_disposition',sql`${t.disposition} IN ('included','excluded','indeterminate')`),check('population_row_ordinal',sql`${t.ordinal}>0`)]);
+
+/**
+ * Generation 19 — the adapter execution stage (Story 3.3).
+ *
+ * `run_execution` is the stage's claim, beside `population_execution`. `run_session_step`
+ * holds one Reference Source acquisition per FROZEN `extract-adapter` step that names a
+ * `versioned-file` Target System; `run_work_item` holds one adapter Work Item per `api`
+ * one. `run_step_execution` keeps the frozen plan step id as provenance for every
+ * attempt, `run_evidence` the reserve/register/abandon lifecycle of each artifact, and
+ * `run_observation` the §B.1 wire schema.
+ *
+ * The CHECKs pin every enum, the digest format and the jsonb shape. `jsonb_array_length`
+ * of an empty array is 0, not NULL, but the coalesce is kept anyway: a NULL CHECK PASSES,
+ * and this repository has been bitten by that twice with `array_length`.
+ */
+export const runExecution = pgTable('run_execution', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  revision: integer('revision').notNull(), status: text('status').notNull(), attempts: integer('attempts').notNull(),
+  runStartedAt: timestamp('run_started_at',{withTimezone:true}).notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  attemptStartedAt: timestamp('attempt_started_at',{withTimezone:true}).notNull(),
+  leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  attemptId: uuid('attempt_id').notNull(), diagnostic: text('diagnostic'),
+}, t=>[
+  check('run_execution_status',sql`${t.status} IN ('EXECUTING','RETRY','EXTRACTION_COMPLETE','TERMINAL')`),
+  check('run_execution_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`),
+]);
+
+export const runEvidence = pgTable('run_evidence', {
+  evidenceId: uuid('evidence_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  kind: text('kind').notNull(), registrationId: text('registration_id').notNull(),
+  objectKey: text('object_key').notNull().unique(), mediaType: text('media_type'),
+  digest: text('digest'), size: integer('size'), state: text('state').notNull(),
+}, t=>[
+  check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction')`),
+  check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
+  check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
+  check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
+]);
+
+export const runSessionStep = pgTable('run_session_step', {
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  stepId: text('step_id').notNull(), ordinal: integer('ordinal').notNull(),
+  registrationId: text('registration_id').notNull(), displayName: text('display_name').notNull(),
+  state: text('state').notNull(), attempts: integer('attempts').notNull(), diagnostic: text('diagnostic'),
+  evidenceId: uuid('evidence_id').references(() => runEvidence.evidenceId),
+}, t=>[
+  primaryKey({columns:[t.runId,t.stepId]}),
+  check('run_session_step_state',sql`${t.state} IN ('PENDING','IN_PROGRESS','ACQUIRED','FAILED')`),
+  check('run_session_step_counts',sql`${t.ordinal}>0 AND ${t.attempts}>=0`),
+  check('run_session_step_acquired',sql`${t.state}<>'ACQUIRED' OR ${t.evidenceId} IS NOT NULL`),
+]);
+
+export const runWorkItem = pgTable('run_work_item', {
+  workItemId: uuid('work_item_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  stepId: text('step_id').notNull(), ordinal: integer('ordinal').notNull(),
+  registrationId: text('registration_id').notNull(), displayName: text('display_name').notNull(),
+  state: text('state').notNull(), attempts: integer('attempts').notNull(), cycles: integer('cycles').notNull(),
+  diagnostic: text('diagnostic'), evidenceId: uuid('evidence_id').references(() => runEvidence.evidenceId),
+  observations: integer('observations').notNull(),
+}, t=>[
+  uniqueIndex('run_work_item_run_step').on(t.runId,t.stepId),
+  check('run_work_item_state',sql`${t.state} IN ('PENDING','IN_PROGRESS','AWAITING','OBSERVED','UNINSPECTED','AMBIGUOUS','FAILED')`),
+  // Two bounded retry cycles: the frozen NFR-8 cycle and the owner's automatic second.
+  check('run_work_item_counts',sql`${t.ordinal}>0 AND ${t.attempts}>=0 AND ${t.cycles}>=0 AND ${t.cycles}<=2 AND ${t.observations}>=0`),
+]);
+
+export const runStepExecution = pgTable('run_step_execution', {
+  stepExecutionId: uuid('step_execution_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  planStepId: text('plan_step_id').notNull(), workItemId: uuid('work_item_id').references(() => runWorkItem.workItemId),
+  action: text('action').notNull(), state: text('state').notNull(), attempt: integer('attempt').notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  completedAt: timestamp('completed_at',{withTimezone:true}), diagnostic: text('diagnostic'),
+}, t=>[
+  index('run_step_execution_run_idx').on(t.runId,t.startedAt),
+  check('run_step_execution_state',sql`${t.state} IN ('RUNNING','SUCCEEDED','FAILED')`),
+  check('run_step_execution_action',sql`${t.action} IN ('create-workspace','acquire-population','sign-in','extract-adapter','inspect-record','capture-observation','evaluate-conditions')`),
+  check('run_step_execution_attempt',sql`${t.attempt}>0`),
+]);
+
+export const runObservation = pgTable('run_observation', {
+  observationId: uuid('observation_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  workItemId: uuid('work_item_id').notNull().references(() => runWorkItem.workItemId),
+  schemaVersion: integer('schema_version').notNull(),
+  populationRecordKey: text('population_record_key').notNull(), targetSystem: text('target_system').notNull(),
+  found: text('found').notNull(), observedAt: timestamp('observed_at',{withTimezone:true}).notNull(),
+  stepExecutionId: uuid('step_execution_id').notNull(),
+  captureMethod: text('capture_method').notNull(), matchOrigin: text('match_origin').notNull(),
+  identity: jsonb('identity').$type<import('@intellifin/domain').ObservationAttribute | null>(),
+  attributes: jsonb('attributes').$type<import('@intellifin/domain').ObservationAttribute[]>().notNull(),
+  evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull(),
+}, t=>[
+  // A redelivered job cannot create a second Observation for the same record.
+  uniqueIndex('run_observation_item_record').on(t.workItemId,t.populationRecordKey),
+  check('run_observation_schema',sql`${t.schemaVersion} = 1`),
+  check('run_observation_found',sql`${t.found} IN ('true','false','ambiguous')`),
+  check('run_observation_capture',sql`${t.captureMethod} IN ('agent','adapter')`),
+  check('run_observation_origin',sql`${t.matchOrigin} IN ('platform','human-matched')`),
+  // §B.1: a grounded identity attribute is required when found = true, and meaningless
+  // otherwise — an ambiguous or absent Observation carrying one asserts the very match
+  // it exists to say did not resolve.
+  check('run_observation_identity',sql`(${t.found} = 'true') = (${t.identity} IS NOT NULL) AND (${t.identity} IS NULL OR jsonb_typeof(${t.identity}) = 'object')`),
+  check('run_observation_attributes',sql`coalesce(jsonb_typeof(${t.attributes}) = 'array' AND jsonb_array_length(${t.attributes}) <= 64, false)`),
+  check('run_observation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) BETWEEN 1 AND 16, false)`),
+]);
