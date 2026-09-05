@@ -1535,7 +1535,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     });
 
     it('records platformCaptured from the Draft’s CURRENT Target System selection in the database, never from the caller', async () => {
-      const { read, save, selectTargets } = await setupEvidence();
+      const { seed, read, save, selectTargets } = await setupEvidence();
       const web = await registerWeb('LoanCore');
       const before = await read();
       const bound = await selectTargets(web.id, web.digest, procedureVersionRowVersion(before));
@@ -1547,6 +1547,19 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
       expect(outcome).toMatchObject({ ok: true, changed: true });
       const stored = (await read()).evidenceRequirements[0];
       expect(stored).toMatchObject({ groundedBy: expect.arrayContaining(['source-file-excerpt', 'structural-snapshot']), screenshot: true, platformCaptured: true });
+      const authored = requirement({ attributeName: 'authored', groundedBy: ['structural-snapshot'], screenshot: true });
+      const forcedOnly = requirement({ attributeName: 'forced-only', groundedBy: [], screenshot: false });
+      expect(await save({ section: 'evidence-requirements', requirements: [asked, authored, forcedOnly] }, procedureVersionRowVersion(await read()))).toMatchObject({ ok: true });
+      expect(await updateTargetDraft(dependencies(), {
+        session: auditor, procedureId: seed.procedureId, versionId: seed.versionId,
+        expectedRowVersion: procedureVersionRowVersion(await read()), correlationId: `${prefix}capture-remove-${seed.versionId}`,
+        edit: { section: 'target-systems', selections: [] },
+      })).toMatchObject({ ok: true });
+      const removed = await read();
+      expect(removed.evidenceRequirements).toEqual([asked, authored, forcedOnly].map((entry) => ({ ...entry, platformCaptured: false })));
+      // Incomplete grounding is editable after reload, but must be resolved before evidence save.
+      expect(await save({ section: 'evidence-requirements', requirements: [forcedOnly] }, procedureVersionRowVersion(removed))).toMatchObject({ ok: false });
+      expect(await save({ section: 'evidence-requirements', requirements: [asked, authored] }, procedureVersionRowVersion(removed))).toMatchObject({ ok: true });
     });
 
     it('never refuses the manual-upload/recurring-Schedule pairing; the repository surfaces it as a blocker instead', async () => {

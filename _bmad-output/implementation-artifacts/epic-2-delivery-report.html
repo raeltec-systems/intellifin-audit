@@ -67,7 +67,7 @@
 </section>
 
 <section aria-labelledby="review"><h2 id="review">Independent review after CI green</h2>
-<p>A second review of the whole PR diff — correctness, verification gaps and security — plus the automated Codex review found seven defects after run 53 was green. Six are fixed on this branch, and each fix carries a test that fails when the fix is reverted:</p>
+<p>A second review of the whole PR diff — correctness, verification gaps and security — plus the automated Codex review found seven defects after run 53 was green. Six were fixed in the initial review pass, and each fix carries a test that fails when the fix is reverted:</p>
 <ul>
 <li><strong>Population Source picker cap.</strong> The Builder's picker inherited the administration list's 200-row cap, so a source past the cap could not be bound (Codex finding). The picker read is unpaged and active-only now.</li>
 <li><strong>External browser server.</strong> The worker-backed review journey started its fixture worker even against an external web server, where it cannot pass (Codex finding). It skips itself there and says why.</li>
@@ -77,15 +77,14 @@
 <li><strong>Retry action.</strong> The plan-derivation retry could answer a framework 500 instead of a sentence. It fails like its sibling actions.</li>
 <li><strong>Untested triggers.</strong> Raw-SQL immutability of recorded activation metadata and succession edges, and the platform-change trigger branches, gained the integration tests nothing had exercised.</li>
 </ul>
-<p>One Codex finding stays open for the owner: when the last agent-driven Target is deselected, the requirements the platform forced (Structural Snapshot grounding and the screenshot flag) remain as if authored. CLAUDE.md records “deselecting clears the derived flag without discarding authored grounding” as the deliberate rule, and the auditor can edit those requirements afterwards. Undoing forced values needs the platform to remember which values it forced — a design change, not a patch. Smaller hardening follow-ups were noted and none blocks.</p>
-<p>Final verification of this branch on a fresh PostgreSQL 18.4 at generation 14: 1,950 unit tests, 214 integration tests, typecheck, boundaries, build, and the 31 browser tests of the three touched specs. <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33961248848">CI run 55</a> passed on <code>0dcc594</code>, which differs from the last code change <code>26fd0e8</code> only by this report. Run 54 on <code>26fd0e8</code> had passed its typecheck/unit, integration and container jobs when the report push cancelled its browser job, as the workflow’s concurrency rule requires. The run on this final commit is linked from the PR.</p>
+<p>The owner subsequently requested the remaining forced-evidence fix. Removing the last agent-driven Target now clears platform-added capture requirements and preserves recorded authored choices, including after reload and unrelated edits. A Draft left without grounding stays editable but cannot derive a plan or be submitted until corrected. Legacy rows without capture provenance retain their values because authorship cannot safely be inferred. See the <a href="epic-2-capture-fix-report.md">follow-up verification report</a>. Smaller hardening follow-ups remain.</p>
+<p>Verification before the capture follow-up on a fresh PostgreSQL 18.4 at generation 14: 1,950 unit tests, 214 integration tests, typecheck, boundaries, build, and the 31 browser tests of the three touched specs. <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33961248848">CI run 55</a> passed on <code>0dcc594</code>, which differs from the last code change <code>26fd0e8</code> only by this report. Run 54 on <code>26fd0e8</code> had passed its typecheck/unit, integration and container jobs when the report push cancelled its browser job, as the workflow’s concurrency rule requires. The run on this final commit is linked from the PR.</p>
 </section>
 
 <section aria-labelledby="owner"><h2 id="owner">What needs your attention</h2>
-<p>Three decisions on <a href="https://github.com/raeltec-systems/intellifin-audit/pull/21">PR 21</a>, none of them a product decision:</p>
+<p>Remaining release considerations for <a href="https://github.com/raeltec-systems/intellifin-audit/pull/21">PR 21</a>:</p>
 <ul>
 <li><strong>Where to merge.</strong> There is no <code>develop</code> branch. The PR targets <code>main</code>, and a merge to <code>main</code> is the production release: the release workflow migrates the production database from generation 7 to 14 and deploys web, worker and Northstar to Railway. Merging to a new <code>develop</code> branch deploys nothing until the release workflow is changed to read it.</li>
-<li><strong>The deferred finding.</strong> Merge with the forced-evidence finding as a follow-up story, or fix it first as a design change.</li>
 <li><strong>Live model proof.</strong> The Anthropic account answers “credit balance is too low” and OpenAI is unreachable from the review environment, so the model path is proven only through synthetic provider HTTP. The production worker has no <code>MODEL_*</code> variables, so the release derives plans deterministically. To run a model live: fund the account, set the worker's <code>MODEL_*</code> variables, and publish a model revision with the configuration script.</li>
 </ul>
 </section>

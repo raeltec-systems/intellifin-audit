@@ -156,7 +156,7 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
   if (!validReviewFields(row)) return null;
   if (!validPlanMetadata(row)) return null;
-  if (!isDraftPopulationFields(row, row.platformOrigin != null && row.state === 'DRAFT') || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
+  if (!isDraftPopulationFields(row, row.platformOrigin != null && row.state === 'DRAFT') || !isDraftTargetFields(row) || !isDraftEvidenceFields(row, row.state === 'DRAFT')) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
@@ -189,7 +189,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
   if (!validReviewFields(row)) return null;
   if (!validPlanMetadata(row)) return null;
-  if (!isDraftPopulationFields(row, row.platformOrigin != null && row.state === 'DRAFT') || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
+  if (!isDraftPopulationFields(row, row.platformOrigin != null && row.state === 'DRAFT') || !isDraftTargetFields(row) || !isDraftEvidenceFields(row, row.state === 'DRAFT')) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);

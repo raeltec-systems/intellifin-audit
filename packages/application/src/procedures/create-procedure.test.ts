@@ -1142,7 +1142,7 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     const asked = requirement({ groundedBy: [], screenshot: false });
     expect(await save({ section: 'evidence-requirements', requirements: [asked] })).toMatchObject({ ok: true, changed: true });
     expect(record().evidenceRequirements).toEqual([
-      { ...asked, groundedBy: ['structural-snapshot'], screenshot: true, platformCaptured: true },
+      { ...asked, groundedBy: ['structural-snapshot'], screenshot: true, platformCaptured: true, authoredCapture: { structuralSnapshot: false, screenshot: false } },
     ]);
   });
 
@@ -1157,7 +1157,7 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     const outcome = await save({ section: 'evidence-requirements', requirements: [asked] }, procedureVersionRowVersion(record()));
     expect(outcome).toMatchObject({ ok: true, changed: true });
     expect(record().evidenceRequirements).toEqual([
-      { ...asked, groundedBy: ['source-file-excerpt', 'structural-snapshot'], screenshot: true, platformCaptured: true },
+      { ...asked, groundedBy: ['source-file-excerpt', 'structural-snapshot'], screenshot: true, platformCaptured: true, authoredCapture: { structuralSnapshot: false, screenshot: false } },
     ]);
 
     // Deselecting the agent-driven system and re-saving the SAME asked requirement drops
@@ -1182,11 +1182,22 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     const token = procedureVersionRowVersion(record());
     test.events.length = 0;
     await selectTargets([{ mode: 'bind', registrationId: WEB, expectedDigest: webReg.digest }]);
-    expect(record().evidenceRequirements).toEqual([{ ...authored, groundedBy: ['structural-snapshot'], screenshot: true, platformCaptured: true }]);
+    expect(record().evidenceRequirements).toEqual([{ ...authored, groundedBy: ['structural-snapshot'], screenshot: true, platformCaptured: true, authoredCapture: { structuralSnapshot: false, screenshot: false } }]);
     expect(test.events).toHaveLength(1);
     expect(await save({ section: 'evidence-requirements', requirements: [authored] }, token)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
     await selectTargets([{ mode: 'bind', registrationId: API, expectedDigest: apiReg.digest }]);
-    expect(record().evidenceRequirements[0]).toMatchObject({ attributeName: 'notes', modelRead: true, recordingSegment: true, platformCaptured: false });
+    expect(record().evidenceRequirements[0]).toEqual({ ...authored, platformCaptured: false });
+  });
+
+  it('removes the last target without keeping forced grounding or manufacturing model-read', async () => {
+    const { record, save, selectTargets } = await setup();
+    expect(await selectTargets([{ mode: 'bind', registrationId: WEB, expectedDigest: webReg.digest }])).toMatchObject({ ok: true });
+    const authored = requirement({ groundedBy: [], screenshot: false });
+    expect(await save({ section: 'evidence-requirements', requirements: [authored] })).toMatchObject({ ok: true });
+    expect(await selectTargets([])).toMatchObject({ ok: true });
+    expect(record().evidenceRequirements).toEqual([{ ...authored, platformCaptured: false }]);
+    expect(await save({ section: 'evidence-requirements', requirements: [authored] })).toMatchObject({ ok: false });
+    expect(await save({ section: 'evidence-requirements', requirements: [{ ...authored, groundedBy: ['source-file-excerpt'] }] })).toMatchObject({ ok: true });
   });
 
   it('never refuses the manual-upload/recurring-Schedule pairing on either section; it is surfaced as a blocker only', async () => {

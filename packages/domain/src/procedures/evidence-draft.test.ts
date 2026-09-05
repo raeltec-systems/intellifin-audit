@@ -152,6 +152,32 @@ describe('the grounding rule', () => {
 });
 
 describe('platform-captured is recorded, never chosen', () => {
+  it('removes only platform additions, including after repeated target saves and JSON reload', () => {
+    for (const groundedBy of [[], ['source-file-excerpt'], ['structural-snapshot']] as const) {
+      for (const screenshot of [false, true]) {
+        const authored = requirement({ modelRead: true, groundedBy, screenshot, recordingSegment: true });
+        const captured = withPlatformCaptured(authored, true);
+        const reloaded = JSON.parse(JSON.stringify(withPlatformCaptured(captured, true))) as EvidenceRequirement;
+        expect(withPlatformCaptured(reloaded, false)).toEqual({ ...authored, platformCaptured: false });
+      }
+    }
+  });
+  it('preserves legacy capture choices whose authorship was never recorded', () => {
+    const legacy = { ...requirement({ groundedBy: ['structural-snapshot'], screenshot: true }), platformCaptured: true };
+    expect(withPlatformCaptured(legacy, false)).toEqual({ ...legacy, platformCaptured: false });
+  });
+  it('allows incomplete grounding only on editable Draft reads, not executable inputs', () => {
+    const removed = withPlatformCaptured(withPlatformCaptured(requirement({ groundedBy: [], screenshot: false }), true), false);
+    const fields = { evidenceSchemaVersion: 1, evidenceRequirements: [removed], schedule: null };
+    expect(isDraftEvidenceFields(fields, true)).toBe(true);
+    expect(isDraftEvidenceFields(fields)).toBe(false);
+    expect(isEvidenceRequirement(removed)).toBe(false);
+  });
+  it('rejects malformed or misplaced capture provenance', () => {
+    const captured = withPlatformCaptured(requirement(), true);
+    expect(isEvidenceRequirement({ ...captured, authoredCapture: { structuralSnapshot: 'yes', screenshot: false } })).toBe(false);
+    expect(isEvidenceRequirement({ ...captured, platformCaptured: false })).toBe(false);
+  });
   it('is false with no agent-driven Target System selected', () => {
     expect(hasAgentDrivenTarget([ACCESSGATE])).toBe(false);
     expect(hasAgentDrivenTarget([])).toBe(false);

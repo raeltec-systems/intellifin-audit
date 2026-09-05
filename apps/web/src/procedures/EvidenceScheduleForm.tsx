@@ -11,6 +11,7 @@ import {
   hasAgentDrivenTarget,
   evidenceGroundingMessage,
   evidenceBlockersFor,
+  authoredEvidenceInput,
   type EvidenceRequirementInput,
   type Frequency,
   type GroundingEvidenceType,
@@ -47,13 +48,7 @@ const FREQUENCY_LABEL: Readonly<Record<Frequency, string>> = {
 };
 
 function inputsFrom(draft: ProcedureVersionView): readonly EvidenceRequirementInput[] {
-  return draft.evidenceRequirements.map(({ attributeName, modelRead, groundedBy, screenshot, recordingSegment }) => ({
-    attributeName,
-    modelRead,
-    groundedBy,
-    screenshot,
-    recordingSegment,
-  }));
+  return draft.evidenceRequirements.map(authoredEvidenceInput);
 }
 
 const PERIOD_LABEL: Readonly<Record<Frequency, string>> = {
@@ -75,12 +70,7 @@ export interface EvidenceRequirementsFormProps {
 export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: EvidenceRequirementsFormProps): React.JSX.Element {
   const id = useId();
   const platformCaptured = hasAgentDrivenTarget(draft.targets);
-  const normalize = (requirements: readonly EvidenceRequirementInput[]): readonly EvidenceRequirementInput[] => requirements.map((requirement) => ({
-    ...requirement,
-    groundedBy: platformCaptured && !requirement.groundedBy.includes('structural-snapshot')
-      ? [...requirement.groundedBy, 'structural-snapshot'] : requirement.groundedBy,
-    screenshot: platformCaptured || requirement.screenshot,
-  }));
+  const normalize = (requirements: readonly EvidenceRequirementInput[]): readonly EvidenceRequirementInput[] => requirements;
   const section = useSection(inputsFrom(draft), rowVersion, normalize);
   const requirements = section.value;
   const requirementsRef = { get current() { return section.current.current.value; } };
@@ -290,8 +280,8 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           onClick={() => {
 
             const next: readonly EvidenceRequirementInput[] = [...requirementsRef.current, {
-              attributeName: '', modelRead: false, groundedBy: platformCaptured ? ['structural-snapshot'] : [],
-              screenshot: platformCaptured, recordingSegment: false,
+              attributeName: '', modelRead: false, groundedBy: [],
+              screenshot: false, recordingSegment: false,
             }];
 
             const rowId = `${id}-row-${nextId.current++}`;

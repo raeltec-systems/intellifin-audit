@@ -4,7 +4,7 @@ import { isDraftPopulationFields, type DraftPopulationFields } from './populatio
 import { isAgentDrivenKind, isDraftTargetFields, targetBlockersFor, type DraftTargetFields } from './target-draft.js';
 import { isDraftComplianceFields, COMPLIANCE_OBSERVATION_FIELDS } from './plan-compiler.js';
 import { type DraftComplianceFields } from './compliance-draft.js';
-import { evidenceBlockersFor, isDraftEvidenceFields, type DraftEvidenceFields } from './evidence-draft.js';
+import { evidenceBlockersFor, evidenceGroundingMessage, isEvidenceRequirement, isDraftEvidenceFields, type DraftEvidenceFields } from './evidence-draft.js';
 import { isValidDraftSectionsPayload, type DraftSection } from './procedure-version.js';
 import { type TemplateId } from './templates.js';
 
@@ -40,7 +40,7 @@ function validInputs(value: unknown): value is FrozenPlanInputs {
       && typeof input.controlName === 'string' && input.controlName.trim().length > 0 && input.controlName.length <= 200
       && isValidDraftSectionsPayload(input) && input.sections.every((section) => Object.keys(section).length === 3 && ['heading', 'content', 'compiled'].every((key) => Object.hasOwn(section, key)))
       && isDraftPopulationFields(input) && isDraftTargetFields(input)
-      && isDraftComplianceFields(input, input.templateId) && isDraftEvidenceFields(input)
+      && isDraftComplianceFields(input, input.templateId) && isDraftEvidenceFields(input, true)
       && canonicalJson(value as JsonValue).length > 0;
   } catch { return false; }
 }
@@ -138,6 +138,8 @@ export function equivalentExecutablePlan(candidate: unknown, canonical: Executab
 }
 
 export function completenessReason(inputs: FrozenPlanInputs): string | null {
+  const ungrounded = inputs.evidenceRequirements.find((requirement): boolean => !isEvidenceRequirement(requirement));
+  if (ungrounded) return evidenceGroundingMessage(ungrounded.attributeName);
   if (inputs.sourceSnapshot === null) return 'Choose a Population Source.';
   const missingLookup = LOOKUP_COLUMNS[inputs.templateId].filter((column) => !inputs.sourceSnapshot!.contract.declared_schema.includes(column));
   if (missingLookup.length) return 'The Population Source must declare lookup columns: ' + missingLookup.join(', ') + '.';

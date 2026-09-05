@@ -73,6 +73,7 @@ function requirementValues(requirements: readonly EvidenceRequirement[]): JsonVa
     screenshot: requirement.screenshot,
     recordingSegment: requirement.recordingSegment,
     platformCaptured: requirement.platformCaptured,
+    ...(requirement.authoredCapture ? { authoredCapture: requirement.authoredCapture } : {}),
   })) as unknown as JsonValue;
 }
 

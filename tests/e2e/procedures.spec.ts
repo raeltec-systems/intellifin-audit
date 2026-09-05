@@ -655,7 +655,7 @@ test.describe('as an Auditor', () => {
     await scan(page);
   });
 
-  test('normalizes dirty Evidence after target selection and retains that saved state after deselection', async ({ page }) => {
+  test('removes forced Evidence after target deselection while preserving authored choices and dirty edits', async ({ page }) => {
     test.setTimeout(90_000);
     const databaseUrl = process.env['DATABASE_URL'];
     if (!databaseUrl) throw new Error('The Builder journey requires the throwaway database.');
@@ -699,18 +699,35 @@ test.describe('as an Auditor', () => {
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
+    // A reload and an unrelated evidence edit must not turn forced capture into authorship.
+    await page.reload();
+    await addedCapture.getByLabel('Attribute name').fill('capture_note_edited');
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Remove Capture web ${stamp}`, exact: true }).click();
     await page.getByLabel('Add a Target System').selectOption(apiId);
     await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
     await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await expect(first.getByLabel('Structural Snapshot')).toBeEnabled();
-    await expect(first.getByLabel('Structural Snapshot')).toBeChecked();
-    await expect(first.getByLabel('Screenshot', { exact: true })).toBeChecked();
+    await expect(first.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(first.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
     await expect(first.getByLabel('Screenshot', { exact: true })).toBeEnabled();
     await expect(first.getByLabel('Attribute name')).toHaveValue('retained_name');
     await page.reload();
     await expect(first.getByLabel('Declare model-read (exempt from deterministic grounding)')).toBeChecked();
+    await expect(first.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(first.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
+    await expect(addedCapture.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(addedCapture.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
+    const authored = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence Requirement 2$/ }) });
+    await expect(authored.getByLabel('Structural Snapshot')).toBeChecked();
+    await expect(authored.getByLabel('Screenshot', { exact: true })).toBeChecked();
+    await addedCapture.getByLabel('Source file excerpt').check();
+    await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
+    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await scan(page);
   });
 

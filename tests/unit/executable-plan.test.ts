@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { executablePlanInputs as inputs } from '../fixtures/executable-plan.js';
 import {
-  bindingDigest, deriveExecutablePlan, equivalentExecutablePlan, ExecutablePlanSchema, frozenPlanInputs,
+  bindingDigest, deriveExecutablePlan, equivalentExecutablePlan, ExecutablePlanSchema, frozenPlanInputs, completenessReason, withPlatformCaptured,
   type ExecutablePlan, type FrozenPlanInputs,
 } from '@intellifin/domain';
 
@@ -12,6 +12,15 @@ function plan(): ExecutablePlan {
 }
 
 describe('durable executable plan', () => {
+  it('blocks derivation and submission completeness when target removal leaves no authored grounding', () => {
+    const requirement = { attributeName: 'Parameter', modelRead: false, groundedBy: [], screenshot: false, recordingSegment: false };
+    const removed = withPlatformCaptured(withPlatformCaptured(requirement, true), false);
+    const draft = { ...inputs(), evidenceRequirements: [removed] };
+    expect(completenessReason(draft)).toContain('Ground every attribute value');
+    expect(deriveExecutablePlan(draft)).toMatchObject({ ok: false, reason: expect.stringContaining('Ground every attribute value') });
+    const tampered = { ...plan(), inputs: draft };
+    expect(ExecutablePlanSchema.safeParse(tampered).success).toBe(false);
+  });
   it('derives byte-identical detached data from identical inputs and excludes row metadata', () => {
     const first = plan();
     expect(JSON.stringify(first)).toBe(JSON.stringify(plan()));

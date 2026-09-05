@@ -81,6 +81,8 @@ export interface EvidenceRequirement extends EvidenceRequirementInput {
    * flag are forced on rather than asked for.
    */
   readonly platformCaptured: boolean;
+  /** Authored capture choices before the platform overlay. Absent on legacy rows. */
+  readonly authoredCapture?: { readonly structuralSnapshot: boolean; readonly screenshot: boolean };
 }
 
 export const FREQUENCIES = ['once', 'daily', 'weekly', 'monthly'] as const;
@@ -171,9 +173,13 @@ export function isEvidenceRequirementInput(value: unknown): value is EvidenceReq
 
 /** `true` when `value` is one well-formed, storable, correctly grounded Evidence Requirement. */
 export function isEvidenceRequirement(value: unknown): value is EvidenceRequirement {
+  return validRequirement(value, false);
+}
+
+function validRequirement(value: unknown, allowUngrounded: boolean): value is EvidenceRequirement {
   if (
     !object(value) ||
-    !exact(value, ['attributeName', 'modelRead', 'groundedBy', 'screenshot', 'recordingSegment', 'platformCaptured'])
+    !exact(value, ['attributeName', 'modelRead', 'groundedBy', 'screenshot', 'recordingSegment', 'platformCaptured', ...(Object.hasOwn(value, 'authoredCapture') ? ['authoredCapture'] : [])])
   ) {
     return false;
   }
@@ -187,7 +193,12 @@ export function isEvidenceRequirement(value: unknown): value is EvidenceRequirem
   // The grounding rule: an attribute value is grounded by a Structural Snapshot or a
   // source file excerpt, or is declared model-read. A screenshot or a recording segment
   // alone never grounds it.
-  if (!value['modelRead'] && groundedBy.length === 0) return false;
+  if (!allowUngrounded && !value['modelRead'] && groundedBy.length === 0) return false;
+  if (Object.hasOwn(value, 'authoredCapture')) {
+    const authored = value['authoredCapture'];
+    if (!value['platformCaptured'] || !object(authored) || !exact(authored, ['structuralSnapshot', 'screenshot']) ||
+      typeof authored['structuralSnapshot'] !== 'boolean' || typeof authored['screenshot'] !== 'boolean') return false;
+  }
   // Platform-captured is recorded, not chosen: an agent-driven attribute is always
   // grounded by a Structural Snapshot and always carries the screenshot.
   if (value['platformCaptured'] && (!groundedBy.includes('structural-snapshot') || !value['screenshot'])) {
@@ -196,13 +207,13 @@ export function isEvidenceRequirement(value: unknown): value is EvidenceRequirem
   return true;
 }
 
-export function isDraftEvidenceFields(value: unknown): value is DraftEvidenceFields {
+export function isDraftEvidenceFields(value: unknown, allowUngrounded = false): value is DraftEvidenceFields {
   if (!object(value)) return false;
   if (value['evidenceSchemaVersion'] !== 1) return false;
   if (!Array.isArray(value['evidenceRequirements']) || value['evidenceRequirements'].length > EVIDENCE_DRAFT_LIMITS.requirements) {
     return false;
   }
-  if (!value['evidenceRequirements'].every(isEvidenceRequirement)) return false;
+  if (!value['evidenceRequirements'].every((entry) => validRequirement(entry, allowUngrounded))) return false;
   const seen = new Set<string>();
   for (const requirement of value['evidenceRequirements'] as readonly EvidenceRequirement[]) {
     const key = requirement.attributeName.trim().toLowerCase();
@@ -224,15 +235,29 @@ export function hasAgentDrivenTarget(targets: readonly ProcedureTargetSnapshot[]
  * the selection changes must re-derive it.
  */
 export function withPlatformCaptured(input: EvidenceRequirementInput, platformCaptured: boolean): EvidenceRequirement {
+  const authored = authoredEvidenceInput(input);
   const groundedBy: readonly GroundingEvidenceType[] =
-    platformCaptured && !input.groundedBy.includes('structural-snapshot')
-      ? [...input.groundedBy, 'structural-snapshot' as const]
-      : input.groundedBy;
+    platformCaptured && !authored.groundedBy.includes('structural-snapshot')
+      ? [...authored.groundedBy, 'structural-snapshot' as const]
+      : authored.groundedBy;
   return {
-    ...input,
+    ...authored,
     groundedBy,
-    screenshot: platformCaptured ? true : input.screenshot,
+    screenshot: platformCaptured ? true : authored.screenshot,
     platformCaptured,
+    ...(platformCaptured ? { authoredCapture: { structuralSnapshot: authored.groundedBy.includes('structural-snapshot'), screenshot: authored.screenshot } } : {}),
+  };
+}
+
+/** Strip the platform overlay for editing or re-derivation; legacy choices are preserved. */
+export function authoredEvidenceInput(input: EvidenceRequirementInput): EvidenceRequirementInput {
+  const recorded = input as EvidenceRequirement;
+  const authored = recorded.platformCaptured ? recorded.authoredCapture : undefined;
+  return {
+    attributeName: input.attributeName, modelRead: input.modelRead,
+    groundedBy: authored && !authored.structuralSnapshot ? input.groundedBy.filter((kind) => kind !== 'structural-snapshot') : input.groundedBy,
+    screenshot: authored?.screenshot ?? input.screenshot,
+    recordingSegment: input.recordingSegment,
   };
 }
 
