@@ -162,3 +162,7 @@ Changed files: domain `runs/` defines ownership and Run contracts; application `
 Review: 12 patches applied (0 high, 7 medium, 5 low), 0 deferred, 2 rejected. Follow-up score 26; recommendation true. The focused follow-up was completed without findings. Verification outcomes are recorded above.
 
 Residual scope: the durable job deliberately remains queued until Story 3.2 supplies the consumer. Full execution and the Runs dashboard belong to the remaining Epic 3 stories. No production migration or deployment was performed. The owner-approved adapter retry clarification revises upstream contracts; downstream Epic 3 implementation must use that rule.
+
+### CI follow-up — 2026-09-05
+
+PR #23 CI passed unit/types/boundaries, PostgreSQL migrations/integration and all container smoke checks. The full browser run passed 102/103; the remaining Epic 2 immutable-version test still expected the old disabled Initiate Run placeholder. Updated it to assert the enabled period form. The affected local browser file then passed 4/4 checks including setup and accessibility (`story31-ci-compat-browser.log`). Product code did not change in this follow-up.
