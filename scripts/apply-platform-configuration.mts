@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
 import { applyPlatformConfiguration, type PlatformConfigurationInput } from '@intellifin/application';
 import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork } from '@intellifin/infrastructure';
 
@@ -15,7 +14,11 @@ export async function applyConfigurationFile(databaseUrl: string, filename: stri
     return versions.length;
   } finally { await client.end(); }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// `import.meta.main`, never an `argv[1]` comparison: through a symlink (pnpm's
+// node_modules, any `--prod deploy` tree) the two paths differ, the module loads, does
+// nothing and exits 0 — a release step reporting success for a publication that never
+// happened. See CLAUDE.md (Story 1.8) and `db/migrate.ts`, which guard the same way.
+if (import.meta.main) {
   if (!process.env.DATABASE_URL || !process.argv[2]) throw new Error('Set DATABASE_URL and pass a configuration JSON file.');
   const count = await applyConfigurationFile(process.env.DATABASE_URL, process.argv[2]);
   process.stdout.write(`Configuration applied; ${count} platform Drafts recorded for this revision.\n`);

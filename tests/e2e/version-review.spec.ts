@@ -15,6 +15,14 @@ async function save(page: Page, label: string, confirmation = label) { await pag
 
 test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → rejection/edit → approval', async ({ page, browser, baseURL }) => {
   test.setTimeout(180000); page.setDefaultTimeout(15000);
+  // This journey freezes the model identity playwright.config.ts gives ITS web server
+  // (the synthetic fixture) and spawns a worker with the same one. With
+  // `PLAYWRIGHT_BASE_URL` the config starts no server, so an external web app with the
+  // default deterministic configuration (or any other model) creates a Draft this
+  // worker cannot derive and the frozen-identity assertion fails for a reason that is
+  // not the code's. State the boundary rather than fail on it (found by the automated
+  // reviewer on #21).
+  test.skip(process.env['PLAYWRIGHT_BASE_URL'] !== undefined, 'The worker-backed review journey needs the web server playwright.config.ts starts with the synthetic model configuration; an external server is not supported for this spec.');
   const url = process.env['DATABASE_URL']!; assertThrowawayDatabase(url);
   const sql = createSqlClient(url), ids = new CryptoUuidV7Generator(), stamp = ids.next();
   const sourceId = ids.next(), webId = ids.next(), desktopId = ids.next(), managerId = `manager-${stamp}`;

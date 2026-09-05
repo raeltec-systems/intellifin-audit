@@ -122,11 +122,18 @@ export class DrizzleBindingRepository implements BindingRepository {
       .filter((binding): binding is PopulationSourceBinding => binding !== null);
   }
 
+  /**
+   * The Builder picker's read: active only and UNPAGED, exactly like
+   * `listActiveRegistrations`. `listBindings` is the administration list and carries
+   * `BINDING_LIST_LIMIT`, which is right for a screen; inherited here it silently hid
+   * every eligible source past the first page from an auditor binding a Procedure
+   * (found by the automated reviewer on #21 — the same defect Story 1.8 recorded for
+   * the probe sweep and Story 2.3 fixed for the Target System picker).
+   */
   async listActiveBindings(): Promise<readonly PopulationSourceBinding[]> {
     const rows = await this.db.select(SELECTION).from(populationSourceBinding)
       .where(eq(populationSourceBinding.status, 'active'))
-      .orderBy(asc(populationSourceBinding.displayName), asc(populationSourceBinding.bindingId))
-      .limit(this.limit);
+      .orderBy(asc(populationSourceBinding.displayName), asc(populationSourceBinding.bindingId));
     return rows.map(toBinding).filter((binding): binding is PopulationSourceBinding => binding !== null);
   }
 
