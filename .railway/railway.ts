@@ -75,6 +75,21 @@ export default defineRailway(() => {
       DATABASE_URL: postgres.env.DATABASE_URL,
       SERVICE_NAME: 'worker',
       NODE_ENV: 'production',
+      // Story 3.7. Every Exception is written with a keyed HMAC-SHA-256 fingerprint, and
+      // this is that key. A SECRET, so it is set once in the Railway dashboard and
+      // preserved here rather than written from code -- the BETTER_AUTH_SECRET rule. It is
+      // the WORKER'S alone: only the worker evaluates a compiled condition, and
+      // `loadConfig` refuses a production web container that carries it.
+      //
+      // Absent, adapter execution is disabled and says so by name, exactly as an absent
+      // CREDENTIAL_TOKENS disables it. That is deliberate: an Exception with no fingerprint
+      // is a permanent row nobody can later check, and a worker that refused to BOOT would
+      // stop plan derivation, notification delivery and the liveness row as well.
+      EXCEPTION_FINGERPRINT_KEY: preserve(),
+      // The label retained beside every fingerprint, so a rotated key still says which key
+      // signed which row. It carries no secret, so it is declared here rather than
+      // preserved. Change it in the SAME apply that rotates the key.
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
     },
   });
 

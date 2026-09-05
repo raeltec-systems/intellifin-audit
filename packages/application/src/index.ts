@@ -51,5 +51,6 @@ export * from './runs/acquire-population.js';
 export * from './runs/execute-adapter-steps.js';
 export * from './runs/register-observations.js';
 export * from './runs/snapshot-corroboration.js';
+export * from './runs/rule-evaluation.js';
 export * from './runs/evidence-package.js';
 export * from './runs/seal-package.js';

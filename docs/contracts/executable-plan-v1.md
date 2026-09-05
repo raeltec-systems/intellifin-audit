@@ -94,7 +94,7 @@ Agent-driven reads always include platform Structural Snapshot and screenshot. D
 
 ### `evaluate-conditions`: fixed evaluation
 
-Evaluate each frozen applicability predicate and then its stored compiled rule or retained Agent-Judged definition. Numeric values remain decimal strings with exact comparison boundaries and tolerance; neither the executor nor a model recompiles or silently reclassifies the condition. Agent-Judged results use the frozen confidence threshold. An applicable condition with missing evaluation, missing/unnamed input or insufficient grounded support is Unevaluated with a diagnostic. Reduce record outcomes in the fixed order Exception, Unevaluated, Compliant, subject to the Evidence Quality Gates. A missing C2 evaluation on a found P-1 account remains a Gate failure.
+Evaluate each frozen applicability predicate and then its stored compiled rule or retained Agent-Judged definition. Numeric values remain decimal strings with exact comparison boundaries and tolerance; neither the executor nor a model recompiles or silently reclassifies the condition. Agent-Judged results use the frozen confidence threshold. An applicable condition with missing evaluation, missing/unnamed input or insufficient grounded support is Unevaluated with a diagnostic. Reduce record outcomes in the fixed order Exception, Unevaluated, Compliant, subject to the Evidence Quality Gates. A missing C2 evaluation on a found P-1 account remains a Gate failure. How that evaluation is actually produced, and the permanent Exception the first `EXCEPTION` raises, are [deterministic evaluation v1](deterministic-evaluation-v1.md); it adds no action kind and reads only bytes this plan already froze.
 
 ## Limits and error behavior
 

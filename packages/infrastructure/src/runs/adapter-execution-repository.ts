@@ -15,13 +15,14 @@ import type {
   StoredObservation,
   WorkItemRecord,
 } from '@intellifin/application';
-import { POPULATION_LIMITS } from '@intellifin/domain';
+import { POPULATION_LIMITS, type RaisedException } from '@intellifin/domain';
 import type { Database } from '../db/client.js';
 import {
   auditRun,
   populationExecution,
   populationRow,
   runEvidence,
+  runException,
   runExecution,
   runObservation,
   runObservationCheck,
@@ -403,6 +404,32 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
                     runObservationEvaluation.conditionId,
                   ],
                 });
+            }
+          }
+        },
+        async saveExceptions(rows: readonly RaisedException[]) {
+          for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
+            const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
+              exceptionId: row.exceptionId,
+              runId,
+              observationId: row.observationId,
+              workItemId: row.workItemId,
+              targetSystem: row.targetSystem,
+              populationRecordKey: row.populationRecordKey,
+              conditionIds: [...row.conditionIds],
+              diagnostics: [...row.diagnostics],
+              fingerprint: row.fingerprint,
+              fingerprintKeyId: row.fingerprintKeyId,
+              raisedAt: new Date(row.raisedAt),
+            }));
+            if (batch.length > 0) {
+              // `DO NOTHING` on the Observation: the first Exception recorded for a record
+              // stands and a redelivery adds nothing. There is no update path at all —
+              // generation 23 refuses one below the command, in a trigger.
+              await tx
+                .insert(runException)
+                .values(batch)
+                .onConflictDoNothing({ target: runException.observationId });
             }
           }
         },

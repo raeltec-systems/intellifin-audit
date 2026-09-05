@@ -19,7 +19,13 @@ import { startSyntheticS3 } from '../fixtures/s3-server';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { NORTHSTAR_BASE_URL } from './northstar';
-import { CREDENTIAL_TOKENS, READ_ONLY_CREDENTIAL, READ_ONLY_TOKEN } from './credentials';
+import {
+  CREDENTIAL_TOKENS,
+  EXCEPTION_FINGERPRINT_KEY,
+  EXCEPTION_FINGERPRINT_KEY_ID,
+  READ_ONLY_CREDENTIAL,
+  READ_ONLY_TOKEN,
+} from './credentials';
 
 const ids = new CryptoUuidV7Generator();
 const procedures = [ids.next(), ids.next(), ids.next(), ids.next(), ids.next()];
@@ -99,7 +105,10 @@ async function startWorker(): Promise<void> {
   workerLog = '';
   const worker = spawn(process.execPath, [resolve('apps/worker/dist/main.js')], {
     cwd: process.cwd(), windowsHide: true,
-    env: { ...process.env, ...storage.env, SERVICE_NAME: 'worker', MODEL_PROVIDER: '', MODEL_ID: '', CREDENTIAL_TOKENS },
+    env: {
+      ...process.env, ...storage.env, SERVICE_NAME: 'worker', MODEL_PROVIDER: '', MODEL_ID: '',
+      CREDENTIAL_TOKENS, EXCEPTION_FINGERPRINT_KEY, EXCEPTION_FINGERPRINT_KEY_ID,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let failure: string | null = null;
@@ -291,6 +300,39 @@ test.describe('Auditor population acquisition', () => {
       ]),
     );
     expect(verdicts).toEqual(new Set(['matched']));
+
+    // Story 3.7, against the real golden population: every named per-record case of
+    // `fixtures/northstar/expectations/p-2-sod-conflicts.json`, produced by a real Run of
+    // the real Procedure against the real synthetic system. The expectation file is DATA
+    // (AD-12) and is read here off disk, never imported by anything that decides an
+    // outcome. If a case disagrees, the implementation is wrong.
+    const expectations = JSON.parse(
+      await readFile(join(process.cwd(), 'fixtures/northstar/expectations/p-2-sod-conflicts.json'), 'utf8'),
+    ) as { cases: { case_id: string; record_key: string | null; expected_record_evaluation: string | null }[] };
+    const evaluations = await sql`SELECT o.population_record_key AS key,e.value,e.origin,e.diagnostic FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${firstRunId} ORDER BY o.population_record_key`;
+    expect(evaluations).toHaveLength(11);
+    expect(evaluations.every(row => row.origin === 'RULE')).toBe(true);
+    const verdict = new Map(evaluations.map(row => [String(row.key), String(row.value)]));
+    const named = expectations.cases.filter(entry => entry.record_key !== null);
+    expect(named).toHaveLength(11);
+    for (const entry of named) {
+      expect(verdict.get(entry.record_key!), `${entry.case_id} (${entry.record_key!})`)
+        .toBe(entry.expected_record_evaluation);
+    }
+    // The P-2 form of an unnamed value, quoted verbatim.
+    expect(String(evaluations.find(row => row.key === 'AG-1006')?.diagnostic))
+      .toContain('rule does not name value UNKNOWN_ROLE_X');
+
+    // One permanent Exception per failing record, fingerprinted with the deployment's key
+    // and created in the transaction that registered the Observation.
+    const raised = await sql`SELECT population_record_key AS key,condition_ids,fingerprint,fingerprint_key_id,diagnostics FROM run_exception WHERE run_id=${firstRunId} ORDER BY population_record_key`;
+    expect(raised.map(row => String(row.key))).toEqual(['AG-1003', 'AG-1004', 'AG-1005']);
+    expect(raised.every(row => /^[0-9a-f]{64}$/.test(String(row.fingerprint)))).toBe(true);
+    expect(raised.every(row => row.fingerprint_key_id === EXCEPTION_FINGERPRINT_KEY_ID)).toBe(true);
+    expect(String(raised[0]!.diagnostics)).toContain('CREATE_VENDOR + APPROVE_VENDOR');
+    // Never deleted, and never rewritten.
+    await expect(sql`UPDATE run_exception SET population_record_key='x' WHERE run_id=${firstRunId}`)
+      .rejects.toThrow(/cannot be changed/);
 
     // The one Session Step ran before the one Work Item, in the chain itself.
     const events = await sql`SELECT payload->>'diagnostic' AS diagnostic FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='lifecycle.adapter-execution' ORDER BY sequence`;

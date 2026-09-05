@@ -15,6 +15,8 @@ import type {
   ObservationCoverage,
   ObservationEvaluation,
   ObservationRecord,
+  ExceptionFingerprintEnvelope,
+  RaisedException,
   RunRecord,
   PopulationResult,
   SessionStepState,
@@ -361,6 +363,14 @@ export interface ObservationRegistrationContext {
   saveObservations(rows: readonly RegisteredObservation[]): Promise<void>;
   saveObservationChecks(rows: readonly ObservationCheckRow[]): Promise<void>;
   saveObservationEvaluations(rows: readonly ObservationEvaluationRow[]): Promise<void>;
+  /**
+   * Insert the Exceptions this batch raised (Story 3.7).
+   *
+   * `DO NOTHING` on the Observation: the first Exception recorded for a record stands and
+   * a redelivery adds nothing. An Exception is never updated and never deleted on its own
+   * — generation 23 puts both below the command, as triggers.
+   */
+  saveExceptions(rows: readonly RaisedException[]): Promise<void>;
   notifyTimeline(sequence: number): Promise<void>;
 }
 
@@ -417,12 +427,18 @@ export const NO_CORROBORATION: ObservationCorroborationPort = {
 };
 
 /**
- * Story 3.7's seam.
+ * Story 3.7's seam, filled by `rule-evaluation.ts`.
  *
  * The deterministic evaluator runs INSIDE the registration transaction, over the records
  * exactly as they are being stored, so an evaluation can never describe an Observation
- * that was not committed. Until Story 3.7 fills it, `NO_EVALUATION` produces none: this
- * story must not implement the compiled condition rules.
+ * that was not committed. Like the corroboration seam it must be deterministic and do no
+ * I/O: it holds the frozen conditions, the frozen population and the frozen Reference
+ * Source bytes and reaches nothing else.
+ *
+ * `NO_EVALUATION` remains the explicit "nothing judged this" for a producer with no
+ * compiled conditions to evaluate. The adapter stage cannot reach it: `executeAdapterSteps`
+ * builds a `ruleEvaluation` from the plan it is executing, so no composition root can
+ * register an adapter Observation as unevaluated forever.
  */
 export interface ObservationEvaluationPort {
   evaluate(
@@ -433,6 +449,8 @@ export interface ObservationEvaluationPort {
 export interface ObservationEvaluationSubject {
   readonly record: ObservationRecord;
   readonly coverage: ObservationCoverage;
+  /** The Story 3.6 rollup. A record its own snapshot contradicts is never Compliant. */
+  readonly corroboration: ObservationCorroborationState;
   readonly checks: readonly ObservationCheckResult[];
 }
 
@@ -444,6 +462,22 @@ export interface ObservationEvaluationResult {
 export const NO_EVALUATION: ObservationEvaluationPort = {
   evaluate: () => Promise.resolve([]),
 };
+
+/**
+ * The keyed fingerprint an Exception is written with (Story 3.7).
+ *
+ * A PORT rather than a key, and there is deliberately NO field holding the key: `keyId`
+ * names it and `fingerprint` is the only way it is used, so the value lives in the
+ * implementation's closure and nowhere else. `JSON.stringify` of this object yields the
+ * key id alone, so no checkpoint, audit payload, Timeline event, log field or error
+ * message has anywhere to pick a secret up from — the `ResolvedCredential` containment,
+ * one story along.
+ */
+export interface ExceptionFingerprinter {
+  /** Retained on every Exception, so a rotated key still says which key signed which row. */
+  readonly keyId: string;
+  fingerprint(envelope: ExceptionFingerprintEnvelope): string;
+}
 
 /* ------------------------------------------------------------------ Story 3.5 --- */
 

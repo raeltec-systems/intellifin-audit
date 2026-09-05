@@ -97,6 +97,10 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // findings a post-Run verification adds beside it without changing any state.
       'run_evidence_integrity',
       'run_evidence_package',
+      // Story 3.7. The permanent Exception a deterministic evaluation raises: one row per
+      // Observation whose evaluation recorded an `EXCEPTION`, never updated and never
+      // deleted while its Observation stands.
+      'run_exception',
       'run_execution',
       'run_initiation_request',
       'run_observation',

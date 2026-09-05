@@ -209,6 +209,33 @@ export const configSchema = z
         ),
     ),
     /**
+     * The key every Exception fingerprint is computed with (Story 3.7), and its id.
+     *
+     * A secret, and the worker's alone: the worker is the only process that evaluates a
+     * compiled condition and therefore the only one that can raise an Exception. There is
+     * no default and no fallback — an unkeyed fingerprint over a small closed vocabulary
+     * of record keys and condition ids is a dictionary anybody holding the fingerprints
+     * can invert, and the row it is written into is permanent.
+     *
+     * Absent, adapter execution is DISABLED and says so by name, exactly as an absent
+     * `CREDENTIAL_TOKENS` disables it: refusing to boot would stop plan derivation,
+     * notification delivery and the liveness row as well, for a stage that could not run
+     * anyway. What must never happen is an Exception written with no fingerprint, and no
+     * evaluation happens at all without a key.
+     *
+     * `EXCEPTION_FINGERPRINT_KEY_ID` carries NO secret — it is the label retained beside
+     * every fingerprint so a rotated key still says which key signed which row — so it has
+     * a default and is declared rather than preserved.
+     */
+    EXCEPTION_FINGERPRINT_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(32, 'must be at least 32 characters').max(4096).optional(),
+    ),
+    EXCEPTION_FINGERPRINT_KEY_ID: z.preprocess(
+      (value) => (value === '' || value === undefined ? 'k1' : value),
+      z.string().min(1).max(64),
+    ),
+    /**
      * Read only to decide whether `http://` is acceptable for BETTER_AUTH_URL. It is
      * not otherwise application configuration: what the build supports is a property
      * of the build (see `db/compat.ts`), not of the environment.
@@ -266,6 +293,22 @@ export const configSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['CREDENTIAL_TOKENS'],
+        message: 'must not be set on any process other than the worker',
+      });
+    }
+
+    // The Exception fingerprint key is the worker's alone for the same reason and with the
+    // same outside-production allowance: only the worker evaluates a compiled condition, so
+    // only the worker can raise an Exception, and a production web container holding the
+    // key would hold a secret it has no code path to use.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.SERVICE_NAME !== 'worker' &&
+      config.EXCEPTION_FINGERPRINT_KEY !== undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['EXCEPTION_FINGERPRINT_KEY'],
         message: 'must not be set on any process other than the worker',
       });
     }
@@ -339,6 +382,8 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
     CREDENTIAL_CAPABILITIES: env['CREDENTIAL_CAPABILITIES'],
     CREDENTIAL_TOKENS: env['CREDENTIAL_TOKENS'],
+    EXCEPTION_FINGERPRINT_KEY: env['EXCEPTION_FINGERPRINT_KEY'],
+    EXCEPTION_FINGERPRINT_KEY_ID: env['EXCEPTION_FINGERPRINT_KEY_ID'],
     NODE_ENV: env['NODE_ENV'],
     MODEL_PROVIDER: env['MODEL_PROVIDER'],
     MODEL_ID: env['MODEL_ID'],

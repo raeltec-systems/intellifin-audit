@@ -41,6 +41,16 @@ export const READ_ONLY_TOKEN = 'synthetic-e2e-adapter-token-4f21-never-store-me'
 /** What `CREDENTIAL_TOKENS` is set to for the WORKER the population spec starts. */
 export const CREDENTIAL_TOKENS = JSON.stringify({ [READ_ONLY_CREDENTIAL]: READ_ONLY_TOKEN });
 
+/**
+ * The Exception fingerprint key and its id, for the same worker (Story 3.7).
+ *
+ * Without a key the adapter stage refuses to start at all — an Exception is a permanent
+ * row and must carry a keyed fingerprint — so the browser run supplies one. It is
+ * synthetic and signs nothing outside this suite.
+ */
+export const EXCEPTION_FINGERPRINT_KEY = 'synthetic-e2e-exception-fingerprint-key';
+export const EXCEPTION_FINGERPRINT_KEY_ID = 'e2e';
+
 /** What `CREDENTIAL_CAPABILITIES` is set to for the server the specs drive. */
 export const CREDENTIAL_CAPABILITIES = JSON.stringify({
   [READ_ONLY_CREDENTIAL]: 'read-only',

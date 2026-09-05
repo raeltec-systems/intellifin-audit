@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   observationBatchDigest,
   observationDigest,
+  exceptionIdFor,
+  exceptionFingerprint,
   observationIdFor,
+  utf8Bytes,
   type ObservationAbsenceProof,
   type ObservationRecord,
+  type RaisedException,
   type RunRecord,
 } from '@intellifin/domain';
 import {
@@ -14,6 +18,7 @@ import {
   type ObservationCheckRow,
   type ObservationCorroborationPort,
   type ObservationEvaluationPort,
+  type ExceptionFingerprinter,
   type ObservationEvaluationRow,
   type ObservationRegistrationContext,
   type RegisteredObservation,
@@ -116,6 +121,7 @@ function batch(items: readonly ObservationBatchItem[], overrides: Partial<Observ
     workItemId: WORK_ITEM,
     stepExecutionId: STEP_EXECUTION,
     targetSystem: TARGET,
+    templateId: 'P-2',
     runStartedAt: '2026-09-05T09:00:00.000Z',
     registeredAt: '2026-09-05T11:00:00.000Z',
     items,
@@ -128,6 +134,7 @@ class FakeContext implements ObservationRegistrationContext {
   observations: RegisteredObservation[] = [];
   checks: ObservationCheckRow[] = [];
   evaluations: ObservationEvaluationRow[] = [];
+  exceptions: RaisedException[] = [];
   events: { payload: Record<string, unknown> }[] = [];
   timeline: number[] = [];
   evidence: EvidenceState[] = [{ evidenceId: EVIDENCE, state: 'REGISTERED' }];
@@ -174,6 +181,16 @@ class FakeContext implements ObservationRegistrationContext {
     this.evaluations.push(...rows);
   };
 
+  saveExceptions = async (rows: readonly RaisedException[]) => {
+    for (const row of rows) {
+      // `DO NOTHING` on the Observation, exactly as the unique index does: the first
+      // Exception recorded for a record stands and a redelivery adds nothing.
+      if (!this.exceptions.some((existing) => existing.observationId === row.observationId)) {
+        this.exceptions.push(row);
+      }
+    }
+  };
+
   notifyTimeline = async (sequence: number) => {
     this.timeline.push(sequence);
   };
@@ -184,13 +201,21 @@ class FakeContext implements ObservationRegistrationContext {
       this.observations.length === 0 &&
       this.checks.length === 0 &&
       this.evaluations.length === 0 &&
+      this.exceptions.length === 0 &&
       this.events.length === 0 &&
       this.timeline.length === 0
     );
   }
 }
 
-const SEAMS = { corroboration: NO_CORROBORATION, evaluation: NO_EVALUATION };
+/** A fingerprinter with a known key, so a test can recompute what it should have written. */
+const FINGERPRINT_KEY = 'story-3-7-exception-fingerprint-key-x';
+const FINGERPRINTER: ExceptionFingerprinter = {
+  keyId: 'k-test',
+  fingerprint: (envelope) => exceptionFingerprint(utf8Bytes(FINGERPRINT_KEY), envelope),
+};
+
+const SEAMS = { corroboration: NO_CORROBORATION, evaluation: NO_EVALUATION, exceptions: FINGERPRINTER };
 
 async function refusal(work: () => Promise<unknown>): Promise<string> {
   try {
@@ -499,7 +524,7 @@ describe('registerObservations', () => {
     // The coverage is COVERED — this refusal is the corroboration one and not the other.
     expect(
       await refusal(() =>
-        registerObservations(context, batch([item(found('AG-1001'))]), { corroboration, evaluation }),
+        registerObservations(context, batch([item(found('AG-1001'))]), { ...SEAMS, corroboration, evaluation }),
       ),
     ).toBe('corroboration-conflict');
     expect(context.wroteNothing()).toBe(true);

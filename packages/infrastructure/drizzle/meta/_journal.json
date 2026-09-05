@@ -162,6 +162,13 @@
       "when": 1788637717904,
       "tag": "0022_pink_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788641310049,
+      "tag": "0023_lively_sandman",
+      "breakpoints": true
     }
   ]
 }

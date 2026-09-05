@@ -1,4 +1,4 @@
-import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, NO_EVALUATION, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
@@ -117,12 +117,12 @@ async function main(): Promise<void> {
     const adapter = credentials.enabled
       ? { repository:adapterRepository, reference:http, extraction:http,
           credentials:new ManifestCredentialResolver(credentials.credentials), store, clock, ids,
-          // Story 3.7's seam, declared rather than defaulted: `NO_EVALUATION` is the
-          // explicit "not yet judged" until the compiled conditions are evaluated. There
-          // is no corroboration seam to declare here — Story 3.6 builds it inside the
-          // stage from the bytes that stage just froze, so a composition root cannot
-          // register an adapter Observation as unjudged forever.
-          evaluation:NO_EVALUATION }
+          // Story 3.7. The deployment's Exception fingerprint key, as a port that can USE
+          // it — there is no field on it holding the key. There is no evaluation seam to
+          // declare here and no corroboration seam either: both are built inside the stage
+          // from the plan it is executing and the bytes it just froze, so a composition
+          // root cannot register an adapter Observation as unjudged or unevaluated forever.
+          exceptions:credentials.exceptions }
       : null;
     // One job carries a Run through both stages. An extraction retry is NOT propagated
     // to the queue: a redelivery re-verifies the population Evidence and can consume one

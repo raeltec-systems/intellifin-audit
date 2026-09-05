@@ -187,7 +187,13 @@ with nothing saying so. `NO_CORROBORATION` and `NO_EVALUATION` are the explicit 
   that was not committed. Its output is validated against §B.1's evaluation shape — where
   `UNEVALUATED` is a VALUE and never an origin, and `confirmation` and `confidence` belong
   to an Agent-Judged evaluation and to no other — and a `COMPLIANT` value on a record that
-  is not `COVERED` is refused by name rather than left to the constraint.
+  is not `COVERED` is refused by name rather than left to the constraint. The whole rule is
+  [deterministic evaluation v1](deterministic-evaluation-v1.md); the seam's implementation
+  is `rule-evaluation.ts`, and the adapter stage builds it from the plan it is executing,
+  the population Story 3.2 froze and the Reference Source bytes its own Session Steps
+  acquired, so `NO_EVALUATION` is not reachable from that path either. The FIRST
+  `EXCEPTION` recorded for a record creates its Exception in the same transaction, with a
+  Run-stable derived identity and a keyed fingerprint; `saveExceptions` is the write.
 
 `confidence` is a **decimal string**, never a binary float: it is compared against the
 Procedure Version's frozen `agentJudgedThreshold`, which Story 2.4 stores as a decimal
@@ -209,6 +215,8 @@ that a batch at the cap writes a large immutable payload.
 ## What this contract does not decide
 
 How a stored Structural Snapshot is re-read
-([structural snapshot corroboration v1](structural-snapshot-v1.md)), the compiled condition
-rules and Exceptions (3.7), the Run-level Gate rows and limit mapping (3.8), and Result
-sealing (3.9). Each of those extends this seam; none of them replaces it.
+([structural snapshot corroboration v1](structural-snapshot-v1.md)), how the compiled
+conditions are evaluated and an Exception raised
+([deterministic evaluation v1](deterministic-evaluation-v1.md)), the Run-level Gate rows and
+limit mapping (3.8), and Result sealing (3.9). Each of those extends this seam; none of them
+replaces it.

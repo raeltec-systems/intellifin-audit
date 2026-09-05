@@ -3,6 +3,8 @@ import {
   observationBatchDigest,
   observationDigest,
   observationIdFor,
+  initialDraftCompliance,
+  exceptionFingerprint,
   registrationDigest,
   registrationDigestEnvelope,
   decodePopulationUtf8,
@@ -11,14 +13,14 @@ import {
   type ExecutablePlan,
   type ObservationRecord,
   type ProcedureTargetSnapshot,
+  type RaisedException,
   type RunRecord,
   type TargetSystemKind,
 } from '@intellifin/domain';
 import { executeAdapterSteps, type AdapterExecutionDependencies } from './execute-adapter-steps.js';
 import {
-  NO_EVALUATION,
   PopulationAcquisitionError,
-  type ObservationEvaluationPort,
+  type ExceptionFingerprinter,
   type AcquiredArtifact,
   type AdapterEvidenceRecord,
   type AdapterExecutionCheckpoint,
@@ -66,7 +68,9 @@ function plan(targets: readonly ProcedureTargetSnapshot[]): ExecutablePlan {
   return {
     schemaVersion: 1,
     compilerVersion: '1',
-    inputs: { templateId: 'P-2', targets } as unknown as ExecutablePlan['inputs'],
+    // The version's REAL compiled conditions, so this harness drives the deterministic
+    // evaluator the stage builds rather than a stand-in for it (Story 3.7).
+    inputs: { templateId: 'P-2', targets, ...initialDraftCompliance('P-2') } as unknown as ExecutablePlan['inputs'],
     sessionSteps: [
       { id: 'session-1', action: 'acquire-population', targetSystemId: null, text: 'x' },
       ...targets.map((entry, index) => ({
@@ -137,7 +141,31 @@ const ACCOUNTS = JSON.stringify({
   accounts: ROWS,
 });
 const INCOMPLETE_ACCOUNTS = JSON.stringify({ accounts: ROWS });
-const ROLE_MATRIX = 'entry,role,permission\n1,AP_CLERK,CREATE_PAYMENT\n';
+/**
+ * The versioned Reference Source P-2's compiled rule expands a role through.
+ *
+ * The leading `entry` ordinal is the boundary that keeps two policy entries for one role
+ * apart; the golden RoleMatrix uses it to declare `AMBIGUOUS_DUAL` twice. Here it gives
+ * AG-1001 a clean expansion and AG-1003 the prohibited pair CREATE_VENDOR + APPROVE_VENDOR.
+ */
+const ROLE_MATRIX = [
+  'entry,role,permission',
+  '1,AP_CLERK,CREATE_PAYMENT',
+  '1,AP_CLERK,VIEW_PAYMENT',
+  '2,VENDOR_MAINTAINER,CREATE_VENDOR',
+  '2,VENDOR_MAINTAINER,VIEW_VENDOR',
+  '3,VENDOR_APPROVER,APPROVE_VENDOR',
+  '4,OPS_CLERK,VIEW_LOAN',
+  '5,LOAN_ADMIN,CONFIGURE_LIMITS',
+  '',
+].join('\n');
+
+/** A fingerprinter with a known key, so a test can recompute what it should have written. */
+const FINGERPRINT_KEY = 'story-3-7-exception-fingerprint-key-x';
+const FINGERPRINTER: ExceptionFingerprinter = {
+  keyId: 'k-test',
+  fingerprint: (envelope) => exceptionFingerprint(utf8Bytes(FINGERPRINT_KEY), envelope),
+};
 
 const RECORDS: readonly PopulationRecord[] = [
   { ordinal: 1, values: { account_id: 'AG-1001', status: 'Active' } },
@@ -166,6 +194,7 @@ class FakeRepository implements AdapterExecutionRepository {
   observations: RegisteredObservation[] = [];
   checks = new Map<string, ObservationCheckRow>();
   evaluations = new Map<string, ObservationEvaluationRow>();
+  exceptions = new Map<string, RaisedException>();
   events: { eventType: string; payload: Record<string, unknown>; outcome: string }[] = [];
   seal: PackageSeal | null = null;
   timeline: number[] = [];
@@ -296,6 +325,14 @@ class FakeRepository implements AdapterExecutionRepository {
           if (!repository.evaluations.has(key)) repository.evaluations.set(key, row);
         }
       },
+      saveExceptions: async (rows) => {
+        // `DO NOTHING` on the Observation, exactly as the unique index does.
+        for (const row of rows) {
+          if (!repository.exceptions.has(row.observationId)) {
+            repository.exceptions.set(row.observationId, row);
+          }
+        }
+      },
       notifyTimeline: async (sequence) => {
         repository.timeline.push(sequence);
       },
@@ -320,7 +357,7 @@ function harness(options: {
   extract?: (target: ProcedureTargetSnapshot, credential: ResolvedCredential) => Promise<AcquiredArtifact>;
   reference?: (target: ProcedureTargetSnapshot) => Promise<AcquiredArtifact>;
   resolve?: (reference: string) => Promise<ResolvedCredential>;
-  evaluation?: ObservationEvaluationPort;
+  exceptions?: ExceptionFingerprinter;
 }): Harness {
   const repository = new FakeRepository(options.plan);
   const objects = new Map<string, Uint8Array>();
@@ -378,10 +415,11 @@ function harness(options: {
         return `01920000-0000-7000-8000-${String(counter).padStart(12, '0')}`;
       },
     },
-    // Story 3.7's seam, at its explicit "not yet judged" value unless a test replaces it.
-    // Corroboration is NOT a dependency: Story 3.6 builds it from the bytes this stage
-    // just froze, so there is no injection point at which it could be switched off.
-    evaluation: options.evaluation ?? NO_EVALUATION,
+    // Story 3.7. The fingerprint key, as a port. Neither the evaluator nor the
+    // corroborator is a dependency: both are built inside the stage from the plan it is
+    // executing and the bytes it just froze, so there is no injection point at which
+    // either could be switched off.
+    exceptions: options.exceptions ?? FINGERPRINTER,
   };
   return { repository, deps, objects, puts, wire };
 }
@@ -699,30 +737,98 @@ describe('executeAdapterSteps', () => {
     // proved against PostgreSQL in `tests/integration/adapter-execution.test.ts`, since
     // this in-memory repository has no rollback to observe. What is proved here is the
     // stage's own response: no Observation, a named diagnostic, and no second attempt.
+    //
+    // The refusal is driven by a fingerprinter that answers with something that is not a
+    // fingerprint. AG-1003 carries a prohibited pair, so an Exception is raised, and a
+    // permanent row that can never be updated must not be written with a value nobody
+    // can later check.
     const test = harness({
-      plan: plan([adapter]),
-      evaluation: {
-        evaluate: async (subjects) =>
-          subjects.map((subject) => ({
-            observationId: subject.record.observationId,
-            evaluations: [
-              {
-                conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
-                confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [],
-              },
-            ],
-          })),
-      },
+      plan: plan([reference, adapter]),
+      exceptions: { keyId: 'k-test', fingerprint: () => 'not-a-fingerprint' },
     });
     await executeAdapterSteps(test.deps, JOB);
     const item = [...test.repository.items.values()][0]!;
-    // AG-1007 is ambiguous, so calling it Compliant is refused and the batch fails.
     expect(item.state).toBe('FAILED');
     expect(item.diagnostic).toBe('observation-registration-refused');
     // Not retried eight times against a live system: the same bytes make the same batch.
     expect(item.attempts).toBe(1);
     expect(test.repository.observations).toEqual([]);
+    expect(test.repository.exceptions.size).toBe(0);
     expect(test.repository.run.state).toBe('RUNNING');
+  });
+
+  it('evaluates every registered Observation and raises one Exception per failing record', async () => {
+    // The whole Story 3.7 wiring, end to end inside the stage: the frozen conditions, the
+    // frozen population, the RoleMatrix this Run's own Session Step acquired, and the
+    // Exception the first EXCEPTION evaluation creates in the same transaction.
+    const test = harness({ plan: plan([reference, adapter]) });
+    await executeAdapterSteps(test.deps, JOB);
+    const value = (key: string): string | undefined =>
+      [...test.repository.evaluations.values()].find(
+        (row) => row.evaluation.conditionId === 'C1' &&
+          test.repository.observations.some(
+            (observation) =>
+              observation.record.observationId === row.observationId &&
+              observation.record.populationRecordKey === key,
+          ),
+      )?.evaluation.value;
+
+    // AP_CLERK expands to CREATE_PAYMENT and VIEW_PAYMENT: no prohibited pair.
+    expect(value('AG-1001')).toBe('COMPLIANT');
+    // VENDOR_MAINTAINER + VENDOR_APPROVER expand to CREATE_VENDOR + APPROVE_VENDOR.
+    expect(value('AG-1003')).toBe('EXCEPTION');
+    // Two extraction rows carry AG-1007, so the match is ambiguous and never resolved.
+    expect(value('AG-1007')).toBe('UNEVALUATED');
+    // Every evaluation this evaluator writes carries origin RULE and no Agent-Judged field.
+    expect([...test.repository.evaluations.values()].every((row) =>
+      row.evaluation.origin === 'RULE' &&
+      row.evaluation.confirmation === null &&
+      row.evaluation.confidence === null &&
+      row.evaluation.rationale === null)).toBe(true);
+
+    // Exactly one Exception, for the one record that failed the control, fingerprinted
+    // with the deployment's key and carrying the pair the rule reported.
+    expect(test.repository.exceptions.size).toBe(1);
+    const raised = [...test.repository.exceptions.values()][0]!;
+    expect(raised.populationRecordKey).toBe('AG-1003');
+    expect(raised.conditionIds).toEqual(['C1']);
+    expect(raised.diagnostics.join(' ')).toContain('prohibited permission pair CREATE_VENDOR + APPROVE_VENDOR');
+    expect(raised.fingerprintKeyId).toBe('k-test');
+    expect(raised.fingerprint).toBe(
+      exceptionFingerprint(utf8Bytes(FINGERPRINT_KEY), {
+        procedureId: RUN.procedureId,
+        templateId: 'P-2',
+        targetSystem: 'reg-api',
+        populationRecordKey: 'AG-1003',
+        conditionIds: ['C1'],
+      }),
+    );
+    const observed = test.repository.events.find((row) => row.payload['exceptions'] !== undefined)!;
+    expect(observed.payload['exceptions']).toBe(1);
+    expect(observed.payload['exceptionIds']).toEqual([raised.exceptionId]);
+  });
+
+  it('cannot expand a role without the Reference Source, and never guesses', async () => {
+    // No RoleMatrix Session Step at all. `incomplete role expansion` is Unevaluated for
+    // every record the condition applies to; nothing falls through to "no prohibited pair
+    // found", and no Exception is raised on an expansion nobody could read.
+    const test = harness({ plan: plan([adapter]) });
+    await executeAdapterSteps(test.deps, JOB);
+    const rows = [...test.repository.evaluations.values()];
+    const keyOf = (observationId: string): string =>
+      test.repository.observations.find((row) => row.record.observationId === observationId)!
+        .record.populationRecordKey;
+    // AG-9999 is absent from the extraction, so P-2's frozen `found = true` applicability
+    // does not apply to it: compiler 1 gives a non-applicable condition COMPLIANT, and the
+    // row says why so the §H count of APPLICABLE conditions can exclude it.
+    const absent = rows.find((row) => keyOf(row.observationId) === 'AG-9999')!;
+    expect(absent.evaluation.value).toBe('COMPLIANT');
+    expect(absent.evaluation.diagnostic).toBe('condition does not apply to this record');
+    expect(
+      rows.filter((row) => keyOf(row.observationId) !== 'AG-9999')
+        .map((row) => row.evaluation.value),
+    ).toEqual(['UNEVALUATED', 'UNEVALUATED', 'UNEVALUATED']);
+    expect(test.repository.exceptions.size).toBe(0);
   });
 
   it('counts a record with no usable key instead of inventing one', async () => {

@@ -176,7 +176,8 @@ keeps two conflicting policy entries for one role distinguishable.
 
 ## What this contract does not decide
 
-Whether a contradicted record's conditions evaluate to `UNEVALUATED` (3.7 — this contract
-only makes `COMPLIANT` unreachable for one), the Run-level Gate rows and the mapping of a
+Whether a contradicted record's conditions evaluate to `UNEVALUATED`
+([deterministic evaluation v1](deterministic-evaluation-v1.md) — this contract only makes
+`COMPLIANT` unreachable for one), the Run-level Gate rows and the mapping of a
 failing corroboration to `INCONCLUSIVE` (3.8), Result sealing (3.9), and the `web_tree` and
 `desktop_tree` extraction a later epic's agent captures need.

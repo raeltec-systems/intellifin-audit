@@ -1078,3 +1078,50 @@ export const runObservationEvaluation = pgTable('run_observation_evaluation', {
   check('run_observation_evaluation_corroboration',sql`${t.corroboration} IN ('MATCHED','CONTRADICTORY','UNJUDGED') AND (${t.value} <> 'COMPLIANT' OR ${t.corroboration} <> 'CONTRADICTORY')`),
   check('run_observation_evaluation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) <= 16, false)`),
 ]);
+
+/**
+ * `run_exception` — the permanent record of a control failure (Story 3.7).
+ *
+ * One row per Observation whose evaluation raised at least one `EXCEPTION`, written in the
+ * SAME transaction as that evaluation. `exception_id` is DERIVED from the Run and the
+ * Observation rather than minted, so a redelivered batch reaches the row it already wrote
+ * instead of raising a second finding about one record; the unique index on
+ * `observation_id` says the same thing where a command cannot route around it.
+ *
+ * `fingerprint` is HMAC-SHA-256 over the RFC 8785 canonical JSON of the finding's identity
+ * — Procedure, Template, Target System, population record and the conditions that failed —
+ * and `fingerprint_key_id` is retained beside it, so a rotated key still says which key
+ * signed which row. The Run is deliberately outside the fingerprint: the same control
+ * failure recurring next month fingerprints the same and is recognisable as the same
+ * finding.
+ *
+ * Generation 23 adds two triggers, because neither rule is expressible as a CHECK: an
+ * Exception can never be UPDATEd, and it can never be deleted while the Observation it was
+ * raised on still exists. Removing a whole Observation is a different act from rewriting an
+ * outcome, and it takes the record and its digest with it.
+ */
+export const runException = pgTable('run_exception', {
+  exceptionId: uuid('exception_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  observationId: uuid('observation_id').notNull().references(() => runObservation.observationId, {onDelete:'cascade'}),
+  workItemId: uuid('work_item_id').notNull().references(() => runWorkItem.workItemId),
+  targetSystem: text('target_system').notNull(),
+  populationRecordKey: text('population_record_key').notNull(),
+  conditionIds: jsonb('condition_ids').$type<string[]>().notNull(),
+  /** Every violating pair, and every other reason the compiled rules gave, verbatim. */
+  diagnostics: jsonb('diagnostics').$type<string[]>().notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  fingerprintKeyId: text('fingerprint_key_id').notNull(),
+  raisedAt: timestamp('raised_at',{withTimezone:true}).notNull(),
+}, t=>[
+  // The first Exception recorded for a record stands; a redelivery adds nothing.
+  uniqueIndex('run_exception_observation').on(t.observationId),
+  index('run_exception_run_idx').on(t.runId,t.raisedAt),
+  index('run_exception_fingerprint_idx').on(t.fingerprint),
+  // `cardinality`, never `array_length`/`jsonb_array_length` alone: a CHECK that evaluates
+  // to NULL PASSES, so the coalesce is what makes an unusable value fail rather than slip.
+  check('run_exception_conditions',sql`coalesce(jsonb_typeof(${t.conditionIds}) = 'array' AND jsonb_array_length(${t.conditionIds}) BETWEEN 1 AND 64, false)`),
+  check('run_exception_diagnostics',sql`coalesce(jsonb_typeof(${t.diagnostics}) = 'array' AND jsonb_array_length(${t.diagnostics}) <= 64, false)`),
+  check('run_exception_fingerprint',sql`${t.fingerprint} ~ '^[0-9a-f]{64}$'`),
+  check('run_exception_key_id',sql`length(${t.fingerprintKeyId}) BETWEEN 1 AND 1024`),
+]);

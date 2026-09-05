@@ -19,6 +19,7 @@ import {
   type ObservationQueryKey,
   type ObservationRecord,
   type ProcedureTargetSnapshot,
+  type ReferenceArtifact,
   type RunRecord,
 } from '@intellifin/domain';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
@@ -32,7 +33,7 @@ import {
   type AdapterExtractionPort,
   type CredentialResolver,
   type EvidenceStore,
-  type ObservationEvaluationPort,
+  type ExceptionFingerprinter,
   type PopulationRecord,
   type ReferenceAcquisitionPort,
   type SessionStepRecord,
@@ -46,11 +47,12 @@ import {
   type ObservationBatchItem,
 } from './register-observations.js';
 import { snapshotCorroboration } from './snapshot-corroboration.js';
+import { ruleEvaluation } from './rule-evaluation.js';
 import {
   adapterEvidenceRecord,
   freezeArtifact,
+  readRegisteredArtifact,
   reserveArtifact,
-  verifyRegisteredArtifact,
 } from './evidence-package.js';
 import { sealIfTerminal } from './seal-package.js';
 
@@ -89,8 +91,16 @@ export interface AdapterExecutionDependencies {
   store: EvidenceStore;
   clock: Clock;
   ids: UuidV7Generator;
-  /** Story 3.7's seam. `NO_EVALUATION` is the explicit "not yet", for the same reason. */
-  evaluation: ObservationEvaluationPort;
+  /**
+   * Story 3.7. The keyed fingerprint every Exception is written with.
+   *
+   * The EVALUATOR is deliberately not a dependency: it is built inside the stage from the
+   * frozen plan, the frozen population and the Reference Source bytes this stage acquired,
+   * none of which a composition root has (the Story 3.6 corroboration lesson, one story
+   * along). What a composition root does own is the deployment's fingerprint key, and it
+   * hands over a port that can use it rather than the key itself.
+   */
+  exceptions: ExceptionFingerprinter;
 }
 
 /** The closed diagnostic vocabulary. Never an error message, never a URL, never a value. */
@@ -526,15 +536,29 @@ export async function executeAdapterSteps(
   });
 
   /**
-   * Verify one already-registered artifact against the digest it was registered with.
+   * Verify one already-registered artifact against the digest it was registered with, and
+   * return the bytes it verified.
    *
    * This is the tamper check, and it is a RESUME check: a Run that reaches this stage
    * again re-reads what it froze. The stored bytes are never replaced — a mismatch is a
-   * terminal integrity failure, exactly as the population's redelivery check is.
+   * terminal integrity failure, exactly as the population's redelivery check is. The bytes
+   * come back because a Reference Source acquired on an EARLIER attempt still has to be
+   * readable by the evaluator on this one, and the verified read is the only honest place
+   * to get them: what the evaluator consults is what the freeze established.
    */
   const verifyRegistered = (
     evidence: { objectKey: string; digest: string | null; size: number | null },
-  ): Promise<boolean> => verifyRegisteredArtifact(deps.store, evidence, budget);
+  ): Promise<Uint8Array | null> => readRegisteredArtifact(deps.store, evidence, budget);
+
+  /**
+   * The Reference Source bytes of this Run, in authored order.
+   *
+   * Frozen, verified and held for the evaluator (Story 3.7): P-2's compiled rule expands a
+   * role through the versioned RoleMatrix, and a role it cannot expand is Unevaluated. It
+   * is filled by both paths a Session Step can take — acquired on this attempt, or already
+   * `ACQUIRED` and re-read here — so a resumed Run evaluates exactly as a first one does.
+   */
+  const references: ReferenceArtifact[] = [];
 
   try {
     // ------------------------------------------------- Reference Sources, in order
@@ -551,7 +575,10 @@ export async function executeAdapterSteps(
       }
       if (step.state === 'ACQUIRED') {
         const registered = evidence.find((row) => row.evidenceId === step.evidenceId) ?? null;
-        if (registered === null || registered.state !== 'REGISTERED' || !(await verifyRegistered(registered))) {
+        const verified = registered === null || registered.state !== 'REGISTERED'
+          ? null
+          : await verifyRegistered(registered);
+        if (registered === null || verified === null) {
           await stopRun('reference-integrity-failed', 'RUN_FAILED', {
             stepId: step.stepId,
             registrationId: step.registrationId,
@@ -559,6 +586,7 @@ export async function executeAdapterSteps(
           });
           return { retry: false };
         }
+        references.push({ bytes: verified, mediaType: registered.mediaType ?? '' });
         continue;
       }
       if (runExpired()) {
@@ -567,7 +595,7 @@ export async function executeAdapterSteps(
       }
       const outcome = await runReferenceStep(deps, {
         checkpoint, plan, run, entry, step, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, evidence,
+        startStepExecution, attemptsPerCycle, evidence, references,
       });
       if (outcome === 'failed') {
         await stopRun(step.diagnostic as AdapterExecutionDiagnostic, 'RUN_FAILED', {
@@ -589,7 +617,7 @@ export async function executeAdapterSteps(
       }
       const outcome = await runWorkItem(deps, {
         checkpoint, plan, run, entry, item, records, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, evidence,
+        startStepExecution, attemptsPerCycle, evidence, references,
       });
       // A failed Work Item never stops the Run: the next one still executes and the Run
       // stays RUNNING. Incomplete coverage becomes INCONCLUSIVE at the Run-level Gate.
@@ -636,6 +664,10 @@ interface UnitContext {
   attemptsPerCycle: number;
   /** The Evidence rows as the claim read them, so a resumed attempt keeps its digest. */
   evidence: readonly AdapterEvidenceRecord[];
+  /** The Run's frozen Reference Source bytes: filled by the Session Steps, read by the
+   * evaluator. Mutable on purpose — every Reference Source is acquired before any Work
+   * Item, so by the time a Work Item reads it the list is complete. */
+  references: ReferenceArtifact[];
 }
 
 /**
@@ -715,6 +747,10 @@ async function runReferenceStep(
         unit.budget,
       );
       step.state = 'ACQUIRED';
+      // Held for the evaluator: these are the bytes `freezeArtifact` just read back out of
+      // the object store and proved identical to what was uploaded, so what the compiled
+      // rules consult is what the freeze established rather than what was fetched.
+      unit.references.push({ bytes: artifact.bytes, mediaType: artifact.mediaType });
       const registered: AdapterEvidenceRecord = {
         ...evidence,
         mediaType: artifact.mediaType,
@@ -870,6 +906,15 @@ async function runWorkItem(
           ? []
           : [{ evidenceId: evidence.evidenceId, substrate, bytes: artifact.bytes }],
       );
+      // Story 3.7: the version's already-compiled conditions, over the frozen plan, the
+      // frozen included population and the Reference Source bytes this stage acquired.
+      // Built HERE for the same reason the corroboration seam is — a composition root holds
+      // none of the three, so a seam it supplied could only be `NO_EVALUATION`.
+      const evaluation = ruleEvaluation({
+        plan,
+        records: unit.records,
+        references: unit.references,
+      });
       const built = buildAdapterObservations({
         plan,
         target: entry.target,
@@ -916,11 +961,12 @@ async function runWorkItem(
             workItemId: item.workItemId,
             stepExecutionId: execution.stepExecutionId,
             targetSystem: entry.target.registrationId,
+            templateId: plan.inputs.templateId,
             runStartedAt: checkpoint.runStartedAt,
             registeredAt: deps.clock.now().toISOString(),
             items: built.items,
           },
-          { corroboration, evaluation: deps.evaluation },
+          { corroboration, evaluation, exceptions: deps.exceptions },
         );
         await event(context, 'work-item-observed', 'RUNNING', checkpoint, {
           workItemId: item.workItemId,

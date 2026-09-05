@@ -2,11 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   acquirePopulation,
   executeAdapterSteps,
+  NO_EVALUATION,
   sealPackage,
   verifySealedPackage,
   initiateRun,
   NO_CORROBORATION,
-  NO_EVALUATION,
   PopulationAcquisitionError,
   registerObservations,
   snapshotCorroboration,
@@ -15,12 +15,15 @@ import {
   type AcquiredArtifact,
   type EvidenceStore,
   type ObservationCorroborationPort,
+  type ExceptionFingerprinter,
   type ObservationEvaluationPort,
   type ResolvedCredential,
 } from '@intellifin/application';
 import {
   bindingDigest,
   bindingDigestEnvelope,
+  exceptionFingerprint,
+  exceptionIdFor,
   OBSERVATION_CHECKS,
   observationBatchDigest,
   observationDigest,
@@ -95,6 +98,32 @@ const ACCOUNTS = collection('accounts', ACCOUNT_ROWS, ['account_id', 'roles', 's
 const INCOMPLETE_ACCOUNTS = JSON.stringify({ accounts: ACCOUNT_ROWS });
 const ROLE_MATRIX =
   'entry,role,permission\n10,AMBIGUOUS_DUAL,CREATE_PAYMENT\n10,AMBIGUOUS_DUAL,VIEW_PAYMENT\n11,AMBIGUOUS_DUAL,RELEASE_PAYMENT\n11,AMBIGUOUS_DUAL,VIEW_PAYMENT\n';
+
+/**
+ * A role expansion that actually covers `ACCOUNT_ROWS` (Story 3.7).
+ *
+ * Separate from `ROLE_MATRIX` above, whose row positions the Story 3.6 sheet-locator test
+ * depends on. AP_CLERK expands cleanly; VENDOR_MAINTAINER + VENDOR_APPROVER carry the
+ * prohibited pair CREATE_VENDOR + APPROVE_VENDOR, which is the Exception.
+ */
+const SOD_ROLE_MATRIX = [
+  'entry,role,permission',
+  '1,AP_CLERK,CREATE_PAYMENT',
+  '1,AP_CLERK,VIEW_PAYMENT',
+  '2,VENDOR_MAINTAINER,CREATE_VENDOR',
+  '2,VENDOR_MAINTAINER,VIEW_VENDOR',
+  '3,VENDOR_APPROVER,APPROVE_VENDOR',
+  '4,OPS_CLERK,VIEW_LOAN',
+  '5,LOAN_ADMIN,CONFIGURE_LIMITS',
+  '',
+].join('\n');
+
+/** A fingerprinter with a known key, so a test can recompute what it should have written. */
+const FINGERPRINT_KEY = 'story-3-7-integration-fingerprint-key';
+const FINGERPRINTER: ExceptionFingerprinter = {
+  keyId: 'k-integration',
+  fingerprint: (envelope) => exceptionFingerprint(utf8Bytes(FINGERPRINT_KEY), envelope),
+};
 
 const POPULATION = 'account_id,status\nAG-1001,Active\nAG-1003,Active\nAG-1007,Active\nAG-9999,Active\n';
 
@@ -319,7 +348,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     options: {
       extract?: (target: ProcedureTargetSnapshot, credential: ResolvedCredential) => Promise<AcquiredArtifact>;
       reference?: (target: ProcedureTargetSnapshot) => Promise<AcquiredArtifact>;
-      evaluation?: ObservationEvaluationPort;
+      exceptions?: ExceptionFingerprinter;
     } = {},
   ) {
     const wire: (string | null)[] = [];
@@ -351,10 +380,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
         store: seeded.store,
         clock: new SystemClock(),
         ids,
-        // Story 3.7's seam; `NO_EVALUATION` is the explicit "not yet judged" the worker
-        // composes. Corroboration is not a dependency at all: Story 3.6 builds it inside
-        // the stage from the bytes the stage just froze.
-        evaluation: options.evaluation ?? NO_EVALUATION,
+        // Story 3.7. The fingerprint key, as a port. Neither the evaluator nor the
+        // corroborator is a dependency: both are built inside the stage from the plan it
+        // is executing and the bytes it just froze.
+        exceptions: options.exceptions ?? FINGERPRINTER,
       },
     };
   }
@@ -943,6 +972,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       workItemId: String(rows[0]!.item),
       stepExecutionId: String(rows[0]!.step),
       targetSystem: String(rows[0]!.target_system),
+      templateId: 'P-2',
       runStartedAt: String(stage!.started),
       registeredAt: new Date().toISOString(),
       items,
@@ -953,12 +983,17 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   async function register(
     runId: string,
     batch: ObservationBatch,
-    seams: Partial<{ corroboration: ObservationCorroborationPort; evaluation: ObservationEvaluationPort }> = {},
+    seams: Partial<{
+      corroboration: ObservationCorroborationPort;
+      evaluation: ObservationEvaluationPort;
+      exceptions: ExceptionFingerprinter;
+    }> = {},
   ): Promise<unknown> {
     return new PostgresAdapterExecutionRepository(db).transaction(runId, (context) =>
       registerObservations(context, batch, {
         corroboration: seams.corroboration ?? NO_CORROBORATION,
         evaluation: seams.evaluation ?? NO_EVALUATION,
+        exceptions: seams.exceptions ?? FINGERPRINTER,
       }),
     );
   }
@@ -977,7 +1012,8 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     // and `observation-corroboration`; the two resolved ones add `identity-corroboration`
     // and the absent one adds `search-completeness` - nineteen check rows.
     const before = await counts();
-    expect(before).toEqual({ observations: 4, checks: 19, evaluations: 0, events: 1 });
+    // Four evaluations: P-2 has one condition and every Observation is judged by it.
+    expect(before).toEqual({ observations: 4, checks: 19, evaluations: 4, events: 1 });
 
     expect(await register(seeded.run.runId, batch)).toMatchObject({
       registered: 0,
@@ -1010,26 +1046,22 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     // The refusal is THROWN from inside the registration, so PostgreSQL takes back the
     // Work Item state, the Step Execution outcome and every row the batch would have
     // written. A refusal RETURNED from inside a unit of work would have committed them.
-    const seeded = await seed(['api']);
+    //
+    // The refusal is driven by a fingerprinter that answers with something that is not a
+    // fingerprint. AG-1003 carries a prohibited pair, so an Exception is raised, and a
+    // permanent row that can never be updated must not be written with a value nobody can
+    // later check.
+    const seeded = await seed(['versioned-file', 'api']);
     await executeAdapterSteps(
       dependencies(seeded, {
-        evaluation: {
-          evaluate: async (subjects) =>
-            subjects.map((subject) => ({
-              observationId: subject.record.observationId,
-              evaluations: [
-                {
-                  conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
-                  confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [],
-                },
-              ],
-            })),
-        },
+        reference: async () => ({
+          bytes: utf8Bytes(SOD_ROLE_MATRIX), mediaType: 'text/csv', location: 'https://synthetic.invalid/rm.csv',
+        }),
+        exceptions: { keyId: 'k-integration', fingerprint: () => 'not-a-fingerprint' },
       }).deps,
       seeded.job,
     );
-    // AG-1007 is ambiguous, so calling it Compliant is refused and the batch fails whole.
-    for (const table of ['run_observation', 'run_observation_check', 'run_observation_evaluation']) {
+    for (const table of ['run_observation', 'run_observation_check', 'run_observation_evaluation', 'run_exception']) {
       const rows = await sql.unsafe(`SELECT count(*)::int AS count FROM ${table} WHERE run_id=$1`, [seeded.run.runId]);
       expect(rows[0]?.count).toBe(0);
     }
@@ -1039,44 +1071,136 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const item = (await sql`SELECT state,diagnostic,observations,attempts FROM run_work_item WHERE run_id=${seeded.run.runId}`)[0];
     // The Work Item never reports Observations that are not there.
     expect(item).toMatchObject({ state: 'FAILED', diagnostic: 'observation-registration-refused', observations: 0, attempts: 1 });
+    // The Reference Source Session Step succeeded and stays succeeded; it is the WORK
+    // ITEM's Step Execution that the refusal took back with everything else.
     expect(
-      (await sql`SELECT count(*)::int AS count FROM run_step_execution WHERE run_id=${seeded.run.runId} AND state='SUCCEEDED'`)[0]?.count,
+      (await sql`SELECT count(*)::int AS count FROM run_step_execution WHERE run_id=${seeded.run.runId} AND state='SUCCEEDED' AND work_item_id IS NOT NULL`)[0]?.count,
     ).toBe(0);
   });
 
   it('commits evaluations in the same transaction as the rows they describe', async () => {
-    const seeded = await seed(['api']);
+    // The version's OWN compiled conditions, over the RoleMatrix this Run's Session Step
+    // acquired. Nothing is stood in for: the plan is the compiler's, the expansion is the
+    // frozen artifact's, and the evaluator is the one the stage builds.
+    const seeded = await seed(['versioned-file', 'api']);
     await executeAdapterSteps(
       dependencies(seeded, {
-        evaluation: {
-          evaluate: async (subjects) =>
-            subjects.map((subject) => ({
-              observationId: subject.record.observationId,
-              evaluations: [
-                {
-                  conditionId: 'C1',
-                  origin: 'RULE' as const,
-                  value: subject.coverage === 'COVERED' ? ('EXCEPTION' as const) : ('UNEVALUATED' as const),
-                  confirmation: null,
-                  confidence: null,
-                  rationale: null,
-                  diagnostic: subject.coverage === 'COVERED' ? null : 'record was not resolved',
-                  evidenceIds: [],
-                },
-              ],
-            })),
-        },
+        reference: async () => ({
+          bytes: utf8Bytes(SOD_ROLE_MATRIX), mediaType: 'text/csv', location: 'https://synthetic.invalid/rm.csv',
+        }),
       }).deps,
       seeded.job,
     );
-    const rows = await sql`SELECT e.value,e.coverage,e.origin,o.population_record_key AS key FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${seeded.run.runId} ORDER BY o.population_record_key`;
+    const rows = await sql`SELECT e.value,e.coverage,e.origin,e.corroboration,e.diagnostic,o.population_record_key AS key FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${seeded.run.runId} ORDER BY o.population_record_key`;
     expect(rows.map((row) => [row.key, row.coverage, row.value])).toEqual([
-      ['AG-1001', 'COVERED', 'EXCEPTION'],
+      // AP_CLERK expands to CREATE_PAYMENT and VIEW_PAYMENT: no prohibited pair.
+      ['AG-1001', 'COVERED', 'COMPLIANT'],
+      // VENDOR_MAINTAINER + VENDOR_APPROVER expand to CREATE_VENDOR + APPROVE_VENDOR.
       ['AG-1003', 'COVERED', 'EXCEPTION'],
+      // Two extraction rows carry AG-1007, so the match never resolves.
       ['AG-1007', 'AMBIGUOUS', 'UNEVALUATED'],
-      ['AG-9999', 'COVERED', 'EXCEPTION'],
+      // Absent from the extraction, so P-2's `found = true` applicability does not apply.
+      ['AG-9999', 'COVERED', 'COMPLIANT'],
     ]);
     expect(rows.every((row) => row.origin === 'RULE')).toBe(true);
+    expect(rows.find((row) => row.key === 'AG-1003')!.diagnostic).toContain(
+      'prohibited permission pair CREATE_VENDOR + APPROVE_VENDOR',
+    );
+    // A non-applicable condition says so, so the §H count of APPLICABLE conditions can
+    // exclude it rather than reading it as a rule that was evaluated and passed.
+    expect(rows.find((row) => row.key === 'AG-9999')!.diagnostic).toBe(
+      'condition does not apply to this record',
+    );
+  });
+
+  it('creates the Exception in the same transaction as the evaluation that raised it', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        reference: async () => ({
+          bytes: utf8Bytes(SOD_ROLE_MATRIX), mediaType: 'text/csv', location: 'https://synthetic.invalid/rm.csv',
+        }),
+      }).deps,
+      seeded.job,
+    );
+    const rows = await sql`SELECT x.exception_id::text AS id,x.observation_id::text AS observation,x.population_record_key AS key,x.condition_ids,x.diagnostics,x.fingerprint,x.fingerprint_key_id,x.target_system,x.work_item_id::text AS item FROM run_exception x WHERE x.run_id=${seeded.run.runId}`;
+    expect(rows).toHaveLength(1);
+    const raised = rows[0]!;
+    expect(raised.key).toBe('AG-1003');
+    expect(raised.condition_ids).toEqual(['C1']);
+    expect(String(raised.diagnostics)).toContain('CREATE_VENDOR');
+    expect(raised.fingerprint_key_id).toBe('k-integration');
+    // Run-stable and DERIVED: the same Run and Observation always name the same Exception.
+    expect(raised.id).toBe(exceptionIdFor(seeded.run.runId, String(raised.observation)));
+    expect(raised.fingerprint).toBe(
+      exceptionFingerprint(utf8Bytes(FINGERPRINT_KEY), {
+        procedureId: seeded.run.procedureId,
+        templateId: 'P-2',
+        targetSystem: String(raised.target_system),
+        populationRecordKey: 'AG-1003',
+        conditionIds: ['C1'],
+      }),
+    );
+    // The chain names it too, so a row that later went missing is still accounted for.
+    const [event] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`;
+    const payload = event!.payload as { exceptions: number; exceptionIds: string[] };
+    expect(payload.exceptions).toBe(1);
+    expect(payload.exceptionIds).toEqual([raised.id]);
+  });
+
+  it('keeps the first Exception and never writes a second for one record', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    const deps = dependencies(seeded, {
+      reference: async () => ({
+        bytes: utf8Bytes(SOD_ROLE_MATRIX), mediaType: 'text/csv', location: 'https://synthetic.invalid/rm.csv',
+      }),
+    }).deps;
+    await executeAdapterSteps(deps, seeded.job);
+    const before = await sql`SELECT exception_id::text AS id,raised_at FROM run_exception WHERE run_id=${seeded.run.runId}`;
+    expect(before).toHaveLength(1);
+
+    // Re-register the batch exactly as it was stored. Every digest matches, so nothing is
+    // written at all — and the Exception that already stands is the one that stays.
+    const batch = await registeredBatch(seeded);
+    await register(seeded.run.runId, batch);
+    const after = await sql`SELECT exception_id::text AS id,raised_at FROM run_exception WHERE run_id=${seeded.run.runId}`;
+    expect(after).toEqual(before);
+  });
+
+  it('refuses to update an Exception, or to delete one while its Observation stands', async () => {
+    // Generation 23's two triggers, asserted with raw SQL. A rule tested only through the
+    // command proves nothing about the rule.
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        reference: async () => ({
+          bytes: utf8Bytes(SOD_ROLE_MATRIX), mediaType: 'text/csv', location: 'https://synthetic.invalid/rm.csv',
+        }),
+      }).deps,
+      seeded.job,
+    );
+    const [raised] = await sql`SELECT exception_id::text AS id,observation_id::text AS observation FROM run_exception WHERE run_id=${seeded.run.runId}`;
+    expect(raised).toBeDefined();
+
+    await expect(
+      sql`UPDATE run_exception SET population_record_key='AG-0000' WHERE exception_id=${raised!.id}::uuid`,
+    ).rejects.toThrow(/cannot be changed/);
+    await expect(
+      sql`DELETE FROM run_exception WHERE exception_id=${raised!.id}::uuid`,
+    ).rejects.toThrow(/cannot be deleted/);
+    expect(
+      (await sql`SELECT count(*)::int AS c FROM run_exception WHERE run_id=${seeded.run.runId}`)[0]?.c,
+    ).toBe(1);
+
+    // Removing the OBSERVATION is a different act: it takes the record and its digest with
+    // it, and the registration event still names both. The cascade is allowed, and it is
+    // what makes a Run teardown possible at all.
+    await sql`DELETE FROM run_observation_evaluation WHERE observation_id=${raised!.observation}::uuid`;
+    await sql`DELETE FROM run_observation_check WHERE observation_id=${raised!.observation}::uuid`;
+    await sql`DELETE FROM run_observation WHERE observation_id=${raised!.observation}::uuid`;
+    expect(
+      (await sql`SELECT count(*)::int AS c FROM run_exception WHERE run_id=${seeded.run.runId}`)[0]?.c,
+    ).toBe(0);
   });
 
   it('normalizes an offset-bearing capture time to UTC and keeps the original', async () => {
@@ -1252,6 +1376,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       workItemId: context.workItemId,
       stepExecutionId,
       targetSystem: 'accessgate',
+      templateId: 'P-2',
       runStartedAt: context.runStartedAt,
       registeredAt: observedAt,
       items: [
@@ -1350,6 +1475,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
         workItemId: context.workItemId,
         stepExecutionId,
         targetSystem: 'accessgate',
+        templateId: 'P-2',
         runStartedAt: context.runStartedAt,
         registeredAt: observedAt,
         items: [entry],

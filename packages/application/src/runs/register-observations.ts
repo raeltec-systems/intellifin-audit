@@ -2,7 +2,9 @@ import {
   OBSERVATION_LIMITS,
   canBeCompliant,
   corroborationAllowsCompliant,
+  exceptionIdFor,
   isObservationEvaluation,
+  isRaisedException,
   isObservationRecord,
   normalizeObservedAt,
   observationBatchDigest,
@@ -19,9 +21,11 @@ import {
   type ObservationCoverage,
   type ObservationQueryKey,
   type ObservationRecord,
+  type RaisedException,
   type RunRecord,
 } from '@intellifin/domain';
 import type {
+  ExceptionFingerprinter,
   ObservationCheckRow,
   ObservationCorroborationPort,
   ObservationEvaluationPort,
@@ -80,6 +84,7 @@ export type ObservationRegistrationRefusal =
   | 'evaluation-shape'
   | 'coverage-conflict'
   | 'corroboration-conflict'
+  | 'exception-shape'
   | 'digest-mismatch'
   | 'observation-integrity';
 
@@ -110,6 +115,14 @@ export interface ObservationBatch {
   readonly stepExecutionId: string;
   /** The Target System registration id every Observation in the batch names. */
   readonly targetSystem: string;
+  /**
+   * The FROZEN Template of the Procedure Version this Run executes.
+   *
+   * Part of an Exception's fingerprint, so a finding is identified by the control it
+   * failed and not only by the record it is about. Taken from the frozen plan, never from
+   * a current Procedure.
+   */
+  readonly templateId: string;
   /** The Run's own start, from the durable checkpoint. Freshness is judged against it. */
   readonly runStartedAt: string;
   /** The instant this registration is happening. */
@@ -120,6 +133,12 @@ export interface ObservationBatch {
 export interface ObservationRegistrationSeams {
   readonly corroboration: ObservationCorroborationPort;
   readonly evaluation: ObservationEvaluationPort;
+  /**
+   * Story 3.7. Required, not optional: an Exception with no fingerprint is a permanent row
+   * nothing can later be checked against, and a seam a composition root could omit would
+   * produce one silently.
+   */
+  readonly exceptions: ExceptionFingerprinter;
 }
 
 export interface ObservationRegistrationOutcome {
@@ -131,6 +150,8 @@ export interface ObservationRegistrationOutcome {
   readonly checks: number;
   /** Per-condition evaluations written by this call. */
   readonly evaluations: number;
+  /** Exceptions raised by this call. One per Observation with an `EXCEPTION` evaluation. */
+  readonly exceptions: number;
   /** The digests carried by the event, in registration order. Empty when nothing moved. */
   readonly digests: readonly string[];
   /** One digest over that ordered list, or `null` when nothing was registered. */
@@ -189,6 +210,7 @@ export async function registerObservations(
     alreadyRegistered: 0,
     checks: 0,
     evaluations: 0,
+    exceptions: 0,
     digests: [],
     batchDigest: null,
     coverage: NO_COVERAGE,
@@ -346,16 +368,28 @@ export async function registerObservations(
 
   // ------------------------------------------------------------------- evaluation
   const results = await seams.evaluation.evaluate(
-    fresh.map((entry) => ({ record: entry.record, coverage: entry.coverage, checks: entry.checks })),
+    fresh.map((entry) => ({
+      record: entry.record,
+      coverage: entry.coverage,
+      corroboration: entry.corroboration,
+      checks: entry.checks,
+    })),
   );
   const judgedOf = new Map(
     fresh.map((entry) => [entry.record.observationId, entry] as const),
   );
   const evaluationRows: ObservationEvaluationRow[] = [];
   const seenEvaluations = new Set<string>();
+  const exceptions: RaisedException[] = [];
+  const seenExceptions = new Set<string>();
   for (const result of results) {
     const entry = judgedOf.get(result.observationId);
     if (entry === undefined) refuse('evaluation-shape');
+    // §B's reduction puts Exception first, so the FIRST `EXCEPTION` recorded for a record
+    // is what raises its Exception; the conditions that produced it are all of them, in
+    // the version's frozen order, with every reason the rules gave.
+    const raising: string[] = [];
+    const diagnostics: string[] = [];
     for (const evaluation of result.evaluations) {
       if (!isObservationEvaluation(evaluation)) refuse('evaluation-shape');
       const key = `${result.observationId} ${evaluation.conditionId}`;
@@ -371,6 +405,10 @@ export async function registerObservations(
       if (evaluation.value === 'COMPLIANT' && !corroborationAllowsCompliant(entry.corroboration)) {
         refuse('corroboration-conflict');
       }
+      if (evaluation.value === 'EXCEPTION') {
+        raising.push(evaluation.conditionId);
+        if (evaluation.diagnostic !== null) diagnostics.push(evaluation.diagnostic);
+      }
       evaluationRows.push({
         observationId: result.observationId,
         coverage: entry.coverage,
@@ -378,6 +416,35 @@ export async function registerObservations(
         evaluation,
       });
     }
+    if (raising.length === 0) continue;
+    // The Exception is created HERE, in the transaction that stores the evaluation that
+    // raised it. There is no later step and no second call site: a control failure and
+    // the durable record of it commit together or neither happens.
+    if (seenExceptions.has(result.observationId)) refuse('exception-shape');
+    seenExceptions.add(result.observationId);
+    const raised: RaisedException = {
+      exceptionId: exceptionIdFor(batch.run.runId, result.observationId),
+      runId: batch.run.runId,
+      observationId: result.observationId,
+      workItemId: entry.record.workItemId,
+      targetSystem: entry.record.targetSystem,
+      populationRecordKey: entry.record.populationRecordKey,
+      conditionIds: raising,
+      diagnostics,
+      fingerprint: seams.exceptions.fingerprint({
+        procedureId: batch.run.procedureId,
+        templateId: batch.templateId,
+        targetSystem: entry.record.targetSystem,
+        populationRecordKey: entry.record.populationRecordKey,
+        conditionIds: raising,
+      }),
+      fingerprintKeyId: seams.exceptions.keyId,
+      raisedAt: batch.registeredAt,
+    };
+    // A fingerprinter that answered with something that is not one must not put a
+    // permanent row in the database: an Exception is never updated and never deleted.
+    if (!isRaisedException(raised)) refuse('exception-shape');
+    exceptions.push(raised);
   }
 
   // ------------------------------------------------------------------------ write
@@ -399,6 +466,9 @@ export async function registerObservations(
   await context.saveObservations(rows);
   await context.saveObservationChecks(checkRows);
   await context.saveObservationEvaluations(evaluationRows);
+  // After the evaluations, because the Exception is what an `EXCEPTION` evaluation raised
+  // and the row it names has to exist first.
+  await context.saveExceptions(exceptions);
 
   const digests = fresh.map((entry) => entry.digest);
   const coverage: Record<ObservationCoverage, number> = { COVERED: 0, UNINSPECTED: 0, AMBIGUOUS: 0 };
@@ -442,6 +512,11 @@ export async function registerObservations(
       corroboration,
       failedChecks,
       evaluations: evaluationRows.length,
+      // The Exceptions this batch raised, by their derived ids. A count alone could not
+      // say WHICH record failed the control, and the chain is where that is durable
+      // whatever later happens to a row.
+      exceptions: exceptions.length,
+      exceptionIds: exceptions.map((raised) => raised.exceptionId),
     },
   });
   await context.notifyTimeline(event.sequence);
@@ -451,6 +526,7 @@ export async function registerObservations(
     alreadyRegistered,
     checks: checkRows.length,
     evaluations: evaluationRows.length,
+    exceptions: exceptions.length,
     digests,
     batchDigest,
     coverage,

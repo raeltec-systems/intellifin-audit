@@ -253,11 +253,32 @@ describe('adapterExtraction', () => {
     });
   });
 
-  it('is enabled with the declared manifest', () => {
-    const decision = adapterExtraction({ CREDENTIAL_TOKENS: '{"cred://a":"token"}' } as unknown as AppConfig);
+  it('is disabled, with a named reason, when no Exception fingerprint key is configured', () => {
+    // Extraction registers Observations, registration evaluates them, and an EXCEPTION
+    // evaluation writes a PERMANENT row that must carry a keyed fingerprint. Without a key
+    // there is no honest fingerprint, so the stage is off rather than the row being
+    // written with a value nobody can later check.
+    expect(
+      adapterExtraction({
+        CREDENTIAL_TOKENS: '{"cred://a":"token"}',
+        EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+      } as unknown as AppConfig),
+    ).toEqual({ enabled: false, reason: 'EXCEPTION_FINGERPRINT_KEY is not configured' });
+  });
+
+  it('is enabled with the declared manifest and a fingerprint key', () => {
+    const decision = adapterExtraction({
+      CREDENTIAL_TOKENS: '{"cred://a":"token"}',
+      EXCEPTION_FINGERPRINT_KEY: 'exception-fingerprint-key-at-least-32',
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+    } as unknown as AppConfig);
     expect(decision.enabled).toBe(true);
     if (!decision.enabled) throw new Error('unreachable');
     expect(decision.credentials.get('cred://a')).toBe('token');
+    expect(decision.exceptions.keyId).toBe('k1');
+    // The key has nowhere to live: the port carries the id and a function, and nothing
+    // else, so no checkpoint, payload, log line or error message can pick the value up.
+    expect(JSON.stringify(decision.exceptions)).toBe('{"keyId":"k1"}');
   });
 
   it('never lets a missing manifest stop the rest of the worker', () => {
@@ -266,6 +287,7 @@ describe('adapterExtraction', () => {
     expect(main).toMatch(/Adapter extraction disabled/);
     // Composed only where it is used, and never unconditionally refused.
     expect(main).toContain('new ManifestCredentialResolver(credentials.credentials)');
+    expect(main).toContain('exceptions:credentials.exceptions');
     expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*CREDENTIAL_TOKENS/);
     expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
   });

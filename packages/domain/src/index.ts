@@ -25,4 +25,5 @@ export * from './runs/population.js';
 export * from './runs/execution.js';
 export * from './runs/observation.js';
 export * from './runs/structural-snapshot.js';
+export * from './runs/evaluation.js';
 export * from './runs/evidence.js';

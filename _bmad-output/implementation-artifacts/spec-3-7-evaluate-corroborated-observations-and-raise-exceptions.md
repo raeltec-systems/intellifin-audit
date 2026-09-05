@@ -2,13 +2,14 @@
 title: 'Story 3.7: Evaluate corroborated Observations deterministically and raise Exceptions'
 type: 'feature'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
   - '{project-root}/docs/contracts/observation-registration-v1.md'
   - '{project-root}/docs/contracts/structural-snapshot-v1.md'
+  - '{project-root}/docs/contracts/deterministic-evaluation-v1.md'
 warnings: []
 deferred: []
 ---
@@ -72,6 +73,29 @@ deferred: []
 
 ## Spec Change Log
 
+- 2026-09-05 — The evaluation seam is BUILT by the adapter stage rather than injected into
+  it, and `AdapterExecutionDependencies.evaluation` is replaced by `exceptions` (the
+  fingerprint key as a port). `ruleEvaluation` needs the frozen plan, the frozen included
+  population and the Reference Source bytes the Run's own Session Steps froze; a composition
+  root holds none of the three, so a seam it supplied could only ever be `NO_EVALUATION` —
+  the Story 3.6 corroboration lesson, one story along. `NO_EVALUATION` remains for a
+  producer with no compiled conditions.
+- 2026-09-05 — The Exception fingerprint key is `EXCEPTION_FINGERPRINT_KEY`, the worker's
+  alone. Absent, adapter execution is DISABLED by name (the `CREDENTIAL_TOKENS` trade)
+  rather than the worker refusing to boot or an Exception being written unfingerprinted.
+- 2026-09-05 — A non-applicable condition stores the compiler's own `COMPLIANT` and records
+  `condition does not apply to this record` in its diagnostic. §B.1's evaluation shape has
+  no `applicable` field, and the record's value is the compiler's fixed reduction over these
+  values, so a second reduction here would be a second engine. The diagnostic is what lets
+  Story 3.8's count of APPLICABLE conditions exclude it.
+- 2026-09-05 — P-3 case D4 (TX-500007) has no per-record evaluation and cannot have one: the
+  row carries no `processed_time`, so Story 3.2's frozen inclusion rule marks it
+  INDETERMINATE and it never reaches an Observation. Its Inconclusive is the
+  `complete-inclusion` population Gate's. The golden test pins that this is the only case
+  reached that way and asserts the row's disposition and reason. No expectation was edited.
+- 2026-09-05 — `docs/contracts/deterministic-evaluation-v1.md` records the whole rule, in
+  the shape Stories 3.2-3.6 each use.
+
 ## Review Triage Log
 
 ## Verification
@@ -81,3 +105,44 @@ deferred: []
 - `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied, all pass against PostgreSQL 18 on a `test`- or `ci`-named database.
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** `evaluateComplianceRecord` is wired in — no second rules engine. The
+evaluator supplies the values, the addendum H evidence facts and the frozen Reference
+Source data, and the reduction is the compiler's own. Generation 23 adds `run_exception`
+with a derived id and an HMAC-SHA-256 fingerprint over five keys with the Run
+deliberately absent, so a recurring finding fingerprints the same; two triggers make it
+un-updatable and undeletable while its Observation stands.
+
+**The seam is built by the stage, not injected** — a composition root has none of the
+three things evaluation needs (frozen plan, frozen population, Reference Source bytes),
+so there is no injection point where evaluation can be switched off. Same shape as 3.6.
+
+**Both named traps are mutation-proven.** Forcing first-wins on the duplicate population
+key failed P-3 D5; merging RoleMatrix entries by role failed P-2 D5-c. The tests can fail,
+which is the only property that makes them worth having.
+
+**Golden reconciliation runs through the production pipeline.** Every named per-record
+case in both expectation files matches, asserted again in the browser suite against the
+real worker, the real Northstar service and a real database.
+
+**One correction to the main thread's earlier count, and it is right.** P-3 case D4
+(TX-500007) has an empty `processed_time`, so the frozen inclusion rule marks it
+INDETERMINATE: it never enters the population and never becomes an Observation, and its
+Inconclusive comes from the `complete-inclusion` population Gate — exactly as addendum
+§C requires for a missing transaction time. The 4/4/4 figure counted expectation entries
+rather than records reaching evaluation. A test pins that this is the ONLY case reached
+that way and asserts the row's disposition and reason, so the branch cannot quietly
+swallow a record that genuinely went missing.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18.4:**
+typecheck PASS; boundaries PASS (364 modules); `db:migrate` schemaVersion 23; unit
+2408/2408; integration 288/288; `db:generate` no drift; both builds PASS; browser + axe
+109/109 with zero accessibility violations.
+
+**Residual risk.** `EXCEPTION_FINGERPRINT_KEY` is worker-only; absent, adapter execution
+is disabled by name rather than writing an unfingerprinted Exception.

@@ -8,7 +8,8 @@ import {
   type Sql,
   type Telemetry,
 } from '@intellifin/infrastructure';
-import { credentialTokenManifest, evidenceS3Config, type AppConfig, type EvidenceS3Config } from '@intellifin/infrastructure';
+import { createExceptionFingerprinter, credentialTokenManifest, evidenceS3Config, type AppConfig, type EvidenceS3Config } from '@intellifin/infrastructure';
+import type { ExceptionFingerprinter } from '@intellifin/application';
 
 /**
  * The worker's startup and loop mechanics, separated from `main.ts` so both can be
@@ -80,11 +81,33 @@ export function populationExecution(
  */
 export function adapterExtraction(
   config: AppConfig,
-): { readonly enabled: true; readonly credentials: ReadonlyMap<string, string> } | { readonly enabled: false; readonly reason: string } {
+):
+  | {
+      readonly enabled: true;
+      readonly credentials: ReadonlyMap<string, string>;
+      readonly exceptions: ExceptionFingerprinter;
+    }
+  | { readonly enabled: false; readonly reason: string } {
   const credentials = credentialTokenManifest(config);
-  return credentials.size > 0
-    ? { enabled: true, credentials }
-    : { enabled: false, reason: 'CREDENTIAL_TOKENS declares no audit credential' };
+  if (credentials.size === 0) {
+    return { enabled: false, reason: 'CREDENTIAL_TOKENS declares no audit credential' };
+  }
+  // Story 3.7. Extraction registers Observations, registration evaluates them, and an
+  // `EXCEPTION` evaluation writes a permanent Exception that must carry a keyed
+  // fingerprint. Without a key there is no honest fingerprint, so the STAGE is off rather
+  // than the row being written unfingerprinted — the same trade `CREDENTIAL_TOKENS` makes
+  // one line up, and the fail-closed direction: no evaluation happens at all.
+  if (config.EXCEPTION_FINGERPRINT_KEY === undefined) {
+    return { enabled: false, reason: 'EXCEPTION_FINGERPRINT_KEY is not configured' };
+  }
+  return {
+    enabled: true,
+    credentials,
+    exceptions: createExceptionFingerprinter({
+      keyId: config.EXCEPTION_FINGERPRINT_KEY_ID,
+      key: config.EXCEPTION_FINGERPRINT_KEY,
+    }),
+  };
 }
 
 export interface HeartbeatLoop {

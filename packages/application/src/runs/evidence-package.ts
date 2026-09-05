@@ -160,11 +160,24 @@ export async function verifyRegisteredArtifact(
   artifact: { readonly objectKey: string; readonly digest: string | null; readonly size: number | null },
   budget: () => number,
 ): Promise<boolean> {
-  if (artifact.digest === null) return false;
+  return (await readRegisteredArtifact(store, artifact, budget)) !== null;
+}
+
+/**
+ * The same check, returning the bytes it verified.
+ *
+ * A resumed Run needs both: that the stored artifact is still the one it froze, and — for a
+ * Reference Source the evaluator consults — what it says. Two functions that each read and
+ * compared would be two answers to "is this what we froze"; this is the one, and
+ * `verifyRegisteredArtifact` is its verdict. `null` means unverifiable, never "empty".
+ */
+export async function readRegisteredArtifact(
+  store: EvidenceStore,
+  artifact: { readonly objectKey: string; readonly digest: string | null; readonly size: number | null },
+  budget: () => number,
+): Promise<Uint8Array | null> {
+  if (artifact.digest === null) return null;
   const stored = await store.read(artifact.objectKey, budget());
-  return (
-    stored !== null &&
-    sha256HexOfBytes(stored) === artifact.digest &&
-    (artifact.size === null || stored.length === artifact.size)
-  );
+  if (stored === null || sha256HexOfBytes(stored) !== artifact.digest) return null;
+  return artifact.size === null || stored.length === artifact.size ? stored : null;
 }
