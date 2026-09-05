@@ -75,6 +75,37 @@ deferred: []
 
 ## Review Triage Log
 
+## Design Notes
+
+**Implement all seven E.1 rows, in order, even though Epic 3 can reach only five of them.**
+Epic 3 produces evaluations of origin `RULE` only: there is no Agent-Judged evaluation, so
+no evaluation is ever `pending`, so the **Pending Confirmation** row cannot fire here. The
+`COMPLETED -> INCONCLUSIVE` row fires only "by human rejection", which is Epic 6. Both rows
+are still written, still ordered and still tested with a constructed state, because the
+order is the contract and a table that grows a row per epic ends up with no table at all.
+
+**Where an Epic 3 `UNEVALUATED` record turns into Inconclusive matters.** It is the GATE
+row, not a sealing row: Condition completeness, Identity corroboration and Observation
+corroboration in addendum H each yield `INCONCLUSIVE`, and the Gate row sits ABOVE both
+sealing rows in E.1. So a Run with an unevaluated record never reaches sealing at all. That
+is why both full golden populations are Inconclusive, and it is why "Gate passed" must be
+read from the Gate rows Story 3.8 wrote rather than inferred from the absence of an
+Exception.
+
+**A passed Gate is necessary and never sufficient for Pass.** The two are separate
+questions: the Gate asks whether the Evidence supports a conclusion, and the outcome asks
+what that conclusion is. Deriving one from the other in either direction is the mistake
+this story exists to prevent.
+
+**Sealing is once, in the completing transaction.** Computing the outcome twice invites two
+answers; computing it outside the transaction invites an outcome that describes a state the
+Run has already left. The immutability is enforced at the database, like the frozen-field
+refusals generation 14 added for Approved versions, not only in the command.
+
+**The scope statement is shown verbatim.** It is the auditor's own sentence about what the
+Run covered. Rewording it, truncating it or generating a replacement would put the
+platform's words where a human's belong.
+
 ## Verification
 
 **Commands:**
@@ -82,3 +113,5 @@ deferred: []
 - `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied, all pass against PostgreSQL 18 on a `test`- or `ci`-named database.
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
