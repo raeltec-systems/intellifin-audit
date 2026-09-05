@@ -1,6 +1,6 @@
 # Epic 2 — completion evidence audit
 
-Scope: the eight stories in `planning-artifacts/epics.md`, their frozen implementation specifications, the build contract and architecture invariants. Checked 5 September 2026. **All implementation, local verification and review requirements are complete. Final commit/push and branch CI remain to be confirmed.**
+Scope: the eight stories in `planning-artifacts/epics.md`, their frozen implementation specifications, the build contract and architecture invariants. Checked 5 September 2026. **All implementation, local verification, review and implementation-CI requirements are complete.**
 
 | Requirement group | Evidence surface to execute and inspect |
 |---|---|
@@ -13,7 +13,7 @@ Scope: the eight stories in `planning-artifacts/epics.md`, their frozen implemen
 | 2.7: submission guard, independent approval, previous/current diff, rationale/Edit, atomic notifications and conflicting decisions | Unit/integration decision and notification suites, review rendering tests, actual P-1 reject/edit/resubmit/approve browser journey and self-approval refusal. Story 2.7 CI run 51 passed. |
 | 2.8: immutable definitions, first/unchanged activation, pending regression, lineage/boundaries, same-transaction automatic Drafts, replay, human New version and ripple warnings | `review-2-8-matrix.md`, 17 focused lifecycle integration scenarios, actual Target/Source warning forms, lifecycle/browser history/response-loss journey, operational model publication through queued derivation and submission, and raw-SQL frozen-column refusals. |
 | Authority and cross-module invariants | Transaction role revocation proof; affected-version corruption isolation; concurrency/rollback tests; full typecheck and dependency boundaries. |
-| Delivery obligations | Every story committed/pushed only after verification; no push to main; readable HTML and Markdown reports linked from PR; reusable decisions in CLAUDE.md; final branch CI and clean worktree. Story 2.8 commit and final CI remain pending. |
+| Delivery obligations | Every story committed/pushed only after verification; no push to main; readable HTML and Markdown reports linked from PR; reusable decisions in CLAUDE.md. Story 2.8 implementation commit `b432741` was pushed with a clean worktree and passed CI run 52. |
 
 ## Explicit scope resolutions
 
@@ -26,4 +26,4 @@ Scope: the eight stories in `planning-artifacts/epics.md`, their frozen implemen
 
 ## Current evidence
 
-All eight specifications and the epic's sprint status are done. After all twelve independently cleared Story 2.8 repairs, final full checks passed 1,950 unit, 209 integration and 96 browser tests. Typecheck, boundaries (307 modules), generation-14 migration/no drift, package and production builds passed. The HTML/Markdown reports record the behavior, evidence, decisions and remaining deployment action. Final commit/push and branch CI still require confirmation before the thread goal is complete.
+All eight specifications and the epic's sprint status are done. After all twelve independently cleared Story 2.8 repairs, final full checks passed 1,950 unit, 209 integration and 96 browser tests. Typecheck, boundaries (307 modules), generation-14 migration/no drift, package and production builds passed. The HTML/Markdown reports record the behavior, evidence, decisions and remaining deployment action. Implementation commit `b432741fc3498239ee0cbd0c4036b9ccb821db51` was pushed and all four jobs in [CI run 52](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33956593754) passed. Subsequent changes finalize this evidence report only.

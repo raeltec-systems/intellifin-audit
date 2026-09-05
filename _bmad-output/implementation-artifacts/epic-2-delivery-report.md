@@ -1,6 +1,6 @@
 # Epic 2 delivery report
 
-**Implemented and verified locally — 5 September 2026. Final branch CI is pending.** All eight stories are complete. [PR 21](https://github.com/raeltec-systems/intellifin-audit/pull/21) contains the delivery. The [HTML report](epic-2-delivery-report.html) is a standalone version of this overview.
+**Epic 2 complete — 5 September 2026. Implementation and CI verified.** All eight stories are complete and pushed. [PR 21](https://github.com/raeltec-systems/intellifin-audit/pull/21) contains the delivery. The [HTML report](epic-2-delivery-report.html) is a standalone version of this overview.
 
 ## What you can do
 
@@ -36,7 +36,9 @@ The browser proof authors the P-1 hero Procedure, uses the actual worker and ins
 
 Provider HTTP is synthetic: this proves wiring and contract enforcement, not live credentials or model quality. Final evidence is mapped in the [acceptance audit](epic-2-acceptance-audit.md) and [Story 2.8 evidence map](review-2-8-matrix.md). Failed or interrupted attempts are retained as diagnostics and are not counted as passes.
 
-CI passed for earlier delivered checkpoints: [Story 2.5, run 48](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170), [Story 2.6, run 50](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513), and [Story 2.7, run 51](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33948294403). Final Story 2.8 branch CI will be recorded here after push.
+**[Final implementation CI run 52 passed](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33956593754)** at commit `b432741fc3498239ee0cbd0c4036b9ccb821db51`: all four jobs succeeded, covering types/unit/boundaries, fresh migration/integration, browser/accessibility, and built-container startup checks. This report's later documentation update does not change the tested implementation.
+
+Earlier delivered checkpoints also passed: [Story 2.5, run 48](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170), [Story 2.6, run 50](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513), and [Story 2.7, run 51](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33948294403).
 
 ## Decisions and gotchas
 
@@ -54,4 +56,4 @@ Reusable details and the report/PR delivery rule are recorded in [CLAUDE.md](../
 
 ## What needs you
 
-No product decision remains open. After final CI is green, review this report and approve the PR when satisfied. Deployment is a separate action: configure the intended environment and provider credentials, use the release migration workflow, and apply a model revision if changing the published configuration. Live provider acceptance has not been claimed by the synthetic tests.
+No product decision remains open. Review this report and approve the PR when satisfied. Deployment is a separate action: configure the intended environment and provider credentials, use the release migration workflow, and apply a model revision if changing the published configuration. Live provider acceptance has not been claimed by the synthetic tests.

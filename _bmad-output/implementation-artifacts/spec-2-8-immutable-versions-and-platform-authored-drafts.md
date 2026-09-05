@@ -155,6 +155,8 @@ Durable command evidence: `C:/Users/opc/tools/intellifin-epic2-test/verification
 
 Residual boundaries: the PoC serializes Procedure/configuration writes; old generation-13 approvals stay unactivated; supported publication is model-only under prompt 1/interpreter v1; provider HTTP is synthetic. Actual Runs, Regression Runs and scheduler handover remain later epics. The user-selected activation-time handover rule is preserved. Commit/push and final branch CI are recorded in the delivery report and PR.
 
+Delivery confirmed: implementation commit `b432741fc3498239ee0cbd0c4036b9ccb821db51` was pushed after all local gates and a clean-worktree check. [CI run 52](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33956593754) passed all four jobs, including fresh PostgreSQL migration, browser/accessibility and built-container startup checks. The later report-only commit records this evidence without changing implementation.
+
 ## Pre-implementation concurrency and lineage audit
 
 

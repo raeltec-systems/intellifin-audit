@@ -8,13 +8,14 @@
 :root{color-scheme:light;--ink:#142b39;--muted:#49616d;--line:#d9e3e7;--accent:#176b65;--paper:#fff;--bg:#f3f6f7}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:56px 32px 80px}header{border-top:6px solid var(--accent);padding-top:28px;margin-bottom:40px}.eyebrow{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:750}h1{font-size:42px;line-height:1.15;max-width:850px;margin:14px 0 20px}h2{font-size:26px;line-height:1.3;margin:0 0 18px}h3{font-size:19px;margin:0 0 8px}p{margin:0 0 16px}.lead{font-size:21px;max-width:900px}.muted,small{color:var(--muted)}section{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:28px;margin:24px 0}.status{display:inline-block;border-radius:6px;background:#fff0cf;color:#684900;padding:5px 10px;font-weight:700;font-size:14px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.metric{border-left:3px solid var(--accent);padding-left:16px}.metric strong{display:block;font-size:30px;line-height:1.3}table{border-collapse:collapse;width:100%;font-size:16px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:14px 10px}th{font-size:14px;color:var(--muted)}th:first-child,td:first-child{padding-left:0}a{color:#075c96;text-underline-offset:3px}li{margin-bottom:10px}code{font-size:.9em;background:#edf2f4;padding:2px 5px;border-radius:4px}.note{border-left:4px solid #bb8400;padding:12px 18px;background:#fff7e6}footer{color:var(--muted);font-size:14px;margin-top:30px}@media(max-width:700px){main{padding:24px 16px}h1{font-size:32px}section{padding:20px}.grid{grid-template-columns:1fr}table{font-size:14px}}@media print{body{background:white}main{padding:0}section{break-inside:avoid}a{color:inherit}}
 </style>
+<style>th[scope="row"]{white-space:nowrap}.status{background:#e2f3ec;color:#165940}</style>
 </head>
 <body><main>
 <header>
 <div class="eyebrow">IntelliFin Audit · Engineering delivery</div>
 <h1>From an audit definition to an approved, frozen Procedure Version</h1>
 <p class="lead">Epic 2 builds the authoring and human-review workflow that later Runs will execute against.</p>
-<span class="status">Implemented and verified locally · final branch CI pending</span>
+<span class="status">Epic 2 complete · implementation and CI verified</span>
 <p class="muted" style="margin-top:16px">Updated 5 September 2026 · Branch <code>codex/epic-2-procedure-builder</code></p>
 <p><a href="epic-2-delivery-report.md">Read the repository-friendly Markdown report</a></p>
 </header>
@@ -40,7 +41,8 @@
 <p>GitHub CI also passed for the pushed Story 2.5 commit <code>38c96ca</code>: <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170">CI run 48</a>.</p>
 <p>Story 2.6 also passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513">CI run 50</a> at <code>66579c9</code>, including the container build, clean database migration and browser tests. The preceding run exposed three fresh-environment gaps; dependency build ordering, Docker test inputs and browser polling readiness were repaired and independently reviewed.</p>
 <p>Story 2.7 passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33948294403">CI run 51</a> at <code>73d577a</code>: type/unit checks, fresh PostgreSQL migration and integration tests, browser/accessibility checks and built-container smoke checks all succeeded.</p>
-<p class="note">All eight stories are implemented and locally verified. Final Story 2.8 branch CI is pending push. The prior 96 upgrade combinations were established at Story 2.5; final checks also exercise generation-13 approval upgrades, raw-SQL immutability, exact changed snapshots, replay, lock-time role revocation, stored boundaries and history beyond 100 versions.</p>
+<p class="note">All eight stories are complete and pushed. <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33956593754">Final implementation CI run 52 passed</a> at <code>b432741</code>: types/unit/boundaries, fresh migration/integration, browser/accessibility and built-container startup checks all succeeded. This later report update does not change the tested implementation.</p>
+<p>The prior 96 upgrade combinations were established at Story 2.5; final checks also exercise generation-13 approval upgrades, raw-SQL immutability, exact changed snapshots, replay, lock-time role revocation, stored boundaries and history beyond 100 versions.</p>
 <p>Story 2.7 review identified twelve repairs, including preventing submission while edits are unsaved, showing both versions’ executable plans, preserving the exact submitted review and making older notifications accessible. Independent follow-up cleared them, and all required checks passed after recovery from a full host disk. Final database verification used a fresh isolated cluster.</p>
 <p>Story 2.8 completed four formal review layers and twelve repairs. Independent follow-up cleared every repair. Final full checks passed afterward; failed and interrupted attempts are retained as diagnostics, not counted as passes. See the <a href="epic-2-acceptance-audit.md">acceptance audit</a> and <a href="review-2-8-matrix.md">Story 2.8 evidence map</a>.</p>
 </section>
@@ -65,7 +67,7 @@
 </section>
 
 <section aria-labelledby="owner"><h2 id="owner">What needs your attention</h2>
-<p>No product decision remains open. After final CI is green, review this report and approve <a href="https://github.com/raeltec-systems/intellifin-audit/pull/21">PR 21</a> when satisfied.</p>
+<p>No product decision remains open. Review this report and approve <a href="https://github.com/raeltec-systems/intellifin-audit/pull/21">PR 21</a> when satisfied.</p>
 <p class="muted">Deployment is separate: configure the intended environment and provider credentials, use the release migration workflow, and apply a model revision if changing the published configuration. Synthetic provider tests do not claim live credential acceptance or model quality.</p>
 </section>
 <footer>Review surface for the product owner. The source diff, story specifications and tests remain the technical evidence.</footer>
