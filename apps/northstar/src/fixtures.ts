@@ -172,6 +172,7 @@ export interface AccessGateDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly population_rule: string;
   readonly accounts: readonly AccessGateAccount[];
 }
@@ -190,6 +191,7 @@ export interface ApproveNowDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly approvals: readonly ApprovalRow[];
 }
 
@@ -204,6 +206,7 @@ export interface PeopleHubDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly employees: readonly EmployeeRow[];
 }
 
@@ -221,6 +224,7 @@ export interface LedgerFlowDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly transactions: readonly TransactionRow[];
 }
 
@@ -243,7 +247,19 @@ export interface ProdConsoleDataset {
   readonly observed_parameters: readonly ObservedParameter[];
 }
 
-/** A generated count declaration, served verbatim by a count endpoint. */
+export interface EffectivePeriod {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * A generated count declaration, served verbatim by a count endpoint.
+ *
+ * The older ProdConsole and LoanCore pages still consume `declared_count`. API
+ * population declarations carry the v1 fields below as well; keeping the old
+ * field is a compatibility alias for those existing synthetic surfaces, not a
+ * second source of truth.
+ */
 export interface CountDeclaration {
   readonly synthetic: SyntheticBlock;
   readonly source: string;
@@ -252,6 +268,26 @@ export interface CountDeclaration {
   readonly counted_from: string;
   readonly count_rule: string;
   readonly produced_by: string;
+  readonly schema_version?: 1;
+  readonly representation?: 'population-rows-v1';
+  readonly generated_at?: string;
+  readonly effective_period?: EffectivePeriod;
+  readonly schema?: readonly string[];
+  readonly count?: number;
+  readonly sha256?: string;
+  readonly complete?: boolean;
+}
+
+/** The normalized v1 declaration used by API population adapters. */
+export interface ApiPopulationDeclaration extends CountDeclaration {
+  readonly schema_version: 1;
+  readonly representation: 'population-rows-v1';
+  readonly generated_at: string;
+  readonly effective_period: EffectivePeriod;
+  readonly schema: readonly string[];
+  readonly count: number;
+  readonly sha256: string;
+  readonly complete: true;
 }
 
 export const datasets = {
@@ -271,4 +307,21 @@ export const datasets = {
 
 export function countDeclaration(fileName: string): CountDeclaration {
   return readJson(`generated/${fileName}`) as CountDeclaration;
+}
+
+export function apiDeclaration(fileName: string): ApiPopulationDeclaration {
+  const declaration = countDeclaration(fileName);
+  if (
+    declaration.schema_version !== 1 ||
+    declaration.representation !== 'population-rows-v1' ||
+    typeof declaration.generated_at !== 'string' ||
+    declaration.effective_period === undefined ||
+    !Array.isArray(declaration.schema) ||
+    typeof declaration.count !== 'number' ||
+    typeof declaration.sha256 !== 'string' ||
+    declaration.complete !== true
+  ) {
+    throw new Error(`generated/${fileName} is not a population-rows-v1 declaration`);
+  }
+  return declaration as ApiPopulationDeclaration;
 }

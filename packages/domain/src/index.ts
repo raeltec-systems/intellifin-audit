@@ -21,3 +21,4 @@ export * from './registrations/index.js';
 export * from './sha256.js';
 export * from './sources/index.js';
 export * from './runs/run.js';
+export * from './runs/population.js';

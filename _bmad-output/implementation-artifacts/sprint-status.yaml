@@ -59,7 +59,7 @@ development_status:
 
   epic-3: in-progress
   3-1-initiate-a-run-for-an-active-version-and-period: done
-  3-2-acquire-the-population-source-deterministically: backlog
+  3-2-acquire-the-population-source-deterministically: done
   3-3-extract-adapter-acquired-target-systems-and-freeze-reference: backlog
   3-4-register-observations-in-the-one-wire-schema-in-batches: backlog
   3-5-seal-evidence-with-reservation-and-digest-verification: backlog

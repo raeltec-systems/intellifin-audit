@@ -8,10 +8,12 @@
   "source": "configregistry-baseline",
   "covers": "config-registry.csv",
   "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
   "effective_period": {
     "from": "2026-01-01",
     "to": "2026-12-31"
   },
+  "complete": true,
   "row_count": 6,
   "declared_schema": [
     "parameter",
@@ -34,7 +36,7 @@
     "scheme": "synthetic-hmac-sha256",
     "key_id": "northstar-cover-sheet-2026",
     "key_is_published": true,
-    "value": "7998e3201c75e21f57e75d612cbcbb4ef6de459e9b45cc7405142d4b3e6a6c2d"
+    "value": "81e0cac56b33a9ede62c5bcc0636a340db9d65c46e89454e2b30541deff15a6d"
   },
   "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
 }

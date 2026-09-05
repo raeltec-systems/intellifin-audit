@@ -18,7 +18,9 @@ this is Python and the standard library, and the product's Adapters are TypeScri
 The digest on a cover sheet is taken over THE BYTES THIS FILE WROTE, which are the exact
 bytes the Northstar service serves back — it reads the artifact off disk and streams it
 unchanged. A digest over the dataset, or over a re-serialization, would be a digest of
-something nobody can fetch.
+something nobody can fetch. API declarations use a separate digest over the explicitly
+versioned `{"schema_version": 1, "rows": [...]}` projection. The API response's raw
+bytes remain a separate Evidence digest.
 
 The signature is a synthetic HMAC over the cover sheet's own fields. Its key is published
 below and in this folder's README: it makes a cover sheet tamper-EVIDENT for a fixture,
@@ -65,6 +67,17 @@ SIGNING_KEY = b"northstar-synthetic-cover-sheet-key-2026"
 COMMENT_PREFIX = "#"
 LINE_TERMINATOR = "\n"
 
+# The synthetic API snapshots all describe the August 2026 Run fixture. Keep this
+# producer timestamp explicit and stable: `generation` is an identifier, not a
+# timestamp, and using the wall clock would make regeneration change the declaration.
+API_GENERATED_AT = "2026-09-01T00:00:00Z"
+API_EFFECTIVE_PERIOD = {"from": "2026-08-01", "to": "2026-08-31"}
+
+# The current file fixtures use the same producer timestamp. The intentionally stale
+# July cover gets its own timestamp at the call site below.
+CURRENT_FILE_GENERATED_AT = API_GENERATED_AT
+STALE_FILE_GENERATED_AT = "2026-07-31T23:59:59Z"
+
 
 def read_dataset(name: str) -> dict:
     data = json.loads((DATASETS / name).read_text(encoding="utf-8"))
@@ -89,9 +102,26 @@ def csv_bytes(header: list[str], rows: list[list[str]], title: str, generation: 
     return buffer.getvalue().encode("utf-8")
 
 
+def _utf16_key(key: str) -> bytes:
+    """Sort object keys like JavaScript's UTF-16 string comparator."""
+    return key.encode("utf-16-be", "surrogatepass")
+
+
 def canonical(value: object) -> bytes:
-    """Deterministic bytes for the signature. Sorted keys, no insignificant space."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+    """Deterministic UTF-8 JSON bytes: sorted object keys, ordered arrays, no spaces."""
+    if isinstance(value, dict):
+        members = [
+            json.dumps(key, ensure_ascii=False, separators=(",", ":"))
+            + ":"
+            + canonical(item).decode("utf-8")
+            for key, item in sorted(value.items(), key=lambda pair: _utf16_key(pair[0]))
+        ]
+        return ("{" + ",".join(members) + "}").encode("utf-8")
+    if isinstance(value, list):
+        return ("[" + ",".join(canonical(item).decode("utf-8") for item in value) + "]").encode(
+            "utf-8"
+        )
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode(
         "utf-8"
     )
 
@@ -106,6 +136,8 @@ def cover_sheet(
     row_count: int,
     payload: bytes,
     declared_schema: list[str],
+    generated_at: str,
+    complete: bool = True,
     seeded_case: str | None = None,
     seeded_case_note: str | None = None,
 ) -> dict:
@@ -119,7 +151,9 @@ def cover_sheet(
         "source": source,
         "covers": covers,
         "generation": generation,
+        "generated_at": generated_at,
         "effective_period": effective_period,
+        "complete": complete,
         "row_count": row_count,
         "declared_schema": declared_schema,
         "content_digest": {"algorithm": "sha256", "value": hashlib.sha256(payload).hexdigest()},
@@ -168,6 +202,48 @@ def count_file(
     }
 
 
+def population_rows_digest(rows: list[dict]) -> str:
+    """Digest the exact v1 rows projection, independent of the TypeScript adapter."""
+    return hashlib.sha256(canonical({"schema_version": 1, "rows": rows})).hexdigest()
+
+
+def api_count_file(
+    *,
+    source: str,
+    generation: str,
+    schema: list[str],
+    rows: list[dict],
+    counted_from: str,
+    count_rule: str,
+) -> dict:
+    """Write a v1 declaration for the rows the API location actually binds.
+
+    `rows` is already filtered to the bound population by the caller and is sorted
+    here by the same primary key Northstar serves. The count and digest are therefore
+    independent producer declarations, while `returned` on the collection response
+    remains only a transport diagnostic.
+    """
+    return {
+        "synthetic": SYNTHETIC_BLOCK,
+        "source": source,
+        "generation": generation,
+        "generated_at": API_GENERATED_AT,
+        "effective_period": API_EFFECTIVE_PERIOD,
+        "schema_version": 1,
+        "representation": "population-rows-v1",
+        "schema": schema,
+        "count": len(rows),
+        "sha256": population_rows_digest(rows),
+        "complete": True,
+        # Compatibility for the existing Northstar pages and Epic 2 probes. The
+        # normalized `count` above is the v1 field consumed by population adapters.
+        "declared_count": len(rows),
+        "counted_from": counted_from,
+        "count_rule": count_rule,
+        "produced_by": PRODUCED_BY,
+    }
+
+
 def write_json(name: str, value: dict) -> None:
     (GENERATED / name).write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -196,6 +272,7 @@ def main() -> int:
             row_count=len(all_rows),
             payload=full,
             declared_schema=schema,
+            generated_at=CURRENT_FILE_GENERATED_AT,
         ),
     )
 
@@ -216,6 +293,7 @@ def main() -> int:
             row_count=len(all_rows),
             payload=full,
             declared_schema=schema,
+            generated_at=CURRENT_FILE_GENERATED_AT,
             seeded_case="declared-count-mismatch",
             seeded_case_note=(
                 "This cover sheet declares the row count and digest of the FULL export while "
@@ -246,10 +324,81 @@ def main() -> int:
             row_count=len(july_rows),
             payload=july,
             declared_schema=schema,
+            generated_at=STALE_FILE_GENERATED_AT,
             seeded_case="stale-population",
             seeded_case_note=(
                 "The effective period ends 2026-07-31, so this generation cannot cover an "
                 "August period. Addendum D: one stale or incomplete population."
+            ),
+        ),
+    )
+
+    # ------------------------------------------------------- AccessGate file equivalent
+    # This is the same bound Active population as the API source, published as a
+    # versioned CSV so the file adapter can exercise the same deterministic contract.
+    accessgate = read_dataset("accessgate-accounts.json")
+    active_accounts = sorted(
+        [row for row in accessgate["accounts"] if row["status"] == "Active"],
+        key=lambda row: row["account_id"],
+    )
+    accessgate_schema = accessgate["declared_schema"]
+    accessgate_csv_rows = [
+        [
+            json.dumps(row[field], ensure_ascii=False, separators=(",", ":"))
+            if field == "roles"
+            else row[field]
+            for field in accessgate_schema
+        ]
+        for row in active_accounts
+    ]
+    accessgate_csv = csv_bytes(
+        accessgate_schema,
+        accessgate_csv_rows,
+        accessgate["title"],
+        accessgate["generation"],
+    )
+    write_bytes("accessgate-active-accounts.csv", accessgate_csv)
+    write_json(
+        "accessgate-active-accounts.cover-sheet.json",
+        cover_sheet(
+            source="accessgate-accounts",
+            covers="accessgate-active-accounts.csv",
+            title="Cover sheet for the Northstar AccessGate active accounts export",
+            generation=accessgate["generation"],
+            effective_period=API_EFFECTIVE_PERIOD,
+            row_count=len(accessgate_csv_rows),
+            payload=accessgate_csv,
+            declared_schema=accessgate_schema,
+            generated_at=CURRENT_FILE_GENERATED_AT,
+        ),
+    )
+
+    # Deliberately declare the full CSV over a file one row short. This keeps the
+    # existing truncation vector meaningful for a JSON-valued CSV field too.
+    accessgate_truncated_rows = accessgate_csv_rows[:-1]
+    accessgate_truncated = csv_bytes(
+        accessgate_schema,
+        accessgate_truncated_rows,
+        accessgate["title"],
+        accessgate["generation"],
+    )
+    write_bytes("accessgate-active-accounts-truncated.csv", accessgate_truncated)
+    write_json(
+        "accessgate-active-accounts-truncated.cover-sheet.json",
+        cover_sheet(
+            source="accessgate-accounts",
+            covers="accessgate-active-accounts-truncated.csv",
+            title="Cover sheet for the Northstar AccessGate active accounts export (seeded truncation case)",
+            generation=accessgate["generation"],
+            effective_period=API_EFFECTIVE_PERIOD,
+            row_count=len(accessgate_csv_rows),
+            payload=accessgate_csv,
+            declared_schema=accessgate_schema,
+            generated_at=CURRENT_FILE_GENERATED_AT,
+            seeded_case="declared-count-mismatch",
+            seeded_case_note=(
+                "This cover sheet declares the complete Active export while the file it "
+                f"names holds {len(accessgate_truncated_rows)} rows."
             ),
         ),
     )
@@ -274,6 +423,7 @@ def main() -> int:
             row_count=len(matrix_rows),
             payload=matrix_bytes,
             declared_schema=["role", "permission"],
+            generated_at=CURRENT_FILE_GENERATED_AT,
         ),
     )
 
@@ -296,18 +446,18 @@ def main() -> int:
             row_count=len(registry_rows),
             payload=registry_bytes,
             declared_schema=registry_schema,
+            generated_at=CURRENT_FILE_GENERATED_AT,
         ),
     )
 
     # ------------------------------------------------------------- Count endpoints
-    accessgate = read_dataset("accessgate-accounts.json")
-    active_accounts = [a for a in accessgate["accounts"] if a["status"] == "Active"]
     write_json(
         "accessgate-accounts.count.json",
-        count_file(
+        api_count_file(
             source="accessgate-accounts",
             generation=accessgate["generation"],
-            declared_count=len(active_accounts),
+            schema=accessgate["declared_schema"],
+            rows=sorted(active_accounts, key=lambda row: row["account_id"]),
             counted_from="datasets/accessgate-accounts.json",
             count_rule=accessgate["population_rule"],
         ),
@@ -316,10 +466,11 @@ def main() -> int:
     approvenow = read_dataset("approvenow-approvals.json")
     write_json(
         "approvenow-approvals.count.json",
-        count_file(
+        api_count_file(
             source="approvenow-approvals",
             generation=approvenow["generation"],
-            declared_count=len(approvenow["approvals"]),
+            schema=approvenow["declared_schema"],
+            rows=sorted(approvenow["approvals"], key=lambda row: row["approval_id"]),
             counted_from="datasets/approvenow-approvals.json",
             count_rule="every approval decision published by ApproveNow",
         ),
@@ -328,10 +479,11 @@ def main() -> int:
     peoplehub = read_dataset("peoplehub-employees.json")
     write_json(
         "peoplehub-employees.count.json",
-        count_file(
+        api_count_file(
             source="peoplehub-employees",
             generation=peoplehub["generation"],
-            declared_count=len(peoplehub["employees"]),
+            schema=peoplehub["declared_schema"],
+            rows=sorted(peoplehub["employees"], key=lambda row: row["employee_id"]),
             counted_from="datasets/peoplehub-employees.json",
             count_rule="every employee record PeopleHub publishes",
         ),
@@ -340,10 +492,11 @@ def main() -> int:
     ledgerflow = read_dataset("ledgerflow-transactions.json")
     write_json(
         "ledgerflow-transactions.count.json",
-        count_file(
+        api_count_file(
             source="ledgerflow-transactions",
             generation=ledgerflow["generation"],
-            declared_count=len(ledgerflow["transactions"]),
+            schema=ledgerflow["declared_schema"],
+            rows=sorted(ledgerflow["transactions"], key=lambda row: row["transaction_id"]),
             counted_from="datasets/ledgerflow-transactions.json",
             count_rule="every processed transaction LedgerFlow publishes",
         ),

@@ -1,8 +1,9 @@
-import { derivePlan, reconcilePlanDerivation, deliverNotifications } from '@intellifin/application';
+import { acquirePopulation, derivePlan, reconcilePlanDerivation, deliverNotifications } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
+  PostgresPopulationRepository, HttpPopulationAcquisition, createS3EvidenceStore, evidenceS3Config, startPopulationWorker, startPopulationRecovery, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender,
   createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
   let notificationInterval: NodeJS.Timeout | undefined;
   let notificationDelivery: Promise<void> | undefined;
   let stopRecovery: (() => void) | undefined;
+  let stopPopulationRecovery: (() => Promise<void>) | undefined;
   let shuttingDown = false;
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -66,6 +68,7 @@ async function main(): Promise<void> {
     if (notificationInterval) clearInterval(notificationInterval);
     await notificationDelivery;
     stopRecovery?.();
+    await stopPopulationRecovery?.();
     await queue.stop().catch(() => undefined);
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(0);
@@ -89,6 +92,13 @@ async function main(): Promise<void> {
   await startProceduresWorker(queue, (job, delivery) => derivePlan(derivation, job, delivery));
   stopRecovery = await startProceduresRecovery(db, (job) => reconcilePlanDerivation(derivation, job),
     () => telemetry.captureError('Plan derivation queue failed', new Error('Plan recovery failed'), {}));
+
+  const evidenceConfig = evidenceS3Config(config);
+  if (!evidenceConfig) throw new ConfigError(['EVIDENCE_S3_ENDPOINT: population worker requires private S3 deployment configuration']);
+  const populationRepository = new PostgresPopulationRepository(db);
+  const population = { repository:populationRepository, acquisition:new HttpPopulationAcquisition(), store:createS3EvidenceStore(evidenceConfig), clock:new SystemClock(), ids:new CryptoUuidV7Generator() };
+  await startPopulationWorker(queue,job=>acquirePopulation(population,job));
+  stopPopulationRecovery=startPopulationRecovery(db,populationRepository,job=>acquirePopulation(population,job),()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));
 
   const loop = createHeartbeatLoop(db, host, telemetry);
   const notifications = new DrizzleNotificationRepository(db);

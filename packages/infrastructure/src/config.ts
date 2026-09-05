@@ -30,6 +30,21 @@ const sampleRate = z
   .default('0')
   .transform(Number);
 
+const optionalNonEmpty = (max: number) =>
+  z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.string().trim().min(1).max(max).optional(),
+  );
+
+const optionalHttpUrl = z.preprocess(
+  (value) => (value === '' || value === undefined ? undefined : value),
+  z
+    .string()
+    .regex(/^https?:\/\//, 'must start with http:// or https://')
+    .max(2048)
+    .optional(),
+);
+
 /**
  * The capability a credential reference may be DECLARED to have (FR-8).
  *
@@ -147,6 +162,16 @@ export const configSchema = z
     MODEL_PROMPT_VERSION: z.preprocess((value) => value === '' ? undefined : value, z.literal(SUPPORTED_MODEL_PROMPT_VERSION).default(SUPPORTED_MODEL_PROMPT_VERSION)),
     MODEL_MAX_OUTPUT_TOKENS: z.preprocess((value) => value === '' || value === undefined ? String(DEFAULT_MODEL_OUTPUT_TOKENS) : value, z.string().regex(/^[0-9]+$/).transform(Number).pipe(z.number().int().min(1024).max(MAX_CONFIGURED_MODEL_OUTPUT_TOKENS))),
     MODEL_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    /** Private S3-compatible Evidence storage. All five values are required together. */
+    EVIDENCE_S3_ENDPOINT: optionalHttpUrl,
+    EVIDENCE_S3_REGION: optionalNonEmpty(128),
+    EVIDENCE_S3_BUCKET: optionalNonEmpty(255),
+    EVIDENCE_S3_ACCESS_KEY_ID: optionalNonEmpty(512),
+    EVIDENCE_S3_SECRET_ACCESS_KEY: optionalNonEmpty(2048),
+    EVIDENCE_S3_FORCE_PATH_STYLE: z.preprocess(
+      (value) => (value === '' || value === undefined ? 'true' : value),
+      z.enum(['true', 'false']).transform((value) => value === 'true'),
+    ),
   })
   .superRefine((config, ctx) => {
     if (config.MODEL_PROVIDER !== undefined) {
@@ -170,9 +195,32 @@ export const configSchema = z
           'must use https:// when NODE_ENV is production; an http origin yields a session cookie with no Secure attribute',
       });
     }
+
+    const evidenceFields = [
+      ['EVIDENCE_S3_ENDPOINT', config.EVIDENCE_S3_ENDPOINT],
+      ['EVIDENCE_S3_REGION', config.EVIDENCE_S3_REGION],
+      ['EVIDENCE_S3_BUCKET', config.EVIDENCE_S3_BUCKET],
+      ['EVIDENCE_S3_ACCESS_KEY_ID', config.EVIDENCE_S3_ACCESS_KEY_ID],
+      ['EVIDENCE_S3_SECRET_ACCESS_KEY', config.EVIDENCE_S3_SECRET_ACCESS_KEY],
+    ] as const;
+    const anyEvidenceConfigured = evidenceFields.some(([, value]) => value !== undefined);
+    if (anyEvidenceConfigured) {
+      for (const [key, value] of evidenceFields) {
+        if (value === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'is required when Evidence S3 storage is configured' });
+      }
+    }
   });
 
 export type AppConfig = z.infer<typeof configSchema>;
+
+export interface EvidenceS3Config {
+  readonly endpoint: string;
+  readonly region: string;
+  readonly bucket: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly forcePathStyle: boolean;
+}
 
 /** Thrown when the process environment does not satisfy {@link configSchema}. */
 export class ConfigError extends Error {
@@ -222,6 +270,12 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     MODEL_PROMPT_VERSION: env['MODEL_PROMPT_VERSION'],
     MODEL_API_KEY: env['MODEL_API_KEY'],
     MODEL_MAX_OUTPUT_TOKENS: env['MODEL_MAX_OUTPUT_TOKENS'],
+    EVIDENCE_S3_ENDPOINT: env['EVIDENCE_S3_ENDPOINT'],
+    EVIDENCE_S3_REGION: env['EVIDENCE_S3_REGION'],
+    EVIDENCE_S3_BUCKET: env['EVIDENCE_S3_BUCKET'],
+    EVIDENCE_S3_ACCESS_KEY_ID: env['EVIDENCE_S3_ACCESS_KEY_ID'],
+    EVIDENCE_S3_SECRET_ACCESS_KEY: env['EVIDENCE_S3_SECRET_ACCESS_KEY'],
+    EVIDENCE_S3_FORCE_PATH_STYLE: env['EVIDENCE_S3_FORCE_PATH_STYLE'],
 
   });
 
@@ -234,6 +288,23 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   }
 
   return parsed.data;
+}
+
+/**
+ * Return the configured production Evidence backend, or null when deployment has not
+ * supplied storage settings yet. A partial configuration is refused by loadConfig;
+ * callers never silently fall back to a local filesystem store.
+ */
+export function evidenceS3Config(config: AppConfig): EvidenceS3Config | null {
+  if (config.EVIDENCE_S3_ENDPOINT === undefined) return null;
+  return {
+    endpoint: config.EVIDENCE_S3_ENDPOINT,
+    region: config.EVIDENCE_S3_REGION!,
+    bucket: config.EVIDENCE_S3_BUCKET!,
+    accessKeyId: config.EVIDENCE_S3_ACCESS_KEY_ID!,
+    secretAccessKey: config.EVIDENCE_S3_SECRET_ACCESS_KEY!,
+    forcePathStyle: config.EVIDENCE_S3_FORCE_PATH_STYLE,
+  };
 }
 
 /**

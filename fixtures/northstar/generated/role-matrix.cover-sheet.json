@@ -8,10 +8,12 @@
   "source": "rolematrix",
   "covers": "role-matrix.csv",
   "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
   "effective_period": {
     "from": "2026-01-01",
     "to": "2026-12-31"
   },
+  "complete": true,
   "row_count": 36,
   "declared_schema": [
     "role",
@@ -32,7 +34,7 @@
     "scheme": "synthetic-hmac-sha256",
     "key_id": "northstar-cover-sheet-2026",
     "key_is_published": true,
-    "value": "28a6a0a85cecbe6a08af0f85f2c9895ba773ad3059eeb22632348799cecf3564"
+    "value": "6233abfdf6b93c7c94780887ccf67fe468f991ed1ea2abe849adcdff0c3e583f"
   },
   "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
 }

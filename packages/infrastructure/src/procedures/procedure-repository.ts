@@ -620,3 +620,13 @@ export class DrizzleProcedurePeriodOwnerReader implements ProcedurePeriodOwnerRe
     return owner;
   }
 }
+export class DrizzleFrozenExecutionReader {
+  constructor(private readonly db: Database | Transaction) {}
+  async readFrozenExecution(versionId: string, procedureId: string): Promise<import('@intellifin/domain').ExecutablePlan | null> {
+    if (!isUuidText(versionId) || !isUuidText(procedureId)) return null;
+    const raw = (await this.db.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.versionId,versionId),eq(procedureVersion.procedureId,procedureId),inArray(procedureVersion.state,['ACTIVE','RETIRED']))).limit(1))[0];
+    const version = raw ? toVersionRecord(raw) : null;
+    if (!version?.frozenReview || !version.compiledPlan || canonicalJson(version.compiledPlan as unknown as JsonValue)!==canonicalJson(version.frozenReview.definition.compiledPlan as unknown as JsonValue)) return null;
+    return version.compiledPlan;
+  }
+}

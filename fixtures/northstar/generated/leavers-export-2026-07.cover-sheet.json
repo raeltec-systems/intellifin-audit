@@ -8,10 +8,12 @@
   "source": "leavers-export",
   "covers": "leavers-export-2026-07.csv",
   "generation": "2026-07-31.1",
+  "generated_at": "2026-07-31T23:59:59Z",
   "effective_period": {
     "from": "2026-01-01",
     "to": "2026-07-31"
   },
+  "complete": true,
   "row_count": 4,
   "declared_schema": [
     "employee_id",
@@ -36,7 +38,7 @@
     "scheme": "synthetic-hmac-sha256",
     "key_id": "northstar-cover-sheet-2026",
     "key_is_published": true,
-    "value": "c71f7e69360440f18b138d5862b04bb1d2939ada68776bc12aaf911f4386f6eb"
+    "value": "888b932933712046220b8573dcb101663e1282a589149c98259d4068f093e918"
   },
   "produced_by": "Python fixtures/northstar/generate.py (standard library only)",
   "seeded_case": "stale-population",

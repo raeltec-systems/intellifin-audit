@@ -791,3 +791,24 @@ export const runInitiationRequest = pgTable('run_initiation_request', {
   initiatorId: text('initiator_id').notNull(), requestToken: uuid('request_token').notNull(),
   runId: uuid('run_id').notNull().references(() => auditRun.runId),
 }, table => [primaryKey({ columns: [table.initiatorId, table.requestToken] })]);
+
+export const populationExecution = pgTable('population_execution', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  revision: integer('revision').notNull(), status: text('status').notNull(), attempts: integer('attempts').notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(), attemptStartedAt: timestamp('attempt_started_at',{withTimezone:true}).notNull(), leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  diagnostic: text('diagnostic'),
+  stepId:text('step_id').notNull(),attemptId:uuid('attempt_id').notNull(),
+}, t=>[check('population_execution_status',sql`${t.status} IN ('ACQUIRING','RETRY','POPULATION_READY','TERMINAL')`),check('population_execution_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`)]);
+export const populationEvidence = pgTable('population_evidence', {
+  runId: uuid('run_id').primaryKey().references(()=>auditRun.runId), evidenceId:uuid('evidence_id').notNull().unique(),
+  objectKey:text('object_key').notNull().unique(), envelopeKey:text('envelope_key').notNull().unique(),
+  rawDigest:text('raw_digest'),envelopeDigest:text('envelope_digest'),size:integer('size'),state:text('state').notNull(),
+},t=>[check('population_evidence_digest',sql`${t.rawDigest} IS NULL OR ${t.rawDigest} ~ '^[0-9a-f]{64}$'`),check('population_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),check('population_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.rawDigest} IS NOT NULL AND ${t.envelopeDigest} IS NOT NULL AND ${t.size} IS NOT NULL))`)]);
+export const populationSnapshot = pgTable('population_snapshot', {
+  runId:uuid('run_id').primaryKey().references(()=>auditRun.runId), included:integer('included').notNull(),excluded:integer('excluded').notNull(),indeterminate:integer('indeterminate').notNull(),
+  rowsDigest:text('rows_digest'), checks:jsonb('checks').$type<import('@intellifin/domain').PopulationCheck[]>().notNull(),
+});
+export const populationRow = pgTable('population_row', {
+  runId:uuid('run_id').notNull().references(()=>populationSnapshot.runId),ordinal:integer('ordinal').notNull(),
+  values:jsonb('values').$type<Record<string,import('@intellifin/domain').JsonValue>>().notNull(), disposition:text('disposition').$type<import('@intellifin/domain').PopulationRow['disposition']>().notNull(), reasons:jsonb('reasons').$type<string[]>().notNull(),
+},t=>[primaryKey({columns:[t.runId,t.ordinal]}),check('population_row_disposition',sql`${t.disposition} IN ('included','excluded','indeterminate')`),check('population_row_ordinal',sql`${t.ordinal}>0`)]);

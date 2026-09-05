@@ -21,6 +21,21 @@ Schema validation returns recursive canonical JSON key order. Serialize that val
 
 Session actions are ordered: optional workspace, population acquisition, then one sign-in/extraction for each selected Target in authored order.
 
+### Run period binding and population checkpoint
+
+Execution binds the Run's separately persisted inclusive UTC `period` as the effective
+period input. The draft `inputs.period` and all stored plan bytes remain unchanged.
+The source declaration must cover the effective Run period; inclusion applies that
+period with the frozen rule. Current Population Source bindings never substitute for
+`inputs.sourceSnapshot`, including after the approved version retires.
+
+The population interpreter implements [population acquisition v1](population-acquisition-v1.md).
+It accepts plans whose first ordered Session Step is `acquire-population`; a preceding
+unsupported workspace action refuses safely. It records that frozen Step id, a durable
+attempt id, retry count, original start time and revisioned lease before external I/O.
+`POPULATION_READY` completes only that Session Step. The Run remains Running and the
+next ordered action is pending; no Target extraction or Result is manufactured.
+
 ## Per-target actions
 
 Each Target's plan has `inspect-record`, `capture-observation`, then `evaluate-conditions`. The executor expands this work according to the Template's coverage: P-1 covers every included employee in every selected Target; P-2 covers the full account extraction with per-account role coverage; P-3 covers extraction with a grounded approval result per included transaction; P-4 covers the page/extraction with one grounded Observation per baseline parameter. Expansion must preserve these frozen action ids in Step Execution provenance.

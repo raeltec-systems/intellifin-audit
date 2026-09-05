@@ -156,3 +156,6 @@ export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
 export interface ProcedurePeriodOwnerReader {
   findPeriodOwner(procedureId: string, period: import('@intellifin/domain').ExplicitPeriod): Promise<ProcedureVersionRecord | null>;
 }
+export interface FrozenExecutionReader {
+  readFrozenExecution(versionId: string, procedureId: string): Promise<import('@intellifin/domain').ExecutablePlan | null>;
+}

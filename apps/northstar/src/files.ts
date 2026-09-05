@@ -70,6 +70,38 @@ export const ARTIFACTS: ReadonlyMap<string, Artifact> = new Map([
     },
   ],
   [
+    'accessgate-active-accounts.csv',
+    {
+      file: 'accessgate-active-accounts.csv',
+      contentType: CSV,
+      description: 'The current AccessGate Active accounts export.',
+    },
+  ],
+  [
+    'accessgate-active-accounts.cover-sheet.json',
+    {
+      file: 'accessgate-active-accounts.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Row count and digest of the current AccessGate Active export.',
+    },
+  ],
+  [
+    'accessgate-active-accounts-truncated.csv',
+    {
+      file: 'accessgate-active-accounts-truncated.csv',
+      contentType: CSV,
+      description: 'Seeded incomplete AccessGate Active population.',
+    },
+  ],
+  [
+    'accessgate-active-accounts-truncated.cover-sheet.json',
+    {
+      file: 'accessgate-active-accounts-truncated.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Declares the full AccessGate Active export over a truncated file.',
+    },
+  ],
+  [
     'role-matrix.csv',
     {
       file: 'role-matrix.csv',

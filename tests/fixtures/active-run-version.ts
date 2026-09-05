@@ -2,8 +2,8 @@ import { deriveExecutablePlan, diffReviewedDefinitions, type VersionDecisionReco
 import { initialPlanDerivation, planAuthoringDigest, reviewedDefinition, type ProcedureVersionRecord } from '@intellifin/application';
 import { executablePlanInputs } from './executable-plan.js';
 /** Frozen, self-consistent fixture. Callers insert it through the Procedure writer. */
-export function activeRunVersion(procedureId: string, versionId: string, authorId: string): ProcedureVersionRecord {
-  const inputs = executablePlanInputs(), plan = deriveExecutablePlan(inputs);
+export function activeRunVersion(procedureId: string, versionId: string, authorId: string, inputs = executablePlanInputs()): ProcedureVersionRecord {
+  const plan = deriveExecutablePlan(inputs);
   if (!plan.ok) throw new Error(plan.reason);
   let row: ProcedureVersionRecord = { ...inputs, ...initialPlanDerivation(), procedureId, versionId, versionNumber: 1, state: 'ACTIVE', compiledPlan: plan.plan, planStatus: 'succeeded', planDerivable: true,
     authorship: { createdBy: { type: 'human', id: authorId }, responsibleAuthorId: authorId, humanAuthorIds: [authorId] },

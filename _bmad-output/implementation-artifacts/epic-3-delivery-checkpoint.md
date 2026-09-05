@@ -84,3 +84,19 @@ Base: `3eddd4943e63bb16a48988d776f104f8a4caae12` on `codex/epic-3-adapter-runs`,
 ### Story 3.1 final gate — 2026-09-05
 
 Reviewed implementation passed 1,995 unit and 229 PostgreSQL integration tests, all typechecks, 317-module boundaries, schema-17 drift, package/worker build and production web build. All 10 browser checks passed across the final 9/10 run and focused cold-route rerun (4/4 including setup); do not describe this as one 10/10 run. Axe zero, no hydration errors, screenshot visually inspected. Generated next-env restored. Story marked done; next is Story 3.2. No Epic 3 production changes authorized or made.
+
+## Story 3.2 implementation checkpoint — 2026-09-05
+
+- Owner narrowed the active scope: finish Story 3.2, review, test, commit and push, then pause. Do not start Story 3.3 until instructed.
+- Population interpreter, per-Run revisioned claims, four-attempt retry bound, immutable acquisition-envelope pairing, raw Evidence registration, persisted reconciliation/rows and bounded reason pagination are implemented. The worker uses real HTTP and private S3 adapters; deployment storage values are not provisioned.
+- Local schema generation 18 migrated successfully against isolated PostgreSQL 18. Domain population tests: 23 passed. Real database population tests: 6 passed (including duplicate delivery, abandoned lease, upload crash, tamper, retry persistence and Timeline rollback). Root typecheck passed. These are focused implementation results; final browser, full gates and formal review remain pending.
+- Final focused implementation batch: 86/86 domain, HTTP, S3 HTTP-contract, file-store, configuration and schema-range tests passed. Population plus schema-compatibility database checks: 12/12 passed. Generation 18 drift is clean. All implementation sessions stopped; main task owns browser/full gates and formal review.
+
+## Story 3.2 complete — owner-directed pause, 2026-09-05
+
+- Final post-review gates passed: 2,099 unit tests, 252 PostgreSQL tests (23 population cases), types, 336-module boundary check, generation 18 migration/no drift, deterministic generator, package/worker/Northstar builds and production web build.
+- Five population browser journeys plus three setup checks passed, including actual worker kill/restart mid-upload and abandoned Evidence display. Scanned journeys have zero axe violations; screenshot inspected.
+- Four initial independent review perspectives and focused repair reviews completed. Twenty patches addressed; none deferred. Contracts and CLAUDE.md record the decisions and gotchas.
+- Reports: `story-3-2-handover.md` for GitHub and `story-3-2-handover.html` for visual review. PR #23 remains the draft review surface; check its live CI results for the pushed commit.
+- **Stop here. Story 3.3 is still backlog. The owner explicitly asked to finish 3.2 and pause; this supersedes earlier instructions to continue through the epic.**
+- No merge or deployment. Before eventual release the worker requires private S3 configuration; production setup and later execution stages are not claimed as complete.
