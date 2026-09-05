@@ -14,32 +14,35 @@
 <div class="eyebrow">IntelliFin Audit · Engineering delivery</div>
 <h1>From an audit definition to an approved, frozen Procedure Version</h1>
 <p class="lead">Epic 2 builds the authoring and human-review workflow that later Runs will execute against.</p>
-<span class="status">Work in progress — not an acceptance sign-off</span>
+<span class="status">Implemented and verified locally · final branch CI pending</span>
 <p class="muted" style="margin-top:16px">Updated 5 September 2026 · Branch <code>codex/epic-2-procedure-builder</code></p>
+<p><a href="epic-2-delivery-report.md">Read the repository-friendly Markdown report</a></p>
 </header>
 
-<section aria-labelledby="delivery"><h2 id="delivery">What is being delivered</h2>
+<section aria-labelledby="delivery"><h2 id="delivery">What was delivered</h2>
 <table><thead><tr><th scope="col">Story</th><th scope="col">What this means for an Auditor</th><th scope="col">Current state</th></tr></thead><tbody>
-<tr><th scope="row">2.1–2.4</th><td>Create from one of four Templates; bind the population; select registered Target Systems; write instructions; author deterministic or Agent-Judged compliance conditions.</td><td>Existing implementation, included in regression checks.</td></tr>
+<tr><th scope="row">2.1–2.4</th><td>Create from one of four Templates; bind the population; select registered Target Systems; write instructions; author deterministic or Agent-Judged compliance conditions.</td><td>Implemented; full regression checks passed.</td></tr>
 <tr><th scope="row">2.5</th><td>Declare evidence and grounding requirements; choose a UTC Schedule; see incompatible upload/frequency choices before submission.</td><td>Implemented and verified.</td></tr>
 <tr><th scope="row">2.6</th><td>Read the worker-derived executable plan, its derivation status and model provenance before submitting.</td><td>Implemented, reviewed and verified.</td></tr>
 <tr><th scope="row">2.7</th><td>Submit for independent approval; review the changes; approve or reject with an audit record and in-app notifications.</td><td>Implemented, reviewed and verified.</td></tr>
-<tr><th scope="row">2.8</th><td>Protect approved definitions from edits; create successor versions; route relevant platform changes through the same approval process.</td><td>Implementation pending.</td></tr>
+<tr><th scope="row">2.8</th><td>Protect reviewed definitions from edits; create successor versions; route relevant configuration changes through the same approval process; retain accessible history.</td><td>Implemented, reviewed and verified.</td></tr>
 </tbody></table>
 <p class="muted" style="margin-top:18px">Actual audit execution, Regression Runs and scheduled handover execution belong to later epics. Epic 2 must supply their approved, versioned input contracts.</p>
 </section>
 
-<section aria-labelledby="verification"><h2 id="verification">Verification observed so far</h2>
+<section aria-labelledby="verification"><h2 id="verification">Final local verification</h2>
 <div class="grid">
-<div class="metric"><strong>1,922</strong>unit tests passed in the latest full run.</div>
-<div class="metric"><strong>192</strong>integration tests passed against PostgreSQL 18.6.</div>
-<div class="metric"><strong>96</strong>upgrade combinations checked for preserved authored data.</div>
+<div class="metric"><strong>1,950</strong>unit tests passed in 81 files.</div>
+<div class="metric"><strong>209</strong>integration tests passed against PostgreSQL 18.6.</div>
+<div class="metric"><strong>96</strong>browser tests passed, including keyboard and WCAG checks.</div>
 </div>
-<p style="margin-top:24px">Type checking, dependency boundaries, migration, schema drift checking, workspace builds and the production web build passed. The final full browser run passed 95 tests without retries, including accessibility scans, authoring concurrency, response-loss protection and the complete P-1 author/derive/reject/edit/resubmit/approve journey.</p>
+<p style="margin-top:24px">Type checking, dependency boundaries (307 modules), generation-14 migration, schema drift checking, package builds and the production web build passed. The final full browser run passed all 96 tests without skips or failures, including accessibility, authoring concurrency, response-loss protection and the complete P-1 author/derive/reject/edit/resubmit/approve journey.</p>
 <p>GitHub CI also passed for the pushed Story 2.5 commit <code>38c96ca</code>: <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170">CI run 48</a>.</p>
 <p>Story 2.6 also passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513">CI run 50</a> at <code>66579c9</code>, including the container build, clean database migration and browser tests. The preceding run exposed three fresh-environment gaps; dependency build ordering, Docker test inputs and browser polling readiness were repaired and independently reviewed.</p>
-<p class="note">The latest local results describe the completed Story 2.7 checkpoint. Story 2.8 and the complete epic are not yet delivered. The 96 upgrade combinations were established at Story 2.5; later checks cover derivation recovery and generation-13 review/provenance storage.</p>
+<p>Story 2.7 passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33948294403">CI run 51</a> at <code>73d577a</code>: type/unit checks, fresh PostgreSQL migration and integration tests, browser/accessibility checks and built-container smoke checks all succeeded.</p>
+<p class="note">All eight stories are implemented and locally verified. Final Story 2.8 branch CI is pending push. The prior 96 upgrade combinations were established at Story 2.5; final checks also exercise generation-13 approval upgrades, raw-SQL immutability, exact changed snapshots, replay, lock-time role revocation, stored boundaries and history beyond 100 versions.</p>
 <p>Story 2.7 review identified twelve repairs, including preventing submission while edits are unsaved, showing both versions’ executable plans, preserving the exact submitted review and making older notifications accessible. Independent follow-up cleared them, and all required checks passed after recovery from a full host disk. Final database verification used a fresh isolated cluster.</p>
+<p>Story 2.8 completed four formal review layers and twelve repairs. Independent follow-up cleared every repair. Final full checks passed afterward; failed and interrupted attempts are retained as diagnostics, not counted as passes. See the <a href="epic-2-acceptance-audit.md">acceptance audit</a> and <a href="review-2-8-matrix.md">Story 2.8 evidence map</a>.</p>
 </section>
 
 <section aria-labelledby="decisions"><h2 id="decisions">Important decisions and lessons</h2>
@@ -50,17 +53,20 @@
 <li><strong>Derivation survives interrupted work.</strong> An audited start is stored before model work. Bounded retry and recovery retain unfinished attempts, preserve successful plans and detect older-process saves. The preview identifies the attempt that produced the current stored plan.</li>
 <li><strong>Models cannot silently change executable meaning.</strong> Both installed provider SDKs are tested with synthetic HTTP. Their complete response must match the frozen contract; canonical compiler bytes are stored. A live provider acceptance check still needs a deployment credential.</li>
 <li><strong>Native PostgreSQL removed the Docker blocker.</strong> Docker Desktop failed during startup. Verification now uses an isolated native PostgreSQL 18.6 test cluster with TLS and password authentication. No application database was used.</li>
+<li><strong>Automatic Drafts are atomic with configuration changes.</strong> The same transaction records a relevant registration change and its platform-authored successors. Replays cannot duplicate them; annotation-only changes create none. Human responsibility and independent approval remain intact.</li>
+<li><strong>Configuration publication is an explicit release step.</strong> After migration and builds, run <code>node scripts/apply-platform-configuration.mts &lt;configuration.json&gt;</code> with DATABASE_URL. Supported publication changes the model under prompt 1 and executable-plan-v1; unsupported prompt/tool publications are refused. New Procedures read the current published revision, even on a stale web process. Startup never publishes changes, and credentials stay outside stored configuration.</li>
+<li><strong>Correctness currently limits concurrent writes.</strong> Procedure and configuration commands share a transaction lock to prevent conflicting lock order and changes to the confirmed ripple count. Model calls and credential probes remain outside it. This is a documented proof-of-concept throughput trade-off.</li>
 <li><strong>Concurrency protects the values as well as the save token.</strong> A refreshed token must not give stale local values permission to overwrite another auditor’s section. Delayed save responses also need to preserve newly detected conflicts.</li>
 <li><strong>Capture follows saved targets.</strong> Mandatory Structural Snapshot and screenshot requirements are derived from current Target selections, including during upgrades. Grounding validation runs after this authoritative derivation.</li>
 <li><strong>A lost response is not proof of a failed save.</strong> The editor must ask the Auditor to reload and inspect the saved state rather than claim that nothing changed.</li>
 <li><strong>Development logs must not expose action arguments.</strong> Next’s Server Action argument logging was disabled after verification showed it could include submitted credentials. A further browser check confirmed that account creation still worked without those argument traces.</li>
 </ul>
-<p>Reusable details are recorded in <a href="../../CLAUDE.md">CLAUDE.md</a>. The final report will include the remaining stories’ decisions and verification evidence.</p>
+<p>Reusable details and the report/PR delivery rule are recorded in <a href="../../CLAUDE.md">CLAUDE.md</a>. The earlier editor-concurrency audit is closed; no review repair remains deferred.</p>
 </section>
 
 <section aria-labelledby="owner"><h2 id="owner">What needs your attention</h2>
-<p>No decision is blocking the current implementation. The completed epic report will identify any remaining deployment action and provide a recommendation with options if a product decision is needed.</p>
-<p class="muted">This report will be finalized and linked from the pull request after all eight stories are implemented, validated and wired end to end.</p>
+<p>No product decision remains open. After final CI is green, review this report and approve <a href="https://github.com/raeltec-systems/intellifin-audit/pull/21">PR 21</a> when satisfied.</p>
+<p class="muted">Deployment is separate: configure the intended environment and provider credentials, use the release migration workflow, and apply a model revision if changing the published configuration. Synthetic provider tests do not claim live credential acceptance or model quality.</p>
 </section>
 <footer>Review surface for the product owner. The source diff, story specifications and tests remain the technical evidence.</footer>
 </main></body></html>

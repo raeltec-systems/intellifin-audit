@@ -1,4 +1,5 @@
 'use client';
+import { bindingDigest } from '@intellifin/domain';
 
 import { useId, useRef, useState, type FormEvent } from 'react';
 
@@ -159,6 +160,7 @@ export function BindingForm({
               ...fields(),
               bindingId: binding.bindingId,
               expectedRowVersion: rowVersion,
+              expectedAffectedProcedures: referencingProcedures,
             })
           : onCreate
             ? await onCreate(fields())
@@ -197,8 +199,10 @@ export function BindingForm({
    * Rendered only above zero. No Procedure exists in this release, so it does not appear;
    * the moment one does, this sentence is already here.
    */
+  let changesConfiguration = false;
+  try { changesConfiguration = binding !== null && bindingDigest({ kind: kind as import('@intellifin/domain').PopulationSourceKind, location, declaredSchema: linesToList(schema), declaredCountMechanism: mechanism as import('@intellifin/domain').DeclaredCountMechanism, sensitiveFields: linesToList(sensitive) }) !== binding.digest; } catch { /* invalid fields are refused by the command */ }
   const referencesWarning =
-    referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
+    changesConfiguration && referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
 
   const missingCount = declaresNoCount(mechanism);
   const uploadOnly = kind === 'manual-upload';

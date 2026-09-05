@@ -61,17 +61,17 @@ describe.skipIf(!url)('transactional Procedure Version decisions', () => {
     const draft = await seed(); await act(draft,'submit',author); const submitted = (await repository.findVersion(draft.versionId))!;
     const entered = latch(), release = latch();
     const held: AuditUnitOfWork<ProceduresUnitOfWorkContext> = { execute: work => uow.execute(ctx => work({ ...ctx, procedures: { ...ctx.procedures,
-      insertProcedure: r => ctx.procedures.insertProcedure(r), insertVersion: r => ctx.procedures.insertVersion(r), findVersion: id => ctx.procedures.findVersion(id), findVersionForUpdate: id => ctx.procedures.findVersionForUpdate(id), maxVersionNumber: id => ctx.procedures.maxVersionNumber(id), findPreviousVersion: (id,n) => ctx.procedures.findPreviousVersion!(id,n),
+      findLatestActiveVersion: id => ctx.procedures.findLatestActiveVersion!(id), recordSuccession: r => ctx.procedures.recordSuccession!(r), insertProcedure: r => ctx.procedures.insertProcedure(r), insertVersion: r => ctx.procedures.insertVersion(r), findVersion: id => ctx.procedures.findVersion(id), findVersionForUpdate: id => ctx.procedures.findVersionForUpdate(id), maxVersionNumber: id => ctx.procedures.maxVersionNumber(id), findPreviousVersion: (id,n) => ctx.procedures.findPreviousVersion!(id,n),
       updateVersion: async row => { await ctx.procedures.updateVersion(row); entered.resolve(); await release.promise; },
     } })) };
     const first = act(submitted,'approve',manager,held); await entered.promise;
     const second = act(submitted,'approve',manager2);
     try {
       const deadline = Date.now() + 10000; let blocked = false;
-      while (Date.now() < deadline) { const waiting = await sql`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%procedure_version%'`; if (waiting.length) { blocked = true; break; } await new Promise(r => setTimeout(r,25)); }
+      while (Date.now() < deadline) { const waiting = await sql`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND (query LIKE '%procedure_version%' OR query LIKE '%pg_advisory_xact_lock%')`; if (waiting.length) { blocked = true; break; } await new Promise(r => setTimeout(r,25)); }
       expect(blocked).toBe(true);
     } finally { release.resolve(); }
-    expect(await first).toMatchObject({ ok: true, state: 'APPROVED' });
+    expect(await first).toMatchObject({ ok: true, state: 'ACTIVE' });
     expect(await second).toMatchObject({ ok: false, reason: expect.stringContaining('changed since') });
     const frozen = (await repository.findVersion(draft.versionId))!;
     expect(frozen.frozenReview?.approval.actorId).toBe(manager); expect(frozen.decisions).toHaveLength(2);

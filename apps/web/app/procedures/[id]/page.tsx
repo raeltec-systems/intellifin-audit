@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import type { ProcedureVersionView } from '@intellifin/application';
+import { procedureVersionRowVersion, submissionUnavailableReason, type ProcedureVersionView } from '@intellifin/application';
+import { VersionActions } from '../../../src/procedures/VersionActions';
+import { NewVersionButton } from '../../../src/procedures/NewVersionButton';
+import { VersionStatus } from '../../../src/procedures/VersionStatus';
 import { DrizzleProcedureRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../src/bootstrap';
@@ -35,9 +38,10 @@ export const dynamic = 'force-dynamic';
  * Detail is where a Draft is edited from, so it keeps the author gate.
  */
 export default async function ProcedurePage({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ before?: string }>;
 }): Promise<React.JSX.Element> {
   const decision = await requireServerAction('procedure.author');
 
@@ -52,10 +56,15 @@ export default async function ProcedurePage({
 
   const { id } = await params;
   const runtime = await getRuntime();
-  const procedure = await new DrizzleProcedureRepository(runtime.db).findProcedure(id);
+  const repository = new DrizzleProcedureRepository(runtime.db);
+  const procedure = await repository.findProcedure(id);
   if (procedure === null) notFound();
 
-  const versions = await new DrizzleProcedureRepository(runtime.db).listVersions(id);
+  const beforeText = (await searchParams).before;
+  const before = beforeText === undefined ? undefined : Number(beforeText);
+  if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) notFound();
+  const { versions, olderThan } = await repository.versionPage(id, before);
+  const successors = await repository.activatedSuccessors(id);
 
   return (
     <div className="ls-stack">
@@ -86,11 +95,14 @@ export default async function ProcedurePage({
                   Created {version.createdAt.replace('T', ' ').slice(0, 19)} UTC · Last
                   changed {version.updatedAt.replace('T', ' ').slice(0, 19)} UTC
                 </p>
+                <VersionStatus version={version} successorNumber={successors.get(version.versionId) ?? null} />
+                {version.state === 'ACTIVE' && <NewVersionButton procedureId={procedure.procedureId} versionId={version.versionId} expectedRowVersion={procedureVersionRowVersion(version)} />}
+                {version.state === 'DRAFT' && <VersionActions procedureId={procedure.procedureId} versionId={version.versionId} rowVersion={procedureVersionRowVersion(version)} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionUnavailableReason(version) }]} />}
                 {version.state === 'DRAFT' ? (
                   <p>
                     <Link
                       className="ls-button ls-button--secondary ls-button--md"
-                      href={`/procedures/${procedure.procedureId}/builder`}
+                      href={`/procedures/${procedure.procedureId}/builder?version=${version.versionId}`}
                     >
                       Open Builder
                     </Link>
@@ -101,6 +113,10 @@ export default async function ProcedurePage({
             </li>
           ))}
         </ul>
+        <nav className="ls-stack" aria-label="Version history pages">
+          {before !== undefined && <Link href={`/procedures/${id}`}>Newest versions</Link>}
+          {olderThan !== null && <Link href={`/procedures/${id}?before=${olderThan}`}>Older versions</Link>}
+        </nav>
       </section>
     </div>
   );

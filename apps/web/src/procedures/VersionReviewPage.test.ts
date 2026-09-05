@@ -6,7 +6,7 @@ import { initialPlanDerivation, type ProcedureVersionView } from '@intellifin/ap
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import VersionReviewPage from '../../app/procedures/[id]/versions/[versionId]/page';
 let row: ProcedureVersionView;
-vi.mock('@intellifin/infrastructure',()=>({DrizzleProcedureRepository:class {async findVersion(){return row;}}}));
+vi.mock('@intellifin/infrastructure',()=>({DrizzleProcedureRepository:class {async findVersion(){return row;} async activatedSuccessors(){return new Map();}}}));
 vi.mock('../bootstrap',()=>({getRuntime:async()=>({db:{}})}));
 vi.mock('../server-session',()=>({requireServerAction:async()=>({allowed:true}),currentIdentity:async()=>({kind:'identified',role:'audit-manager',session:{userId:'reviewer',sessionId:'session'}})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),notFound:()=>{throw new Error('not found');}}));

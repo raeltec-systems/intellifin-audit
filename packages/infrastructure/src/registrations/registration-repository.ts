@@ -3,7 +3,6 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { isUuidText } from '../db/identifier.js';
 
 import type {
-  ReferencingProcedureCounter,
   RegistrationConnectivity,
   RegistrationRecord,
   RegistrationRepository,
@@ -343,18 +342,5 @@ export class DrizzleTargetSystemRegistrationReader implements TargetSystemRegist
         return record;
       })
       .filter((record): record is RegistrationRecord => record !== null);
-  }
-}
-
-/**
- * How many Procedure Versions reference a registration: zero, until Epic 2 exists.
- *
- * It is an adapter rather than a literal `0` at the call site so that the surface is
- * already wired to a port. When Procedures arrive, one class is replaced and the
- * confirmation warning starts appearing without the surface being touched.
- */
-export class NoProcedureReferences implements ReferencingProcedureCounter {
-  async countReferencing(): Promise<number> {
-    return 0;
   }
 }

@@ -99,6 +99,13 @@
       "when": 1788564245741,
       "tag": "0013_blue_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788587918176,
+      "tag": "0014_young_vance_astro",
+      "breakpoints": true
     }
   ]
 }

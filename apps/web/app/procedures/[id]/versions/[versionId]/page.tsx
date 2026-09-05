@@ -9,6 +9,7 @@ import { Banner } from '../../../../../src/design/Banner';
 import { AUTHOR_CANNOT_APPROVE_SENTENCE, BUILDER_DESKTOP_ONLY_SENTENCE } from '../../../../../src/design/copy';
 import { ExecutablePlanPreview } from '../../../../../src/procedures/ExecutablePlanPreview';
 import { VersionActions } from '../../../../../src/procedures/VersionActions';
+import { VersionStatus } from '../../../../../src/procedures/VersionStatus';
 import { ProcedureStateBadge } from '../../../../../src/procedures/ProcedureStateBadge';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ export default async function VersionReviewPage({ params }: { params: Promise<{ 
   const repository = new DrizzleProcedureRepository((await getRuntime()).db);
   const row = await repository.findVersion(versionId);
   if (!row || row.procedureId !== id) notFound();
+  const successors = await repository.activatedSuccessors(id);
   const snapshot = row.frozenReview ?? row.submittedReview;
 
 
@@ -35,7 +37,7 @@ export default async function VersionReviewPage({ params }: { params: Promise<{ 
     <ProcedureStateBadge state={row.state} />
     <p className="ls-desktop-only" role="note">{BUILDER_DESKTOP_ONLY_SENTENCE}</p>
     <div className="ls-builder-authoring ls-stack">
-      {row.state === 'SUBMITTED' ? <Banner tone="info" title="Approval pending. An Audit Manager who did not author this version can approve it." /> : null}
+      <VersionStatus version={row} successorNumber={successors.get(row.versionId) ?? null} />
       {latest ? <section><h2>Saved decision</h2><p>{latest.decision} · {latest.actorId} · {latest.occurredAt}</p></section> : null}
       {(row.decisions?.length ?? 0) > 0 ? <section aria-label="Decision history"><h2>Decision history</h2><ol>{row.decisions!.map((decision,index) => <li key={`${decision.aggregateRevision}:${index}`}><p>{decision.decision} · {decision.actorId} · <time dateTime={decision.occurredAt}>{decision.occurredAt}</time></p>{decision.rationale ? <p>Rationale: {decision.rationale}</p> : null}</li>)}</ol></section> : null}
       <p>{baseline ? `Compared with version ${baseline.versionNumber} (${baseline.versionId}).` : 'First version: every section is expanded for review.'}</p>

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { bindingRowVersion } from '@intellifin/application';
-import { DrizzleBindingRepository, NoProcedureReferences } from '@intellifin/infrastructure';
+import { DrizzleBindingRepository, DrizzleProcedureRepository } from '@intellifin/infrastructure';
 
 import { BindingEditor } from '../../../../src/admin/BindingEditor';
 import { Banner } from '../../../../src/design/Banner';
@@ -50,7 +50,7 @@ export default async function SourcePage({
   const binding = await new DrizzleBindingRepository(runtime.db).findBinding(bindingId);
   if (binding === null) notFound();
 
-  const referencingProcedures = await new NoProcedureReferences().countReferencing();
+  const referencingProcedures = await new DrizzleProcedureRepository(runtime.db).countReferencing(bindingId, 'source');
 
   return (
     <div className="ls-stack">

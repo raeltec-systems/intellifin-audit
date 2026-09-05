@@ -1,6 +1,6 @@
 'use server';
 import { revalidatePath } from 'next/cache';
-import { transitionVersion } from '@intellifin/application';
+import { transitionVersion, newProcedureVersion } from '@intellifin/application';
 import { CryptoUuidV7Generator, DrizzleRoleRepository, PostgresProceduresUnitOfWork } from '@intellifin/infrastructure';
 import type { VersionDecision } from '@intellifin/domain';
 import { getRuntime } from '../../src/bootstrap';
@@ -21,4 +21,17 @@ export async function versionDecisionAction(fields: VersionActionFields): Promis
     runtime.telemetry.captureError('Procedure Version decision failed', error, { correlationId, outcome: 'failure' });
     return { ok: false, reason: 'The decision could not be confirmed. Reload the page before trying again.', unknownOutcome: true };
   }
+}
+
+export async function newVersionAction(fields: { procedureId: string; versionId: string; expectedRowVersion: string }): Promise<{ ok: true; versionId: string } | { ok: false; reason: string; unknownOutcome?: boolean }> {
+  const identity = await currentIdentity();
+  if (identity.kind !== 'identified') return { ok: false, reason: 'Sign in to continue.' };
+  if (!fields || ![fields.procedureId, fields.versionId].every(value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(value)) || !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion)) return { ok: false, reason: 'Invalid Procedure Version request.' };
+  const runtime = await getRuntime();
+  const correlationId = await currentCorrelationId();
+  try {
+    const result = await newProcedureVersion({ roles: new DrizzleRoleRepository(runtime.db), unitOfWork: new PostgresProceduresUnitOfWork(runtime.db), ids: new CryptoUuidV7Generator() }, { ...fields, session: identity.session, correlationId });
+    if (result.ok) revalidatePath(`/procedures/${fields.procedureId}`);
+    return result;
+  } catch (error) { runtime.telemetry.captureError('New Procedure Version failed', error, { correlationId, outcome: 'failure' }); return { ok: false, reason: 'The result could not be confirmed. Reload the page before creating another version.', unknownOutcome: true }; }
 }

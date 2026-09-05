@@ -36,9 +36,10 @@ export const dynamic = 'force-dynamic';
  * procedure id exists by watching this page answer differently.
  */
 export default async function BuilderPage({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ version?: string }>;
 }): Promise<React.JSX.Element> {
   const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
 
@@ -57,12 +58,12 @@ export default async function BuilderPage({
   const procedure = await repository.findProcedure(id);
   if (procedure === null) notFound();
 
-  const versions = await repository.listVersions(id);
   // The Draft is the version this story can edit. Later stories add Submit and the
   // state machine's other arrows; until then the newest version is the Draft or there
   // is nothing editable on this surface at all.
-  const draft = versions.find((version) => version.state === 'DRAFT') ?? null;
-  if (draft === null) notFound();
+  const selectedVersion = (await searchParams).version;
+  const draft = selectedVersion ? await repository.findVersion(selectedVersion) : await repository.latestDraft(id);
+  if (draft === null || draft.procedureId !== id || draft.state !== 'DRAFT') notFound();
   const sources = await new DrizzleBindingRepository(runtime.db).listActiveBindings();
   const registrations = await new DrizzleRegistrationRepository(runtime.db).listActiveRegistrations();
 

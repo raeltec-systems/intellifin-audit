@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { planAuthoringDigest, planAuthoringInputs, UnverifiablePreviousVersion } from '@intellifin/application';
 
 import { isUuidText } from '../db/identifier.js';
 
 import type {
+  ReferencingProcedureCounter,
   PlanDerivationFields,
   VersionReviewFields,
   ProcedureRecord,
@@ -16,6 +17,8 @@ import type {
 } from '@intellifin/application';
 import {
   ExecutablePlanSchema,
+  PlatformPublicationSchema,
+  validVersionLifecycleMetadata,
   isConsistentVersionReview,
   canonicalJson,
   type JsonValue,
@@ -40,7 +43,7 @@ import {
 } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
-import { procedure, procedureVersion } from '../db/schema.js';
+import { procedure, procedureVersion, procedureChange, procedureConfiguration, procedureSuccession } from '../db/schema.js';
 
 /**
  * The Procedure read and write adapters (FR-4, FR-5, AD-2, AD-8).
@@ -60,13 +63,16 @@ export const VERSION_LIST_LIMIT = 100;
 
 const PROCEDURE_SELECTION = {
   procedureId: procedure.procedureId,
-  controlName: procedure.controlName,
+  // Keep this correlation explicitly qualified: Drizzle strips Column qualifiers in
+  // single-table selections, which would bind procedure_id to the inner version row.
+  controlName: sql<string>`COALESCE((SELECT v.control_name FROM procedure_version v WHERE v.procedure_id = "procedure"."procedure_id" AND v.state IN ('ACTIVE', 'DRAFT') ORDER BY CASE WHEN v.state = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = v.version_id AND s.activated_at IS NOT NULL) THEN 0 WHEN v.state = 'ACTIVE' THEN 1 ELSE 2 END, v.version_number DESC LIMIT 1), ${procedure.controlName})`,
   templateId: procedure.templateId,
   createdAt: procedure.createdAt,
   updatedAt: procedure.updatedAt,
 } as const;
 
 const VERSION_SELECTION = {
+  lifecycle: procedureVersion.lifecycle, platformOrigin: procedureVersion.platformOrigin, configurationRevision: procedureVersion.configurationRevision,
   submittedReview: procedureVersion.submittedReview, authorship: procedureVersion.authorship, decisions: procedureVersion.decisions, frozenReview: procedureVersion.frozenReview,
   versionId: procedureVersion.versionId,
   procedureId: procedureVersion.procedureId,
@@ -150,7 +156,7 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
   if (!validReviewFields(row)) return null;
   if (!validPlanMetadata(row)) return null;
-  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
+  if (!isDraftPopulationFields(row, row.platformOrigin != null && row.state === 'DRAFT') || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
@@ -183,7 +189,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
   if (!validReviewFields(row)) return null;
   if (!validPlanMetadata(row)) return null;
-  if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
+  if (!isDraftPopulationFields(row, row.platformOrigin != null && row.state === 'DRAFT') || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
   const templateId = toTemplateId(row.templateId);
   const sections = toSections(row.templateId, row.sections);
@@ -217,8 +223,9 @@ const reviewShape = { schemaVersion: z.literal(1), versionId: z.uuid(), baseline
 };
 const submittedReviewSchema = z.strictObject(reviewShape);
 const frozenReviewSchema = z.strictObject({ ...reviewShape, approval: decisionSchema }).refine(value => value.approval.decision === 'approve');
-function validReviewFields(row: VersionReviewFields & { versionId: string }): boolean {
+function validReviewFields(row: VersionReviewFields & { versionId: string; state: string }): boolean {
   if (row.authorship != null && !authorshipSchema.safeParse(row.authorship).success) return false;
+  if (!validVersionLifecycleMetadata(row)) return false;
   if (!z.array(decisionSchema).safeParse(row.decisions ?? []).success) return false;
   if (row.submittedReview != null && !submittedReviewSchema.safeParse(row.submittedReview).success) return false;
   if (row.frozenReview != null && !frozenReviewSchema.safeParse(row.frozenReview).success) return false;
@@ -226,7 +233,7 @@ function validReviewFields(row: VersionReviewFields & { versionId: string }): bo
   if (row.frozenReview != null && !isConsistentVersionReview(row.frozenReview, row.versionId)) return false;
   return true;
 }
-function reviewFields(row: VersionReviewFields) { return { submittedReview: row.submittedReview ?? null, authorship: row.authorship ?? null, decisions: row.decisions ?? [], frozenReview: row.frozenReview ?? null }; }
+function reviewFields(row: VersionReviewFields) { return { lifecycle: row.lifecycle ?? null, platformOrigin: row.platformOrigin ?? null, configurationRevision: row.configurationRevision ?? null, submittedReview: row.submittedReview ?? null, authorship: row.authorship ?? null, decisions: row.decisions ?? [], frozenReview: row.frozenReview ?? null }; }
 
 function populationFields(row: DraftPopulationFields): DraftPopulationFields {
   return { period: row.period, scope: row.scope, sourceSnapshot: row.sourceSnapshot, inclusionRule: row.inclusionRule, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates, populationBlockers: row.populationBlockers };
@@ -311,7 +318,7 @@ function evidenceFields(row: DraftEvidenceFields): DraftEvidenceFields {
  * version whatever its state" wants a differently-named field, not this one.
  */
 /** Reads Procedures and their versions for the surfaces. Outside any transaction. */
-export class DrizzleProcedureRepository implements ProcedureRepository {
+export class DrizzleProcedureRepository implements ProcedureRepository, ReferencingProcedureCounter {
   constructor(
     private readonly db: Database,
     private readonly limit: number = PROCEDURE_LIST_LIMIT,
@@ -371,6 +378,11 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
     };
   }
 
+  async countReferencing(id: string, kind: 'registration' | 'source' = 'registration'): Promise<number> {
+    const predicate = kind === 'source' ? sql`${procedureVersion.sourceSnapshot}->>'bindingId' = ${id}` : sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${procedureVersion.targets}) target WHERE target->>'registrationId' = ${id})`;
+    const rows = await this.db.select({ procedureId: procedureVersion.procedureId }).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate));
+    return new Set(rows.map(row => row.procedureId)).size;
+  }
   /** Only displayed metadata is selected; full plans/history never enter summary reads. */
   private async activeSummaries(procedureIds: readonly string[]): Promise<Map<string, { state: 'ACTIVE'; versionNumber: number }>> {
     if (procedureIds.length === 0) return new Map();
@@ -378,7 +390,7 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
       procedureId: procedureVersion.procedureId, state: procedureVersion.state, versionNumber: procedureVersion.versionNumber,
     }).from(procedureVersion)
       .where(and(inArray(procedureVersion.procedureId, [...procedureIds]), eq(procedureVersion.state, 'ACTIVE')))
-      .orderBy(asc(procedureVersion.procedureId), desc(procedureVersion.versionNumber), desc(procedureVersion.versionId));
+      .orderBy(asc(procedureVersion.procedureId), sql`CASE WHEN NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = ${procedureVersion.versionId} AND s.activated_at IS NOT NULL) THEN 0 ELSE 1 END`, desc(procedureVersion.versionNumber), desc(procedureVersion.versionId));
     const selected = new Set(procedureIds);
     const result = new Map<string, { state: 'ACTIVE'; versionNumber: number }>();
     for (const row of rows) {
@@ -402,6 +414,24 @@ export class DrizzleProcedureRepository implements ProcedureRepository {
       .filter((version): version is ProcedureVersionView => version !== null);
   }
 
+  async latestDraft(procedureId: string): Promise<ProcedureVersionView | null> {
+    if (!isUuidText(procedureId)) return null;
+    const rows = await this.db.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.procedureId, procedureId), eq(procedureVersion.state, 'DRAFT'))).orderBy(desc(procedureVersion.versionNumber)).limit(1);
+    return rows[0] ? toVersionView(rows[0]) : null;
+  }
+
+  async versionPage(procedureId: string, before?: number): Promise<{ versions: readonly ProcedureVersionView[]; olderThan: number | null }> {
+    if (!isUuidText(procedureId)) return { versions: [], olderThan: null };
+    const rows = await this.db.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.procedureId, procedureId), before === undefined ? undefined : lt(procedureVersion.versionNumber, before))).orderBy(desc(procedureVersion.versionNumber)).limit(VERSION_LIST_LIMIT + 1);
+    const page = rows.slice(0, VERSION_LIST_LIMIT);
+    return { versions: page.map(toVersionView).filter((row): row is ProcedureVersionView => row !== null), olderThan: rows.length > VERSION_LIST_LIMIT ? page.at(-1)!.versionNumber : null };
+  }
+
+  async activatedSuccessors(procedureId: string): Promise<ReadonlyMap<string, number>> {
+    if (!isUuidText(procedureId)) return new Map();
+    const rows = await this.db.select({ predecessorId: procedureSuccession.predecessorId, versionNumber: procedureVersion.versionNumber }).from(procedureSuccession).innerJoin(procedureVersion, eq(procedureVersion.versionId, procedureSuccession.successorId)).where(and(eq(procedureSuccession.procedureId, procedureId), sql`${procedureSuccession.activatedAt} IS NOT NULL`));
+    return new Map(rows.map(row => [row.predecessorId, row.versionNumber]));
+  }
   async findVersion(versionId: string): Promise<ProcedureVersionView | null> {
     if (!isUuidText(versionId)) return null;
     const rows = await this.db
@@ -508,6 +538,49 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
     return previous;
   }
 
+  async findLatestActiveVersion(procedureId: string): Promise<ProcedureVersionRecord | null> {
+    const rows = await this.transaction.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.procedureId, procedureId), eq(procedureVersion.state, 'ACTIVE'), sql`NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = ${procedureVersion.versionId} AND s.activated_at IS NOT NULL)`))
+      .orderBy(sql`${procedureVersion.lifecycle}->>'activatedAt' DESC NULLS LAST`, desc(procedureVersion.versionNumber)).limit(1);
+    if (!rows[0]) return null;
+    const row = toVersionRecord(rows[0]);
+    if (!row) throw new UnverifiablePreviousVersion();
+    return row;
+  }
+  async listActiveVersions(affected?: { kind: 'registration' | 'source'; id: string }): Promise<readonly ProcedureVersionRecord[]> {
+    const predicate = !affected ? undefined : affected.kind === 'source' ? sql`${procedureVersion.sourceSnapshot}->>'bindingId' = ${affected.id}` : sql`${procedureVersion.targets} @> ${JSON.stringify([{ registrationId: affected.id }])}::jsonb`;
+    const rows = await this.transaction.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate)).orderBy(asc(procedureVersion.procedureId), asc(procedureVersion.versionId)).for('update');
+    return rows.map(row => { const result = toVersionRecord(row); if (!result) throw new UnverifiablePreviousVersion(); return result; });
+  }
+  async findChangeResult(changeId: string): Promise<readonly string[] | null> {
+    return (await this.transaction.select().from(procedureChange).where(eq(procedureChange.changeId, changeId)))[0]?.versionIds ?? null;
+  }
+  async recordChangeResult(changeId: string, versionIds: readonly string[]): Promise<void> {
+    await this.transaction.insert(procedureChange).values({ changeId, versionIds });
+  }
+  async applyConfigurationRevision(revision: string, configuration: JsonValue): Promise<boolean> {
+    const existing = (await this.transaction.select().from(procedureConfiguration).where(eq(procedureConfiguration.revision, revision)))[0];
+    if (existing) { if (canonicalJson(existing.configuration) !== canonicalJson(configuration)) throw new Error('A configuration revision cannot be redefined.'); return false; }
+    const current = await this.currentConfiguration();
+    const publication = PlatformPublicationSchema.safeParse(configuration);
+    if (!publication.success) throw new Error('Unsupported configuration publication.');
+    await this.transaction.insert(procedureConfiguration).values({ revision, configuration });
+    const pointer = { revision, publication: configuration };
+    await this.transaction.insert(procedureConfiguration).values({ revision: '@current', configuration: pointer }).onConflictDoUpdate({ target: procedureConfiguration.revision, set: { configuration: pointer } });
+    return !current || canonicalJson(current.model ? { ...current.model } : null) !== canonicalJson(publication.data.model);
+  }
+
+  async currentConfiguration(): Promise<{ revision: string; model: import('@intellifin/application').ModelIdentity | null } | null> {
+    const current = (await this.transaction.select().from(procedureConfiguration).where(eq(procedureConfiguration.revision, '@current')))[0];
+    if (!current) return null;
+    const pointer = z.strictObject({ revision: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/), publication: PlatformPublicationSchema }).safeParse(current.configuration);
+    if (!pointer.success) throw new Error('Published Procedure configuration could not be verified.');
+    const published = (await this.transaction.select().from(procedureConfiguration).where(eq(procedureConfiguration.revision, pointer.data.revision)))[0];
+    if (!published || canonicalJson(published.configuration) !== canonicalJson(pointer.data.publication)) throw new Error('Published Procedure configuration could not be verified.');
+    return { revision: pointer.data.revision, model: pointer.data.publication.model };
+  }
+  async recordSuccession(record: { procedureId: string; predecessorId: string; successorId: string; activatedAt: string | null; handoverAt: string | null }): Promise<void> {
+    await this.transaction.insert(procedureSuccession).values({ ...record, activatedAt: record.activatedAt ? new Date(record.activatedAt) : null, handoverAt: record.handoverAt ? new Date(record.handoverAt) : null });
+  }
   async maxVersionNumber(procedureId: string): Promise<number> {
     if (!isUuidText(procedureId)) return 0;
     const rows = await this.transaction

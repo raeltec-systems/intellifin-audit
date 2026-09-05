@@ -57,7 +57,9 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
   const workerExited = new Promise<void>(resolve => worker.once('close', code => { if (code !== 0 && code !== null) workerFailure = `Worker exited with code ${code}`; resolve(); }));
   worker.stdout.on('data', data => { output += String(data); }); worker.stderr.on('data', data => { output += String(data); });
     stopWorker = async () => { worker.kill(); await workerExited; };
-    await expect.poll(() => { if (workerFailure) throw new Error(workerFailure + ' ' + output); return output.includes('Heartbeat loop started'); }, { timeout: 15000 }).toBe(true);
+    // Cold worker imports share the host with the full browser suite; wait for an
+    // explicit readiness signal while still failing immediately on process errors.
+    await expect.poll(() => { if (workerFailure) throw new Error(workerFailure + ' ' + output); return output.includes('Heartbeat loop started'); }, { timeout: 45000 }).toBe(true);
     await expect(page.getByTestId('executable-plan-preview')).toContainText('Re-derived', { timeout: 45000 });
     expect(output).toContain('Synthetic Anthropic HTTP response delivered');
     // Author once more with the real worker running, then prove its current result.
@@ -75,7 +77,7 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await signIn(manager,email); await expect(manager).toHaveURL(new URL('/', baseURL!).href); await manager.goto('/notifications'); await expect(manager.getByRole('link',{ name:/Procedure Version submitted/ })).toBeVisible({ timeout: 10000 }); await manager.getByRole('link',{ name:/Procedure Version submitted/ }).click(); await expect(manager).toHaveURL(reviewUrl);
     await manager.getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByLabel('Rationale')).toBeFocused(); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('A rationale is required.')).toBeVisible(); await scan(manager);
     await manager.getByLabel('Rationale').fill('Clarify the saved scope before approval.'); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('Rationale: Clarify the saved scope before approval.')).toBeVisible();
-    await page.reload(); await save(page,'Edit'); await expect(page).toHaveURL(/\/builder$/); await save(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
+    await page.reload(); await save(page,'Edit'); await expect(page).toHaveURL(/\/builder\?version=/); await save(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
     await manager.goto(reviewUrl);
     await expect(manager.getByRole('region',{name:'Decision history'})).toContainText('Clarify the saved scope before approval.');
     let decisionPosts = 0;
@@ -86,12 +88,12 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await expect(manager.getByRole('button',{name:'Reject',exact:true})).toBeDisabled();
     await manager.getByRole('button',{name:'Reject',exact:true}).press('Enter'); await expect(manager.getByRole('dialog')).toHaveCount(0); expect(decisionPosts).toBe(1);
     await manager.unroute(reviewUrl); await manager.getByRole('button',{name:'Reload version'}).click();
-    await expect(manager.getByRole('heading',{ name:'Saved decision' })).toBeVisible(); await expect(manager.getByText('Approved', { exact: true })).toBeVisible(); await scan(manager);
+    await expect(manager.getByRole('heading',{ name:'Saved decision' })).toBeVisible(); await expect(manager.getByText('Active', { exact: true })).toBeVisible(); await scan(manager);
     await page.goto('/notifications'); await expect(page.getByRole('link',{ name:/Procedure Version approved/ })).toBeVisible({timeout:10000}); await expect(page.getByRole('link',{name:/Procedure Version submitted/})).toHaveCount(0); await scan(page);
     const frozen = await sql`SELECT state, frozen_review, decisions FROM procedure_version WHERE procedure_id = ${procedureId}`;
     expect(frozen[0]?.frozen_review.definition.modelConfiguration).toEqual({ provider: 'anthropic', modelId: 'synthetic-http-fixture', promptVersion: '1' });
     expect(frozen[0]?.frozen_review.definition.compiledPlan.inputs.scope).toBe('All terminated employees in Finance, reviewed with the worker running.');
-    expect(frozen[0]?.state).toBe('APPROVED'); expect(frozen[0]?.frozen_review.approval.actorId).toBe(managerId); expect(frozen[0]?.decisions.map((d: {decision:string}) => d.decision)).toEqual(['submit','reject','edit','submit','approve']);
+    expect(frozen[0]?.state).toBe('ACTIVE'); expect(frozen[0]?.frozen_review.approval.actorId).toBe(managerId); expect(frozen[0]?.decisions.map((d: {decision:string}) => d.decision)).toEqual(['submit','reject','edit','submit','approve']);
   } catch (error) {
     await test.info().attach('synthetic-worker-log', { body: output, contentType: 'text/plain' });
     if (procedureId) {

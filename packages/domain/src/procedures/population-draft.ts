@@ -107,6 +107,6 @@ export function validatePopulationBinding(source: ProcedureSourceSnapshot, rule:
   return null;
 }
 /** Reads historical snapshots without resolving or rewriting the current registration. */
-export function isDraftPopulationFields(value: DraftPopulationFields): boolean {
-  return (value.period === null || isExplicitPeriod(value.period)) && (value.scope === '' || isScopeStatement(value.scope)) && (value.sourceSnapshot === null || isProcedureSourceSnapshot(value.sourceSnapshot)) && isInclusionRule(value.inclusionRule, value.sourceSnapshot?.contract.declared_schema) && typeof value.zeroRecordPass === 'boolean' && typeof value.allowVersionedDuplicates === 'boolean' && Array.isArray(value.populationBlockers) && JSON.stringify(value.populationBlockers) === JSON.stringify(populationBlockersFor(value.sourceSnapshot));
+export function isDraftPopulationFields(value: DraftPopulationFields, permitStaleColumns = false): boolean {
+  return (value.period === null || isExplicitPeriod(value.period)) && (value.scope === '' || isScopeStatement(value.scope)) && (value.sourceSnapshot === null || isProcedureSourceSnapshot(value.sourceSnapshot)) && isInclusionRule(value.inclusionRule, permitStaleColumns ? undefined : value.sourceSnapshot?.contract.declared_schema) && typeof value.zeroRecordPass === 'boolean' && typeof value.allowVersionedDuplicates === 'boolean' && Array.isArray(value.populationBlockers) && JSON.stringify(value.populationBlockers) === JSON.stringify(populationBlockersFor(value.sourceSnapshot));
 }

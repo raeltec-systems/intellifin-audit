@@ -21,7 +21,7 @@ export function VersionActions({ procedureId, versionId, rowVersion, actions, be
     setBusy(true); setReason(null); if (value !== null) setRationale(value);
     try {
       const result = await versionDecisionAction({ procedureId, versionId, expectedRowVersion: rowVersion, decision: confirming, rationale: value });
-      if (result.ok) { setConfirming(null); router.push(confirming === 'edit' ? `/procedures/${procedureId}/builder` : `/procedures/${procedureId}/versions/${versionId}`); router.refresh(); }
+      if (result.ok) { setConfirming(null); router.push(confirming === 'edit' ? `/procedures/${procedureId}/builder?version=${versionId}` : `/procedures/${procedureId}/versions/${versionId}`); router.refresh(); }
       else { setReason(result.reason); if (result.unknownOutcome) { setUnknown(true); setConfirming(null); } }
     } catch { setUnknown(true); setConfirming(null); setReason('The decision may have been saved. Reload the page before trying again.'); }
     finally { setBusy(false); }

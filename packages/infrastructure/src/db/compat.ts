@@ -37,8 +37,8 @@ import type { Sql } from 'postgres';
  * against a newer database instead of half-working — which is the direction a
  * fail-closed guard is supposed to fail.
  */
-export const SUPPORTED_SCHEMA_MIN = 13;
-export const SUPPORTED_SCHEMA_MAX = 13;
+export const SUPPORTED_SCHEMA_MIN = 14;
+export const SUPPORTED_SCHEMA_MAX = 14;
 
 /** The supported range as it is logged and reported: `min..max`. */
 export const SUPPORTED_SCHEMA_RANGE = `${SUPPORTED_SCHEMA_MIN}..${SUPPORTED_SCHEMA_MAX}`;

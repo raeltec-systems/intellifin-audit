@@ -14,3 +14,4 @@ export * from './compliance-draft.js';
 export * from './evidence-draft.js';
 export * from './plan-compiler.js';
 export * from './version-decision.js';
+export * from './configuration-tuple.js';

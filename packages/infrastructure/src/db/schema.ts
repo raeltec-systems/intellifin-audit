@@ -644,6 +644,9 @@ export const procedureVersion = pgTable(
     decisions: jsonb('decisions').$type<readonly VersionDecisionRecord[]>().notNull().default([]),
     frozenReview: jsonb('frozen_review').$type<FrozenVersionReview>(),
     submittedReview: jsonb('submitted_review').$type<SubmittedVersionReview>(),
+    lifecycle: jsonb('lifecycle').$type<import('@intellifin/domain').VersionLifecycle>(),
+    platformOrigin: jsonb('platform_origin').$type<import('@intellifin/domain').PlatformDraftOrigin>(),
+    configurationRevision: text('configuration_revision'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -732,3 +735,24 @@ export type TargetSystemProbeRow = typeof targetSystemProbe.$inferSelect;
 export type PopulationSourceBindingRow = typeof populationSourceBinding.$inferSelect;
 export type ProcedureRow = typeof procedure.$inferSelect;
 export type ProcedureVersionRow = typeof procedureVersion.$inferSelect;
+
+export const procedureChange = pgTable('procedure_change', {
+  changeId: text('change_id').primaryKey(),
+  versionIds: jsonb('version_ids').$type<readonly string[]>().notNull(),
+});
+export const procedureConfiguration = pgTable('procedure_configuration', {
+  revision: text('revision').primaryKey(),
+  configuration: jsonb('configuration').$type<import('@intellifin/domain').JsonValue>().notNull(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const procedureSuccession = pgTable('procedure_succession', {
+  successorId: uuid('successor_id').primaryKey().references(() => procedureVersion.versionId),
+  predecessorId: uuid('predecessor_id').notNull().references(() => procedureVersion.versionId),
+  procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  handoverAt: timestamp('handover_at', { withTimezone: true }),
+}, table => [
+  uniqueIndex('procedure_succession_activated_predecessor').on(table.predecessorId).where(sql`${table.activatedAt} IS NOT NULL`),
+  check('procedure_succession_no_self', sql`${table.predecessorId} <> ${table.successorId}`),
+  check('procedure_succession_boundary', sql`${table.handoverAt} IS NULL OR (${table.activatedAt} IS NOT NULL AND ${table.handoverAt} > ${table.activatedAt})`),
+]);

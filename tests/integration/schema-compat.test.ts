@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-13 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-14 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -80,6 +80,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Story 2.1. Owned by the procedures module (AD-2); no other module reads or
       // writes either table.
       'procedure',
+      'procedure_change',
+      'procedure_configuration',
+      'procedure_succession',
       'procedure_version',
       'schema_meta',
       'target_system_probe',

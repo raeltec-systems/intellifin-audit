@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import type { AuditUnitOfWork, ProceduresUnitOfWorkContext } from '@intellifin/application';
 
 import {
@@ -39,8 +40,10 @@ export class PostgresProceduresUnitOfWork implements AuditUnitOfWork<ProceduresU
   execute<TResult>(
     work: (context: ProceduresUnitOfWorkContext) => Promise<TResult>,
   ): Promise<TResult> {
-    return this.db.transaction(async (transaction) =>
-      work({
+    return this.db.transaction(async (transaction) => {
+      // First lock across all three module UOWs: prevents inversions and Active-set phantoms.
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(20428, 1)`);
+      return work({
         auditEvents: createAuditEventWriter(transaction, this.clock, this.ids),
         procedures: new DrizzleProcedureWriter(transaction),
         derivationJobs: transactionDerivationQueue(transaction),
@@ -49,7 +52,7 @@ export class PostgresProceduresUnitOfWork implements AuditUnitOfWork<ProceduresU
         notifications: new DrizzleNotificationWriter(transaction),
         notificationRecipients: new DrizzleNotificationRecipientReader(transaction),
         authorizationRoles: new DrizzleRoleRepository(transaction),
-      }),
-    );
+      });
+    });
   }
 }

@@ -8,6 +8,9 @@ export class UnverifiablePreviousVersion extends Error {
 }
 
 export interface VersionReviewFields {
+  readonly lifecycle?: import('@intellifin/domain').VersionLifecycle | null;
+  readonly platformOrigin?: import('@intellifin/domain').PlatformDraftOrigin | null;
+  readonly configurationRevision?: string | null;
   readonly authorship?: VersionAuthorship | null;
   readonly decisions?: readonly VersionDecisionRecord[];
   readonly frozenReview?: FrozenVersionReview | null;
@@ -104,6 +107,13 @@ export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTarg
  * stale-tab guard is a suggestion.
  */
 export interface ProcedureWriter {
+  findLatestActiveVersion?(procedureId: string): Promise<ProcedureVersionRecord | null>;
+  listActiveVersions?(affected?: { kind: 'registration' | 'source'; id: string }): Promise<readonly ProcedureVersionRecord[]>;
+  currentConfiguration?(): Promise<{ revision: string; model: import('./plan-ports.js').ModelIdentity | null } | null>;
+  findChangeResult?(changeId: string): Promise<readonly string[] | null>;
+  recordChangeResult?(changeId: string, versionIds: readonly string[]): Promise<void>;
+  recordSuccession?(record: { procedureId: string; predecessorId: string; successorId: string; activatedAt: string | null; handoverAt: string | null }): Promise<void>;
+  applyConfigurationRevision?(revision: string, configuration: import('@intellifin/domain').JsonValue): Promise<boolean>;
   findPreviousVersion(procedureId: string, versionNumber: number): Promise<ProcedureVersionRecord | null>;
   insertProcedure(record: ProcedureRecord): Promise<void>;
   insertVersion(record: ProcedureVersionRecord): Promise<void>;

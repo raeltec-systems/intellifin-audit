@@ -197,17 +197,9 @@ export interface DeadlinePort {
   within<T>(work: Promise<T>, milliseconds: number): Promise<T>;
 }
 
-/**
- * How many approved Procedure Versions reference a registration.
- *
- * It returns 0 in this release, because no Procedure exists until Epic 2. It exists NOW
- * so that the confirmation warning is wired rather than invented later: the moment
- * Procedures arrive, the surface already says how many drafts a change would mint. The
- * warning renders only above zero — "this creates a draft for 0 Procedures" is a
- * sentence that cannot be true.
- */
+/** Distinct Procedures with Active versions referencing this registration/source identity. */
 export interface ReferencingProcedureCounter {
-  countReferencing(registrationId: string): Promise<number>;
+  countReferencing(id: string, kind?: 'registration' | 'source'): Promise<number>;
 }
 
 /**
@@ -219,5 +211,6 @@ export interface ReferencingProcedureCounter {
  * because there is no other writer to reach.
  */
 export interface RegistrationsUnitOfWorkContext extends AuditUnitOfWorkContext {
+  readonly procedureChanges?: import('../procedures/configuration-change-ports.js').ProcedureChangeHandler;
   readonly registrations: RegistrationWriter;
 }

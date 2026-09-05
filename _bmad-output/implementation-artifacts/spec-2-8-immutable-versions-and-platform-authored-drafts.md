@@ -2,9 +2,11 @@
 title: 'Immutable versions and platform-authored drafts'
 type: 'feature'
 created: '2026-09-04'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
-baseline_commit: 'TBD — set at implementation start; depends on Story 2.7 landing first'
+followup_review_recommended: true
+baseline_commit: '73d577a6fd0eba73f4b07cc71013d313675dd655'
+baseline_revision: '73d577a6fd0eba73f4b07cc71013d313675dd655'
 deferred: []
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
@@ -41,6 +43,12 @@ context:
 
 </frozen-after-approval>
 
+## Implementation coordination and local verification
+
+Story 2.7 is committed and pushed at the baseline above. The implementation agent owns Story 2.8 source, tests and its reusable CLAUDE.md decisions. The epic coordinator owns formal review artifacts, this specification's final status, sprint status, the delivery report, commits, pushes and PR metadata. Return the implemented change uncommitted for formal review. Do not start a second implementation agent with overlapping files.
+
+On this Windows host, dot-source `C:/Users/opc/AppData/Local/Temp/intellifin-epic2-env.ps1` for pinned Node/pnpm and the isolated TLS PostgreSQL 18.6 database. The valid cluster is `C:/Users/opc/tools/intellifin-epic2-test/pgdata`, loopback port 55433, database `intellifin_ci_story27`; it can be migrated to generation 14. Verify readiness first. The old Temp cluster was removed during disk cleanup and must not be reused. Run heavy checks serially, with Vitest `--maxWorkers=1`, and keep final logs under `C:/Users/opc/tools/intellifin-epic2-test/verification/`. Available disk space is about 4.8 GB; check before generators/builds. Do not accumulate multiple large Next build backups. A disk-full generator may exit zero with a truncated snapshot; validate generated files before continuing.
+
 ## Code Map
 
 - `packages/domain/src/procedures/procedure-version.ts` — `PROCEDURE_VERSION_TRANSITIONS` already carries `APPROVED → ACTIVE` and `ACTIVE → RETIRED`; this story supplies the trigger for the first, not a new edge.
@@ -53,13 +61,13 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Enforce immutability in the database as well as the domain: a generation-14 constraint or trigger that refuses an update to a frozen field when the row's state is `APPROVED` or `ACTIVE`, asserted with RAW SQL in the integration suite — a constraint tested only through the command proves nothing about the constraint.
-- [ ] `packages/domain/src/procedures/configuration-tuple.ts` — the tuple (model, prompt version, tool configuration, registration digests), its comparison, the first-version rule, and the `handover_at` computation as pure functions.
-- [ ] Extend the approval command: compare against the prior Active version, then either activate immediately or mark the version as requiring a Regression Run with a pending successor relationship and no `handover_at`; only actual activation sets its authoritative boundary. Record which, and why, on the version.
-- [ ] `packages/application/src/procedures/mint-platform-draft.ts` — the handler that consumes `RegistrationChanged` and the platform model/prompt/tool configuration change, and mints a platform-authored Draft copy in the same unit of work, recording what changed and that it requires approval. Idempotent per (version, change), so one change mints one draft.
-- [ ] "New version": a Draft copy of the Active version, leaving the Active version untouched.
-- [ ] `apps/web` — Procedure Detail states for Draft, Submitted, Rejected, Active, Retired and platform-authored Draft, each with its stated sentence; and the registration-save ripple warning naming the affected Procedure count before the save commits.
-- [ ] Domain, application, integration and e2e tests — every matrix row, raw-SQL immutability, the same-unit-of-work minting proved by rolling the event back and finding no draft, idempotent minting, a held-open-transaction concurrency case, keyboard access and a WCAG scan. Record reusable decisions in `CLAUDE.md`.
+- [x] Enforce immutability in the database as well as the domain: a generation-14 constraint or trigger that refuses an update to a frozen field when the row's state is `APPROVED` or `ACTIVE`, asserted with RAW SQL in the integration suite — a constraint tested only through the command proves nothing about the constraint.
+- [x] `packages/domain/src/procedures/configuration-tuple.ts` — the tuple (model, prompt version, tool configuration, registration digests), its comparison, the first-version rule, and the `handover_at` computation as pure functions.
+- [x] Extend the approval command: compare against the prior Active version, then either activate immediately or mark the version as requiring a Regression Run with a pending successor relationship and no `handover_at`; only actual activation sets its authoritative boundary. Record which, and why, on the version.
+- [x] `packages/application/src/procedures/mint-platform-draft.ts` — the handler that consumes `RegistrationChanged` and the platform model/prompt/tool configuration change, and mints a platform-authored Draft copy in the same unit of work, recording what changed and that it requires approval. Idempotent per (version, change), so one change mints one draft.
+- [x] "New version": a Draft copy of the Active version, leaving the Active version untouched.
+- [x] `apps/web` — Procedure Detail states for Draft, Submitted, Rejected, Active, Retired and platform-authored Draft, each with its stated sentence; and the registration-save ripple warning naming the affected Procedure count before the save commits.
+- [x] Domain, application, integration and e2e tests — every matrix row, raw-SQL immutability, the same-unit-of-work minting proved by rolling the event back and finding no draft, idempotent minting, a held-open-transaction concurrency case, keyboard access and a WCAG scan. Record reusable decisions in `CLAUDE.md`.
 
 **Acceptance Criteria:**
 - Given an `APPROVED` or `ACTIVE` version, when any frozen field is edited through the command OR through raw SQL, then it is refused and nothing changes.
@@ -89,6 +97,63 @@ Minting must be idempotent: a registration change that fans out to several Activ
 - `pnpm typecheck`, `pnpm boundaries`, `pnpm test` — all pass.
 - `pnpm db:migrate`, `pnpm db:generate`, `pnpm test:integration` — migrates to generation 14, no drift, PostgreSQL 18 checks pass, including the raw-SQL immutability assertions.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — builds and every Procedure Detail state pass, including every WCAG 2.1 AA scan.
+
+## Review Triage Log
+
+### 2026-09-05 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 1, medium 7, low 4)
+- defer: 0
+- reject: 2
+- addressed_findings:
+  - `[medium]` `[patch]` P1: direct version lookup, newest-Draft discovery and paginated history preserve access beyond 100 versions.
+  - `[high]` `[patch]` P2: New version rechecks authorization under the transaction lock and audits concurrent revocation without creating a Draft/job.
+  - `[medium]` `[patch]` P3: affected-subset queries isolate unrelated corrupt Active versions while refusing affected corruption.
+  - `[low]` `[patch]` P4: unsupported prompt/tool publication kinds explicitly refuse under the fixed supported compiler contract.
+  - `[medium]` `[patch]` P5: new Procedures read the authoritative published model and revision inside their transaction.
+  - `[low]` `[patch]` P6: complete runtime publication validation precedes property access and writes.
+  - `[low]` `[patch]` P7: replay checks complete publication identity and preserves the real current revision without historical pointer reset.
+  - `[medium]` `[patch]` P8: both detail and review resolve actual succession independently of history pagination.
+  - `[low]` `[patch]` P9: New version failures record safe correlated telemetry before returning unknown outcome.
+  - `[medium]` `[patch]` P10: synchronous request guard plus duplicate and committed-response-loss coverage prevents accidental repeated creation.
+  - `[medium]` `[patch]` P11: recurring approval asserts the exact stored lifecycle/succession boundary and its display.
+  - `[medium]` `[patch]` P12: owner snapshot assertions and queued derivation prove exact Target/Source changes propagate without rewriting predecessors.
+- Repair status: all twelve implemented and independently cleared; see `review-2-8-triage.md` and `review-2-8-followup.md`. Final full verification passed 1,950 unit, 209 integration and 96 browser tests, plus all required static/schema/build checks.
+
+## Auto Run Result
+
+Implemented database-protected reviewed definitions; first/unchanged-configuration activation and regression-gated successors; separate succession boundaries; audited human New version; atomic, replay-safe platform Draft creation for owner registration/source changes and supported model publication; exact changed snapshots and queued derivation; truthful lifecycle surfaces, paginated history and pre-save ripple warnings. New creation reads the published model/revision under its transaction. Unsupported prompt/tool publication fails before any write.
+
+Changed files by responsibility:
+
+- `packages/domain/src/procedures/configuration-tuple.ts` and its tests: tuple comparison, UTC period boundaries and strict lifecycle/origin metadata. Domain exports and population validation support validated platform Drafts.
+- `packages/application/src/procedures/{apply-platform-configuration,configuration-change-ports,mint-platform-draft,new-version}.ts`: typed publication/change contracts, exact snapshot copies, atomic replay and authorized human creation. Creation/decision/port/export changes wire published configuration, activation, lineage and audit. Registration/source commands classify changes and validate confirmed impact.
+- `packages/infrastructure/drizzle/0014_young_vance_astro.sql`, its snapshot/journal and database schema/compatibility files: generation 14, frozen-definition protection, publication/replay storage and succession integrity.
+- Procedure repository/unit-of-work/configuration adapters and registration/source adapters: consistent serialization, affected-subset discovery, strict reads, real revision pointer, direct version access and history pagination. Telemetry adds the safe New version failure message.
+- `scripts/apply-platform-configuration.mts`: explicit release-file operation; no startup publication or migration.
+- Procedure pages/actions, NewVersionButton, VersionStatus, existing decision controls and both registration forms/actions: lifecycle visibility, successor history, guarded creation, safe failures and exact ripple confirmation.
+- Domain/application/web tests, `tests/integration/immutable-versions.test.ts`, `tests/e2e/immutable-versions.spec.ts`, and adjusted existing integration/review suites: contract, rollback, concurrency, provenance, migration, browser and accessibility evidence.
+- `CLAUDE.md`, story/sprint status, review artifacts, acceptance audit and HTML/Markdown delivery reports: shared decisions, review disposition and human delivery evidence. Story 2.5's deferred audit is recorded as resolved; Story 2.7's CI evidence is recorded as green.
+
+Review: 12 patches applied (high 1, medium 7, low 4), 0 deferred, 2 rejected. Follow-up recommended: true; weighted score `3 × 7 + 4 = 25`, also required by the high finding. Independent follow-up completed and cleared every repair. Coordinator separately reviewed the subsequent test-only navigation bound, fixture digest and main-region selector corrections.
+
+Final verification (2026-09-05):
+
+| Gate | Observed outcome |
+|---|---|
+| Full unit | 81 files, 1,950 passed; single worker and established 15-second local test bound; exit 0 |
+| Full PostgreSQL integration | 14 files, 209 passed; PostgreSQL 18.6 over TLS; exit 0 |
+| Full browser | 96 passed, no skips/failures; 7.1 minutes; exit 0 |
+| Focused repaired checks | 26 unit, 17 integration, 4 browser cases passed |
+| Typecheck and boundaries | Passed; 307 modules checked |
+| Migration and schema generation | Generation 14 confirmed; no schema changes |
+| Package and production web builds | Passed; optimized compile, TypeScript and all routes generated |
+| Whitespace | `git diff --check` passed |
+
+Durable command evidence: `C:/Users/opc/tools/intellifin-epic2-test/verification/story28-reviewfix-*`, notably `unit-full4.log`, `integration-full.log`, `browser-full.log` and `production.log` with that prefix. Failed/interrupted attempts are retained as diagnostics, never counted as acceptance. Build-generated next-env import-path churn was omitted, restoring the already-tested repository convention.
+
+Residual boundaries: the PoC serializes Procedure/configuration writes; old generation-13 approvals stay unactivated; supported publication is model-only under prompt 1/interpreter v1; provider HTTP is synthetic. Actual Runs, Regression Runs and scheduler handover remain later epics. The user-selected activation-time handover rule is preserved. Commit/push and final branch CI are recorded in the delivery report and PR.
 
 ## Pre-implementation concurrency and lineage audit
 

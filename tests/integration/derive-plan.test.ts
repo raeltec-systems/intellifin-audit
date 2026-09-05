@@ -232,7 +232,7 @@ describe.skipIf(!databaseUrl)('queued executable plan derivation on PostgreSQL 1
     try {
       await writerLocked.promise; finishModel.resolve();
       await until(async () => {
-        const waiting = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM pg_stat_activity WHERE application_name = ${`plan-lock-${row.versionId}`} AND wait_event_type = 'Lock' AND query ILIKE '%for update%'`;
+        const waiting = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM pg_stat_activity WHERE application_name = ${`plan-lock-${row.versionId}`} AND wait_event_type = 'Lock' AND (query ILIKE '%for update%' OR query ILIKE '%pg_advisory_xact_lock%')`;
         return waiting[0]!.count === 1;
       }, 'derivation did not block on the held version lock');
       finishWriter.resolve(); await writing;

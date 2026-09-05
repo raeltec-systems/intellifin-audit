@@ -796,7 +796,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
           SELECT EXISTS (
             SELECT 1 FROM pg_stat_activity
             WHERE datname = current_database() AND pid <> pg_backend_pid()
-              AND wait_event_type = 'Lock' AND query ILIKE ${`%${table}%`}
+              AND wait_event_type = 'Lock' AND (query ILIKE ${`%${table}%`} OR query ILIKE '%pg_advisory_xact_lock%')
           ) AS waiting
         `;
         if (rows[0]?.waiting === true) return;
@@ -1003,7 +1003,8 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
         correlationId,
         dependencies({ unitOfWork: waitingUnitOfWork }),
       );
-      await bindingLockStarted;
+      // The shared configuration lock now blocks before the registration reader is entered.
+      void bindingLockStarted;
       try {
         await waitForBlockedQuery('target_system_registration');
       } finally {
@@ -1094,7 +1095,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
           SELECT EXISTS (
             SELECT 1 FROM pg_stat_activity
             WHERE datname = current_database() AND pid <> pg_backend_pid()
-              AND wait_event_type = 'Lock' AND query ILIKE '%procedure_version%'
+              AND wait_event_type = 'Lock' AND (query ILIKE '%procedure_version%' OR query ILIKE '%pg_advisory_xact_lock%')
           ) AS waiting
         `;
         if (rows[0]?.waiting === true) return;
@@ -1453,7 +1454,7 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
           SELECT EXISTS (
             SELECT 1 FROM pg_stat_activity
             WHERE datname = current_database() AND pid <> pg_backend_pid()
-              AND wait_event_type = 'Lock' AND query ILIKE '%procedure_version%'
+              AND wait_event_type = 'Lock' AND (query ILIKE '%procedure_version%' OR query ILIKE '%pg_advisory_xact_lock%')
           ) AS waiting
         `;
         if (rows[0]?.waiting === true) return;

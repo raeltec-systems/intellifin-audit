@@ -99,5 +99,6 @@ export interface BindingWriter {
  * because there is no other writer to reach.
  */
 export interface SourcesUnitOfWorkContext extends AuditUnitOfWorkContext {
+  readonly procedureChanges?: import('../procedures/configuration-change-ports.js').ProcedureChangeHandler;
   readonly bindings: BindingWriter;
 }

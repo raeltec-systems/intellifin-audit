@@ -40,3 +40,7 @@ export * from './procedures/retry-plan-derivation.js';
 export * from './procedures/submit-version.js';
 export * from './procedures/decide-version.js';
 export * from './notifications/ports.js';
+
+export * from './procedures/mint-platform-draft.js';
+export * from './procedures/new-version.js';
+export * from './procedures/apply-platform-configuration.js';

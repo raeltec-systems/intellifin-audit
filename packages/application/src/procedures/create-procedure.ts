@@ -211,6 +211,7 @@ export function validateCreateProcedureInput(
 export function procedureVersionRowVersion(record: ProcedureVersionRecord): string {
   return sha256Hex(
     canonicalJson({
+      lifecycle: record.lifecycle ?? null, platformOrigin: record.platformOrigin ?? null, configurationRevision: record.configurationRevision ?? null,
       controlName: record.controlName,
       procedureId: record.procedureId,
       sections: record.sections,
@@ -296,8 +297,10 @@ export async function createProcedure(
 
   return dependencies.unitOfWork.execute(
     async ({ auditEvents, procedures, derivationJobs }): Promise<CreateProcedureResult> => {
+      const published = await procedures.currentConfiguration?.();
+      const configuredVersion = published ? { ...version, ...initialPlanDerivation(published.model), configurationRevision: published.revision } : version;
       await procedures.insertProcedure(procedure);
-      await procedures.insertVersion(await queuePlanDerivation(version, derivationJobs));
+      await procedures.insertVersion(await queuePlanDerivation(configuredVersion, derivationJobs));
       await auditEvents.append({
         actor: { type: 'human', id: session.userId },
         eventType: PROCEDURE_CREATED_EVENT,

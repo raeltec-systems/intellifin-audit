@@ -12,7 +12,7 @@ function harness() {
   const dependencies: ProcedureDependencies = { ids: { next: () => 'event' }, roles: { findRole: async id => id === 'admin' ? 'poc-administrator' : id === 'author' ? 'auditor' : 'audit-manager' }, unitOfWork: {
     async execute(work) {
       let pending = row; const audit: AuditEventDraft[] = [], sends: InAppNotification[] = [];
-      const result = await work({ authorizationRoles: dependencies.roles, procedures: { insertProcedure: async () => {}, insertVersion: async () => {}, findVersion: async () => pending, findVersionForUpdate: async () => pending, updateVersion: async v => { pending = v; }, maxVersionNumber: async () => 1, findPreviousVersion: async () => null },
+      const result = await work({ authorizationRoles: dependencies.roles, procedures: { insertProcedure: async () => {}, insertVersion: async () => {}, findVersion: async () => pending, findVersionForUpdate: async () => pending, updateVersion: async v => { pending = v; }, maxVersionNumber: async () => 1, findPreviousVersion: async () => null, findLatestActiveVersion: async () => null },
         derivationJobs: { enqueue: async () => {} }, populationSources: { findBindingForShare: async () => null }, targetRegistrations: { lockForSelection: async () => [] },
         notificationRecipients: { auditManagerIds: async () => ['manager','manager2'] }, notifications: { enqueue: async n => { if (fail) throw new Error('forced rollback'); sends.push(n); } },
         auditEvents: { append: async event => { audit.push(event); return { ...event, aggregateId: event.aggregateId ?? 'platform', eventId: 'event', occurredAt: new Date().toISOString(), sequence: 1, previousHash: '0'.repeat(64), eventHash: '1'.repeat(64) }; } } });
@@ -37,9 +37,9 @@ describe('Procedure Version decisions', () => {
       expect(await h.act('submit')).toMatchObject({ ok: false }); expect(h.row).toEqual(before); expect(h.events).toEqual([]); expect(h.notifications).toEqual([]);
     }
   });
-  it('freezes the reviewed plan and first-version diff and stops at APPROVED', async () => {
+  it('freezes the reviewed plan and first-version diff and activates the first version', async () => {
     const h = harness(); await h.act('submit'); const reviewed = h.row.compiledPlan;
-    expect(await h.act('approve', 'manager')).toMatchObject({ ok: true, state: 'APPROVED' });
+    expect(await h.act('approve', 'manager')).toMatchObject({ ok: true, state: 'ACTIVE' });
     expect(h.row.frozenReview?.definition.compiledPlan).toEqual(reviewed);
     expect(h.row.frozenReview?.baseline).toBeNull();
     expect(h.row.frozenReview?.diff.length).toBeGreaterThan(9);
