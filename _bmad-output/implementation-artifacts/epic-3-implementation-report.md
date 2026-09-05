@@ -90,3 +90,30 @@ Compliant, so no ordering accident can promote a record.
 
 Two independent adversarial reviews of the five landed stories tried to find a path around it
 and could not.
+
+## 3. Verification actually run
+
+Every story was gated twice: by the agent that implemented it, and independently in the main
+thread against a real PostgreSQL 18 before it was committed. The independent run is what the
+numbers below come from. A story was never committed on a reported result.
+
+Each run covers: typecheck, the dependency-boundary check, the migration, the unit suite run
+alone, the integration suite against real PostgreSQL, a schema-drift check, both builds, and
+the browser suite with an accessibility gate that has no allowlist.
+
+| Story | Schema | Unit | Integration | Browser |
+|---|---|---|---|---|
+| 3.3 Extract and freeze Reference Sources | 19 | 2184 | 262 | 109 |
+| 3.4 Register Observations | 20 | 2266 | 270 | 109 |
+| 3.5 Seal Evidence | 21 | 2305 | 281 | 109 |
+| 3.6 Corroborate against the snapshot | 22 | 2367 | 285 | 109 |
+| 3.7 Evaluate and raise Exceptions | 23 | 2408 | 288 | 109 |
+| 3.8 The Run-level Gate | 24 | 2450 | 303 | 109 |
+
+Zero accessibility violations on every browser run.
+
+Two independent adversarial reviews then read the five landed stories against the contracts
+and the golden fixtures. The golden reconciliation agreed on all twelve named per-record
+cases. Seven defects were found around the evaluator rather than in it, and are repaired in
+their own commits; section 4 records the decisions those repairs settled.
+
