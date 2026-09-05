@@ -379,10 +379,19 @@ export async function retryPlanDerivationAction(fields: { readonly procedureId: 
   if (!decision.allowed) return { ok: false, reason: decision.reason };
   if (typeof fields !== 'object' || fields === null || Object.keys(fields).length !== 3 || !isUuid(fields.procedureId) || !isUuid(fields.versionId) || typeof fields.expectedRowVersion !== 'string' || !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion)) return { ok: false, reason: MALFORMED };
   const correlationId = await currentCorrelationId();
-  const outcome = await retryPlanDerivation(await dependencies(), { ...fields, session: decision.session, correlationId });
-  if (outcome.ok) {
-    revalidatePath(`/procedures/${fields.procedureId}/builder`);
-    revalidatePath(`/procedures/${fields.procedureId}`);
+  // Inside the action's own try, like every sibling: an infrastructure fault must
+  // answer the stated sentence, not a framework 500 (security review on #21).
+  try {
+    const outcome = await retryPlanDerivation(await dependencies(), { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch (error) {
+    try {
+      (await getRuntime()).telemetry.captureError('Retry Plan Derivation failed', error, { outcome: 'failure', correlationId });
+    } catch { /* Boot failures are already reported. */ }
+    return { ok: false, reason: UNAVAILABLE };
   }
-  return outcome;
 }

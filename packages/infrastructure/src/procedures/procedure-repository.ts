@@ -380,7 +380,10 @@ export class DrizzleProcedureRepository implements ProcedureRepository, Referenc
 
   async countReferencing(id: string, kind: 'registration' | 'source' = 'registration'): Promise<number> {
     const predicate = kind === 'source' ? sql`${procedureVersion.sourceSnapshot}->>'bindingId' = ${id}` : sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${procedureVersion.targets}) target WHERE target->>'registrationId' = ${id})`;
-    const rows = await this.db.select({ procedureId: procedureVersion.procedureId }).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate));
+    // The same "current" rule as `findLatestActiveVersion` and `listActiveVersions`: a
+    // version whose successor has activated is not counted, or the administrator
+    // confirms one Procedure and the fan-out mints from two definitions.
+    const rows = await this.db.select({ procedureId: procedureVersion.procedureId }).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate, sql`NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = ${procedureVersion.versionId} AND s.activated_at IS NOT NULL)`));
     return new Set(rows.map(row => row.procedureId)).size;
   }
   /** Only displayed metadata is selected; full plans/history never enter summary reads. */
@@ -548,7 +551,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
   }
   async listActiveVersions(affected?: { kind: 'registration' | 'source'; id: string }): Promise<readonly ProcedureVersionRecord[]> {
     const predicate = !affected ? undefined : affected.kind === 'source' ? sql`${procedureVersion.sourceSnapshot}->>'bindingId' = ${affected.id}` : sql`${procedureVersion.targets} @> ${JSON.stringify([{ registrationId: affected.id }])}::jsonb`;
-    const rows = await this.transaction.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate)).orderBy(asc(procedureVersion.procedureId), asc(procedureVersion.versionId)).for('update');
+    const rows = await this.transaction.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.state, 'ACTIVE'), predicate, sql`NOT EXISTS (SELECT 1 FROM procedure_succession s WHERE s.predecessor_id = ${procedureVersion.versionId} AND s.activated_at IS NOT NULL)`)).orderBy(asc(procedureVersion.procedureId), asc(procedureVersion.versionId)).for('update');
     return rows.map(row => { const result = toVersionRecord(row); if (!result) throw new UnverifiablePreviousVersion(); return result; });
   }
   async findChangeResult(changeId: string): Promise<readonly string[] | null> {

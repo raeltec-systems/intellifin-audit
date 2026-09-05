@@ -61,10 +61,12 @@ describe('the entry-point guard', () => {
     expect(JSON.parse(run(link))).toEqual({ byArgv: false, byMeta: true });
   });
 
-  it('is spelled `import.meta.main` in both entry points', async () => {
+  it('is spelled `import.meta.main` in every entry point', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
-    for (const file of ['./migrate.ts', '../registrations/probe-runner.ts']) {
+    // The release configuration script is the third entry point; it shipped with the
+    // argv comparison this test exists to forbid, because the list was two files long.
+    for (const file of ['./migrate.ts', '../registrations/probe-runner.ts', '../../../../scripts/apply-platform-configuration.mts']) {
       const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
       const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
       expect(code, file).toContain('const isEntryPoint = import.meta.main;');

@@ -22,8 +22,12 @@ export async function applyPlatformConfiguration(dependencies: { unitOfWork: Aud
     if (!context.procedures.applyConfigurationRevision) throw new Error('Configuration revision transaction is unavailable.');
     const changed = await context.procedures.applyConfigurationRevision(input.revision, configuration);
     const changeId = `platform:${input.revision}`;
-    if (changed) await context.auditEvents.append({ actor: { type: 'system', id: 'release-configuration' }, eventType: 'configuration.procedure-platform-changed', source: 'platform', outcome: 'success', sessionId: 'platform-configuration', correlationId: changeId, aggregateId: 'procedure-platform-configuration', payload: { revision: input.revision, changeKind: input.changeKind } });
-    if (!changed && await context.procedures.findChangeResult!(changeId) === null) { await context.procedures.recordChangeResult!(changeId, []); return []; }
+    // Every first publication of a revision moves `@current`, and with it the revision
+    // every new version stamps — so every one is in the chain, not only one that
+    // changes the model (correctness review on #21). A replay changes and appends nothing.
+    const replay = await context.procedures.findChangeResult!(changeId) !== null;
+    if (!replay) await context.auditEvents.append({ actor: { type: 'system', id: 'release-configuration' }, eventType: 'configuration.procedure-platform-changed', source: 'platform', outcome: 'success', sessionId: 'platform-configuration', correlationId: changeId, aggregateId: 'procedure-platform-configuration', payload: { revision: input.revision, changeKind: input.changeKind, modelChanged: changed } });
+    if (!changed && !replay) { await context.procedures.recordChangeResult!(changeId, []); return []; }
     return mintPlatformDraft(context, dependencies.ids, { changeId, kind: input.changeKind, revision: input.revision, model: input.model });
   });
 }

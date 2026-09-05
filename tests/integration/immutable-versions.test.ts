@@ -180,6 +180,50 @@ describe.skipIf(!url)('immutable activation and transactional platform successor
     const other=await active();
     await expect(sql`INSERT INTO procedure_succession (procedure_id, predecessor_id, successor_id) VALUES (${first.procedureId}, ${other.versionId}, ${next.versionId})`).rejects.toThrow('same Procedure');
   });
+  it('after a successor activates, a registration change counts and mints from the current version only',async()=>{
+    // Nothing writes RETIRED until Schedule handover (a later epic), so a superseded
+    // version stays ACTIVE beside its successor. `findLatestActiveVersion` already treats
+    // a version with an activated successor as not current; the ripple count and the
+    // mint fan-out must apply the same rule, or the administrator confirms "1 Procedure"
+    // and two Drafts appear, one copied from the superseded definition (correctness
+    // review on #21).
+    const first=await active();
+    const next=await act(await act(await successor(first),'submit'),'approve');expect(next.state).toBe('ACTIVE');
+    const record=(await new DrizzleRegistrationRepository(db).findRegistration(first.targets[0]!.registrationId))!;
+    expect(await repo.countReferencing(record.registrationId)).toBe(1);
+    const result=await changeTargetSystem(registrationDeps(),{...record,attributeLabelPatterns:['Successor Parameter'],note:'',session:session(admin),correlationId:ids.next(),expectedRowVersion:registrationRowVersion(record),expectedAffectedProcedures:1});
+    expect(result).toMatchObject({ok:true});
+    const drafts=(await repo.listVersions(first.procedureId)).filter(version=>version.state==='DRAFT');
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.platformOrigin?.originatingVersionId).toBe(next.versionId);
+  });
+  it('a registration only a superseded version still references counts no Procedure, and its change mints nothing',async()=>{
+    // The count is "distinct Procedures", so a successor that RETAINS the registration hides
+    // a count that ignores succession: both versions belong to one Procedure. A successor
+    // that swaps it for another system is where the two rules differ — the superseded
+    // version still names the original registration and still reads ACTIVE, and it must
+    // not count, or the administrator confirms "1 Procedure" and nothing is minted.
+    const first=await active();
+    const replacement:RegistrationFields={displayName:'ProdConsoleTwo',kind:'web',allowedOrigins:['https://synthetic-two.invalid'],applicationIdentity:'',credentialRef:'vault://synthetic/prod',permittedActions:['navigate','read-attribute'],attributeLabelPatterns:['Parameter'],secondaryKey:'',note:'',status:'active'};
+    const registered=await registerTargetSystem(registrationDeps(),{...replacement,session:session(admin),correlationId:ids.next()});
+    if(!registered.ok)throw new Error('registration fixture refused');registrations.push(registered.registrationId);
+    const pending=await act(await act(await successor(first,{targets:[snapshotFromRegistration({...replacement,registrationId:registered.registrationId,digest:registered.digest})],instructions:[{registrationId:registered.registrationId,text:'Read the replacement parameters.'}]}),'submit'),'approve');
+    expect(pending.state).toBe('APPROVED');expect(pending.lifecycle).toMatchObject({requiresRegression:true,activatedAt:null});
+    // A changed configuration waits for a Regression Run, which a later epic activates.
+    // Simulate that activation with the one state progression generation 14 permits, so
+    // the read rule is proven for the day a command can reach it.
+    const activatedAt=new Date().toISOString();
+    await sql`UPDATE procedure_version SET state='ACTIVE', lifecycle=jsonb_set(lifecycle,'{activatedAt}',to_jsonb(${activatedAt}::text)) WHERE version_id=${pending.versionId}`;
+    await sql`UPDATE procedure_succession SET activated_at=${activatedAt}::timestamptz WHERE successor_id=${pending.versionId} AND predecessor_id=${first.versionId}`;
+    expect((await uow.execute(ctx=>ctx.procedures.findLatestActiveVersion!(first.procedureId)))?.versionId).toBe(pending.versionId);
+    const original=first.targets[0]!.registrationId;
+    expect(await repo.countReferencing(original)).toBe(0);
+    expect(await repo.countReferencing(registered.registrationId)).toBe(1);
+    const record=(await new DrizzleRegistrationRepository(db).findRegistration(original))!;
+    const result=await changeTargetSystem(registrationDeps(),{...record,attributeLabelPatterns:['Superseded Parameter'],note:'',session:session(admin),correlationId:ids.next(),expectedRowVersion:registrationRowVersion(record),expectedAffectedProcedures:0});
+    expect(result).toMatchObject({ok:true});
+    expect((await repo.listVersions(first.procedureId)).filter(version=>version.state==='DRAFT')).toHaveLength(0);
+  });
   it.each(['registration','source'] as const)('%s save checks exact impact, mints atomically, and ignores annotations',async kind=>{
     const before=await active(),unrelated=await active();
     const correlationId=ids.next();
@@ -327,6 +371,26 @@ describe.skipIf(!url)('immutable activation and transactional platform successor
     expect(submitted.authorship?.createdBy.type).toBe('platform');expect(submitted.authorship?.humanAuthorIds).toContain(manager);
     expect(await transitionVersion(deps(),{session:session(manager),correlationId:ids.next(),procedureId:submitted.procedureId,versionId:submitted.versionId,expectedRowVersion:procedureVersionRowVersion(submitted)},'approve')).toMatchObject({ok:false,reason:'You cannot approve a version you authored.'});
   });
+  it('records a publication whose model is unchanged in the chain, and mints nothing for it',async()=>{
+    // A new revision with the same model still repoints `@current`, which every new
+    // version stamps as its configuration revision. That is a state change nobody can
+    // see without an event (correctness review on #21). A replay of the same file
+    // appends nothing further.
+    const first=`test-${ids.next()}`, again=`test-${ids.next()}`;revisions.push(first,again);
+    const model={provider:'anthropic',modelId:first,promptVersion:'1'};
+    // `@current` is shared by every file on this database and stamps every new version,
+    // so it is put back exactly as found, whether or not the assertions pass.
+    const priorPointer=(await sql`SELECT configuration FROM procedure_configuration WHERE revision='@current'`)[0]?.configuration;
+    try{
+      for(const revision of [first,again]){const file=join(tmpdir(),`${revision}.json`);await writeFile(file,JSON.stringify({revision,model,interpreterContract:'executable-plan-v1',changeKind:'model'}));await applyConfigurationFile(url!,file);if(revision===again)await applyConfigurationFile(url!,file);}
+      const events=await sql`SELECT payload FROM audit_events WHERE event_type='configuration.procedure-platform-changed' AND correlation_id=${'platform:'+again}`;
+      expect(events).toHaveLength(1);expect(events[0]?.payload).toMatchObject({revision:again,changeKind:'model',modelChanged:false});
+      expect((await sql`SELECT configuration FROM procedure_configuration WHERE revision='@current'`)[0]?.configuration).toMatchObject({revision:again});
+      expect(await sql`SELECT version_id FROM procedure_version WHERE configuration_revision=${again}`).toHaveLength(0);
+    }finally{
+      if(priorPointer)await sql`UPDATE procedure_configuration SET configuration=${sql.json(priorPointer)} WHERE revision='@current'`;else await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;
+    }
+  });
   it('operational configuration file entry point mints a supported reviewed model contract and replays its durable revision',async()=>{
     const before=await active(), revision=`test-${ids.next()}`,file=join(tmpdir(),`${revision}.json`);revisions.push(revision);
     const priorPointer=(await sql`SELECT configuration FROM procedure_configuration WHERE revision='@current'`)[0]?.configuration;
@@ -373,6 +437,6 @@ describe.skipIf(!url)('immutable activation and transactional platform successor
       expect(await sql`SELECT * FROM procedure_configuration ORDER BY revision`).toEqual(snapshot);
       await writeFile(file,JSON.stringify({revision:`${revision}-unsupported`,model:{provider:'anthropic',modelId:revision,promptVersion:'2'},interpreterContract:'executable-plan-v1',changeKind:'prompt'}));
       await expect(applyConfigurationFile(url!,file)).rejects.toThrow('Unsupported');
-    }finally{await unlink(file);await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;if(priorPointer!==undefined)await sql`INSERT INTO procedure_configuration(revision,configuration) VALUES ('@current',${JSON.stringify(priorPointer)}::jsonb)`;}
+    }finally{await unlink(file);await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;if(priorPointer!==undefined)await sql`INSERT INTO procedure_configuration(revision,configuration) VALUES ('@current',${sql.json(priorPointer)})`;}
   });
 });

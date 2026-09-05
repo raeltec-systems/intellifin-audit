@@ -16,6 +16,7 @@ export const TELEMETRY_MESSAGES = [
   'Heartbeat loop started',
   'Fatal worker error',
   'Plan derivation queue failed',
+  'Retry Plan Derivation failed',
   'Notification delivery failed',
   'Procedure Version decision failed',
   'New Procedure Version failed',

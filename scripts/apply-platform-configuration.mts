@@ -18,7 +18,8 @@ export async function applyConfigurationFile(databaseUrl: string, filename: stri
 // node_modules, any `--prod deploy` tree) the two paths differ, the module loads, does
 // nothing and exits 0 — a release step reporting success for a publication that never
 // happened. See CLAUDE.md (Story 1.8) and `db/migrate.ts`, which guard the same way.
-if (import.meta.main) {
+const isEntryPoint = import.meta.main;
+if (isEntryPoint) {
   if (!process.env.DATABASE_URL || !process.argv[2]) throw new Error('Set DATABASE_URL and pass a configuration JSON file.');
   const count = await applyConfigurationFile(process.env.DATABASE_URL, process.argv[2]);
   process.stdout.write(`Configuration applied; ${count} platform Drafts recorded for this revision.\n`);
