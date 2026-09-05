@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import type { AuditUnitOfWork, ProceduresUnitOfWorkContext } from '@intellifin/application';
 
 import {
@@ -9,6 +10,11 @@ import {
 import type { Clock, UuidV7Generator } from '@intellifin/application';
 import type { Database } from '../db/client.js';
 import { DrizzleProcedureWriter } from './procedure-repository.js';
+import { transactionDerivationQueue } from './derivation-queue.js';
+import { DrizzlePopulationSourceReader } from '../sources/binding-repository.js';
+import { DrizzleTargetSystemRegistrationReader } from '../registrations/registration-repository.js';
+import { DrizzleNotificationRecipientReader, DrizzleRoleRepository } from '../identity/role-repository.js';
+import { DrizzleNotificationWriter } from '../notifications/notification-repository.js';
 
 /**
  * One PostgreSQL transaction carrying the audit appender AND the Procedure writer
@@ -34,11 +40,19 @@ export class PostgresProceduresUnitOfWork implements AuditUnitOfWork<ProceduresU
   execute<TResult>(
     work: (context: ProceduresUnitOfWorkContext) => Promise<TResult>,
   ): Promise<TResult> {
-    return this.db.transaction(async (transaction) =>
-      work({
+    return this.db.transaction(async (transaction) => {
+      // First lock across all three module UOWs: prevents inversions and Active-set phantoms.
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(20428, 1)`);
+      return work({
         auditEvents: createAuditEventWriter(transaction, this.clock, this.ids),
         procedures: new DrizzleProcedureWriter(transaction),
-      }),
-    );
+        derivationJobs: transactionDerivationQueue(transaction),
+        populationSources: new DrizzlePopulationSourceReader(transaction),
+        targetRegistrations: new DrizzleTargetSystemRegistrationReader(transaction),
+        notifications: new DrizzleNotificationWriter(transaction),
+        notificationRecipients: new DrizzleNotificationRecipientReader(transaction),
+        authorizationRoles: new DrizzleRoleRepository(transaction),
+      });
+    });
   }
 }

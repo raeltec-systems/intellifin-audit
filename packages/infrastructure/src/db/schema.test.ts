@@ -236,6 +236,16 @@ describe('the procedure and procedure_version check constraints', () => {
     );
   });
 
+  it('adds generation 8 typed fields and guarded nullable draft values', () => {
+    const text = migration('0008_swift_hulk.sql');
+    for (const column of ['period', 'scope', 'source_snapshot', 'inclusion_rule', 'zero_record_pass', 'allow_versioned_duplicates', 'population_blockers']) expect(text).toContain(`ADD COLUMN "${column}"`);
+    for (const constraint of ['period_shape', 'scope_bound', 'source_shape', 'rule_shape', 'count_blocker']) expect(text).toContain(`ADD CONSTRAINT "procedure_version_${constraint}"`);
+    expect(text).toContain('INSERT INTO "schema_meta" ("version") VALUES (8)');
+    expect(text).toContain('"termination_effective_date"');
+    expect(text).not.toContain('"termination_date"');
+    expect(text).toContain('"operator":"gte","value":"100000"');
+  });
+
   it('seeds generation 7 by hand, because drizzle-kit does not write that line', () => {
     expect(migration('0007_shallow_lockheed.sql')).toContain(
       `INSERT INTO "schema_meta" ("version") VALUES (7) ON CONFLICT ("version") DO NOTHING;`,

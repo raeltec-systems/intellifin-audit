@@ -1,7 +1,13 @@
+import { initialPlanDerivation, queuePlanDerivation } from './plan-state.js';
+import type { ModelIdentity } from './plan-ports.js';
 import {
   CONTROL_NAME_LIMIT,
   canonicalJson,
   initialDraftSections,
+  initialDraftPopulation,
+  initialDraftTargets,
+  initialDraftCompliance,
+  initialDraftEvidence,
   isTemplateId,
   sha256Hex,
   type DraftSection,
@@ -85,6 +91,7 @@ export interface ProcedureDependencies {
   readonly roles: RoleRepository;
   readonly unitOfWork: AuditUnitOfWork<ProceduresUnitOfWorkContext>;
   readonly ids: UuidV7Generator;
+  readonly derivationModel?: ModelIdentity | null;
 }
 
 export interface CreateProcedureInput {
@@ -204,6 +211,7 @@ export function validateCreateProcedureInput(
 export function procedureVersionRowVersion(record: ProcedureVersionRecord): string {
   return sha256Hex(
     canonicalJson({
+      lifecycle: record.lifecycle ?? null, platformOrigin: record.platformOrigin ?? null, configurationRevision: record.configurationRevision ?? null,
       controlName: record.controlName,
       procedureId: record.procedureId,
       sections: record.sections,
@@ -211,6 +219,32 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       templateId: record.templateId,
       versionId: record.versionId,
       versionNumber: record.versionNumber,
+      authorship: record.authorship ?? null, decisions: record.decisions ?? [], frozenReview: record.frozenReview ?? null, submittedReview: record.submittedReview ?? null,
+      period: record.period,
+      scope: record.scope,
+      sourceSnapshot: record.sourceSnapshot,
+      inclusionRule: record.inclusionRule,
+      zeroRecordPass: record.zeroRecordPass,
+      allowVersionedDuplicates: record.allowVersionedDuplicates,
+      populationBlockers: record.populationBlockers,
+      // Target System selection and per-system Audit Instructions are saved fields, so a
+      // stale tab that edited them must lose to a concurrent save exactly as one that
+      // edited the population fields does.
+      targets: record.targets,
+      instructions: record.instructions,
+      complianceSchemaVersion: record.complianceSchemaVersion,
+      complianceCompilerVersion: record.complianceCompilerVersion,
+      complianceConditions: record.complianceConditions,
+      agentJudgedThreshold: record.agentJudgedThreshold,
+      // Evidence Requirements and the Schedule are saved fields too (Story 2.5); a stale
+      // tab that edited either must lose to a concurrent save exactly as every other
+      // saved field does.
+      evidenceSchemaVersion: record.evidenceSchemaVersion,
+      evidenceRequirements: record.evidenceRequirements,
+      schedule: record.schedule,
+      planCompilerVersion: record.planCompilerVersion, derivationModel: record.derivationModel,
+      compiledPlan: record.compiledPlan, planInputDigest: record.planInputDigest, planStatus: record.planStatus,
+      planFailureReason: record.planFailureReason, planDerivable: record.planDerivable, planAttempts: record.planAttempts,
     } as unknown as JsonValue),
   );
 }
@@ -246,19 +280,27 @@ export async function createProcedure(
     templateId: validated.templateId,
   };
   const version: ProcedureVersionRecord = {
+    ...initialDraftPopulation(validated.templateId),
+    ...initialDraftTargets(),
+    ...initialDraftCompliance(validated.templateId),
+    ...initialDraftEvidence(validated.templateId),
+    ...initialPlanDerivation(dependencies.derivationModel ?? null),
     versionId,
     procedureId,
     versionNumber: 1,
     state: 'DRAFT',
+    authorship: { createdBy: { type: 'human', id: session.userId }, responsibleAuthorId: session.userId, humanAuthorIds: [session.userId] },
     controlName: validated.controlName,
     templateId: validated.templateId,
     sections,
   };
 
   return dependencies.unitOfWork.execute(
-    async ({ auditEvents, procedures }): Promise<CreateProcedureResult> => {
+    async ({ auditEvents, procedures, derivationJobs }): Promise<CreateProcedureResult> => {
+      const published = await procedures.currentConfiguration?.();
+      const configuredVersion = published ? { ...version, ...initialPlanDerivation(published.model), configurationRevision: published.revision } : version;
       await procedures.insertProcedure(procedure);
-      await procedures.insertVersion(version);
+      await procedures.insertVersion(await queuePlanDerivation(configuredVersion, derivationJobs));
       await auditEvents.append({
         actor: { type: 'human', id: session.userId },
         eventType: PROCEDURE_CREATED_EVENT,
@@ -306,7 +348,7 @@ export async function renameProcedureDraft(
 
   try {
     return await dependencies.unitOfWork.execute(
-      async ({ auditEvents, procedures }): Promise<RenameProcedureDraftResult> => {
+      async ({ auditEvents, procedures, derivationJobs }): Promise<RenameProcedureDraftResult> => {
         // Read inside the transaction, under a row lock, so the token the guard checks
         // is the one the write actually replaces.
         const before = await procedures.findVersionForUpdate(input.versionId);
@@ -321,7 +363,7 @@ export async function renameProcedureDraft(
 
         // The Control name is the one editable field; the sections and the state are
         // refused if a caller tried to change them, rather than silently dropped.
-        const after: ProcedureVersionRecord = { ...before, controlName };
+        let after: ProcedureVersionRecord = { ...before, controlName };
         if (procedureVersionRowVersion(after) === input.expectedRowVersion) {
           // An idle save. The honest record of a change that did not happen is silence.
           return {
@@ -333,6 +375,7 @@ export async function renameProcedureDraft(
           };
         }
 
+        after = await queuePlanDerivation(after, derivationJobs, input.session.userId);
         await procedures.updateVersion(after);
         await auditEvents.append({
           actor: { type: 'human', id: session.userId },

@@ -1,0 +1,21 @@
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { expect, it, vi } from 'vitest';
+import { deriveExecutablePlan, diffReviewedDefinitions, type ReviewedDefinition } from '@intellifin/domain';
+import { initialPlanDerivation, type ProcedureVersionView } from '@intellifin/application';
+import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
+import VersionReviewPage from '../../app/procedures/[id]/versions/[versionId]/page';
+let row: ProcedureVersionView;
+vi.mock('@intellifin/infrastructure',()=>({DrizzleProcedureRepository:class {async findVersion(){return row;} async activatedSuccessors(){return new Map();}}}));
+vi.mock('../bootstrap',()=>({getRuntime:async()=>({db:{}})}));
+vi.mock('../server-session',()=>({requireServerAction:async()=>({allowed:true}),currentIdentity:async()=>({kind:'identified',role:'audit-manager',session:{userId:'reviewer',sessionId:'session'}})}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),notFound:()=>{throw new Error('not found');}}));
+it('renders the submitted definition even when live operational plan metadata advances',async()=>{
+  const inputs=executablePlanInputs(), result=deriveExecutablePlan(inputs); if(!result.ok) throw new Error(result.reason);
+  const saved={...result.plan,sessionSteps:result.plan.sessionSteps.map((step,index)=>index===0?{...step,text:'Saved submitted steps'}:step)};
+  const definition:ReviewedDefinition & {compiledPlan:typeof saved}={schemaVersion:1,inputs,compiledPlan:saved,modelConfiguration:{provider:'saved-provider',modelId:'saved-model',promptVersion:'1'},toolConfiguration:{interpreterContract:'executable-plan-v1',identityMatching:'opaque-exact-strings',accessPolicy:'frozen-registered-read-actions',actions:['create-workspace']}};
+  row={...inputs,...initialPlanDerivation(),procedureId:'procedure',versionId:'version',versionNumber:1,state:'SUBMITTED',targetBlockers:[],evidenceBlockers:[],createdAt:'2026-09-05T00:00:00Z',updatedAt:'2026-09-05T01:00:00Z',compiledPlan:{...saved,sessionSteps:saved.sessionSteps.map((step,index)=>index===0?{...step,text:'Later operational steps'}:step)},derivationModel:{provider:'later-provider',modelId:'later-model',promptVersion:'2'},planStatus:'succeeded',submittedReview:{schemaVersion:1,versionId:'version',baseline:null,definition,diff:diffReviewedDefinitions(null,definition)}};
+  const html=renderToStaticMarkup(await VersionReviewPage({params:Promise.resolve({id:'procedure',versionId:'version'})}));
+  expect(html).toContain('Saved submitted steps'); expect(html).not.toContain('Later operational steps');
+  expect(html).toContain('saved-model'); expect(html).not.toContain('later-model');
+});

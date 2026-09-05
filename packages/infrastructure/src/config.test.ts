@@ -7,6 +7,18 @@ const validEnv = {
   SERVICE_NAME: 'web',
 };
 
+describe('model deployment policy', () => {
+  it('lets web freeze model identity without possessing the worker API key', () => {
+    expect(loadConfig({ ...validEnv, MODEL_PROVIDER: 'openai', MODEL_ID: 'synthetic-model' }).MODEL_API_KEY).toBeUndefined();
+    expect(() => loadConfig({ ...validEnv, SERVICE_NAME: 'worker', MODEL_PROVIDER: 'openai', MODEL_ID: 'synthetic-model' })).toThrow(/MODEL_API_KEY/);
+  });
+  it('rejects unsupported prompt labels and invalid output budgets', () => {
+    expect(() => loadConfig({ ...validEnv, MODEL_PROMPT_VERSION: 'arbitrary-version' })).toThrow(/MODEL_PROMPT_VERSION/);
+    for (const budget of ['0', '1023', '262145', '1.5', 'NaN']) expect(() => loadConfig({ ...validEnv, MODEL_MAX_OUTPUT_TOKENS: budget })).toThrow(/MODEL_MAX_OUTPUT_TOKENS/);
+    expect(loadConfig({ ...validEnv, MODEL_MAX_OUTPUT_TOKENS: '32768' }).MODEL_MAX_OUTPUT_TOKENS).toBe(32768);
+  });
+});
+
 describe('loadConfig', () => {
   it('accepts a complete environment', () => {
     const config = loadConfig(validEnv);

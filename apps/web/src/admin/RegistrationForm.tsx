@@ -1,4 +1,5 @@
 'use client';
+import { registrationDigest } from '@intellifin/domain';
 
 import { useId, useRef, useState, type FormEvent } from 'react';
 
@@ -152,6 +153,7 @@ export function RegistrationForm({
               ...fields(),
               registrationId: registration.registrationId,
               expectedRowVersion: rowVersion,
+              expectedAffectedProcedures: referencingProcedures,
             })
           : onCreate
             ? await onCreate(fields())
@@ -192,8 +194,10 @@ export function RegistrationForm({
    * Rendered only above zero. No Procedure exists in this release, so it does not
    * appear; the moment one does, this sentence is already here.
    */
+  let changesConfiguration = false;
+  try { changesConfiguration = registration !== null && registrationDigest({ kind: kind as import('@intellifin/domain').TargetSystemKind, allowedOrigins: linesToList(origins), applicationIdentity, credentialRef, permittedActions: actions as import('@intellifin/domain').PermittedReadAction[], attributeLabelPatterns: linesToList(patterns), secondaryKey }) !== registration.digest; } catch { /* invalid fields are refused by the command */ }
   const referencesWarning =
-    referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
+    changesConfiguration && referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
 
   return (
     <>

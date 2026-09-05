@@ -8,6 +8,9 @@ import { PROCEDURE_REFUSALS } from '@intellifin/application';
 
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import type { RenameActionResult } from '../../app/procedures/[id]/builder/actions';
+import { useSection, useSectionSubmissionStatus } from './use-section';
+import { SectionConflict } from './SectionConflict';
+import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
 /**
  * The Builder's one editable field (FR-7, scoped to this story).
@@ -30,6 +33,7 @@ export interface RenameDraftFormProps {
   readonly versionId: string;
   /** Computed on the server by `procedureVersionRowVersion`. See the doc above. */
   readonly rowVersion: string;
+  readonly savedControlName: string;
   readonly onRename: (
     fields: {
       readonly procedureId: string;
@@ -44,41 +48,43 @@ export function RenameDraftForm({
   procedureId,
   versionId,
   rowVersion,
+  savedControlName,
   onRename,
 }: RenameDraftFormProps): React.JSX.Element {
   const controlNameId = useId();
 
-  const [controlName, setControlName] = useState('');
-  const [token, setToken] = useState(rowVersion);
+  const section = useSection({ savedControlName, controlName: '' }, rowVersion);
+  const controlName = section.value.controlName;
+  const setControlName = (value: string) => section.edit({ ...section.current.current.value, controlName: value });
   const [result, setResult] = useState<RenameActionResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
+  useSectionSubmissionStatus('Control name', section, busy, unknownOutcome);
   /** Written and read in the same tick; `busy` is a render behind. See `BindingForm`. */
   const submittingRef = useRef(false);
 
   async function doRename(): Promise<void> {
-    if (submittingRef.current) return;
+    if (submittingRef.current || unknownOutcome || section.current.current.conflict) return;
     submittingRef.current = true;
     setConfirming(false);
     setBusy(true);
+    section.begin({ savedControlName: controlName.trim(), controlName: '' });
     try {
       const outcome = await onRename({
         procedureId,
         versionId,
         controlName: controlName.trim(),
-        expectedRowVersion: token,
+        expectedRowVersion: section.current.current.token,
       });
       setResult(outcome);
       setAnnouncement((count) => count + 1);
-      if (outcome.ok) {
-        // The next save guards against the row as the command left it.
-        setToken(outcome.rowVersion);
-        setControlName('');
-      }
+      section.finish(outcome.ok ? outcome.rowVersion : undefined);
     } catch {
+      section.finish();
       // A rejected Server Action must not end as a stopped spinner and no message.
-      setResult({ ok: false, reason: 'The change could not be saved. Nothing was changed.' });
+      setUnknownOutcome(true); setResult(null);
       setAnnouncement((count) => count + 1);
     } finally {
       submittingRef.current = false;
@@ -87,7 +93,7 @@ export function RenameDraftForm({
   }
 
   function onRequestSubmit(): void {
-    if (submittingRef.current) return;
+    if (submittingRef.current || unknownOutcome || section.current.current.conflict) return;
     if (controlName.trim() === '') {
       setResult({ ok: false, reason: PROCEDURE_REFUSALS.NAME_REQUIRED });
       setAnnouncement((count) => count + 1);
@@ -98,6 +104,8 @@ export function RenameDraftForm({
 
   return (
     <div className="ls-stack">
+      <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Control name" reset={() => section.reset()} />
+      <UnknownSaveOutcome visible={unknownOutcome} />
       {result === null ? null : (
         <Banner
           key={announcement}
@@ -139,12 +147,11 @@ export function RenameDraftForm({
             onChange={(event) => setControlName(event.target.value)}
           />
           <p className="ls-caption">
-            The one field this release edits. Everything else in the Builder arrives
-            editable in later releases.
+            The Control name is saved on this Draft.
           </p>
         </div>
         <div className="ls-admin__actions">
-          <Button type="submit" variant="primary" size="md" busy={busy}>
+          <Button type="submit" disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary" size="md" busy={busy}>
             {busy ? 'Saving…' : 'Save Control name'}
           </Button>
         </div>

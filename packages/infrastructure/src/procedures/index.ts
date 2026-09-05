@@ -7,3 +7,5 @@
  */
 export * from './procedure-repository.js';
 export * from './procedures-unit-of-work.js';
+export { createProceduresQueue, startProceduresWorker, startProceduresRecovery, reconcileProceduresQueue, PROCEDURES_QUEUE } from './derivation-queue.js';
+export * from './model-gateway.js';

@@ -15,6 +15,11 @@ export const TELEMETRY_MESSAGES = [
   'Heartbeat upsert failed',
   'Heartbeat loop started',
   'Fatal worker error',
+  'Plan derivation queue failed',
+  'Retry Plan Derivation failed',
+  'Notification delivery failed',
+  'Procedure Version decision failed',
+  'New Procedure Version failed',
   'Captured failure',
   'Sign-in recorded',
   'Sign-in refused',
@@ -54,6 +59,10 @@ export const TELEMETRY_MESSAGES = [
   // returned sentence, so these mean the command FAILED and nothing was written.
   'Create Procedure failed',
   'Rename Procedure Draft failed',
+  'Update Population Draft failed',
+  'Update Target Draft failed',
+  'Update Compliance Draft failed',
+  'Update Evidence Draft failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',

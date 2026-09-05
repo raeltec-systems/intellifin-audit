@@ -92,6 +92,7 @@ export interface AuthorizationContext {
    * be checked without it.
    */
   readonly authorId?: string | undefined;
+  readonly humanAuthorIds?: readonly string[] | undefined;
 }
 
 export type AuthorizationDecision =
@@ -197,6 +198,7 @@ function authorApprovingOwnVersion(
   if (action !== 'procedure.version.approve') return false;
   const { actorId, authorId } = context;
   if (authorId === undefined) return true;
+  if (actorId !== undefined && context.humanAuthorIds?.includes(actorId)) return true;
   return actorId !== undefined && actorId === authorId;
 }
 
@@ -213,6 +215,14 @@ export function authorizeAction(
   action: GatedAction,
   context: AuthorizationContext = {},
 ): AuthorizationDecision {
+  const preflight = authorizeActionRole(role, action);
+  if (!preflight.allowed) return preflight;
+  if (authorApprovingOwnVersion(action, context)) return deny(DENIAL_REASONS.AUTHOR_CANNOT_APPROVE);
+  return ALLOW;
+}
+
+/** Role-only preflight for commands that must load trusted aggregate context. */
+export function authorizeActionRole(role: Role | null, action: GatedAction): AuthorizationDecision {
   // `Object.hasOwn`, not a truthiness check: `ACTION_RULES['constructor']` and
   // `ACTION_RULES['toString']` inherit truthy values from Object.prototype, so a
   // plain lookup would sail past the guard and then throw on `rule.allowedRoles` —
@@ -222,9 +232,6 @@ export function authorizeAction(
   if (role === null) return deny(DEFAULT_DENIAL_REASON);
   if (!rule.allowedRoles.includes(role)) {
     return deny(rule.reasons?.[role] ?? DEFAULT_DENIAL_REASON);
-  }
-  if (authorApprovingOwnVersion(action, context)) {
-    return deny(DENIAL_REASONS.AUTHOR_CANNOT_APPROVE);
   }
   return ALLOW;
 }

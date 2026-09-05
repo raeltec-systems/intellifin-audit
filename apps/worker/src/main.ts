@@ -1,7 +1,10 @@
+import { derivePlan, reconcilePlanDerivation, deliverNotifications } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
+  DrizzleNotificationRepository, InAppNotificationSender,
+  createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
   createSqlClient,
   createTelemetry,
@@ -46,8 +49,13 @@ async function main(): Promise<void> {
   const sql = createSqlClient(config.DATABASE_URL);
   const db = createDb(sql);
   const host = hostname();
+  const queue = createProceduresQueue(db);
+  queue.on('error', (error) => telemetry.captureError('Plan derivation queue failed', error, {}));
 
   let interval: NodeJS.Timeout | undefined;
+  let notificationInterval: NodeJS.Timeout | undefined;
+  let notificationDelivery: Promise<void> | undefined;
+  let stopRecovery: (() => void) | undefined;
   let shuttingDown = false;
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -55,6 +63,10 @@ async function main(): Promise<void> {
     shuttingDown = true;
     telemetry.info('Shutting down', { signal });
     if (interval) clearInterval(interval);
+    if (notificationInterval) clearInterval(notificationInterval);
+    await notificationDelivery;
+    stopRecovery?.();
+    await queue.stop().catch(() => undefined);
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(0);
   };
@@ -67,11 +79,28 @@ async function main(): Promise<void> {
   } catch {
     // runStartupChecks already logged the refusal, the declared range, and the
     // version it found. Nothing here is recoverable.
+    await queue.stop().catch(() => undefined);
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(1);
   }
 
+  const model = createModelGateway(config);
+  const derivation = { repository: new DrizzleProcedureRepository(db), unitOfWork: new PostgresProceduresUnitOfWork(db), ids: new CryptoUuidV7Generator(), clock: { now: () => new Date() }, model };
+  await startProceduresWorker(queue, (job, delivery) => derivePlan(derivation, job, delivery));
+  stopRecovery = await startProceduresRecovery(db, (job) => reconcilePlanDerivation(derivation, job),
+    () => telemetry.captureError('Plan derivation queue failed', new Error('Plan recovery failed'), {}));
+
   const loop = createHeartbeatLoop(db, host, telemetry);
+  const notifications = new DrizzleNotificationRepository(db);
+  const sender = new InAppNotificationSender(db);
+  const deliver = () => {
+    if (notificationDelivery) return;
+    notificationDelivery = deliverNotifications(notifications, sender)
+      .catch(error => telemetry.captureError('Notification delivery failed', error, {}))
+      .finally(() => { notificationDelivery = undefined; });
+  };
+  deliver();
+  notificationInterval = setInterval(deliver, 1000);
   await loop.beat();
 
   // The interval is the process's keep-alive; SIGTERM clears it and the process ends.

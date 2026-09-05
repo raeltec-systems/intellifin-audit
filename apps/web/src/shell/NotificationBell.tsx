@@ -2,8 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 
-import { EMPTY_STATES } from '../design/copy';
-import { EmptyState } from '../design/EmptyState';
+import Link from 'next/link';
 import { Icon } from '../design/Icon';
 
 interface NotificationBellProps {
@@ -22,7 +21,7 @@ interface NotificationBellProps {
  * disclaimed there as a prototype affordance, and a role switcher would contradict AD-7
  * outright — the role comes from the session on the server, never from a control.
  *
- * The panel holds the Notifications empty state until the Notifications surface exists.
+ * The panel links to the signed-in user's delivered Notifications surface.
  * A bell that opens nothing would be a control that lies about being one.
  *
  * It is a disclosure, not a dialog: it does not trap focus, so it must be dismissible
@@ -89,7 +88,7 @@ export function NotificationBell({ unread }: NotificationBellProps): React.JSX.E
       </button>
       <div className="ls-bell-panel" id={panelId} hidden={!open}>
         {open ? (
-          <EmptyState icon="bell" {...EMPTY_STATES.notificationsEmpty} />
+          <Link href="/notifications" onClick={() => setOpen(false)}>Open notifications</Link>
         ) : null}
       </div>
     </div>

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { registrationRowVersion } from '@intellifin/application';
-import { DrizzleRegistrationRepository, NoProcedureReferences } from '@intellifin/infrastructure';
+import { DrizzleRegistrationRepository, DrizzleProcedureRepository } from '@intellifin/infrastructure';
 
 import { RegistrationEditor } from '../../../../src/admin/RegistrationEditor';
 import { Banner } from '../../../../src/design/Banner';
@@ -51,7 +51,7 @@ export default async function RegistrationPage({
   );
   if (registration === null) notFound();
 
-  const referencingProcedures = await new NoProcedureReferences().countReferencing();
+  const referencingProcedures = await new DrizzleProcedureRepository(runtime.db).countReferencing(registrationId, 'registration');
 
   return (
     <div className="ls-stack">

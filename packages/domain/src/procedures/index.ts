@@ -8,3 +8,10 @@
  */
 export * from './procedure-version.js';
 export * from './templates.js';
+export * from './population-draft.js';
+export * from './target-draft.js';
+export * from './compliance-draft.js';
+export * from './evidence-draft.js';
+export * from './plan-compiler.js';
+export * from './version-decision.js';
+export * from './configuration-tuple.js';

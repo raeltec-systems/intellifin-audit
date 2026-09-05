@@ -7,6 +7,11 @@ import {
   type TemplateCondition,
   type TemplateId,
 } from './templates.js';
+import type { DraftPopulationFields } from './population-draft.js';
+
+export function initialDraftPopulation(templateId: TemplateId): DraftPopulationFields {
+  return { period: null, scope: '', sourceSnapshot: null, inclusionRule: findProcedureTemplate(templateId).inclusionRule, zeroRecordPass: false, allowVersionedDuplicates: false, populationBlockers: [] };
+}
 
 /**
  * The Procedure Version state machine and the Draft section payload (addendum §E).

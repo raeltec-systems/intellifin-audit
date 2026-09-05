@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 2 — Procedure Builder delivery report</title>
+<style>
+:root{color-scheme:light;--ink:#142b39;--muted:#49616d;--line:#d9e3e7;--accent:#176b65;--paper:#fff;--bg:#f3f6f7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:56px 32px 80px}header{border-top:6px solid var(--accent);padding-top:28px;margin-bottom:40px}.eyebrow{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:750}h1{font-size:42px;line-height:1.15;max-width:850px;margin:14px 0 20px}h2{font-size:26px;line-height:1.3;margin:0 0 18px}h3{font-size:19px;margin:0 0 8px}p{margin:0 0 16px}.lead{font-size:21px;max-width:900px}.muted,small{color:var(--muted)}section{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:28px;margin:24px 0}.status{display:inline-block;border-radius:6px;background:#fff0cf;color:#684900;padding:5px 10px;font-weight:700;font-size:14px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.metric{border-left:3px solid var(--accent);padding-left:16px}.metric strong{display:block;font-size:30px;line-height:1.3}table{border-collapse:collapse;width:100%;font-size:16px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:14px 10px}th{font-size:14px;color:var(--muted)}th:first-child,td:first-child{padding-left:0}a{color:#075c96;text-underline-offset:3px}li{margin-bottom:10px}code{font-size:.9em;background:#edf2f4;padding:2px 5px;border-radius:4px}.note{border-left:4px solid #bb8400;padding:12px 18px;background:#fff7e6}footer{color:var(--muted);font-size:14px;margin-top:30px}@media(max-width:700px){main{padding:24px 16px}h1{font-size:32px}section{padding:20px}.grid{grid-template-columns:1fr}table{font-size:14px}}@media print{body{background:white}main{padding:0}section{break-inside:avoid}a{color:inherit}}
+</style>
+<style>th[scope="row"]{white-space:nowrap}.status{background:#e2f3ec;color:#165940}</style>
+</head>
+<body><main>
+<header>
+<div class="eyebrow">IntelliFin Audit · Engineering delivery</div>
+<h1>From an audit definition to an approved, frozen Procedure Version</h1>
+<p class="lead">Epic 2 builds the authoring and human-review workflow that later Runs will execute against.</p>
+<span class="status">Epic 2 complete · implementation and CI verified</span>
+<p class="muted" style="margin-top:16px">Updated 5 September 2026 · Branch <code>codex/epic-2-procedure-builder</code></p>
+<p><a href="epic-2-delivery-report.md">Read the repository-friendly Markdown report</a></p>
+</header>
+
+<section aria-labelledby="delivery"><h2 id="delivery">What was delivered</h2>
+<table><thead><tr><th scope="col">Story</th><th scope="col">What this means for an Auditor</th><th scope="col">Current state</th></tr></thead><tbody>
+<tr><th scope="row">2.1–2.4</th><td>Create from one of four Templates; bind the population; select registered Target Systems; write instructions; author deterministic or Agent-Judged compliance conditions.</td><td>Implemented; full regression checks passed.</td></tr>
+<tr><th scope="row">2.5</th><td>Declare evidence and grounding requirements; choose a UTC Schedule; see incompatible upload/frequency choices before submission.</td><td>Implemented and verified.</td></tr>
+<tr><th scope="row">2.6</th><td>Read the worker-derived executable plan, its derivation status and model provenance before submitting.</td><td>Implemented, reviewed and verified.</td></tr>
+<tr><th scope="row">2.7</th><td>Submit for independent approval; review the changes; approve or reject with an audit record and in-app notifications.</td><td>Implemented, reviewed and verified.</td></tr>
+<tr><th scope="row">2.8</th><td>Protect reviewed definitions from edits; create successor versions; route relevant configuration changes through the same approval process; retain accessible history.</td><td>Implemented, reviewed and verified.</td></tr>
+</tbody></table>
+<p class="muted" style="margin-top:18px">Actual audit execution, Regression Runs and scheduled handover execution belong to later epics. Epic 2 must supply their approved, versioned input contracts.</p>
+</section>
+
+<section aria-labelledby="verification"><h2 id="verification">Final local verification</h2>
+<div class="grid">
+<div class="metric"><strong>1,950</strong>unit tests passed in 81 files.</div>
+<div class="metric"><strong>209</strong>integration tests passed against PostgreSQL 18.6.</div>
+<div class="metric"><strong>96</strong>browser tests passed, including keyboard and WCAG checks.</div>
+</div>
+<p style="margin-top:24px">Type checking, dependency boundaries (307 modules), generation-14 migration, schema drift checking, package builds and the production web build passed. The final full browser run passed all 96 tests without skips or failures, including accessibility, authoring concurrency, response-loss protection and the complete P-1 author/derive/reject/edit/resubmit/approve journey.</p>
+<p>GitHub CI also passed for the pushed Story 2.5 commit <code>38c96ca</code>: <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170">CI run 48</a>.</p>
+<p>Story 2.6 also passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513">CI run 50</a> at <code>66579c9</code>, including the container build, clean database migration and browser tests. The preceding run exposed three fresh-environment gaps; dependency build ordering, Docker test inputs and browser polling readiness were repaired and independently reviewed.</p>
+<p>Story 2.7 passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33948294403">CI run 51</a> at <code>73d577a</code>: type/unit checks, fresh PostgreSQL migration and integration tests, browser/accessibility checks and built-container smoke checks all succeeded.</p>
+<p class="note">All eight stories are complete and pushed. <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33956593754">Final implementation CI run 52 passed</a> at <code>b432741</code>: types/unit/boundaries, fresh migration/integration, browser/accessibility and built-container startup checks all succeeded. This later report update does not change the tested implementation.</p>
+<p>The prior 96 upgrade combinations were established at Story 2.5; final checks also exercise generation-13 approval upgrades, raw-SQL immutability, exact changed snapshots, replay, lock-time role revocation, stored boundaries and history beyond 100 versions.</p>
+<p>Story 2.7 review identified twelve repairs, including preventing submission while edits are unsaved, showing both versions’ executable plans, preserving the exact submitted review and making older notifications accessible. Independent follow-up cleared them, and all required checks passed after recovery from a full host disk. Final database verification used a fresh isolated cluster.</p>
+<p>Story 2.8 completed four formal review layers and twelve repairs. Independent follow-up cleared every repair. Final full checks passed afterward; failed and interrupted attempts are retained as diagnostics, not counted as passes. See the <a href="epic-2-acceptance-audit.md">acceptance audit</a> and <a href="review-2-8-matrix.md">Story 2.8 evidence map</a>.</p>
+</section>
+
+<section aria-labelledby="decisions"><h2 id="decisions">Important decisions and lessons</h2>
+<ul>
+<li><strong>Your handover decision is recorded.</strong> Approval of a successor that needs regression testing records its pending regression and predecessor relationship. Its authoritative handover date is set only when regression passes and it activates; no speculative date is shown at approval. The architecture and story contracts now agree on this timing.</li>
+<li><strong>Review means the exact submitted definition.</strong> The comparison stores its predecessor and reviewed values at submission. Later background work cannot change what the Manager sees or approves. Previous rejection rationale remains visible after editing and resubmission.</li>
+<li><strong>Independent approval follows actual authorship.</strong> A Manager who changes the definition cannot approve those edits. Operational retries do not make someone an author. Notifications are stored with the decision and become visible after worker delivery, with private pagination and an explicit refresh.</li>
+<li><strong>Derivation survives interrupted work.</strong> An audited start is stored before model work. Bounded retry and recovery retain unfinished attempts, preserve successful plans and detect older-process saves. The preview identifies the attempt that produced the current stored plan.</li>
+<li><strong>Models cannot silently change executable meaning.</strong> Both installed provider SDKs are tested with synthetic HTTP. Their complete response must match the frozen contract; canonical compiler bytes are stored. A live provider acceptance check still needs a deployment credential.</li>
+<li><strong>Native PostgreSQL removed the Docker blocker.</strong> Docker Desktop failed during startup. Verification now uses an isolated native PostgreSQL 18.6 test cluster with TLS and password authentication. No application database was used.</li>
+<li><strong>Automatic Drafts are atomic with configuration changes.</strong> The same transaction records a relevant registration change and its platform-authored successors. Replays cannot duplicate them; annotation-only changes create none. Human responsibility and independent approval remain intact.</li>
+<li><strong>Configuration publication is an explicit release step.</strong> After migration and builds, run <code>node scripts/apply-platform-configuration.mts &lt;configuration.json&gt;</code> with DATABASE_URL. Supported publication changes the model under prompt 1 and executable-plan-v1; unsupported prompt/tool publications are refused. New Procedures read the current published revision, even on a stale web process. Startup never publishes changes, and credentials stay outside stored configuration.</li>
+<li><strong>Correctness currently limits concurrent writes.</strong> Procedure and configuration commands share a transaction lock to prevent conflicting lock order and changes to the confirmed ripple count. Model calls and credential probes remain outside it. This is a documented proof-of-concept throughput trade-off.</li>
+<li><strong>Concurrency protects the values as well as the save token.</strong> A refreshed token must not give stale local values permission to overwrite another auditor’s section. Delayed save responses also need to preserve newly detected conflicts.</li>
+<li><strong>Capture follows saved targets.</strong> Mandatory Structural Snapshot and screenshot requirements are derived from current Target selections, including during upgrades. Grounding validation runs after this authoritative derivation.</li>
+<li><strong>A lost response is not proof of a failed save.</strong> The editor must ask the Auditor to reload and inspect the saved state rather than claim that nothing changed.</li>
+<li><strong>Development logs must not expose action arguments.</strong> Next’s Server Action argument logging was disabled after verification showed it could include submitted credentials. A further browser check confirmed that account creation still worked without those argument traces.</li>
+</ul>
+<p>Reusable details and the report/PR delivery rule are recorded in <a href="../../CLAUDE.md">CLAUDE.md</a>. The earlier editor-concurrency audit is closed; one automated-review finding is deferred to the owner, above.</p>
+</section>
+
+<section aria-labelledby="review"><h2 id="review">Independent review after CI green</h2>
+<p>A second review of the whole PR diff — correctness, verification gaps and security — plus the automated Codex review found seven defects after run 53 was green. Six were fixed in the initial review pass, and each fix carries a test that fails when the fix is reverted:</p>
+<ul>
+<li><strong>Population Source picker cap.</strong> The Builder's picker inherited the administration list's 200-row cap, so a source past the cap could not be bound (Codex finding). The picker read is unpaged and active-only now.</li>
+<li><strong>External browser server.</strong> The worker-backed review journey started its fixture worker even against an external web server, where it cannot pass (Codex finding). It skips itself there and says why.</li>
+<li><strong>Ripple count and fan-out.</strong> Both ignored activated succession: an administrator confirmed “1 Procedure” and two Drafts appeared, one copied from the superseded definition. Both now apply the same “current version” rule as the Active-version read.</li>
+<li><strong>Unaudited publication.</strong> A configuration publication that left the model unchanged moved <code>@current</code> with nothing in the audit chain. Every first publication is appended now; a replay appends nothing.</li>
+<li><strong>Entry-point guard.</strong> The platform-configuration script would report success having done nothing when invoked through a symlink — the Story 1.8 defect. It uses <code>import.meta.main</code>, and the entry-point test covers it.</li>
+<li><strong>Retry action.</strong> The plan-derivation retry could answer a framework 500 instead of a sentence. It fails like its sibling actions.</li>
+<li><strong>Untested triggers.</strong> Raw-SQL immutability of recorded activation metadata and succession edges, and the platform-change trigger branches, gained the integration tests nothing had exercised.</li>
+</ul>
+<p>The owner subsequently requested the remaining forced-evidence fix. Removing the last agent-driven Target now clears platform-added capture requirements and preserves recorded authored choices, including after reload and unrelated edits. A Draft left without grounding stays editable but cannot derive a plan or be submitted until corrected. Legacy rows without capture provenance retain their values because authorship cannot safely be inferred. See the <a href="epic-2-capture-fix-report.md">follow-up verification report</a>. Smaller hardening follow-ups remain.</p>
+<p>Verification before the capture follow-up on a fresh PostgreSQL 18.4 at generation 14: 1,950 unit tests, 214 integration tests, typecheck, boundaries, build, and the 31 browser tests of the three touched specs. <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33961248848">CI run 55</a> passed on <code>0dcc594</code>, which differs from the last code change <code>26fd0e8</code> only by this report. Run 54 on <code>26fd0e8</code> had passed its typecheck/unit, integration and container jobs when the report push cancelled its browser job, as the workflow’s concurrency rule requires. The run on this final commit is linked from the PR.</p>
+</section>
+
+<section aria-labelledby="owner"><h2 id="owner">What needs your attention</h2>
+<p>Remaining release considerations for <a href="https://github.com/raeltec-systems/intellifin-audit/pull/21">PR 21</a>:</p>
+<ul>
+<li><strong>Where to merge.</strong> There is no <code>develop</code> branch. The PR targets <code>main</code>, and a merge to <code>main</code> is the production release: the release workflow migrates the production database from generation 7 to 14 and deploys web, worker and Northstar to Railway. Merging to a new <code>develop</code> branch deploys nothing until the release workflow is changed to read it.</li>
+<li><strong>Live model proof.</strong> The Anthropic account answers “credit balance is too low” and OpenAI is unreachable from the review environment, so the model path is proven only through synthetic provider HTTP. The production worker has no <code>MODEL_*</code> variables, so the release derives plans deterministically. To run a model live: fund the account, set the worker's <code>MODEL_*</code> variables, and publish a model revision with the configuration script.</li>
+</ul>
+</section>
+<footer>Review surface for the product owner. The source diff, story specifications and tests remain the technical evidence.</footer>
+</main></body></html>

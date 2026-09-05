@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-04-2026 10:55
+last_updated: 09-05-2026
 project: IntelliFin Audit
 project_key: NOKEY
 tracking_system: file-system
@@ -46,15 +46,15 @@ development_status:
   1-8-synthetic-northstar-systems-seeded-with-golden-populations: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
+  epic-2: done
   2-1-create-a-procedure-from-a-template: done
-  2-2-bind-the-population-source-with-an-inclusion-rule-and-declar: backlog
-  2-3-select-target-systems-and-write-audit-instructions-with-the: backlog
-  2-4-author-the-compliance-rule-with-compiled-and-agent-judged-co: backlog
-  2-5-specify-evidence-requirements-and-set-the-schedule: backlog
-  2-6-read-the-re-derived-executable-plan-before-submitting: backlog
-  2-7-submit-for-approval-and-approve-or-reject-with-a-diff: backlog
-  2-8-immutable-versions-and-platform-authored-drafts: backlog
+  2-2-bind-the-population-source-with-an-inclusion-rule-and-declar: done
+  2-3-select-target-systems-and-write-audit-instructions-with-the: done
+  2-4-author-the-compliance-rule-with-compiled-and-agent-judged-co: done
+  2-5-specify-evidence-requirements-and-set-the-schedule: done
+  2-6-read-the-re-derived-executable-plan-before-submitting: done
+  2-7-submit-for-approval-and-approve-or-reject-with-a-diff: done
+  2-8-immutable-versions-and-platform-authored-drafts: done
   epic-2-retrospective: optional
 
   epic-3: backlog

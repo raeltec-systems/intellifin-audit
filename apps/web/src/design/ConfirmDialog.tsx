@@ -13,6 +13,9 @@ import { createPortal } from 'react-dom';
 export type ConfirmWeight = 'routine' | 'routine-with-rationale' | 'finalization';
 
 interface ConfirmDialogProps {
+  readonly initialRationale?: string;
+  readonly refusal?: string | null;
+  readonly busy?: boolean;
   readonly open: boolean;
   readonly weight: ConfirmWeight;
   /** Names the consequence, and for a finalization names that it cannot be undone. */
@@ -64,6 +67,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
+  initialRationale = '', refusal = null, busy = false,
 }: ConfirmDialogProps): React.JSX.Element | null {
   const titleId = useId();
   const consequenceId = useId();
@@ -97,7 +101,7 @@ export function ConfirmDialog({
 
     invokerRef.current = document.activeElement;
     initialFocusRef.current?.focus();
-    setRationale('');
+    setRationale(initialRationale);
     setError(null);
     confirmedRef.current = false;
 
@@ -151,10 +155,12 @@ export function ConfirmDialog({
     };
   }, [open, container]);
 
+  useEffect(() => { if (refusal) confirmedRef.current = false; }, [refusal]);
+
   if (!open || !container) return null;
 
   function handleConfirm(): void {
-    if (confirmedRef.current) return;
+    if (confirmedRef.current || busy) return;
     if (needsRationale && rationale.trim() === '') {
       setError('A rationale is required.');
       document.getElementById(rationaleId)?.focus();
@@ -180,6 +186,7 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p id={consequenceId}>{consequence}</p>
+        {refusal ? <p role="alert" className="ls-field-error">{refusal}</p> : null}
 
         {needsRationale ? (
           <div className="ls-dialog__field">
@@ -188,6 +195,7 @@ export function ConfirmDialog({
               className="ls-textarea"
               id={rationaleId}
               value={rationale}
+              maxLength={4000}
               aria-describedby={error ? errorId : undefined}
               aria-invalid={error ? true : undefined}
               onChange={(event) => {
@@ -211,6 +219,7 @@ export function ConfirmDialog({
             type="button"
             className="ls-button ls-button--secondary ls-button--sm"
             onClick={onCancel}
+            disabled={busy}
             ref={(element) => {
               if (!needsRationale) initialFocusRef.current = element;
             }}
@@ -223,6 +232,7 @@ export function ConfirmDialog({
               weight === 'finalization' ? 'destructive' : 'primary'
             }`}
             onClick={handleConfirm}
+            disabled={busy}
           >
             {confirmLabel}
           </button>

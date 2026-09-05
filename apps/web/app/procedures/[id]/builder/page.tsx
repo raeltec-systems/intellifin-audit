@@ -5,16 +5,16 @@ import {
   procedureVersionRowVersion,
   PROCEDURE_AUTHOR_ACTION,
 } from '@intellifin/application';
-import { DrizzleProcedureRepository } from '@intellifin/infrastructure';
+import { DrizzleProcedureRepository, DrizzleBindingRepository, DrizzleRegistrationRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
-import { BuilderSections } from '../../../../src/procedures/BuilderSections';
+import { BUILDER_DESKTOP_ONLY_SENTENCE } from '../../../../src/design/copy';
+import { DraftBuilder } from '../../../../src/procedures/DraftBuilder';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
-import { RenameDraftForm } from '../../../../src/procedures/RenameDraftForm';
 import { templateLabel } from '../../../../src/procedures/labels';
 import { requireServerAction } from '../../../../src/server-session';
-import { renameProcedureDraftAction } from './actions';
+import { retryPlanDerivationAction, renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction, updateComplianceDraftAction, updateEvidenceDraftAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Builder · IntelliFin Audit',
@@ -36,9 +36,10 @@ export const dynamic = 'force-dynamic';
  * procedure id exists by watching this page answer differently.
  */
 export default async function BuilderPage({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ version?: string }>;
 }): Promise<React.JSX.Element> {
   const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
 
@@ -57,15 +58,21 @@ export default async function BuilderPage({
   const procedure = await repository.findProcedure(id);
   if (procedure === null) notFound();
 
-  const versions = await repository.listVersions(id);
   // The Draft is the version this story can edit. Later stories add Submit and the
   // state machine's other arrows; until then the newest version is the Draft or there
   // is nothing editable on this surface at all.
-  const draft = versions.find((version) => version.state === 'DRAFT') ?? null;
-  if (draft === null) notFound();
+  const selectedVersion = (await searchParams).version;
+  const draft = selectedVersion ? await repository.findVersion(selectedVersion) : await repository.latestDraft(id);
+  if (draft === null || draft.procedureId !== id || draft.state !== 'DRAFT') notFound();
+  const sources = await new DrizzleBindingRepository(runtime.db).listActiveBindings();
+  const registrations = await new DrizzleRegistrationRepository(runtime.db).listActiveRegistrations();
 
   return (
     <div className="ls-stack">
+      {/* NFR-11: below 900px the desktop note replaces the authoring controls. */}
+      <p className="ls-desktop-only" role="note">
+        {BUILDER_DESKTOP_ONLY_SENTENCE}
+      </p>
       <DetailTrail
         trail={[
           { href: '/procedures', label: 'Procedures', mono: false },
@@ -91,22 +98,20 @@ export default async function BuilderPage({
         </p>
       </header>
 
-      <BuilderSections sections={draft.sections} />
-
-      <RenameDraftForm
-        procedureId={procedure.procedureId}
-        versionId={draft.versionId}
-        rowVersion={procedureVersionRowVersion({
-          versionId: draft.versionId,
-          procedureId: draft.procedureId,
-          versionNumber: draft.versionNumber,
-          state: draft.state,
-          controlName: draft.controlName,
-          templateId: draft.templateId,
-          sections: draft.sections,
-        })}
-        onRename={renameProcedureDraftAction}
-      />
+      <div className="ls-builder-authoring">
+        <DraftBuilder
+          draft={draft}
+          sources={sources}
+          registrations={registrations}
+          rowVersion={procedureVersionRowVersion(draft)}
+          onSave={updatePopulationDraftAction}
+          onSaveTargets={updateTargetDraftAction}
+          onSaveCompliance={updateComplianceDraftAction}
+          onSaveEvidence={updateEvidenceDraftAction}
+          onRename={renameProcedureDraftAction}
+          onRetryPlan={retryPlanDerivationAction}
+        />
+      </div>
     </div>
   );
 }

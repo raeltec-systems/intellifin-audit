@@ -271,6 +271,25 @@ describe.skipIf(!databaseUrl)('Population Source bindings against PostgreSQL 18'
     expect(upload?.location).toBe('');
   });
 
+  it('offers the Builder every active binding, past the administration list cap', async () => {
+    // `listBindings` is the administration screen's read and is capped; the Builder
+    // picker must not inherit that cap or an auditor cannot bind a Procedure to any
+    // source past the first page. A limit of 1 makes the difference observable with two
+    // rows instead of two hundred; the assertion fails the moment the picker is paged.
+    for (const index of [0, 1]) {
+      const outcome = await register(
+        { displayName: `${prefix}Picker ${index}`, location: 'https://picker.synthetic.invalid/rows' },
+        `${prefix}picker-${index}`,
+      );
+      expect(outcome.ok).toBe(true);
+    }
+    const capped = new DrizzleBindingRepository(db, 1);
+    expect(await capped.listBindings()).toHaveLength(1);
+    const offered = (await capped.listActiveBindings()).filter((row) => row.displayName.startsWith(`${prefix}Picker `));
+    expect(offered).toHaveLength(2);
+    expect(offered.every((row) => row.status === 'active')).toBe(true);
+  });
+
   it('SAVES a binding that declares no expected count, and says so', async () => {
     const correlationId = `${prefix}no-count`;
     const outcome = await register(

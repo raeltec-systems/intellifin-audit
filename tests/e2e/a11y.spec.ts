@@ -52,7 +52,7 @@ test.describe('WCAG 2.1 AA — signed in', () => {
   test('the shell with the notifications panel open has no violations', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Notifications' }).click();
-    await expect(page.getByText('No Run is waiting on you.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open notifications', exact: true })).toBeVisible();
     await scan(page);
   });
 

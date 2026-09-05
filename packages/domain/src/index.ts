@@ -1,6 +1,6 @@
 /**
  * `@intellifin/domain` — entities, value objects, state machines and deterministic
- * rules. AD-1: this package imports nothing outward. It has no runtime dependencies
+ * rules. AD-1: this package imports nothing outward. Zod validates durable data contracts;
  * and must never import Drizzle, pg-boss, Solari, the AI SDK, Resend, S3,
  * Better Auth, Next.js, Pino or Sentry — enforced by `pnpm boundaries`.
  *
@@ -16,6 +16,7 @@ export * from './audit-event.js';
 export * from './canonical-json.js';
 export * from './identity/index.js';
 export * from './procedures/index.js';
+export * from './procedures/executable-plan.js';
 export * from './registrations/index.js';
 export * from './sha256.js';
 export * from './sources/index.js';

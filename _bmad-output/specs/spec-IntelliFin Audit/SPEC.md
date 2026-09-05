@@ -3,7 +3,7 @@ id: SPEC-intellifin-audit
 title: IntelliFin Audit — Delegated Agentic Audit Execution (PoC)
 status: final
 created: 2026-09-01
-updated: 2026-09-01
+updated: 2026-09-04
 companions:
   - glossary.md
   - ../../planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/addendum.md
@@ -18,6 +18,10 @@ sources:
 > **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. Source documents listed in frontmatter are for traceability — consult them only if you need narrative rationale or prose color this contract intentionally omits.
 
 # IntelliFin Audit — Delegated Agentic Audit Execution (PoC)
+
+## 0. Owner-approved timing correction — 2026-09-04
+
+Approval of a regression-gated successor records pending regression and its successor relationship without a speculative handover date. Actual activation after regression passes sets the authoritative boundary strictly after activation. The owner explicitly selected this behavior. This supersedes approval-time wording and invalidates prior downstream timing reviews: Story 2.8 and later Regression Run/scheduler contracts require revalidation. Execution and scheduler handover remain outside Epic 2.
 
 ## Why
 

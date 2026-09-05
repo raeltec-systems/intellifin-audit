@@ -1,15 +1,15 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 
 import { isUuidText } from '../db/identifier.js';
 
 import type {
-  ReferencingProcedureCounter,
   RegistrationConnectivity,
   RegistrationRecord,
   RegistrationRepository,
   RegistrationStatus,
   RegistrationWriter,
   TargetSystemRegistration,
+  TargetSystemRegistrationReader,
 } from '@intellifin/application';
 import { isRegistrationStatus } from '@intellifin/application';
 import {
@@ -184,6 +184,35 @@ export class DrizzleRegistrationRepository implements RegistrationRepository {
       .filter((registration): registration is TargetSystemRegistration => registration !== null);
   }
 
+  /**
+   * Every ACTIVE registration, for the Builder's Target System picker.
+   *
+   * Active-only and unpaged, NOT a filter over `listRegistrations`. Retired rows
+   * cannot be newly selected — a Draft that names one keeps it as a retained snapshot, it
+   * does not pick it fresh — and a filter over the surface read would silently drop live
+   * systems past its 200-row cap. The picker must offer every eligible registration.
+   */
+  async listActiveRegistrations(): Promise<readonly TargetSystemRegistration[]> {
+    const rows = await this.db
+      .select({
+        ...SELECTION,
+        probeState: targetSystemProbe.state,
+        probeObservedAt: targetSystemProbe.observedAt,
+      })
+      .from(targetSystemRegistration)
+      .leftJoin(
+        targetSystemProbe,
+        eq(targetSystemProbe.registrationId, targetSystemRegistration.registrationId),
+      )
+      .where(eq(targetSystemRegistration.status, 'active'))
+      .orderBy(asc(targetSystemRegistration.displayName), asc(targetSystemRegistration.registrationId));
+    return rows
+      .map((row) =>
+        toRegistration(row, toConnectivity({ state: row.probeState, observedAt: row.probeObservedAt })),
+      )
+      .filter((registration): registration is TargetSystemRegistration => registration !== null);
+  }
+
   async findRegistration(registrationId: string): Promise<TargetSystemRegistration | null> {
     // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a
     // `uuid` column against text that is not one, and this id comes from a URL.
@@ -281,14 +310,37 @@ export class DrizzleRegistrationWriter implements RegistrationWriter {
 }
 
 /**
- * How many Procedure Versions reference a registration: zero, until Epic 2 exists.
+ * The registration-owned read a Procedure command resolves a Target selection through
+ * (AD-2, AD-8).
  *
- * It is an adapter rather than a literal `0` at the call site so that the surface is
- * already wired to a port. When Procedures arrive, one class is replaced and the
- * confirmation warning starts appearing without the surface being touched.
+ * It takes a {@link Transaction}, never a pool: the selection is resolved and the Draft is
+ * written in one transaction, and the rows are held under a SHARE lock until it finishes so
+ * a concurrent change to a registration cannot land between the read and the write. The
+ * lock order is ascending id — deterministic, never the order the auditor selected — so two
+ * saves locking overlapping sets queue instead of deadlocking, the same discipline
+ * `DrizzleRoleWriter.lockHolders` uses.
  */
-export class NoProcedureReferences implements ReferencingProcedureCounter {
-  async countReferencing(): Promise<number> {
-    return 0;
+export class DrizzleTargetSystemRegistrationReader implements TargetSystemRegistrationReader {
+  constructor(private readonly transaction: Transaction) {}
+
+  async lockForSelection(registrationIds: readonly string[]): Promise<readonly RegistrationRecord[]> {
+    // A malformed id is not a row; comparing a `uuid` column against non-uuid text raises
+    // 22P02, and these ids arrive from request input.
+    const ids = [...new Set(registrationIds.filter(isUuidText))];
+    if (ids.length === 0) return [];
+    const rows = await this.transaction
+      .select(SELECTION)
+      .from(targetSystemRegistration)
+      .where(inArray(targetSystemRegistration.registrationId, ids))
+      .orderBy(asc(targetSystemRegistration.registrationId))
+      .for('share');
+    return rows
+      .map((row) => {
+        const registration = toRegistration(row, NEVER_PROBED);
+        if (registration === null) return null;
+        const { createdAt: _c, updatedAt: _u, connectivity: _n, ...record } = registration;
+        return record;
+      })
+      .filter((record): record is RegistrationRecord => record !== null);
   }
 }

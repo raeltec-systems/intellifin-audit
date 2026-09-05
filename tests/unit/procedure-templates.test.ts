@@ -38,7 +38,7 @@ const addendum = readFileSync(fileURLToPath(new URL(`${ROOT}${ADDENDUM}`, import
 const systems = JSON.parse(
   readFileSync(fileURLToPath(new URL(`${ROOT}${SYSTEMS}`, import.meta.url)), 'utf8'),
 ) as {
-  population_source_bindings: readonly { id: string }[];
+  population_source_bindings: readonly { id: string; declared_schema: readonly string[] }[];
 };
 
 /** The four expectation fixtures, by filename. */
@@ -191,6 +191,8 @@ describe('the golden references each Template names', () => {
     const bindingIds = new Set(systems.population_source_bindings.map((binding) => binding.id));
     for (const template of PROCEDURE_TEMPLATES) {
       expect(bindingIds.has(template.goldenBindingReference), template.id).toBe(true);
+      const binding = systems.population_source_bindings.find((b) => b.id === template.goldenBindingReference)!;
+      for (const predicate of template.inclusionRule.all) expect(binding.declared_schema, template.id).toContain(predicate.column);
     }
   });
 
@@ -220,7 +222,7 @@ describe('the golden references each Template names', () => {
       fileURLToPath(new URL('../../packages/domain/src/procedures/templates.ts', import.meta.url)),
       'utf8',
     );
-    expect(source.match(/^import /m)).toBeNull();
+    expect(source.match(/^import (?!type )/m)).toBeNull();
     expect(source.match(/require\(/)).toBeNull();
   });
 });

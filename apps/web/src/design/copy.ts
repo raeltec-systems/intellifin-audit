@@ -1,3 +1,5 @@
+import { POPULATION_DRAFT_MESSAGES } from '@intellifin/domain';
+
 /**
  * Copy this application reproduces verbatim from the UX contract.
  *
@@ -86,7 +88,7 @@ export function registrationChangeWarning(count: number): string {
  * it in the Builder later recognizes it.
  */
 export const DECLARED_COUNT_MISSING_SENTENCE =
-  'Population Source must declare an expected record count.';
+  POPULATION_DRAFT_MESSAGES.COUNT_MISSING;
 
 /**
  * What the surface says about a manual-upload binding (FR-6, AD-23).
@@ -102,7 +104,7 @@ export const DECLARED_COUNT_MISSING_SENTENCE =
  * a weekly Schedule should not first learn the rule from a blocked Submit.
  */
 export const MANUAL_UPLOAD_SENTENCE =
-  'A manual upload is valid only for a `once` Schedule. Bind a versioned file or an API for weekly Runs.';
+  POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD;
 
 /**
  * The four UX-DR7 cells of a Procedure card, stated in words when absent.
@@ -132,3 +134,13 @@ export const PROCEDURE_CARD_ABSENT = {
  */
 export const BUILDER_SECTION_NOT_EDITABLE_SENTENCE =
   'This section is pre-filled from the Template and is not editable yet. A later release makes it editable.';
+
+/**
+ * The responsive floor for the Builder (NFR-11, EXPERIENCE.md → Responsive breakpoints).
+ *
+ * Below 900px the Builder is reading mode and shows this sentence rather than degrading the
+ * authoring flow. It is a contract sentence, quoted verbatim: `copy.test.ts` reads it off
+ * EXPERIENCE.md.
+ */
+export const BUILDER_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to author or approve.';
+export const AUTHOR_CANNOT_APPROVE_SENTENCE = 'You cannot approve a version you authored.';

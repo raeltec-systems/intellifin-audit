@@ -12,6 +12,8 @@ const sub = (path: string) =>
 /** Root unit-test project. Integration tests need a real PostgreSQL 18 and live in
  * `tests/integration` behind their own config, so `pnpm test` stays offline. */
 export default defineConfig({
+  // Next preserves JSX for its own compiler; SSR unit tests need an actual transform.
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     alias: {
       '@intellifin/domain': pkg('domain'),

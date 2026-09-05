@@ -195,6 +195,7 @@ export interface ChangeBindingFormFields extends BindingFormFields {
    * exactly the fields a digest-shaped token could not protect.
    */
   readonly expectedRowVersion: string;
+  readonly expectedAffectedProcedures?: number;
 }
 
 /**
@@ -232,6 +233,7 @@ export async function changeBindingAction(
       correlationId,
       bindingId: fields.bindingId,
       expectedRowVersion: fields.expectedRowVersion,
+      ...(fields.expectedAffectedProcedures === undefined ? {} : { expectedAffectedProcedures: fields.expectedAffectedProcedures }),
     });
     if (!outcome.ok) return outcome;
 

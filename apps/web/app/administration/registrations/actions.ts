@@ -209,6 +209,7 @@ export interface ChangeRegistrationFormFields extends RegistrationFormFields {
    * could not protect a retirement from being silently reverted by a stale tab.
    */
   readonly expectedRowVersion: string;
+  readonly expectedAffectedProcedures?: number;
 }
 
 /**
@@ -247,6 +248,7 @@ export async function changeRegistrationAction(
       correlationId,
       registrationId: fields.registrationId,
       expectedRowVersion: fields.expectedRowVersion,
+      ...(fields.expectedAffectedProcedures === undefined ? {} : { expectedAffectedProcedures: fields.expectedAffectedProcedures }),
     });
     if (!outcome.ok) return outcome;
 

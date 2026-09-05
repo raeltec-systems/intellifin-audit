@@ -1,4 +1,5 @@
 import {
+  snapshotFromRegistration,
   canonicalJson,
   isPermittedReadAction,
   isTargetSystemKind,
@@ -194,6 +195,7 @@ export interface ChangeTargetSystemInput extends RegisterTargetSystemInput {
    * omission, and the command's own tests were already calling this without one.
    */
   readonly expectedRowVersion: string;
+  readonly expectedAffectedProcedures?: number;
 }
 
 export type RegisterTargetSystemResult = RegistrationOutcome<{
@@ -627,7 +629,7 @@ export async function changeTargetSystem(
 
   try {
     return await dependencies.unitOfWork.execute(
-      async ({ auditEvents, registrations }): Promise<ChangeTargetSystemResult> => {
+      async ({ auditEvents, registrations, procedureChanges }): Promise<ChangeTargetSystemResult> => {
         // Read inside the transaction. The prior digest the event names must be the one
         // the write actually replaced, not one read a moment earlier on another
         // connection.
@@ -639,6 +641,10 @@ export async function changeTargetSystem(
 
         const changed = changedDigestFields(before, next);
         const annotated = changedNonDigestFields(before, next);
+        if (changed.length > 0 && procedureChanges) {
+          const count = await procedureChanges.count('registration', registrationId);
+          if ((input.expectedAffectedProcedures ?? 0) !== count) throw new CommandRefused(`This change creates a platform-authored draft for ${count} Procedures and requires approval. Reload the page to review the impact and confirm again.`);
+        }
         // Both directions, because each has a way of being wrong on its own. The
         // converse (below) catches a projection that moved the digest with none of the
         // six changed; this catches a stored column that disagrees with what the digest
@@ -694,7 +700,7 @@ export async function changeTargetSystem(
           };
         }
 
-        await auditEvents.append({
+        const changeEvent = await auditEvents.append({
           actor: { type: 'human', id: session.userId },
           eventType: REGISTRATION_CHANGED_EVENT,
           source: input.source ?? 'web',
@@ -714,6 +720,8 @@ export async function changeTargetSystem(
             annotatedFields: [...annotated],
           },
         });
+
+        if (procedureChanges) await procedureChanges.handle({ changeId: changeEvent.eventId, kind: 'registration', snapshot: snapshotFromRegistration(next) });
 
         return {
           ok: true,

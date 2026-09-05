@@ -48,6 +48,25 @@ describe('the Template records', () => {
     }
   });
 
+  it('offers structured default Target Systems whose names appear in the prose', () => {
+    for (const template of PROCEDURE_TEMPLATES) {
+      expect(template.defaultTargets.length).toBeGreaterThan(0);
+      for (const target of template.defaultTargets) {
+        expect(target.name.length).toBeGreaterThan(0);
+        expect(['web', 'desktop', 'api', 'versioned-file']).toContain(target.kind);
+        // The offered name is one the Template's own prose already names.
+        expect(template.targetSystems).toContain(target.name);
+      }
+    }
+    // P-1 is the only Template that names both a web and a desktop system (the coverage the
+    // completeness diagnostic checks).
+    const p1 = PROCEDURE_TEMPLATES[0];
+    expect(p1?.defaultTargets).toEqual([
+      { name: 'LoanCore', kind: 'web' },
+      { name: 'LedgerDesk', kind: 'desktop' },
+    ]);
+  });
+
   it('give every condition the three outcome slots §C states', () => {
     for (const template of PROCEDURE_TEMPLATES) {
       for (const condition of template.conditions) {

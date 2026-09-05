@@ -1004,6 +1004,16 @@ a {
   margin: 0;
 }
 
+/* The Builder's responsive floor. Hidden on a desktop viewport; shown as a reading-mode
+   note below 900px (see the media query near the foot of this file). */
+.ls-desktop-only {
+  display: none;
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-md);
+  color: var(--color-text-secondary);
+}
+
 /* Sign-out ----------------------------------------------------------------- */
 
 .ls-signout {
@@ -1116,5 +1126,14 @@ a {
 
   .ls-ribbon {
     padding: var(--spacing-1) var(--spacing-4);
+  }
+
+  /* EXPERIENCE.md: below 900px the Builder and Version review show the desktop-only note. */
+  .ls-desktop-only {
+    display: block;
+  }
+
+  .ls-builder-authoring {
+    display: none;
   }
 }

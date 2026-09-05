@@ -8,6 +8,7 @@ import type {
   BindingStatus,
   BindingWriter,
   PopulationSourceBinding,
+  PopulationSourceReader,
 } from '@intellifin/application';
 import { isBindingStatus } from '@intellifin/application';
 import {
@@ -121,6 +122,21 @@ export class DrizzleBindingRepository implements BindingRepository {
       .filter((binding): binding is PopulationSourceBinding => binding !== null);
   }
 
+  /**
+   * The Builder picker's read: active only and UNPAGED, exactly like
+   * `listActiveRegistrations`. `listBindings` is the administration list and carries
+   * `BINDING_LIST_LIMIT`, which is right for a screen; inherited here it silently hid
+   * every eligible source past the first page from an auditor binding a Procedure
+   * (found by the automated reviewer on #21 — the same defect Story 1.8 recorded for
+   * the probe sweep and Story 2.3 fixed for the Target System picker).
+   */
+  async listActiveBindings(): Promise<readonly PopulationSourceBinding[]> {
+    const rows = await this.db.select(SELECTION).from(populationSourceBinding)
+      .where(eq(populationSourceBinding.status, 'active'))
+      .orderBy(asc(populationSourceBinding.displayName), asc(populationSourceBinding.bindingId));
+    return rows.map(toBinding).filter((binding): binding is PopulationSourceBinding => binding !== null);
+  }
+
   async findBinding(bindingId: string): Promise<PopulationSourceBinding | null> {
     // A malformed id is absence, not a 500: PostgreSQL raises 22P02 comparing a
     // `uuid` column against text that is not one, and this id comes from a URL.
@@ -133,6 +149,18 @@ export class DrizzleBindingRepository implements BindingRepository {
     const row = rows[0];
     if (!row) return null;
     return toBinding(row);
+  }
+}
+
+/** Source-owned read: Procedures never imports or queries the source table. */
+export class DrizzlePopulationSourceReader implements PopulationSourceReader {
+  constructor(private readonly transaction: Transaction) {}
+  async findBindingForShare(bindingId: string): Promise<BindingRecord | null> {
+    if (!isUuidText(bindingId)) return null;
+    const rows = await this.transaction.select(SELECTION).from(populationSourceBinding)
+      .where(eq(populationSourceBinding.bindingId, bindingId)).for('share').limit(1);
+    const row = rows[0];
+    return row === undefined ? null : toBinding(row);
   }
 }
 

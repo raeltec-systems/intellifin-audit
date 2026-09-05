@@ -1,3 +1,5 @@
+import type { PlanDerivationFields } from '@intellifin/application';
+import type { VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -13,7 +15,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { DraftSection, JsonObject } from '@intellifin/domain';
+import type { CompiledComplianceCondition, DraftSchedule, DraftSection, EvidenceRequirement, ExplicitPeriod, InclusionRule, ProcedureSourceSnapshot, ProcedureTargetSnapshot, PopulationBlocker, TargetInstruction, JsonObject } from '@intellifin/domain';
 
 const ZERO_SHA256 = '0'.repeat(64);
 
@@ -593,6 +595,58 @@ export const procedureVersion = pgTable(
     controlName: text('control_name').notNull(),
     templateId: text('template_id').notNull(),
     sections: jsonb('sections').$type<readonly DraftSection[]>().notNull(),
+    period: jsonb('period').$type<ExplicitPeriod>(),
+    scope: text('scope').notNull().default(''),
+    sourceSnapshot: jsonb('source_snapshot').$type<ProcedureSourceSnapshot>(),
+    inclusionRule: jsonb('inclusion_rule').$type<InclusionRule>().notNull().default({ schemaVersion: 1, all: [] }),
+    zeroRecordPass: boolean('zero_record_pass').notNull().default(false),
+    allowVersionedDuplicates: boolean('allow_versioned_duplicates').notNull().default(false),
+    populationBlockers: jsonb('population_blockers').$type<readonly PopulationBlocker[]>().notNull().default([]),
+    /**
+     * Target System selection and per-system Audit Instructions (generation 9, FR-7, FR-8).
+     *
+     * `targets` is an ordered array of frozen six-key registration snapshots; `instructions`
+     * is the verbatim per-system text. Both are `jsonb NOT NULL` and never read untyped —
+     * the domain's `isDraftTargetFields` is the one reader, and a row that fails it reads as
+     * nothing. The CHECKs below are the shallow shape guard (array, bounded length) the one
+     * layer nothing can route around; the domain validator does the deep validation.
+     */
+    targets: jsonb('targets').$type<readonly ProcedureTargetSnapshot[]>().notNull().default([]),
+    instructions: jsonb('instructions').$type<readonly TargetInstruction[]>().notNull().default([]),
+    complianceSchemaVersion: integer('compliance_schema_version').notNull().default(1),
+    complianceCompilerVersion: text('compliance_compiler_version').notNull().default('1'),
+    complianceConditions: jsonb('compliance_conditions').$type<readonly CompiledComplianceCondition[]>().notNull(),
+    // Text preserves the author's exact decimal, including its trailing zeroes.
+    agentJudgedThreshold: text('agent_judged_threshold').notNull().default('0.80'),
+    /**
+     * Evidence Requirements and the Schedule (generation 11, FR-9, FR-10).
+     *
+     * `evidenceRequirements` is an array of typed, per-attribute requirements; the
+     * domain's `isDraftEvidenceFields` is the one reader, and a row that fails it reads
+     * as nothing — the same discipline `targets`/`instructions` use. `schedule` is
+     * `jsonb`, nullable: a Draft starts with no Schedule and the auditor sets it
+     * explicitly. The CHECKs below are the shallow shape guard the one layer nothing can
+     * route around; the deep validation (the grounding rule, the platform-captured
+     * invariant, the period-derivation rule matching the frequency) is the domain's.
+     */
+    evidenceSchemaVersion: integer('evidence_schema_version').notNull().default(1),
+    evidenceRequirements: jsonb('evidence_requirements').$type<readonly EvidenceRequirement[]>().notNull().default([]),
+    schedule: jsonb('schedule').$type<DraftSchedule>(),
+    planCompilerVersion: text('plan_compiler_version').notNull().default('1'),
+    derivationModel: jsonb('derivation_model').$type<PlanDerivationFields['derivationModel']>(),
+    compiledPlan: jsonb('compiled_plan').$type<PlanDerivationFields['compiledPlan']>(),
+    planInputDigest: text('plan_input_digest'),
+    planStatus: text('plan_status').$type<PlanDerivationFields['planStatus']>().notNull().default('pending'),
+    planFailureReason: text('plan_failure_reason'),
+    planDerivable: boolean('plan_derivable').notNull().default(false),
+    planAttempts: jsonb('plan_attempts').$type<PlanDerivationFields['planAttempts']>().notNull().default([]),
+    authorship: jsonb('authorship').$type<VersionAuthorship>(),
+    decisions: jsonb('decisions').$type<readonly VersionDecisionRecord[]>().notNull().default([]),
+    frozenReview: jsonb('frozen_review').$type<FrozenVersionReview>(),
+    submittedReview: jsonb('submitted_review').$type<SubmittedVersionReview>(),
+    lifecycle: jsonb('lifecycle').$type<import('@intellifin/domain').VersionLifecycle>(),
+    platformOrigin: jsonb('platform_origin').$type<import('@intellifin/domain').PlatformDraftOrigin>(),
+    configurationRevision: text('configuration_revision'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -616,8 +670,57 @@ export const procedureVersion = pgTable(
     // The same btrim rule as the parent table: whitespace is blank.
     check('procedure_version_control_name_present', sql`btrim(${table.controlName}) <> ''`),
     check('procedure_version_number_at_least_one', sql`${table.versionNumber} >= 1`),
+    check('procedure_version_period_shape', sql`${table.period} IS NULL OR coalesce(jsonb_typeof(${table.period}) = 'object' AND ${table.period} - 'from' - 'to' = '{}'::jsonb AND ${table.period}->>'from' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND ${table.period}->>'to' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND (${table.period}->>'from')::date <= (${table.period}->>'to')::date AND (${table.period}->>'from')::date >= date '0001-01-01', false)`),
+    check('procedure_version_scope_bound', sql`length(${table.scope}) <= 10000`),
+    check('procedure_version_source_shape', sql`${table.sourceSnapshot} IS NULL OR coalesce(jsonb_typeof(${table.sourceSnapshot}) = 'object' AND ${table.sourceSnapshot} - 'bindingId' - 'displayName' - 'digest' - 'contract' = '{}'::jsonb AND ${table.sourceSnapshot}->>'bindingId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.sourceSnapshot}->>'digest' ~ '^[0-9a-f]{64}$' AND length(${table.sourceSnapshot}->>'displayName') BETWEEN 1 AND 200 AND jsonb_typeof(${table.sourceSnapshot}->'contract') = 'object' AND ${table.sourceSnapshot}->'contract' ?& ARRAY['kind','location','declared_schema','declared_count_mechanism','sensitive_fields'] AND (${table.sourceSnapshot}->'contract') - 'kind' - 'location' - 'declared_schema' - 'declared_count_mechanism' - 'sensitive_fields' = '{}'::jsonb AND ${table.sourceSnapshot}->'contract'->>'kind' IN ('manual-upload','versioned-file','read-only-api') AND ${table.sourceSnapshot}->'contract'->>'declared_count_mechanism' IN ('cover-sheet','count-endpoint','none') AND jsonb_typeof(${table.sourceSnapshot}->'contract'->'declared_schema') = 'array' AND jsonb_typeof(${table.sourceSnapshot}->'contract'->'sensitive_fields') = 'array', false)`),
+    check('procedure_version_rule_shape', sql`coalesce(jsonb_typeof(${table.inclusionRule}) = 'object' AND ${table.inclusionRule} - 'schemaVersion' - 'all' = '{}'::jsonb AND ${table.inclusionRule}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.inclusionRule}->'all') = 'array' AND jsonb_array_length(${table.inclusionRule}->'all') <= 32, false)`),
+    check('procedure_version_count_blocker', sql`${table.populationBlockers} = CASE WHEN ${table.sourceSnapshot}->'contract'->>'declared_count_mechanism' = 'none' THEN '["declared-count-missing"]'::jsonb ELSE '[]'::jsonb END`),
+    // Shallow shape guard (generation 9): an array, bounded. The deep validation — every
+    // snapshot self-consistent, every instruction for a selected agent-driven system — is
+    // the domain's `isDraftTargetFields`, which a raw writer cannot be made to run.
+    check('procedure_version_targets_shape', sql`coalesce(jsonb_typeof(${table.targets}) = 'array' AND jsonb_array_length(${table.targets}) <= 32, false)`),
+    check('procedure_version_instructions_shape', sql`coalesce(jsonb_typeof(${table.instructions}) = 'array' AND jsonb_array_length(${table.instructions}) <= 32, false)`),
+    check('procedure_version_compliance_schema', sql`${table.complianceSchemaVersion} = 1`),
+    check('procedure_version_compliance_compiler', sql`${table.complianceCompilerVersion} = '1'`),
+    check('procedure_version_compliance_shape', sql`coalesce(jsonb_typeof(${table.complianceConditions}) = 'array' AND jsonb_array_length(${table.complianceConditions}) BETWEEN 1 AND 32, false)`),
+    check('procedure_version_confidence_range', sql`CASE WHEN length(${table.agentJudgedThreshold}) <= 100 AND ${table.agentJudgedThreshold} ~ '^-?(0|[1-9][0-9]*)([.][0-9]+)?$' THEN ${table.agentJudgedThreshold}::numeric BETWEEN 0 AND 1 ELSE false END`),
+    check('procedure_version_plan_compiler', sql`length(${table.planCompilerVersion}) BETWEEN 1 AND 64`),
+    check('procedure_version_plan_model', sql`${table.derivationModel} IS NULL OR coalesce(jsonb_typeof(${table.derivationModel}) = 'object' AND ${table.derivationModel} - 'provider' - 'modelId' - 'promptVersion' = '{}'::jsonb AND jsonb_typeof(${table.derivationModel}->'provider') = 'string' AND jsonb_typeof(${table.derivationModel}->'modelId') = 'string' AND jsonb_typeof(${table.derivationModel}->'promptVersion') = 'string' AND length(${table.derivationModel}->>'provider') BETWEEN 1 AND 100 AND length(${table.derivationModel}->>'modelId') BETWEEN 1 AND 200 AND length(${table.derivationModel}->>'promptVersion') BETWEEN 1 AND 100, false)`),
+    check('procedure_version_plan_shape', sql`${table.compiledPlan} IS NULL OR coalesce(jsonb_typeof(${table.compiledPlan}) = 'object' AND ${table.compiledPlan}->'schemaVersion' = '1'::jsonb, false)`),
+    check('procedure_version_plan_digest', sql`${table.planInputDigest} IS NULL OR ${table.planInputDigest} ~ '^[0-9a-f]{64}$'`),
+    check('procedure_version_plan_status', sql`${table.planStatus} IN ('pending','succeeded','failed')`),
+    check('procedure_version_plan_failure', sql`${table.planFailureReason} IS NULL OR length(${table.planFailureReason}) BETWEEN 1 AND 1000`),
+    check('procedure_version_plan_attempts', sql`coalesce(jsonb_typeof(${table.planAttempts}) = 'array', false)`),
+    check('procedure_version_authorship_shape', sql`${table.authorship} IS NULL OR coalesce(jsonb_typeof(${table.authorship}) = 'object' AND jsonb_typeof(${table.authorship}->'createdBy') = 'object' AND ${table.authorship}->'createdBy'->>'type' IN ('human','platform') AND jsonb_typeof(${table.authorship}->'createdBy'->'id') = 'string' AND jsonb_typeof(${table.authorship}->'responsibleAuthorId') = 'string' AND jsonb_typeof(${table.authorship}->'humanAuthorIds') = 'array', false)`),
+    check('procedure_version_decisions_shape', sql`coalesce(jsonb_typeof(${table.decisions}) = 'array', false)`),
+    check('procedure_version_submitted_review_shape', sql`${table.submittedReview} IS NULL OR coalesce(jsonb_typeof(${table.submittedReview}) = 'object' AND ${table.submittedReview}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.submittedReview}->'definition') = 'object' AND jsonb_typeof(${table.submittedReview}->'diff') = 'array', false)`),
+    check('procedure_version_review_shape', sql`${table.frozenReview} IS NULL OR coalesce(jsonb_typeof(${table.frozenReview}) = 'object' AND ${table.frozenReview}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.frozenReview}->'definition') = 'object' AND jsonb_typeof(${table.frozenReview}->'diff') = 'array' AND jsonb_typeof(${table.frozenReview}->'approval') = 'object', false)`),
+    check('procedure_version_plan_consistency', sql`coalesce((${table.planDerivable} = (${table.planStatus} = 'succeeded')) AND (${table.planStatus} <> 'succeeded' OR (${table.compiledPlan} IS NOT NULL AND ${table.planInputDigest} IS NOT NULL AND ${table.planFailureReason} IS NULL)) AND (${table.planStatus} <> 'failed' OR (${table.compiledPlan} IS NULL AND ${table.planFailureReason} IS NOT NULL)), false)`),
+    check('procedure_version_evidence_schema', sql`${table.evidenceSchemaVersion} = 1`),
+    // Shallow shape guard (generation 11): an array, bounded. The deep validation — the
+    // grounding rule, the platform-captured invariant — is the domain's
+    // `isDraftEvidenceFields`, which a raw writer cannot be made to run.
+    check('procedure_version_evidence_shape', sql`coalesce(jsonb_typeof(${table.evidenceRequirements}) = 'array' AND jsonb_array_length(${table.evidenceRequirements}) <= 32, false)`),
+    check('procedure_version_schedule_shape', sql`${table.schedule} IS NULL OR coalesce(jsonb_typeof(${table.schedule}) = 'object' AND ${table.schedule} - 'frequency' - 'startTime' - 'periodDerivationRule' = '{}'::jsonb AND ${table.schedule}->>'frequency' IN ('once','daily','weekly','monthly') AND jsonb_typeof(${table.schedule}->'periodDerivationRule') = 'string' AND ${table.schedule}->>'periodDerivationRule' = CASE ${table.schedule}->>'frequency' WHEN 'once' THEN 'explicit-period' WHEN 'daily' THEN 'previous-calendar-day' WHEN 'weekly' THEN 'previous-monday-sunday' WHEN 'monthly' THEN 'previous-calendar-month' END AND ${table.schedule}->>'startTime' ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$', false)`),
   ],
 );
+
+export const notification = pgTable('notification', {
+  sendKey: text('send_key').primaryKey(),
+  recipientId: text('recipient_id').notNull().references(() => authUser.id),
+  procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
+  versionId: uuid('version_id').notNull().references(() => procedureVersion.versionId),
+  procedureName: text('procedure_name').notNull(),
+  versionNumber: integer('version_number').notNull(),
+  kind: text('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+}, table => [
+  index('notification_recipient_delivery_idx').on(table.recipientId, table.deliveredAt.desc(), table.sendKey),
+  index('notification_pending_delivery_idx').on(table.createdAt, table.sendKey).where(sql`${table.deliveredAt} IS NULL`),
+  check('notification_version_number', sql`${table.versionNumber} > 0`),
+  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected')`),
+]);
 
 export type SchemaMetaRow = typeof schemaMeta.$inferSelect;
 export type WorkerHeartbeatRow = typeof workerHeartbeat.$inferSelect;
@@ -632,3 +735,24 @@ export type TargetSystemProbeRow = typeof targetSystemProbe.$inferSelect;
 export type PopulationSourceBindingRow = typeof populationSourceBinding.$inferSelect;
 export type ProcedureRow = typeof procedure.$inferSelect;
 export type ProcedureVersionRow = typeof procedureVersion.$inferSelect;
+
+export const procedureChange = pgTable('procedure_change', {
+  changeId: text('change_id').primaryKey(),
+  versionIds: jsonb('version_ids').$type<readonly string[]>().notNull(),
+});
+export const procedureConfiguration = pgTable('procedure_configuration', {
+  revision: text('revision').primaryKey(),
+  configuration: jsonb('configuration').$type<import('@intellifin/domain').JsonValue>().notNull(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const procedureSuccession = pgTable('procedure_succession', {
+  successorId: uuid('successor_id').primaryKey().references(() => procedureVersion.versionId),
+  predecessorId: uuid('predecessor_id').notNull().references(() => procedureVersion.versionId),
+  procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  handoverAt: timestamp('handover_at', { withTimezone: true }),
+}, table => [
+  uniqueIndex('procedure_succession_activated_predecessor').on(table.predecessorId).where(sql`${table.activatedAt} IS NOT NULL`),
+  check('procedure_succession_no_self', sql`${table.predecessorId} <> ${table.successorId}`),
+  check('procedure_succession_boundary', sql`${table.handoverAt} IS NULL OR (${table.activatedAt} IS NOT NULL AND ${table.handoverAt} > ${table.activatedAt})`),
+]);

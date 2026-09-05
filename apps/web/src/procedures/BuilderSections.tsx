@@ -14,14 +14,42 @@ import { BUILDER_SECTION_NOT_EDITABLE_SENTENCE } from '../design/copy';
  */
 export function BuilderSections({
   sections,
+  periodScope,
+  populationSource,
+  targetSystems,
+  auditInstructions,
+  complianceRule,
+  evidenceRequirements,
+  schedule,
 }: {
   readonly sections: readonly { readonly heading: string; readonly content: string | null }[];
+  readonly periodScope?: React.ReactNode;
+  readonly populationSource?: React.ReactNode;
+  readonly targetSystems?: React.ReactNode;
+  readonly auditInstructions?: React.ReactNode;
+  readonly complianceRule?: React.ReactNode;
+  readonly evidenceRequirements?: React.ReactNode;
+  readonly schedule?: React.ReactNode;
 }): React.JSX.Element {
+  const editors: Readonly<Record<string, React.ReactNode>> = {
+    'Period and scope': periodScope,
+    'Population Source binding': populationSource,
+    'Target System selection': targetSystems,
+    'Audit Instructions': auditInstructions,
+    'Compliance Rule conditions': complianceRule,
+    'Evidence Requirements': evidenceRequirements,
+    Schedule: schedule,
+  };
   return (
     <div className="ls-stack">
-      {sections.map((section) => (
+      {sections.map((section) => {
+        // `Object.hasOwn`, not a plain index: the heading is domain data, and a lookup
+        // keyed by it follows the standing guard rule.
+        const editor = Object.hasOwn(editors, section.heading) ? editors[section.heading] : undefined;
+        return (
         <section key={section.heading} className="ls-card">
           <h2 className="ls-card__title">{section.heading}</h2>
+          {editor ? editor : <>
           {section.content === null ? (
             // §C gives some Templates nothing for a section. An empty section says so in
             // words — a blank panel reads as a rendering failure or as "fine".
@@ -37,8 +65,10 @@ export function BuilderSections({
             across sections is the cost of saying it where it applies.
           */}
           <p className="ls-caption">{BUILDER_SECTION_NOT_EDITABLE_SENTENCE}</p>
+          </>}
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }

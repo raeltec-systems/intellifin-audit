@@ -1,4 +1,24 @@
-import type { DraftSection, ProcedureVersionState, TemplateId } from '@intellifin/domain';
+import type { PlanDerivationFields, PlanDerivationQueue } from './plan-ports.js';
+import type { FrozenVersionReview, SubmittedVersionReview, VersionAuthorship, VersionDecisionRecord } from '@intellifin/domain';
+import type { NotificationWriter } from '../notifications/ports.js';
+import type { NotificationRecipientReader, RoleRepository } from '../identity/ports.js';
+
+export class UnverifiablePreviousVersion extends Error {
+  constructor() { super('The previous Procedure Version could not be verified. Submission is unavailable until its saved data is repaired.'); }
+}
+
+export interface VersionReviewFields {
+  readonly lifecycle?: import('@intellifin/domain').VersionLifecycle | null;
+  readonly platformOrigin?: import('@intellifin/domain').PlatformDraftOrigin | null;
+  readonly configurationRevision?: string | null;
+  readonly authorship?: VersionAuthorship | null;
+  readonly decisions?: readonly VersionDecisionRecord[];
+  readonly frozenReview?: FrozenVersionReview | null;
+  readonly submittedReview?: SubmittedVersionReview | null;
+}
+import type { DraftComplianceFields, DraftEvidenceFields, DraftPopulationFields, DraftSection, DraftTargetFields, EvidenceBlocker, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
+import type { PopulationSourceReader } from '../sources/ports.js';
+import type { TargetSystemRegistrationReader } from '../registrations/ports.js';
 
 import type { AuditUnitOfWorkContext } from '../audit/ports.js';
 
@@ -31,7 +51,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView {
+export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields, VersionReviewFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -40,6 +60,18 @@ export interface ProcedureVersionView {
   readonly templateId: TemplateId;
   /** The Template pre-fill and any edit a later story saves, validated by the domain. */
   readonly sections: readonly DraftSection[];
+  /**
+   * Target System completeness diagnostics, derived from the Template and the selection
+   * (missing selection, missing P-1 web/desktop coverage). Not stored — computed on read.
+   */
+  readonly targetBlockers: readonly TargetBlocker[];
+  /**
+   * Evidence Requirements / Schedule completeness diagnostics (the upload/frequency
+   * pairing), derived from the current Population Source binding and Schedule. Not
+   * stored — computed on read, the same discipline as `targetBlockers`, and surfaced on
+   * both the Population Source section and this one.
+   */
+  readonly evidenceBlockers: readonly EvidenceBlocker[];
   /** ISO 8601 UTC. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -54,7 +86,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord {
+export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields, VersionReviewFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -75,6 +107,14 @@ export interface ProcedureVersionRecord {
  * stale-tab guard is a suggestion.
  */
 export interface ProcedureWriter {
+  findLatestActiveVersion?(procedureId: string): Promise<ProcedureVersionRecord | null>;
+  listActiveVersions?(affected?: { kind: 'registration' | 'source'; id: string }): Promise<readonly ProcedureVersionRecord[]>;
+  currentConfiguration?(): Promise<{ revision: string; model: import('./plan-ports.js').ModelIdentity | null } | null>;
+  findChangeResult?(changeId: string): Promise<readonly string[] | null>;
+  recordChangeResult?(changeId: string, versionIds: readonly string[]): Promise<void>;
+  recordSuccession?(record: { procedureId: string; predecessorId: string; successorId: string; activatedAt: string | null; handoverAt: string | null }): Promise<void>;
+  applyConfigurationRevision?(revision: string, configuration: import('@intellifin/domain').JsonValue): Promise<boolean>;
+  findPreviousVersion(procedureId: string, versionNumber: number): Promise<ProcedureVersionRecord | null>;
   insertProcedure(record: ProcedureRecord): Promise<void>;
   insertVersion(record: ProcedureVersionRecord): Promise<void>;
   findVersion(versionId: string): Promise<ProcedureVersionRecord | null>;
@@ -102,5 +142,12 @@ export interface ProcedureRecord {
  * somebody has to remember.
  */
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
+  readonly authorizationRoles: RoleRepository;
+  readonly notifications: NotificationWriter;
+  readonly notificationRecipients: NotificationRecipientReader;
   readonly procedures: ProcedureWriter;
+  readonly derivationJobs: PlanDerivationQueue;
+  readonly populationSources: PopulationSourceReader;
+  /** Registration-owned read, bound to this transaction, for resolving Target selections. */
+  readonly targetRegistrations: TargetSystemRegistrationReader;
 }

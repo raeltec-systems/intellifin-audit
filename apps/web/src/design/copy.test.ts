@@ -7,6 +7,8 @@ import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
   BUILDER_SECTION_NOT_EDITABLE_SENTENCE,
+  BUILDER_DESKTOP_ONLY_SENTENCE,
+  AUTHOR_CANNOT_APPROVE_SENTENCE,
   DECLARED_COUNT_MISSING_SENTENCE,
   MANUAL_UPLOAD_SENTENCE,
   EMPTY_STATES,
@@ -87,12 +89,14 @@ describe('copy quoted from the UX contract', () => {
     const surfaces = [
       '../../app/page.tsx',
       '../../app/review/page.tsx',
-      '../shell/NotificationBell.tsx',
     ];
     for (const surface of surfaces) {
       const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
       expect(source, surface).toContain('EMPTY_STATES');
     }
+  });
+  it('pins the self-approval refusal to EXPERIENCE.md', () => {
+    expect(experience).toContain(AUTHOR_CANNOT_APPROVE_SENTENCE);
   });
 });
 
@@ -183,6 +187,23 @@ describe('the Builder read-only sentence', () => {
     );
     expect(source).toContain('BUILDER_SECTION_NOT_EDITABLE_SENTENCE');
     expect(source).not.toContain('not editable yet. A later release');
+  });
+});
+
+describe('the Builder desktop-only floor', () => {
+  it("is EXPERIENCE.md's responsive-floor sentence, character for character", () => {
+    // Quoted verbatim from the "< 900px" row, read off disk — not compared with a copy of
+    // itself.
+    expect(experience).toContain(`"${BUILDER_DESKTOP_ONLY_SENTENCE}"`);
+  });
+
+  it('is rendered from this module by the Builder page, not retyped', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../../app/procedures/[id]/builder/page.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('BUILDER_DESKTOP_ONLY_SENTENCE');
+    expect(source).not.toContain('Open on a desktop browser to author');
   });
 });
 

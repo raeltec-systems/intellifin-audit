@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
 import { createDb, createSqlClient } from './client.js';
+import { migrateProceduresQueue } from '../procedures/derivation-queue.js';
 import { assertPostgres18, readSchemaVersion } from './compat.js';
 import { classifyTelemetryError, sanitizeTelemetryFields } from '../telemetry/sanitize.js';
 
@@ -43,6 +44,7 @@ export async function runMigrations(databaseUrl: string): Promise<number> {
     const major = await assertPostgres18(sql);
     log('info', 'Connected', { postgresMajor: major });
     await migrate(createDb(sql), { migrationsFolder: MIGRATIONS_FOLDER });
+    await migrateProceduresQueue(createDb(sql));
     const version = await readSchemaVersion(sql);
     log('info', 'Migrations applied', { schemaVersion: version });
     return version ?? 0;

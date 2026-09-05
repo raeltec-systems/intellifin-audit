@@ -36,15 +36,19 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "pnpm build && node dist/db/migrate.js",
+    "db:migrate": "pnpm --filter @intellifin/infrastructure... build && node dist/db/migrate.js",
     "probe": "pnpm build && node dist/registrations/probe-runner.js"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.47",
+    "@ai-sdk/openai": "4.0.58",
     "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@sentry/node": "10.73.0",
+    "ai": "7.0.89",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
+    "pg-boss": "12.29.0",
     "pino": "10.3.1",
     "postgres": "3.4.9",
     "zod": "4.5.4"

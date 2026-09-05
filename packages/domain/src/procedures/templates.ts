@@ -26,6 +26,26 @@
  */
 
 /** The evaluation origin a condition is authored with. `HUMAN` arises only later, from a rejection. */
+import type { TargetSystemKind } from '../registrations/target-system.js';
+import type { InclusionRule } from './population-draft.js';
+import type { ComplianceRule } from './compliance-draft.js';
+
+/**
+ * A structural echo of `evidence-draft.js`'s `EvidenceRequirementInput`, NOT an import of
+ * it: `evidence-draft.js` reads `findProcedureTemplate` from this module (for
+ * `initialDraftEvidence`), so an import the other way would be a circular dependency
+ * `pnpm boundaries` refuses to cruise. TypeScript's structural typing makes the two
+ * interchangeable at every call site; `procedure-templates.test.ts` still pins every
+ * value against the addendum on disk.
+ */
+export interface TemplateEvidenceRequirement {
+  readonly attributeName: string;
+  readonly modelRead: boolean;
+  readonly groundedBy: readonly ('structural-snapshot' | 'source-file-excerpt')[];
+  readonly screenshot: boolean;
+  readonly recordingSegment: boolean;
+}
+
 export const CONDITION_ORIGINS = ['RULE', 'AGENT_JUDGED'] as const;
 export type ConditionOrigin = (typeof CONDITION_ORIGINS)[number];
 
@@ -50,6 +70,8 @@ export interface TemplateCondition {
   readonly unevaluated: string | null;
   /** Anything else §C pins to this condition — matching keys, boundaries, pair lists — verbatim. */
   readonly also: readonly string[];
+  /** Structured default paired with this exact pinned prose. Text edits invalidate it. */
+  readonly rule?: ComplianceRule;
 }
 
 export const PROCEDURE_TEMPLATE_IDS = ['P-1', 'P-2', 'P-3', 'P-4'] as const;
@@ -67,14 +89,30 @@ export interface ProcedureTemplate {
   readonly controlStatement: string | null;
   readonly objective: string;
   readonly populationSource: string;
+  readonly inclusionRule: InclusionRule;
   readonly targetSystems: string;
+  /**
+   * The Target Systems this Template names, structured, for the Builder to OFFER by name.
+   * The kinds drive the P-1 web/desktop coverage diagnostic. A registration is never minted
+   * from these — an unavailable or ambiguous match is selected explicitly (FR-7).
+   */
+  readonly defaultTargets: readonly { readonly name: string; readonly kind: TargetSystemKind }[];
   readonly workItemCoverage: string;
   readonly auditInstructions: string | null;
   readonly conditions: readonly TemplateCondition[];
   readonly declaredAttributeLabels: Readonly<Record<string, string>> | null;
   readonly secondaryKey: string | null;
   readonly evidenceRequirements: string | null;
+  /**
+   * The structured Evidence Requirements the auditor starts from, one per attribute this
+   * Template names (§C's "each grounded" attributes). Empty where §C states no evidence
+   * requirement — the auditor authors it explicitly. `withPlatformCaptured` applies the
+   * platform-captured flag from the Template's own `defaultTargets`.
+   */
+  readonly evidenceDefaults: readonly TemplateEvidenceRequirement[];
   readonly schedule: string | null;
+  /** Editable midnight UTC seed for the pinned P-1 weekly Schedule; no Run is created. */
+  readonly scheduleDefault: { readonly frequency: 'weekly'; readonly startTime: '00:00'; readonly periodDerivationRule: 'previous-monday-sunday' } | null;
   /** The Template-level Inconclusive rule, where §C states one. */
   readonly inconclusive: string | null;
   /** Anything else §C pins to the whole Template — escalation seeds, the P-1 variant — verbatim. */
@@ -95,6 +133,10 @@ const P1_C1: TemplateCondition = {
   exception: 'Exception when `account_status = active`',
   unevaluated: 'any other status → Unevaluated (unnamed value)',
   also: [],
+  rule: { kind: 'predicate', predicate: { kind: 'any', expressions: [
+    { kind: 'boolean', field: 'found', value: false },
+    { kind: 'named-set', field: 'account_status', compliant: ['disabled'], exception: ['active'] },
+  ] } },
 };
 
 const P1_C2: TemplateCondition = {
@@ -109,6 +151,11 @@ const P1_C2: TemplateCondition = {
 
 const P1: ProcedureTemplate = {
   id: 'P-1',
+  // Explicit mapping from the prose's termination_date to the registered field.
+  inclusionRule: { schemaVersion: 1, all: [
+    { column: 'employment_status', kind: 'text', operator: 'eq', value: 'Terminated' },
+    { column: 'termination_effective_date', kind: 'within-period' },
+  ] },
   name: 'Terminated Users Retaining Access',
   hero: true,
   controlStatement: 'Terminated employees must have their system access revoked.',
@@ -118,6 +165,10 @@ const P1: ProcedureTemplate = {
     'Leavers export (versioned file); inclusion rule `employment_status = Terminated and termination_date within period`, applied by the Adapter.',
   targetSystems:
     'LoanCore (web, agent-driven) and LedgerDesk (desktop, agent-driven). Execution order: all records in LoanCore, then all records in LedgerDesk (FR-20).',
+  defaultTargets: [
+    { name: 'LoanCore', kind: 'web' },
+    { name: 'LedgerDesk', kind: 'desktop' },
+  ],
   workItemCoverage: 'one Work Item per population record per Target System.',
   auditInstructions:
     'For each terminated employee, sign in to each Target System, search by employee ID, and if there is no ID match search by full name. Open the account record and note whether an account exists, its status, username, and assigned roles.',
@@ -131,7 +182,13 @@ const P1: ProcedureTemplate = {
   secondaryKey: 'full name',
   evidenceRequirements:
     'username, account_status, roles (each grounded), Structural Snapshot and platform screenshot of the account page bound to the read, source export row.',
+  evidenceDefaults: [
+    { attributeName: 'username', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
+    { attributeName: 'account_status', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
+    { attributeName: 'roles', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false },
+  ],
   schedule: 'weekly',
+  scheduleDefault: { frequency: 'weekly', startTime: '00:00', periodDerivationRule: 'previous-monday-sunday' },
   inconclusive:
     'any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.',
   also: [
@@ -145,6 +202,7 @@ const P1: ProcedureTemplate = {
 
 const P2: ProcedureTemplate = {
   id: 'P-2',
+  inclusionRule: { schemaVersion: 1, all: [{ column: 'status', kind: 'text', operator: 'eq', value: 'Active' }] },
   name: 'Segregation-of-Duties Conflicts',
   hero: false,
   controlStatement: null,
@@ -152,6 +210,7 @@ const P2: ProcedureTemplate = {
     'Determine whether any active account contains an explicitly prohibited permission pair.',
   populationSource: 'AccessGate active accounts (Adapter).',
   targetSystems: 'AccessGate role detail (Adapter).',
+  defaultTargets: [{ name: 'AccessGate', kind: 'api' }],
   workItemCoverage:
     'one adapter Work Item covering the whole population; per-record coverage is satisfied when every population account appears in the extraction with a grounded role list.',
   auditInstructions: null,
@@ -168,12 +227,17 @@ const P2: ProcedureTemplate = {
         'Role name to the versioned RoleMatrix; expand roles to permissions before comparison.',
         '`CREATE_VENDOR` + `APPROVE_VENDOR`; `CREATE_PAYMENT` + `RELEASE_PAYMENT`; `CONFIGURE_LIMITS` + `APPROVE_LOAN`',
       ],
+      rule: { kind: 'permission-pairs', rolesField: 'roles', prohibitedPairs: [
+        ['CREATE_VENDOR', 'APPROVE_VENDOR'], ['CREATE_PAYMENT', 'RELEASE_PAYMENT'], ['CONFIGURE_LIMITS', 'APPROVE_LOAN'],
+      ] },
     },
   ],
   declaredAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
+  evidenceDefaults: [],
   schedule: null,
+  scheduleDefault: null,
   inconclusive: null,
   also: ['Reference Source: RoleMatrix.'],
   goldenBindingReference: 'accessgate-active-accounts',
@@ -183,6 +247,11 @@ const P2: ProcedureTemplate = {
 
 const P3: ProcedureTemplate = {
   id: 'P-3',
+  inclusionRule: { schemaVersion: 1, all: [
+    { column: 'currency', kind: 'text', operator: 'eq', value: 'USD' },
+    { column: 'amount', kind: 'decimal', operator: 'gte', value: '100000' },
+    { column: 'processed_time', kind: 'within-period' },
+  ] },
   name: 'High-Value Transactions Without Required Approval',
   hero: false,
   controlStatement: null,
@@ -190,6 +259,7 @@ const P3: ProcedureTemplate = {
     'Determine whether processed high-value transactions had valid approval before processing.',
   populationSource: 'LedgerFlow processed transactions in USD ≥ 100,000 in the period (Adapter).',
   targetSystems: 'ApproveNow (Adapter).',
+  defaultTargets: [{ name: 'ApproveNow', kind: 'api' }],
   workItemCoverage:
     'one adapter Work Item per extraction; per-record coverage is satisfied when every population transaction has a grounded approval lookup result (found or proven absent).',
   auditInstructions: null,
@@ -208,12 +278,15 @@ const P3: ProcedureTemplate = {
         'Exact transaction ID, with approval ID used as corroboration.',
         'USD 100,000 requires approval (inclusive); this is the PoC\'s exercised tolerance boundary (FR-9).',
       ],
+      rule: { kind: 'approval', amountField: 'amount', currencyField: 'currency', decisionField: 'decision', decisionTimeField: 'decided_at', processedTimeField: 'processed_time', limitField: 'approver_limit', threshold: '100000', boundary: 'inclusive', tolerance: '0' },
     },
   ],
   declaredAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
+  evidenceDefaults: [],
   schedule: null,
+  scheduleDefault: null,
   inconclusive: null,
   also: [],
   goldenBindingReference: 'ledgerflow-transactions',
@@ -223,6 +296,7 @@ const P3: ProcedureTemplate = {
 
 const P4: ProcedureTemplate = {
   id: 'P-4',
+  inclusionRule: { schemaVersion: 1, all: [] },
   name: 'Production Configuration Deviation',
   hero: false,
   controlStatement: null,
@@ -230,6 +304,7 @@ const P4: ProcedureTemplate = {
     'Determine whether observed production parameters equal the approved baseline in effect at the observation time.',
   populationSource: 'ConfigRegistry baseline parameters (Adapter).',
   targetSystems: 'ProdConsole (web, agent-driven).',
+  defaultTargets: [{ name: 'ProdConsole', kind: 'web' }],
   workItemCoverage:
     "one agent Work Item for the ProdConsole page read, owning one Observation per baseline parameter, each grounded in the page's Structural Snapshot with the parameter name as identity attribute.",
   auditInstructions: null,
@@ -247,12 +322,15 @@ const P4: ProcedureTemplate = {
         'Exact parameter name.',
         '`max_manual_approval_amount`, `mfa_required_for_admin`, `session_timeout_minutes`, and `production_debug_mode`',
       ],
+      rule: { kind: 'baseline', parameterField: 'parameter', observedField: 'observed_value', observationTimeField: 'observation_time', tolerance: '0' },
     },
   ],
   declaredAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
+  evidenceDefaults: [],
   schedule: null,
+  scheduleDefault: null,
   inconclusive: null,
   also: [],
   goldenBindingReference: 'configregistry-baseline',

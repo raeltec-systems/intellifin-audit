@@ -1,0 +1,2 @@
+# The Northstar cover sheets sign the generated CSV bytes, including LF endings.
+fixtures/northstar/generated/*.csv text eol=lf

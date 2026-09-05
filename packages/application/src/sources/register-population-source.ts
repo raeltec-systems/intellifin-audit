@@ -1,5 +1,6 @@
 import {
   bindingDigest,
+  bindingDigestEnvelope,
   canonicalJson,
   isDeclaredCountMechanism,
   isPopulationSourceKind,
@@ -184,6 +185,7 @@ export interface ChangePopulationSourceInput extends RegisterPopulationSourceInp
    * never saw, so the chain records a decision nobody made.
    */
   readonly expectedRowVersion: string;
+  readonly expectedAffectedProcedures?: number;
 }
 
 export type RegisterPopulationSourceResult = BindingOutcome<{
@@ -506,7 +508,7 @@ export async function changePopulationSource(
 
   try {
     return await dependencies.unitOfWork.execute(
-      async ({ auditEvents, bindings }): Promise<ChangePopulationSourceResult> => {
+      async ({ auditEvents, bindings, procedureChanges }): Promise<ChangePopulationSourceResult> => {
         // Read inside the transaction. The prior digest the event names must be the one
         // the write actually replaced, not one read a moment earlier on another
         // connection.
@@ -518,6 +520,10 @@ export async function changePopulationSource(
 
         const changed = changedDigestFields(before, next);
         const annotated = changedNonDigestFields(before, next);
+        if (changed.length > 0 && procedureChanges) {
+          const count = await procedureChanges.count('source', bindingId);
+          if ((input.expectedAffectedProcedures ?? 0) !== count) throw new CommandRefused(`This change creates a platform-authored draft for ${count} Procedures and requires approval. Reload the page to review the impact and confirm again.`);
+        }
         // Both directions, because each has a way of being wrong on its own. This one
         // catches a stored column that disagrees with what the digest hashed, which is
         // how Story 1.6's `RegistrationChanged` came to be publishable with
@@ -570,7 +576,7 @@ export async function changePopulationSource(
           };
         }
 
-        await auditEvents.append({
+        const changeEvent = await auditEvents.append({
           actor: { type: 'human', id: session.userId },
           eventType: BINDING_CHANGED_EVENT,
           source: input.source ?? 'web',
@@ -591,6 +597,8 @@ export async function changePopulationSource(
             annotatedFields: [...annotated],
           },
         });
+
+        if (procedureChanges) await procedureChanges.handle({ changeId: changeEvent.eventId, kind: 'source', snapshot: { bindingId, displayName: next.displayName, digest: next.digest, contract: bindingDigestEnvelope(next) } });
 
         return {
           ok: true,

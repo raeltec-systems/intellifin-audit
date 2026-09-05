@@ -22,6 +22,8 @@ CLAUDE.md
 
 # Tests are not built into either image; CI runs them from the checkout.
 tests
+**/*.test.ts
+**/*.test.tsx
 
 # Secrets must never enter an image layer.
 .env

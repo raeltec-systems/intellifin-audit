@@ -10,3 +10,4 @@ export * from './procedures/index.js';
 export * from './registrations/index.js';
 export * from './sources/index.js';
 export * from './telemetry/index.js';
+export * from './notifications/notification-repository.js';

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,8 +31,11 @@ function run(path: string): string {
 }
 
 describe('the entry-point guard', () => {
-  const real = join(workspace, 'module.mjs');
-  const link = join(workspace, 'linked.mjs');
+  const realDirectory = join(workspace, 'real');
+  const linkedDirectory = join(workspace, 'linked');
+  mkdirSync(realDirectory);
+  const real = join(realDirectory, 'module.mjs');
+  const link = join(linkedDirectory, 'module.mjs');
 
   writeFileSync(
     real,
@@ -43,7 +46,9 @@ describe('the entry-point guard', () => {
       '',
     ].join('\n'),
   );
-  symlinkSync(real, link);
+  // A junction exercises Node's real-path resolution on Windows without requiring
+  // administrator privileges to create a file symlink.
+  symlinkSync(realDirectory, linkedDirectory, process.platform === 'win32' ? 'junction' : 'dir');
 
   it('agrees with `import.meta.main` when the file is run directly', () => {
     expect(JSON.parse(run(real))).toEqual({ byArgv: true, byMeta: true });
@@ -56,10 +61,12 @@ describe('the entry-point guard', () => {
     expect(JSON.parse(run(link))).toEqual({ byArgv: false, byMeta: true });
   });
 
-  it('is spelled `import.meta.main` in both entry points', async () => {
+  it('is spelled `import.meta.main` in every entry point', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
-    for (const file of ['./migrate.ts', '../registrations/probe-runner.ts']) {
+    // The release configuration script is the third entry point; it shipped with the
+    // argv comparison this test exists to forbid, because the list was two files long.
+    for (const file of ['./migrate.ts', '../registrations/probe-runner.ts', '../../../../scripts/apply-platform-configuration.mts']) {
       const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
       const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
       expect(code, file).toContain('const isEntryPoint = import.meta.main;');

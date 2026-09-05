@@ -1,6 +1,7 @@
 import { asc, eq, sql } from 'drizzle-orm';
 
 import type {
+  NotificationRecipientReader,
   ManagedUser,
   RoleAssignment,
   RoleRepository,
@@ -10,6 +11,13 @@ import type {
   SessionWriter,
   UserDirectory,
 } from '@intellifin/application';
+
+export class DrizzleNotificationRecipientReader implements NotificationRecipientReader {
+  constructor(private readonly handle: ReadHandle) {}
+  async auditManagerIds(): Promise<readonly string[]> {
+    return (await this.handle.select({ id: userRole.userId }).from(userRole).where(eq(userRole.role, 'audit-manager')).orderBy(asc(userRole.userId))).map(row => row.id);
+  }
+}
 import { isRole, type Role } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
@@ -25,7 +33,7 @@ import type { Auth } from './auth.js';
  * guarantee, and it is a cheap one.
  */
 export class DrizzleRoleRepository implements RoleRepository {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: ReadHandle) {}
 
   findRole(userId: string): Promise<Role | null> {
     return readRole(this.db, userId);

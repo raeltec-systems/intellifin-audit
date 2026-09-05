@@ -1,0 +1,18 @@
+ALTER TABLE "procedure_version" ADD COLUMN "plan_compiler_version" text DEFAULT '1' NOT NULL;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "derivation_model" jsonb;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "compiled_plan" jsonb;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "plan_input_digest" text;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "plan_status" text DEFAULT 'pending' NOT NULL;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "plan_failure_reason" text;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "plan_derivable" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD COLUMN "plan_attempts" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_compiler" CHECK (length("procedure_version"."plan_compiler_version") BETWEEN 1 AND 64);--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_model" CHECK ("procedure_version"."derivation_model" IS NULL OR coalesce(jsonb_typeof("procedure_version"."derivation_model") = 'object' AND "procedure_version"."derivation_model" - 'provider' - 'modelId' - 'promptVersion' = '{}'::jsonb AND jsonb_typeof("procedure_version"."derivation_model"->'provider') = 'string' AND jsonb_typeof("procedure_version"."derivation_model"->'modelId') = 'string' AND jsonb_typeof("procedure_version"."derivation_model"->'promptVersion') = 'string' AND length("procedure_version"."derivation_model"->>'provider') BETWEEN 1 AND 100 AND length("procedure_version"."derivation_model"->>'modelId') BETWEEN 1 AND 200 AND length("procedure_version"."derivation_model"->>'promptVersion') BETWEEN 1 AND 100, false));--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_shape" CHECK ("procedure_version"."compiled_plan" IS NULL OR coalesce(jsonb_typeof("procedure_version"."compiled_plan") = 'object' AND "procedure_version"."compiled_plan"->'schemaVersion' = '1'::jsonb, false));--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_digest" CHECK ("procedure_version"."plan_input_digest" IS NULL OR "procedure_version"."plan_input_digest" ~ '^[0-9a-f]{64}$');--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_status" CHECK ("procedure_version"."plan_status" IN ('pending','succeeded','failed'));--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_failure" CHECK ("procedure_version"."plan_failure_reason" IS NULL OR length("procedure_version"."plan_failure_reason") BETWEEN 1 AND 1000);--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_attempts" CHECK (coalesce(jsonb_typeof("procedure_version"."plan_attempts") = 'array', false));--> statement-breakpoint
+ALTER TABLE "procedure_version" ADD CONSTRAINT "procedure_version_plan_consistency" CHECK (coalesce(("procedure_version"."plan_derivable" = ("procedure_version"."plan_status" = 'succeeded')) AND ("procedure_version"."plan_status" <> 'succeeded' OR ("procedure_version"."compiled_plan" IS NOT NULL AND "procedure_version"."plan_input_digest" IS NOT NULL AND "procedure_version"."plan_failure_reason" IS NULL)) AND ("procedure_version"."plan_status" <> 'failed' OR ("procedure_version"."compiled_plan" IS NULL AND "procedure_version"."plan_failure_reason" IS NOT NULL)), false));
+--> statement-breakpoint
+INSERT INTO "schema_meta" ("version") VALUES (12);

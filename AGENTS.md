@@ -46,3 +46,64 @@ Planning workspace and application monorepo for IntelliFin Audit, an audit-execu
 - `lint_spine.py` rejects AD IDs out of document order and any `{placeholder}` token in routes; write `<run-id>`.
 
 <!-- /bmad:context -->
+
+## Codex adaptation of the shared working rules
+
+`CLAUDE.md` is the shared decision log and the source for the repository's general
+working practices. Codex follows those practices subject to its active system,
+developer, and tool instructions. This section records the platform-specific
+translation so that the two instruction files do not silently disagree.
+
+- **Finish the requested scope.** Complete each requested item, verify changes in
+  proportion to their risk, and report a concrete blocker only when one remains.
+- **Act within scope; preserve question intent.** Take reversible, low-cost actions
+  needed to complete an implementation request. For a question, review, or diagnosis,
+  answer before making changes unless the request also authorizes them.
+- **Keep communication short and clear.** Use plain language, give exact paths and
+  commands when they help, and state the result before the implementation detail.
+- **Record reusable repository decisions.** Add a concise, shared workflow decision or
+  gotcha to `CLAUDE.md` in the same change that established it. Follow the managed-block
+  rules above for planning artifacts and `.memlog.md` files.
+
+### Model and delegation routing
+
+The model-family names in `CLAUDE.md` describe Claude environments and are not a
+requirement to emulate unavailable models. For Codex:
+
+- Use the least costly available capability that can safely complete the work. The
+  active runtime selects the primary model; choose a subagent model only when the
+  runtime exposes that choice and the task benefits from it.
+- Parallelize independent, non-overlapping work only when the active Codex
+  instructions permit delegation. Never create a subagent merely to satisfy the
+  `CLAUDE.md` parallelism preference, and never give two agents overlapping files or
+  authority.
+- Keep useful work moving in the main task while permitted subagents run. Reconcile
+  their results in the main task and retain the same verification standard.
+- Active system/developer instructions, user direction, safety requirements, and
+  available tools take precedence over this adaptation and over Claude-specific model
+  names or routing guidance.
+
+### Epic delivery protocol
+
+- Draft specifications and make final review decisions with the highest-reasoning GPT
+  model the runtime makes available (currently `gpt-5.6-sol`; use a more capable GPT
+  successor when available). This model owns the final technical judgement.
+- Use the fast GPT tier (currently `gpt-5.6-luna` at maximum reasoning) for bounded,
+  independent scouting and audit fan-outs. Give each subagent a non-overlapping scope;
+  the highest-reasoning model reconciles its findings before a decision is made.
+- When blocked on a technical decision, consult the highest-reasoning available GPT
+  model first. Ask the user only if that review cannot resolve a genuine product,
+  authority, or external-state decision. Present at most two recommended options with
+  their trade-offs when user input is required.
+- Record important reusable implementation decisions and gotchas in `CLAUDE.md` in the
+  same change that exposed them.
+- At the end of an epic, create a readable report under
+  `_bmad-output/implementation-artifacts/` that states what changed, how it was
+  verified, decisions made, and any remaining user action. Link that report in the PR
+  summary; it is the human-readable review surface, not a substitute for the diff.
+- Commit and push each story only after implementation, validation, and required tests
+  pass. Continue through the authorized epic without asking for routine approvals.
+  The epic report must explain delivered behavior, actual verification results,
+  important decisions, and remaining user action. For a decision that needs the user,
+  present at most two options with reasons and a recommendation. Do not expect the
+  user to read the full PR diff to understand the delivery.
