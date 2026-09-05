@@ -157,6 +157,29 @@ describe.skipIf(!url)('immutable activation and transactional platform successor
     await sql`UPDATE procedure_version SET state='RETIRED' WHERE version_id=${first.versionId}`;
     await expect(sql`UPDATE procedure_version SET instructions='[]' WHERE version_id=${first.versionId}`).rejects.toThrow('immutable');
   });
+  it('raw SQL cannot rewrite recorded activation metadata or an activated succession, and a succession cannot cross Procedures',async()=>{
+    // The definition trigger excludes `lifecycle` from its column comparison so activation
+    // can record it; that exclusion is exactly where a later rewrite would hide, so the
+    // trigger's own third branch guards it. Nothing exercised that branch, nor the
+    // succession trigger's, before this test (verification-gap review on #21).
+    const first=await active();expect(first.lifecycle).not.toBeNull();
+    await expect(sql`UPDATE procedure_version SET lifecycle = lifecycle || '{"handoverAt":"2099-01-01T00:00:00.000Z"}'::jsonb WHERE version_id=${first.versionId}`).rejects.toThrow('Recorded activation metadata is immutable');
+    await expect(sql`UPDATE procedure_version SET lifecycle = NULL WHERE version_id=${first.versionId}`).rejects.toThrow('Recorded activation metadata is immutable');
+    // Same value is not a rewrite: IS DISTINCT FROM keeps the branch specific.
+    await sql`UPDATE procedure_version SET lifecycle = lifecycle WHERE version_id=${first.versionId}`;
+    expect((await repo.findVersion(first.versionId))?.lifecycle).toEqual(first.lifecycle);
+
+    const next=await act(await act(await successor(first),'submit'),'approve');expect(next.state).toBe('ACTIVE');
+    const [edge]=await sql`SELECT successor_id, activated_at, handover_at FROM procedure_succession WHERE successor_id=${next.versionId}`;
+    expect(edge?.activated_at).not.toBeNull();
+    await expect(sql`UPDATE procedure_succession SET handover_at = now() WHERE successor_id=${next.versionId}`).rejects.toThrow('Activated succession is immutable');
+    await expect(sql`UPDATE procedure_succession SET predecessor_id = ${next.versionId} WHERE successor_id=${next.versionId}`).rejects.toThrow('Activated succession is immutable');
+    await sql`UPDATE procedure_succession SET handover_at = handover_at WHERE successor_id=${next.versionId}`;
+
+    // A succession edge whose endpoints belong to two Procedures is refused at insert.
+    const other=await active();
+    await expect(sql`INSERT INTO procedure_succession (procedure_id, predecessor_id, successor_id) VALUES (${first.procedureId}, ${other.versionId}, ${next.versionId})`).rejects.toThrow('same Procedure');
+  });
   it.each(['registration','source'] as const)('%s save checks exact impact, mints atomically, and ignores annotations',async kind=>{
     const before=await active(),unrelated=await active();
     const correlationId=ids.next();
