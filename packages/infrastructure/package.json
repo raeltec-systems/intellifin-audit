@@ -25,6 +25,14 @@
     "./probe-runner": {
       "types": "./src/registrations/probe-runner.ts",
       "default": "./dist/registrations/probe-runner.js"
+    },
+    "./acquisition": {
+      "types": "./src/runs/population-acquisition-http.ts",
+      "default": "./dist/runs/population-acquisition-http.js"
+    },
+    "./evidence": {
+      "types": "./src/evidence/s3-evidence-store.ts",
+      "default": "./dist/evidence/s3-evidence-store.js"
     }
   },
   "files": [

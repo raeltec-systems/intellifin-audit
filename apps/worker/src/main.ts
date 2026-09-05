@@ -3,7 +3,7 @@ import { hostname } from 'node:os';
 
 import {
   ConfigError,
-  PostgresPopulationRepository, HttpPopulationAcquisition, createS3EvidenceStore, evidenceS3Config, startPopulationWorker, startPopulationRecovery, SystemClock,
+  PostgresPopulationRepository, startPopulationWorker, startPopulationRecovery, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender,
   createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
@@ -12,7 +12,12 @@ import {
   loadConfig,
 } from '@intellifin/infrastructure';
 
-import { createHeartbeatLoop, runStartupChecks } from './startup.js';
+// Not from the barrel: both make or hold the outbound side of an acquisition, and the
+// web imports that barrel. See packages/infrastructure/src/index.ts.
+import { HttpPopulationAcquisition } from '@intellifin/infrastructure/acquisition';
+import { createS3EvidenceStore } from '@intellifin/infrastructure/evidence';
+
+import { createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -93,12 +98,15 @@ async function main(): Promise<void> {
   stopRecovery = await startProceduresRecovery(db, (job) => reconcilePlanDerivation(derivation, job),
     () => telemetry.captureError('Plan derivation queue failed', new Error('Plan recovery failed'), {}));
 
-  const evidenceConfig = evidenceS3Config(config);
-  if (!evidenceConfig) throw new ConfigError(['EVIDENCE_S3_ENDPOINT: population worker requires private S3 deployment configuration']);
-  const populationRepository = new PostgresPopulationRepository(db);
-  const population = { repository:populationRepository, acquisition:new HttpPopulationAcquisition(), store:createS3EvidenceStore(evidenceConfig), clock:new SystemClock(), ids:new CryptoUuidV7Generator() };
-  await startPopulationWorker(queue,job=>acquirePopulation(population,job));
-  stopPopulationRecovery=startPopulationRecovery(db,populationRepository,job=>acquirePopulation(population,job),()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));
+  const evidence = populationExecution(config);
+  if (evidence.enabled) {
+    const populationRepository = new PostgresPopulationRepository(db);
+    const population = { repository:populationRepository, acquisition:new HttpPopulationAcquisition(), store:createS3EvidenceStore(evidence.config), clock:new SystemClock(), ids:new CryptoUuidV7Generator() };
+    await startPopulationWorker(queue,job=>acquirePopulation(population,job));
+    stopPopulationRecovery=startPopulationRecovery(db,populationRepository,job=>acquirePopulation(population,job),()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));
+  } else {
+    telemetry.info('Population execution disabled', { reason: evidence.reason });
+  }
 
   const loop = createHeartbeatLoop(db, host, telemetry);
   const notifications = new DrizzleNotificationRepository(db);

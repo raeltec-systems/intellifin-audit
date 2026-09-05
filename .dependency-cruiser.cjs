@@ -113,6 +113,29 @@ module.exports = {
       to: { path: '^packages/infrastructure/(src|dist)/registrations/probe', reachable: true },
     },
     {
+      name: 'no-population-acquisition-in-web',
+      comment:
+        'AD-10: the worker acquires a Population Source from a registered Target System and ' +
+        'writes what it got; the web only reads those rows. Nothing under apps/web may reach ' +
+        "the acquisition adapter. It is exported through the package's ./acquisition subpath " +
+        'and deliberately kept out of the barrel, because the web imports the barrel and a ' +
+        're-export would make the module reachable transitively. `reachable: true`, so an ' +
+        'import through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/population-acquisition-http', reachable: true },
+    },
+    {
+      name: 'no-evidence-store-in-web',
+      comment:
+        'The evidence store holds the object-storage credentials and writes immutable Evidence. ' +
+        'Only the worker composes it, through the ./evidence subpath; keeping it out of the ' +
+        'barrel also keeps the S3 SDK out of the web bundle graph. `reachable: true`.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/evidence/', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +

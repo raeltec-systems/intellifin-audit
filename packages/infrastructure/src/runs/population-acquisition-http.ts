@@ -102,6 +102,7 @@ function sourceUrl(source: ProcedureSourceSnapshot): URL {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw contractFailure();
   if (parsed.username !== '' || parsed.password !== '' || parsed.hash !== '') throw contractFailure();
+  if (isRefusedSourceHost(parsed.hostname)) throw contractFailure();
 
   for (const segment of parsed.pathname.split('/').filter(Boolean)) {
     if (URL_PATH_ENDPOINTS.has(segment.toLowerCase())) throw contractFailure();
@@ -111,6 +112,38 @@ function sourceUrl(source: ProcedureSourceSnapshot): URL {
     if (URL_SECRET_QUERY_KEYS.has(key.toLowerCase())) throw contractFailure();
   }
   return parsed;
+}
+
+/**
+ * Refuse a frozen source that names an address only the infrastructure answers on.
+ *
+ * Scoped deliberately. This deployment's own synthetic Target Systems are served on
+ * loopback (`http://localhost:4300/loancore`), and a PoC may bind a source to a private
+ * neighbour, so neither loopback nor the RFC1918 ranges can be refused without breaking
+ * the documented path. What no legitimate source ever names is the link-local range that
+ * carries cloud instance metadata, or the unspecified address. Those are refused before
+ * a request is made, because the response would be frozen into Evidence and the chain is
+ * immutable: anything that enters it can never be taken out.
+ *
+ * This covers a literal only. A host name that RESOLVES to link-local is not covered and
+ * needs a resolved-address check at connect time; the residual is recorded in the story.
+ */
+export function isRefusedSourceHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === '') return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4) {
+    const [a, b] = v4.slice(1).map(Number) as [number, number, number, number];
+    return (a === 169 && b === 254) || a === 0;
+  }
+  if (!host.includes(':')) return false;
+  if (host === '::') return true;
+  // fe80::/10 is written fe8, fe9, fea or feb in the first hextet.
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return true;
+  // An IPv4-mapped address normalizes to hex, so 169.254.x.x arrives as ::ffff:a9fe:*.
+  if (/^::ffff:a9fe:/.test(host)) return true;
+  const mapped = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(host);
+  return mapped ? isRefusedSourceHost(mapped[1]!) : false;
 }
 
 function mediaTypeFrom(response: Response): string {
@@ -319,6 +352,13 @@ function withDeadline(timeoutMs: number, parentSignal?: AbortSignal): {
     dispose: () => {
       clearTimeout(timer);
       if (onAbort !== undefined) parentSignal?.removeEventListener('abort', onAbort);
+      // `fetch` resolves on HEADERS, so a response whose body is never read holds the
+      // socket open after the only timer that would have bounded it is cleared. Every
+      // early exit here leaves a body unread: a non-2xx, a redirect, a bad or over-long
+      // Content-Length, and each `return null` in the declaration fetch. Aborting is a
+      // no-op on a request that already finished, and releases the socket on one that
+      // has not. Same defect and same fix as the Target System probe.
+      controller.abort();
     },
   };
 }

@@ -142,6 +142,13 @@ describe('HttpPopulationAcquisition', () => {
     ['count endpoint', 'https://source.example.test/rows/count'],
     ['pagination query', 'https://source.example.test/rows?page=2'],
     ['secret query', 'https://source.example.test/rows?token=private'],
+    // A frozen source must not aim the worker at the instance metadata service. Those
+    // bytes would be frozen into Evidence, and the chain is immutable. Loopback and the
+    // private ranges stay allowed: the synthetic Northstar systems are served there.
+    ['link-local metadata', 'http://169.254.169.254/latest/meta-data/'],
+    ['IPv6 link-local', 'http://[fe80::1]/rows.csv'],
+    ['IPv4-mapped link-local', 'http://[::ffff:169.254.169.254]/rows.csv'],
+    ['unspecified address', 'http://0.0.0.0/rows.csv'],
   ])('refuses %s before making a request', async (_name, location) => {
     const fetch = vi.fn();
     await expect(new HttpPopulationAcquisition({ fetch }).acquire(
@@ -162,6 +169,36 @@ describe('HttpPopulationAcquisition', () => {
     expect(new TextDecoder().decode(result.bytes)).toContain('declared_count_endpoint');
     expect(result.declaration).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases an abandoned response body when the deadline is disposed', async () => {
+    // Headers now, body never. `fetch` resolves on headers, so before the fix the socket
+    // stayed open after the adapter gave up: dispose() cleared the only timer that
+    // bounded it and never aborted the request. A leaked connection keeps the server's
+    // close callback from running, which is what this asserts.
+    const held: import('node:net').Socket[] = [];
+    const server = createServer((_request, reply) => {
+      held.push(reply.socket!);
+      reply.writeHead(503, { 'content-type': 'text/plain', 'content-length': '4096' });
+      reply.write('x');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing server address');
+    try {
+      await expect(new HttpPopulationAcquisition().acquire(
+        source('versioned-file', `http://127.0.0.1:${address.port}/rows.csv`, 'none'),
+        period,
+        3000,
+      )).rejects.toBeInstanceOf(PopulationAcquisitionError);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('a connection outlived the acquisition attempt')), 4000);
+        server.close(() => { clearTimeout(timer); resolve(); });
+      });
+    } finally {
+      for (const socket of held) socket.destroy();
+      server.close();
+    }
   });
 
   it('refuses redirects and response bodies beyond the frozen byte bound', async () => {

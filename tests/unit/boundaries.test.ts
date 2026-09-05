@@ -94,6 +94,27 @@ const CASES: readonly Case[] = [
     rule: 'no-target-system-probe-in-apps',
   },
   {
+    // AD-10 again, for the adapter that actually fetches a Population Source. The worker
+    // composes it through the ./acquisition subpath; the web must not reach it at all.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/population-acquisition-http.js',
+    rule: 'no-population-acquisition-in-web',
+  },
+  {
+    // The built spelling, which an `exclude` would silently stop rule-checking.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/population-acquisition-http.js',
+    rule: 'no-population-acquisition-in-web',
+    requires: 'packages/infrastructure/dist/runs/population-acquisition-http.js',
+  },
+  {
+    // The evidence store holds the object credentials, so the web has no business
+    // reaching it either.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/evidence/s3-evidence-store.js',
+    rule: 'no-evidence-store-in-web',
+  },
+  {
     // And from the web, which must never make an outbound call to a registered system.
     plantIn: 'apps/web/src',
     imports: '../../../../packages/infrastructure/src/registrations/probe-runner.js',
