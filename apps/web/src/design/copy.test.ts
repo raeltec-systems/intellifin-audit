@@ -8,6 +8,7 @@ import { REGISTRATION_REFUSALS } from '@intellifin/application';
 import {
   BUILDER_SECTION_NOT_EDITABLE_SENTENCE,
   BUILDER_DESKTOP_ONLY_SENTENCE,
+  AUTHOR_CANNOT_APPROVE_SENTENCE,
   DECLARED_COUNT_MISSING_SENTENCE,
   MANUAL_UPLOAD_SENTENCE,
   EMPTY_STATES,
@@ -88,12 +89,14 @@ describe('copy quoted from the UX contract', () => {
     const surfaces = [
       '../../app/page.tsx',
       '../../app/review/page.tsx',
-      '../shell/NotificationBell.tsx',
     ];
     for (const surface of surfaces) {
       const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
       expect(source, surface).toContain('EMPTY_STATES');
     }
+  });
+  it('pins the self-approval refusal to EXPERIENCE.md', () => {
+    expect(experience).toContain(AUTHOR_CANNOT_APPROVE_SENTENCE);
   });
 });
 

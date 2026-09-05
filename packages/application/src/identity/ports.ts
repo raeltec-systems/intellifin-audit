@@ -26,6 +26,11 @@ export interface RoleRepository {
   findRole(userId: string): Promise<Role | null>;
 }
 
+/** Identity owns recipient selection; Procedures never reads identity tables. */
+export interface NotificationRecipientReader {
+  auditManagerIds(): Promise<readonly string[]>;
+}
+
 /** Resolves the session for the request in hand. `null` means unauthenticated. */
 export interface SessionReader {
   currentSession(): Promise<SessionSnapshot | null>;

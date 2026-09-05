@@ -15,7 +15,7 @@
 <h1>From an audit definition to an approved, frozen Procedure Version</h1>
 <p class="lead">Epic 2 builds the authoring and human-review workflow that later Runs will execute against.</p>
 <span class="status">Work in progress — not an acceptance sign-off</span>
-<p class="muted" style="margin-top:16px">Updated 4 September 2026 · Branch <code>codex/epic-2-procedure-builder</code></p>
+<p class="muted" style="margin-top:16px">Updated 5 September 2026 · Branch <code>codex/epic-2-procedure-builder</code></p>
 </header>
 
 <section aria-labelledby="delivery"><h2 id="delivery">What is being delivered</h2>
@@ -23,7 +23,7 @@
 <tr><th scope="row">2.1–2.4</th><td>Create from one of four Templates; bind the population; select registered Target Systems; write instructions; author deterministic or Agent-Judged compliance conditions.</td><td>Existing implementation, included in regression checks.</td></tr>
 <tr><th scope="row">2.5</th><td>Declare evidence and grounding requirements; choose a UTC Schedule; see incompatible upload/frequency choices before submission.</td><td>Implemented and verified.</td></tr>
 <tr><th scope="row">2.6</th><td>Read the worker-derived executable plan, its derivation status and model provenance before submitting.</td><td>Implemented, reviewed and verified.</td></tr>
-<tr><th scope="row">2.7</th><td>Submit for independent approval; review the changes; approve or reject with an audit record and in-app notifications.</td><td>Implementation pending.</td></tr>
+<tr><th scope="row">2.7</th><td>Submit for independent approval; review the changes; approve or reject with an audit record and in-app notifications.</td><td>Implemented, reviewed and verified.</td></tr>
 <tr><th scope="row">2.8</th><td>Protect approved definitions from edits; create successor versions; route relevant platform changes through the same approval process.</td><td>Implementation pending.</td></tr>
 </tbody></table>
 <p class="muted" style="margin-top:18px">Actual audit execution, Regression Runs and scheduled handover execution belong to later epics. Epic 2 must supply their approved, versioned input contracts.</p>
@@ -31,18 +31,22 @@
 
 <section aria-labelledby="verification"><h2 id="verification">Verification observed so far</h2>
 <div class="grid">
-<div class="metric"><strong>1,892</strong>unit tests passed in the latest full run.</div>
-<div class="metric"><strong>170</strong>integration tests passed against PostgreSQL 18.6.</div>
+<div class="metric"><strong>1,922</strong>unit tests passed in the latest full run.</div>
+<div class="metric"><strong>192</strong>integration tests passed against PostgreSQL 18.6.</div>
 <div class="metric"><strong>96</strong>upgrade combinations checked for preserved authored data.</div>
 </div>
-<p style="margin-top:24px">Type checking, dependency boundaries, migration, schema drift checking, workspace builds and the production web build passed. The final full browser run passed 92 tests, including accessibility scans and the new concurrency, response-loss and capture-control regressions.</p>
+<p style="margin-top:24px">Type checking, dependency boundaries, migration, schema drift checking, workspace builds and the production web build passed. The final full browser run passed 95 tests without retries, including accessibility scans, authoring concurrency, response-loss protection and the complete P-1 author/derive/reject/edit/resubmit/approve journey.</p>
 <p>GitHub CI also passed for the pushed Story 2.5 commit <code>38c96ca</code>: <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170">CI run 48</a>.</p>
-<p class="note">These results describe the Story 2.6 checkpoint. Stories 2.7–2.8 and the complete epic are not yet delivered. The 96 upgrade combinations were established at Story 2.5; derivation upgrade/recovery checks now also cover generation 12.</p>
+<p>Story 2.6 also passed <a href="https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513">CI run 50</a> at <code>66579c9</code>, including the container build, clean database migration and browser tests. The preceding run exposed three fresh-environment gaps; dependency build ordering, Docker test inputs and browser polling readiness were repaired and independently reviewed.</p>
+<p class="note">The latest local results describe the completed Story 2.7 checkpoint. Story 2.8 and the complete epic are not yet delivered. The 96 upgrade combinations were established at Story 2.5; later checks cover derivation recovery and generation-13 review/provenance storage.</p>
+<p>Story 2.7 review identified twelve repairs, including preventing submission while edits are unsaved, showing both versions’ executable plans, preserving the exact submitted review and making older notifications accessible. Independent follow-up cleared them, and all required checks passed after recovery from a full host disk. Final database verification used a fresh isolated cluster.</p>
 </section>
 
 <section aria-labelledby="decisions"><h2 id="decisions">Important decisions and lessons</h2>
 <ul>
 <li><strong>Your handover decision is recorded.</strong> Approval of a successor that needs regression testing records its pending regression and predecessor relationship. Its authoritative handover date is set only when regression passes and it activates; no speculative date is shown at approval. The architecture and story contracts now agree on this timing.</li>
+<li><strong>Review means the exact submitted definition.</strong> The comparison stores its predecessor and reviewed values at submission. Later background work cannot change what the Manager sees or approves. Previous rejection rationale remains visible after editing and resubmission.</li>
+<li><strong>Independent approval follows actual authorship.</strong> A Manager who changes the definition cannot approve those edits. Operational retries do not make someone an author. Notifications are stored with the decision and become visible after worker delivery, with private pagination and an explicit refresh.</li>
 <li><strong>Derivation survives interrupted work.</strong> An audited start is stored before model work. Bounded retry and recovery retain unfinished attempts, preserve successful plans and detect older-process saves. The preview identifies the attempt that produced the current stored plan.</li>
 <li><strong>Models cannot silently change executable meaning.</strong> Both installed provider SDKs are tested with synthetic HTTP. Their complete response must match the frozen contract; canonical compiler bytes are stored. A live provider acceptance check still needs a deployment credential.</li>
 <li><strong>Native PostgreSQL removed the Docker blocker.</strong> Docker Desktop failed during startup. Verification now uses an isolated native PostgreSQL 18.6 test cluster with TLS and password authentication. No application database was used.</li>

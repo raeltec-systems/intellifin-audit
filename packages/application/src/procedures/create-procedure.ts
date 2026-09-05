@@ -218,6 +218,7 @@ export function procedureVersionRowVersion(record: ProcedureVersionRecord): stri
       templateId: record.templateId,
       versionId: record.versionId,
       versionNumber: record.versionNumber,
+      authorship: record.authorship ?? null, decisions: record.decisions ?? [], frozenReview: record.frozenReview ?? null, submittedReview: record.submittedReview ?? null,
       period: record.period,
       scope: record.scope,
       sourceSnapshot: record.sourceSnapshot,
@@ -287,6 +288,7 @@ export async function createProcedure(
     procedureId,
     versionNumber: 1,
     state: 'DRAFT',
+    authorship: { createdBy: { type: 'human', id: session.userId }, responsibleAuthorId: session.userId, humanAuthorIds: [session.userId] },
     controlName: validated.controlName,
     templateId: validated.templateId,
     sections,
@@ -370,7 +372,7 @@ export async function renameProcedureDraft(
           };
         }
 
-        after = await queuePlanDerivation(after, derivationJobs);
+        after = await queuePlanDerivation(after, derivationJobs, input.session.userId);
         await procedures.updateVersion(after);
         await auditEvents.append({
           actor: { type: 'human', id: session.userId },

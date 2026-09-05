@@ -15,12 +15,14 @@ import { AuditInstructionsForm } from './AuditInstructionsForm';
 import { ComplianceRuleForm } from './ComplianceRuleForm';
 import { EvidenceRequirementsForm, ScheduleForm } from './EvidenceScheduleForm';
 import { ExecutablePlanPreview } from './ExecutablePlanPreview';
-import { useSection } from './use-section';
+import { useSection, useSectionSubmissionStatus, useSubmissionGuard, BuilderSubmissionProvider } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 import { RetryPlanDerivation, type RetryPlanDerivationFields, type RetryPlanDerivationResult } from './RetryPlanDerivation';
+import { submissionUnavailableReason } from '@intellifin/application';
+import { VersionActions } from './VersionActions';
 
-export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
+function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
   readonly draft: ProcedureVersionView;
   readonly sources: readonly PopulationSourceBinding[];
   readonly registrations: readonly TargetSystemRegistration[];
@@ -54,6 +56,9 @@ export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   const saving = useRef(false);
+  useSectionSubmissionStatus('Period and scope', periodSection, busy, unknownOutcome);
+  useSectionSubmissionStatus('Population Source', populationSection, busy, unknownOutcome);
+  const submissionGuard = useSubmissionGuard();
   const selected = sources.find((s) => s.bindingId === selection);
   const contract = selection === 'retain' ? sourceSnapshot?.contract : selected === undefined ? undefined : { declared_schema: selected.declaredSchema, declared_count_mechanism: selected.declaredCountMechanism, kind: selected.kind };
   const rule = { schemaVersion: 1 as const, all: predicates };
@@ -104,7 +109,7 @@ export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave
     finally { setAnnouncement((n) => n + 1); saving.current = false; setBusy(false); }
   }
   const periodEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('period-scope'); }} onBlur={() => setPeriodTouched(true)}>
-    <SectionConflict conflict={periodSection.conflict} name="Period and scope" reset={() => periodSection.reset()} />
+    <SectionConflict dirty={periodSection.status().dirty} conflict={periodSection.conflict} name="Period and scope" reset={() => periodSection.reset()} />
     <p id={`${id}-utc`}>Start and end dates are inclusive in UTC. This explicit Period does not derive a scheduled Run period.</p>
     <div className="ls-dialog__field"><label htmlFor={`${id}-from`}>Period start</label><input className="ls-input" id={`${id}-from`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
     <div className="ls-dialog__field"><label htmlFor={`${id}-to`}>Period end</label><input className="ls-input" id={`${id}-to`} type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
@@ -113,7 +118,7 @@ export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave
     <Button type="submit" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary">Save Period and scope</Button>
   </form>;
   const populationEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('population-source'); }} onBlur={() => setRuleTouched(true)}>
-    <SectionConflict conflict={populationSection.conflict} name="Population Source" reset={() => populationSection.reset()} />
+    <SectionConflict dirty={populationSection.status().dirty} conflict={populationSection.conflict} name="Population Source" reset={() => populationSection.reset()} />
     <div className="ls-dialog__field"><label htmlFor={`${id}-source`}>Population Source</label>
       <select className="ls-input" id={`${id}-source`} value={selection} onChange={(e) => { setSelection(e.target.value); setRuleTouched(true); }} aria-describedby={`${id}-binding-error ${id}-count`}>
         <option value="">Choose an active Population Source</option>
@@ -179,8 +184,11 @@ export function DraftBuilder({ draft, sources, registrations, rowVersion, onSave
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
     <BuilderSections sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
     <ExecutablePlanPreview draft={draft} />
+    <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
     <RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async (fields) => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} />
     <ConfirmDialog open={confirming !== null} weight="routine" title={confirming?.section === 'period-scope' ? 'Save Period and scope?' : 'Save Population Source binding?'} consequence={`This changes Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`} confirmLabel="Save Draft changes" onConfirm={() => { void save(); }} onCancel={() => setConfirming(null)} />
   </div>;
 }
+
+export function DraftBuilder(props: Parameters<typeof DraftBuilderContent>[0]): React.JSX.Element { return <BuilderSubmissionProvider><DraftBuilderContent {...props} /></BuilderSubmissionProvider>; }

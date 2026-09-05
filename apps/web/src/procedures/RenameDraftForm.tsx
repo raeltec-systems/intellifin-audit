@@ -8,7 +8,7 @@ import { PROCEDURE_REFUSALS } from '@intellifin/application';
 
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import type { RenameActionResult } from '../../app/procedures/[id]/builder/actions';
-import { useSection } from './use-section';
+import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
@@ -61,6 +61,7 @@ export function RenameDraftForm({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  useSectionSubmissionStatus('Control name', section, busy, unknownOutcome);
   /** Written and read in the same tick; `busy` is a render behind. See `BindingForm`. */
   const submittingRef = useRef(false);
 
@@ -103,7 +104,7 @@ export function RenameDraftForm({
 
   return (
     <div className="ls-stack">
-      <SectionConflict conflict={section.conflict} name="Control name" reset={() => section.reset()} />
+      <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Control name" reset={() => section.reset()} />
       <UnknownSaveOutcome visible={unknownOutcome} />
       {result === null ? null : (
         <Banner

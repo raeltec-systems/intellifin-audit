@@ -19,7 +19,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { AUDIT_INSTRUCTIONS_NO_AGENT } from './labels';
-import { useSection } from './use-section';
+import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
@@ -66,6 +66,7 @@ export function AuditInstructionsForm({
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  useSectionSubmissionStatus('Audit Instructions', section, busy, unknownOutcome);
   const saving = useRef(false);
 
   const agentTargets = draft.targets.filter((target) => isAgentDrivenKind(target.contract.kind));
@@ -110,7 +111,7 @@ export function AuditInstructionsForm({
 
   return (
     <div className="ls-stack">
-      <SectionConflict conflict={section.conflict} name="Audit Instructions" reset={() => section.reset()} />
+      <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Audit Instructions" reset={() => section.reset()} />
       <UnknownSaveOutcome visible={unknownOutcome} />
       {templateInstructions === null ? null : (
         <div className="ls-card">

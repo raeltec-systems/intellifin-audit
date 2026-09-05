@@ -113,6 +113,10 @@ export default defineConfig({
                * accepted and the refused path.
                */
               CREDENTIAL_CAPABILITIES,
+              MODEL_PROVIDER: 'anthropic',
+              MODEL_ID: 'synthetic-http-fixture',
+              MODEL_PROMPT_VERSION: '1',
+              MODEL_MAX_OUTPUT_TOKENS: '65536',
             },
           },
         ],

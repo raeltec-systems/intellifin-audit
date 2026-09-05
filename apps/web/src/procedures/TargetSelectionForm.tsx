@@ -20,7 +20,7 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { Digest } from '../design/Digest';
 import { UnavailableActions } from '../design/UnavailableActions';
 import { TARGET_SELECTION_MISSING, targetCoverageMissing, kindLabel } from './labels';
-import { useSection } from './use-section';
+import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
@@ -99,6 +99,7 @@ export function TargetSelectionForm({
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  useSectionSubmissionStatus('Target Systems', section, busy, unknownOutcome);
   const saving = useRef(false);
 
   const selectedIds = new Set(selected.map((target) => target.registrationId));
@@ -186,7 +187,7 @@ export function TargetSelectionForm({
 
   return (
     <div className="ls-stack">
-      <SectionConflict conflict={section.conflict} name="Target Systems" reset={() => section.reset()} />
+      <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Target Systems" reset={() => section.reset()} />
       <UnknownSaveOutcome visible={unknownOutcome} />
       {result === null ? null : (
         <Banner

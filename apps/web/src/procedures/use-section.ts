@@ -1,6 +1,41 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { createContext, createElement, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+
+function createSubmissionRegistry() {
+  const readers = new Map<string, () => string | null>();
+  const listeners = new Set<() => void>();
+  const changed = () => listeners.forEach(listener => listener());
+  return {
+    reason: () => [...readers.values()].map(read => read()).find(reason => reason !== null) ?? null,
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    register(id: string, read: () => string | null) { readers.set(id, read); changed(); return () => { readers.delete(id); changed(); }; },
+    changed,
+  };
+}
+const SubmissionContext = createContext<ReturnType<typeof createSubmissionRegistry> | null>(null);
+export function BuilderSubmissionProvider({ children }: { children: ReactNode }) {
+  const [registry] = useState(createSubmissionRegistry);
+  return createElement(SubmissionContext.Provider, { value: registry }, children);
+}
+export function useSubmissionGuard() {
+  const registry = useContext(SubmissionContext);
+  const reason = useSyncExternalStore(registry?.subscribe ?? (() => () => {}), registry?.reason ?? (() => null), () => null);
+  return { reason, check: registry?.reason ?? (() => null) };
+}
+export function useSectionSubmissionStatus(name: string, section: { status(): { dirty: boolean; conflict: boolean; pending: boolean } }, busy: boolean, unknown: boolean) {
+  const registry = useContext(SubmissionContext), id = useId();
+  const read = useRef((): string | null => null);
+  read.current = () => {
+    const status = section.status();
+    if (unknown) return `Reload to inspect the unknown save outcome in ${name} before submitting.`;
+    if (busy || status.pending) return `Wait for the ${name} save to be acknowledged before submitting.`;
+    if (status.conflict) return `Resolve the saved-value conflict in ${name} before submitting.`;
+    return status.dirty ? `Save or reset unsaved changes in ${name} before submitting.` : null;
+  };
+  useLayoutEffect(() => registry?.register(id, () => read.current()), [registry, id]);
+  useLayoutEffect(() => { registry?.changed(); });
+}
 
 export interface SectionState<T> { value: T; baseline: T; token: string; conflict: boolean }
 // PostgreSQL jsonb can reorder object keys; ordered authored arrays still retain meaning.
@@ -35,6 +70,7 @@ export function createSectionMachine<T>(server: T, token: string) {
   };
   return {
     get state() { return state; },
+    status() { return { dirty: !equal(state.value, state.baseline), conflict: state.conflict, pending: pending !== null }; },
     observe(nextServer: T, nextToken: string, normalize?: (value: T) => T) {
       // A parent may publish the action token before refreshing its section data.
       // Neither that pair nor another old-snapshot refresh supersedes the acknowledgement.
@@ -99,6 +135,7 @@ export function useSection<T>(server: T, rowVersion: string, normalizeBaseline?:
   }, [serverKey, rowVersion]);
   return {
     ...state,
+    status: section.status,
     current,
     edit(value: T) { section.edit(value); publish(); },
     begin(normalized: T) { section.begin(normalized); },

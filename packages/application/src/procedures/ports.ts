@@ -1,4 +1,18 @@
 import type { PlanDerivationFields, PlanDerivationQueue } from './plan-ports.js';
+import type { FrozenVersionReview, SubmittedVersionReview, VersionAuthorship, VersionDecisionRecord } from '@intellifin/domain';
+import type { NotificationWriter } from '../notifications/ports.js';
+import type { NotificationRecipientReader, RoleRepository } from '../identity/ports.js';
+
+export class UnverifiablePreviousVersion extends Error {
+  constructor() { super('The previous Procedure Version could not be verified. Submission is unavailable until its saved data is repaired.'); }
+}
+
+export interface VersionReviewFields {
+  readonly authorship?: VersionAuthorship | null;
+  readonly decisions?: readonly VersionDecisionRecord[];
+  readonly frozenReview?: FrozenVersionReview | null;
+  readonly submittedReview?: SubmittedVersionReview | null;
+}
 import type { DraftComplianceFields, DraftEvidenceFields, DraftPopulationFields, DraftSection, DraftTargetFields, EvidenceBlocker, ProcedureVersionState, TargetBlocker, TemplateId } from '@intellifin/domain';
 import type { PopulationSourceReader } from '../sources/ports.js';
 import type { TargetSystemRegistrationReader } from '../registrations/ports.js';
@@ -34,7 +48,7 @@ export interface ProcedureSummary {
 }
 
 /** A Procedure Version, as the Detail and Builder surfaces render it. */
-export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields {
+export interface ProcedureVersionView extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields, VersionReviewFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -69,7 +83,7 @@ export interface ProcedureRepository {
 }
 
 /** The full version row as one write, including the payload the domain validates. */
-export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields {
+export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTargetFields, DraftComplianceFields, DraftEvidenceFields, PlanDerivationFields, VersionReviewFields {
   readonly versionId: string;
   readonly procedureId: string;
   readonly versionNumber: number;
@@ -90,6 +104,7 @@ export interface ProcedureVersionRecord extends DraftPopulationFields, DraftTarg
  * stale-tab guard is a suggestion.
  */
 export interface ProcedureWriter {
+  findPreviousVersion(procedureId: string, versionNumber: number): Promise<ProcedureVersionRecord | null>;
   insertProcedure(record: ProcedureRecord): Promise<void>;
   insertVersion(record: ProcedureVersionRecord): Promise<void>;
   findVersion(versionId: string): Promise<ProcedureVersionRecord | null>;
@@ -117,6 +132,9 @@ export interface ProcedureRecord {
  * somebody has to remember.
  */
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
+  readonly authorizationRoles: RoleRepository;
+  readonly notifications: NotificationWriter;
+  readonly notificationRecipients: NotificationRecipientReader;
   readonly procedures: ProcedureWriter;
   readonly derivationJobs: PlanDerivationQueue;
   readonly populationSources: PopulationSourceReader;

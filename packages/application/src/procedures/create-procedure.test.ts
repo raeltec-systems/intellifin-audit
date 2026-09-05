@@ -79,6 +79,8 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
       const draftEvents: AuditEventDraft[] = [];
       const draftJobs: PlanDerivationJob[] = [];
       const context: ProceduresUnitOfWorkContext = {
+        authorizationRoles: roles,
+        notifications: { enqueue: async () => {} }, notificationRecipients: { auditManagerIds: async () => [] },
         derivationJobs: { enqueue: async (job) => { draftJobs.push(job); } },
         populationSources: { findBindingForShare: async (id) => bindings.get(id) ?? null },
         targetRegistrations: {
@@ -105,6 +107,7 @@ function harness(role: 'auditor' | 'poc-administrator' = 'auditor'): Harness {
           },
         },
         procedures: {
+          findPreviousVersion: async () => null,
           insertProcedure: async (record) => {
             draftProcedures.set(record.procedureId, record);
           },

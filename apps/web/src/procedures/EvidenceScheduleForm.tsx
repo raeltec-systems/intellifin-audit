@@ -21,7 +21,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
-import { useSection } from './use-section';
+import { useSection, useSectionSubmissionStatus } from './use-section';
 
 /**
  * Evidence Requirements and the Schedule (FR-9, FR-10, scoped to this story).
@@ -97,6 +97,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
+  useSectionSubmissionStatus('Evidence Requirements', section, busy, unknownOutcome);
   const saving = useRef(false);
 
   // Platform-captured is recorded from the CURRENT Target System selection, never a
@@ -160,6 +161,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
   return (
     <div className="ls-stack">
       {section.conflict ? <><Banner tone="warning" title="Evidence Requirements changed in another session. Review the saved values before replacing them." /><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Evidence Requirements</Button></> : null}
+      {!section.conflict && section.status().dirty ? <><p>Evidence Requirements has unsaved changes.</p><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Evidence Requirements</Button></> : null}
       {unknownOutcome ? <><Banner tone="warning" title={UNKNOWN_OUTCOME} /><Button type="button" onClick={() => window.location.reload()}>Reload saved version</Button></> : null}
       {result === null ? null : (
         <Banner
@@ -339,6 +341,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
+  useSectionSubmissionStatus('Schedule', section, busy, unknownOutcome);
   const saving = useRef(false);
 
   const frequencyError = frequency === '' ? EVIDENCE_DRAFT_MESSAGES.FREQUENCY : null;
@@ -374,6 +377,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
   return (
     <div className="ls-stack">
       {section.conflict ? <><Banner tone="warning" title="The Schedule changed in another session. Review the saved values before replacing them." /><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Schedule</Button></> : null}
+      {!section.conflict && section.status().dirty ? <><p>Schedule has unsaved changes.</p><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Schedule</Button></> : null}
       {unknownOutcome ? <><Banner tone="warning" title={UNKNOWN_OUTCOME} /><Button type="button" onClick={() => window.location.reload()}>Reload saved version</Button></> : null}
       {result === null ? null : (
         <Banner

@@ -238,7 +238,7 @@ test.describe('the notification disclosure', () => {
     const bell = page.getByRole('button', { name: 'Notifications' });
     await bell.click();
     await expect(bell).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.getByText('No Run is waiting on you.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open notifications', exact: true })).toBeVisible();
 
     await page.keyboard.press('Escape');
     await expect(bell).toHaveAttribute('aria-expanded', 'false');

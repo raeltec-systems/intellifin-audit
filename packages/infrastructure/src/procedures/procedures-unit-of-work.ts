@@ -12,6 +12,8 @@ import { DrizzleProcedureWriter } from './procedure-repository.js';
 import { transactionDerivationQueue } from './derivation-queue.js';
 import { DrizzlePopulationSourceReader } from '../sources/binding-repository.js';
 import { DrizzleTargetSystemRegistrationReader } from '../registrations/registration-repository.js';
+import { DrizzleNotificationRecipientReader, DrizzleRoleRepository } from '../identity/role-repository.js';
+import { DrizzleNotificationWriter } from '../notifications/notification-repository.js';
 
 /**
  * One PostgreSQL transaction carrying the audit appender AND the Procedure writer
@@ -44,6 +46,9 @@ export class PostgresProceduresUnitOfWork implements AuditUnitOfWork<ProceduresU
         derivationJobs: transactionDerivationQueue(transaction),
         populationSources: new DrizzlePopulationSourceReader(transaction),
         targetRegistrations: new DrizzleTargetSystemRegistrationReader(transaction),
+        notifications: new DrizzleNotificationWriter(transaction),
+        notificationRecipients: new DrizzleNotificationRecipientReader(transaction),
+        authorizationRoles: new DrizzleRoleRepository(transaction),
       }),
     );
   }

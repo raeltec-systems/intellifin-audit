@@ -8,15 +8,10 @@ import { StatusBadge } from '../design/StatusBadge';
 import { predicateText, ruleText } from './plan-condition-text';
 import { startPlanPolling } from './plan-polling';
 
-const ACTION_LABELS = {
-  'create-workspace': 'Create the audit workspace', 'acquire-population': 'Acquire the Population Source',
-  'sign-in': 'Sign in with the registered credential reference', 'extract-adapter': 'Extract records through the registered adapter',
-  'inspect-record': 'Inspect the population record within the registered read scope',
-  'capture-observation': 'Capture the Observation and required Evidence', 'evaluate-conditions': 'Evaluate the compiled and Agent-Judged conditions',
-} as const;
+import { ACTION_LABELS } from './plan-step-labels';
 
 /** The saved durable contract only. This component never compiles or executes a plan. */
-export function ExecutablePlanPreview({ draft }: { readonly draft: ProcedureVersionView }): React.JSX.Element {
+export function ExecutablePlanPreview({ draft, modelConfiguration }: { readonly draft: ProcedureVersionView; readonly modelConfiguration?: ProcedureVersionView['derivationModel'] }): React.JSX.Element {
   const id = useId();
   const router = useRouter();
   const refresh = useRef(() => router.refresh());
@@ -31,7 +26,7 @@ export function ExecutablePlanPreview({ draft }: { readonly draft: ProcedureVers
   const plan = draft.compiledPlan;
   const successes = draft.planAttempts.filter((entry) => entry.outcome === 'success' && entry.inputDigest === draft.planInputDigest);
   const attempt = successes.find((entry) => entry.published === true) ?? successes.find((entry) => entry.published === undefined);
-  const model = attempt?.outcome === 'success' ? attempt.model : null;
+  const model = modelConfiguration !== undefined ? modelConfiguration : attempt?.outcome === 'success' ? attempt.model : null;
   return <section className="ls-card ls-stack" aria-labelledby={`${id}-title`} data-testid="executable-plan-preview">
     <h2 className="ls-card__title" id={`${id}-title`}>Executable plan preview</h2>
     <p>This plan is read-only. Change the originating Builder section to revise it.</p>

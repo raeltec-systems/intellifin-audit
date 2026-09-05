@@ -137,7 +137,7 @@ export function equivalentExecutablePlan(candidate: unknown, canonical: Executab
   } catch { return false; }
 }
 
-function completenessReason(inputs: FrozenPlanInputs): string | null {
+export function completenessReason(inputs: FrozenPlanInputs): string | null {
   if (inputs.sourceSnapshot === null) return 'Choose a Population Source.';
   const missingLookup = LOOKUP_COLUMNS[inputs.templateId].filter((column) => !inputs.sourceSnapshot!.contract.declared_schema.includes(column));
   if (missingLookup.length) return 'The Population Source must declare lookup columns: ' + missingLookup.join(', ') + '.';

@@ -95,7 +95,7 @@ export default async function ProcedurePage({
                       Open Builder
                     </Link>
                   </p>
-                ) : null}
+                ) : <p><Link className="ls-button ls-button--secondary ls-button--md" href={`/procedures/${procedure.procedureId}/versions/${version.versionId}`}>Open version review</Link></p>}
               </div>
               <VersionMeta version={version} />
             </li>

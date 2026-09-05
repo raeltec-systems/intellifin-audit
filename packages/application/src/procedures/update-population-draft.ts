@@ -58,7 +58,7 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
       }
       let rowVersion = procedureVersionRowVersion(after);
       if (rowVersion === input.expectedRowVersion) return { ok: true, rowVersion, changed: false };
-      after = await queuePlanDerivation(after, derivationJobs);
+      after = await queuePlanDerivation(after, derivationJobs, input.session.userId);
       rowVersion = procedureVersionRowVersion(after);
       await procedures.updateVersion(after);
       const values = (row: ProcedureVersionRecord): JsonValue => edit.section === 'period-scope'

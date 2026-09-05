@@ -2,9 +2,11 @@
 title: 'Submit for approval and approve or reject with a diff'
 type: 'feature'
 created: '2026-09-04'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
-baseline_commit: 'TBD — set at implementation start; depends on Stories 2.5 and 2.6 landing first'
+followup_review_recommended: true
+baseline_commit: '7e47280f292535f65bbb78522e1a4965c76bb1f4'
+baseline_revision: '7e47280f292535f65bbb78522e1a4965c76bb1f4'
 deferred: []
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
@@ -55,12 +57,12 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Build the notification mechanism, which does not exist yet: a `NotificationSender` port owned by the application, a notifications table (generation 13), idempotent send keys, an in-app surface, and worker-side delivery. In-app only for the PoC (AD-20). The row is written in the SAME transaction as the state change; delivery is the worker's job.
-- [ ] `packages/domain/src/procedures/version-decision.ts` — the decision record (actor, time, prior state, decision, rationale, aggregate revision), the rationale requirement for rejection, and the pure section-by-section diff between two versions, including the first-version case.
-- [ ] `packages/application/src/procedures/{submit-version,decide-version}.ts` — Submit, Approve, Reject and Edit-after-rejection as audited commands over the existing transitions, each requiring the expected revision, each appending its audit event and its notification rows in one transaction. Approval freezes the reviewed fields and stores the diff.
-- [ ] Infrastructure: generation-13 columns for the frozen review record, the decision fields and the stored diff, with shape CHECKs; hand-appended `INSERT INTO schema_meta`; `SUPPORTED_SCHEMA_MIN`/`MAX` raised in the SAME commit.
-- [ ] `apps/web` — the Version review surface: the section-by-section diff, the reused read-only plan preview, Approve unavailable to the author carrying the exact sentence as its stated reason, and Reject behind a rationale confirmation dialog. Submit on the Builder is disabled with its reason listed in the unavailable-actions panel and as its accessible description, never a tooltip alone.
-- [ ] Domain, application, integration and e2e tests — every matrix row, a held-open-transaction concurrency case proving the second decision loses its precondition, rollback, notification idempotency, keyboard access and a WCAG scan. Record reusable decisions in `CLAUDE.md`.
+- [x] Build the notification mechanism, which does not exist yet: a `NotificationSender` port owned by the application, a notifications table (generation 13), idempotent send keys, an in-app surface, and worker-side delivery. In-app only for the PoC (AD-20). The row is written in the SAME transaction as the state change; delivery is the worker's job.
+- [x] `packages/domain/src/procedures/version-decision.ts` — the decision record (actor, time, prior state, decision, rationale, aggregate revision), the rationale requirement for rejection, and the pure section-by-section diff between two versions, including the first-version case.
+- [x] `packages/application/src/procedures/{submit-version,decide-version}.ts` — Submit, Approve, Reject and Edit-after-rejection as audited commands over the existing transitions, each requiring the expected revision, each appending its audit event and its notification rows in one transaction. Approval freezes the reviewed fields and stores the diff.
+- [x] Infrastructure: generation-13 columns for the frozen review record, the decision fields and the stored diff, with shape CHECKs; hand-appended `INSERT INTO schema_meta`; `SUPPORTED_SCHEMA_MIN`/`MAX` raised in the SAME commit.
+- [x] `apps/web` — the Version review surface: the section-by-section diff, the reused read-only plan preview, Approve unavailable to the author carrying the exact sentence as its stated reason, and Reject behind a rationale confirmation dialog. Submit on the Builder is disabled with its reason listed in the unavailable-actions panel and as its accessible description, never a tooltip alone.
+- [x] Domain, application, integration and e2e tests — every matrix row, a held-open-transaction concurrency case proving the second decision loses its precondition, rollback, notification idempotency, keyboard access and a WCAG scan. Record reusable decisions in `CLAUDE.md`.
 
 **Acceptance Criteria:**
 - Given a Draft with no blocker and a derivable plan, when the Auditor submits it, then it becomes `SUBMITTED` and every Audit Manager has a notification written in the same transaction.
@@ -102,3 +104,72 @@ Approve and Reject are Audit Manager actions and Submit is an Auditor action, pe
 - Authorship follows creation and actual authored-definition changes, not every event on the aggregate. Worker attempt starts/completions, queue recovery and a human retrying derivation do not author the definition. Preserve these operational records after submission/approval without weakening the expected-revision check or rewriting the frozen plan. Read persisted derivation outcomes from the final Story2.6 ports rather than assuming attempts have only three terminal outcomes.
 - For the P-1 journey, exercise the actual worker composition root/process as well as the web process, not only startProceduresWorker with an injected application handler. A test-only Node preload or equivalent isolated HTTP fixture may intercept provider HTTP for the real installed SDK, so the configured provider → queue worker → stored plan → preview chain is proved without a paid credential. Keep fixture interception out of production code and do not add a test-only public endpoint or unsafe production provider-URL override. Continue to distinguish this complete synthetic-HTTP wiring proof from live model quality/provider acceptance, which still requires a deployment credential.
 - Close earlier authoring-surface verification gaps while proving the integrated Builder journey: author a valid custom inclusion clause over a declared source column, independently enable the duplicate-key permission, save and reload both values. Extend focused browser concurrency proof to Population Source and Target/Instruction edits, including conflict reset and a committed response lost before acknowledgement. The shared state machine already has unit coverage and Period/Schedule/Compliance browser checks; these additional cases verify the remaining forms' wiring rather than introducing a different concurrency policy.
+
+### Pre-review implementation verification (2026-09-05)
+
+This checkpoint predates the twelve formal-review repairs. Its passing results are retained as history; repaired-code acceptance requires the later verification and follow-up review results.
+
+- `pnpm typecheck` and `pnpm boundaries` passed (291 modules); root test TypeScript was checked again after browser fixture changes.
+- `pnpm test --maxWorkers=1`: 75 files, 1,917 tests passed.
+- `pnpm db:generate`: no schema drift, including the submitted-review snapshot. `pnpm db:migrate`: PostgreSQL 18, generation 13. `pnpm test:integration --maxWorkers=1`: 13 files, 178 tests passed, including held-open concurrency, one-connection authorization, rollback, notification privacy/idempotency, trusted provenance backfill and stable predecessor review snapshots.
+- `pnpm build` and `pnpm --filter @intellifin/web build` passed. `pnpm test:e2e`: all 94 cases passed with no retries (6.0 minutes), including keyboard/WCAG checks, actual worker/installed Anthropic SDK over synthetic HTTP, live-worker authoring, reject/Edit/re-submit/approve, private delivered notifications, and lost committed responses.
+- Earlier browser failures exposed two obsolete notification-stub assertions and a known failed P-1 fixture; the assertions now follow the delivered-notification surface and the exact leftover fixture was removed. A subsequent local development auth 404 was resolved by preserving the generated Next cache outside the repository and rebuilding it, following the existing cache gotcha. The final complete browser run exited zero.
+- Runtime executor/activation remains outside this story. Synthetic HTTP proves provider wiring, not live model quality or deployment credential acceptance. No implementation task remains incomplete; formal review and commit remain with the epic coordinator.
+
+## Review Triage Log
+
+### 2026-09-05 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 12: (high 1, medium 10, low 1)
+- defer: 0
+- reject: 2
+- addressed_findings:
+  - `[high]` `[patch]` Registered every editor's dirty/conflict/pending/unknown state and rechecked it at submission confirmation.
+  - `[medium]` `[patch]` Rendered previous/current executable plan steps separately.
+  - `[medium]` `[patch]` Rendered the stored submitted/approved review definition and provenance rather than later live values.
+  - `[medium]` `[patch]` Refused an invalid predecessor instead of presenting a first-version review.
+  - `[medium]` `[patch]` Validated review ownership, known unique sections, after-values and change flags.
+  - `[medium]` `[patch]` Added bounded notification pagination preserving microsecond ordering and recipient privacy.
+  - `[medium]` `[patch]` Identified notifications by Procedure name, version and time.
+  - `[medium]` `[patch]` Added accessible notification refresh and honest delivery-delay copy.
+  - `[low]` `[patch]` Indexed pending notification delivery by its filter/order.
+  - `[medium]` `[patch]` Retained past decision rationale through Edit and resubmission.
+  - `[medium]` `[patch]` Tested actual previous/current Scope, Evidence, plan and submitted metadata rendering.
+  - `[medium]` `[patch]` Proved persisted Evidence/Schedule contributors cannot approve their edits, while no-ops and operational derivation do not add authors.
+
+Follow-up recommendation: **true**, from one high finding and weighted score `3 × 10 + 1 = 31`. Independent source follow-up cleared all twelve repairs without new findings; see [follow-up review](review-2-7-followup.md). The [matrix map](review-2-7-matrix.md) identifies the covering tests. All repaired-code verification passed as recorded below.
+
+## Auto Run Result
+
+Status: done. Implemented audited, revision-guarded submission, independent approval, rejection with rationale and Edit-after-rejection. Submission captures the precise definition and predecessor comparison; approval freezes that review. Durable in-app notifications commit with decisions and are delivered idempotently by the worker. All Builder editors participate in submission gating.
+
+Changed surfaces:
+
+- `packages/domain/src/procedures/version-decision.ts`: typed review, decision history, structural differences and strict snapshot consistency.
+- `packages/application/src/procedures/{submit-version,decide-version,submission-guard}.ts`: authorized, transactional lifecycle commands and completeness checks.
+- Application identity/authoring ports and commands: trusted responsible author and human contributor provenance, including transactional role checks and denial auditing.
+- `packages/application/src/notifications/` and `packages/infrastructure/src/notifications/`: durable enqueue/delivery, recipient-private keyset pagination and cursor validation.
+- Infrastructure schema, migration 13 and Procedure repositories: review/history/provenance persistence, creation backfill and transaction composition.
+- Web Builder forms, Version review/actions and Notifications page: unsaved/unknown save protection, exact stored review rendering, readable old/new plans, retained history, refresh and pagination.
+- Worker composition and browser fixtures: real notification delivery and actual installed provider SDK/worker journey over synthetic HTTP.
+- Unit, integration and browser suites: matrix, rollback/concurrency, durable-data corruption, author eligibility, privacy, actual rendering and WCAG/keyboard coverage.
+- CLAUDE.md and delivery/review artifacts: reusable decisions, disk-recovery gotcha and human-readable evidence. Story 2.8 planning refinements remain within the authorized epic.
+
+Formal review applied 12 patches (high 1, medium 10, low 1), deferred 0 and rejected 2 suggestions. Follow-up was recommended and completed with no new actionable finding. No production or test source changed after its captured diff.
+
+Final verification on 2026-09-05:
+
+- `pnpm typecheck`: passed, including root test TypeScript.
+- `pnpm boundaries`: passed, 296 modules.
+- `pnpm test --maxWorkers=1`: 78 files, **1,922 passed**, exit 0.
+- Fresh isolated PostgreSQL 18.6 migrated through generation 13; `pnpm db:generate` reported no drift.
+- `pnpm test:integration --maxWorkers=1`: 13 files, **192 passed**, exit 0.
+- `pnpm build` and `pnpm --filter @intellifin/web build`: passed.
+- `pnpm test:e2e`: **95 passed**, no retries, 7.4 minutes, exit 0. All frozen matrix cases have executed coverage.
+- `git diff --check`: passed.
+
+Final logs are retained locally under `C:/Users/opc/tools/intellifin-epic2-test/verification/story27-*.log`. The disk interruption invalidated earlier repair runs; the final results above were collected after recovery against a fresh database.
+
+Residual boundaries: provider HTTP is synthetic and does not establish live credential acceptance/model quality. Activation, database-enforced historical immutability and platform successors remain Story 2.8 work. Runs, Regression Run execution and scheduler execution remain later epics. No user decision blocks the next story.

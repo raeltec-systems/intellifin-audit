@@ -23,8 +23,9 @@ export function planAuthoringDigest(row: ProcedureVersionRecord): string {
     model: row.derivationModel } as unknown as JsonValue));
 }
 /** Called only after a save proved that authored values changed, inside its transaction. */
-export async function queuePlanDerivation(row: ProcedureVersionRecord, queue: PlanDerivationQueue): Promise<ProcedureVersionRecord> {
+export async function queuePlanDerivation(row: ProcedureVersionRecord, queue: PlanDerivationQueue, authorId?: string): Promise<ProcedureVersionRecord> {
   const inputDigest = planAuthoringDigest(row);
   await queue.enqueue({ schemaVersion: 1, versionId: row.versionId, inputDigest });
-  return { ...row, compiledPlan: null, planDerivable: false, planStatus: 'pending', planFailureReason: null, planInputDigest: inputDigest };
+  const authorship = row.authorship && authorId ? { ...row.authorship, humanAuthorIds: [...new Set([...row.authorship.humanAuthorIds, authorId])] } : row.authorship ?? null;
+  return { ...row, authorship, compiledPlan: null, planDerivable: false, planStatus: 'pending', planFailureReason: null, planInputDigest: inputDigest };
 }

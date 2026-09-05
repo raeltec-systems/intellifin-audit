@@ -143,3 +143,4 @@ export const BUILDER_SECTION_NOT_EDITABLE_SENTENCE =
  * EXPERIENCE.md.
  */
 export const BUILDER_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to author or approve.';
+export const AUTHOR_CANNOT_APPROVE_SENTENCE = 'You cannot approve a version you authored.';

@@ -12,8 +12,10 @@ function harness(model: ModelGateway | null = null) {
     let pending = row;
     const additions: AuditEventDraft[] = [];
     const result = await work({
+      authorizationRoles: { findRole: async () => 'auditor' },
+      notifications: { enqueue: async () => {} }, notificationRecipients: { auditManagerIds: async () => [] },
       derivationJobs: { enqueue: async () => {} }, populationSources: { findBindingForShare: async () => null }, targetRegistrations: { lockForSelection: async () => [] },
-      procedures: { findVersion: async () => pending, findVersionForUpdate: async () => pending, updateVersion: async (next) => { pending = next; }, insertVersion: async () => {}, insertProcedure: async () => {}, maxVersionNumber: async () => 1 },
+      procedures: { findPreviousVersion: async () => null, findVersion: async () => pending, findVersionForUpdate: async () => pending, updateVersion: async (next) => { pending = next; }, insertVersion: async () => {}, insertProcedure: async () => {}, maxVersionNumber: async () => 1 },
       auditEvents: { append: async (event) => { if (failAudit) throw new Error('audit failed'); additions.push(event); return { ...event, aggregateId: event.aggregateId!, eventId: 'id', sequence: 1, occurredAt: '2026-09-04T01:00:00.000Z', previousHash: '0'.repeat(64), eventHash: '1'.repeat(64) }; } },
     });
     row = pending; events.push(...additions); return result;

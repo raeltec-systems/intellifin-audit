@@ -1,11 +1,12 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
 import { z } from 'zod';
-import { planAuthoringDigest, planAuthoringInputs } from '@intellifin/application';
+import { planAuthoringDigest, planAuthoringInputs, UnverifiablePreviousVersion } from '@intellifin/application';
 
 import { isUuidText } from '../db/identifier.js';
 
 import type {
   PlanDerivationFields,
+  VersionReviewFields,
   ProcedureRecord,
   ProcedureRepository,
   ProcedureSummary,
@@ -15,6 +16,7 @@ import type {
 } from '@intellifin/application';
 import {
   ExecutablePlanSchema,
+  isConsistentVersionReview,
   canonicalJson,
   type JsonValue,
   isProcedureVersionState,
@@ -65,6 +67,7 @@ const PROCEDURE_SELECTION = {
 } as const;
 
 const VERSION_SELECTION = {
+  submittedReview: procedureVersion.submittedReview, authorship: procedureVersion.authorship, decisions: procedureVersion.decisions, frozenReview: procedureVersion.frozenReview,
   versionId: procedureVersion.versionId,
   procedureId: procedureVersion.procedureId,
   versionNumber: procedureVersion.versionNumber,
@@ -108,7 +111,7 @@ interface ProcedureSelectedRow {
   updatedAt: Date;
 }
 
-interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields, PlanDerivationFields {
+interface VersionSelectedRow extends DraftPopulationFields, DraftTargetFields, PlanDerivationFields, VersionReviewFields {
   complianceSchemaVersion: number;
   complianceCompilerVersion: string;
   complianceConditions: unknown;
@@ -145,6 +148,7 @@ function toSections(templateId: string, value: readonly DraftSection[]): readonl
 }
 
 function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
+  if (!validReviewFields(row)) return null;
   if (!validPlanMetadata(row)) return null;
   if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
@@ -157,6 +161,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
     ...complianceFields(row),
     ...evidenceFields(row),
     ...readPlanFields(row),
+    ...reviewFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -176,6 +181,7 @@ function toVersionView(row: VersionSelectedRow): ProcedureVersionView | null {
 }
 
 function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null {
+  if (!validReviewFields(row)) return null;
   if (!validPlanMetadata(row)) return null;
   if (!isDraftPopulationFields(row) || !isDraftTargetFields(row) || !isDraftEvidenceFields(row)) return null;
   const state = toState(row.state);
@@ -188,6 +194,7 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
     ...complianceFields(row),
     ...evidenceFields(row),
     ...readPlanFields(row),
+    ...reviewFields(row),
     versionId: row.versionId,
     procedureId: row.procedureId,
     versionNumber: row.versionNumber,
@@ -197,6 +204,29 @@ function toVersionRecord(row: VersionSelectedRow): ProcedureVersionRecord | null
     sections,
   };
 }
+
+const decisionSchema = z.strictObject({ schemaVersion: z.literal(1), actorId: z.string().min(1), occurredAt: z.iso.datetime(), priorState: z.enum(['DRAFT','SUBMITTED','APPROVED','REJECTED','ACTIVE','RETIRED']), decision: z.enum(['submit','approve','reject','edit']), rationale: z.string().min(1).max(4000).nullable(), aggregateRevision: z.string().regex(/^[0-9a-f]{64}$/) }).refine(value => value.decision !== 'reject' || value.rationale !== null);
+const authorshipSchema = z.strictObject({ createdBy: z.strictObject({ type: z.enum(['human','platform']), id: z.string().min(1) }), responsibleAuthorId: z.string().min(1), humanAuthorIds: z.array(z.string().min(1)) });
+const jsonValueSchema = z.custom<JsonValue>(value => { try { canonicalJson(value as JsonValue); return true; } catch { return false; } });
+const definitionSchema = z.strictObject({ schemaVersion: z.literal(1), inputs: jsonValueSchema, compiledPlan: ExecutablePlanSchema,
+  modelConfiguration: z.strictObject({ provider: z.string().min(1).max(100), modelId: z.string().min(1).max(200), promptVersion: z.string().min(1).max(100) }).nullable(),
+  toolConfiguration: z.strictObject({ interpreterContract: z.literal('executable-plan-v1'), identityMatching: z.literal('opaque-exact-strings'), accessPolicy: z.literal('frozen-registered-read-actions'), actions: z.tuple([z.literal('create-workspace'),z.literal('acquire-population'),z.literal('sign-in'),z.literal('extract-adapter'),z.literal('inspect-record'),z.literal('capture-observation'),z.literal('evaluate-conditions')]) }),
+}).refine(value => canonicalJson(value.inputs) === canonicalJson(value.compiledPlan.inputs as unknown as JsonValue));
+const reviewShape = { schemaVersion: z.literal(1), versionId: z.uuid(), baseline: z.strictObject({ versionId: z.uuid(), versionNumber: z.number().int().positive(), revision: z.string().regex(/^[0-9a-f]{64}$/) }).nullable(), definition: definitionSchema,
+  diff: z.array(z.strictObject({ section: z.string().min(1), before: jsonValueSchema, after: jsonValueSchema, changed: z.boolean() })).length(12),
+};
+const submittedReviewSchema = z.strictObject(reviewShape);
+const frozenReviewSchema = z.strictObject({ ...reviewShape, approval: decisionSchema }).refine(value => value.approval.decision === 'approve');
+function validReviewFields(row: VersionReviewFields & { versionId: string }): boolean {
+  if (row.authorship != null && !authorshipSchema.safeParse(row.authorship).success) return false;
+  if (!z.array(decisionSchema).safeParse(row.decisions ?? []).success) return false;
+  if (row.submittedReview != null && !submittedReviewSchema.safeParse(row.submittedReview).success) return false;
+  if (row.frozenReview != null && !frozenReviewSchema.safeParse(row.frozenReview).success) return false;
+  if (row.submittedReview != null && !isConsistentVersionReview(row.submittedReview, row.versionId)) return false;
+  if (row.frozenReview != null && !isConsistentVersionReview(row.frozenReview, row.versionId)) return false;
+  return true;
+}
+function reviewFields(row: VersionReviewFields) { return { submittedReview: row.submittedReview ?? null, authorship: row.authorship ?? null, decisions: row.decisions ?? [], frozenReview: row.frozenReview ?? null }; }
 
 function populationFields(row: DraftPopulationFields): DraftPopulationFields {
   return { period: row.period, scope: row.scope, sourceSnapshot: row.sourceSnapshot, inclusionRule: row.inclusionRule, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates, populationBlockers: row.populationBlockers };
@@ -409,6 +439,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
       ...complianceFields(record),
       ...evidenceFields(record),
       ...planFields(record),
+      ...reviewFields(record),
       versionId: record.versionId,
       procedureId: record.procedureId,
       versionNumber: record.versionNumber,
@@ -458,6 +489,7 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
         ...complianceFields(record),
         ...evidenceFields(record),
       ...planFields(record),
+      ...reviewFields(record),
         state: record.state,
         controlName: record.controlName,
         sections: [...record.sections],
@@ -466,6 +498,14 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
         updatedAt: new Date(),
       })
       .where(eq(procedureVersion.versionId, record.versionId));
+  }
+
+  async findPreviousVersion(procedureId: string, versionNumber: number): Promise<ProcedureVersionRecord | null> {
+    const rows = await this.transaction.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.procedureId, procedureId), lt(procedureVersion.versionNumber, versionNumber))).orderBy(desc(procedureVersion.versionNumber)).for('share').limit(1);
+    if (!rows[0]) return null;
+    const previous = toVersionRecord(rows[0]);
+    if (!previous) throw new UnverifiablePreviousVersion();
+    return previous;
   }
 
   async maxVersionNumber(procedureId: string): Promise<number> {

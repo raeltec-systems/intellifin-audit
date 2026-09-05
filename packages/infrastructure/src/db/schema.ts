@@ -1,4 +1,5 @@
 import type { PlanDerivationFields } from '@intellifin/application';
+import type { VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
@@ -639,6 +640,10 @@ export const procedureVersion = pgTable(
     planFailureReason: text('plan_failure_reason'),
     planDerivable: boolean('plan_derivable').notNull().default(false),
     planAttempts: jsonb('plan_attempts').$type<PlanDerivationFields['planAttempts']>().notNull().default([]),
+    authorship: jsonb('authorship').$type<VersionAuthorship>(),
+    decisions: jsonb('decisions').$type<readonly VersionDecisionRecord[]>().notNull().default([]),
+    frozenReview: jsonb('frozen_review').$type<FrozenVersionReview>(),
+    submittedReview: jsonb('submitted_review').$type<SubmittedVersionReview>(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -683,6 +688,10 @@ export const procedureVersion = pgTable(
     check('procedure_version_plan_status', sql`${table.planStatus} IN ('pending','succeeded','failed')`),
     check('procedure_version_plan_failure', sql`${table.planFailureReason} IS NULL OR length(${table.planFailureReason}) BETWEEN 1 AND 1000`),
     check('procedure_version_plan_attempts', sql`coalesce(jsonb_typeof(${table.planAttempts}) = 'array', false)`),
+    check('procedure_version_authorship_shape', sql`${table.authorship} IS NULL OR coalesce(jsonb_typeof(${table.authorship}) = 'object' AND jsonb_typeof(${table.authorship}->'createdBy') = 'object' AND ${table.authorship}->'createdBy'->>'type' IN ('human','platform') AND jsonb_typeof(${table.authorship}->'createdBy'->'id') = 'string' AND jsonb_typeof(${table.authorship}->'responsibleAuthorId') = 'string' AND jsonb_typeof(${table.authorship}->'humanAuthorIds') = 'array', false)`),
+    check('procedure_version_decisions_shape', sql`coalesce(jsonb_typeof(${table.decisions}) = 'array', false)`),
+    check('procedure_version_submitted_review_shape', sql`${table.submittedReview} IS NULL OR coalesce(jsonb_typeof(${table.submittedReview}) = 'object' AND ${table.submittedReview}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.submittedReview}->'definition') = 'object' AND jsonb_typeof(${table.submittedReview}->'diff') = 'array', false)`),
+    check('procedure_version_review_shape', sql`${table.frozenReview} IS NULL OR coalesce(jsonb_typeof(${table.frozenReview}) = 'object' AND ${table.frozenReview}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.frozenReview}->'definition') = 'object' AND jsonb_typeof(${table.frozenReview}->'diff') = 'array' AND jsonb_typeof(${table.frozenReview}->'approval') = 'object', false)`),
     check('procedure_version_plan_consistency', sql`coalesce((${table.planDerivable} = (${table.planStatus} = 'succeeded')) AND (${table.planStatus} <> 'succeeded' OR (${table.compiledPlan} IS NOT NULL AND ${table.planInputDigest} IS NOT NULL AND ${table.planFailureReason} IS NULL)) AND (${table.planStatus} <> 'failed' OR (${table.compiledPlan} IS NULL AND ${table.planFailureReason} IS NOT NULL)), false)`),
     check('procedure_version_evidence_schema', sql`${table.evidenceSchemaVersion} = 1`),
     // Shallow shape guard (generation 11): an array, bounded. The deep validation — the
@@ -692,6 +701,23 @@ export const procedureVersion = pgTable(
     check('procedure_version_schedule_shape', sql`${table.schedule} IS NULL OR coalesce(jsonb_typeof(${table.schedule}) = 'object' AND ${table.schedule} - 'frequency' - 'startTime' - 'periodDerivationRule' = '{}'::jsonb AND ${table.schedule}->>'frequency' IN ('once','daily','weekly','monthly') AND jsonb_typeof(${table.schedule}->'periodDerivationRule') = 'string' AND ${table.schedule}->>'periodDerivationRule' = CASE ${table.schedule}->>'frequency' WHEN 'once' THEN 'explicit-period' WHEN 'daily' THEN 'previous-calendar-day' WHEN 'weekly' THEN 'previous-monday-sunday' WHEN 'monthly' THEN 'previous-calendar-month' END AND ${table.schedule}->>'startTime' ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$', false)`),
   ],
 );
+
+export const notification = pgTable('notification', {
+  sendKey: text('send_key').primaryKey(),
+  recipientId: text('recipient_id').notNull().references(() => authUser.id),
+  procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
+  versionId: uuid('version_id').notNull().references(() => procedureVersion.versionId),
+  procedureName: text('procedure_name').notNull(),
+  versionNumber: integer('version_number').notNull(),
+  kind: text('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+}, table => [
+  index('notification_recipient_delivery_idx').on(table.recipientId, table.deliveredAt.desc(), table.sendKey),
+  index('notification_pending_delivery_idx').on(table.createdAt, table.sendKey).where(sql`${table.deliveredAt} IS NULL`),
+  check('notification_version_number', sql`${table.versionNumber} > 0`),
+  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected')`),
+]);
 
 export type SchemaMetaRow = typeof schemaMeta.$inferSelect;
 export type WorkerHeartbeatRow = typeof workerHeartbeat.$inferSelect;

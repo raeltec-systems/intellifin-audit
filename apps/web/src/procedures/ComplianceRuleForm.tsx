@@ -19,7 +19,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { StatusBadge } from '../design/StatusBadge';
-import { useSection } from './use-section';
+import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
@@ -54,6 +54,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  useSectionSubmissionStatus('Compliance Rule', section, busy, unknownOutcome);
   const saving = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -98,7 +99,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   }
 
   return <div className="ls-stack">
-    <SectionConflict conflict={section.conflict} name="Compliance Rule" reset={() => section.reset()} />
+    <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Compliance Rule" reset={() => section.reset()} />
       <UnknownSaveOutcome visible={unknownOutcome} />
     {templateText === null ? null : <details>
       <summary>Template default Compliance Rule (read-only)</summary>
