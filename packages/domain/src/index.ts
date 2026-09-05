@@ -27,3 +27,5 @@ export * from './runs/observation.js';
 export * from './runs/structural-snapshot.js';
 export * from './runs/evaluation.js';
 export * from './runs/evidence.js';
+export * from './runs/gate.js';
+export * from './runs/limits.js';

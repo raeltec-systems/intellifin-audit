@@ -169,6 +169,13 @@
       "when": 1788641310049,
       "tag": "0023_lively_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788644966437,
+      "tag": "0024_last_forgotten_one",
+      "breakpoints": true
     }
   ]
 }

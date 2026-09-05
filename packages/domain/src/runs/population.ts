@@ -35,8 +35,40 @@ export function isCompleteCollectionEnvelope(envelope: Record<string, unknown>):
   return envelope['complete'] === true && Object.keys(envelope).every((key) => COLLECTION_ENVELOPE.has(key));
 }
 export interface PopulationRow { ordinal: number; values: Record<string, JsonValue>; disposition: 'included' | 'excluded' | 'indeterminate'; reasons: string[] }
-export interface PopulationCheck { name: string; passed: boolean }
-export interface PopulationResult { rows: PopulationRow[]; checks: PopulationCheck[]; rawDigest: string; rowsDigest: string | null; included: number; excluded: number; indeterminate: number; ready: boolean }
+/**
+ * Every check `reconcilePopulation` can record, as a closed list.
+ *
+ * A UNION rather than `string`, because the Run-level Gate (Story 3.8) routes each of
+ * these onto its addendum §H row and its routing table is typed `Record<PopulationCheckName, …>`
+ * — so a check added here without a §H row does not typecheck, and a check silently
+ * dropped from the reconciler cannot leave an unreachable row behind. A list nothing
+ * enforces is a list that drifts, and this one decides whether a Run concludes.
+ */
+export const POPULATION_CHECK_NAMES = [
+  'parse', 'declaration', 'response-contract', 'declared-count', 'declared-digest',
+  'declared-schema', 'declared-period', 'complete-extraction', 'generation',
+  'source-identity', 'freshness', 'complete-inclusion', 'nonempty-population',
+] as const;
+export type PopulationCheckName = (typeof POPULATION_CHECK_NAMES)[number];
+export interface PopulationCheck { name: PopulationCheckName; passed: boolean }
+export function isPopulationCheckName(value: unknown): value is PopulationCheckName {
+  return typeof value === 'string' && (POPULATION_CHECK_NAMES as readonly string[]).includes(value);
+}
+export interface PopulationResult {
+  rows: PopulationRow[]; checks: PopulationCheck[]; rawDigest: string; rowsDigest: string | null;
+  included: number; excluded: number; indeterminate: number; ready: boolean;
+  /**
+   * The snapshot's own generation time, exactly as the declaration stated it, or `null`
+   * when it stated none this build can read.
+   *
+   * Stored beside the reconciliation (generation 24) because the Run-level Gate's §H
+   * freshness row has to name WHICH way a snapshot is unfit — stale, future-dated or
+   * unknown — and a single passed/failed boolean cannot. `null` is "unknown", which §H
+   * makes `INCONCLUSIVE`; that is the fail-closed direction and it is what a row written
+   * by an earlier build reads as.
+   */
+  generatedAt: string | null;
+}
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 /** Fatal UTF-8 decoding, without host APIs or replacement characters. */
 export function decodePopulationUtf8(bytes: Uint8Array, maxBytes: number = POPULATION_LIMITS.bytes): string {
@@ -119,7 +151,7 @@ export function includePopulation(rows: Record<string, JsonValue>[], rule: Inclu
 }
 export function reconcilePopulation(input: { bytes: Uint8Array; mediaType: string; declaration: unknown; source: ProcedureSourceSnapshot; period: ExplicitPeriod; rule: InclusionRule; zeroRecordPass: boolean; initiatedAt: string }): PopulationResult {
   const checks: PopulationCheck[] = [], rawDigest = sha256HexOfBytes(input.bytes);
-  const check = (name: string, passed: boolean) => checks.push({name,passed});
+  const check = (name: PopulationCheckName, passed: boolean) => checks.push({name,passed});
   let rawRows: Record<string, JsonValue>[] = [], rowsDigest: string | null = null, metadata: Record<string,unknown> = {};
   let parsed = false, csvHeaders:string[]|null=null;
   try {
@@ -153,5 +185,9 @@ export function reconcilePopulation(input: { bytes: Uint8Array; mediaType: strin
   const rows = includePopulation(rawRows,input.rule,input.period);
   const included = rows.filter(r => r.disposition === 'included').length, excluded = rows.filter(r => r.disposition === 'excluded').length, indeterminate = rows.length - included - excluded;
   check('complete-inclusion',indeterminate === 0); check('nonempty-population',included > 0 || input.zeroRecordPass);
-  return { rows, checks, rawDigest, rowsDigest, included, excluded, indeterminate, ready:checks.every(c=>c.passed) };
+  // The declared generation time, verbatim, when the declaration states one this build can
+  // read. Never invented and never defaulted to now(): a fabricated generation time would
+  // make the §H freshness row report a snapshot nobody generated.
+  const generatedAt = typeof d['generated_at'] === 'string' && populationUtcDate(d['generated_at']) !== null ? d['generated_at'] : null;
+  return { rows, checks, rawDigest, rowsDigest, included, excluded, indeterminate, ready:checks.every(c=>c.passed), generatedAt };
 }

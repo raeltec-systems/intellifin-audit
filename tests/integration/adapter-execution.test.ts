@@ -199,6 +199,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
           // ACQUIRED step may not have a null one, so they go before the rows they name.
           await sql`DELETE FROM run_session_step WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_work_item WHERE run_id=${run.id}`;
+          // Story 3.8: the Run-level Gate's own rows carry a real foreign key to
+          // `audit_run`, so they go before it or the whole cleanup fails and every later
+          // run of this file inherits the rows this one left.
+          await sql`DELETE FROM run_gate_check WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence_integrity WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence_package WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence WHERE run_id=${run.id}`;
@@ -415,7 +419,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const order = events.map((row) => row.diagnostic);
     expect(order.indexOf('reference-source-acquired')).toBeLessThan(order.indexOf('work-item-attempt-started'));
     expect(order.at(-1)).toBe('adapter-extraction-complete');
-    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUNNING');
+    // Story 3.8: the Run-level Gate runs when the last Work Item completes. This
+    // population has an ambiguous match and an absent record, so it concludes INCONCLUSIVE
+    // rather than staying RUNNING.
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('INCONCLUSIVE');
   });
 
   it('writes one B.1 Observation per included record with a grounded role list', async () => {
@@ -513,13 +520,15 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const items = await sql`SELECT registration_id,state,attempts,cycles,diagnostic FROM run_work_item WHERE run_id=${seeded.run.runId} ORDER BY ordinal`;
     expect(items[0]).toMatchObject({ state: 'FAILED', attempts: 8, cycles: 2, diagnostic: 'extraction-transport-failed' });
     expect(items[1]).toMatchObject({ state: 'OBSERVED' });
-    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUNNING');
+    // A failed Work Item never stops the Run: the NEXT one ran, and the stage reached its
+    // own completion. The Run then concludes at the Run-level Gate, on coverage.
     expect((await sql`SELECT status FROM run_execution WHERE run_id=${seeded.run.runId}`)[0]?.status).toBe('EXTRACTION_COMPLETE');
-    // The failed Work Item's reservation is still OPEN: the Run is still running, and
-    // `SealPackage` is the one thing that abandons a reservation (Story 3.5). What matters
-    // here is that it is not a registered artifact.
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('INCONCLUSIVE');
+    // The failed Work Item's reservation was still OPEN when the Run reached its terminal
+    // transition, so `SealPackage` abandoned it there and listed it (Story 3.5). What
+    // matters here is that it never became a registered artifact.
     const reservation = await sql`SELECT state,digest FROM run_evidence WHERE run_id=${seeded.run.runId} AND registration_id=${first}`;
-    expect(reservation[0]).toMatchObject({ state: 'RESERVED', digest: null });
+    expect(reservation[0]).toMatchObject({ state: 'ABANDONED', digest: null });
   });
 
   it('repeats no completed unit on resume and writes no duplicate Observation', async () => {
@@ -535,7 +544,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     await executeAdapterSteps(deps, seeded.job);
     const before = await sql`SELECT evidence_id,digest FROM run_evidence WHERE run_id=${seeded.run.runId} ORDER BY evidence_id`;
 
-    // A redelivery: the claim is retaken and the completed units must not run again.
+    // A redelivery of a claim that crashed before it committed. The stage's completion,
+    // the Gate, the terminal state and the seal all commit in ONE transaction, so a resume
+    // can never see one of them without the others — the Run is RUNNING again with it.
+    await unseal(seeded);
     await sql`UPDATE run_execution SET status='RETRY' WHERE run_id=${seeded.run.runId}`;
     await executeAdapterSteps(new PostgresAdapterExecutionRepository(db) === null ? deps : { ...deps, repository: new PostgresAdapterExecutionRepository(db) }, seeded.job);
 
@@ -558,6 +570,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const tampered = utf8Bytes('entry,role,permission\n1,TAMPERED,VIEW_LOAN\n');
     seeded.objects.set(key, tampered);
 
+    await unseal(seeded);
     await sql`UPDATE run_execution SET status='RETRY' WHERE run_id=${seeded.run.runId}`;
     await executeAdapterSteps({ ...deps, repository: new PostgresAdapterExecutionRepository(db) }, seeded.job);
 
@@ -626,6 +639,24 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
 
   /* --------------------------------------------------------------- Story 3.5 --- */
 
+  /**
+   * Put a Run back where Story 3.5's tests need it: RUNNING, with an unsealed package.
+   *
+   * Story 3.8 made the adapter stage run the Run-level Gate when the last Work Item
+   * completes, so `executeAdapterSteps` now ends with a terminal Run and a SEALED package
+   * — and generation 21 then freezes every Evidence row of that Run. The tests below are
+   * about the SEAL MECHANISM and need a package to act on, so they undo the Gate's one
+   * first. Both statements are in ONE transaction because `audit_run_requires_seal` is a
+   * DEFERRED constraint trigger: it is checked at commit, where the Run is RUNNING again.
+   */
+  async function unseal(seeded: Awaited<ReturnType<typeof seed>>): Promise<void> {
+    await sql.begin(async (tx) => {
+      await tx`DELETE FROM run_evidence_package WHERE run_id=${seeded.run.runId}`;
+      await tx`DELETE FROM run_gate_check WHERE run_id=${seeded.run.runId}`;
+      await tx`UPDATE audit_run SET state='RUNNING' WHERE run_id=${seeded.run.runId}`;
+    });
+  }
+
   /** Seal a Run at a terminal state through the real command and the real repository. */
   async function sealAt(
     seeded: Awaited<ReturnType<typeof seed>>,
@@ -689,6 +720,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   it('seals a package whose required artifacts are all registered', async () => {
     const seeded = await seed(['versioned-file', 'api']);
     await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    await unseal(seeded);
     const seal = await sealAt(seeded, 'COMPLETED');
     expect(seal).toMatchObject({ state: 'SEALED', missingRequired: [], abandoned: [] });
     const [row] =
@@ -696,9 +728,12 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(row).toMatchObject({ state: 'SEALED', run_state: 'COMPLETED', required_total: 2, registered: 3 });
     expect(row!.missing_required).toEqual([]);
     expect(row!.abandoned).toEqual([]);
-    const [event] =
-      await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='lifecycle.evidence-package-sealed'`;
-    expect(event!.payload).toMatchObject({ seal: 'SEALED', runState: 'COMPLETED' });
+    // The LAST seal event: the Run-level Gate sealed once at its own terminal transition
+    // and `unseal` removed only the row, not the chain, so the event this seal appended is
+    // the one at the end.
+    const events =
+      await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='lifecycle.evidence-package-sealed' ORDER BY sequence`;
+    expect(events.at(-1)!.payload).toMatchObject({ seal: 'SEALED', runState: 'COMPLETED' });
   });
 
   it('does not seal as complete when a required artifact never registered, and names the gap', async () => {
@@ -732,6 +767,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     // An upload that never completed: the row is RESERVED and its object is not there.
     const [item] = await sql`SELECT step_id FROM run_work_item WHERE run_id=${seeded.run.runId}`;
     const key = `extraction/${seeded.run.runId}/${String(item!.step_id)}`;
+    await unseal(seeded);
     await sql`UPDATE run_evidence SET state='RESERVED',digest=NULL,size=NULL WHERE object_key=${key}`;
     const seal = await sealAt(seeded, 'INCONCLUSIVE');
     // The extraction is not REQUIRED, so the package still seals — and the abandonment is
@@ -749,6 +785,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
     const tampered = utf8Bytes('entry,role,permission\n1,TAMPERED,VIEW_LOAN\n');
     seeded.objects.set(key, tampered);
+    await unseal(seeded);
     await sql`UPDATE run_execution SET status='RETRY' WHERE run_id=${seeded.run.runId}`;
     await executeAdapterSteps({ ...deps, repository: new PostgresAdapterExecutionRepository(db) }, seeded.job);
 
@@ -808,6 +845,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
     const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
     // A required artifact that is not REGISTERED.
+    await unseal(seeded);
     await sql`UPDATE run_evidence SET state='RESERVED',digest=NULL,size=NULL WHERE object_key=${key}`;
     const insertSeal = (state: string) =>
       sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
@@ -825,6 +863,8 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   it('freezes the Evidence and the seal once the package is sealed', async () => {
     const seeded = await seed(['versioned-file', 'api']);
     await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    // The Run-level Gate already sealed this package at its terminal transition (Story
+    // 3.8), and a second seal returns the first unchanged.
     await sealAt(seeded, 'COMPLETED');
     const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
     const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;

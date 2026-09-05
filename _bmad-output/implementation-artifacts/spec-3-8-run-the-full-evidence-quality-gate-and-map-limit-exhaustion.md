@@ -2,13 +2,14 @@
 title: 'Story 3.8: Run the full Evidence Quality Gate and map limit exhaustion to a safe outcome'
 type: 'feature'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
   - '{project-root}/docs/contracts/observation-registration-v1.md'
   - '{project-root}/docs/contracts/evidence-package-v1.md'
+  - '{project-root}/docs/contracts/run-level-gate-v1.md'
 warnings: []
 deferred: []
 ---
@@ -76,6 +77,42 @@ deferred: []
 
 ## Spec Change Log
 
+- 2026-09-05 — The §H row vocabulary is a TRANSCRIPTION and something compares it with the
+  addendum: `tests/unit/gate-vocabulary.test.ts` reads the §H table off disk and asserts the
+  twenty rows, their order and, per row, whether the diagnostics routed to it can produce
+  each state that row's "Failure outcome" cell names. The failure outcome is therefore keyed
+  by DIAGNOSTIC rather than by row — §H gives population acquisition and pagination /
+  extraction completeness both outcomes, and a table keyed by row cannot express that. The
+  whole contract is `docs/contracts/run-level-gate-v1.md`.
+- 2026-09-05 — The spec's Always clause names "ambiguous match" and "Target System
+  freshness" among the Run-level rows even though both are DECIDED per Observation. Both
+  readings are honoured: every §H row is evaluated at Run level, and the six rows Stories
+  3.4 and 3.6 decide are ROLLED UP from `run_observation_check` rather than judged a second
+  time — which is what the Code Map's "the complement of these, not a second copy" and
+  "consumes those results rather than re-running them" mean together.
+- 2026-09-05 — Generation 24 adds `population_snapshot.generated_at`. §H's freshness row has
+  to name WHICH way a snapshot is unfit — stale, future-dated or unknown — and the stored
+  pass/failed boolean beside it can say none of them. This is the one place the Block If
+  ("an addendum H row cannot be evaluated because the data it needs was never captured")
+  applied; the column captures it now rather than deferring the row. Nullable and NOT
+  backfilled: an older row reads as "unknown", which §H makes `INCONCLUSIVE`.
+- 2026-09-05 — `PopulationAcquisitionError` gained `'denied'` and `'scope'`, and the HTTP
+  adapter maps a 401/403 to the first and a redirect to the second. Without them a denial was
+  `!response.ok` — a transport failure, retried three times against a system that would go on
+  refusing, with nothing in the chain saying the platform had been told no. §E.1 requires a
+  security event and `RUN_FAILED` for exactly this, so it had to be distinguishable.
+- 2026-09-05 — A Run-level Session Step gets ONE bounded retry cycle, not the owner's two.
+  The owner's second cycle exists to let a Run CONTINUE past a failed unit; §E maps a Session
+  Step's failure after bounded retries to `RUN_FAILED`, so a second cycle there buys nothing
+  and would only spend the Run's limits.
+
+- 2026-09-05 — The §H unnamed-value row matches §B's own diagnostic sentence, `rule does not
+  name value <v>`, and NOT `missing or invalid Observation field <x>`. The two are different
+  defects on different rows: a value the condition met and does not name, versus a value it
+  names and could not read. Matching the second put every `ambiguous` record on the
+  unnamed-value row as well, because an `ambiguous` match has no boolean reading of `found`
+  — and only the real golden P-2 journey in `tests/e2e/population.spec.ts` showed it.
+
 ## Review Triage Log
 
 ## Verification
@@ -85,3 +122,61 @@ deferred: []
 - `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied, all pass against PostgreSQL 18 on a `test`- or `ci`-named database.
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** All twenty addendum §H rows are decided when the last Work Item completes,
+in the addendum's own order, and every Run that reaches the Gate gets twenty rows whatever
+happened: a row that found nothing is a PASS that was actually evaluated, and an absent row
+is indistinguishable from one nobody wrote. The whole rule is
+`docs/contracts/run-level-gate-v1.md`.
+
+**The Gate cannot be left out.** `AdapterExecutionContext` extends `RunGateContext`, so the
+stage that finishes the last Work Item already holds everything the Gate needs and no
+composition root can omit or switch it off — the seam Stories 3.6 and 3.7 each removed
+rather than leave. The Gate rows, every Timeline event, the terminal Run state and the
+Evidence package seal commit in ONE transaction, and generation 21's deferred trigger
+refuses a Run reaching a terminal state without a package, so a branch that forgot would
+fail to commit rather than ship an unsealed Run.
+
+**A failure outcome belongs to the DIAGNOSTIC, not to the row.** The addendum gives two rows
+both outcomes, so a table keyed by row loses half the contract. One failure genuinely lands
+on two rows and the addendum says so twice.
+
+**The vocabulary is a transcription, and something compares it with the addendum.**
+`tests/unit/gate-vocabulary.test.ts` reads the §H table off disk and asserts the row set,
+the order, and per row which states that row's failure column names. The upstream check
+names became closed unions the routing tables are typed against, so a check added without a
+§H row does not compile.
+
+**Two defects were found and fixed outside the story's own work.** A 401 or 403 was reported
+as a transport failure, so a Work Item was retried three times against a system that would go
+on refusing and the only durable record that the platform had been told no was a transport
+count; it is now `denied`, terminal, with the security event §E.1 requires, and a redirect is
+`scope`. And `adapter-execution.test.ts`'s teardown had begun failing silently once
+`run_gate_check` gained its foreign key, leaking 140 Runs, 237 bindings and 639 queue jobs
+into the shared test database and failing unrelated Story 1.7 and 2.6 tests on counts.
+
+**`CANCELED` is never produced here.** `RUN_STOP_STATES` holds only `INCONCLUSIVE` and
+`RUN_FAILED`, and a test walks every stop cause. That state is reserved for a person
+cancelling, and the outcome rules read it to decide what a human may do next.
+
+**Mutation-proved**: 19 mutations, each watched failing and then reverted. Two survived and
+the dead branches they exposed were removed rather than kept as untestable tests.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18:** typecheck
+PASS; boundaries PASS; `db:migrate` schemaVersion 24; unit 2450/2450; integration 303/303;
+`db:generate` no drift; both builds PASS; browser + axe 109/109 with zero accessibility
+violations. Every number matches what the implementing agent reported.
+
+**Residual risks.** The `run-token-limit` mapping is unit-tested but never exercised: the
+adapter path calls no model, so the counter is always 0, and it is wired so the agent epic
+fills it rather than adding a limit that was never mapped. Two §H rows — workspace access,
+and acquisition-unavailable on extraction completeness — can only fail from a Session Step
+failure that already stops the Run before the Gate, so they are transcribed backstops tested
+in the domain. The Gate's expected-condition count falls back to zero when the frozen plan
+cannot be read, which would pass condition completeness for a Run whose plan was unreadable;
+carried into the review-repair task rather than left unnamed.

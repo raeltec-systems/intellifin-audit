@@ -813,6 +813,16 @@ export const populationEvidence = pgTable('population_evidence', {
 export const populationSnapshot = pgTable('population_snapshot', {
   runId:uuid('run_id').primaryKey().references(()=>auditRun.runId), included:integer('included').notNull(),excluded:integer('excluded').notNull(),indeterminate:integer('indeterminate').notNull(),
   rowsDigest:text('rows_digest'), checks:jsonb('checks').$type<import('@intellifin/domain').PopulationCheck[]>().notNull(),
+  /**
+   * Generation 24 (Story 3.8): the snapshot's own declared generation time.
+   *
+   * §H's freshness row has to name WHICH way a snapshot is unfit — stale, future-dated or
+   * unknown — and the stored pass/failed boolean beside it cannot. NULL is "unknown",
+   * which §H makes `INCONCLUSIVE`; that is the fail-closed direction and it is what a row
+   * written before this column existed reads as. Never defaulted to `now()`: a fabricated
+   * generation time would make the Gate report a snapshot nobody generated.
+   */
+  generatedAt: timestamp('generated_at',{withTimezone:true}),
 });
 export const populationRow = pgTable('population_row', {
   runId:uuid('run_id').notNull().references(()=>populationSnapshot.runId),ordinal:integer('ordinal').notNull(),
@@ -1124,4 +1134,55 @@ export const runException = pgTable('run_exception', {
   check('run_exception_diagnostics',sql`coalesce(jsonb_typeof(${t.diagnostics}) = 'array' AND jsonb_array_length(${t.diagnostics}) <= 64, false)`),
   check('run_exception_fingerprint',sql`${t.fingerprint} ~ '^[0-9a-f]{64}$'`),
   check('run_exception_key_id',sql`length(${t.fingerprintKeyId}) BETWEEN 1 AND 1024`),
+]);
+
+
+/**
+ * Generation 24 — the Run-level Evidence Quality Gate (Story 3.8).
+ *
+ * One row per addendum §H check, written once when the last Work Item completes, in the
+ * SAME transaction as the terminal Run state and the Evidence package seal. Twenty rows,
+ * always: a row that found nothing is a `PASS` that was actually evaluated, and an absent
+ * row would be indistinguishable from a row nobody wrote.
+ *
+ * `diagnostics`, `target_systems`, `work_items` and `records` are what the Result names.
+ * They hold IDENTITIES and closed constants — there is no column here for a captured
+ * value, a message or a byte of Evidence — and the identity lists are a bounded sample
+ * beside an exact `total`, so a Run over a hundred thousand records can still commit its
+ * own conclusion.
+ *
+ * Two things the COMMAND cannot route around, because the database says them:
+ * a `PASS` may not carry a diagnostic and a `FAIL` must (the `run_observation_check` rule
+ * one layer up), and a Gate row can never be UPDATEd — "a Gate failure is not repaired by
+ * re-running a check" is a trigger rather than a habit.
+ */
+export const runGateCheck = pgTable('run_gate_check', {
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  checkName: text('check_name').notNull(),
+  outcome: text('outcome').notNull(),
+  diagnostics: jsonb('diagnostics').$type<import('@intellifin/domain').GateDiagnostic[]>().notNull(),
+  targetSystems: jsonb('target_systems').$type<string[]>().notNull(),
+  workItems: jsonb('work_items').$type<string[]>().notNull(),
+  records: jsonb('records').$type<string[]>().notNull(),
+  total: integer('total').notNull(),
+  decidedAt: timestamp('decided_at',{withTimezone:true}).notNull(),
+}, t=>[
+  primaryKey({columns:[t.runId,t.checkName]}),
+  index('run_gate_check_run_idx').on(t.runId,t.outcome),
+  // The whole §H vocabulary, from the first commit. A row naming a check that is not one
+  // of the addendum's twenty is a Gate that judged something nobody specified.
+  check('run_gate_check_name',sql`${t.checkName} IN ('workspace-access','population-acquisition','count-reconciliation-file','count-reconciliation-inclusion','empty-population','per-record-coverage','identity-corroboration','search-completeness','required-evidence','observation-corroboration','condition-completeness','extraction-completeness','schema','mandatory-values','duplicate-primary-keys','ambiguous-match','unnamed-value','snapshot-freshness','observation-freshness','integrity')`),
+  // A PASS never carries a diagnostic and a FAIL always does: a passing check with a reason
+  // attached reads as a finding to everything downstream, and a failing one with none is a
+  // finding nobody can act on.
+  check('run_gate_check_outcome',sql`${t.outcome} IN ('PASS','FAIL') AND coalesce(jsonb_typeof(${t.diagnostics})='array',false) AND (${t.outcome}='PASS') = (jsonb_array_length(${t.diagnostics})=0)`),
+  // The closed diagnostic vocabulary, pinned INSIDE the jsonb by containment: every element
+  // of `diagnostics` must be an element of the list. `<@` refuses a number, an object and a
+  // spelling nobody declared alike, and an empty array is contained in anything.
+  check('run_gate_check_diagnostics',sql`${t.diagnostics} <@ '["session-step-failed","target-access-denied","acquisition-incomplete","declaration-absent","declaration-contradictory","declared-count-mismatch","declared-digest-mismatch","rows-unaccounted","exclusion-reason-missing","population-empty","record-uncovered","record-uninspected","record-ambiguous","identity-uncorroborated","absence-unproven","evidence-missing","observation-contradicted","condition-evaluation-missing","extraction-incomplete","acquisition-unavailable","schema-field-missing","schema-field-undeclared","mandatory-identifier-empty","mandatory-value-missing","timestamp-unparseable","duplicate-primary-key","ambiguous-match","unnamed-value","snapshot-stale","snapshot-future-dated","snapshot-generation-unknown","observation-stale","integrity-mismatch"]'::jsonb`),
+  // The named identity lists are a bounded sample; `total` is exact and never truncated.
+  check('run_gate_check_affected',sql`coalesce(jsonb_typeof(${t.targetSystems})='array' AND jsonb_array_length(${t.targetSystems})<=32,false) AND coalesce(jsonb_typeof(${t.workItems})='array' AND jsonb_array_length(${t.workItems})<=32,false) AND coalesce(jsonb_typeof(${t.records})='array' AND jsonb_array_length(${t.records})<=32,false) AND ${t.total}>=0`),
+  // A row that found nothing names nothing: a PASS carrying affected identities would put
+  // a Work Item on the Result under a check it passed.
+  check('run_gate_check_pass_names_nothing',sql`${t.outcome}<>'PASS' OR (jsonb_array_length(${t.targetSystems})=0 AND jsonb_array_length(${t.workItems})=0 AND jsonb_array_length(${t.records})=0 AND ${t.total}=0)`),
 ]);

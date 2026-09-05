@@ -1,7 +1,12 @@
 import type {
+  CoverageObservation,
   EvidenceArtifactKind,
   EvidenceArtifactState,
   EvidenceIntegrityFindingKind,
+  GateCheckResult,
+  ObservationCheckName,
+  PopulationCheck,
+  PopulationGateRow,
   ExplicitPeriod,
   PackageArtifact,
   PackageSealState,
@@ -39,8 +44,21 @@ export interface EvidenceStore {
   read(key: string, timeoutMs: number): Promise<Uint8Array | null>;
   putIfAbsent(key: string, bytes: Uint8Array, timeoutMs: number): Promise<void>;
 }
+/**
+ * Why an outbound read failed, as a closed vocabulary.
+ *
+ * `denied` and `scope` are separate from `contract` on purpose (Story 3.8). §E.1 maps a
+ * denied action and a scope violation to `RUN_FAILED` **and a security event**, which is a
+ * different consequence from a Target System that is merely unreachable or answers
+ * something this build cannot parse. Folded into `transport` — where a 403 used to land,
+ * through `!response.ok` — a denial was retried three times against a system that would go
+ * on refusing, and the only record that the platform had been told no was a transport
+ * count. Folded into `contract` it would be terminal but still silent.
+ */
+export type AcquisitionFailureCode = 'transport' | 'integrity' | 'contract' | 'denied' | 'scope';
+
 export class PopulationAcquisitionError extends Error {
-  constructor(readonly code: 'transport' | 'integrity' | 'contract') {
+  constructor(readonly code: AcquisitionFailureCode) {
     super(`Population acquisition ${code} failure`);
   }
 }
@@ -248,7 +266,7 @@ export interface PopulationRecord {
 
 export interface AdapterExecutionContext
   extends ObservationRegistrationContext,
-    EvidencePackageContext {
+    RunGateContext {
   run: RunRecord | null;
   population: PopulationCheckpoint | null;
   checkpoint: AdapterExecutionCheckpoint | null;
@@ -262,6 +280,14 @@ export interface AdapterExecutionContext
   saveWorkItem(item: WorkItemRecord): Promise<void>;
   saveStepExecution(execution: StepExecutionRecord): Promise<void>;
   saveEvidence(evidence: AdapterEvidenceRecord): Promise<void>;
+  /**
+   * Step Executions this Run has already started, whatever their outcome (Story 3.8).
+   *
+   * The frozen `runStepExecutions` limit counts ATTEMPTS, not successes, so a Run that
+   * retried its way to ten thousand attempts has spent the limit exactly as one that
+   * succeeded ten thousand times would have.
+   */
+  readStepExecutionCount(): Promise<number>;
 }
 
 export interface AdapterExecutionRepository {
@@ -581,4 +607,107 @@ export interface SealedPackageContext {
 
 export interface SealedPackageRepository {
   transaction<T>(runId: string, work: (context: SealedPackageContext) => Promise<T>): Promise<T>;
+}
+
+/* ------------------------------------------------------------------ Story 3.8 --- */
+
+/**
+ * One §H fact that can be about many records, as a count plus a bounded sample.
+ *
+ * The count is EXACT and the sample is bounded, because a Run over a hundred thousand
+ * records must be able to commit its own conclusion: the Gate's rows go onto the Result
+ * and into an immutable audit event, and a payload that grew with the population would be
+ * a Run that concluded and could not say so.
+ */
+export interface GateFactSample {
+  readonly targetSystem: string | null;
+  readonly workItemId: string | null;
+  readonly record: string | null;
+}
+
+export interface GateFactTally {
+  readonly total: number;
+  readonly sample: readonly GateFactSample[];
+}
+
+/** The population reconciliation the Run-level Gate reads back (Story 3.2's own record). */
+export interface RunGatePopulationFacts {
+  readonly checks: readonly PopulationCheck[];
+  readonly included: number;
+  readonly excluded: number;
+  readonly indeterminate: number;
+  /** Rows actually stored, counted rather than derived from the three counts above. */
+  readonly rowsParsed: number;
+  /** Excluded or indeterminate rows carrying no reason at all. Ordinals, bounded. */
+  readonly unexplained: readonly number[];
+  /** The snapshot's declared generation time, or `null` when none was recorded. */
+  readonly generatedAt: string | null;
+}
+
+/** One §H Gate row as it is stored and read back. */
+export interface GateCheckRow {
+  readonly check: GateCheckResult['check'];
+  readonly outcome: GateCheckResult['outcome'];
+  readonly diagnostics: readonly GateCheckResult['diagnostics'][number][];
+  readonly targetSystems: readonly string[];
+  readonly workItems: readonly string[];
+  readonly records: readonly string[];
+  readonly total: number;
+}
+
+/**
+ * The transaction the Run-level Gate is decided and recorded inside (Story 3.8).
+ *
+ * `AdapterExecutionContext` EXTENDS it, exactly as it extends `ObservationRegistrationContext`
+ * and `EvidencePackageContext`: the stage that finishes the last Work Item holds one
+ * object, and there is no second, unowned way to reach the Gate — no `saveGateChecks` that
+ * skips the decision, no terminal transition that skips the seal. Stories 3.6 and 3.7 both
+ * REMOVED their seam's injection point for the same reason; a Gate a composition root could
+ * omit is a Run that concludes without one.
+ *
+ * Every method is bound to ONE PostgreSQL transaction. The Gate rows, the Timeline events,
+ * the terminal Run state and the Evidence package seal commit together or not at all.
+ */
+export interface RunGateContext extends EvidencePackageContext {
+  /** Already-recorded Gate rows. The first Gate wins; a redelivery re-reads and writes nothing. */
+  readGateChecks(): Promise<readonly GateCheckRow[]>;
+  saveGateChecks(rows: readonly GateCheckRow[]): Promise<void>;
+  /** The terminal transition this Gate decided. Sealed in the same transaction. */
+  saveRunState(state: RunRecord['state']): Promise<void>;
+  readPopulationFacts(): Promise<RunGatePopulationFacts | null>;
+  /** Every parsed population row, in source order. Bounded by `POPULATION_LIMITS.rows`. */
+  readPopulationRows(): Promise<readonly PopulationGateRow[]>;
+  /** Every Observation, as the per-record coverage matrix reads it. */
+  readGateObservations(): Promise<readonly CoverageObservation[]>;
+  /** Failing per-Observation check outcomes, tallied by check name (Stories 3.4 and 3.6). */
+  readFailedObservationChecks(): Promise<
+    Readonly<Partial<Record<ObservationCheckName, GateFactTally>>>
+  >;
+  /**
+   * Observations missing an evaluation for one of the version's frozen conditions.
+   *
+   * `expected` is the number of compiled conditions the version froze. An Observation with
+   * fewer evaluations than that has a condition nobody decided, which §H's condition
+   * completeness row refuses — "no uncompiled condition is silently skipped".
+   */
+  readConditionGaps(expected: number): Promise<GateFactTally>;
+  /**
+   * Evaluations that met a value the compiled condition names and could not read.
+   *
+   * §H's unnamed-value row, and §B's own wording: "when a compiled condition meets an
+   * attribute value outside the set it names, the condition evaluates Unevaluated with
+   * diagnostic `rule does not name value <v>`". That prefix is the observable, and it is a
+   * shared constant rather than a retyped string. A value the condition NAMES and could not
+   * read is a different defect on a different row.
+   */
+  readUnnamedValues(): Promise<GateFactTally>;
+  /** Work Items whose extraction did not prove itself complete (§H pagination row). */
+  readIncompleteExtractions(): Promise<readonly GateFactSample[]>;
+  /** Session Steps that ended `FAILED`, and units that were denied or went out of scope. */
+  readAccessFailures(): Promise<{
+    readonly failedSessionSteps: readonly GateFactSample[];
+    readonly denied: readonly GateFactSample[];
+  }>;
+  /** Integrity findings recorded against this Run. */
+  readIntegrityFindings(): Promise<readonly GateFactSample[]>;
 }

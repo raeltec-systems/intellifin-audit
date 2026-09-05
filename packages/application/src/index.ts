@@ -54,3 +54,4 @@ export * from './runs/snapshot-corroboration.js';
 export * from './runs/rule-evaluation.js';
 export * from './runs/evidence-package.js';
 export * from './runs/seal-package.js';
+export * from './runs/run-gate.js';

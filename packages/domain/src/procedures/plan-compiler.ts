@@ -215,7 +215,26 @@ export interface AgentJudgedEvaluation {
 interface Truth { readonly value: boolean | null; readonly diagnostics: readonly string[] }
 const truth = (value: boolean): Truth => ({ value, diagnostics: [] });
 const unknown = (message: string): Truth => ({ value: null, diagnostics: [message] });
-const missing = (field: string): Truth => unknown(`missing or invalid Observation field ${field}`);
+/**
+ * The prefix a diagnostic carries when a compiled condition names a value it could not read.
+ *
+ * A MISSING value, which §H's mandatory-values and coverage rows are about — not an
+ * UNNAMED one. The two are exported separately and matched separately, because the
+ * addendum gives them different rows and different repairs.
+ */
+export const MISSING_OBSERVATION_FIELD = 'missing or invalid Observation field ';
+const missing = (field: string): Truth => unknown(`${MISSING_OBSERVATION_FIELD}${field}`);
+
+/**
+ * §B, verbatim: "when a compiled condition meets an attribute value outside the set it
+ * names, the condition evaluates Unevaluated with diagnostic `rule does not name value
+ * <v>`".
+ *
+ * Exported because the Run-level Gate's §H unnamed-value row matches on it (Story 3.8). A
+ * retyped copy of this sentence inside a SQL `LIKE` is a copy that drifts silently the
+ * first time the wording changes, and the row it decides is whether a Run may conclude.
+ */
+export const RULE_DOES_NOT_NAME_VALUE = 'rule does not name value ';
 
 function numericTruth(left: string, right: string, operator: ComparisonOperator, tolerance: string): Truth {
   const difference = subtractComplianceDecimals(left, right);
@@ -250,7 +269,7 @@ function evaluatePredicate(predicate: CompliancePredicate, values: Readonly<Reco
       if (typeof value !== 'string') return missing(predicate.field);
       if (predicate.compliant.includes(value)) return truth(true);
       if (predicate.exception.includes(value)) return truth(false);
-      return unknown(`rule does not name value ${value}`);
+      return unknown(`${RULE_DOES_NOT_NAME_VALUE}${value}`);
     }
     case 'not': { const result = evaluatePredicate(predicate.expression, values); return result.value === null ? result : truth(!result.value); }
     case 'all':
@@ -288,13 +307,13 @@ function evaluateRule(rule: ComplianceRule, observation: ComplianceObservation):
     const amount = values[rule.amountField];
     if (!isRuleDecimal(amount)) return missing(rule.amountField);
     const currency = values[rule.currencyField];
-    if (currency !== 'USD') return typeof currency === 'string' ? unknown(`rule does not name value ${currency}`) : missing(rule.currencyField);
+    if (currency !== 'USD') return typeof currency === 'string' ? unknown(`${RULE_DOES_NOT_NAME_VALUE}${currency}`) : missing(rule.currencyField);
     const requiresApproval = numericTruth(amount, rule.threshold, rule.boundary === 'inclusive' ? 'gte' : 'gt', rule.tolerance).value;
     if (!requiresApproval) return truth(true); // Pure condition; never changes Population inclusion.
     if (values['found'] === false) return truth(false);
     const decision = values[rule.decisionField];
     if (decision === 'REJECTED') return truth(false);
-    if (decision !== 'APPROVED') return typeof decision === 'string' ? unknown(`rule does not name value ${decision}`) : missing(rule.decisionField);
+    if (decision !== 'APPROVED') return typeof decision === 'string' ? unknown(`${RULE_DOES_NOT_NAME_VALUE}${decision}`) : missing(rule.decisionField);
     const decided = instant(values[rule.decisionTimeField]), processed = instant(values[rule.processedTimeField]);
     const limit = values[rule.limitField];
     if (decided === null) return missing(rule.decisionTimeField);
@@ -309,7 +328,7 @@ function evaluateRule(rule: ComplianceRule, observation: ComplianceObservation):
     const permissions = new Set<string>();
     for (const role of roles as string[]) {
       const entries = matrix.entries.filter((entry) => entry.role === role);
-      if (entries.length === 0) return unknown(`rule does not name value ${role}`);
+      if (entries.length === 0) return unknown(`${RULE_DOES_NOT_NAME_VALUE}${role}`);
       if (entries.some((entry) => !Array.isArray(entry.permissions) || !entry.permissions.every((permission: unknown) => typeof permission === 'string'))) return unknown('incomplete role expansion');
       const signatures = entries.map((entry) => complianceCanonical([...new Set(entry.permissions)].sort()));
       if (new Set(signatures).size > 1) return unknown(`duplicate conflicting policy entries for ${role}`);
@@ -324,7 +343,7 @@ function evaluateRule(rule: ComplianceRule, observation: ComplianceObservation):
   if (observation.stale !== false) return unknown('observation freshness is missing or stale');
   if (!observation.baselines) return unknown('missing effective baseline');
   const entries = observation.baselines.filter((entry) => entry.parameter === parameter);
-  if (!entries.length) return unknown(`rule does not name value ${parameter}`);
+  if (!entries.length) return unknown(`${RULE_DOES_NOT_NAME_VALUE}${parameter}`);
   const effective = [];
   for (const entry of entries) {
     const from = instant(entry.effectiveFrom), to = entry.effectiveTo === null ? null : instant(entry.effectiveTo);

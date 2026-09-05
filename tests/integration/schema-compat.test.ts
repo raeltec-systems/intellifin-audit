@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-22 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-24 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -102,6 +102,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // deleted while its Observation stands.
       'run_exception',
       'run_execution',
+      // Story 3.8. The Run-level Evidence Quality Gate: one row per addendum §H check,
+      // written once when the last Work Item completes and never updated.
+      'run_gate_check',
       'run_initiation_request',
       'run_observation',
       // Story 3.4. Observation registration: the per-Observation Gate check outcomes and

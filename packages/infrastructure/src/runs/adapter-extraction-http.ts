@@ -58,6 +58,28 @@ function transportFailure(): PopulationAcquisitionError {
 function integrityFailure(): PopulationAcquisitionError {
   return new PopulationAcquisitionError('integrity');
 }
+/**
+ * The Target System said no (Story 3.8).
+ *
+ * §E.1 maps a denied action to `RUN_FAILED` **and a security event**, which is a different
+ * consequence from a system that is merely unreachable. A 401 or a 403 used to land in
+ * `!response.ok` and be reported as a transport failure: the Work Item was retried three
+ * times against a system that would go on refusing, and the only durable record that the
+ * platform had been told no was a transport count.
+ */
+function deniedFailure(): PopulationAcquisitionError {
+  return new PopulationAcquisitionError('denied');
+}
+/**
+ * The response came from, or points at, somewhere the frozen contract does not cover.
+ *
+ * A redirect the server chose is exactly this: a registered origin sending the worker
+ * somewhere nobody allowlisted. `redirect: 'error'` already refuses to FOLLOW one; naming
+ * it a scope violation is what puts it in the chain as one.
+ */
+function scopeFailure(): PopulationAcquisitionError {
+  return new PopulationAcquisitionError('scope');
+}
 
 function validateTimeout(timeoutMs: number): void {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2 ** 31 - 1) throw contractFailure();
@@ -247,8 +269,11 @@ export class HttpAdapterExtraction implements AdapterExtractionPort, ReferenceAc
     } catch {
       throw transportFailure();
     }
-    if (response.redirected || (response.url !== '' && response.url !== url.href)) throw contractFailure();
-    if (response.status >= 300 && response.status < 400) throw contractFailure();
+    if (response.redirected || (response.url !== '' && response.url !== url.href)) throw scopeFailure();
+    if (response.status >= 300 && response.status < 400) throw scopeFailure();
+    // 401 and 403 are the system refusing, not the network failing. Retrying a refusal
+    // proves nothing and spends the Run's frozen limits doing it.
+    if (response.status === 401 || response.status === 403) throw deniedFailure();
     if (!response.ok) throw transportFailure();
     const bytes = await readBody(response, this.maxBytes);
     return { bytes, mediaType: mediaTypeFrom(response), location: url.href };

@@ -8,10 +8,14 @@ import {
   registrationDigest,
   registrationDigestEnvelope,
   decodePopulationUtf8,
+  RULE_DOES_NOT_NAME_VALUE,
+  POPULATION_CHECK_NAMES,
   sha256HexOfBytes,
   utf8Bytes,
   type ExecutablePlan,
+  type ObservationCheckName,
   type ObservationRecord,
+  type PopulationGateRow,
   type ProcedureTargetSnapshot,
   type RaisedException,
   type RunRecord,
@@ -26,8 +30,11 @@ import {
   type AdapterExecutionCheckpoint,
   type AdapterExecutionContext,
   type AdapterExecutionRepository,
+  type GateCheckRow,
+  type GateFactTally,
   type ObservationCheckRow,
   type ObservationEvaluationRow,
+  type RunGatePopulationFacts,
   type PackageSeal,
   type PopulationCheckpoint,
   type PopulationRecord,
@@ -199,6 +206,21 @@ class FakeRepository implements AdapterExecutionRepository {
   seal: PackageSeal | null = null;
   timeline: number[] = [];
   records: readonly PopulationRecord[] = RECORDS;
+  /** Story 3.8. The Gate's own rows, and the facts it reads back. */
+  gate: GateCheckRow[] = [];
+  populationFacts: RunGatePopulationFacts | null = {
+    checks: POPULATION_CHECK_NAMES.map((name) => ({ name, passed: true })),
+    included: RECORDS.length, excluded: 0, indeterminate: 0, rowsParsed: RECORDS.length,
+    unexplained: [],
+    // Generated after the end of the effective period and before Run initiation.
+    generatedAt: '2026-09-01T00:00:00.000Z',
+  };
+  populationRows: readonly PopulationGateRow[] = RECORDS.map((record) => ({
+    ordinal: record.ordinal,
+    values: record.values,
+    disposition: 'included' as const,
+  }));
+  integrity: { evidenceId: string }[] = [];
   private sequence = 0;
 
   constructor(private currentPlan: ExecutablePlan | null) {}
@@ -336,6 +358,97 @@ class FakeRepository implements AdapterExecutionRepository {
       notifyTimeline: async (sequence) => {
         repository.timeline.push(sequence);
       },
+      // ---------------------------------------------------------------- Story 3.8
+      readStepExecutionCount: async () => repository.executions.length,
+      readGateChecks: async () => repository.gate,
+      saveGateChecks: async (rows) => {
+        if (repository.gate.length === 0) repository.gate = [...rows];
+      },
+      saveRunState: async (state) => {
+        repository.run = { ...repository.run, state };
+      },
+      readPopulationFacts: async () => repository.populationFacts,
+      readPopulationRows: async () => repository.populationRows,
+      readGateObservations: async () =>
+        repository.observations.map((row) => ({
+          targetSystem: row.record.targetSystem,
+          populationRecordKey: row.record.populationRecordKey,
+          coverage: row.coverage,
+          workItemId: row.record.workItemId,
+        })),
+      readFailedObservationChecks: async () => {
+        const tallies: Partial<Record<ObservationCheckName, GateFactTally>> = {};
+        for (const row of repository.checks.values()) {
+          if (row.outcome !== 'FAIL') continue;
+          const observation = repository.observations.find(
+            (entry) => entry.record.observationId === row.observationId,
+          );
+          const existing = tallies[row.check] ?? { total: 0, sample: [] };
+          tallies[row.check] = {
+            total: existing.total + 1,
+            sample: [
+              ...existing.sample,
+              {
+                targetSystem: observation?.record.targetSystem ?? null,
+                workItemId: observation?.record.workItemId ?? null,
+                record: observation?.record.populationRecordKey ?? null,
+              },
+            ],
+          };
+        }
+        return tallies;
+      },
+      readConditionGaps: async (expected) => {
+        const sample = repository.observations
+          .filter(
+            (row) =>
+              [...repository.evaluations.values()].filter(
+                (entry) => entry.observationId === row.record.observationId,
+              ).length < expected,
+          )
+          .map((row) => ({
+            targetSystem: row.record.targetSystem,
+            workItemId: row.record.workItemId,
+            record: row.record.populationRecordKey,
+          }));
+        return { total: sample.length, sample };
+      },
+      readUnnamedValues: async () => {
+        const sample = [...repository.evaluations.values()]
+          .filter((row) => row.evaluation.diagnostic?.includes(RULE_DOES_NOT_NAME_VALUE) === true)
+          .map((row) => ({ targetSystem: null, workItemId: null, record: row.observationId }));
+        return { total: sample.length, sample };
+      },
+      readIncompleteExtractions: async () =>
+        [...repository.items.values()]
+          .filter((item) => item.diagnostic?.includes('extraction-incomplete') === true)
+          .map((item) => ({
+            targetSystem: item.registrationId,
+            workItemId: item.workItemId,
+            record: null,
+          })),
+      readAccessFailures: async () => ({
+        failedSessionSteps: [...repository.steps.values()]
+          .filter((step) => step.state === 'FAILED')
+          .map((step) => ({ targetSystem: step.registrationId, workItemId: null, record: null })),
+        denied: [...repository.items.values()]
+          .filter(
+            (item) =>
+              item.diagnostic === 'extraction-denied' ||
+              item.diagnostic === 'extraction-scope-violation',
+          )
+          .map((item) => ({
+            targetSystem: item.registrationId,
+            workItemId: item.workItemId,
+            record: null,
+          })),
+      }),
+      readIntegrityFindings: async () =>
+        repository.integrity.map((row) => ({
+          targetSystem: null,
+          workItemId: null,
+          record: row.evidenceId,
+        })),
     });
   }
 
@@ -452,7 +565,11 @@ describe('executeAdapterSteps', () => {
     await executeAdapterSteps(test.deps, JOB);
 
     // The order the units ran in, taken from the audit chain rather than from intent.
-    const order = test.repository.events.map((entry) => entry.payload['diagnostic']);
+    // Filtered to the stage's own family: the Run-level Gate appends its own events after
+    // the last Work Item, and `at(-1)` over both families would read a Gate row.
+    const order = test.repository.events
+      .filter((entry) => entry.eventType === 'lifecycle.adapter-execution')
+      .map((entry) => entry.payload['diagnostic']);
     expect(order.indexOf('reference-source-acquired')).toBeLessThan(order.indexOf('work-item-attempt-started'));
     expect(order.at(-1)).toBe('adapter-extraction-complete');
 
@@ -470,7 +587,10 @@ describe('executeAdapterSteps', () => {
       kind: 'adapter-extraction', state: 'REGISTERED', digest: sha256HexOfBytes(utf8Bytes(ACCOUNTS)),
     });
     expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
-    expect(test.repository.run.state).toBe('RUNNING');
+    // Story 3.8: the Run-level Gate runs when the last Work Item completes. AG-1007 is in
+    // the extraction twice, so its Observation is `ambiguous` and per-record coverage
+    // fails — the Run concludes INCONCLUSIVE rather than staying RUNNING.
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
     expect(test.repository.timeline.length).toBe(test.repository.events.length);
   });
 
@@ -535,14 +655,25 @@ describe('executeAdapterSteps', () => {
     // The reservation stays OPEN while the Run runs on: `SealPackage` is the one thing
     // that abandons one, at the terminal transition, where it can also be listed on the
     // Result (Story 3.5). What matters here is that it is not a registered artifact.
+    // The reservation stays open while the Run runs on, and `SealPackage` is what
+    // abandons it — at the terminal transition the Run-level Gate now takes, where it can
+    // also be listed on the Result. What matters is that it is never a registered artifact.
     expect(test.repository.evidence.get(failed.evidenceId!)).toMatchObject({
-      state: 'RESERVED',
+      state: 'ABANDONED',
       digest: null,
     });
+    expect(test.repository.seal?.abandoned.map((entry) => entry.evidenceId)).toContain(
+      failed.evidenceId,
+    );
+    // A failed Work Item never stops the Run: the NEXT one still executed, and the stage
+    // reached its own completion rather than a terminal checkpoint.
     expect(items.find((item) => item.registrationId === 'reg-api-2')?.state).toBe('OBSERVED');
-    // A failed Work Item never stops the Run.
-    expect(test.repository.run.state).toBe('RUNNING');
     expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    // The Run then concludes at the Gate, on coverage, not on the Work Item.
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
+    const coverage = test.repository.gate.find((row) => row.check === 'per-record-coverage')!;
+    expect(coverage.outcome).toBe('FAIL');
+    expect(coverage.diagnostics).toContain('record-uncovered');
   });
 
   it('fails the Run when a Reference Source cannot be acquired, and runs no Work Item', async () => {
@@ -568,15 +699,21 @@ describe('executeAdapterSteps', () => {
     const firstObservations = test.repository.observations.length;
     const evidenceIds = [...test.repository.evidence.keys()];
 
-    // A redelivery: the stage is claimable again, and the completed units must not run.
+    // A redelivery of a claim that crashed before it committed: the checkpoint is
+    // claimable again and the Run is still RUNNING, because the stage's completion, the
+    // Gate, the terminal state and the seal all commit in ONE transaction — a resume can
+    // never see one of them without the others.
     test.repository.checkpoint = { ...test.repository.checkpoint!, status: 'RETRY' };
+    test.repository.run = { ...test.repository.run, state: 'RUNNING' };
+    const firstGate = test.repository.gate.length;
     await executeAdapterSteps(test.deps, JOB);
 
     expect(test.puts).toEqual(firstPuts);
     expect(test.repository.observations).toHaveLength(firstObservations);
     expect([...test.repository.evidence.keys()]).toEqual(evidenceIds);
     expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
-    expect(test.repository.run.state).toBe('RUNNING');
+    // The Gate rows are written once. A Gate failure is never repaired by re-running it.
+    expect(test.repository.gate).toHaveLength(firstGate);
   });
 
   it('fails the Run terminally when a frozen Reference Source artifact no longer matches its digest', async () => {
@@ -588,6 +725,7 @@ describe('executeAdapterSteps', () => {
     test.objects.set(key, tampered);
 
     test.repository.checkpoint = { ...test.repository.checkpoint!, status: 'RETRY' };
+    test.repository.run = { ...test.repository.run, state: 'RUNNING' };
     await executeAdapterSteps(test.deps, JOB);
 
     expect(test.repository.run.state).toBe('RUN_FAILED');
@@ -620,7 +758,13 @@ describe('executeAdapterSteps', () => {
     // An unresolvable credential is not retried eight times against a live system.
     expect(item.attempts).toBe(1);
     expect(everythingWritten(test)).not.toContain(TOKEN);
-    expect(test.repository.run.state).toBe('RUNNING');
+    // The Work Item failed and the Run went on to its Gate, which concluded it on the
+    // coverage this item never produced. An unresolvable credential is not a DENIAL: the
+    // resolver answered about a different reference, which is a defect on this side rather
+    // than a system saying no, so it takes the Gate's INCONCLUSIVE and not §E.1's
+    // RUN_FAILED.
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
   });
 
   it('claims nothing while the population is not ready, or the Run is not running', async () => {
@@ -637,6 +781,51 @@ describe('executeAdapterSteps', () => {
     const wrongCorrelation = harness({ plan: plan([adapter]) });
     await executeAdapterSteps(wrongCorrelation.deps, { ...JOB, correlationId: RUN.runId });
     expect(wrongCorrelation.repository.checkpoint).toBeNull();
+  });
+
+  it('stops the Run RUN_FAILED when a Reference Source is DENIED, and says so as a security event', async () => {
+    // A Reference Source is a Run-level Session Step, so its failure is RUN_FAILED whatever
+    // caused it. §E.1 adds a security event when the cause was a denial or a scope
+    // violation, and `stopRun` appends it from `runStopFor(cause).securityEvent` rather than
+    // at each call site — so this proves the Session Step half of the mapping, which the
+    // integration suite exercises only through the extraction.
+    const test = harness({
+      plan: plan([reference, adapter]),
+      reference: async () => {
+        throw new PopulationAcquisitionError('denied');
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const step = [...test.repository.steps.values()][0]!;
+    expect(step).toMatchObject({ state: 'FAILED', diagnostic: 'reference-denied' });
+    // Not retried: the same request produces the same refusal.
+    expect(step.attempts).toBe(1);
+    expect(test.repository.run.state).toBe('RUN_FAILED');
+    const security = test.repository.events.filter(
+      (entry) => entry.eventType === 'security.action-denied',
+    );
+    expect(security).toHaveLength(1);
+    expect(security[0]).toMatchObject({ outcome: 'denied' });
+    expect(security[0]!.payload['cause']).toBe('action-denied');
+    // No Work Item ran, and no Gate row was written: the Run never reached its last one.
+    expect(test.repository.gate).toEqual([]);
+  });
+
+  it('stops the Run RUN_FAILED on a scope violation from a Reference Source', async () => {
+    const test = harness({
+      plan: plan([reference, adapter]),
+      reference: async () => {
+        throw new PopulationAcquisitionError('scope');
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    expect([...test.repository.steps.values()][0]?.diagnostic).toBe('reference-scope-violation');
+    expect(test.repository.run.state).toBe('RUN_FAILED');
+    expect(
+      test.repository.events
+        .filter((entry) => entry.eventType === 'security.action-denied')
+        .map((entry) => entry.payload['cause']),
+    ).toEqual(['scope-violation']);
   });
 
   it('does not claim a live lease held by another worker', async () => {
@@ -670,7 +859,10 @@ describe('executeAdapterSteps', () => {
     expect(item.state).toBe('FAILED');
     expect(item.diagnostic).toBe('extraction-contract-failed');
     expect(test.repository.observations).toEqual([]);
-    expect(test.repository.run.state).toBe('RUNNING');
+    // The Work Item did not stop the Run — the stage reached its own completion — and the
+    // Run-level Gate then concluded it INCONCLUSIVE on the coverage the item never gave.
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
   });
 
   it('writes one Observation per DISTINCT population key and says how many repeated', async () => {
@@ -754,7 +946,8 @@ describe('executeAdapterSteps', () => {
     expect(item.attempts).toBe(1);
     expect(test.repository.observations).toEqual([]);
     expect(test.repository.exceptions.size).toBe(0);
-    expect(test.repository.run.state).toBe('RUNNING');
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
   });
 
   it('evaluates every registered Observation and raises one Exception per failing record', async () => {

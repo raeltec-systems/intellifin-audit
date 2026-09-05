@@ -136,6 +136,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_step_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_session_step WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_work_item WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_gate_check WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence_integrity WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
@@ -177,7 +178,10 @@ test.describe('Auditor population acquisition', () => {
   test('file population is processed by the queue and preserves original Evidence', async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     firstRunId = await start(page, 0);
-    await expect(page.getByText('Running', { exact: true })).toBeVisible();
+    // The population is ready. The lifecycle label is whatever the Run has reached by now
+    // and NOT asserted here: Story 3.8 made the adapter stage run the Run-level Gate when
+    // its last Work Item completes, so this Run goes on to conclude on its own — the
+    // journey below waits for that deliberately rather than racing it.
     await displayedCount(page, 'Rows acquired', 12);
     await displayedCount(page, 'Included', 12);
     await displayedCount(page, 'Excluded', 0);
@@ -308,7 +312,10 @@ test.describe('Auditor population acquisition', () => {
     // outcome. If a case disagrees, the implementation is wrong.
     const expectations = JSON.parse(
       await readFile(join(process.cwd(), 'fixtures/northstar/expectations/p-2-sod-conflicts.json'), 'utf8'),
-    ) as { cases: { case_id: string; record_key: string | null; expected_record_evaluation: string | null }[] };
+    ) as {
+      run_expectation: { terminal_outcome: string };
+      cases: { case_id: string; record_key: string | null; expected_record_evaluation: string | null }[];
+    };
     const evaluations = await sql`SELECT o.population_record_key AS key,e.value,e.origin,e.diagnostic FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${firstRunId} ORDER BY o.population_record_key`;
     expect(evaluations).toHaveLength(11);
     expect(evaluations.every(row => row.origin === 'RULE')).toBe(true);
@@ -355,7 +362,45 @@ test.describe('Auditor population acquisition', () => {
     }
     expect(workerLog).not.toContain(READ_ONLY_TOKEN);
 
+    // Story 3.8, against the real golden population: the Run-level Gate ran when the last
+    // Work Item completed, wrote one row per addendum §H check, and concluded the Run at
+    // the terminal outcome the EXPECTATION FILE names — read off disk, never imported.
+    // P-2's golden population carries an unknown role, a duplicate account and a duplicate
+    // conflicting policy entry, and each of those prevents Pass.
+    const outcome = expectations.run_expectation.terminal_outcome;
+    expect(outcome).toBe('Inconclusive');
+    await expect
+      .poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${firstRunId}`)[0]?.state,
+        { timeout: 60_000 })
+      .toBe(outcome.toUpperCase());
+    // `records` is in the SELECT deliberately: without it the assertions below read
+    // `undefined` and could not fail — the trap `diagnostic` fell into on the Work Item
+    // read a few stories ago.
+    const gate = await sql`SELECT check_name,outcome,diagnostics,records,total FROM run_gate_check WHERE run_id=${firstRunId} ORDER BY check_name`;
+    expect(gate).toHaveLength(20);
+    const failed = gate.filter(row => row.outcome === 'FAIL');
+    // AG-1007 is seeded twice in the population AND resolves twice in the extraction, so
+    // its match is ambiguous, its coverage is not `COVERED`, and the Source primary key is
+    // duplicated. AG-1006 carries UNKNOWN_ROLE_X, which RoleMatrix does not declare, so a
+    // compiled condition met a value outside the set it names (§B). Four §H rows, each
+    // naming a different defect on a different seeded record.
+    expect(failed.map(row => String(row.check_name)).sort()).toEqual([
+      'ambiguous-match', 'duplicate-primary-keys', 'per-record-coverage', 'unnamed-value',
+    ]);
+    expect(failed.find(row => row.check_name === 'unnamed-value')?.diagnostics).toEqual(['unnamed-value']);
+    expect(failed.find(row => row.check_name === 'unnamed-value')?.records).toEqual(['AG-1006']);
+    expect(failed.find(row => row.check_name === 'per-record-coverage')?.diagnostics)
+      .toEqual(['record-ambiguous']);
+    expect(failed.find(row => row.check_name === 'duplicate-primary-keys')?.diagnostics)
+      .toEqual(['duplicate-primary-key']);
+    // Every check outcome is a Timeline event, and the terminal transition sealed.
+    const gateEvents = await sql`SELECT payload->>'check' AS check FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='execution.gate-checked'`;
+    expect(gateEvents.length).toBeGreaterThanOrEqual(21);
+    expect((await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${firstRunId}`)[0]?.run_state)
+      .toBe('INCONCLUSIVE');
+
     await page.goto(`/runs/${firstRunId}`);
+    await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     const section = page.getByRole('region', { name: 'Target System execution' });
     await expect(section.getByRole('cell', { name: 'RoleMatrix', exact: true })).toBeVisible();
     await expect(section.getByRole('cell', { name: 'Acquired', exact: true })).toBeVisible();
@@ -421,7 +466,11 @@ test.describe('Auditor population acquisition', () => {
       expect(storage.requests.filter(request => request.key === registered!.object_key && request.method === 'PUT')).toHaveLength(1);
       expect((await sql`SELECT count(*)::int AS count FROM population_row WHERE run_id=${runId}`)[0]?.count).toBe(12);
       await page.reload();
-      await expect(page.getByText('Running', { exact: true })).toBeVisible();
+      // The lifecycle label is not asserted here: the resumed worker carries this Run on
+      // into its adapter stage and the Run-level Gate concludes it (Story 3.8), so
+      // "Running" is a race against the very stage this test just restarted. What the test
+      // is about — the envelope reused, the Evidence not replaced, the attempt counted —
+      // is asserted above against the rows.
       await displayedCount(page, 'Included', 12);
       await expect(page.getByRole('region', { name: 'Population acquisition' })).toContainText('Attempts: 2');
       await expect(page.getByText(String(reserved!.evidence_id), { exact: true })).toBeVisible();

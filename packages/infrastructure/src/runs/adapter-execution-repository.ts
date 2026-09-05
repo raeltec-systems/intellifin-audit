@@ -5,23 +5,40 @@ import type {
   AdapterExecutionContext,
   AdapterExecutionRepository,
   EvidenceState,
+  GateCheckRow,
+  GateFactSample,
+  GateFactTally,
   ObservationCheckRow,
   ObservationEvaluationRow,
   PopulationCheckpoint,
   PopulationRecord,
   RegisteredObservation,
+  RunGatePopulationFacts,
   SessionStepRecord,
   StepExecutionRecord,
   StoredObservation,
   WorkItemRecord,
 } from '@intellifin/application';
-import { POPULATION_LIMITS, type RaisedException } from '@intellifin/domain';
+import {
+  GATE_AFFECTED_LIMIT,
+  RULE_DOES_NOT_NAME_VALUE,
+  POPULATION_LIMITS,
+  type CoverageObservation,
+  type GateCheckResult,
+  type ObservationCheckName,
+  type PopulationCheck,
+  type PopulationGateRow,
+  type RaisedException,
+} from '@intellifin/domain';
 import type { Database } from '../db/client.js';
 import {
   auditRun,
   populationExecution,
   populationRow,
+  populationSnapshot,
   runEvidence,
+  runEvidenceIntegrity,
+  runGateCheck,
   runException,
   runExecution,
   runObservation,
@@ -437,6 +454,286 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
           await tx.execute(
             sql`SELECT pg_notify('run_timeline',${JSON.stringify({ runId, sequence })})`,
           );
+        },
+
+        /* ------------------------------------------------------------ Story 3.8 --- */
+
+        async readStepExecutionCount(): Promise<number> {
+          const rows = await tx
+            .select({ total: sql<number>`count(*)::int` })
+            .from(runStepExecution)
+            .where(eq(runStepExecution.runId, runId));
+          return rows[0]?.total ?? 0;
+        },
+
+        async readGateChecks(): Promise<readonly GateCheckRow[]> {
+          const rows = await tx
+            .select()
+            .from(runGateCheck)
+            .where(eq(runGateCheck.runId, runId))
+            .orderBy(asc(runGateCheck.checkName));
+          return rows.map(
+            (row): GateCheckRow => ({
+              check: row.checkName as GateCheckResult['check'],
+              outcome: row.outcome as GateCheckResult['outcome'],
+              diagnostics: row.diagnostics,
+              targetSystems: row.targetSystems,
+              workItems: row.workItems,
+              records: row.records,
+              total: row.total,
+            }),
+          );
+        },
+
+        async saveGateChecks(rows: readonly GateCheckRow[]) {
+          if (rows.length === 0) return;
+          const decidedAt = new Date();
+          // `DO NOTHING`: the FIRST Gate wins, and a Gate failure is never repaired by
+          // re-running a check. Generation 24 refuses an UPDATE below the command as well.
+          await tx
+            .insert(runGateCheck)
+            .values(
+              rows.map((row) => ({
+                runId,
+                checkName: row.check,
+                outcome: row.outcome,
+                diagnostics: [...row.diagnostics],
+                targetSystems: [...row.targetSystems],
+                workItems: [...row.workItems],
+                records: [...row.records],
+                total: row.total,
+                decidedAt,
+              })),
+            )
+            .onConflictDoNothing({ target: [runGateCheck.runId, runGateCheck.checkName] });
+        },
+
+        async saveRunState(state) {
+          await tx.update(auditRun).set({ state }).where(eq(auditRun.runId, runId));
+        },
+
+        async readPopulationFacts(): Promise<RunGatePopulationFacts | null> {
+          const snapshot = (
+            await tx.select().from(populationSnapshot).where(eq(populationSnapshot.runId, runId))
+          )[0];
+          if (!snapshot) return null;
+          // Counted, never derived from the three stored counts: the arithmetic §H's
+          // inclusion row performs is exactly the thing a defect in them would have broken.
+          const counted = await tx
+            .select({ total: sql<number>`count(*)::int` })
+            .from(populationRow)
+            .where(eq(populationRow.runId, runId));
+          const unexplained = await tx
+            .select({ ordinal: populationRow.ordinal })
+            .from(populationRow)
+            .where(
+              sql`${populationRow.runId}=${runId} AND ${populationRow.disposition} <> 'included' AND coalesce(jsonb_array_length(${populationRow.reasons}),0)=0`,
+            )
+            .orderBy(asc(populationRow.ordinal))
+            .limit(GATE_AFFECTED_LIMIT);
+          return {
+            checks: snapshot.checks as readonly PopulationCheck[],
+            included: snapshot.included,
+            excluded: snapshot.excluded,
+            indeterminate: snapshot.indeterminate,
+            rowsParsed: counted[0]?.total ?? 0,
+            unexplained: unexplained.map((row) => row.ordinal),
+            generatedAt: snapshot.generatedAt?.toISOString() ?? null,
+          };
+        },
+
+        async readPopulationRows(): Promise<readonly PopulationGateRow[]> {
+          const rows = await tx
+            .select({
+              ordinal: populationRow.ordinal,
+              values: populationRow.values,
+              disposition: populationRow.disposition,
+            })
+            .from(populationRow)
+            .where(eq(populationRow.runId, runId))
+            .orderBy(asc(populationRow.ordinal))
+            .limit(POPULATION_LIMITS.rows);
+          return rows;
+        },
+
+        async readGateObservations(): Promise<readonly CoverageObservation[]> {
+          const rows = await tx
+            .select({
+              targetSystem: runObservation.targetSystem,
+              populationRecordKey: runObservation.populationRecordKey,
+              coverage: runObservation.coverage,
+              workItemId: runObservation.workItemId,
+            })
+            .from(runObservation)
+            .where(eq(runObservation.runId, runId))
+            .limit(POPULATION_LIMITS.rows);
+          return rows.map((row) => ({ ...row, coverage: row.coverage as CoverageObservation['coverage'] }));
+        },
+
+        async readFailedObservationChecks() {
+          // The EXACT total per check name, and a bounded sample of the identities the
+          // Result names. Two statements rather than one, because an exact count and a
+          // bounded sample are two different questions and `LIMIT` answers only the second.
+          const totals = await tx
+            .select({ check: runObservationCheck.checkName, total: sql<number>`count(*)::int` })
+            .from(runObservationCheck)
+            .where(
+              and(
+                eq(runObservationCheck.runId, runId),
+                eq(runObservationCheck.outcome, 'FAIL'),
+              ),
+            )
+            .groupBy(runObservationCheck.checkName);
+          const tallies: Partial<Record<ObservationCheckName, GateFactTally>> = {};
+          for (const row of totals) {
+            const samples = await tx
+              .select({
+                targetSystem: runObservation.targetSystem,
+                workItemId: runObservation.workItemId,
+                record: runObservation.populationRecordKey,
+              })
+              .from(runObservationCheck)
+              .innerJoin(
+                runObservation,
+                eq(runObservation.observationId, runObservationCheck.observationId),
+              )
+              .where(
+                and(
+                  eq(runObservationCheck.runId, runId),
+                  eq(runObservationCheck.outcome, 'FAIL'),
+                  eq(runObservationCheck.checkName, row.check),
+                ),
+              )
+              .orderBy(asc(runObservation.populationRecordKey))
+              .limit(GATE_AFFECTED_LIMIT);
+            tallies[row.check as ObservationCheckName] = { total: row.total, sample: samples };
+          }
+          return tallies;
+        },
+
+        async readConditionGaps(expected: number): Promise<GateFactTally> {
+          if (expected <= 0) return { total: 0, sample: [] };
+          // An Observation with fewer evaluations than the version froze conditions has a
+          // condition nobody decided. Counted in SQL rather than by loading every
+          // evaluation: a Run can hold a hundred thousand Observations.
+          const gaps = tx
+            .select({
+              observationId: runObservationEvaluation.observationId,
+              total: sql<number>`count(*)::int`.as('evaluated'),
+            })
+            .from(runObservationEvaluation)
+            .where(eq(runObservationEvaluation.runId, runId))
+            .groupBy(runObservationEvaluation.observationId)
+            .as('gaps');
+          const rows = await tx
+            .select({
+              targetSystem: runObservation.targetSystem,
+              workItemId: runObservation.workItemId,
+              record: runObservation.populationRecordKey,
+            })
+            .from(runObservation)
+            .leftJoin(gaps, eq(gaps.observationId, runObservation.observationId))
+            .where(sql`${runObservation.runId}=${runId} AND coalesce(${gaps.total},0) < ${expected}`)
+            .orderBy(asc(runObservation.populationRecordKey))
+            .limit(POPULATION_LIMITS.rows);
+          return {
+            total: rows.length,
+            sample: rows.slice(0, GATE_AFFECTED_LIMIT),
+          };
+        },
+
+        async readUnnamedValues(): Promise<GateFactTally> {
+          // §B's own sentence, imported rather than retyped: "when a compiled condition
+          // meets an attribute value outside the set it names, the condition evaluates
+          // Unevaluated with diagnostic `rule does not name value <v>`". A value the
+          // condition names and could NOT read is a different defect on a different §H row
+          // — `missing or invalid Observation field <x>` — and matching that here would put
+          // every ambiguous record on the unnamed-value row as well.
+          const pattern = `%${RULE_DOES_NOT_NAME_VALUE}%`;
+          const totals = await tx
+            .select({ total: sql<number>`count(*)::int` })
+            .from(runObservationEvaluation)
+            .where(
+              sql`${runObservationEvaluation.runId}=${runId} AND ${runObservationEvaluation.diagnostic} LIKE ${pattern}`,
+            );
+          const total = totals[0]?.total ?? 0;
+          if (total === 0) return { total: 0, sample: [] };
+          const rows = await tx
+            .select({
+              targetSystem: runObservation.targetSystem,
+              workItemId: runObservation.workItemId,
+              record: runObservation.populationRecordKey,
+            })
+            .from(runObservationEvaluation)
+            .innerJoin(
+              runObservation,
+              eq(runObservation.observationId, runObservationEvaluation.observationId),
+            )
+            .where(
+              sql`${runObservationEvaluation.runId}=${runId} AND ${runObservationEvaluation.diagnostic} LIKE ${pattern}`,
+            )
+            .orderBy(asc(runObservation.populationRecordKey))
+            .limit(GATE_AFFECTED_LIMIT);
+          return { total, sample: rows };
+        },
+
+        async readIncompleteExtractions(): Promise<readonly GateFactSample[]> {
+          const rows = await tx
+            .select({
+              targetSystem: runWorkItem.registrationId,
+              workItemId: runWorkItem.workItemId,
+            })
+            .from(runWorkItem)
+            .where(
+              sql`${runWorkItem.runId}=${runId} AND ${runWorkItem.diagnostic} LIKE '%extraction-incomplete%'`,
+            )
+            .limit(GATE_AFFECTED_LIMIT);
+          return rows.map((row) => ({ ...row, record: null }));
+        },
+
+        async readAccessFailures() {
+          const failed = await tx
+            .select({ targetSystem: runSessionStep.registrationId })
+            .from(runSessionStep)
+            .where(and(eq(runSessionStep.runId, runId), eq(runSessionStep.state, 'FAILED')))
+            .limit(GATE_AFFECTED_LIMIT);
+          const denied = await tx
+            .select({
+              targetSystem: runWorkItem.registrationId,
+              workItemId: runWorkItem.workItemId,
+            })
+            .from(runWorkItem)
+            .where(
+              sql`${runWorkItem.runId}=${runId} AND (${runWorkItem.diagnostic} = 'extraction-denied' OR ${runWorkItem.diagnostic} = 'extraction-scope-violation')`,
+            )
+            .limit(GATE_AFFECTED_LIMIT);
+          const deniedSteps = await tx
+            .select({ targetSystem: runSessionStep.registrationId })
+            .from(runSessionStep)
+            .where(
+              sql`${runSessionStep.runId}=${runId} AND (${runSessionStep.diagnostic} = 'reference-denied' OR ${runSessionStep.diagnostic} = 'reference-scope-violation')`,
+            )
+            .limit(GATE_AFFECTED_LIMIT);
+          return {
+            failedSessionSteps: failed.map((row) => ({ ...row, workItemId: null, record: null })),
+            denied: [
+              ...denied.map((row) => ({ ...row, record: null })),
+              ...deniedSteps.map((row) => ({ ...row, workItemId: null, record: null })),
+            ],
+          };
+        },
+
+        async readIntegrityFindings(): Promise<readonly GateFactSample[]> {
+          const rows = await tx
+            .select({ evidenceId: runEvidenceIntegrity.evidenceId })
+            .from(runEvidenceIntegrity)
+            .where(eq(runEvidenceIntegrity.runId, runId))
+            .limit(GATE_AFFECTED_LIMIT);
+          return rows.map((row) => ({
+            targetSystem: null,
+            workItemId: null,
+            record: row.evidenceId,
+          }));
         },
       });
     });

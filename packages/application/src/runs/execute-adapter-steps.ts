@@ -1,8 +1,12 @@
 import {
+  adapterAttemptBudget,
   adapterLookupColumn,
   adapterSearchKeys,
   classifyPlanTargets,
   decodePopulationUtf8,
+  exhaustedRunLimit,
+  runStopFor,
+  sessionStepAttemptBudget,
   groundedText,
   isCompleteCollectionEnvelope,
   normalizeObservationValue,
@@ -21,6 +25,8 @@ import {
   type ProcedureTargetSnapshot,
   type ReferenceArtifact,
   type RunRecord,
+  type RunLimitCause,
+  type RunStopCause,
 } from '@intellifin/domain';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
 import {
@@ -55,6 +61,7 @@ import {
   reserveArtifact,
 } from './evidence-package.js';
 import { sealIfTerminal } from './seal-package.js';
+import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 
 /**
  * The execution stage after population acquisition (Story 3.3).
@@ -109,15 +116,67 @@ export type AdapterExecutionDiagnostic =
   | 'agent-driven-target'
   | 'unsupported-plan-version'
   | 'run-time-limit'
+  | 'run-step-execution-limit'
+  | 'run-token-limit'
   | 'attempt-limit'
   | 'credential-unresolved'
   | 'reference-transport-failed'
   | 'reference-integrity-failed'
   | 'reference-contract-failed'
+  | 'reference-denied'
+  | 'reference-scope-violation'
   | 'extraction-transport-failed'
   | 'extraction-integrity-failed'
   | 'extraction-contract-failed'
+  | 'extraction-denied'
+  | 'extraction-scope-violation'
   | 'observation-registration-refused';
+
+/**
+ * The §E.1 cause behind a diagnostic, or `null` when it is not one this story stops for.
+ *
+ * A denied action and a scope violation are TERMINAL for the Run and additionally logged as
+ * a security event — the owner's automatic second retry cycle covers an exhausted retry
+ * budget, not a system that said no. Retrying a refusal against a live Target System proves
+ * nothing and spends the Run's limits doing it, the `credential-unresolved` rule one layer
+ * along.
+ */
+export function stopCauseFor(diagnostic: AdapterExecutionDiagnostic): RunStopCause | null {
+  switch (diagnostic) {
+    case 'reference-denied':
+    case 'extraction-denied':
+      return 'action-denied';
+    case 'reference-scope-violation':
+    case 'extraction-scope-violation':
+      return 'scope-violation';
+    case 'reference-integrity-failed':
+    case 'extraction-integrity-failed':
+      return 'integrity-mismatch';
+    case 'run-time-limit':
+      return 'run-time-limit';
+    case 'run-step-execution-limit':
+      return 'run-step-execution-limit';
+    case 'run-token-limit':
+      return 'run-token-limit';
+    default:
+      return null;
+  }
+}
+
+/**
+ * The diagnostic each Run-level LIMIT is recorded under.
+ *
+ * `Record<RunLimitCause, …>` and not `Record<RunStopCause, …>`: the other four causes never
+ * reach `stopForCause`, because a denial, a scope violation, a Session Step failure and an
+ * integrity mismatch each already carry the UNIT's own diagnostic and stop the Run through
+ * `stopRun`. Rows for them would be four entries nothing exercises, and a branch nothing
+ * exercises is a branch that can be inverted silently.
+ */
+const LIMIT_DIAGNOSTIC: Readonly<Record<RunLimitCause, AdapterExecutionDiagnostic>> = {
+  'run-step-execution-limit': 'run-step-execution-limit',
+  'run-time-limit': 'run-time-limit',
+  'run-token-limit': 'run-token-limit',
+};
 
 /** The collection names an extraction response may carry (population contract v1). */
 const COLLECTION_KEYS = ['accounts', 'transactions', 'employees', 'approvals'] as const;
@@ -372,6 +431,12 @@ function failureDiagnostic(
   // a live system proves nothing (the `credential-unresolved` rule, one layer along).
   if (error instanceof ObservationRegistrationError) return 'observation-registration-refused';
   const code = error instanceof PopulationAcquisitionError ? error.code : 'transport';
+  // A denial and a scope violation are named for what they are rather than suffixed
+  // `-failed` like a transport hiccup: §E.1 gives them a different terminal state and a
+  // security event, and a name that reads like an outage sends an operator to the wrong
+  // place.
+  if (code === 'denied') return `${unit}-denied` as AdapterExecutionDiagnostic;
+  if (code === 'scope') return `${unit}-scope-violation` as AdapterExecutionDiagnostic;
   return `${unit}-${code}-failed` as AdapterExecutionDiagnostic;
 }
 
@@ -467,6 +532,9 @@ export async function executeAdapterSteps(
     return {
       checkpoint, plan: plan!, run, classification: classification!, steps, items, records,
       evidence: context.evidence,
+      // Every attempt this Run has already made counts against the frozen Step Execution
+      // limit, including the ones an earlier claim made before a restart.
+      stepExecutions: await context.readStepExecutionCount(),
     };
   });
   if (claim === null) return { retry: false };
@@ -474,10 +542,26 @@ export async function executeAdapterSteps(
   const { checkpoint, plan, run, classification, steps, items, records, evidence } = claim;
   const runDeadline = Date.parse(checkpoint.runStartedAt) + plan.limits.runTimeoutSeconds * 1000;
   const stepTimeoutMs = plan.limits.stepTimeoutSeconds * 1000;
+  // The FROZEN retry budget, and the owner's 2026-09-05 second cycle for an adapter Work
+  // Item. Read from the plan through the domain, never restated here.
   const attemptsPerCycle = plan.limits.retriesPerStep + 1;
+  let stepExecutions = claim.stepExecutions;
 
   const now = (): number => deps.clock.now().getTime();
   const runExpired = (): boolean => now() >= runDeadline;
+  /**
+   * Which frozen Run-level limit is spent, or `null`.
+   *
+   * Step Executions, elapsed time and tokens, in §E.1's order, against the limits the
+   * VERSION froze. Tokens are zero for every Run of this epic — the adapter path calls no
+   * model — and the counter is passed anyway so the agent epic fills it rather than adding
+   * a limit that was never mapped.
+   */
+  const limitReached = (): RunLimitCause | null =>
+    exhaustedRunLimit(
+      { stepExecutions, elapsedMs: now() - Date.parse(checkpoint.runStartedAt), tokens: 0 },
+      plan.limits,
+    );
   /** Bounded by the shorter of the lease, the frozen Step timeout and the Run deadline. */
   const budget = (): number => {
     const ms = Math.min(Date.parse(checkpoint.leaseUntil), runDeadline, now() + stepTimeoutMs) - now();
@@ -514,8 +598,44 @@ export async function executeAdapterSteps(
       const next = { ...checkpoint, status: 'TERMINAL' as const, diagnostic };
       await context.saveCheckpoint(next, state);
       await event(context, diagnostic, state, next, fields, 'failure');
+      // §E.1: a denied action or a scope violation is ADDITIONALLY logged as a security
+      // event. It is appended here rather than remembered at each call site, so a branch
+      // that stops the Run cannot drop the only record that the platform was told no.
+      const cause = stopCauseFor(diagnostic);
+      if (cause !== null && runStopFor(cause).securityEvent) {
+        const stored = await context.auditEvents.append({
+          actor: { type: 'system', id: 'adapter-worker' },
+          eventType: SECURITY_DENIED_EVENT,
+          source: 'worker',
+          outcome: 'denied',
+          aggregateId: run.runId,
+          correlationId: run.correlationId,
+          sessionId: run.sessionId,
+          payload: {
+            cause,
+            diagnostic,
+            state,
+            ...Object.fromEntries(
+              Object.entries(fields).filter(([, value]) => value !== undefined),
+            ),
+          },
+        });
+        await context.notifyTimeline(stored.sequence);
+      }
       await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
     });
+  };
+
+  /**
+   * Stop the Run for one §E.1 cause, taking the state from the domain's mapping.
+   *
+   * The mapping lives in `limits.ts` and is read, never restated: a limit produces
+   * `INCONCLUSIVE` with partial Evidence preserved, a denial or an integrity mismatch
+   * produces `RUN_FAILED`, and neither ever produces `CANCELED`.
+   */
+  const stopForCause = async (cause: RunLimitCause, fields: EventFields): Promise<void> => {
+    const decision = runStopFor(cause);
+    await stopRun(LIMIT_DIAGNOSTIC[cause], decision.state, fields);
   };
 
   const startStepExecution = (
@@ -524,7 +644,9 @@ export async function executeAdapterSteps(
     action: string,
     attempt: number,
   ): StepExecutionRecord => ({
-    stepExecutionId: deps.ids.next(),
+    // Counted here, where a Step Execution actually starts, so no branch can start one
+    // without spending the frozen limit for it.
+    stepExecutionId: (stepExecutions += 1, deps.ids.next()),
     planStepId,
     workItemId,
     action,
@@ -589,16 +711,25 @@ export async function executeAdapterSteps(
         references.push({ bytes: verified, mediaType: registered.mediaType ?? '' });
         continue;
       }
-      if (runExpired()) {
-        await stopRun('run-time-limit', 'INCONCLUSIVE', { stepId: step.stepId });
+      const spent = limitReached();
+      if (spent !== null) {
+        await stopForCause(spent, { stepId: step.stepId });
         return { retry: false };
       }
       const outcome = await runReferenceStep(deps, {
         checkpoint, plan, run, entry, step, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, evidence, references,
+        startStepExecution, attemptsPerCycle, limitReached, evidence, references,
       });
+      if (outcome === 'limit') {
+        await stopForCause(limitReached() ?? 'run-time-limit', { stepId: step.stepId });
+        return { retry: false };
+      }
       if (outcome === 'failed') {
-        await stopRun(step.diagnostic as AdapterExecutionDiagnostic, 'RUN_FAILED', {
+        const diagnostic = step.diagnostic as AdapterExecutionDiagnostic;
+        // A Reference Source is a Run-level Session Step: §E maps its failure after bounded
+        // retries to RUN_FAILED, and `stopRun` adds the security event when the reason it
+        // failed was a denial or a scope violation rather than an outage.
+        await stopRun(diagnostic, 'RUN_FAILED', {
           stepId: step.stepId,
           registrationId: step.registrationId,
         });
@@ -611,16 +742,32 @@ export async function executeAdapterSteps(
     for (const entry of classification.adapters) {
       const item = items.find((row) => row.stepId === entry.stepId)!;
       if (item.state === 'OBSERVED' || item.state === 'FAILED' || item.state === 'UNINSPECTED') continue;
-      if (runExpired()) {
-        await stopRun('run-time-limit', 'INCONCLUSIVE', { workItemId: item.workItemId });
+      const spent = limitReached();
+      if (spent !== null) {
+        await stopForCause(spent, { workItemId: item.workItemId });
         return { retry: false };
       }
       const outcome = await runWorkItem(deps, {
         checkpoint, plan, run, entry, item, records, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, evidence, references,
+        startStepExecution, attemptsPerCycle, limitReached, evidence, references,
       });
-      // A failed Work Item never stops the Run: the next one still executes and the Run
-      // stays RUNNING. Incomplete coverage becomes INCONCLUSIVE at the Run-level Gate.
+      if (outcome === 'limit') {
+        await stopForCause(limitReached() ?? 'run-time-limit', { workItemId: item.workItemId });
+        return { retry: false };
+      }
+      // A denied action and a scope violation stop the RUN, whichever unit met them: §E.1
+      // puts them above the Gate's rows and the owner's automatic second retry cycle covers
+      // an exhausted budget, not a system that refused. Everything else that fails a Work
+      // Item leaves the Run RUNNING — the next Work Item still executes and incomplete
+      // coverage becomes INCONCLUSIVE at the Run-level Gate.
+      if (outcome === 'denied') {
+        await stopRun(item.diagnostic as AdapterExecutionDiagnostic, 'RUN_FAILED', {
+          workItemId: item.workItemId,
+          stepId: item.stepId,
+          registrationId: item.registrationId,
+        });
+        return { retry: false };
+      }
       if (outcome === 'lost') return { retry: false };
     }
 
@@ -629,6 +776,15 @@ export async function executeAdapterSteps(
       await context.saveCheckpoint(next, 'RUNNING');
       await event(context, 'adapter-extraction-complete', 'RUNNING', next, {
         observations: items.reduce((total, item) => total + item.observations, 0),
+      });
+      // The last Work Item has completed, so the Run-level Gate runs — HERE, in this
+      // transaction, over a context this stage already holds. There is no dependency to
+      // inject and none to omit: `AdapterExecutionContext` extends `RunGateContext`, so a
+      // Run cannot reach the end of its Work Items and skip §H.
+      await runRunLevelGate(context, {
+        run,
+        plan,
+        decidedAt: deps.clock.now().toISOString(),
       });
     });
     return { retry: !completed };
@@ -662,6 +818,8 @@ interface UnitContext {
     attempt: number,
   ): StepExecutionRecord;
   attemptsPerCycle: number;
+  /** Which frozen Run-level limit is spent, or `null`. Checked before every attempt. */
+  limitReached(): RunLimitCause | null;
   /** The Evidence rows as the claim read them, so a resumed attempt keeps its digest. */
   evidence: readonly AdapterEvidenceRecord[];
   /** The Run's frozen Reference Source bytes: filled by the Session Steps, read by the
@@ -711,9 +869,14 @@ function evidenceFor(
 async function runReferenceStep(
   deps: AdapterExecutionDependencies,
   unit: UnitContext & { step: SessionStepRecord },
-): Promise<'acquired' | 'failed' | 'lost'> {
+): Promise<'acquired' | 'failed' | 'lost' | 'limit'> {
   const { step, entry, checkpoint } = unit;
-  while (step.attempts < unit.attemptsPerCycle) {
+  // ONE bounded cycle. §E maps a Run-level Session Step's failure after bounded retries to
+  // RUN_FAILED, so the owner's automatic second cycle — which exists to let a Run CONTINUE
+  // past a failed unit — has nothing to buy here.
+  const budgetAttempts = sessionStepAttemptBudget(unit.plan.limits);
+  while (step.attempts < budgetAttempts) {
+    if (unit.limitReached() !== null) return 'limit';
     step.attempts += 1;
     const execution = unit.startStepExecution(entry.stepId, null, 'extract-adapter', step.attempts);
     const evidence = evidenceFor(unit, step.evidenceId, 'reference-source');
@@ -779,7 +942,7 @@ async function runReferenceStep(
       return committed ? 'acquired' : 'lost';
     } catch (error) {
       const diagnostic = failureDiagnostic('reference', error);
-      const exhausted = step.attempts >= unit.attemptsPerCycle || diagnostic !== 'reference-transport-failed';
+      const exhausted = step.attempts >= budgetAttempts || diagnostic !== 'reference-transport-failed';
       step.state = exhausted ? 'FAILED' : 'PENDING';
       step.diagnostic = diagnostic;
       const committed = await unit.guarded(async (context) => {
@@ -814,11 +977,14 @@ async function runReferenceStep(
 async function runWorkItem(
   deps: AdapterExecutionDependencies,
   unit: UnitContext & { item: WorkItemRecord; records: readonly PopulationRecord[] },
-): Promise<'observed' | 'failed' | 'lost'> {
+): Promise<'observed' | 'failed' | 'lost' | 'limit' | 'denied'> {
   const { item, entry, checkpoint, plan } = unit;
   // The owner's 2026-09-05 decision: one automatic extra bounded retry cycle after the
-  // first exhaustion, then FAILED. No human retry-or-skip Escalation on this path.
-  const maxAttempts = unit.attemptsPerCycle * 2;
+  // first exhaustion, then FAILED. No human retry-or-skip Escalation on this path. BOTH
+  // cycles obey the frozen per-Step retry limit — `adapterAttemptBudget` multiplies the
+  // plan's own `retriesPerStep + 1` rather than restating a number — and every attempt
+  // starts a Step Execution, so every attempt counts against the Run limits.
+  const maxAttempts = adapterAttemptBudget(plan.limits);
   const reference = plan.credentialReferences.find(
     (candidate) => candidate.targetSystemId === entry.target.registrationId,
   );
@@ -836,6 +1002,7 @@ async function runWorkItem(
   }
 
   while (item.attempts < maxAttempts) {
+    if (unit.limitReached() !== null) return 'limit';
     item.attempts += 1;
     // What the row said before this attempt. A failed attempt restores it: the count is
     // set optimistically before the commit that stores the Observations, and a commit
@@ -988,8 +1155,15 @@ async function runWorkItem(
 
     item.observations = priorObservations;
     const cycleExhausted = item.attempts % unit.attemptsPerCycle === 0;
+    // A denial, a scope violation, an unresolvable credential and a refused registration
+    // are terminal for the ITEM whatever the budget says: the same request produces the
+    // same answer, so spending seven more attempts on it proves nothing and spends the
+    // Run's limits doing it. A denial is terminal for the RUN as well, which is the
+    // caller's decision and not this loop's.
+    const denied = stopCauseFor(diagnostic!) === 'action-denied' || stopCauseFor(diagnostic!) === 'scope-violation';
     const terminal =
       item.attempts >= maxAttempts ||
+      denied ||
       diagnostic === 'credential-unresolved' ||
       diagnostic === 'observation-registration-refused';
     item.cycles = Math.min(2, Math.ceil(item.attempts / unit.attemptsPerCycle));
@@ -1019,6 +1193,7 @@ async function runWorkItem(
       }, 'failure');
     });
     if (!committed) return 'lost';
+    if (denied) return 'denied';
     if (terminal) return 'failed';
   }
   item.state = 'FAILED';

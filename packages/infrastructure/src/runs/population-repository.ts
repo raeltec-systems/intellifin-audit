@@ -152,6 +152,10 @@ export class PostgresPopulationRepository
                 indeterminate: result.indeterminate,
                 rowsDigest: result.rowsDigest,
                 checks: result.checks,
+                // Generation 24: the declaration's own generation time, so the Run-level
+                // Gate can name WHICH way a snapshot is unfit. `null` when the declaration
+                // stated none this build can read, which §H makes `INCONCLUSIVE`.
+                generatedAt: result.generatedAt === null ? null : new Date(result.generatedAt),
               });
             for (let offset = 0; offset < result.rows.length; offset += 500)
               await tx

@@ -65,7 +65,7 @@ development_status:
   3-5-seal-evidence-with-reservation-and-digest-verification: done
   3-6-corroborate-observations-against-the-stored-structural-snaps: done
   3-7-evaluate-corroborated-observations-deterministically-and-rai: done
-  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: in-progress
+  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: done
   3-9-seal-the-result-and-publish-the-adapter-run-s-outputs: backlog
   3-10-cancel-an-active-run-and-start-a-linked-rerun: backlog
   3-11-see-runs-and-inspect-an-adapter-run-s-result-evidence-except: backlog
