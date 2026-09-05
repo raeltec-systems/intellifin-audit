@@ -25,6 +25,22 @@
     "./probe-runner": {
       "types": "./src/registrations/probe-runner.ts",
       "default": "./dist/registrations/probe-runner.js"
+    },
+    "./acquisition": {
+      "types": "./src/runs/population-acquisition-http.ts",
+      "default": "./dist/runs/population-acquisition-http.js"
+    },
+    "./evidence": {
+      "types": "./src/evidence/s3-evidence-store.ts",
+      "default": "./dist/evidence/s3-evidence-store.js"
+    },
+    "./extraction": {
+      "types": "./src/runs/adapter-extraction-http.ts",
+      "default": "./dist/runs/adapter-extraction-http.js"
+    },
+    "./credentials": {
+      "types": "./src/runs/credential-resolver.ts",
+      "default": "./dist/runs/credential-resolver.js"
     }
   },
   "files": [
@@ -42,6 +58,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.47",
     "@ai-sdk/openai": "4.0.58",
+    "@aws-sdk/client-s3": "3.1124.0",
     "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@sentry/node": "10.73.0",

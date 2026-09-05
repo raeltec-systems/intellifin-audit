@@ -1,0 +1,46 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Cover sheet for the Northstar AccessGate active accounts export (seeded truncation case)",
+  "source": "accessgate-accounts",
+  "covers": "accessgate-active-accounts-truncated.csv",
+  "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "complete": true,
+  "row_count": 12,
+  "declared_schema": [
+    "account_id",
+    "employee_id",
+    "username",
+    "status",
+    "roles",
+    "disabled_time"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "3baabecc5ea65e543c9a5e1edebdd49c522615e8dfd15324b83ed1e938024ffb"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "c810bb7feed5182e33f29e69b8d81f9d89a92a6ac09db56a18016a44e93a43e1"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)",
+  "seeded_case": "declared-count-mismatch",
+  "seeded_case_note": "This cover sheet declares the complete Active export while the file it names holds 11 rows."
+}

@@ -6,6 +6,25 @@
   },
   "source": "approvenow-approvals",
   "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "schema_version": 1,
+  "representation": "population-rows-v1",
+  "schema": [
+    "approval_id",
+    "transaction_id",
+    "decision",
+    "decided_at",
+    "approver",
+    "approver_limit",
+    "currency"
+  ],
+  "count": 10,
+  "sha256": "38481d6b1f445bd1a54611d43db9f74372f0e327a7c2b1449b14ff59b1b61e18",
+  "complete": true,
   "declared_count": 10,
   "counted_from": "datasets/approvenow-approvals.json",
   "count_rule": "every approval decision published by ApproveNow",

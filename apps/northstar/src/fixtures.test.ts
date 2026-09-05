@@ -6,7 +6,13 @@ import { describe, expect, it } from 'vitest';
 
 import { ARTIFACTS } from './files.js';
 
-import { FIXTURES_ROOT, SYNTHETIC_MARKER, countDeclaration, datasets } from './fixtures.js';
+import {
+  FIXTURES_ROOT,
+  SYNTHETIC_MARKER,
+  apiDeclaration,
+  countDeclaration,
+  datasets,
+} from './fixtures.js';
 
 /**
  * The generated declarations reconcile with the datasets they were generated from.
@@ -28,7 +34,9 @@ interface CoverSheet {
   readonly source: string;
   readonly covers: string;
   readonly generation: string;
+  readonly generated_at: string;
   readonly effective_period: unknown;
+  readonly complete: boolean;
   readonly row_count: number;
   readonly declared_schema: readonly string[];
   readonly content_digest: { readonly algorithm: string; readonly value: string };
@@ -88,7 +96,9 @@ describe('cover sheets', () => {
           source: sheet.source,
           covers: sheet.covers,
           generation: sheet.generation,
+          generated_at: sheet.generated_at,
           effective_period: sheet.effective_period,
+          complete: sheet.complete,
           row_count: sheet.row_count,
           declared_schema: sheet.declared_schema,
           content_digest: sheet.content_digest,
@@ -120,8 +130,114 @@ describe('cover sheets', () => {
         const header = covered.toString('utf8').split('\n')[1] ?? '';
         expect(header.split(',')).toEqual([...sheet.declared_schema]);
       });
+
+      it('carries explicit producer freshness and completeness metadata', () => {
+        expect(sheet.generated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+        expect(sheet.complete).toBe(true);
+      });
     });
   }
+});
+
+describe('API population declarations', () => {
+  /** Recomputed here in TypeScript from the datasets, never from the declaration. */
+  const cases = [
+    {
+      file: 'accessgate-accounts.count.json',
+      source: 'accessgate-accounts',
+      key: 'account_id',
+      schema: datasets.accessgate().declared_schema,
+      rows: () => datasets.accessgate().accounts.filter((row) => row.status === 'Active'),
+    },
+    {
+      file: 'approvenow-approvals.count.json',
+      source: 'approvenow-approvals',
+      key: 'approval_id',
+      schema: datasets.approvenow().declared_schema,
+      rows: () => datasets.approvenow().approvals,
+    },
+    {
+      file: 'peoplehub-employees.count.json',
+      source: 'peoplehub-employees',
+      key: 'employee_id',
+      schema: datasets.peoplehub().declared_schema,
+      rows: () => datasets.peoplehub().employees,
+    },
+    {
+      file: 'ledgerflow-transactions.count.json',
+      source: 'ledgerflow-transactions',
+      key: 'transaction_id',
+      schema: datasets.ledgerflow().declared_schema,
+      rows: () => datasets.ledgerflow().transactions,
+    },
+  ] as const;
+
+  for (const item of cases) {
+    it(`${item.file} carries an independently generated rows digest`, () => {
+      const declaration = apiDeclaration(item.file);
+      const rows = [...item.rows()].sort((left, right) => {
+        const a = String(left[item.key as keyof typeof left]);
+        const b = String(right[item.key as keyof typeof right]);
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+      const canonicalRows = canonical({ schema_version: 1, rows });
+      expect(createHash('sha256').update(canonicalRows, 'utf8').digest('hex')).toBe(
+        declaration.sha256,
+      );
+      expect(declaration.schema_version).toBe(1);
+      expect(declaration.representation).toBe('population-rows-v1');
+      expect(declaration.source).toBe(item.source);
+      expect(declaration.schema).toEqual([...item.schema]);
+      expect(declaration.count).toBe(rows.length);
+      expect(declaration.declared_count).toBe(rows.length);
+      expect(declaration.complete).toBe(true);
+      expect(declaration.generated_at).toBe('2026-09-01T00:00:00Z');
+      expect(declaration.effective_period).toEqual({ from: '2026-08-01', to: '2026-08-31' });
+      expect(declaration.produced_by).toMatch(/^Python /);
+    });
+  }
+
+  it('has no untested API declaration file', () => {
+    const onDisk = readdirSync(GENERATED)
+      .filter((name) => name.endsWith('.count.json'))
+      .filter((name) => apiDeclarationNames.has(name))
+      .sort();
+    expect(onDisk).toEqual(cases.map((item) => item.file).sort());
+  });
+});
+
+const apiDeclarationNames = new Set([
+  'accessgate-accounts.count.json',
+  'approvenow-approvals.count.json',
+  'peoplehub-employees.count.json',
+  'ledgerflow-transactions.count.json',
+]);
+
+describe('AccessGate versioned-file equivalent', () => {
+  it('serves the sorted Active population with roles preserved as JSON text', () => {
+    const lines = readFileSync(join(GENERATED, 'accessgate-active-accounts.csv'), 'utf8')
+      .trimEnd()
+      .split('\n');
+    const ids = lines.slice(2).map((line) => line.split(',')[0]);
+    expect(ids).toHaveLength(12);
+    expect(ids).toEqual([...ids].sort());
+    expect(ids.filter((id) => id === 'AG-1007')).toHaveLength(2);
+    expect(lines.find((line) => line.startsWith('AG-1002,'))).toContain(
+      '"[""LOAN_VIEWER"",""REPORT_READER""]"',
+    );
+    expect(lines.every((line) => !line.startsWith('AG-1012,'))).toBe(true);
+  });
+
+  it('keeps a full cover over the deliberately truncated Active file', () => {
+    const sheet = JSON.parse(
+      readFileSync(join(GENERATED, 'accessgate-active-accounts-truncated.cover-sheet.json'), 'utf8'),
+    ) as { row_count: number; seeded_case: string };
+    const lines = readFileSync(join(GENERATED, 'accessgate-active-accounts-truncated.csv'), 'utf8')
+      .trimEnd()
+      .split('\n');
+    expect(sheet.seeded_case).toBe('declared-count-mismatch');
+    expect(lines.length - 2).toBeLessThan(sheet.row_count);
+  });
 });
 
 describe('declared counts', () => {

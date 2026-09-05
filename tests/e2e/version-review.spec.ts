@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { startSyntheticS3 } from '../fixtures/s3-server';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
@@ -31,6 +32,7 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
   let procedureId: string | undefined;
   await sql`DELETE FROM pgboss.job WHERE name = 'procedures' AND NOT EXISTS (SELECT 1 FROM procedure_version WHERE version_id::text = pgboss.job.data->>'versionId')`;
   let output = '', stopWorker: (() => Promise<void>) | undefined;
+  let evidenceStorage: Awaited<ReturnType<typeof startSyntheticS3>> | undefined;
   const managerContext = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } }); const manager = await managerContext.newPage();
   try {
 
@@ -59,7 +61,8 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     for (const name of [webName,desktopName]) await page.getByLabel(`Audit Instructions for ${name}`, { exact: true }).fill('Read account status for each terminated employee by employee_id and full_name.');
     await save(page,'Save Audit Instructions'); await expect(page.getByText('Saved. The Audit Instructions are recorded in the audit chain.')).toBeVisible();
     await page.reload(); await expect(page.getByLabel('Permit versioned duplicate primary keys', { exact: true })).toBeChecked(); await expect(page.getByLabel(`Comparison value ${count}`, { exact: true })).toHaveValue('Finance');
-  const worker = spawn(process.execPath, ['--import', pathToFileURL(resolve('tests/fixtures/anthropic-worker-preload.mjs')).href, resolve('apps/worker/dist/main.js')], { cwd: process.cwd(), windowsHide: true, env: { ...process.env, SERVICE_NAME: 'worker', MODEL_PROVIDER: 'anthropic', MODEL_ID: 'synthetic-http-fixture', MODEL_PROMPT_VERSION: '1', MODEL_API_KEY: 'isolated-synthetic-http-fixture', MODEL_MAX_OUTPUT_TOKENS: '65536' }, stdio: ['ignore','pipe','pipe'] });
+  evidenceStorage = await startSyntheticS3();
+  const worker = spawn(process.execPath, ['--import', pathToFileURL(resolve('tests/fixtures/anthropic-worker-preload.mjs')).href, resolve('apps/worker/dist/main.js')], { cwd: process.cwd(), windowsHide: true, env: { ...process.env, ...evidenceStorage.env, SERVICE_NAME: 'worker', MODEL_PROVIDER: 'anthropic', MODEL_ID: 'synthetic-http-fixture', MODEL_PROMPT_VERSION: '1', MODEL_API_KEY: 'isolated-synthetic-http-fixture', MODEL_MAX_OUTPUT_TOKENS: '65536' }, stdio: ['ignore','pipe','pipe'] });
   let workerFailure: string | null = null;
   worker.on('error', error => { workerFailure = error.name; });
   const workerExited = new Promise<void>(resolve => worker.once('close', code => { if (code !== 0 && code !== null) workerFailure = `Worker exited with code ${code}`; resolve(); }));
@@ -97,7 +100,12 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await manager.getByRole('button',{name:'Reject',exact:true}).press('Enter'); await expect(manager.getByRole('dialog')).toHaveCount(0); expect(decisionPosts).toBe(1);
     await manager.unroute(reviewUrl); await manager.getByRole('button',{name:'Reload version'}).click();
     await expect(manager.getByRole('heading',{ name:'Saved decision' })).toBeVisible(); await expect(manager.getByText('Active', { exact: true })).toBeVisible(); await scan(manager);
-    await page.goto('/notifications'); await expect(page.getByRole('link',{ name:/Procedure Version approved/ })).toBeVisible({timeout:10000}); await expect(page.getByRole('link',{name:/Procedure Version submitted/})).toHaveCount(0); await scan(page);
+    await page.goto('/notifications');
+    // Other synthetic Runs can leave valid notices in this shared throwaway database.
+    // Assert this Procedure's delivery and recipient boundary, not the whole inbox.
+    await expect(page.getByRole('link', { name: /Procedure Version approved/ }).filter({ hasText: controlName })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('link', { name: /Procedure Version submitted/ }).filter({ hasText: controlName })).toHaveCount(0);
+    await scan(page);
     const frozen = await sql`SELECT state, frozen_review, decisions FROM procedure_version WHERE procedure_id = ${procedureId}`;
     expect(frozen[0]?.frozen_review.definition.modelConfiguration).toEqual({ provider: 'anthropic', modelId: 'synthetic-http-fixture', promptVersion: '1' });
     expect(frozen[0]?.frozen_review.definition.compiledPlan.inputs.scope).toBe('All terminated employees in Finance, reviewed with the worker running.');
@@ -111,7 +119,7 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     }
     throw error;
   } finally {
-    await stopWorker?.(); await managerContext.close();
+    await stopWorker?.(); await evidenceStorage?.close(); await managerContext.close();
     if (procedureId) { await sql`DELETE FROM notification WHERE procedure_id = ${procedureId}`; await sql`DELETE FROM pgboss.job WHERE data->>'versionId' IN (SELECT version_id::text FROM procedure_version WHERE procedure_id = ${procedureId})`; await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`; }
     await sql`DELETE FROM auth_user WHERE id = ${managerId}`;
     await sql`DELETE FROM population_source_binding WHERE binding_id = ${sourceId}`; for (const id of [webId,desktopId]) await sql`DELETE FROM target_system_registration WHERE registration_id = ${id}`;

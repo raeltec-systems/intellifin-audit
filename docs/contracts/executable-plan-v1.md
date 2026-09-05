@@ -21,6 +21,44 @@ Schema validation returns recursive canonical JSON key order. Serialize that val
 
 Session actions are ordered: optional workspace, population acquisition, then one sign-in/extraction for each selected Target in authored order.
 
+### Run period binding and population checkpoint
+
+Execution binds the Run's separately persisted inclusive UTC `period` as the effective
+period input. The draft `inputs.period` and all stored plan bytes remain unchanged.
+The source declaration must cover the effective Run period; inclusion applies that
+period with the frozen rule. Current Population Source bindings never substitute for
+`inputs.sourceSnapshot`, including after the approved version retires.
+
+The population interpreter implements [population acquisition v1](population-acquisition-v1.md).
+It accepts plans whose first ordered Session Step is `acquire-population`; a preceding
+unsupported workspace action refuses safely. It records that frozen Step id, a durable
+attempt id, retry count, original start time and revisioned lease before external I/O.
+`POPULATION_READY` completes only that Session Step. The Run remains Running and the
+next ordered action is pending; no Target extraction or Result is manufactured.
+
+### Reference-versus-adapter classification
+
+`extract-adapter` binds an API **or** a file registration, and the frozen
+`inputs.targets[].contract.kind` says which. That distinction is interpreter semantics, not
+a new action: a `versioned-file` Target System is a **Reference Source**, consulted by the
+evaluator, acquired as a Session Step before any Work Item and owning **no** Work Items
+(addendum C P-2 names RoleMatrix exactly that way); an `api` Target System is
+**adapter-acquired** and owns exactly one Work Item. A `web` or `desktop` Target System is
+agent-driven and is not executed by the adapter interpreter at all.
+
+Both readings come from bytes that are already frozen, so no canonical plan byte moves and
+every ACTIVE version stays executable. The adapter interpreter implements
+[adapter extraction v1](adapter-extraction-v1.md), which also fixes the extraction
+location, the just-in-time credential boundary, the reserve/upload/verify Evidence sequence
+and the §B.1 Observation projection. Those Observations are written through
+[observation registration v1](observation-registration-v1.md) — one batch, one
+transaction, one event carrying every Observation's digest — which is the seam every
+producer goes through, an agent read later included.
+
+Execution order is: every Reference Source in authored order, then every adapter Work Item
+in authored order, sequentially. A Session Step failure after bounded retries is
+`RUN_FAILED`; a Work Item failure never stops the Run.
+
 ## Per-target actions
 
 Each Target's plan has `inspect-record`, `capture-observation`, then `evaluate-conditions`. The executor expands this work according to the Template's coverage: P-1 covers every included employee in every selected Target; P-2 covers the full account extraction with per-account role coverage; P-3 covers extraction with a grounded approval result per included transaction; P-4 covers the page/extraction with one grounded Observation per baseline parameter. Expansion must preserve these frozen action ids in Step Execution provenance.

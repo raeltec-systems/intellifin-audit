@@ -6,7 +6,8 @@ import { procedureVersionRowVersion, submissionUnavailableReason, type Procedure
 import { VersionActions } from '../../../src/procedures/VersionActions';
 import { NewVersionButton } from '../../../src/procedures/NewVersionButton';
 import { VersionStatus } from '../../../src/procedures/VersionStatus';
-import { DrizzleProcedureRepository } from '@intellifin/infrastructure';
+import { CryptoUuidV7Generator, DrizzleProcedureRepository } from '@intellifin/infrastructure';
+import { isExplicitPeriod } from '@intellifin/domain';
 
 import { getRuntime } from '../../../src/bootstrap';
 import { Banner } from '../../../src/design/Banner';
@@ -14,6 +15,7 @@ import { DetailTrail } from '../../../src/procedures/DetailTrail';
 import { ProcedureStateBadge } from '../../../src/procedures/ProcedureStateBadge';
 import { templateLabel, versionLabel } from '../../../src/procedures/labels';
 import { requireServerAction } from '../../../src/server-session';
+import { InitiateRunForm } from '../../../src/runs/InitiateRunForm';
 
 export const metadata: Metadata = {
   title: 'Procedure · IntelliFin Audit',
@@ -23,12 +25,9 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 
 /**
- * Procedure Detail (UX-DR11, scoped to this story).
- *
- * The surface shows the versions that exist — one, a `DRAFT`, for every Procedure this
- * story can create — each with its state badge, and opens the Builder for the Draft.
- * Everything else UX-DR11 names (approval, scheduling, Run history) arrives with the
- * stories that own it, and is rendered by nobody here.
+ * Procedure Detail (UX-DR11): version history, review/authoring links and period-based
+ * Run initiation. The command, rather than the rendered history page, selects the
+ * Active version that owns the requested period.
  *
  * Authorization comes first, before the id in the URL is used for anything. A refused
  * caller must not be able to learn whether a procedure id exists by watching this page
@@ -41,7 +40,7 @@ export default async function ProcedurePage({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ before?: string }>;
+  searchParams: Promise<{ before?: string; requestToken?: string | string[]; from?: string | string[]; to?: string | string[] }>;
 }): Promise<React.JSX.Element> {
   const decision = await requireServerAction('procedure.author');
 
@@ -60,7 +59,13 @@ export default async function ProcedurePage({
   const procedure = await repository.findProcedure(id);
   if (procedure === null) notFound();
 
-  const beforeText = (await searchParams).before;
+  const query = await searchParams;
+  const resuming = query.requestToken !== undefined || query.from !== undefined || query.to !== undefined;
+  const retryPeriod = { from: query.from, to: query.to };
+  if (resuming && (typeof query.requestToken !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.requestToken) || !isExplicitPeriod(retryPeriod))) notFound();
+  const requestToken = resuming ? query.requestToken as string : new CryptoUuidV7Generator().next();
+  const initialPeriod = resuming && isExplicitPeriod(retryPeriod) ? retryPeriod : undefined;
+  const beforeText = query.before;
   const before = beforeText === undefined ? undefined : Number(beforeText);
   if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) notFound();
   const { versions, olderThan } = await repository.versionPage(id, before);
@@ -80,6 +85,8 @@ export default async function ProcedurePage({
           Template {procedure.templateId} · {templateLabel(procedure.templateId)}
         </p>
       </header>
+
+      <InitiateRunForm procedureId={procedure.procedureId} requestToken={requestToken} initialPeriod={initialPeriod} />
 
       <section className="ls-stack">
         <h2>Versions</h2>

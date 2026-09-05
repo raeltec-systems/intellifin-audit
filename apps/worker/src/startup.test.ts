@@ -9,7 +9,9 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 
-import { createHeartbeatLoop, runStartupChecks, type Logger } from './startup.js';
+import { adapterExtraction, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
+import { readFileSync } from 'node:fs';
+import type { AppConfig } from '@intellifin/infrastructure';
 
 interface LogLine {
   level: 'info' | 'error';
@@ -196,5 +198,75 @@ describe('createHeartbeatLoop', () => {
 
     await loop.beat();
     expect(calls()).toBe(2);
+  });
+});
+
+describe('population execution', () => {
+  const storage = {
+    EVIDENCE_S3_ENDPOINT: 'https://objects.example.test',
+    EVIDENCE_S3_REGION: 'auto',
+    EVIDENCE_S3_BUCKET: 'evidence',
+    EVIDENCE_S3_ACCESS_KEY_ID: 'key',
+    EVIDENCE_S3_SECRET_ACCESS_KEY: 'secret',
+    EVIDENCE_S3_FORCE_PATH_STYLE: true,
+  } as unknown as AppConfig;
+
+  it('is disabled, with a named reason, when no object storage is configured', () => {
+    expect(populationExecution({} as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'EVIDENCE_S3_ENDPOINT is not configured',
+    });
+  });
+
+  it('is enabled with the deployment settings when storage is configured', () => {
+    const decision = populationExecution(storage);
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.config).toMatchObject({ endpoint: 'https://objects.example.test', bucket: 'evidence' });
+  });
+
+  it('never lets missing storage stop the rest of the worker', () => {
+    // The composition root runs this check after plan derivation and recovery have
+    // started and before the heartbeat. A throw there would take derivation,
+    // notification delivery and the liveness row down with it, on a deployment whose
+    // bucket is simply not provisioned yet. The behaviour above is only half the
+    // guarantee: this asserts the composition root actually branches on it.
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const evidence = populationExecution(config);');
+    expect(main).toContain('if (evidence.enabled) {');
+    expect(main).toMatch(/Population execution disabled/);
+    // No unconditional refusal on the storage settings.
+    expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*EVIDENCE_S3/);
+    // The worker still beats: the heartbeat wiring is outside the branch.
+    expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
+  });
+});
+
+describe('adapterExtraction', () => {
+  it('is disabled, with a named reason, when no audit credential is declared', () => {
+    // An empty manifest is not "extraction with no credentials": every Work Item would
+    // fail closed with `credential-unresolved`, which reads as a Target System problem
+    // and is not one. Say so once, at boot, where an operator can act on it.
+    expect(adapterExtraction({ CREDENTIAL_TOKENS: '{}' } as unknown as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'CREDENTIAL_TOKENS declares no audit credential',
+    });
+  });
+
+  it('is enabled with the declared manifest', () => {
+    const decision = adapterExtraction({ CREDENTIAL_TOKENS: '{"cred://a":"token"}' } as unknown as AppConfig);
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.credentials.get('cred://a')).toBe('token');
+  });
+
+  it('never lets a missing manifest stop the rest of the worker', () => {
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const credentials = adapterExtraction(config);');
+    expect(main).toMatch(/Adapter extraction disabled/);
+    // Composed only where it is used, and never unconditionally refused.
+    expect(main).toContain('new ManifestCredentialResolver(credentials.credentials)');
+    expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*CREDENTIAL_TOKENS/);
+    expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
   });
 });

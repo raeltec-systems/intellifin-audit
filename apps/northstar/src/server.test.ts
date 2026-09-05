@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { countDeclaration, datasets } from './fixtures.js';
+import { apiDeclaration, countDeclaration, datasets } from './fixtures.js';
 import { ARTIFACTS } from './files.js';
 import { handleRequest } from './server.js';
 
@@ -27,6 +27,16 @@ function statusOf(url: string): number {
 
 function payload(url: string): Record<string, unknown> {
   return JSON.parse(text(url)) as Record<string, unknown>;
+}
+
+/** The v1 rows projection, kept independent from the generator implementation. */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
 }
 
 /** Undo the transport encoding so a seeded string can be compared byte for byte. */
@@ -239,6 +249,32 @@ describe('the read-only APIs', () => {
       expect(body['returned'], collection.url).toBeTypeOf('number');
     }
   });
+
+  it('publishes metadata and a rows digest that matches the independent declaration', () => {
+    const cases = [
+      ['/accessgate/accounts?status=Active', 'accounts', 'accessgate-accounts.count.json'],
+      ['/approvenow/approvals', 'approvals', 'approvenow-approvals.count.json'],
+      ['/peoplehub/employees', 'employees', 'peoplehub-employees.count.json'],
+      ['/ledgerflow/transactions', 'transactions', 'ledgerflow-transactions.count.json'],
+    ] as const;
+    for (const [url, key, declarationFile] of cases) {
+      const body = payload(url);
+      const declaration = apiDeclaration(declarationFile);
+      const rows = body[key];
+      expect(body['schema_version'], url).toBe(1);
+      expect(body['representation'], url).toBe('population-rows-v1');
+      expect(body['source'], url).toBe(declaration.source);
+      expect(body['generation'], url).toBe(declaration.generation);
+      expect(body['generated_at'], url).toBe(declaration.generated_at);
+      expect(body['effective_period'], url).toEqual(declaration.effective_period);
+      expect(body['schema'], url).toEqual(declaration.schema);
+      expect(body['complete'], url).toBe(true);
+      expect(createHash('sha256').update(canonical({ schema_version: 1, rows }), 'utf8').digest('hex')).toBe(
+        declaration.sha256,
+      );
+      expect(body['returned'], url).toBe(declaration.count);
+    }
+  });
 });
 
 describe('the published files', () => {
@@ -258,6 +294,18 @@ describe('the published files', () => {
     );
   });
 
+  it('serves the AccessGate Active CSV bytes and count declared by its cover', () => {
+    const served = handleRequest('GET', '/files/accessgate-active-accounts.csv').body;
+    const sheet = JSON.parse(text('/files/accessgate-active-accounts.cover-sheet.json')) as {
+      row_count: number;
+      content_digest: { algorithm: string; value: string };
+    };
+    const csv = Buffer.from(served);
+    expect(sheet.content_digest.algorithm).toBe('sha256');
+    expect(createHash('sha256').update(csv).digest('hex')).toBe(sheet.content_digest.value);
+    expect(csv.toString('utf8').trimEnd().split('\n').length - 2).toBe(sheet.row_count);
+  });
+
   it('refuses a name that is not published, without touching the filesystem', () => {
     // `/files/..%2f..%2fetc%2fpasswd` is a URL anybody can type. The served set is a Map
     // keyed by name and the name is never joined onto a path, so there is nothing to walk.
@@ -274,5 +322,20 @@ describe('the published files', () => {
     const lines = text('/files/leavers-export-truncated.csv').trimEnd().split('\n');
     expect(sheet.seeded_case).toBe('declared-count-mismatch');
     expect(lines.length - 2).toBeLessThan(sheet.row_count);
+  });
+
+  it('preserves the AccessGate truncation count and digest mismatch', () => {
+    const served = handleRequest('GET', '/files/accessgate-active-accounts-truncated.csv').body;
+    const sheet = JSON.parse(
+      text('/files/accessgate-active-accounts-truncated.cover-sheet.json'),
+    ) as {
+      row_count: number;
+      seeded_case: string;
+      content_digest: { value: string };
+    };
+    const csv = Buffer.from(served);
+    expect(sheet.seeded_case).toBe('declared-count-mismatch');
+    expect(createHash('sha256').update(csv).digest('hex')).not.toBe(sheet.content_digest.value);
+    expect(csv.toString('utf8').trimEnd().split('\n').length - 2).toBeLessThan(sheet.row_count);
   });
 });

@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-14 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-21 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -70,12 +70,17 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     expect(names).toEqual([
       'audit_event_heads',
       'audit_events',
+      'audit_run',
       'auth_account',
       'auth_rate_limit',
       'auth_session',
       'auth_user',
       'auth_verification',
       'notification',
+      'population_evidence',
+      'population_execution',
+      'population_row',
+      'population_snapshot',
       'population_source_binding',
       // Story 2.1. Owned by the procedures module (AD-2); no other module reads or
       // writes either table.
@@ -84,6 +89,25 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'procedure_configuration',
       'procedure_succession',
       'procedure_version',
+      // Story 3.3. The adapter execution stage: its claim, its Reference Source Session
+      // Steps, its Work Items, their Step Executions, their Evidence and the §B.1
+      // Observations. An unlisted table is a migration nobody reviewed.
+      'run_evidence',
+      // Story 3.5. The sealed Evidence package of one Run, and the Audit Trail integrity
+      // findings a post-Run verification adds beside it without changing any state.
+      'run_evidence_integrity',
+      'run_evidence_package',
+      'run_execution',
+      'run_initiation_request',
+      'run_observation',
+      // Story 3.4. Observation registration: the per-Observation Gate check outcomes and
+      // the per-condition evaluations, both committed in the same transaction as the
+      // Observation rows they describe.
+      'run_observation_check',
+      'run_observation_evaluation',
+      'run_session_step',
+      'run_step_execution',
+      'run_work_item',
       'schema_meta',
       'target_system_probe',
       'target_system_registration',

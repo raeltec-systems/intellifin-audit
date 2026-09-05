@@ -106,6 +106,55 @@
       "when": 1788587918176,
       "tag": "0014_young_vance_astro",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788610203767,
+      "tag": "0015_lying_firebird",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788612739824,
+      "tag": "0016_volatile_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788612864715,
+      "tag": "0017_melted_lorna_dane",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788615106742,
+      "tag": "0018_jittery_scream",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788625115341,
+      "tag": "0019_curvy_lord_tyger",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788628741536,
+      "tag": "0020_glamorous_puppet_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788633858152,
+      "tag": "0021_same_nicolaos",
+      "breakpoints": true
     }
   ]
 }

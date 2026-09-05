@@ -54,33 +54,46 @@ export class Utf8EncodingError extends Error {
  * refuses as well, which is why the golden fixture and this function agree.
  */
 export function utf8Bytes(text: string): Uint8Array {
-  const bytes: number[] = [];
+  // Count before allocating: a number[] amplifies multi-megabyte Evidence into
+  // hundreds of megabytes of temporary storage. Preserve strict surrogate checks.
+  let size = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) size++;
+    else if (code < 0x800) size += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      const low = text.charCodeAt(index + 1);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) throw new Utf8EncodingError('a lone high surrogate has no UTF-8 encoding');
+      size += 4; index++;
+    } else if (code >= 0xdc00 && code <= 0xdfff) throw new Utf8EncodingError('a lone low surrogate has no UTF-8 encoding');
+    else size += 3;
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
   for (let index = 0; index < text.length; index += 1) {
     const code = text.charCodeAt(index);
     if (code < 0x80) {
-      bytes.push(code);
+      bytes[offset++] = code;
     } else if (code < 0x800) {
-      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+      bytes[offset++] = 0xc0 | (code >> 6); bytes[offset++] = 0x80 | (code & 0x3f);
     } else if (code >= 0xd800 && code <= 0xdbff) {
       const low = text.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {
         throw new Utf8EncodingError('a lone high surrogate has no UTF-8 encoding');
       }
       const point = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
-      bytes.push(
-        0xf0 | (point >> 18),
-        0x80 | ((point >> 12) & 0x3f),
-        0x80 | ((point >> 6) & 0x3f),
-        0x80 | (point & 0x3f),
-      );
+      bytes[offset++] = 0xf0 | (point >> 18);
+      bytes[offset++] = 0x80 | ((point >> 12) & 0x3f);
+      bytes[offset++] = 0x80 | ((point >> 6) & 0x3f);
+      bytes[offset++] = 0x80 | (point & 0x3f);
       index += 1;
     } else if (code >= 0xdc00 && code <= 0xdfff) {
       throw new Utf8EncodingError('a lone low surrogate has no UTF-8 encoding');
     } else {
-      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+      bytes[offset++] = 0xe0 | (code >> 12); bytes[offset++] = 0x80 | ((code >> 6) & 0x3f); bytes[offset++] = 0x80 | (code & 0x3f);
     }
   }
-  return Uint8Array.from(bytes);
+  return bytes;
 }
 
 function rotateRight(value: number, amount: number): number {

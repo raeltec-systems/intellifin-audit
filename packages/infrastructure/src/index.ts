@@ -11,3 +11,21 @@ export * from './registrations/index.js';
 export * from './sources/index.js';
 export * from './telemetry/index.js';
 export * from './notifications/notification-repository.js';
+export * from './runs/run-repository.js';
+export * from './runs/runs-unit-of-work.js';
+export * from './runs/population-repository.js';
+export * from './runs/population-queue.js';
+export * from './runs/adapter-execution-repository.js';
+export * from './runs/evidence-package-repository.js';
+// Deliberately NOT exported here. The acquisition adapter makes the outbound call to a
+// registered Target System, and the evidence store holds the object credentials; the web
+// imports this barrel, so a re-export would put both one transitive import away from the
+// process AD-10 forbids an outbound call — and drag the S3 SDK into the web bundle graph.
+// The worker composes them through the ./acquisition and ./evidence subpaths, and
+// `no-population-acquisition-in-web` / `no-evidence-store-in-web` fail the build on any
+// import from apps/web. Same discipline as ./probe.
+//
+// Story 3.3 adds two more for the same reason: ./extraction makes the outbound call to a
+// registered Target System and presents an audit credential, and ./credentials is the
+// only module that turns a reference into a usable one. `no-adapter-extraction-in-web`
+// and `no-credential-resolver-in-web` fail the build on any import from apps/web.

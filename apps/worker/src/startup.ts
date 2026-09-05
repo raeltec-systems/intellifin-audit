@@ -8,6 +8,7 @@ import {
   type Sql,
   type Telemetry,
 } from '@intellifin/infrastructure';
+import { credentialTokenManifest, evidenceS3Config, type AppConfig, type EvidenceS3Config } from '@intellifin/infrastructure';
 
 /**
  * The worker's startup and loop mechanics, separated from `main.ts` so both can be
@@ -41,6 +42,49 @@ export async function runStartupChecks(sql: Sql, telemetry: Logger): Promise<Sta
     });
     throw error;
   }
+}
+
+/**
+ * Whether this worker can execute populations, and why not when it cannot.
+ *
+ * Population execution needs private object storage, which a deployment provisions
+ * separately. Refusing to BOOT without it would be the wrong trade: the check runs after
+ * plan derivation and recovery have started and before the heartbeat, so an unset
+ * variable would stop derivation, notification delivery and the liveness row as well —
+ * every Epic 2 duty this worker already performs — for a feature that cannot run yet
+ * anyway. The same shape as the SUPPORTED_SCHEMA_MIN incident: a startup guard that
+ * refuses the deployment its own release created. So the worker starts, says once and by
+ * name that population execution is off, and keeps every other duty running.
+ */
+export function populationExecution(
+  config: AppConfig,
+): { readonly enabled: true; readonly config: EvidenceS3Config } | { readonly enabled: false; readonly reason: string } {
+  const evidence = evidenceS3Config(config);
+  return evidence
+    ? { enabled: true, config: evidence }
+    : { enabled: false, reason: 'EVIDENCE_S3_ENDPOINT is not configured' };
+}
+
+/**
+ * Whether this worker can run adapter extraction, and why not when it cannot.
+ *
+ * Same trade as `populationExecution`, one stage along. Extraction needs a declared
+ * credential manifest, which a deployment supplies separately; refusing to BOOT without
+ * it would stop plan derivation, notification delivery and the liveness row as well —
+ * every duty this worker already performs — for a stage that could not run anyway. So
+ * the worker starts, says once and by name that extraction is off, and keeps going.
+ *
+ * An empty manifest is not silently accepted as "extraction with no credentials": every
+ * Work Item would fail closed with `credential-unresolved`, which reads as a Target
+ * System problem and is not one.
+ */
+export function adapterExtraction(
+  config: AppConfig,
+): { readonly enabled: true; readonly credentials: ReadonlyMap<string, string> } | { readonly enabled: false; readonly reason: string } {
+  const credentials = credentialTokenManifest(config);
+  return credentials.size > 0
+    ? { enabled: true, credentials }
+    : { enabled: false, reason: 'CREDENTIAL_TOKENS declares no audit credential' };
 }
 
 export interface HeartbeatLoop {

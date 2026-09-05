@@ -94,6 +94,53 @@ const CASES: readonly Case[] = [
     rule: 'no-target-system-probe-in-apps',
   },
   {
+    // AD-10 again, for the adapter that actually fetches a Population Source. The worker
+    // composes it through the ./acquisition subpath; the web must not reach it at all.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/population-acquisition-http.js',
+    rule: 'no-population-acquisition-in-web',
+  },
+  {
+    // The built spelling, which an `exclude` would silently stop rule-checking.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/population-acquisition-http.js',
+    rule: 'no-population-acquisition-in-web',
+    requires: 'packages/infrastructure/dist/runs/population-acquisition-http.js',
+  },
+  {
+    // Story 3.3: the adapter that reads a registered Target System and presents an audit
+    // credential on the wire. The web composes neither.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/adapter-extraction-http.js',
+    rule: 'no-adapter-extraction-in-web',
+  },
+  {
+    // The built spelling, which an `exclude` would silently stop rule-checking.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/adapter-extraction-http.js',
+    rule: 'no-adapter-extraction-in-web',
+    requires: 'packages/infrastructure/dist/runs/adapter-extraction-http.js',
+  },
+  {
+    // The only module that turns a credential reference into a usable credential.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/credential-resolver.js',
+    rule: 'no-credential-resolver-in-web',
+  },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/credential-resolver.js',
+    rule: 'no-credential-resolver-in-web',
+    requires: 'packages/infrastructure/dist/runs/credential-resolver.js',
+  },
+  {
+    // The evidence store holds the object credentials, so the web has no business
+    // reaching it either.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/evidence/s3-evidence-store.js',
+    rule: 'no-evidence-store-in-web',
+  },
+  {
     // And from the web, which must never make an outbound call to a registered system.
     plantIn: 'apps/web/src',
     imports: '../../../../packages/infrastructure/src/registrations/probe-runner.js',

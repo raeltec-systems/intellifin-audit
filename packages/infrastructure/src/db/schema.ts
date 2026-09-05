@@ -2,12 +2,16 @@ import type { PlanDerivationFields } from '@intellifin/application';
 import type { VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
 import { sql } from 'drizzle-orm';
 import {
+  primaryKey,
+  foreignKey,
+  date,
   bigint,
   boolean,
   check,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -655,6 +659,7 @@ export const procedureVersion = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex('procedure_version_owner_uidx').on(table.procedureId, table.versionId),
     uniqueIndex('procedure_version_procedure_number_uidx').on(
       table.procedureId,
       table.versionNumber,
@@ -755,4 +760,298 @@ export const procedureSuccession = pgTable('procedure_succession', {
   uniqueIndex('procedure_succession_activated_predecessor').on(table.predecessorId).where(sql`${table.activatedAt} IS NOT NULL`),
   check('procedure_succession_no_self', sql`${table.predecessorId} <> ${table.successorId}`),
   check('procedure_succession_boundary', sql`${table.handoverAt} IS NULL OR (${table.activatedAt} IS NOT NULL AND ${table.handoverAt} > ${table.activatedAt})`),
+]);
+
+export const auditRun = pgTable('audit_run', {
+  requestToken: uuid('request_token').notNull(),
+  runId: uuid('run_id').primaryKey(), correlationId: uuid('correlation_id').notNull(),
+  procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
+  versionId: uuid('version_id').notNull().references(() => procedureVersion.versionId),
+  versionNumber: integer('version_number').notNull(), procedureName: text('procedure_name').notNull(),
+  periodFrom: date('period_from').notNull(), periodTo: date('period_to').notNull(),
+  state: text('state').$type<import('@intellifin/domain').RunState>().notNull(),
+  kind: text('kind').$type<import('@intellifin/domain').RunKind>().notNull(),
+  initiatorId: text('initiator_id').notNull(), sessionId: text('session_id').notNull(),
+  authorizationRole: text('authorization_role').notNull(),
+  initiatedAt: timestamp('initiated_at', { withTimezone: true }).notNull(),
+}, table => [
+  uniqueIndex('audit_run_initiator_request').on(table.initiatorId, table.requestToken),
+  foreignKey({ name: 'audit_run_version_owner_fk', columns: [table.procedureId, table.versionId], foreignColumns: [procedureVersion.procedureId, procedureVersion.versionId] }),
+  uniqueIndex('audit_run_active_standard_period').on(table.procedureId, table.periodFrom, table.periodTo).where(sql`${table.kind} = 'STANDARD' AND ${table.state} IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR')`),
+  check('audit_run_state', sql`${table.state} IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR','COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`),
+  check('audit_run_kind', sql`${table.kind} IN ('STANDARD','REGRESSION')`),
+  check('audit_run_period', sql`${table.periodFrom} >= DATE '0001-01-01' AND ${table.periodTo} <= DATE '9999-12-31' AND ${table.periodFrom} <= ${table.periodTo}`),
+  check('audit_run_version', sql`${table.versionNumber} > 0`),
+  check('audit_run_authorization', sql`${table.authorizationRole} IN ('auditor','audit-manager')`),
+  check('audit_run_uuid_v7', sql`substring(${table.runId}::text, 15, 1) = '7' AND substring(${table.correlationId}::text, 15, 1) = '7'`),
+]);
+
+
+/** Multiple acknowledgement attempts may point at the same active or terminal Run. */
+export const runInitiationRequest = pgTable('run_initiation_request', {
+  initiatorId: text('initiator_id').notNull(), requestToken: uuid('request_token').notNull(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+}, table => [primaryKey({ columns: [table.initiatorId, table.requestToken] })]);
+
+export const populationExecution = pgTable('population_execution', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  revision: integer('revision').notNull(), status: text('status').notNull(), attempts: integer('attempts').notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(), attemptStartedAt: timestamp('attempt_started_at',{withTimezone:true}).notNull(), leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  diagnostic: text('diagnostic'),
+  stepId:text('step_id').notNull(),attemptId:uuid('attempt_id').notNull(),
+}, t=>[check('population_execution_status',sql`${t.status} IN ('ACQUIRING','RETRY','POPULATION_READY','TERMINAL')`),check('population_execution_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`)]);
+export const populationEvidence = pgTable('population_evidence', {
+  runId: uuid('run_id').primaryKey().references(()=>auditRun.runId), evidenceId:uuid('evidence_id').notNull().unique(),
+  objectKey:text('object_key').notNull().unique(), envelopeKey:text('envelope_key').notNull().unique(),
+  rawDigest:text('raw_digest'),envelopeDigest:text('envelope_digest'),size:integer('size'),state:text('state').notNull(),
+  required:boolean('required').notNull(),
+},t=>[check('population_evidence_digest',sql`${t.rawDigest} IS NULL OR ${t.rawDigest} ~ '^[0-9a-f]{64}$'`),check('population_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),check('population_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.rawDigest} IS NOT NULL AND ${t.envelopeDigest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
+  // Generation 21: an ABANDONED reservation is one nothing was ever written to. A
+  // registered artifact is never demoted, so a raw digest beside `ABANDONED` would be a
+  // row claiming both that the bytes were verified and that they never arrived.
+  check('population_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.rawDigest} IS NULL`)]);
+export const populationSnapshot = pgTable('population_snapshot', {
+  runId:uuid('run_id').primaryKey().references(()=>auditRun.runId), included:integer('included').notNull(),excluded:integer('excluded').notNull(),indeterminate:integer('indeterminate').notNull(),
+  rowsDigest:text('rows_digest'), checks:jsonb('checks').$type<import('@intellifin/domain').PopulationCheck[]>().notNull(),
+});
+export const populationRow = pgTable('population_row', {
+  runId:uuid('run_id').notNull().references(()=>populationSnapshot.runId),ordinal:integer('ordinal').notNull(),
+  values:jsonb('values').$type<Record<string,import('@intellifin/domain').JsonValue>>().notNull(), disposition:text('disposition').$type<import('@intellifin/domain').PopulationRow['disposition']>().notNull(), reasons:jsonb('reasons').$type<string[]>().notNull(),
+},t=>[primaryKey({columns:[t.runId,t.ordinal]}),check('population_row_disposition',sql`${t.disposition} IN ('included','excluded','indeterminate')`),check('population_row_ordinal',sql`${t.ordinal}>0`)]);
+
+/**
+ * Generation 19 — the adapter execution stage (Story 3.3).
+ *
+ * `run_execution` is the stage's claim, beside `population_execution`. `run_session_step`
+ * holds one Reference Source acquisition per FROZEN `extract-adapter` step that names a
+ * `versioned-file` Target System; `run_work_item` holds one adapter Work Item per `api`
+ * one. `run_step_execution` keeps the frozen plan step id as provenance for every
+ * attempt, `run_evidence` the reserve/register/abandon lifecycle of each artifact, and
+ * `run_observation` the §B.1 wire schema.
+ *
+ * The CHECKs pin every enum, the digest format and the jsonb shape. `jsonb_array_length`
+ * of an empty array is 0, not NULL, but the coalesce is kept anyway: a NULL CHECK PASSES,
+ * and this repository has been bitten by that twice with `array_length`.
+ */
+export const runExecution = pgTable('run_execution', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  revision: integer('revision').notNull(), status: text('status').notNull(), attempts: integer('attempts').notNull(),
+  runStartedAt: timestamp('run_started_at',{withTimezone:true}).notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  attemptStartedAt: timestamp('attempt_started_at',{withTimezone:true}).notNull(),
+  leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  attemptId: uuid('attempt_id').notNull(), diagnostic: text('diagnostic'),
+}, t=>[
+  check('run_execution_status',sql`${t.status} IN ('EXECUTING','RETRY','EXTRACTION_COMPLETE','TERMINAL')`),
+  check('run_execution_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`),
+]);
+
+export const runEvidence = pgTable('run_evidence', {
+  evidenceId: uuid('evidence_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  kind: text('kind').notNull(), registrationId: text('registration_id').notNull(),
+  objectKey: text('object_key').notNull().unique(), mediaType: text('media_type'),
+  digest: text('digest'), size: integer('size'), state: text('state').notNull(),
+  /** Generation 21: may this Run conclude without the artifact? Stamped at reservation. */
+  required: boolean('required').notNull(),
+}, t=>[
+  check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction')`),
+  check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
+  check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
+  check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
+  check('run_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.digest} IS NULL`),
+]);
+
+/**
+ * Generation 21 — the sealed Evidence package (Story 3.5).
+ *
+ * One row per Run, written by `SealPackage` at the terminal transition and never again.
+ * `missing_required` and `abandoned` are on the row because the Result and the export read
+ * them there: an abandonment recorded only in the audit chain is not "listed on the
+ * Result". Both hold `{evidenceId, kind, objectKey}` — an identity and an address, never
+ * bytes, a media type, a location or a credential reference.
+ *
+ * Three things the COMMAND cannot route around, because the database says them (see
+ * `0021_*.sql`): a Run may not reach a terminal state without one of these rows; a SEALED
+ * row may not exist while a required artifact of that Run is unregistered; and once a row
+ * exists its Run's Evidence rows are frozen and the row itself cannot be updated.
+ */
+export const runEvidencePackage = pgTable('run_evidence_package', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  state: text('state').notNull(), runState: text('run_state').notNull(),
+  sealedAt: timestamp('sealed_at',{withTimezone:true}).notNull(),
+  requiredTotal: integer('required_total').notNull(), registered: integer('registered').notNull(),
+  missingRequired: jsonb('missing_required').notNull(), abandoned: jsonb('abandoned').notNull(),
+}, t=>[
+  check('run_evidence_package_state',sql`${t.state} IN ('SEALED','INCOMPLETE')`),
+  check('run_evidence_package_run_state',sql`${t.runState} IN ('COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`),
+  check('run_evidence_package_counts',sql`${t.requiredTotal}>=0 AND ${t.registered}>=0`),
+  check('run_evidence_package_shape',sql`coalesce(jsonb_typeof(${t.missingRequired})='array',false) AND coalesce(jsonb_typeof(${t.abandoned})='array',false)`),
+  // The seal state and the list it is derived from say the same thing, or the row is
+  // refused: a SEALED package naming a missing artifact is the one lie this table exists
+  // to prevent, and a command that computed it wrongly must not be able to store it.
+  check('run_evidence_package_complete',sql`(${t.state}='SEALED') = (jsonb_typeof(${t.missingRequired})='array' AND jsonb_array_length(${t.missingRequired})=0)`),
+]);
+
+/**
+ * Generation 21 — an Audit Trail integrity finding discovered AFTER the Run.
+ *
+ * A mismatch found while the Run is running ends it `RUN_FAILED`. The same mismatch found
+ * afterwards changes no state at all: it adds a row here and an event to the chain, and is
+ * corrected only by a new Run. The unique index makes re-verification idempotent.
+ *
+ * `evidence_id` carries no foreign key on purpose: it names a row in `run_evidence` OR in
+ * `population_evidence`, and two nullable keys would let a finding name neither.
+ */
+export const runEvidenceIntegrity = pgTable('run_evidence_integrity', {
+  findingId: uuid('finding_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  evidenceId: uuid('evidence_id').notNull(), objectKey: text('object_key').notNull(),
+  finding: text('finding').notNull(),
+  expectedDigest: text('expected_digest').notNull(), observedDigest: text('observed_digest'),
+  expectedSize: integer('expected_size'), observedSize: integer('observed_size'),
+  detectedAt: timestamp('detected_at',{withTimezone:true}).notNull(),
+}, t=>[
+  uniqueIndex('run_evidence_integrity_artifact').on(t.evidenceId, t.objectKey, t.finding),
+  check('run_evidence_integrity_finding',sql`${t.finding} IN ('object-missing','size-mismatch','digest-mismatch')`),
+  check('run_evidence_integrity_digest',sql`${t.expectedDigest} ~ '^[0-9a-f]{64}$' AND (${t.observedDigest} IS NULL OR ${t.observedDigest} ~ '^[0-9a-f]{64}$')`),
+  check('run_evidence_integrity_size',sql`(${t.expectedSize} IS NULL OR ${t.expectedSize}>=0) AND (${t.observedSize} IS NULL OR ${t.observedSize}>=0)`),
+  check('run_evidence_integrity_observed',sql`(${t.finding}='object-missing') = (${t.observedDigest} IS NULL AND ${t.observedSize} IS NULL)`),
+  // A finding has to be a real disagreement. Without this a caller could write a
+  // digest-mismatch whose two digests are equal — a fabricated integrity event in a chain
+  // nothing can take it out of.
+  check('run_evidence_integrity_disagrees',sql`(${t.finding}<>'digest-mismatch' OR ${t.observedDigest} IS DISTINCT FROM ${t.expectedDigest}) AND (${t.finding}<>'size-mismatch' OR (${t.observedSize} IS NOT NULL AND ${t.expectedSize} IS NOT NULL AND ${t.observedSize} <> ${t.expectedSize}))`),
+]);
+
+export const runSessionStep = pgTable('run_session_step', {
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  stepId: text('step_id').notNull(), ordinal: integer('ordinal').notNull(),
+  registrationId: text('registration_id').notNull(), displayName: text('display_name').notNull(),
+  state: text('state').notNull(), attempts: integer('attempts').notNull(), diagnostic: text('diagnostic'),
+  evidenceId: uuid('evidence_id').references(() => runEvidence.evidenceId),
+}, t=>[
+  primaryKey({columns:[t.runId,t.stepId]}),
+  check('run_session_step_state',sql`${t.state} IN ('PENDING','IN_PROGRESS','ACQUIRED','FAILED')`),
+  check('run_session_step_counts',sql`${t.ordinal}>0 AND ${t.attempts}>=0`),
+  check('run_session_step_acquired',sql`${t.state}<>'ACQUIRED' OR ${t.evidenceId} IS NOT NULL`),
+]);
+
+export const runWorkItem = pgTable('run_work_item', {
+  workItemId: uuid('work_item_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  stepId: text('step_id').notNull(), ordinal: integer('ordinal').notNull(),
+  registrationId: text('registration_id').notNull(), displayName: text('display_name').notNull(),
+  state: text('state').notNull(), attempts: integer('attempts').notNull(), cycles: integer('cycles').notNull(),
+  diagnostic: text('diagnostic'), evidenceId: uuid('evidence_id').references(() => runEvidence.evidenceId),
+  observations: integer('observations').notNull(),
+}, t=>[
+  uniqueIndex('run_work_item_run_step').on(t.runId,t.stepId),
+  check('run_work_item_state',sql`${t.state} IN ('PENDING','IN_PROGRESS','AWAITING','OBSERVED','UNINSPECTED','AMBIGUOUS','FAILED')`),
+  // Two bounded retry cycles: the frozen NFR-8 cycle and the owner's automatic second.
+  check('run_work_item_counts',sql`${t.ordinal}>0 AND ${t.attempts}>=0 AND ${t.cycles}>=0 AND ${t.cycles}<=2 AND ${t.observations}>=0`),
+]);
+
+export const runStepExecution = pgTable('run_step_execution', {
+  stepExecutionId: uuid('step_execution_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  planStepId: text('plan_step_id').notNull(), workItemId: uuid('work_item_id').references(() => runWorkItem.workItemId),
+  action: text('action').notNull(), state: text('state').notNull(), attempt: integer('attempt').notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  completedAt: timestamp('completed_at',{withTimezone:true}), diagnostic: text('diagnostic'),
+}, t=>[
+  index('run_step_execution_run_idx').on(t.runId,t.startedAt),
+  check('run_step_execution_state',sql`${t.state} IN ('RUNNING','SUCCEEDED','FAILED')`),
+  check('run_step_execution_action',sql`${t.action} IN ('create-workspace','acquire-population','sign-in','extract-adapter','inspect-record','capture-observation','evaluate-conditions')`),
+  check('run_step_execution_attempt',sql`${t.attempt}>0`),
+]);
+
+export const runObservation = pgTable('run_observation', {
+  observationId: uuid('observation_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  workItemId: uuid('work_item_id').notNull().references(() => runWorkItem.workItemId),
+  schemaVersion: integer('schema_version').notNull(),
+  populationRecordKey: text('population_record_key').notNull(), targetSystem: text('target_system').notNull(),
+  found: text('found').notNull(), observedAt: timestamp('observed_at',{withTimezone:true}).notNull(),
+  stepExecutionId: uuid('step_execution_id').notNull(),
+  captureMethod: text('capture_method').notNull(), matchOrigin: text('match_origin').notNull(),
+  identity: jsonb('identity').$type<import('@intellifin/domain').ObservationAttribute | null>(),
+  attributes: jsonb('attributes').$type<import('@intellifin/domain').ObservationAttribute[]>().notNull(),
+  evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull(),
+  // Generation 20. The digest is over the RFC 8785 canonical JSON of the WIRE RECORD and
+  // nothing else, so a row edited after registration stops agreeing with the digest the
+  // registration event recorded. `observed_at_source` is §B's retained original offset:
+  // the instant is normalized to UTC in `observed_at` and never silently shifted.
+  digest: text('digest').notNull(),
+  coverage: text('coverage').notNull(),
+  observedAtSource: text('observed_at_source').notNull(),
+}, t=>[
+  // A redelivered job cannot create a second Observation for the same record.
+  uniqueIndex('run_observation_item_record').on(t.workItemId,t.populationRecordKey),
+  // The composite key `run_observation_evaluation` points at, so "an uninspected record
+  // is never Compliant" is a foreign key plus a CHECK rather than a rule in one command.
+  uniqueIndex('run_observation_coverage_key').on(t.observationId,t.coverage),
+  check('run_observation_schema',sql`${t.schemaVersion} = 1`),
+  check('run_observation_found',sql`${t.found} IN ('true','false','ambiguous')`),
+  check('run_observation_capture',sql`${t.captureMethod} IN ('agent','adapter')`),
+  check('run_observation_origin',sql`${t.matchOrigin} IN ('platform','human-matched')`),
+  // §B.1: a grounded identity attribute is required when found = true, and meaningless
+  // otherwise — an ambiguous or absent Observation carrying one asserts the very match
+  // it exists to say did not resolve.
+  check('run_observation_identity',sql`(${t.found} = 'true') = (${t.identity} IS NOT NULL) AND (${t.identity} IS NULL OR jsonb_typeof(${t.identity}) = 'object')`),
+  check('run_observation_attributes',sql`coalesce(jsonb_typeof(${t.attributes}) = 'array' AND jsonb_array_length(${t.attributes}) <= 64, false)`),
+  check('run_observation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) BETWEEN 1 AND 16, false)`),
+  check('run_observation_digest',sql`${t.digest} ~ '^[0-9a-f]{64}$'`),
+  // §H per-record coverage counts `found ∈ {true, false}` only, so an ambiguous match is
+  // its own coverage state and never `COVERED`; a resolved match always is; an absence is
+  // covered only when it proved it looked, and `UNINSPECTED` otherwise.
+  check('run_observation_coverage',sql`${t.coverage} IN ('COVERED','UNINSPECTED','AMBIGUOUS') AND (${t.found} = 'ambiguous') = (${t.coverage} = 'AMBIGUOUS') AND (${t.found} <> 'true' OR ${t.coverage} = 'COVERED')`),
+]);
+
+/**
+ * `run_observation_check` — one §H per-Observation check outcome, and its diagnostic.
+ *
+ * A failing check is a FINDING, not a refusal: it is recorded here and the Run-level Gate
+ * (Story 3.8) turns it into `INCONCLUSIVE`. A PASS never carries a diagnostic and a FAIL
+ * always does — a passing check with a reason attached reads as a finding to everything
+ * downstream, and a failing one with none is a finding nobody can act on.
+ */
+export const runObservationCheck = pgTable('run_observation_check', {
+  observationId: uuid('observation_id').notNull().references(() => runObservation.observationId),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  checkName: text('check_name').notNull(), outcome: text('outcome').notNull(), diagnostic: text('diagnostic'),
+}, t=>[
+  primaryKey({columns:[t.observationId,t.checkName]}),
+  index('run_observation_check_run_idx').on(t.runId,t.checkName),
+  check('run_observation_check_name',sql`${t.checkName} IN ('identity-corroboration','search-completeness','ambiguous-match','required-evidence','freshness','observation-corroboration')`),
+  check('run_observation_check_outcome',sql`${t.outcome} IN ('PASS','FAIL') AND (${t.outcome} = 'PASS') = (${t.diagnostic} IS NULL)`),
+]);
+
+/**
+ * `run_observation_evaluation` — §B.1's per-condition evaluation, one row per condition.
+ *
+ * `coverage` is denormalized from `run_observation` and held there by a composite foreign
+ * key, so `value <> 'COMPLIANT' OR coverage = 'COVERED'` is a guarantee no command,
+ * migration or psql session can route around: an uninspected or ambiguous record cannot
+ * be recorded Compliant, by anybody. `UNEVALUATED` is a VALUE, never an origin.
+ */
+export const runObservationEvaluation = pgTable('run_observation_evaluation', {
+  observationId: uuid('observation_id').notNull(),
+  coverage: text('coverage').notNull(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  conditionId: text('condition_id').notNull(), origin: text('origin').notNull(), value: text('value').notNull(),
+  confirmation: text('confirmation'), confidence: numeric('confidence',{precision:7,scale:6}),
+  rationale: text('rationale'), diagnostic: text('diagnostic'),
+  evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull(),
+}, t=>[
+  primaryKey({columns:[t.observationId,t.conditionId]}),
+  index('run_observation_evaluation_run_idx').on(t.runId,t.value),
+  foreignKey({columns:[t.observationId,t.coverage],foreignColumns:[runObservation.observationId,runObservation.coverage],name:'run_observation_evaluation_coverage_fk'}),
+  check('run_observation_evaluation_origin',sql`${t.origin} IN ('RULE','AGENT_JUDGED','HUMAN')`),
+  check('run_observation_evaluation_value',sql`${t.value} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')`),
+  // Confirmation and confidence belong to an Agent-Judged evaluation and to no other.
+  check('run_observation_evaluation_confirmation',sql`${t.confirmation} IS NULL OR (${t.origin} = 'AGENT_JUDGED' AND ${t.confirmation} IN ('pending','confirmed','rejected'))`),
+  check('run_observation_evaluation_confidence',sql`${t.confidence} IS NULL OR (${t.origin} = 'AGENT_JUDGED' AND ${t.confidence} >= 0 AND ${t.confidence} <= 1)`),
+  // §H: uninspected records are never Compliant, and neither is an ambiguous match.
+  check('run_observation_evaluation_coverage',sql`${t.value} <> 'COMPLIANT' OR ${t.coverage} = 'COVERED'`),
+  check('run_observation_evaluation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) <= 16, false)`),
 ]);

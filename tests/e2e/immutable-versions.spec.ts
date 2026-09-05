@@ -45,7 +45,9 @@ test('all Procedure Detail states remain visible and New version is keyboard acc
     await expect(page.getByText(/a Regression Run is required before activation/)).toBeVisible();
     await expect(page.getByText('Created by the platform after a model change; requires approval.')).toBeVisible();
     await expect(page.getByText(/No automatic Schedule boundary/)).toBeVisible();
-    await expect(page.getByRole('button',{name:'Initiate Run'})).toBeDisabled();
+    // Story 3.1 replaces the unavailable placeholder with the real period form.
+    await expect(page.getByRole('button',{name:'Initiate Run'})).toBeEnabled();
+    await expect(page.locator('#initiate-run input[type=date]')).toHaveCount(2);
     expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);
     for(const [path,field,value,kind] of [[`/administration/registrations/${registrationId}`,'attributeLabelPatterns','Changed Parameter','registration'],[`/administration/sources/${bindingId}`,'location','https://synthetic.invalid/new.csv','source']] as const){
       await adminPage.goto(path);

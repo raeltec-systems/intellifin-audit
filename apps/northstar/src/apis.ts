@@ -1,4 +1,10 @@
-import { countDeclaration, datasets, type CountDeclaration } from './fixtures.js';
+import {
+  apiDeclaration,
+  countDeclaration,
+  datasets,
+  type ApiPopulationDeclaration,
+  type CountDeclaration,
+} from './fixtures.js';
 import { json, type NorthstarRequest, type NorthstarResponse } from './http.js';
 
 /**
@@ -32,9 +38,8 @@ function orderedBy<T>(rows: readonly T[], key: (row: T) => string): readonly T[]
 }
 
 function collection(options: {
-  readonly source: string;
   readonly title: string;
-  readonly generation: string;
+  readonly declaration: ApiPopulationDeclaration;
   readonly countRoute: string;
   readonly items: readonly unknown[];
   readonly itemsKey: string;
@@ -46,9 +51,15 @@ function collection(options: {
       statement:
         'Every value in this response is invented. No production data and no personal data.',
     },
-    source: options.source,
+    schema_version: options.declaration.schema_version,
+    representation: options.declaration.representation,
+    source: options.declaration.source,
     title: options.title,
-    generation: options.generation,
+    generation: options.declaration.generation,
+    generated_at: options.declaration.generated_at,
+    effective_period: options.declaration.effective_period,
+    schema: options.declaration.schema,
+    complete: options.declaration.complete,
     /**
      * How many rows THIS response carries. Deliberately not called `declared_count`: the
      * declaration lives at the count endpoint and is produced by the fixture generator,
@@ -77,10 +88,10 @@ export function accessgateAccounts(request: NorthstarRequest): NorthstarResponse
   const data = datasets.accessgate();
   const status = (request.query.get('status') ?? '').trim();
   const filtered = status === '' ? data.accounts : data.accounts.filter((a) => a.status === status);
+  const declaration = apiDeclaration('accessgate-accounts.count.json');
   return collection({
-    source: 'accessgate-accounts',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/accessgate/accounts/count',
     items: orderedBy(filtered, (account) => account.account_id),
     itemsKey: 'accounts',
@@ -93,10 +104,10 @@ export function accessgateCount(): NorthstarResponse {
 
 export function approvenowApprovals(): NorthstarResponse {
   const data = datasets.approvenow();
+  const declaration = apiDeclaration('approvenow-approvals.count.json');
   return collection({
-    source: 'approvenow-approvals',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/approvenow/approvals/count',
     items: orderedBy(data.approvals, (approval) => approval.approval_id),
     itemsKey: 'approvals',
@@ -109,10 +120,10 @@ export function approvenowCount(): NorthstarResponse {
 
 export function peoplehubEmployees(): NorthstarResponse {
   const data = datasets.peoplehub();
+  const declaration = apiDeclaration('peoplehub-employees.count.json');
   return collection({
-    source: 'peoplehub-employees',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/peoplehub/employees/count',
     items: orderedBy(data.employees, (employee) => employee.employee_id),
     itemsKey: 'employees',
@@ -125,10 +136,10 @@ export function peoplehubCount(): NorthstarResponse {
 
 export function ledgerflowTransactions(): NorthstarResponse {
   const data = datasets.ledgerflow();
+  const declaration = apiDeclaration('ledgerflow-transactions.count.json');
   return collection({
-    source: 'ledgerflow-transactions',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/ledgerflow/transactions/count',
     items: orderedBy(data.transactions, (transaction) => transaction.transaction_id),
     itemsKey: 'transactions',
