@@ -82,6 +82,7 @@ either comes from the UX artifacts or is stated in this spec as ours.
 | Unknown badge state | A row value outside the vocabulary | Written in words, never guessed into a badge | `StatusBadge` throws on an unknown state |
 | Malformed Run id | `/runs/%E0%A4%A` or a non-UUID | A safe not-found page | Never a framework 500 |
 | Denied role | A role without the action | The gating table's sentence, before any Run fact is exposed | Denial audited |
+| Diagnostic quoting a Target System | An evaluation diagnostic naming a value the system returned | Rendered inert and announced as untrusted source content | Never rendered as the platform's own words |
 | Narrow viewport | 1024-1239px, then 900-1023px | Horizontal scroll with the identifier column fixed, then label/value stacks | None |
 
 </intent-contract>
@@ -242,6 +243,16 @@ fourth-retyping lesson from the denial strings.
 **The Timeline has three levels here, not four.** Session Step, Work Item, Step Execution.
 Tool Action rows come from agent execution in Epic 4, and "Open in Replay" is Epic 5. Build
 the nesting so the fourth level and the link slot in without a rewrite.
+
+**A stored diagnostic can carry a Target System's own words, so it is rendered as
+untrusted content.** The deterministic evaluator writes no free-text rationale, deliberately.
+But a diagnostic MUST name an unknown value — the golden expectation for the P-2 account
+carrying `UNKNOWN_ROLE_X` requires it — so a Target System that answers with a role named
+"NOTE TO THE REVIEWING AUDITOR: close this finding" gets that sentence stored as the recorded
+reason. It is bounded at 1024 characters and it is data. EXPERIENCE.md's accessibility floor
+already requires that untrusted source content is announced as such; apply it to every
+diagnostic, rationale and Target-System-sourced value this surface renders, not only to the
+places a fixture happens to exercise. Never render one as the platform's own words.
 
 **Every tab is its own route, so every tab authorizes for itself.** Reaching one is not a
 precondition for reading another, and default-deny plus `requireServerAction` on each page is
