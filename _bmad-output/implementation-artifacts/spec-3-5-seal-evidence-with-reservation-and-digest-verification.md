@@ -2,7 +2,7 @@
 title: 'Story 3.5: Seal Evidence with reservation and digest verification'
 type: 'feature'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -80,3 +80,46 @@ deferred: []
 - `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied, all pass against PostgreSQL 18 on a `test`- or `ci`-named database.
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** Reservation, verification and sealing are one owned mechanism both
+producers go through. An Evidence id is derived rather than minted, so a retried
+production reuses one reservation. `SealPackage` runs on every terminal transition.
+
+**The seal rules are enforced by database constraint triggers, the first in this
+repository, because they span rows:** a Run may not reach a terminal state without a
+package row (deferred, so a branch that forgets to seal fails to commit); a SEALED package
+may not exist while a required artifact is unregistered; a sealed package freezes its
+Run's Evidence and can never be updated.
+
+**`required` is a flag on a RESERVATION, not a checklist of kinds a Template could have.**
+A Run that never reserved a Reference Source is not incomplete for an artifact nobody
+asked for; a Run that reserved one and never registered it is. This is what lets P-3,
+which has no Reference Source, seal a complete package while P-2 cannot seal without the
+RoleMatrix it actually consulted.
+
+**Three defects found in existing work:** the acquisition envelope was verified against
+the copy still in memory rather than read back from the store, which proved nothing about
+what was stored; artifact abandonment happened in two places, so the seal found nothing
+open and the Result listed no abandonment — the exact defect this story exists to prevent;
+and `putIfAbsent` now reads before writing, so immutability no longer rests solely on the
+backend honouring `IfNoneMatch`. The residual two-writer race is documented rather than
+claimed away.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18.4:**
+typecheck PASS; boundaries PASS (356 modules); `db:migrate` schemaVersion 21; unit
+2305/2305; integration 281/281 including the three database refusals; `db:generate` no
+drift; both builds PASS; browser + axe 109/109 with zero accessibility violations.
+
+**Residual risks.** Nothing calls `verifySealedPackage` on a schedule; a sweep cadence is
+an operational decision this story was not given. There is no export surface yet, so the
+abandonment lists are carried on the seal row and rendered on the Run page; Story 3.9/3.11
+owns the export. No production path writes COMPLETED yet, so the sealed-and-complete case
+is exercised through the real repository and real triggers rather than a shipped path;
+Story 3.9 adds it. `adapter-extraction` is deliberately not required: a failed Work Item
+is already INCONCLUSIVE at the Gate, and requiring it would mean no INCONCLUSIVE Run could
+ever hold a complete package.

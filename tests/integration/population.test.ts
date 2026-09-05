@@ -13,6 +13,8 @@ import {
   initialDraftCompliance,
   initialDraftEvidence,
   initialDraftSections,
+  evidenceIdFor,
+  evidenceObjectKeys,
   registrationDigest,
   snapshotFromRegistration,
   sha256Hex,
@@ -83,6 +85,8 @@ describe.skipIf(!url)('durable population execution', () => {
           await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${r.id}`;
           await sql`DELETE FROM population_row WHERE run_id=${r.id}`;
           await sql`DELETE FROM population_snapshot WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_evidence_integrity WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_evidence_package WHERE run_id=${r.id}`;
           await sql`DELETE FROM population_evidence WHERE run_id=${r.id}`;
           await sql`DELETE FROM population_execution WHERE run_id=${r.id}`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${r.id}`;
@@ -475,6 +479,7 @@ describe.skipIf(!url)('durable population execution', () => {
           startedAt: now,
           attemptStartedAt: now,
           leaseUntil: now,
+          evidenceRequired: true,
           evidenceId: ids.next(),
           objectKey: `population/${other.runId}/raw`,
           envelopeKey: `population/${other.runId}/acquisition-v1`,
@@ -635,6 +640,48 @@ describe.skipIf(!url)('durable population execution', () => {
     expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId}`).toHaveLength(0);
     expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='population-ready'`).toHaveLength(0);
     expect(deps.objects.get(`population/${job.runId}/raw`)).toEqual(raw);
+  });
+
+  /* --------------------------------------------------------------- Story 3.5 --- */
+
+  it('seals the package on the terminal transition and names its one open reservation', async () => {
+    const job = await seed();
+    const deps = dependencies({
+      acquire: async () => {
+        throw new PopulationAcquisitionError('contract');
+      },
+    });
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUN_FAILED');
+
+    const [seal] =
+      await sql`SELECT state,run_state,required_total,registered,missing_required,abandoned FROM run_evidence_package WHERE run_id=${job.runId}`;
+    // The population is required, its upload never completed, and the package says so.
+    expect(seal).toMatchObject({ state: 'INCOMPLETE', run_state: 'RUN_FAILED', required_total: 1, registered: 0 });
+    const raw = `population/${job.runId}/raw`;
+    expect((seal!.missing_required as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    expect((seal!.abandoned as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    expect((await sql`SELECT state,raw_digest FROM population_evidence WHERE run_id=${job.runId}`)[0]).toMatchObject({
+      state: 'ABANDONED',
+      raw_digest: null,
+    });
+    const [event] =
+      await sql`SELECT payload FROM audit_events WHERE aggregate_id=${job.runId} AND event_type='lifecycle.evidence-package-sealed'`;
+    expect(event!.payload).toMatchObject({ seal: 'INCOMPLETE', runState: 'RUN_FAILED' });
+  });
+
+  it('names the population reservation from the Run and freezes both objects it addresses', async () => {
+    const job = await seed();
+    const deps = dependencies();
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    const reservation = { runId: job.runId, kind: 'population' as const, scope: '' };
+    const [row] =
+      await sql`SELECT evidence_id::text AS id,object_key,envelope_key,required,state FROM population_evidence WHERE run_id=${job.runId}`;
+    expect(row).toMatchObject({ id: evidenceIdFor(reservation), required: true, state: 'REGISTERED' });
+    expect([row!.object_key, row!.envelope_key]).toEqual(evidenceObjectKeys(reservation));
+    // Both objects are really in the store: the envelope goes through the same
+    // reserve-upload-verify sequence the raw bytes do.
+    for (const key of evidenceObjectKeys(reservation)) expect(deps.objects.get(key)).toBeDefined();
   });
 
   it.each(['\u0000', '\ud800'])('preserves an invalid declaration string %j while failing reconciliation', async invalid => {

@@ -5,7 +5,6 @@ import {
   decodePopulationUtf8,
   isCompleteCollectionEnvelope,
   observationIdFor,
-  sha256HexOfBytes,
   canonicalJson,
   OBSERVATION_LIMITS,
   OBSERVATION_SCHEMA_VERSION,
@@ -44,6 +43,13 @@ import {
   registerObservations,
   type ObservationBatchItem,
 } from './register-observations.js';
+import {
+  adapterEvidenceRecord,
+  freezeArtifact,
+  reserveArtifact,
+  verifyRegisteredArtifact,
+} from './evidence-package.js';
+import { sealIfTerminal } from './seal-package.js';
 
 /**
  * The execution stage after population acquisition (Story 3.3).
@@ -108,9 +114,6 @@ export type AdapterExecutionDiagnostic =
 
 /** The collection names an extraction response may carry (population contract v1). */
 const COLLECTION_KEYS = ['accounts', 'transactions', 'employees', 'approvals'] as const;
-
-/** A frozen step id has to be usable as an object-key segment. */
-const STEP_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 interface EventFields {
   readonly stepId?: string;
@@ -372,11 +375,6 @@ export function buildAdapterObservations(input: {
   return { items, unkeyed, duplicates };
 }
 
-function evidenceKey(kind: 'reference' | 'extraction', runId: string, stepId: string): string {
-  if (!STEP_ID_PATTERN.test(stepId)) throw new PopulationAcquisitionError('contract');
-  return `${kind}/${runId}/${stepId}`;
-}
-
 function failureDiagnostic(
   unit: 'reference' | 'extraction',
   error: unknown,
@@ -435,6 +433,7 @@ export async function executeAdapterSteps(
       const state = failed === 'run-time-limit' ? 'INCONCLUSIVE' : 'RUN_FAILED';
       await context.saveCheckpoint(checkpoint, state);
       await event(context, failed, state, checkpoint, {}, 'failure');
+      await sealIfTerminal(context, run, state, now.toISOString());
       return null;
     }
 
@@ -528,6 +527,7 @@ export async function executeAdapterSteps(
       const next = { ...checkpoint, status: 'TERMINAL' as const, diagnostic };
       await context.saveCheckpoint(next, state);
       await event(context, diagnostic, state, next, fields, 'failure');
+      await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
     });
   };
 
@@ -555,17 +555,9 @@ export async function executeAdapterSteps(
    * again re-reads what it froze. The stored bytes are never replaced — a mismatch is a
    * terminal integrity failure, exactly as the population's redelivery check is.
    */
-  const verifyRegistered = async (
+  const verifyRegistered = (
     evidence: { objectKey: string; digest: string | null; size: number | null },
-  ): Promise<boolean> => {
-    if (evidence.digest === null) return false;
-    const stored = await deps.store.read(evidence.objectKey, budget());
-    return (
-      stored !== null &&
-      sha256HexOfBytes(stored) === evidence.digest &&
-      (evidence.size === null || stored.length === evidence.size)
-    );
-  };
+  ): Promise<boolean> => verifyRegisteredArtifact(deps.store, evidence, budget);
 
   try {
     // ------------------------------------------------- Reference Sources, in order
@@ -644,6 +636,7 @@ export async function executeAdapterSteps(
       const next = { ...checkpoint, status: terminal ? ('TERMINAL' as const) : ('RETRY' as const), diagnostic };
       await context.saveCheckpoint(next, state);
       await event(context, diagnostic, state, next, {}, 'failure');
+      await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
     });
     return { retry: !terminal };
   }
@@ -679,41 +672,31 @@ interface UnitContext {
  */
 function evidenceFor(
   unit: UnitContext,
-  evidenceId: string,
+  priorEvidenceId: string | null,
   kind: AdapterEvidenceRecord['kind'],
-  objectKey: string,
 ): AdapterEvidenceRecord {
-  const prior = unit.evidence.find((row) => row.evidenceId === evidenceId);
-  return {
-    evidenceId,
-    kind,
-    registrationId: unit.entry.target.registrationId,
-    objectKey,
-    mediaType: prior?.mediaType ?? null,
-    digest: prior?.digest ?? null,
-    size: prior?.size ?? null,
-    state: prior?.state === 'REGISTERED' ? 'REGISTERED' : 'RESERVED',
-  };
-}
-
-/** Reserve, upload, verify, register — the sequence Story 3.2 established, once. */
-async function freezeArtifact(
-  deps: AdapterExecutionDependencies,
-  evidence: AdapterEvidenceRecord,
-  artifact: AcquiredArtifact,
-  budget: () => number,
-): Promise<{ digest: string; size: number }> {
-  await deps.store.putIfAbsent(evidence.objectKey, artifact.bytes, budget());
-  const stored = await deps.store.read(evidence.objectKey, budget());
-  if (stored === null) throw new PopulationAcquisitionError('integrity');
-  const digest = sha256HexOfBytes(stored);
-  // The bytes already in the store win. A reserved key that holds something else is a
-  // damaged object, not something to overwrite.
-  if (stored.length !== artifact.bytes.length || digest !== sha256HexOfBytes(artifact.bytes)) {
-    throw new PopulationAcquisitionError('integrity');
+  // NAMED, not minted (Story 3.5): the id and the object key are derived from the Run,
+  // the kind and the FROZEN Session Step id, so an attempt that resumes after a crash
+  // reaches the reservation it already has. A row an earlier build wrote wins, because
+  // its object really is in the store under the id that row recorded.
+  // A frozen step id that is not usable as an object-key segment is a CONTRACT failure,
+  // not a transport one: the same bytes produce the same refusal, so retrying it against a
+  // live system proves nothing. `reserveArtifact` throws its own error, which
+  // `failureDiagnostic` would otherwise fall back to `-transport-failed` and retry.
+  let reserved;
+  try {
+    reserved = reserveArtifact({
+      runId: unit.run.runId,
+      kind,
+      scope: unit.entry.stepId,
+      templateId: unit.plan.inputs.templateId,
+    });
+  } catch {
+    throw new PopulationAcquisitionError('contract');
   }
-  if (evidence.digest !== null && evidence.digest !== digest) throw new PopulationAcquisitionError('integrity');
-  return { digest, size: stored.length };
+  const evidenceId = priorEvidenceId ?? reserved.evidenceId;
+  const prior = unit.evidence.find((row) => row.evidenceId === evidenceId);
+  return adapterEvidenceRecord({ ...reserved, evidenceId }, unit.entry.target.registrationId, prior);
 }
 
 async function runReferenceStep(
@@ -724,12 +707,7 @@ async function runReferenceStep(
   while (step.attempts < unit.attemptsPerCycle) {
     step.attempts += 1;
     const execution = unit.startStepExecution(entry.stepId, null, 'extract-adapter', step.attempts);
-    const evidence = evidenceFor(
-      unit,
-      step.evidenceId ?? deps.ids.next(),
-      'reference-source',
-      evidenceKey('reference', unit.run.runId, entry.stepId),
-    );
+    const evidence = evidenceFor(unit, step.evidenceId, 'reference-source');
     step.evidenceId = evidence.evidenceId;
     step.state = 'IN_PROGRESS';
     step.diagnostic = null;
@@ -753,7 +731,12 @@ async function runReferenceStep(
 
     try {
       const artifact = await deps.reference.acquireReference(entry.target, unit.budget());
-      const frozen = await freezeArtifact(deps, evidence, artifact, unit.budget);
+      const frozen = await freezeArtifact(
+        deps.store,
+        { objectKey: evidence.objectKey, registeredDigest: evidence.digest, registeredSize: evidence.size },
+        artifact.bytes,
+        unit.budget,
+      );
       step.state = 'ACQUIRED';
       const registered: AdapterEvidenceRecord = {
         ...evidence,
@@ -794,9 +777,6 @@ async function runReferenceStep(
           completedAt: deps.clock.now().toISOString(),
           diagnostic,
         });
-        if (exhausted) {
-          await context.saveEvidence({ ...evidence, state: 'ABANDONED' });
-        }
         await event(context, diagnostic, 'RUNNING', checkpoint, {
           stepId: step.stepId,
           registrationId: step.registrationId,
@@ -850,12 +830,7 @@ async function runWorkItem(
     // are not there.
     const priorObservations = item.observations;
     const execution = unit.startStepExecution(entry.stepId, item.workItemId, 'extract-adapter', item.attempts);
-    const evidence = evidenceFor(
-      unit,
-      item.evidenceId ?? deps.ids.next(),
-      'adapter-extraction',
-      evidenceKey('extraction', unit.run.runId, entry.stepId),
-    );
+    const evidence = evidenceFor(unit, item.evidenceId, 'adapter-extraction');
     item.evidenceId = evidence.evidenceId;
     item.state = 'IN_PROGRESS';
     item.diagnostic = null;
@@ -896,7 +871,12 @@ async function runWorkItem(
       const artifact = await deps.extraction.extract(entry.target, credential, unit.budget());
       // Freeze first, parse second. A response that is not a declared collection is still
       // what the Target System said, and an INCONCLUSIVE Run keeps its partial Evidence.
-      frozen = await freezeArtifact(deps, evidence, artifact, unit.budget);
+      frozen = await freezeArtifact(
+        deps.store,
+        { objectKey: evidence.objectKey, registeredDigest: evidence.digest, registeredSize: evidence.size },
+        artifact.bytes,
+        unit.budget,
+      );
       evidence.mediaType = artifact.mediaType;
       evidence.digest = frozen.digest;
       evidence.size = frozen.size;
@@ -989,10 +969,12 @@ async function runWorkItem(
         diagnostic,
       });
       // Verified bytes stay REGISTERED even though the Work Item failed: they are what
-      // the Target System actually answered. Only a reservation nothing was written to
-      // is abandoned.
+      // the Target System actually answered. A reservation nothing was written to stays
+      // RESERVED — it is still open, the Run is still running, and `SealPackage` is the
+      // one thing that abandons it, at the terminal transition, where it can also be
+      // listed on the Result. A unit that abandoned its own reservation would leave the
+      // seal with nothing open to find and the Result with nothing to name.
       if (frozen !== null) await context.saveEvidence({ ...evidence, state: 'REGISTERED' });
-      else if (terminal) await context.saveEvidence({ ...evidence, state: 'ABANDONED' });
       await event(context, diagnostic!, 'RUNNING', checkpoint, {
         workItemId: item.workItemId,
         stepId: item.stepId,

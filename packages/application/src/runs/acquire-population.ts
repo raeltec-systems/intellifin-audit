@@ -13,6 +13,8 @@ import {
   type PopulationExecutionRepository,
 } from './execution-ports.js';
 import { decodeAcquisitionEnvelope, encodeAcquisitionEnvelope } from './acquisition-envelope.js';
+import { freezeArtifact, reserveArtifact } from './evidence-package.js';
+import { sealIfTerminal } from './seal-package.js';
 export interface PopulationDependencies {
   repository: PopulationExecutionRepository;
   acquisition: PopulationAcquisitionPort;
@@ -89,6 +91,17 @@ export async function acquirePopulation(
         return null;
       const plan = await context.frozenPlan();
       if (prior?.status === 'POPULATION_READY') return { checkpoint: prior, plan, run, verificationOnly: true as const };
+      // The reservation is NAMED, not minted (Story 3.5): the Evidence id, both object
+      // keys and the `required` verdict are derived from `(runId, kind, scope)` and the
+      // frozen Template, so a retried production after a crash reuses this reservation
+      // rather than minting a second object beside the first. A row an earlier build
+      // wrote still wins, because its object is really there under the id it recorded.
+      const reserved = reserveArtifact({
+        runId: run.runId,
+        kind: 'population',
+        scope: '',
+        templateId: plan?.inputs.templateId ?? null,
+      });
       const checkpoint: PopulationCheckpoint = {
         revision: (prior?.revision ?? 0) + 1,
         status: 'ACQUIRING',
@@ -96,10 +109,10 @@ export async function acquirePopulation(
         startedAt: prior?.startedAt ?? now.toISOString(),
         attemptStartedAt: now.toISOString(),
         leaseUntil: new Date(now.getTime() + 120000).toISOString(),
-        evidenceId: prior?.evidenceId ?? deps.ids.next(),
-        objectKey: prior?.objectKey ?? `population/${run.runId}/raw`,
-        envelopeKey:
-          prior?.envelopeKey ?? `population/${run.runId}/acquisition-v1`,
+        evidenceId: prior?.evidenceId ?? reserved.evidenceId,
+        objectKey: prior?.objectKey ?? reserved.objectKeys[0]!,
+        envelopeKey: prior?.envelopeKey ?? reserved.objectKeys[1]!,
+        evidenceRequired: reserved.required,
         rawDigest: prior?.rawDigest ?? null,
         envelopeDigest: prior?.envelopeDigest ?? null,
         stepId:
@@ -130,6 +143,7 @@ export async function acquirePopulation(
           failed === 'run-time-limit' ? 'INCONCLUSIVE' : 'RUN_FAILED';
         await context.save(checkpoint, state);
         await event(context, failed, state, checkpoint.attempts, checkpoint, 'failure');
+        await sealIfTerminal(context, run, state, now.toISOString());
         return null;
       }
       await context.save(checkpoint, 'RUNNING');
@@ -182,6 +196,7 @@ export async function acquirePopulation(
         const next = { ...checkpoint, attempts, revision: checkpoint.revision + 1, status: terminal ? 'TERMINAL' as const : 'RETRY' as const, diagnostic };
         await context.save(next, state);
         await event(context, diagnostic, state, attempts, next, 'failure');
+        await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
         return { retry: !terminal };
       });
     }
@@ -208,7 +223,7 @@ export async function acquirePopulation(
         checkpoint.envelopeDigest !== digest
       )
         throw new PopulationAcquisitionError('integrity');
-      const reserved = await deps.repository.transaction(
+      const committed = await deps.repository.transaction(
         run.runId,
         async (context) => {
           if (
@@ -229,11 +244,16 @@ export async function acquirePopulation(
           return true;
         },
       );
-      if (!reserved) return { retry: false };
-      await deps.store.putIfAbsent(
-        checkpoint.envelopeKey,
+      if (!committed) return { retry: false };
+      // Reserve, upload, VERIFY — the envelope goes through the same owned mechanism as
+      // the raw bytes. It used to be uploaded and then compared against the copy still in
+      // memory, which proves the process has not corrupted itself and nothing about what
+      // the store holds.
+      await freezeArtifact(
+        deps.store,
+        { objectKey: checkpoint.envelopeKey, registeredDigest: digest, registeredSize: null },
         envelope,
-        remaining(),
+        remaining,
       );
     }
     if (
@@ -243,19 +263,18 @@ export async function acquirePopulation(
       throw new PopulationAcquisitionError('integrity');
     const preserved = decodeAcquisitionEnvelope(envelope);
     const bytes = preserved.bytes;
-    if (
-      checkpoint.rawDigest !== null &&
-      checkpoint.rawDigest !== sha256HexOfBytes(bytes)
-    )
-      throw new PopulationAcquisitionError('integrity');
-    await deps.store.putIfAbsent(checkpoint.objectKey, bytes, remaining());
-    const stored = await deps.store.read(checkpoint.objectKey, remaining());
-    if (
-      stored === null ||
-      stored.length !== bytes.length ||
-      sha256HexOfBytes(stored) !== sha256HexOfBytes(bytes)
-    )
-      throw new PopulationAcquisitionError('integrity');
+    // Availability, size and SHA-256, against the bytes just sent AND against any digest a
+    // previous attempt already registered — one implementation, both producers.
+    await freezeArtifact(
+      deps.store,
+      {
+        objectKey: checkpoint.objectKey,
+        registeredDigest: checkpoint.rawDigest,
+        registeredSize: checkpoint.size,
+      },
+      bytes,
+      remaining,
+    );
     const result = reconcilePopulation({
       bytes,
       mediaType: preserved.mediaType,
@@ -310,6 +329,12 @@ export async function acquirePopulation(
         next,
         result.ready ? 'success' : 'failure',
       );
+      await sealIfTerminal(
+        context,
+        run,
+        result.ready ? 'RUNNING' : 'INCONCLUSIVE',
+        deps.clock.now().toISOString(),
+      );
       remaining();
     });
     return { retry: false };
@@ -343,6 +368,7 @@ export async function acquirePopulation(
         state,
       );
       await event(context, diagnostic, state, checkpoint.attempts, checkpoint, 'failure');
+      await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
       return { retry: !terminal };
     });
   }

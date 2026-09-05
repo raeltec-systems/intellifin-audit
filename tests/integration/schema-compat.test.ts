@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-20 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-21 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -93,6 +93,10 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Steps, its Work Items, their Step Executions, their Evidence and the §B.1
       // Observations. An unlisted table is a migration nobody reviewed.
       'run_evidence',
+      // Story 3.5. The sealed Evidence package of one Run, and the Audit Trail integrity
+      // findings a post-Run verification adds beside it without changing any state.
+      'run_evidence_integrity',
+      'run_evidence_package',
       'run_execution',
       'run_initiation_request',
       'run_observation',

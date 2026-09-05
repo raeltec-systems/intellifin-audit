@@ -254,12 +254,37 @@ export class S3EvidenceStore implements EvidenceStore {
     }
   }
 
+  /**
+   * Write one artifact, once, and never over one that is already there.
+   *
+   * Three layers, in this order, because each covers what the one before it cannot:
+   *
+   * 1. **Read first.** An object already at this key is RECONCILED and no write is sent
+   *    at all. This is the layer that does not depend on the backend: a resumed attempt,
+   *    a redelivered job or a retry after a crash cannot overwrite, because no request
+   *    that could is ever made. Immutability used to rest entirely on layer 2.
+   * 2. **`IfNoneMatch: '*'`.** Covers the window between that read and this write, where
+   *    a second writer could have landed. A backend that ignores the header narrows the
+   *    guarantee to layer 1's window rather than removing it — and the leased claim makes
+   *    two writers to one key rare in the first place.
+   * 3. **Read back and compare.** Availability, size and content, against the bytes just
+   *    sent, before this method acknowledges anything.
+   *
+   * Bytes that disagree are an integrity failure. Nothing here deletes, repairs or
+   * re-uploads: a damaged object stays exactly as it is so that it can be looked at.
+   */
   async putIfAbsent(key: string, bytes: Uint8Array, timeoutMs: number): Promise<void> {
     validateKey(key);
     validateBytes(bytes, this.maxBytes);
     validateTimeout(timeoutMs);
     const deadline = withDeadline(timeoutMs);
     try {
+      const present = await this.readWithDeadline(key, deadline);
+      if (present !== null) {
+        if (!verifiedSameBytes(bytes, present)) throw integrityFailure();
+        return;
+      }
+      deadline.remaining();
       try {
         await this.client.send(
           new PutObjectCommand({

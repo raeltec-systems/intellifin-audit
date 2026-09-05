@@ -58,6 +58,7 @@ test.afterAll(async () => {
   if (!sql) return;
   try {
     await sql`DELETE FROM pgboss.job WHERE data->>'runId' IN (SELECT run_id::text FROM audit_run WHERE procedure_id=${procedureId})`;
+    await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM notification WHERE procedure_id=${procedureId}`;
@@ -65,6 +66,19 @@ test.afterAll(async () => {
     await sql`DELETE FROM auth_user WHERE id=${managerId}`;
   } finally { await sql.end({ timeout: 5 }); }
 });
+
+/**
+ * Drive a Run to COMPLETED the way production does: sealed Evidence package first.
+ *
+ * Generation 21 refuses a terminal Run with no `run_evidence_package` row, which is how
+ * "run SealPackage on EVERY terminal transition" is enforced rather than remembered. These
+ * Runs acquired nothing, so their package is SEALED over zero artifacts.
+ */
+async function terminate(runId: string): Promise<void> {
+  await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
+            VALUES(${runId},'SEALED','COMPLETED',now(),0,0,'[]'::jsonb,'[]'::jsonb) ON CONFLICT DO NOTHING`;
+  await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
+}
 
 test.describe('Run initiation as an Auditor', () => {
   test.use({ storageState: AUTH_STATE.auditor });
@@ -145,7 +159,7 @@ test.describe('Run initiation as an Auditor', () => {
     expect(persisted).toHaveLength(1);
     expect(persisted[0]!.request_token).toBe(requestToken);
     // Simulate execution completing before the caller can retry the lost acknowledgement.
-    await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${persisted[0]!.run_id}`;
+    await terminate(persisted[0]!.run_id as string);
     await page.unroute(detailUrl);
     await page.getByRole('link', { name: 'Reload Procedure', exact: true }).click();
     await expect(page.locator('#initiate-run')).toHaveAttribute('data-client-ready', 'true');
@@ -205,7 +219,7 @@ test.describe('Native Run initiation', () => {
     await page.getByRole('button', { name: 'Initiate Run', exact: true }).click();
     await expect(page).toHaveURL(/\/runs\/[0-9a-f-]{36}$/);
     const runId = new URL(page.url()).pathname.split('/').at(-1)!;
-    await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
+    await terminate(runId);
     await page.goto(`/procedures/${procedureId}?requestToken=${token}&from=2026-05-01&to=2026-05-31`);
     await page.getByRole('button', { name: 'Retry same period', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));

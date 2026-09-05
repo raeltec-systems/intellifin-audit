@@ -13,6 +13,7 @@ import {
   populationRow,
 } from '../db/schema.js';
 import { DrizzleRunRepository } from './run-repository.js';
+import { evidencePackageContext } from './evidence-package-repository.js';
 import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
 import {
   createAuditEventWriter,
@@ -67,6 +68,7 @@ export class PostgresPopulationRepository
               rawDigest: evidence.rawDigest,
               envelopeDigest: evidence.envelopeDigest,
               size: evidence.size,
+              evidenceRequired: evidence.required,
             }
           : null;
       if (Boolean(progress) !== Boolean(evidence))
@@ -74,6 +76,7 @@ export class PostgresPopulationRepository
       return work({
         run,
         checkpoint,
+        ...evidencePackageContext(tx, runId),
         auditEvents: createAuditEventWriter(
           tx,
           new SystemClock(),
@@ -116,11 +119,14 @@ export class PostgresPopulationRepository
               rawDigest: cp.rawDigest,
               envelopeDigest: cp.envelopeDigest,
               size: cp.size,
-              state: cp.rawDigest
-                ? 'REGISTERED'
-                : cp.status === 'TERMINAL'
-                  ? 'ABANDONED'
-                  : 'RESERVED',
+              required: cp.evidenceRequired,
+              // REGISTERED once the raw digest is verified, RESERVED until then. It is
+              // deliberately NOT abandoned here even at a TERMINAL checkpoint: `SealPackage`
+              // is the one thing that abandons a reservation (Story 3.5), and a repository
+              // that did it as a side effect of a status would be the third copy of the
+              // rule this story exists to remove — and the seal would then find nothing
+              // open and list no abandonment on the Result.
+              state: cp.rawDigest ? 'REGISTERED' : 'RESERVED',
             })
             .onConflictDoUpdate({
               target: populationEvidence.runId,
@@ -128,11 +134,8 @@ export class PostgresPopulationRepository
                 rawDigest: cp.rawDigest,
                 envelopeDigest: cp.envelopeDigest,
                 size: cp.size,
-                state: cp.rawDigest
-                  ? 'REGISTERED'
-                  : cp.status === 'TERMINAL'
-                    ? 'ABANDONED'
-                    : 'RESERVED',
+                required: cp.evidenceRequired,
+                state: cp.rawDigest ? 'REGISTERED' : 'RESERVED',
               },
             });
           await tx
@@ -199,6 +202,7 @@ export class PostgresPopulationRepository
           state: populationEvidence.state,
           rawDigest: populationEvidence.rawDigest,
           size: populationEvidence.size,
+          required: populationEvidence.required,
         })
         .from(populationEvidence)
         .where(eq(populationEvidence.runId, runId))

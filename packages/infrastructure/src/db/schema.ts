@@ -804,7 +804,12 @@ export const populationEvidence = pgTable('population_evidence', {
   runId: uuid('run_id').primaryKey().references(()=>auditRun.runId), evidenceId:uuid('evidence_id').notNull().unique(),
   objectKey:text('object_key').notNull().unique(), envelopeKey:text('envelope_key').notNull().unique(),
   rawDigest:text('raw_digest'),envelopeDigest:text('envelope_digest'),size:integer('size'),state:text('state').notNull(),
-},t=>[check('population_evidence_digest',sql`${t.rawDigest} IS NULL OR ${t.rawDigest} ~ '^[0-9a-f]{64}$'`),check('population_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),check('population_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.rawDigest} IS NOT NULL AND ${t.envelopeDigest} IS NOT NULL AND ${t.size} IS NOT NULL))`)]);
+  required:boolean('required').notNull(),
+},t=>[check('population_evidence_digest',sql`${t.rawDigest} IS NULL OR ${t.rawDigest} ~ '^[0-9a-f]{64}$'`),check('population_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),check('population_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.rawDigest} IS NOT NULL AND ${t.envelopeDigest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
+  // Generation 21: an ABANDONED reservation is one nothing was ever written to. A
+  // registered artifact is never demoted, so a raw digest beside `ABANDONED` would be a
+  // row claiming both that the bytes were verified and that they never arrived.
+  check('population_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.rawDigest} IS NULL`)]);
 export const populationSnapshot = pgTable('population_snapshot', {
   runId:uuid('run_id').primaryKey().references(()=>auditRun.runId), included:integer('included').notNull(),excluded:integer('excluded').notNull(),indeterminate:integer('indeterminate').notNull(),
   rowsDigest:text('rows_digest'), checks:jsonb('checks').$type<import('@intellifin/domain').PopulationCheck[]>().notNull(),
@@ -847,11 +852,75 @@ export const runEvidence = pgTable('run_evidence', {
   kind: text('kind').notNull(), registrationId: text('registration_id').notNull(),
   objectKey: text('object_key').notNull().unique(), mediaType: text('media_type'),
   digest: text('digest'), size: integer('size'), state: text('state').notNull(),
+  /** Generation 21: may this Run conclude without the artifact? Stamped at reservation. */
+  required: boolean('required').notNull(),
 }, t=>[
   check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction')`),
   check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
   check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
   check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
+  check('run_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.digest} IS NULL`),
+]);
+
+/**
+ * Generation 21 — the sealed Evidence package (Story 3.5).
+ *
+ * One row per Run, written by `SealPackage` at the terminal transition and never again.
+ * `missing_required` and `abandoned` are on the row because the Result and the export read
+ * them there: an abandonment recorded only in the audit chain is not "listed on the
+ * Result". Both hold `{evidenceId, kind, objectKey}` — an identity and an address, never
+ * bytes, a media type, a location or a credential reference.
+ *
+ * Three things the COMMAND cannot route around, because the database says them (see
+ * `0021_*.sql`): a Run may not reach a terminal state without one of these rows; a SEALED
+ * row may not exist while a required artifact of that Run is unregistered; and once a row
+ * exists its Run's Evidence rows are frozen and the row itself cannot be updated.
+ */
+export const runEvidencePackage = pgTable('run_evidence_package', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  state: text('state').notNull(), runState: text('run_state').notNull(),
+  sealedAt: timestamp('sealed_at',{withTimezone:true}).notNull(),
+  requiredTotal: integer('required_total').notNull(), registered: integer('registered').notNull(),
+  missingRequired: jsonb('missing_required').notNull(), abandoned: jsonb('abandoned').notNull(),
+}, t=>[
+  check('run_evidence_package_state',sql`${t.state} IN ('SEALED','INCOMPLETE')`),
+  check('run_evidence_package_run_state',sql`${t.runState} IN ('COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`),
+  check('run_evidence_package_counts',sql`${t.requiredTotal}>=0 AND ${t.registered}>=0`),
+  check('run_evidence_package_shape',sql`coalesce(jsonb_typeof(${t.missingRequired})='array',false) AND coalesce(jsonb_typeof(${t.abandoned})='array',false)`),
+  // The seal state and the list it is derived from say the same thing, or the row is
+  // refused: a SEALED package naming a missing artifact is the one lie this table exists
+  // to prevent, and a command that computed it wrongly must not be able to store it.
+  check('run_evidence_package_complete',sql`(${t.state}='SEALED') = (jsonb_typeof(${t.missingRequired})='array' AND jsonb_array_length(${t.missingRequired})=0)`),
+]);
+
+/**
+ * Generation 21 — an Audit Trail integrity finding discovered AFTER the Run.
+ *
+ * A mismatch found while the Run is running ends it `RUN_FAILED`. The same mismatch found
+ * afterwards changes no state at all: it adds a row here and an event to the chain, and is
+ * corrected only by a new Run. The unique index makes re-verification idempotent.
+ *
+ * `evidence_id` carries no foreign key on purpose: it names a row in `run_evidence` OR in
+ * `population_evidence`, and two nullable keys would let a finding name neither.
+ */
+export const runEvidenceIntegrity = pgTable('run_evidence_integrity', {
+  findingId: uuid('finding_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  evidenceId: uuid('evidence_id').notNull(), objectKey: text('object_key').notNull(),
+  finding: text('finding').notNull(),
+  expectedDigest: text('expected_digest').notNull(), observedDigest: text('observed_digest'),
+  expectedSize: integer('expected_size'), observedSize: integer('observed_size'),
+  detectedAt: timestamp('detected_at',{withTimezone:true}).notNull(),
+}, t=>[
+  uniqueIndex('run_evidence_integrity_artifact').on(t.evidenceId, t.objectKey, t.finding),
+  check('run_evidence_integrity_finding',sql`${t.finding} IN ('object-missing','size-mismatch','digest-mismatch')`),
+  check('run_evidence_integrity_digest',sql`${t.expectedDigest} ~ '^[0-9a-f]{64}$' AND (${t.observedDigest} IS NULL OR ${t.observedDigest} ~ '^[0-9a-f]{64}$')`),
+  check('run_evidence_integrity_size',sql`(${t.expectedSize} IS NULL OR ${t.expectedSize}>=0) AND (${t.observedSize} IS NULL OR ${t.observedSize}>=0)`),
+  check('run_evidence_integrity_observed',sql`(${t.finding}='object-missing') = (${t.observedDigest} IS NULL AND ${t.observedSize} IS NULL)`),
+  // A finding has to be a real disagreement. Without this a caller could write a
+  // digest-mismatch whose two digests are equal — a fabricated integrity event in a chain
+  // nothing can take it out of.
+  check('run_evidence_integrity_disagrees',sql`(${t.finding}<>'digest-mismatch' OR ${t.observedDigest} IS DISTINCT FROM ${t.expectedDigest}) AND (${t.finding}<>'size-mismatch' OR (${t.observedSize} IS NOT NULL AND ${t.expectedSize} IS NOT NULL AND ${t.observedSize} <> ${t.expectedSize}))`),
 ]);
 
 export const runSessionStep = pgTable('run_session_step', {

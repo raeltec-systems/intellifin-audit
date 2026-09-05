@@ -31,6 +31,7 @@ import {
   runWorkItem,
 } from '../db/schema.js';
 import { DrizzleRunRepository } from './run-repository.js';
+import { evidencePackageContext } from './evidence-package-repository.js';
 import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
@@ -100,12 +101,14 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
             rawDigest: null,
             envelopeDigest: null,
             size: null,
+            evidenceRequired: true,
           } satisfies PopulationCheckpoint)
         : null;
 
       return work({
         run,
         population,
+        ...evidencePackageContext(tx, runId),
         checkpoint: stage
           ? {
               revision: stage.revision,
@@ -155,6 +158,7 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
             mediaType: row.mediaType,
             digest: row.digest,
             size: row.size,
+            required: row.required,
             state: row.state as AdapterEvidenceRecord['state'],
           }),
         ),
@@ -202,6 +206,7 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
                 mediaType: record.mediaType,
                 digest: record.digest,
                 size: record.size,
+                required: record.required,
                 state: record.state,
               },
             });

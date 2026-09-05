@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   acquirePopulation,
   executeAdapterSteps,
+  sealPackage,
+  verifySealedPackage,
   initiateRun,
   NO_CORROBORATION,
   NO_EVALUATION,
@@ -21,6 +23,10 @@ import {
   observationBatchDigest,
   observationDigest,
   observationIdFor,
+  evidenceIdFor,
+  evidenceObjectKey,
+  evidenceObjectKeys,
+  isRequiredArtifact,
   initialDraftPopulation,
   initialDraftCompliance,
   initialDraftEvidence,
@@ -40,6 +46,7 @@ import {
   DrizzleRunRepository,
   PostgresAdapterExecutionRepository,
   PostgresPopulationRepository,
+  PostgresSealedPackageRepository,
   PostgresProceduresUnitOfWork,
   PostgresRunsUnitOfWork,
   SystemClock,
@@ -143,6 +150,8 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
           // ACQUIRED step may not have a null one, so they go before the rows they name.
           await sql`DELETE FROM run_session_step WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_work_item WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_evidence_integrity WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_evidence_package WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_execution WHERE run_id=${run.id}`;
           await sql`DELETE FROM population_row WHERE run_id=${run.id}`;
@@ -453,9 +462,11 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(items[1]).toMatchObject({ state: 'OBSERVED' });
     expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUNNING');
     expect((await sql`SELECT status FROM run_execution WHERE run_id=${seeded.run.runId}`)[0]?.status).toBe('EXTRACTION_COMPLETE');
-    // The abandoned reservation is not a registered artifact.
-    const abandoned = await sql`SELECT state FROM run_evidence WHERE run_id=${seeded.run.runId} AND registration_id=${first}`;
-    expect(abandoned[0]?.state).toBe('ABANDONED');
+    // The failed Work Item's reservation is still OPEN: the Run is still running, and
+    // `SealPackage` is the one thing that abandons a reservation (Story 3.5). What matters
+    // here is that it is not a registered artifact.
+    const reservation = await sql`SELECT state,digest FROM run_evidence WHERE run_id=${seeded.run.runId} AND registration_id=${first}`;
+    expect(reservation[0]).toMatchObject({ state: 'RESERVED', digest: null });
   });
 
   it('repeats no completed unit on resume and writes no duplicate Observation', async () => {
@@ -547,16 +558,232 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     await expect(insert('maybe', 'NULL')).rejects.toThrow(/run_observation_found/);
     await expect(
       sql.unsafe(
-        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,state) VALUES ($1,$2,'reference-source','r','k','not-a-digest',1,'REGISTERED')`,
+        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,required,state) VALUES ($1,$2,'reference-source','r','k','not-a-digest',1,true,'REGISTERED')`,
         [ids.next(), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_evidence_digest/);
     await expect(
       sql.unsafe(
-        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,state) VALUES ($1,$2,'reference-source','r','k2',NULL,NULL,'REGISTERED')`,
+        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,required,state) VALUES ($1,$2,'reference-source','r','k2',NULL,NULL,true,'REGISTERED')`,
         [ids.next(), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_evidence_state/);
+  });
+
+
+  /* --------------------------------------------------------------- Story 3.5 --- */
+
+  /** Seal a Run at a terminal state through the real command and the real repository. */
+  async function sealAt(
+    seeded: Awaited<ReturnType<typeof seed>>,
+    state: 'COMPLETED' | 'INCONCLUSIVE',
+  ) {
+    return new PostgresAdapterExecutionRepository(db).transaction(seeded.run.runId, async (c) => {
+      await c.saveCheckpoint({ ...c.checkpoint!, status: 'TERMINAL', diagnostic: null }, state);
+      return sealPackage(c, {
+        run: c.run!,
+        terminalState: state,
+        sealedAt: new Date().toISOString(),
+      });
+    });
+  }
+
+  it('names every reservation from the Run, the kind and the frozen step id', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const rows =
+      await sql`SELECT evidence_id::text AS id,kind,object_key,required,state FROM run_evidence WHERE run_id=${seeded.run.runId} ORDER BY kind`;
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      const kind = String(row.kind) as 'reference-source' | 'adapter-extraction';
+      const [step] =
+        await sql`SELECT step_id FROM ${sql(kind === 'reference-source' ? 'run_session_step' : 'run_work_item')} WHERE run_id=${seeded.run.runId}`;
+      const reservation = { runId: seeded.run.runId, kind, scope: String(step!.step_id) };
+      // Derived, not minted: this is the arithmetic a retried production repeats.
+      expect(row.id).toBe(evidenceIdFor(reservation));
+      expect(row.object_key).toBe(evidenceObjectKey(reservation));
+      expect(row.required).toBe(isRequiredArtifact('P-2', kind));
+    }
+    const [population] =
+      await sql`SELECT evidence_id::text AS id,object_key,envelope_key,required FROM population_evidence WHERE run_id=${seeded.run.runId}`;
+    const reservation = { runId: seeded.run.runId, kind: 'population' as const, scope: '' };
+    expect(population!.id).toBe(evidenceIdFor(reservation));
+    expect([population!.object_key, population!.envelope_key]).toEqual(evidenceObjectKeys(reservation));
+    expect(population!.required).toBe(true);
+  });
+
+  it('reuses one reservation and one object when the same artifact is produced twice', async () => {
+    const seeded = await seed(['api']);
+    const { deps } = dependencies(seeded);
+    await executeAdapterSteps(deps, seeded.job);
+    const before =
+      await sql`SELECT evidence_id::text AS id,object_key,digest,size FROM run_evidence WHERE run_id=${seeded.run.runId}`;
+    const objects = new Map(seeded.objects);
+
+    // The crash: the claim is reopened and the whole stage runs again.
+    await sql`UPDATE run_execution SET status='RETRY' WHERE run_id=${seeded.run.runId}`;
+    await sql`UPDATE run_work_item SET state='PENDING',attempts=0 WHERE run_id=${seeded.run.runId}`;
+    await executeAdapterSteps({ ...deps, repository: new PostgresAdapterExecutionRepository(db) }, seeded.job);
+
+    const after =
+      await sql`SELECT evidence_id::text AS id,object_key,digest,size,state FROM run_evidence WHERE run_id=${seeded.run.runId}`;
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ id: before[0]!.id, object_key: before[0]!.object_key, state: 'REGISTERED' });
+    // No second object beside the first.
+    expect([...seeded.objects.keys()].sort()).toEqual([...objects.keys()].sort());
+  });
+
+  it('seals a package whose required artifacts are all registered', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const seal = await sealAt(seeded, 'COMPLETED');
+    expect(seal).toMatchObject({ state: 'SEALED', missingRequired: [], abandoned: [] });
+    const [row] =
+      await sql`SELECT state,run_state,required_total,registered,missing_required,abandoned FROM run_evidence_package WHERE run_id=${seeded.run.runId}`;
+    expect(row).toMatchObject({ state: 'SEALED', run_state: 'COMPLETED', required_total: 2, registered: 3 });
+    expect(row!.missing_required).toEqual([]);
+    expect(row!.abandoned).toEqual([]);
+    const [event] =
+      await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='lifecycle.evidence-package-sealed'`;
+    expect(event!.payload).toMatchObject({ seal: 'SEALED', runState: 'COMPLETED' });
+  });
+
+  it('does not seal as complete when a required artifact never registered, and names the gap', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    const { deps } = dependencies(seeded, {
+      reference: async () => {
+        throw new PopulationAcquisitionError('transport');
+      },
+    });
+    await executeAdapterSteps(deps, seeded.job);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUN_FAILED');
+    const [row] =
+      await sql`SELECT state,run_state,required_total,registered,missing_required,abandoned FROM run_evidence_package WHERE run_id=${seeded.run.runId}`;
+    expect(row).toMatchObject({ state: 'INCOMPLETE', run_state: 'RUN_FAILED', required_total: 2, registered: 1 });
+    const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
+    const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
+    expect((row!.missing_required as { objectKey: string }[]).map((entry) => entry.objectKey)).toEqual([key]);
+    // The reservation was still open when the Run stopped: the seal is what abandons it,
+    // and what lists it on the Result.
+    expect((row!.abandoned as { objectKey: string }[]).map((entry) => entry.objectKey)).toEqual([key]);
+    expect((await sql`SELECT state,digest FROM run_evidence WHERE object_key=${key}`)[0]).toMatchObject({
+      state: 'ABANDONED',
+      digest: null,
+    });
+  });
+
+  it('abandons an open reservation at the terminal transition and lists it', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    const { deps } = dependencies(seeded);
+    await executeAdapterSteps(deps, seeded.job);
+    // An upload that never completed: the row is RESERVED and its object is not there.
+    const [item] = await sql`SELECT step_id FROM run_work_item WHERE run_id=${seeded.run.runId}`;
+    const key = `extraction/${seeded.run.runId}/${String(item!.step_id)}`;
+    await sql`UPDATE run_evidence SET state='RESERVED',digest=NULL,size=NULL WHERE object_key=${key}`;
+    const seal = await sealAt(seeded, 'INCONCLUSIVE');
+    // The extraction is not REQUIRED, so the package still seals — and the abandonment is
+    // still listed, because a reservation is never silently dropped.
+    expect(seal.state).toBe('SEALED');
+    expect(seal.abandoned.map((entry) => entry.objectKey)).toEqual([key]);
+    expect((await sql`SELECT state FROM run_evidence WHERE object_key=${key}`)[0]?.state).toBe('ABANDONED');
+  });
+
+  it('ends the Run RUN_FAILED when stored bytes disagree DURING the Run, and leaves them alone', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    const { deps } = dependencies(seeded);
+    await executeAdapterSteps(deps, seeded.job);
+    const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
+    const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
+    const tampered = utf8Bytes('entry,role,permission\n1,TAMPERED,VIEW_LOAN\n');
+    seeded.objects.set(key, tampered);
+    await sql`UPDATE run_execution SET status='RETRY' WHERE run_id=${seeded.run.runId}`;
+    await executeAdapterSteps({ ...deps, repository: new PostgresAdapterExecutionRepository(db) }, seeded.job);
+
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUN_FAILED');
+    expect(seeded.objects.get(key)).toBe(tampered);
+    // And the terminal transition sealed, because every terminal transition does.
+    expect((await sql`SELECT state FROM run_evidence_package WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('SEALED');
+    expect((await sql`SELECT count(*)::int AS count FROM run_evidence_integrity WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(0);
+  });
+
+  it('records the same disagreement found AFTER the Run as an integrity event, changing nothing', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    await sealAt(seeded, 'INCONCLUSIVE');
+    const repository = new PostgresSealedPackageRepository(db);
+    const verifyDeps = { repository, store: seeded.store, clock: new SystemClock(), ids };
+    expect(await verifySealedPackage(verifyDeps, seeded.run.runId)).toMatchObject({ recorded: 0 });
+
+    const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
+    const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
+    const registered = (await sql`SELECT digest,size FROM run_evidence WHERE object_key=${key}`)[0]!;
+    const tampered = utf8Bytes('entry,role,permission\n1,TAMPERED,VIEW_LOAN\n');
+    seeded.objects.set(key, tampered);
+
+    const result = await verifySealedPackage(verifyDeps, seeded.run.runId);
+    expect(result.recorded).toBe(1);
+    const [finding] =
+      await sql`SELECT finding,object_key,expected_digest,observed_digest FROM run_evidence_integrity WHERE run_id=${seeded.run.runId}`;
+    expect(finding).toMatchObject({
+      object_key: key,
+      expected_digest: registered.digest,
+      observed_digest: sha256HexOfBytes(tampered),
+    });
+    const [event] =
+      await sql`SELECT outcome,payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='failure.evidence-integrity'`;
+    expect(event).toMatchObject({ outcome: 'failure' });
+    expect(event!.payload).toMatchObject({ objectKey: key, stateChanged: false });
+
+    // Nothing moved: not the Run, not the seal, not the Evidence row, not the bytes.
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('INCONCLUSIVE');
+    expect((await sql`SELECT state,run_state FROM run_evidence_package WHERE run_id=${seeded.run.runId}`)[0]).toMatchObject({
+      state: 'SEALED',
+      run_state: 'INCONCLUSIVE',
+    });
+    expect((await sql`SELECT state,digest FROM run_evidence WHERE object_key=${key}`)[0]).toMatchObject({
+      state: 'REGISTERED',
+      digest: registered.digest,
+    });
+    expect(seeded.objects.get(key)).toBe(tampered);
+    // Verified twice, recorded once.
+    expect(await verifySealedPackage(verifyDeps, seeded.run.runId)).toMatchObject({ recorded: 0 });
+  });
+
+  it('refuses at the database what no seal may store', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
+    const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
+    // A required artifact that is not REGISTERED.
+    await sql`UPDATE run_evidence SET state='RESERVED',digest=NULL,size=NULL WHERE object_key=${key}`;
+    const insertSeal = (state: string) =>
+      sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
+          VALUES(${seeded.run.runId},${state},'RUN_FAILED',now(),2,1,'[]'::jsonb,'[]'::jsonb)`;
+    // No command, migration or psql session can seal over a missing required artifact.
+    await expect(insertSeal('SEALED')).rejects.toThrow(/required artifact is not REGISTERED/);
+    // And the seal state may not disagree with the list it is derived from.
+    await expect(insertSeal('INCOMPLETE')).rejects.toThrow(/run_evidence_package_complete/);
+    // A terminal Run with no package at all is refused, whatever writes it.
+    await expect(
+      sql`UPDATE audit_run SET state='CANCELED' WHERE run_id=${seeded.run.runId}`,
+    ).rejects.toThrow(/without a sealed Evidence package/);
+  });
+
+  it('freezes the Evidence and the seal once the package is sealed', async () => {
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    await sealAt(seeded, 'COMPLETED');
+    const [step] = await sql`SELECT step_id FROM run_session_step WHERE run_id=${seeded.run.runId}`;
+    const key = `reference/${seeded.run.runId}/${String(step!.step_id)}`;
+    await expect(
+      sql`UPDATE run_evidence SET state='ABANDONED',digest=NULL,size=NULL WHERE object_key=${key}`,
+    ).rejects.toThrow(/its package is sealed/);
+    await expect(
+      sql`UPDATE population_evidence SET state='ABANDONED',raw_digest=NULL WHERE run_id=${seeded.run.runId}`,
+    ).rejects.toThrow(/its package is sealed/);
+    await expect(
+      sql`UPDATE run_evidence_package SET state='INCOMPLETE' WHERE run_id=${seeded.run.runId}`,
+    ).rejects.toThrow(/immutable/);
   });
 
   /* --------------------------------------------------------------- Story 3.4 --- */

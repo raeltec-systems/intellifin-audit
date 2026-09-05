@@ -28,6 +28,7 @@ import {
   type AdapterExecutionRepository,
   type ObservationCheckRow,
   type ObservationEvaluationRow,
+  type PackageSeal,
   type PopulationCheckpoint,
   type PopulationRecord,
   type RegisteredObservation,
@@ -157,7 +158,7 @@ class FakeRepository implements AdapterExecutionRepository {
     startedAt: '2026-09-04T23:30:00.000Z', attemptStartedAt: '2026-09-04T23:30:00.000Z',
     leaseUntil: '2026-09-04T23:32:00.000Z', evidenceId: 'pop', objectKey: 'pop', envelopeKey: 'pop-envelope',
     rawDigest: 'a'.repeat(64), envelopeDigest: 'b'.repeat(64), size: 1, diagnostic: null,
-    stepId: 'session-1', attemptId: 'attempt',
+    stepId: 'session-1', attemptId: 'attempt', evidenceRequired: true,
   };
   checkpoint: AdapterExecutionCheckpoint | null = null;
   steps = new Map<string, SessionStepRecord>();
@@ -167,7 +168,8 @@ class FakeRepository implements AdapterExecutionRepository {
   observations: RegisteredObservation[] = [];
   checks = new Map<string, ObservationCheckRow>();
   evaluations = new Map<string, ObservationEvaluationRow>();
-  events: { payload: Record<string, unknown>; outcome: string }[] = [];
+  events: { eventType: string; payload: Record<string, unknown>; outcome: string }[] = [];
+  seal: PackageSeal | null = null;
   timeline: number[] = [];
   records: readonly PopulationRecord[] = RECORDS;
   private sequence = 0;
@@ -187,7 +189,11 @@ class FakeRepository implements AdapterExecutionRepository {
       auditEvents: {
         append: async (draft) => {
           repository.sequence += 1;
-          repository.events.push({ payload: draft.payload as Record<string, unknown>, outcome: draft.outcome });
+          repository.events.push({
+            eventType: draft.eventType,
+            payload: draft.payload as Record<string, unknown>,
+            outcome: draft.outcome,
+          });
           return {
             eventId: `event-${String(repository.sequence)}`, sequence: repository.sequence,
             occurredAt: '2026-09-05T00:00:00.000Z', previousHash: null, eventHash: 'x',
@@ -214,6 +220,42 @@ class FakeRepository implements AdapterExecutionRepository {
       },
       saveEvidence: async (record) => {
         repository.evidence.set(record.evidenceId, { ...record });
+      },
+      // Story 3.5's package seam, with the same shape the repository gives it: the
+      // population reservation and every adapter artifact in one list.
+      readPackageArtifacts: async () => [
+        ...(repository.population
+          ? [
+              {
+                evidenceId: repository.population.evidenceId,
+                kind: 'population' as const,
+                objectKey: repository.population.objectKey,
+                required: repository.population.evidenceRequired,
+                state: (repository.population.rawDigest === null
+                  ? 'RESERVED'
+                  : 'REGISTERED') as 'RESERVED' | 'REGISTERED' | 'ABANDONED',
+              },
+            ]
+          : []),
+        ...[...repository.evidence.values()].map((row) => ({
+          evidenceId: row.evidenceId,
+          kind: row.kind,
+          objectKey: row.objectKey,
+          required: row.required,
+          state: row.state,
+        })),
+      ],
+      abandonArtifacts: async (ids) => {
+        for (const id of ids) {
+          const row = repository.evidence.get(id);
+          if (row && row.state === 'RESERVED') {
+            repository.evidence.set(id, { ...row, state: 'ABANDONED', digest: null, size: null });
+          }
+        }
+      },
+      readSeal: async () => repository.seal,
+      writeSeal: async (seal) => {
+        repository.seal ??= seal;
       },
       readObservations: async (workItemId, keys) =>
         repository.observations
@@ -452,7 +494,13 @@ describe('executeAdapterSteps', () => {
     // Four attempts per cycle, and the owner's automatic second cycle.
     expect(failed.attempts).toBe(8);
     expect(failed.cycles).toBe(2);
-    expect(test.repository.evidence.get(failed.evidenceId!)?.state).toBe('ABANDONED');
+    // The reservation stays OPEN while the Run runs on: `SealPackage` is the one thing
+    // that abandons one, at the terminal transition, where it can also be listed on the
+    // Result (Story 3.5). What matters here is that it is not a registered artifact.
+    expect(test.repository.evidence.get(failed.evidenceId!)).toMatchObject({
+      state: 'RESERVED',
+      digest: null,
+    });
     expect(items.find((item) => item.registrationId === 'reg-api-2')?.state).toBe('OBSERVED');
     // A failed Work Item never stops the Run.
     expect(test.repository.run.state).toBe('RUNNING');

@@ -127,6 +127,8 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_step_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_session_step WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_work_item WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_evidence_integrity WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM population_row WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
@@ -372,5 +374,16 @@ test.describe('Auditor population acquisition', () => {
     await expect(population.getByText('Not registered; acquisition stopped.', { exact: true })).toBeVisible();
     await expect(population.getByText('Reserved; verification pending', { exact: true })).toHaveCount(0);
     expect((await sql`SELECT state,raw_digest FROM population_evidence WHERE run_id=${runId}`)[0]).toMatchObject({ state: 'ABANDONED', raw_digest: null });
+
+    // Story 3.5: the terminal transition sealed the package, and the Result names the gap
+    // and the abandonment rather than leaving either as an absence a reader takes for
+    // "fine". A reservation nothing was written to is never silently dropped.
+    const sealed = page.getByRole('region', { name: 'Evidence package' });
+    await expect(sealed).toContainText('Sealed as incomplete.');
+    await expect(sealed.getByRole('heading', { name: 'Required artifacts that were never registered' })).toBeVisible();
+    await expect(sealed.getByRole('heading', { name: 'Abandoned reservations' })).toBeVisible();
+    await expect(sealed.getByText(`Population: population/${runId}/raw`, { exact: true })).toHaveCount(2);
+    expect((await sql`SELECT state,run_state FROM run_evidence_package WHERE run_id=${runId}`)[0]).toMatchObject({ state: 'INCOMPLETE', run_state: 'RUN_FAILED' });
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { DrizzleRunRepository, PostgresAdapterExecutionRepository, PostgresPopulationRepository } from '@intellifin/infrastructure';
+import { DrizzleRunRepository, PostgresAdapterExecutionRepository, PostgresPopulationRepository, PostgresSealedPackageRepository } from '@intellifin/infrastructure';
 import { Digest } from '../../../src/design/Digest';
 import type { RunState } from '@intellifin/domain';
 import { getRuntime } from '../../../src/bootstrap';
@@ -18,6 +18,20 @@ const labels: Record<RunState, StatusState<'run-lifecycle'>> = { QUEUED: 'Queued
 const workItemLabels: Record<string, StatusState<'work-item'>> = { PENDING: 'Pending', IN_PROGRESS: 'In progress', AWAITING: 'Awaiting', OBSERVED: 'Observed', UNINSPECTED: 'Uninspected', AMBIGUOUS: 'Ambiguous', FAILED: 'Failed' };
 /** A Session Step has no badge family in DESIGN.md, so it is written in words. */
 const sessionStepLabels: Record<string, string> = { PENDING: 'Pending', IN_PROGRESS: 'In progress', ACQUIRED: 'Acquired', FAILED: 'Failed' };
+/** The three post-Run integrity findings, in words. A closed vocabulary, like the row. */
+const findingLabels: Record<string, string> = { 'object-missing': 'The artifact is not in storage.', 'size-mismatch': 'The stored size is not the registered size.', 'digest-mismatch': 'The stored bytes are not the registered bytes.' };
+const artifactLabels: Record<string, string> = { population: 'Population', 'reference-source': 'Reference Source', 'adapter-extraction': 'Adapter extraction' };
+function artifactLabel(kind: string): string {
+  return labelOf(artifactLabels, kind);
+}
+/** The seal's lists are `jsonb`, so they are read as request-shaped input, not trusted. */
+function artifactRefs(value: unknown): { kind: string; objectKey: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(entry =>
+    typeof entry === 'object' && entry !== null && typeof (entry as { objectKey?: unknown }).objectKey === 'string'
+      ? [{ kind: String((entry as { kind?: unknown }).kind ?? ''), objectKey: (entry as { objectKey: string }).objectKey }]
+      : []);
+}
 function labelOf(table: Record<string, string>, state: string): string {
   return Object.hasOwn(table, state) ? table[state]! : state;
 }
@@ -40,6 +54,9 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const after = Number((await searchParams).after ?? 0);
   const population = await new PostgresPopulationRepository(runtime.db).readPopulation(id,after);
   const execution = await new PostgresAdapterExecutionRepository(runtime.db).readExecution(id);
+  const evidencePackage = await new PostgresSealedPackageRepository(runtime.db).readSealedPackage(id);
+  const missing = artifactRefs(evidencePackage?.seal.missingRequired);
+  const abandoned = artifactRefs(evidencePackage?.seal.abandoned);
   return <div className="ls-stack">
     <nav aria-label="Breadcrumb"><Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> / Run</nav>
     <header className="ls-page-header"><h1>Run · {run.procedureName}</h1><StatusBadge family="run-lifecycle" state={labels[run.state]} size="md" /></header>
@@ -75,6 +92,31 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       {execution.workItems.length > 0 && <><h3>Work Items</h3>
         <table><caption>One Work Item per adapter-acquired Target System, executed in order</caption><thead><tr><th scope="col">Target System</th><th scope="col">State</th><th scope="col">Observations</th><th scope="col">Attempts</th><th scope="col">Diagnostic</th><th scope="col">SHA-256 of frozen bytes</th></tr></thead>
         <tbody>{execution.workItems.map(item => <tr key={item.workItemId}><td>{item.displayName}</td><td>{workItemState(item.state)}</td><td>{item.observations}</td><td>{item.attempts}</td><td>{item.diagnostic ?? 'None'}</td><td>{item.evidence?.digest ? <Digest label="Adapter extraction Evidence" value={item.evidence.digest} /> : item.evidence?.state === 'ABANDONED' ? 'Not registered; extraction stopped.' : 'Not yet frozen'}</td></tr>)}</tbody></table></>}
+    </section>}
+    {evidencePackage && <section className="ls-card ls-stack" aria-labelledby="evidence-package-heading">
+      <h2 id="evidence-package-heading">Evidence package</h2>
+      {/* Sealing runs on EVERY terminal transition. An incomplete package is a truthful
+          record of an incomplete Run, so it is stated in words rather than left as an
+          absence a reader takes for "fine". */}
+      <p>{evidencePackage.seal.state === 'SEALED'
+        ? 'Sealed. Every artifact this Run required is registered and verified.'
+        : 'Sealed as incomplete. An artifact this Run required was never registered.'} Registered artifacts: {evidencePackage.seal.registered}. Required: {evidencePackage.seal.requiredTotal}.</p>
+      {missing.length > 0 && <><h3>Required artifacts that were never registered</h3>
+        <ul>{missing.map(entry => <li key={entry.objectKey}>{artifactLabel(entry.kind)}: {entry.objectKey}</li>)}</ul></>}
+      {abandoned.length > 0 && <><h3>Abandoned reservations</h3>
+        {/* Never silently dropped: an upload that never completed is named here. */}
+        <ul>{abandoned.map(entry => <li key={entry.objectKey}>{artifactLabel(entry.kind)}: {entry.objectKey}</li>)}</ul></>}
+      {evidencePackage.findings.length > 0 && <>
+        <Banner tone="danger" title="Audit Trail integrity">Stored Evidence no longer matches what this Run registered. The sealed outcome is unchanged; a mismatch found after a Run is corrected only by a new Run.</Banner>
+        <table><caption>Integrity findings, discovered after the Run</caption>
+          <thead><tr><th scope="col">Artifact</th><th scope="col">Finding</th><th scope="col">Registered SHA-256</th><th scope="col">SHA-256 now</th><th scope="col">Detected</th></tr></thead>
+          <tbody>{evidencePackage.findings.map(finding => <tr key={finding.findingId}>
+            <td>{finding.objectKey}</td>
+            <td>{labelOf(findingLabels, finding.finding)}</td>
+            <td><Digest label="Registered Evidence" value={finding.expectedDigest} /></td>
+            <td>{finding.observedDigest === null ? 'The artifact is not there.' : <Digest label="Stored Evidence" value={finding.observedDigest} />}</td>
+            <td>{finding.detectedAt.toISOString().replace('T', ' ').replace(/\..*/, ' UTC')}</td>
+          </tr>)}</tbody></table></>}
     </section>}
     <p><Link href={`/runs/${run.runId}`}>Refresh Run</Link></p>
   </div>;

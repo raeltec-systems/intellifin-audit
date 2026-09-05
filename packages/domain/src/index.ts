@@ -24,3 +24,4 @@ export * from './runs/run.js';
 export * from './runs/population.js';
 export * from './runs/execution.js';
 export * from './runs/observation.js';
+export * from './runs/evidence.js';

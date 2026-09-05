@@ -1,5 +1,10 @@
 import type {
+  EvidenceArtifactKind,
+  EvidenceArtifactState,
+  EvidenceIntegrityFindingKind,
   ExplicitPeriod,
+  PackageArtifact,
+  PackageSealState,
   ProcedureSourceSnapshot,
   ProcedureTargetSnapshot,
   ExecutablePlan,
@@ -52,18 +57,24 @@ export interface PopulationCheckpoint {
   envelopeDigest: string | null;
   stepId: string;
   attemptId: string;
+  /**
+   * Whether this Run may conclude without its population Evidence (Story 3.5).
+   *
+   * Read from the frozen Template through `isRequiredArtifact`, and defaulted to `true`
+   * for a plan this build cannot classify: a population nobody can classify is required,
+   * which is the fail-closed direction.
+   */
+  evidenceRequired: boolean;
 }
-export interface PopulationExecutionContext {
+export interface PopulationExecutionContext extends EvidencePackageContext {
   run: RunRecord | null;
   checkpoint: PopulationCheckpoint | null;
-  auditEvents: AuditEventWriter;
   frozenPlan(): Promise<ExecutablePlan | null>;
   save(
     checkpoint: PopulationCheckpoint,
     state: RunRecord['state'],
     result?: PopulationResult,
   ): Promise<void>;
-  notifyTimeline(sequence: number): Promise<void>;
 }
 export interface PopulationExecutionRepository {
   transaction<T>(
@@ -206,7 +217,14 @@ export interface StepExecutionRecord {
   diagnostic: string | null;
 }
 
-/** An Evidence artifact this stage reserves, uploads, verifies and registers. */
+/**
+ * An Evidence artifact this stage reserves, uploads, verifies and registers.
+ *
+ * `evidenceId` and `objectKey` are DERIVED from the reservation, never minted, so a
+ * retried production after a crash reuses the reservation it already has (Story 3.5).
+ * `required` says whether the Run may conclude without it; it is stamped at reservation
+ * time from the frozen Template and is what `SealPackage` reads.
+ */
 export interface AdapterEvidenceRecord {
   evidenceId: string;
   kind: 'reference-source' | 'adapter-extraction';
@@ -215,7 +233,8 @@ export interface AdapterEvidenceRecord {
   mediaType: string | null;
   digest: string | null;
   size: number | null;
-  state: 'RESERVED' | 'REGISTERED' | 'ABANDONED';
+  required: boolean;
+  state: EvidenceArtifactState;
 }
 
 /** One included population record, in source order. */
@@ -224,14 +243,15 @@ export interface PopulationRecord {
   readonly values: Record<string, JsonValue>;
 }
 
-export interface AdapterExecutionContext extends ObservationRegistrationContext {
+export interface AdapterExecutionContext
+  extends ObservationRegistrationContext,
+    EvidencePackageContext {
   run: RunRecord | null;
   population: PopulationCheckpoint | null;
   checkpoint: AdapterExecutionCheckpoint | null;
   sessionSteps: readonly SessionStepRecord[];
   workItems: readonly WorkItemRecord[];
   evidence: readonly AdapterEvidenceRecord[];
-  auditEvents: AuditEventWriter;
   frozenPlan(): Promise<ExecutablePlan | null>;
   includedRecords(): Promise<readonly PopulationRecord[]>;
   saveCheckpoint(checkpoint: AdapterExecutionCheckpoint, state: RunRecord['state']): Promise<void>;
@@ -393,3 +413,107 @@ export interface ObservationEvaluationResult {
 export const NO_EVALUATION: ObservationEvaluationPort = {
   evaluate: () => Promise.resolve([]),
 };
+
+/* ------------------------------------------------------------------ Story 3.5 --- */
+
+/**
+ * The Evidence package: the transaction a reservation, a registration and a seal are
+ * written inside.
+ *
+ * Both execution contexts EXTEND this, exactly as `AdapterExecutionContext` extends
+ * `ObservationRegistrationContext` (Story 3.4): a producer holds one object and there is
+ * no second, unowned way to reach the seal — no `writeSeal` that skips the decision, no
+ * abandon that skips the audit event.
+ *
+ * Every method is bound to ONE PostgreSQL transaction. The abandoned reservations, the
+ * seal row, the audit event and the Timeline notification commit with the terminal state
+ * transition that produced them, or none of them do.
+ */
+export interface EvidencePackageContext {
+  auditEvents: AuditEventWriter;
+  /** Every artifact of this Run, whichever producer reserved it. */
+  readPackageArtifacts(): Promise<readonly PackageArtifact[]>;
+  /** Flip exactly these reservations to `ABANDONED`. A registered artifact is untouched. */
+  abandonArtifacts(evidenceIds: readonly string[]): Promise<void>;
+  readSeal(): Promise<PackageSeal | null>;
+  /** Write the seal. The first seal wins; a sealed package is immutable. */
+  writeSeal(seal: PackageSeal): Promise<void>;
+  notifyTimeline(sequence: number): Promise<void>;
+}
+
+/** One artifact as the seal names it on the Result. An identity, never bytes. */
+export interface PackageArtifactRef {
+  readonly evidenceId: string;
+  readonly kind: EvidenceArtifactKind;
+  readonly objectKey: string;
+}
+
+/**
+ * The sealed Evidence package of one Run.
+ *
+ * `missingRequired` and `abandoned` are on the seal because the Result and the export read
+ * them there: an abandonment that is only in the audit chain is not "listed on the Result".
+ */
+export interface PackageSeal {
+  readonly runId: string;
+  readonly state: PackageSealState;
+  /** The terminal Run state this package was sealed at. */
+  readonly runState: RunRecord['state'];
+  readonly sealedAt: string;
+  readonly requiredTotal: number;
+  readonly registered: number;
+  readonly missingRequired: readonly PackageArtifactRef[];
+  readonly abandoned: readonly PackageArtifactRef[];
+}
+
+/** One registered artifact, as the post-Run verification reads it. */
+export interface RegisteredArtifact {
+  readonly evidenceId: string;
+  readonly kind: EvidenceArtifactKind;
+  readonly objectKey: string;
+  readonly digest: string;
+  /** `null` for an artifact whose length registration never recorded. */
+  readonly size: number | null;
+}
+
+/**
+ * One Audit Trail integrity finding, discovered AFTER the Run.
+ *
+ * It names an artifact and states two digests. There is no field for bytes and no field
+ * for a credential reference, and `FORBIDDEN_PAYLOAD_KEYS` would refuse one in the audit
+ * payload anyway — the chain is immutable, so anything credential-shaped that enters it
+ * can never be taken out.
+ */
+export interface EvidenceIntegrityRecord {
+  readonly findingId: string;
+  readonly evidenceId: string;
+  readonly objectKey: string;
+  readonly finding: EvidenceIntegrityFindingKind;
+  readonly expectedDigest: string;
+  readonly observedDigest: string | null;
+  readonly expectedSize: number | null;
+  readonly observedSize: number | null;
+  readonly detectedAt: string;
+}
+
+/**
+ * The transaction a post-Run verification is written inside.
+ *
+ * It can add findings and it can read the seal. It has no way to change a Run state, a
+ * seal or an artifact, because a mismatch found after the Run "changes no state" and the
+ * cheapest way to guarantee that is to hand the command nothing that could.
+ */
+export interface SealedPackageContext {
+  run: RunRecord | null;
+  auditEvents: AuditEventWriter;
+  readSeal(): Promise<PackageSeal | null>;
+  readRegisteredArtifacts(): Promise<readonly RegisteredArtifact[]>;
+  readIntegrityFindings(): Promise<readonly EvidenceIntegrityRecord[]>;
+  /** Insert findings. Re-verifying an unchanged mismatch adds nothing. */
+  recordIntegrityFindings(findings: readonly EvidenceIntegrityRecord[]): Promise<void>;
+  notifyTimeline(sequence: number): Promise<void>;
+}
+
+export interface SealedPackageRepository {
+  transaction<T>(runId: string, work: (context: SealedPackageContext) => Promise<T>): Promise<T>;
+}

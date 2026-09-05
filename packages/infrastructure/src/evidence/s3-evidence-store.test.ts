@@ -84,22 +84,29 @@ function store(maxBytes = EVIDENCE_STORE_MAX_BYTES): S3EvidenceStore {
 }
 
 describe('S3EvidenceStore', () => {
-  it('uses a conditional PUT and verifies the bytes with a GET', async () => {
+  it('looks first, then writes conditionally, then verifies the bytes it wrote', async () => {
     const bytes = new TextEncoder().encode('immutable evidence');
     await store().putIfAbsent('population/raw', bytes, 5000);
     const relevant = requests.filter((request) => request.path === 'population/raw');
-    expect(relevant.map((request) => request.method)).toEqual(['PUT', 'GET']);
-    expect(relevant[0]?.ifNoneMatch).toBe('*');
+    // GET first: an object already there is reconciled and no write is sent at all, so
+    // immutability does not rest on the backend honouring `IfNoneMatch` alone.
+    expect(relevant.map((request) => request.method)).toEqual(['GET', 'PUT', 'GET']);
+    expect(relevant[1]?.ifNoneMatch).toBe('*');
     expect(await store().read('population/raw', 5000)).toEqual(bytes);
   });
 
-  it('reconciles an existing object and refuses a mismatched retry', async () => {
+  it('sends NO write at all when the object is already there', async () => {
     const original = new TextEncoder().encode('original');
     await store().putIfAbsent('population/existing', original, 5000);
+    const before = requests.length;
+    // The same bytes again: reconciled from the read, nothing written.
+    await store().putIfAbsent('population/existing', original, 5000);
+    // Different bytes: an integrity failure, and still nothing written. A backend that
+    // ignored `IfNoneMatch` could not overwrite here, because no PUT is ever issued.
     await expect(store().putIfAbsent('population/existing', new TextEncoder().encode('changed'), 5000))
       .rejects.toMatchObject({ code: 'integrity' });
-    const relevant = requests.filter((request) => request.path === 'population/existing');
-    expect(relevant.map((request) => request.method)).toEqual(['PUT', 'GET', 'PUT', 'GET']);
+    expect(requests.slice(before).map((request) => request.method)).toEqual(['GET', 'GET']);
+    expect(objects.get('population/existing')).toEqual(original);
   });
 
   it('returns null for a missing object and refuses an oversized response', async () => {

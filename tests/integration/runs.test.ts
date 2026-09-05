@@ -17,6 +17,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     for (const id of procedures) {
       const runs = await sql`SELECT run_id::text FROM audit_run WHERE procedure_id=${id}`;
       for (const run of runs) { await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${run.run_id}`; await sql`DELETE FROM audit_events WHERE aggregate_id=${run.run_id}`; await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.run_id}`; }
+      await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
       await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
       await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
       await sql`DELETE FROM procedure_succession WHERE procedure_id=${id}`;
@@ -27,6 +28,21 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
   });
   async function seed() { const row = activeRunVersion(ids.next(),ids.next(),author); procedures.push(row.procedureId); await new PostgresProceduresUnitOfWork(db).execute(async c => { await c.procedures.insertProcedure(row); await c.procedures.insertVersion(row); }); return row; }
   function start(procedureId: string, unitOfWork: AuditUnitOfWork<RunsUnitOfWorkContext> = uow, dates = period, requestToken = ids.next()) { return initiateRun({roles:new DrizzleRoleRepository(db),unitOfWork,ids,clock:new SystemClock()},{session,request:{procedureId,period:dates,requestToken}}); }
+
+  /**
+   * Drive a Run to a terminal state the way production does: sealed package first.
+   *
+   * Generation 21 refuses a Run that reaches a terminal state with no `run_evidence_package`
+   * row (a deferred constraint trigger), which is the forcing function behind "run
+   * SealPackage on EVERY terminal transition". These Runs never acquired anything, so their
+   * package is SEALED over zero artifacts — which is the truth about them.
+   */
+  async function terminate(runId: string, state: 'COMPLETED' | 'CANCELED'): Promise<void> {
+    await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
+              VALUES(${runId},'SEALED',${state},now(),0,0,'[]'::jsonb,'[]'::jsonb) ON CONFLICT DO NOTHING`;
+    await sql`UPDATE audit_run SET state=${state} WHERE run_id=${runId}`;
+  }
+
   it('stores identity, unchanged frozen bytes, one dispatch and a verifiable first Timeline event', async () => {
     const row = await seed(), before = await sql`SELECT compiled_plan::text, frozen_review::text FROM procedure_version WHERE version_id=${row.versionId}`;
     const result = await start(row.procedureId); expect(result.ok).toBe(true); if (!result.ok) return;
@@ -68,7 +84,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     const row=await seed(), result=await start(row.procedureId); if(!result.ok) throw new Error(result.reason);
     const saved=(await new DrizzleRunRepository(db).findRun(result.runId))!;
     expect(await new DrizzleRunRepository(db).insert({...saved,requestToken:ids.next(),runId:ids.next(),correlationId:ids.next()})).toBe(false);
-    await sql`UPDATE audit_run SET state='CANCELED' WHERE run_id=${result.runId}`;
+    await terminate(result.runId, 'CANCELED');
     expect(await start(row.procedureId)).toMatchObject({ok:true});
   });
   it('rechecks revocation after the shared lock and audits the actual refusal', async () => {
@@ -124,7 +140,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
   it('replays the same token after terminal completion without consulting the current owner', async () => {
     const row=await seed(), token=ids.next(), first=await start(row.procedureId,uow,period,token);
     if(!first.ok) throw new Error(first.reason);
-    await sql`UPDATE audit_run SET state='CANCELED' WHERE run_id=${first.runId}`;
+    await terminate(first.runId, 'CANCELED');
     const unavailable: AuditUnitOfWork<RunsUnitOfWorkContext>={execute:work=>uow.execute(c=>work({...c,procedures:{findPeriodOwner:async()=>{throw new Error('Owner must not be read during recovery');}}}))};
     expect(await start(row.procedureId,unavailable,period,token)).toEqual(first);
     expect(await start(row.procedureId,uow,{from:'2026-09-01',to:'2026-09-30'},token)).toMatchObject({ok:false,reason:expect.stringContaining('different Procedure or period')});
@@ -136,7 +152,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     const unavailable: AuditUnitOfWork<RunsUnitOfWorkContext>={execute:work=>uow.execute(c=>work({...c,procedures:{findPeriodOwner:async()=>{throw new Error('Owner must not hide the existing Run');}}}))};
     const duplicateToken=ids.next();
     expect(await start(row.procedureId,unavailable,period,duplicateToken)).toMatchObject({ok:false,existingRunId:first.runId});
-    await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${first.runId}`;
+    await terminate(first.runId, 'COMPLETED');
     expect(await start(row.procedureId,unavailable,period,duplicateToken)).toEqual(first);
   });
   it('does not swallow Run identity conflicts and rejects a version belonging to another Procedure', async () => {
