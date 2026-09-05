@@ -984,12 +984,19 @@ export const runObservation = pgTable('run_observation', {
   digest: text('digest').notNull(),
   coverage: text('coverage').notNull(),
   observedAtSource: text('observed_at_source').notNull(),
+  // Generation 22 (Story 3.6). The rollup of the per-attribute corroboration verdicts
+  // this row's own `identity` and `attributes` carry, derived by
+  // `observationCorroborationState` and pinned to them by a CHECK, so no command,
+  // migration or psql session can store a rollup that disagrees with its own data.
+  corroboration: text('corroboration').notNull(),
 }, t=>[
   // A redelivered job cannot create a second Observation for the same record.
   uniqueIndex('run_observation_item_record').on(t.workItemId,t.populationRecordKey),
-  // The composite key `run_observation_evaluation` points at, so "an uninspected record
-  // is never Compliant" is a foreign key plus a CHECK rather than a rule in one command.
-  uniqueIndex('run_observation_coverage_key').on(t.observationId,t.coverage),
+  // The composite key `run_observation_evaluation` points at, so "an uninspected record is
+  // never Compliant" and "a record its own snapshot contradicts is never Compliant" are a
+  // foreign key plus a CHECK rather than two rules in one command. `observation_id` is the
+  // primary key, so widening this index adds a column to the FK and no ambiguity.
+  uniqueIndex('run_observation_coverage_key').on(t.observationId,t.coverage,t.corroboration),
   check('run_observation_schema',sql`${t.schemaVersion} = 1`),
   check('run_observation_found',sql`${t.found} IN ('true','false','ambiguous')`),
   check('run_observation_capture',sql`${t.captureMethod} IN ('agent','adapter')`),
@@ -1005,6 +1012,16 @@ export const runObservation = pgTable('run_observation', {
   // its own coverage state and never `COVERED`; a resolved match always is; an absence is
   // covered only when it proved it looked, and `UNINSPECTED` otherwise.
   check('run_observation_coverage',sql`${t.coverage} IN ('COVERED','UNINSPECTED','AMBIGUOUS') AND (${t.found} = 'ambiguous') = (${t.coverage} = 'AMBIGUOUS') AND (${t.found} <> 'true' OR ${t.coverage} = 'COVERED')`),
+  // Generation 22. The per-attribute verdict vocabulary, pinned INSIDE the jsonb: the
+  // domain validator says the same thing, and a validator is a rule a caller must be made
+  // to run. A verdict that is not `matched`, `contradictory`, `model-read` or JSON null —
+  // on the identity or on any attribute — cannot be stored at all.
+  check('run_observation_attribute_corroboration',sql`NOT jsonb_path_exists(coalesce(${t.identity},'null'::jsonb), '$.corroboration ? (@.type() != "null" && (@.type() != "string" || (@ != "matched" && @ != "contradictory" && @ != "model-read")))') AND NOT jsonb_path_exists(${t.attributes}, '$[*].corroboration ? (@.type() != "null" && (@.type() != "string" || (@ != "matched" && @ != "contradictory" && @ != "model-read")))')`),
+  check('run_observation_corroboration',sql`${t.corroboration} IN ('MATCHED','CONTRADICTORY','UNJUDGED')`),
+  // The rollup IS the derivation, not a summary somebody remembered to update:
+  // CONTRADICTORY when any attribute was re-read and disagreed, MATCHED when at least one
+  // was judged and none disagreed, UNJUDGED when none was.
+  check('run_observation_corroboration_state',sql`${t.corroboration} = CASE WHEN jsonb_path_exists(coalesce(${t.identity},'null'::jsonb), '$.corroboration ? (@ == "contradictory")') OR jsonb_path_exists(${t.attributes}, '$[*].corroboration ? (@ == "contradictory")') THEN 'CONTRADICTORY' WHEN jsonb_path_exists(coalesce(${t.identity},'null'::jsonb), '$.corroboration ? (@.type() == "string")') OR jsonb_path_exists(${t.attributes}, '$[*].corroboration ? (@.type() == "string")') THEN 'MATCHED' ELSE 'UNJUDGED' END`),
 ]);
 
 /**
@@ -1037,6 +1054,8 @@ export const runObservationCheck = pgTable('run_observation_check', {
 export const runObservationEvaluation = pgTable('run_observation_evaluation', {
   observationId: uuid('observation_id').notNull(),
   coverage: text('coverage').notNull(),
+  /** Generation 22: denormalized from `run_observation` and held there by the same FK. */
+  corroboration: text('corroboration').notNull(),
   runId: uuid('run_id').notNull().references(() => auditRun.runId),
   conditionId: text('condition_id').notNull(), origin: text('origin').notNull(), value: text('value').notNull(),
   confirmation: text('confirmation'), confidence: numeric('confidence',{precision:7,scale:6}),
@@ -1045,7 +1064,7 @@ export const runObservationEvaluation = pgTable('run_observation_evaluation', {
 }, t=>[
   primaryKey({columns:[t.observationId,t.conditionId]}),
   index('run_observation_evaluation_run_idx').on(t.runId,t.value),
-  foreignKey({columns:[t.observationId,t.coverage],foreignColumns:[runObservation.observationId,runObservation.coverage],name:'run_observation_evaluation_coverage_fk'}),
+  foreignKey({columns:[t.observationId,t.coverage,t.corroboration],foreignColumns:[runObservation.observationId,runObservation.coverage,runObservation.corroboration],name:'run_observation_evaluation_coverage_fk'}),
   check('run_observation_evaluation_origin',sql`${t.origin} IN ('RULE','AGENT_JUDGED','HUMAN')`),
   check('run_observation_evaluation_value',sql`${t.value} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')`),
   // Confirmation and confidence belong to an Agent-Judged evaluation and to no other.
@@ -1053,5 +1072,9 @@ export const runObservationEvaluation = pgTable('run_observation_evaluation', {
   check('run_observation_evaluation_confidence',sql`${t.confidence} IS NULL OR (${t.origin} = 'AGENT_JUDGED' AND ${t.confidence} >= 0 AND ${t.confidence} <= 1)`),
   // §H: uninspected records are never Compliant, and neither is an ambiguous match.
   check('run_observation_evaluation_coverage',sql`${t.value} <> 'COMPLIANT' OR ${t.coverage} = 'COVERED'`),
+  // Story 3.6, the same shape one column along: an Observation whose stored Structural
+  // Snapshot contradicts it can never be Compliant. Claiming MATCHED in this row does not
+  // help — the triple has to exist in `run_observation`.
+  check('run_observation_evaluation_corroboration',sql`${t.corroboration} IN ('MATCHED','CONTRADICTORY','UNJUDGED') AND (${t.value} <> 'COMPLIANT' OR ${t.corroboration} <> 'CONTRADICTORY')`),
   check('run_observation_evaluation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) <= 16, false)`),
 ]);

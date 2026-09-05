@@ -340,6 +340,104 @@ export function canBeCompliant(coverage: ObservationCoverage): boolean {
   return coverage === 'COVERED';
 }
 
+/* -------------------------------------------------------- capture normalization --- */
+
+/**
+ * §B normalization for one captured value.
+ *
+ * Only a `time` value is normalized, and only to UTC with the original retained beside it.
+ * Everything else is returned unchanged: compiler 1 authorizes no lossy or
+ * equivalence-expanding transformation, so a normalized identifier IS the validated
+ * original string — leading zeros, case, whitespace and Unicode composition included.
+ *
+ * It lives HERE rather than beside the adapter that first wrote it because Story 3.6
+ * re-reads the same values out of the stored snapshot and has to judge whether a recorded
+ * normalization was authorized. Two copies of a normalization agree on every value anybody
+ * thinks to try and diverge on the first one nobody does — and the divergence would be a
+ * corroboration accusing a correct capture of contradicting itself.
+ *
+ * `normalizeObservedAt`, not `Date.parse`: V8 ROLLS OVER an impossible calendar date
+ * instead of refusing it (`2026-02-30T00:00:00Z` parses to 2026-03-02), which is a capture
+ * time silently shifted by two days by the one function whose whole promise is that it
+ * never shifts one. An unparseable or impossible instant is returned unchanged.
+ */
+export function normalizeObservationValue(valueType: string, value: JsonValue): JsonValue {
+  if (valueType !== 'time' || typeof value !== 'string' || value === '') return value;
+  return normalizeObservedAt(value)?.observedAt ?? value;
+}
+
+/**
+ * The text a grounding records as having been extracted at its locator.
+ *
+ * A string is itself; anything else is its RFC 8785 canonical text. Bounded by
+ * `OBSERVATION_LIMITS.value`, because the grounding is stored and hashed. One
+ * implementation, so the capture that writes it and the corroboration that re-derives it
+ * cannot disagree.
+ */
+export function groundedText(value: JsonValue): string {
+  const text = typeof value === 'string' ? value : canonicalJson(value);
+  return text.length > OBSERVATION_LIMITS.value ? text.slice(0, OBSERVATION_LIMITS.value) : text;
+}
+
+/* --------------------------------------------------------- corroboration state --- */
+
+/**
+ * What a whole Observation's corroboration says, rolled up from its attributes.
+ *
+ * Stored beside the row exactly as `coverage` is, and for the same reason: the Gate, the
+ * evaluator and the `run_observation_evaluation` foreign key each need the answer, and a
+ * rule re-derived in three places is three chances to derive it differently.
+ *
+ * `UNJUDGED` is not a pass. It is what a record with nothing to re-read carries — an
+ * absence Observation, or one whose snapshot this build cannot read — and the
+ * `observation-corroboration` check row is where the difference between those two is said.
+ */
+export const OBSERVATION_CORROBORATION_STATES = ['MATCHED', 'CONTRADICTORY', 'UNJUDGED'] as const;
+export type ObservationCorroborationState = (typeof OBSERVATION_CORROBORATION_STATES)[number];
+
+export function isObservationCorroborationState(
+  value: unknown,
+): value is ObservationCorroborationState {
+  return (
+    typeof value === 'string' &&
+    (OBSERVATION_CORROBORATION_STATES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The rollup, derived from the record as it is being stored.
+ *
+ * `CONTRADICTORY` when ANY attribute — the identity included — was re-read and disagreed;
+ * `MATCHED` when at least one was judged and none disagreed; `UNJUDGED` when none was.
+ * Generation 22 pins this exact derivation as a CHECK, so a row whose rollup disagrees
+ * with its own attributes cannot be stored by a command, a migration or a psql session.
+ */
+export function observationCorroborationState(
+  record: ObservationRecord,
+): ObservationCorroborationState {
+  const verdicts = [record.identity, ...record.attributes]
+    .filter((attribute): attribute is ObservationAttribute => attribute !== null)
+    .map((attribute) => attribute.corroboration);
+  if (verdicts.includes('contradictory')) return 'CONTRADICTORY';
+  return verdicts.some((verdict) => verdict !== null) ? 'MATCHED' : 'UNJUDGED';
+}
+
+/**
+ * An Observation whose stored snapshot contradicts it can never be Compliant (§H).
+ *
+ * This is the record-level floor and the whole of what Story 3.6 can decide. §B says a
+ * contradicted attribute makes the record UNEVALUATED, and forcing that per CONDITION is
+ * Story 3.7's: only the evaluator knows which condition reads which attribute, and
+ * blanketing every condition to UNEVALUATED would suppress a real Exception raised on an
+ * attribute that corroborated perfectly well — the §B reducer puts Exception ahead of
+ * Unevaluated for exactly that reason. What is guaranteed here is narrower and absolute:
+ * COMPLIANT is unreachable, by the command and by the `run_observation_evaluation`
+ * composite foreign key alike.
+ */
+export function corroborationAllowsCompliant(state: ObservationCorroborationState): boolean {
+  return state !== 'CONTRADICTORY';
+}
+
 /* ------------------------------------------------------------- honest absence --- */
 
 /** One search key and the value that was actually put into the search. */
@@ -492,6 +590,12 @@ export const OBSERVATION_CHECK_DIAGNOSTICS = [
   'capture-after-registration',
   'grounding-unlinked',
   'corroboration-contradictory',
+  // Story 3.6. "Nothing could read it" and "it read differently" are different words on
+  // purpose: only the second accuses the Observation of being wrong, and an unimplemented
+  // substrate has to be named rather than pass silently.
+  'corroboration-label-drift',
+  'corroboration-unavailable',
+  'corroboration-unsupported',
 ] as const;
 export type ObservationCheckDiagnostic = (typeof OBSERVATION_CHECK_DIAGNOSTICS)[number];
 

@@ -396,6 +396,7 @@ describe('registerObservations', () => {
           observationId: subject.observationId,
           outcome: 'FAIL' as const,
           diagnostic: 'corroboration-contradictory',
+          identity: 'matched' as const,
           attributes: [{ name: 'roles', corroboration: 'contradictory' as const }],
         })),
     };
@@ -403,6 +404,9 @@ describe('registerObservations', () => {
 
     const stored = context.observations[0]!;
     expect(stored.record.attributes[0]!.corroboration).toBe('contradictory');
+    expect(stored.record.identity!.corroboration).toBe('matched');
+    // The rollup stored beside the row, derived from the record the digest is taken over.
+    expect(stored.corroboration).toBe('CONTRADICTORY');
     // The digest covers the record AS STORED: corroboration is set at registration, so a
     // digest taken before it would describe a record nobody kept.
     expect(stored.digest).toBe(observationDigest(stored.record));
@@ -423,6 +427,7 @@ describe('registerObservations', () => {
           observationId: subject.observationId,
           outcome: 'PASS' as const,
           diagnostic: 'corroboration-contradictory',
+          identity: null,
           attributes: [],
         })),
     };
@@ -435,11 +440,76 @@ describe('registerObservations', () => {
     });
   });
 
+  it('never gives a same-named attribute the identity verdict', async () => {
+    // B.1 lets a declared attribute share the identity's name. One verdict list keyed by
+    // name alone would hand one of them the other's answer, and the two are grounded at
+    // different locators, so the answers legitimately differ.
+    const context = new FakeContext();
+    const shared: ObservationRecord = {
+      ...found('AG-1001'),
+      attributes: [{ ...found('AG-1001').identity!, name: 'account_id' }],
+    };
+    const corroboration: ObservationCorroborationPort = {
+      corroborate: async (subjects) =>
+        subjects.map((subject) => ({
+          observationId: subject.observationId,
+          outcome: 'FAIL' as const,
+          diagnostic: 'corroboration-contradictory',
+          identity: 'matched' as const,
+          attributes: [{ name: 'account_id', corroboration: 'contradictory' as const }],
+        })),
+    };
+    await registerObservations(context, batch([item(shared)]), { ...SEAMS, corroboration });
+    const stored = context.observations[0]!;
+    expect(stored.record.identity!.corroboration).toBe('matched');
+    expect(stored.record.attributes[0]!.corroboration).toBe('contradictory');
+    expect(stored.corroboration).toBe('CONTRADICTORY');
+  });
+
+  it('refuses a COMPLIANT evaluation of a record its own snapshot contradicts', async () => {
+    const context = new FakeContext();
+    const corroboration: ObservationCorroborationPort = {
+      corroborate: async (subjects) =>
+        subjects.map((subject) => ({
+          observationId: subject.observationId,
+          outcome: 'FAIL' as const,
+          diagnostic: 'corroboration-contradictory',
+          identity: 'contradictory' as const,
+          attributes: [],
+        })),
+    };
+    const evaluation: ObservationEvaluationPort = {
+      evaluate: async (subjects) =>
+        subjects.map((subject) => ({
+          observationId: subject.record.observationId,
+          evaluations: [
+            {
+              conditionId: 'C1',
+              origin: 'RULE' as const,
+              value: 'COMPLIANT' as const,
+              confirmation: null,
+              confidence: null,
+              rationale: null,
+              diagnostic: null,
+              evidenceIds: [],
+            },
+          ],
+        })),
+    };
+    // The coverage is COVERED — this refusal is the corroboration one and not the other.
+    expect(
+      await refusal(() =>
+        registerObservations(context, batch([item(found('AG-1001'))]), { corroboration, evaluation }),
+      ),
+    ).toBe('corroboration-conflict');
+    expect(context.wroteNothing()).toBe(true);
+  });
+
   it('refuses a corroboration verdict about an Observation the batch does not carry', async () => {
     const context = new FakeContext();
     const corroboration: ObservationCorroborationPort = {
       corroborate: async () => [
-        { observationId: observationIdFor(WORK_ITEM, 'AG-0000'), outcome: 'PASS', diagnostic: null, attributes: [] },
+        { observationId: observationIdFor(WORK_ITEM, 'AG-0000'), outcome: 'PASS', diagnostic: null, identity: null, attributes: [] },
       ],
     };
     expect(

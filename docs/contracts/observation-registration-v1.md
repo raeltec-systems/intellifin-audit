@@ -113,11 +113,16 @@ P-1 declares two search keys (`employee_id`, `full_name`); an adapter that index
 them has not proven a record absent, and the record stays `UNINSPECTED`. That is the safe
 direction and it is the rule that actually bites.
 
-**An uninspected or ambiguous record can never be Compliant.** That is not only a command
-rule: `run_observation_evaluation` carries the coverage state, held to the Observation's
-by a composite foreign key, under
-`CHECK (value <> 'COMPLIANT' OR coverage = 'COVERED')`. No command, migration or psql
-session can route around it.
+**An uninspected or ambiguous record can never be Compliant**, and neither can one its own
+stored Structural Snapshot contradicts. That is not only a command rule:
+`run_observation_evaluation` carries both the coverage state and the corroboration rollup,
+held to the Observation's by one composite foreign key over
+`(observation_id, coverage, corroboration)`, under
+`CHECK (value <> 'COMPLIANT' OR coverage = 'COVERED')` and
+`CHECK (value <> 'COMPLIANT' OR corroboration <> 'CONTRADICTORY')`. No command, migration or
+psql session can route around either. The command refuses first, by name
+(`coverage-conflict`, `corroboration-conflict`), so a caller gets a named refusal rather
+than a constraint violation.
 
 ## Per-Observation checks
 
@@ -133,7 +138,7 @@ the schema has no meaning to record.
 | `ambiguous-match` | every Observation | `found` is not `ambiguous` |
 | `required-evidence` | every Observation | every linked Evidence item is `REGISTERED`, every grounding names linked Evidence, and every attribute the Observation carries is grounded |
 | `freshness` | every Observation | the capture is within the Run: at or after its start, at or before registration |
-| `observation-corroboration` | written by the Story 3.6 seam only | that seam says so |
+| `observation-corroboration` | every Observation the seam judged | every re-read grounding matched its stored snapshot |
 
 `required-evidence` deliberately does NOT check that every attribute the Procedure
 declares is present. `plan.observations` is the union across every Target System of the
@@ -167,9 +172,16 @@ with nothing saying so. `NO_CORROBORATION` and `NO_EVALUATION` are the explicit 
 
 - **Corroboration (Story 3.6)** runs **before the digest**, because §B.1 sets corroboration
   at registration; a value written afterwards would leave every row disagreeing with its
-  own digest. Its verdict becomes the `observation-corroboration` check row. It must be
-  deterministic over the stored Structural Snapshot, or a redelivery would produce a
-  different digest and read as an integrity failure.
+  own digest. Its verdict becomes the `observation-corroboration` check row and every
+  attribute's `corroboration`. It must be deterministic over the stored Structural
+  Snapshot, or a redelivery would produce a different digest and read as an integrity
+  failure. The whole rule is
+  [structural snapshot corroboration v1](structural-snapshot-v1.md); the seam's
+  implementation is `snapshot-corroboration.ts`, and the adapter stage builds it from the
+  bytes it just froze rather than taking it as a dependency, so `NO_CORROBORATION` is not
+  reachable from that path at all. The identity's verdict is carried in its own slot on the
+  verdict, apart from the declared attributes: §B.1 lets a declared attribute share the
+  identity's name, and one list keyed by name would give one of them the other's answer.
 - **Evaluation (Story 3.7)** runs inside the registration transaction, over the records
   exactly as they are being stored, so an evaluation can never describe an Observation
   that was not committed. Its output is validated against §B.1's evaluation shape — where
@@ -186,8 +198,8 @@ string for exactly this reason.
 One `execution.observations-registered` event per registered batch, appended inside the
 transaction and followed by the Timeline notification. Its payload carries the Work Item,
 the Step Execution, the Target System, the schema version, the counts, the coverage
-tally, the failing checks by name, `digests` (every registered Observation's digest, in
-registration order) and `batchDigest`.
+tally, the corroboration tally, the failing checks by name, `digests` (every registered
+Observation's digest, in registration order) and `batchDigest`.
 
 The batch is bounded at `OBSERVATION_LIMITS.batch` — equal to `POPULATION_LIMITS.rows`,
 because one adapter Work Item produces at most one Observation per included population
@@ -196,6 +208,7 @@ that a batch at the cap writes a large immutable payload.
 
 ## What this contract does not decide
 
-Corroboration against a stored Structural Snapshot (3.6), the compiled condition rules and
-Exceptions (3.7), the Run-level Gate rows and limit mapping (3.8), and Result sealing
-(3.9). Each of those extends this seam; none of them replaces it.
+How a stored Structural Snapshot is re-read
+([structural snapshot corroboration v1](structural-snapshot-v1.md)), the compiled condition
+rules and Exceptions (3.7), the Run-level Gate rows and limit mapping (3.8), and Result
+sealing (3.9). Each of those extends this seam; none of them replaces it.

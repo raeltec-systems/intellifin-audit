@@ -9,7 +9,9 @@ import {
   NO_EVALUATION,
   PopulationAcquisitionError,
   registerObservations,
+  snapshotCorroboration,
   type ObservationBatch,
+  type ObservationBatchItem,
   type AcquiredArtifact,
   type EvidenceStore,
   type ObservationCorroborationPort,
@@ -95,6 +97,24 @@ const ROLE_MATRIX =
   'entry,role,permission\n10,AMBIGUOUS_DUAL,CREATE_PAYMENT\n10,AMBIGUOUS_DUAL,VIEW_PAYMENT\n11,AMBIGUOUS_DUAL,RELEASE_PAYMENT\n11,AMBIGUOUS_DUAL,VIEW_PAYMENT\n';
 
 const POPULATION = 'account_id,status\nAG-1001,Active\nAG-1003,Active\nAG-1007,Active\nAG-9999,Active\n';
+
+/**
+ * Story 3.6's extraction: `007` and `7` are two different accounts, and one row carries a
+ * capture time with a source offset. Both are things a corroboration has to keep apart.
+ */
+const CORROBORATION_ROWS = [
+  { account_id: 'AG-1001', roles: ['AP_CLERK'], status: 'Active', opened_at: '2026-08-10T10:30:00+02:00' },
+  { account_id: '007', roles: ['OPS_CLERK'], status: 'Active', opened_at: '2026-08-11T00:00:00Z' },
+  { account_id: '7', roles: ['OPS_CLERK'], status: 'Disabled', opened_at: '2026-08-12T00:00:00Z' },
+  { account_id: 'AG-2002', roles: ['RISK_ANALYST'], status: 'Active', opened_at: '2026-08-13T00:00:00Z' },
+];
+const CORROBORATION_ACCOUNTS = collection('accounts', CORROBORATION_ROWS, [
+  'account_id', 'roles', 'status', 'opened_at',
+]);
+/** Every key IS in the extraction: what the adapter itself corroborates. */
+const CORROBORATION_POPULATION = 'account_id,status\nAG-1001,Active\n007,Active\n7,Active\nCORR-9999,Active\n';
+/** No key is in the extraction, so every extraction row is free for a hand-built batch. */
+const DISJOINT_POPULATION = 'account_id,status\nZZ-1,Active\nZZ-2,Active\n';
 
 /** P-3: approvals joined by transaction_id, with a found, an absent and a contradiction. */
 const APPROVALS = collection(
@@ -189,9 +209,13 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   }
 
   /** Seed an ACTIVE version with the given Targets and drive its population ready. */
-  async function seed(kinds: readonly ('api' | 'versioned-file' | 'web')[], templateId: 'P-2' | 'P-3' = 'P-2') {
+  async function seed(
+    kinds: readonly ('api' | 'versioned-file' | 'web')[],
+    templateId: 'P-2' | 'P-3' = 'P-2',
+    population?: string,
+  ) {
     const p3 = templateId === 'P-3';
-    const body = p3 ? TRANSACTIONS : POPULATION;
+    const body = population ?? (p3 ? TRANSACTIONS : POPULATION);
     const declaredSchema = p3
       ? ['transaction_id', 'amount', 'currency', 'processed_time']
       : ['account_id', 'status'];
@@ -295,7 +319,6 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     options: {
       extract?: (target: ProcedureTargetSnapshot, credential: ResolvedCredential) => Promise<AcquiredArtifact>;
       reference?: (target: ProcedureTargetSnapshot) => Promise<AcquiredArtifact>;
-      corroboration?: ObservationCorroborationPort;
       evaluation?: ObservationEvaluationPort;
     } = {},
   ) {
@@ -328,8 +351,9 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
         store: seeded.store,
         clock: new SystemClock(),
         ids,
-        // Story 3.4's seams. `NO_*` is the explicit "not yet judged" the worker composes.
-        corroboration: options.corroboration ?? NO_CORROBORATION,
+        // Story 3.7's seam; `NO_EVALUATION` is the explicit "not yet judged" the worker
+        // composes. Corroboration is not a dependency at all: Story 3.6 builds it inside
+        // the stage from the bytes the stage just froze.
         evaluation: options.evaluation ?? NO_EVALUATION,
       },
     };
@@ -490,7 +514,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect((await sql`SELECT count(*)::int AS count FROM run_observation WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(4);
     // A real redelivery: the completed Work Item is skipped, so the registration event
     // and every per-Observation check outcome exist exactly once.
-    expect((await sql`SELECT count(*)::int AS count FROM run_observation_check WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(15);
+    expect((await sql`SELECT count(*)::int AS count FROM run_observation_check WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(19);
     expect((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.count).toBe(1);
     expect(await sql`SELECT evidence_id,digest FROM run_evidence WHERE run_id=${seeded.run.runId} ORDER BY evidence_id`).toEqual(before);
     expect((await sql`SELECT status,attempts FROM run_execution WHERE run_id=${seeded.run.runId}`)[0]).toMatchObject({ status: 'EXTRACTION_COMPLETE', attempts: 2 });
@@ -549,7 +573,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const observation = ids.next();
     const insert = (found: string, identity: string) =>
       sql.unsafe(
-        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source) VALUES ($1,$2,$3,1,'X-'||gen_random_uuid()::text,'t',$4,now(),$5,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb,repeat('a',64),CASE $4 WHEN 'ambiguous' THEN 'AMBIGUOUS' WHEN 'true' THEN 'COVERED' ELSE 'UNINSPECTED' END,'2026-09-05T00:00:00.000Z')`,
+        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration) VALUES ($1,$2,$3,1,'X-'||gen_random_uuid()::text,'t',$4,now(),$5,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb,repeat('a',64),CASE $4 WHEN 'ambiguous' THEN 'AMBIGUOUS' WHEN 'true' THEN 'COVERED' ELSE 'UNINSPECTED' END,'2026-09-05T00:00:00.000Z','UNJUDGED')`,
         [observation, seeded.run.runId, String(item!.work_item_id), found, String(step!.step_execution_id)],
       );
     // found = true with no identity, and found = false WITH one, are both refused.
@@ -836,7 +860,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       { check_name: 'ambiguous-match', outcome: 'FAIL', diagnostic: 'ambiguous-match' },
     ]);
     expect(new Set(checks.map((row) => row.check_name))).toEqual(
-      new Set(['identity-corroboration', 'search-completeness', 'ambiguous-match', 'required-evidence', 'freshness']),
+      new Set([
+        'identity-corroboration', 'search-completeness', 'ambiguous-match', 'required-evidence',
+        'freshness', 'observation-corroboration',
+      ]),
     );
   });
 
@@ -923,11 +950,15 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   }
 
   /** Register a batch through a real `PostgresAdapterExecutionRepository` transaction. */
-  async function register(runId: string, batch: ObservationBatch): Promise<unknown> {
+  async function register(
+    runId: string,
+    batch: ObservationBatch,
+    seams: Partial<{ corroboration: ObservationCorroborationPort; evaluation: ObservationEvaluationPort }> = {},
+  ): Promise<unknown> {
     return new PostgresAdapterExecutionRepository(db).transaction(runId, (context) =>
       registerObservations(context, batch, {
-        corroboration: NO_CORROBORATION,
-        evaluation: NO_EVALUATION,
+        corroboration: seams.corroboration ?? NO_CORROBORATION,
+        evaluation: seams.evaluation ?? NO_EVALUATION,
       }),
     );
   }
@@ -942,11 +973,11 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       evaluations: (await sql`SELECT count(*)::int AS c FROM run_observation_evaluation WHERE run_id=${seeded.run.runId}`)[0]?.c,
       events: (await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.c,
     });
-    // Four Observations: two resolved (identity-corroboration, ambiguous-match,
-    // required-evidence, freshness), one ambiguous (no identity check) and one absent
-    // (search-completeness instead of identity-corroboration) - fifteen check rows.
+    // Four Observations, each with `ambiguous-match`, `required-evidence`, `freshness`
+    // and `observation-corroboration`; the two resolved ones add `identity-corroboration`
+    // and the absent one adds `search-completeness` - nineteen check rows.
     const before = await counts();
-    expect(before).toEqual({ observations: 4, checks: 15, evaluations: 0, events: 1 });
+    expect(before).toEqual({ observations: 4, checks: 19, evaluations: 0, events: 1 });
 
     expect(await register(seeded.run.runId, batch)).toMatchObject({
       registered: 0,
@@ -1061,6 +1092,283 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     ).rejects.toThrow(/observed_at_source/);
   });
 
+  /* --------------------------------------------------------------- Story 3.6 --- */
+
+  /** Every id and instant a hand-built batch needs, read back from a real Run. */
+  async function corroborationContext(seeded: Awaited<ReturnType<typeof seed>>) {
+    const [item] = await sql`SELECT work_item_id::text AS id FROM run_work_item WHERE run_id=${seeded.run.runId}`;
+    const evidence = await sql`SELECT evidence_id::text AS id,kind FROM run_evidence WHERE run_id=${seeded.run.runId}`;
+    const [stage] = await sql`SELECT to_char(run_started_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started FROM run_execution WHERE run_id=${seeded.run.runId}`;
+    return {
+      workItemId: String(item!.id),
+      extraction: String(evidence.find((row) => row.kind === 'adapter-extraction')!.id),
+      reference: String(evidence.find((row) => row.kind === 'reference-source')?.id ?? ''),
+      runStartedAt: String(stage!.started),
+    };
+  }
+
+  /** One §B.1 `found = true` record, grounded wherever the caller says. */
+  function grounded(input: {
+    workItemId: string;
+    stepExecutionId: string;
+    evidenceId: string;
+    key: string;
+    identity: { locator: string; label: string; value: string };
+    attributes: readonly { name: string; locator: string; label: string; original: unknown; normalized?: unknown; text?: string }[];
+    observedAt: string;
+  }): ObservationBatchItem {
+    const text = (value: unknown): string => (typeof value === 'string' ? value : JSON.stringify(value));
+    return {
+      record: {
+        schemaVersion: 1,
+        observationId: observationIdFor(input.workItemId, input.key),
+        workItemId: input.workItemId,
+        populationRecordKey: input.key,
+        targetSystem: 'accessgate',
+        found: 'true',
+        observedAt: input.observedAt,
+        stepExecutionId: input.stepExecutionId,
+        captureMethod: 'adapter',
+        matchOrigin: 'platform',
+        identity: {
+          name: 'account_id',
+          originalValue: input.identity.value,
+          normalizedValue: input.identity.value,
+          grounding: { evidenceId: input.evidenceId, locator: input.identity.locator, label: input.identity.label, extractedText: input.identity.value },
+          corroboration: null,
+        },
+        attributes: input.attributes.map((attribute) => ({
+          name: attribute.name,
+          originalValue: attribute.original as never,
+          normalizedValue: (attribute.normalized ?? attribute.original) as never,
+          grounding: {
+            evidenceId: input.evidenceId,
+            locator: attribute.locator,
+            label: attribute.label,
+            extractedText: attribute.text ?? text(attribute.original),
+          },
+          corroboration: null,
+        })),
+        evidenceIds: [input.evidenceId],
+      },
+      observedAtSource: input.observedAt,
+      absence: null,
+      expectedQueryKeys: [{ key: 'account_id', value: input.key }],
+    };
+  }
+
+  it('re-reads every grounding out of the extraction it froze, leading zeros included', async () => {
+    const seeded = await seed(['api'], 'P-2', CORROBORATION_POPULATION);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        extract: async (_target, credential) => {
+          credential.authorize({ set: () => undefined });
+          return { bytes: utf8Bytes(CORROBORATION_ACCOUNTS), mediaType: 'application/json', location: 'x' };
+        },
+      }).deps,
+      seeded.job,
+    );
+    const rows = await sql`SELECT population_record_key AS key,found,coverage,corroboration,identity,attributes FROM run_observation WHERE run_id=${seeded.run.runId} ORDER BY population_record_key COLLATE "C"`;
+    expect(rows.map((row) => [row.key, row.found, row.corroboration])).toEqual([
+      // `007` and `7` are two different accounts and they resolve to two different rows.
+      // Nothing coerces one to the other, in either direction.
+      ['007', 'true', 'MATCHED'],
+      ['7', 'true', 'MATCHED'],
+      ['AG-1001', 'true', 'MATCHED'],
+      // Nothing was grounded, so nothing was corroborated. UNJUDGED is not a pass.
+      ['CORR-9999', 'false', 'UNJUDGED'],
+    ]);
+    const zeros = rows[0] as unknown as { identity: { grounding: { locator: string } }; attributes: { name: string; originalValue: unknown; corroboration: string }[] };
+    const seven = rows[1] as unknown as typeof zeros;
+    expect(zeros.identity.grounding.locator).toBe('$.accounts[1].account_id');
+    expect(seven.identity.grounding.locator).toBe('$.accounts[2].account_id');
+    expect(zeros.attributes.find((a) => a.name === 'status')?.originalValue).toBe('Active');
+    expect(seven.attributes.find((a) => a.name === 'status')?.originalValue).toBe('Disabled');
+    // Every attribute of every resolved record was re-read and agreed.
+    for (const row of [zeros, seven]) {
+      expect(row.identity.grounding).toBeDefined();
+      expect(row.attributes.every((a) => a.corroboration === 'matched')).toBe(true);
+    }
+
+    const checks = await sql`SELECT outcome,diagnostic,count(*)::int AS n FROM run_observation_check WHERE run_id=${seeded.run.runId} AND check_name='observation-corroboration' GROUP BY 1,2`;
+    expect(checks).toEqual([{ outcome: 'PASS', diagnostic: null, n: 4 }]);
+    const [event] = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`;
+    expect((event!.payload as Record<string, unknown>)['corroboration']).toEqual({
+      MATCHED: 3, CONTRADICTORY: 0, UNJUDGED: 1,
+    });
+  });
+
+  it('marks a P-3 offset capture time matched, normalized to UTC with the original kept', async () => {
+    const seeded = await seed(['api'], 'P-3');
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        extract: async (_target, credential) => {
+          credential.authorize({ set: () => undefined });
+          return { bytes: utf8Bytes(APPROVALS), mediaType: 'application/json', location: 'x' };
+        },
+      }).deps,
+      seeded.job,
+    );
+    const [row] = await sql`SELECT corroboration,attributes FROM run_observation WHERE run_id=${seeded.run.runId} AND population_record_key='TX-500001'`;
+    const decided = (row!.attributes as { name: string; originalValue: string; normalizedValue: string; corroboration: string }[])
+      .find((attribute) => attribute.name === 'decided_at')!;
+    // The snapshot holds the offset original; the record holds the UTC instant beside it.
+    // Both are re-read, and a normalization the snapshot does not support is a
+    // contradiction rather than a silent shift.
+    expect(decided.originalValue).toBe('2026-08-10T10:30:00+02:00');
+    expect(decided.normalizedValue).toBe('2026-08-10T08:30:00.000Z');
+    expect(decided.corroboration).toBe('matched');
+    expect(row!.corroboration).toBe('MATCHED');
+  });
+
+  it('contradicts a value, a label and an identity the stored snapshot does not support', async () => {
+    const seeded = await seed(['versioned-file', 'api'], 'P-2', DISJOINT_POPULATION);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        extract: async (_target, credential) => {
+          credential.authorize({ set: () => undefined });
+          return { bytes: utf8Bytes(CORROBORATION_ACCOUNTS), mediaType: 'application/json', location: 'x' };
+        },
+      }).deps,
+      seeded.job,
+    );
+    const context = await corroborationContext(seeded);
+    const stepExecutionId = ids.next();
+    const observedAt = new Date().toISOString();
+    const item = (over: Parameters<typeof grounded>[0] extends infer T ? Partial<T> : never) =>
+      grounded({
+        workItemId: context.workItemId,
+        stepExecutionId,
+        evidenceId: context.extraction,
+        observedAt,
+        key: 'AG-1001',
+        identity: { locator: '$.accounts[0].account_id', label: 'account_id', value: 'AG-1001' },
+        attributes: [],
+        ...over,
+      } as Parameters<typeof grounded>[0]);
+
+    const batch: ObservationBatch = {
+      run: seeded.run,
+      workItemId: context.workItemId,
+      stepExecutionId,
+      targetSystem: 'accessgate',
+      runStartedAt: context.runStartedAt,
+      registeredAt: observedAt,
+      items: [
+        // The snapshot says `Active`; the Observation says `Disabled`.
+        item({ attributes: [{ name: 'status', locator: '$.accounts[0].status', label: 'status', original: 'Disabled' }] }),
+        // The value agrees and the label does not: the extraction's key is `roles`.
+        item({
+          key: '007',
+          identity: { locator: '$.accounts[1].account_id', label: 'account_id', value: '007' },
+          attributes: [{ name: 'roles', locator: '$.accounts[1].roles', label: 'Roles', original: ['OPS_CLERK'], text: '["OPS_CLERK"]' }],
+        }),
+        // Every part of the grounding re-reads faithfully — and it is bound to the wrong
+        // population record: the cell holds `007` and the record key is `7`.
+        item({ key: '7', identity: { locator: '$.accounts[1].account_id', label: 'account_id', value: '007' } }),
+        // A `sheet` substrate, in the SAME batch: one Observation may name one artifact
+        // and its neighbour another, and the corroborator holds both.
+        {
+          ...item({
+            key: 'AMBIGUOUS_DUAL',
+            identity: { locator: '$.rows[0].role', label: 'role', value: 'AMBIGUOUS_DUAL' },
+            attributes: [
+              { name: 'entry', locator: '$.rows[0].entry', label: 'entry', original: '10' },
+              { name: 'permission', locator: '$.rows[0].permission', label: 'permission', original: 'CREATE_PAYMENT' },
+            ],
+          }),
+        },
+      ].map((entry, index) =>
+        index === 3
+          ? {
+              ...entry,
+              record: {
+                ...entry.record,
+                evidenceIds: [context.reference],
+                identity: { ...entry.record.identity!, grounding: { ...entry.record.identity!.grounding!, evidenceId: context.reference } },
+                attributes: entry.record.attributes.map((attribute) => ({
+                  ...attribute,
+                  grounding: { ...attribute.grounding!, evidenceId: context.reference },
+                })),
+              },
+            }
+          : entry,
+      ),
+    };
+
+    await register(seeded.run.runId, batch, {
+      corroboration: snapshotCorroboration([
+        { evidenceId: context.extraction, substrate: 'json', bytes: utf8Bytes(CORROBORATION_ACCOUNTS) },
+        { evidenceId: context.reference, substrate: 'sheet', bytes: utf8Bytes(ROLE_MATRIX) },
+      ]),
+    });
+
+    const rows = await sql`SELECT population_record_key AS key,corroboration FROM run_observation WHERE run_id=${seeded.run.runId} AND step_execution_id=${stepExecutionId} ORDER BY population_record_key COLLATE "C"`;
+    expect(rows.map((row) => [row.key, row.corroboration])).toEqual([
+      ['007', 'CONTRADICTORY'],
+      ['7', 'CONTRADICTORY'],
+      ['AG-1001', 'CONTRADICTORY'],
+      // The real RoleMatrix, read through its header row and its `entry` ordinal.
+      ['AMBIGUOUS_DUAL', 'MATCHED'],
+    ]);
+    const diagnostics = await sql`SELECT o.population_record_key AS key,c.outcome,c.diagnostic FROM run_observation_check c JOIN run_observation o USING (observation_id) WHERE c.run_id=${seeded.run.runId} AND o.step_execution_id=${stepExecutionId} AND c.check_name='observation-corroboration' ORDER BY o.population_record_key COLLATE "C"`;
+    expect(diagnostics.map((row) => [row.key, row.outcome, row.diagnostic])).toEqual([
+      ['007', 'FAIL', 'corroboration-label-drift'],
+      ['7', 'FAIL', 'identity-mismatch'],
+      ['AG-1001', 'FAIL', 'corroboration-contradictory'],
+      ['AMBIGUOUS_DUAL', 'PASS', null],
+    ]);
+  });
+
+  it('reports an unimplemented substrate by name rather than passing it silently', async () => {
+    const seeded = await seed(['api'], 'P-2', DISJOINT_POPULATION);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        extract: async (_target, credential) => {
+          credential.authorize({ set: () => undefined });
+          return { bytes: utf8Bytes(CORROBORATION_ACCOUNTS), mediaType: 'application/json', location: 'x' };
+        },
+      }).deps,
+      seeded.job,
+    );
+    const context = await corroborationContext(seeded);
+    const stepExecutionId = ids.next();
+    const observedAt = new Date().toISOString();
+    const entry = grounded({
+      workItemId: context.workItemId,
+      stepExecutionId,
+      evidenceId: context.extraction,
+      observedAt,
+      key: 'AG-2002',
+      identity: { locator: '$.accounts[3].account_id', label: 'account_id', value: 'AG-2002' },
+      attributes: [{ name: 'status', locator: '$.accounts[3].status', label: 'status', original: 'Active' }],
+    });
+    await register(
+      seeded.run.runId,
+      {
+        run: seeded.run,
+        workItemId: context.workItemId,
+        stepExecutionId,
+        targetSystem: 'accessgate',
+        runStartedAt: context.runStartedAt,
+        registeredAt: observedAt,
+        items: [entry],
+      },
+      {
+        corroboration: snapshotCorroboration([
+          // An agent capture this build cannot read. It must never report `matched`.
+          { evidenceId: context.extraction, substrate: 'web_tree', bytes: utf8Bytes(CORROBORATION_ACCOUNTS) },
+        ]),
+      },
+    );
+    const [row] = await sql`SELECT corroboration,identity,attributes FROM run_observation WHERE run_id=${seeded.run.runId} AND population_record_key='AG-2002'`;
+    // Not `contradictory`: nothing read it, so nothing disagreed with it.
+    expect(row!.corroboration).toBe('UNJUDGED');
+    expect((row!.identity as { corroboration: unknown }).corroboration).toBeNull();
+    const [check] = await sql`SELECT outcome,diagnostic FROM run_observation_check WHERE run_id=${seeded.run.runId} AND check_name='observation-corroboration' AND observation_id=${observationIdFor(context.workItemId, 'AG-2002')}`;
+    expect(check).toEqual({ outcome: 'FAIL', diagnostic: 'corroboration-unsupported' });
+  });
+
   it('refuses at the database what no registration may store', async () => {
     const seeded = await seed(['api']);
     await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
@@ -1068,7 +1376,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const [step] = await sql`SELECT step_execution_id FROM run_step_execution WHERE run_id=${seeded.run.runId}`;
     const insert = (found: string, coverage: string, digest: string, identity = 'NULL') =>
       sql.unsafe(
-        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source) VALUES (gen_random_uuid(),$1,$2,1,'RAW-'||gen_random_uuid()::text,'t',$3,now(),$4,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb,$5,$6,'2026-09-05T00:00:00.000Z')`,
+        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration) VALUES (gen_random_uuid(),$1,$2,1,'RAW-'||gen_random_uuid()::text,'t',$3,now(),$4,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb,$5,$6,'2026-09-05T00:00:00.000Z','UNJUDGED')`,
         [seeded.run.runId, String(item!.work_item_id), found, String(step!.step_execution_id), digest, coverage],
       );
     const digest = 'a'.repeat(64);
@@ -1086,7 +1394,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const [uninspected] = await sql`SELECT observation_id::text AS id,coverage FROM run_observation WHERE run_id=${seeded.run.runId} AND coverage='UNINSPECTED' LIMIT 1`;
     const evaluate = (coverage: string, value: string) =>
       sql.unsafe(
-        `INSERT INTO run_observation_evaluation(observation_id,coverage,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,$2,$3,'C-'||gen_random_uuid()::text,'RULE',$4,NULL,NULL,NULL,NULL,'[]'::jsonb)`,
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,$2,'UNJUDGED',$3,'C-'||gen_random_uuid()::text,'RULE',$4,NULL,NULL,NULL,NULL,'[]'::jsonb)`,
         [String(uninspected!.id), coverage, seeded.run.runId, value],
       );
     await expect(evaluate('UNINSPECTED', 'COMPLIANT')).rejects.toThrow(/run_observation_evaluation_coverage/);
@@ -1096,16 +1404,46 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     // Confirmation and confidence belong to an Agent-Judged evaluation and to no other.
     await expect(
       sql.unsafe(
-        `INSERT INTO run_observation_evaluation(observation_id,coverage,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED',$2,'C-CONF','RULE','UNEVALUATED','pending',NULL,NULL,NULL,'[]'::jsonb)`,
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED','UNJUDGED',$2,'C-CONF','RULE','UNEVALUATED','pending',NULL,NULL,NULL,'[]'::jsonb)`,
         [String(uninspected!.id), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_observation_evaluation_confirmation/);
     await expect(
       sql.unsafe(
-        `INSERT INTO run_observation_evaluation(observation_id,coverage,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED',$2,'C-CONFID','AGENT_JUDGED','UNEVALUATED',NULL,1.5,NULL,NULL,'[]'::jsonb)`,
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED','UNJUDGED',$2,'C-CONFID','AGENT_JUDGED','UNEVALUATED',NULL,1.5,NULL,NULL,'[]'::jsonb)`,
         [String(uninspected!.id), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_observation_evaluation_confidence/);
+
+    // Story 3.6, below every command: the per-attribute verdict vocabulary, the rollup
+    // that has to agree with the attributes it summarises, and "a record its own stored
+    // snapshot contradicts is never Compliant" as a foreign key rather than a rule.
+    const observe = (attributes: string, corroboration: string) =>
+      sql.unsafe(
+        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration) VALUES (gen_random_uuid(),$1,$2,1,'CORR-'||gen_random_uuid()::text,'t','true',now(),$3,'adapter','platform','{"name":"k","originalValue":"k","normalizedValue":"k","grounding":null,"corroboration":"matched"}'::jsonb,$4::jsonb,'["e"]'::jsonb,$5,'COVERED','2026-09-05T00:00:00.000Z',$6) RETURNING observation_id::text AS id`,
+        [seeded.run.runId, String(item!.work_item_id), String(step!.step_execution_id), attributes, digest, corroboration],
+      );
+    const attribute = (verdict: string) =>
+      `[{"name":"x","originalValue":"a","normalizedValue":"a","grounding":null,"corroboration":${verdict}}]`;
+    // A verdict outside the wire vocabulary cannot be stored at all.
+    await expect(observe(attribute('"probably"'), 'MATCHED')).rejects.toThrow(/run_observation_attribute_corroboration/);
+    await expect(observe(attribute('7'), 'MATCHED')).rejects.toThrow(/run_observation_attribute_corroboration/);
+    // A rollup that disagrees with the attributes it claims to summarise cannot either.
+    await expect(observe(attribute('"contradictory"'), 'MATCHED')).rejects.toThrow(/run_observation_corroboration_state/);
+    await expect(observe(attribute('null'), 'UNJUDGED')).rejects.toThrow(/run_observation_corroboration_state/);
+    await expect(observe(attribute('"matched"'), 'INVENTED')).rejects.toThrow(/run_observation_corroboration/);
+    const [contradicted] = await observe(attribute('"contradictory"'), 'CONTRADICTORY');
+    const judge = (corroboration: string, value: string) =>
+      sql.unsafe(
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'COVERED',$2,$3,'C-'||gen_random_uuid()::text,'RULE',$4,NULL,NULL,NULL,NULL,'[]'::jsonb)`,
+        [String(contradicted!.id), corroboration, seeded.run.runId, value],
+      );
+    await expect(judge('CONTRADICTORY', 'COMPLIANT')).rejects.toThrow(/run_observation_evaluation_corroboration/);
+    // Claiming the snapshot agreed does not help: the triple has to exist upstream.
+    await expect(judge('MATCHED', 'COMPLIANT')).rejects.toThrow(/run_observation_evaluation_coverage_fk/);
+    // An EXCEPTION or an UNEVALUATED verdict on the same record is perfectly storable.
+    await expect(judge('CONTRADICTORY', 'UNEVALUATED')).resolves.toBeDefined();
+    await expect(judge('CONTRADICTORY', 'EXCEPTION')).resolves.toBeDefined();
 
     // A PASS never carries a diagnostic, and a FAIL always does.
     const check = (outcome: string, diagnostic: string, name = 'freshness') =>

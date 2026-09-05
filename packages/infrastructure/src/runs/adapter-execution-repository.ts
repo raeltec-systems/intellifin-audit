@@ -345,6 +345,7 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
               evidenceIds: [...row.record.evidenceIds],
               digest: row.digest,
               coverage: row.coverage,
+              corroboration: row.corroboration,
               observedAtSource: row.observedAtSource,
             }));
             if (batch.length > 0) {
@@ -381,6 +382,7 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
             const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
               observationId: row.observationId,
               coverage: row.coverage,
+              corroboration: row.corroboration,
               runId,
               conditionId: row.evaluation.conditionId,
               origin: row.evaluation.origin,

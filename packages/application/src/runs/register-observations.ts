@@ -1,17 +1,21 @@
 import {
   OBSERVATION_LIMITS,
   canBeCompliant,
+  corroborationAllowsCompliant,
   isObservationEvaluation,
   isObservationRecord,
   normalizeObservedAt,
   observationBatchDigest,
   observationChecks,
+  observationCorroborationState,
   observationCoverage,
   observationDigest,
   observationIdFor,
   type ObservationAbsenceProof,
   type ObservationAttribute,
   type ObservationCheckResult,
+  type ObservationCorroboration,
+  type ObservationCorroborationState,
   type ObservationCoverage,
   type ObservationQueryKey,
   type ObservationRecord,
@@ -75,6 +79,7 @@ export type ObservationRegistrationRefusal =
   | 'corroboration-shape'
   | 'evaluation-shape'
   | 'coverage-conflict'
+  | 'corroboration-conflict'
   | 'digest-mismatch'
   | 'observation-integrity';
 
@@ -131,6 +136,8 @@ export interface ObservationRegistrationOutcome {
   /** One digest over that ordered list, or `null` when nothing was registered. */
   readonly batchDigest: string | null;
   readonly coverage: Readonly<Record<ObservationCoverage, number>>;
+  /** The Story 3.6 corroboration rollup, tallied the way coverage is. */
+  readonly corroboration: Readonly<Record<ObservationCorroborationState, number>>;
   /** Failing per-Observation checks, by check name. What Story 3.8's Gate reads. */
   readonly failedChecks: Readonly<Record<string, number>>;
 }
@@ -139,18 +146,18 @@ function refuse(refusal: ObservationRegistrationRefusal): never {
   throw new ObservationRegistrationError(refusal);
 }
 
-/** Re-key one attribute's corroboration without touching anything else it carries. */
+/** Set one attribute's corroboration without touching anything else it carries. */
 function withCorroboration(
   attribute: ObservationAttribute,
-  verdicts: ReadonlyMap<string, ObservationAttribute['corroboration']>,
+  verdict: ObservationCorroboration | null | undefined,
 ): ObservationAttribute {
-  if (!verdicts.has(attribute.name)) return attribute;
+  if (verdict === undefined) return attribute;
   return {
     name: attribute.name,
     originalValue: attribute.originalValue,
     normalizedValue: attribute.normalizedValue,
     grounding: attribute.grounding,
-    corroboration: verdicts.get(attribute.name) ?? null,
+    corroboration: verdict,
   };
 }
 
@@ -158,6 +165,12 @@ const NO_COVERAGE: Readonly<Record<ObservationCoverage, number>> = {
   COVERED: 0,
   UNINSPECTED: 0,
   AMBIGUOUS: 0,
+};
+
+const NO_CORROBORATION_TALLY: Readonly<Record<ObservationCorroborationState, number>> = {
+  MATCHED: 0,
+  CONTRADICTORY: 0,
+  UNJUDGED: 0,
 };
 
 /**
@@ -179,6 +192,7 @@ export async function registerObservations(
     digests: [],
     batchDigest: null,
     coverage: NO_COVERAGE,
+    corroboration: NO_CORROBORATION_TALLY,
     failedChecks: {},
   };
   if (batch.items.length === 0) return empty;
@@ -233,22 +247,31 @@ export async function registerObservations(
     readonly item: ObservationBatchItem;
     readonly digest: string;
     readonly coverage: ObservationCoverage;
+    readonly corroboration: ObservationCorroborationState;
     readonly checks: readonly ObservationCheckResult[];
   }
   const judged: Judged[] = batch.items.map((item) => {
     const verdict = byObservation.get(item.record.observationId);
+    // Keyed by name for the declared attributes, whose names are unique by schema, and
+    // taken from its OWN slot for the identity: §B.1 lets a declared attribute share the
+    // identity's name, and one map for both would give one of them the other's verdict.
     const applied = new Map(
       (verdict?.attributes ?? []).map((entry) => [entry.name, entry.corroboration] as const),
     );
     const record: ObservationRecord =
-      applied.size === 0
+      verdict === undefined
         ? item.record
         : {
             ...item.record,
             identity:
-              item.record.identity === null ? null : withCorroboration(item.record.identity, applied),
+              item.record.identity === null
+                ? null
+                : withCorroboration(item.record.identity, verdict.identity),
             attributes: item.record.attributes.map((attribute) =>
-              withCorroboration(attribute, applied),
+              withCorroboration(
+                attribute,
+                applied.has(attribute.name) ? applied.get(attribute.name) : undefined,
+              ),
             ),
           };
     // A corroborator that produced a record outside the schema must not be stored.
@@ -277,13 +300,20 @@ export async function registerObservations(
       checks.push({
         check: 'observation-corroboration',
         outcome: verdict.outcome,
-        diagnostic:
-          verdict.outcome === 'PASS'
-            ? null
-            : ((verdict.diagnostic ?? 'corroboration-contradictory') as ObservationCheckResult['diagnostic']),
+        diagnostic: verdict.outcome === 'PASS' ? null : (verdict.diagnostic ?? 'corroboration-contradictory'),
       });
     }
-    return { record, item, digest: observationDigest(record), coverage, checks };
+    return {
+      record,
+      item,
+      digest: observationDigest(record),
+      coverage,
+      // Derived from the record AS IT IS BEING STORED, after corroboration has been
+      // applied and from the same object the digest is taken over. Generation 22 pins the
+      // same derivation as a CHECK, so the column can never disagree with the attributes.
+      corroboration: observationCorroborationState(record),
+      checks,
+    };
   });
 
   // -------------------------------------------------------- idempotency and integrity
@@ -318,22 +348,35 @@ export async function registerObservations(
   const results = await seams.evaluation.evaluate(
     fresh.map((entry) => ({ record: entry.record, coverage: entry.coverage, checks: entry.checks })),
   );
-  const coverageOf = new Map(fresh.map((entry) => [entry.record.observationId, entry.coverage]));
+  const judgedOf = new Map(
+    fresh.map((entry) => [entry.record.observationId, entry] as const),
+  );
   const evaluationRows: ObservationEvaluationRow[] = [];
   const seenEvaluations = new Set<string>();
   for (const result of results) {
-    const coverage = coverageOf.get(result.observationId);
-    if (coverage === undefined) refuse('evaluation-shape');
+    const entry = judgedOf.get(result.observationId);
+    if (entry === undefined) refuse('evaluation-shape');
     for (const evaluation of result.evaluations) {
       if (!isObservationEvaluation(evaluation)) refuse('evaluation-shape');
       const key = `${result.observationId} ${evaluation.conditionId}`;
       if (seenEvaluations.has(key)) refuse('evaluation-shape');
       seenEvaluations.add(key);
-      // H: an uninspected or ambiguous record is never Compliant. The database says so
-      // too, through the composite foreign key; refusing here names the defect instead of
-      // answering the caller with a constraint violation.
-      if (evaluation.value === 'COMPLIANT' && !canBeCompliant(coverage)) refuse('coverage-conflict');
-      evaluationRows.push({ observationId: result.observationId, coverage, evaluation });
+      // H: an uninspected or ambiguous record is never Compliant, and neither is one the
+      // stored Structural Snapshot contradicts (Story 3.6). The database says both too,
+      // through the composite foreign key and its CHECK; refusing here names the defect
+      // instead of answering the caller with a constraint violation.
+      if (evaluation.value === 'COMPLIANT' && !canBeCompliant(entry.coverage)) {
+        refuse('coverage-conflict');
+      }
+      if (evaluation.value === 'COMPLIANT' && !corroborationAllowsCompliant(entry.corroboration)) {
+        refuse('corroboration-conflict');
+      }
+      evaluationRows.push({
+        observationId: result.observationId,
+        coverage: entry.coverage,
+        corroboration: entry.corroboration,
+        evaluation,
+      });
     }
   }
 
@@ -342,6 +385,7 @@ export async function registerObservations(
     record: entry.record,
     digest: entry.digest,
     coverage: entry.coverage,
+    corroboration: entry.corroboration,
     observedAtSource: entry.item.observedAtSource,
   }));
   const checkRows: ObservationCheckRow[] = fresh.flatMap((entry) =>
@@ -358,7 +402,15 @@ export async function registerObservations(
 
   const digests = fresh.map((entry) => entry.digest);
   const coverage: Record<ObservationCoverage, number> = { COVERED: 0, UNINSPECTED: 0, AMBIGUOUS: 0 };
-  for (const entry of fresh) coverage[entry.coverage] += 1;
+  const corroboration: Record<ObservationCorroborationState, number> = {
+    MATCHED: 0,
+    CONTRADICTORY: 0,
+    UNJUDGED: 0,
+  };
+  for (const entry of fresh) {
+    coverage[entry.coverage] += 1;
+    corroboration[entry.corroboration] += 1;
+  }
   const failedChecks: Record<string, number> = {};
   for (const row of checkRows) {
     if (row.outcome === 'FAIL') failedChecks[row.check] = (failedChecks[row.check] ?? 0) + 1;
@@ -387,6 +439,7 @@ export async function registerObservations(
       digests,
       batchDigest,
       coverage,
+      corroboration,
       failedChecks,
       evaluations: evaluationRows.length,
     },
@@ -401,6 +454,7 @@ export async function registerObservations(
     digests,
     batchDigest,
     coverage,
+    corroboration,
     failedChecks,
   };
 }

@@ -16,10 +16,8 @@ import {
 } from '@intellifin/domain';
 import { executeAdapterSteps, type AdapterExecutionDependencies } from './execute-adapter-steps.js';
 import {
-  NO_CORROBORATION,
   NO_EVALUATION,
   PopulationAcquisitionError,
-  type ObservationCorroborationPort,
   type ObservationEvaluationPort,
   type AcquiredArtifact,
   type AdapterEvidenceRecord,
@@ -322,7 +320,6 @@ function harness(options: {
   extract?: (target: ProcedureTargetSnapshot, credential: ResolvedCredential) => Promise<AcquiredArtifact>;
   reference?: (target: ProcedureTargetSnapshot) => Promise<AcquiredArtifact>;
   resolve?: (reference: string) => Promise<ResolvedCredential>;
-  corroboration?: ObservationCorroborationPort;
   evaluation?: ObservationEvaluationPort;
 }): Harness {
   const repository = new FakeRepository(options.plan);
@@ -381,9 +378,9 @@ function harness(options: {
         return `01920000-0000-7000-8000-${String(counter).padStart(12, '0')}`;
       },
     },
-    // Story 3.4's seams, at their explicit "not yet judged" values unless a test replaces
-    // them. Both are exercised with real implementations in `register-observations.test.ts`.
-    corroboration: options.corroboration ?? NO_CORROBORATION,
+    // Story 3.7's seam, at its explicit "not yet judged" value unless a test replaces it.
+    // Corroboration is NOT a dependency: Story 3.6 builds it from the bytes this stage
+    // just froze, so there is no injection point at which it could be switched off.
     evaluation: options.evaluation ?? NO_EVALUATION,
   };
   return { repository, deps, objects, puts, wire };
@@ -457,7 +454,10 @@ describe('executeAdapterSteps', () => {
     const roles = found.attributes.find((attribute) => attribute.name === 'roles')!;
     expect(roles.originalValue).toEqual(['VENDOR_MAINTAINER', 'VENDOR_APPROVER']);
     expect(roles.grounding?.locator).toBe('$.accounts[1].roles');
-    expect(roles.corroboration).toBeNull();
+    // Story 3.6: every grounding is re-read from the extraction this stage froze, so a
+    // correct capture is stored `matched` rather than "not yet judged".
+    expect(roles.corroboration).toBe('matched');
+    expect(found.identity?.corroboration).toBe('matched');
     expect(found.captureMethod).toBe('adapter');
     expect(found.matchOrigin).toBe('platform');
     expect(found.evidenceIds).toEqual([test.repository.evidence.keys().next().value]);

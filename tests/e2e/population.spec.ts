@@ -262,13 +262,35 @@ test.describe('Auditor population acquisition', () => {
     expect(new Set(payload['digests'] as string[])).toEqual(new Set(digests));
     expect(payload['batchDigest']).toBe(observationBatchDigest(payload['digests'] as string[]));
     expect(payload['coverage']).toEqual({ COVERED: 10, UNINSPECTED: 0, AMBIGUOUS: 1 });
-    // Every per-Observation check outcome committed with them: four apiece for the ten
-    // resolved matches, three for the ambiguous one (no identity check without a match).
+    // Every per-Observation check outcome committed with them: five apiece for the ten
+    // resolved matches, four for the ambiguous one (no identity check without a match).
     const checks = await sql`SELECT check_name,outcome,count(*)::int AS n FROM run_observation_check WHERE run_id=${firstRunId} GROUP BY 1,2 ORDER BY 1`;
-    expect(checks.reduce((total, row) => total + Number(row.n), 0)).toBe(43);
+    expect(checks.reduce((total, row) => total + Number(row.n), 0)).toBe(54);
     expect(checks.filter((row) => row.outcome === 'FAIL')).toEqual([
       { check_name: 'ambiguous-match', outcome: 'FAIL', n: 1 },
     ]);
+
+    // Story 3.6, against the bytes the synthetic system really served: every grounding was
+    // re-read out of the stored extraction and agreed, so the ten resolved records are
+    // MATCHED. The ambiguous one grounded nothing, so it is UNJUDGED — which is not a
+    // pass, and `ambiguous-match` above is where it is judged.
+    expect(checks.find((row) => row.check_name === 'observation-corroboration')).toEqual({
+      check_name: 'observation-corroboration', outcome: 'PASS', n: 11,
+    });
+    expect(payload['corroboration']).toEqual({ MATCHED: 10, CONTRADICTORY: 0, UNJUDGED: 1 });
+    const corroborated = await sql`SELECT corroboration,count(*)::int AS n FROM run_observation WHERE run_id=${firstRunId} GROUP BY 1 ORDER BY 1`;
+    expect(corroborated).toEqual([
+      { corroboration: 'MATCHED', n: 10 },
+      { corroboration: 'UNJUDGED', n: 1 },
+    ]);
+    // Not only the rollup: every stored attribute carries its own verdict.
+    const verdicts = new Set(
+      registered.flatMap((row) => [
+        ...(row.identity === null ? [] : [(row.identity as { corroboration: string }).corroboration]),
+        ...(row.attributes as { corroboration: string }[]).map((attribute) => attribute.corroboration),
+      ]),
+    );
+    expect(verdicts).toEqual(new Set(['matched']));
 
     // The one Session Step ran before the one Work Item, in the chain itself.
     const events = await sql`SELECT payload->>'diagnostic' AS diagnostic FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='lifecycle.adapter-execution' ORDER BY sequence`;

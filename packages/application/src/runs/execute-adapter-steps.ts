@@ -3,11 +3,14 @@ import {
   adapterSearchKeys,
   classifyPlanTargets,
   decodePopulationUtf8,
+  groundedText,
   isCompleteCollectionEnvelope,
+  normalizeObservationValue,
   observationIdFor,
   canonicalJson,
   OBSERVATION_LIMITS,
   OBSERVATION_SCHEMA_VERSION,
+  snapshotSubstrateForMediaType,
   type ClassifiedTarget,
   type ExecutablePlan,
   type JsonValue,
@@ -29,7 +32,6 @@ import {
   type AdapterExtractionPort,
   type CredentialResolver,
   type EvidenceStore,
-  type ObservationCorroborationPort,
   type ObservationEvaluationPort,
   type PopulationRecord,
   type ReferenceAcquisitionPort,
@@ -43,6 +45,7 @@ import {
   registerObservations,
   type ObservationBatchItem,
 } from './register-observations.js';
+import { snapshotCorroboration } from './snapshot-corroboration.js';
 import {
   adapterEvidenceRecord,
   freezeArtifact,
@@ -86,12 +89,6 @@ export interface AdapterExecutionDependencies {
   store: EvidenceStore;
   clock: Clock;
   ids: UuidV7Generator;
-  /**
-   * Story 3.6's seam. Required, not optional: a composition root that forgets it would
-   * silently register every attribute as "not yet judged" forever, and the next story
-   * would have nowhere obvious to plug in. `NO_CORROBORATION` is the explicit "not yet".
-   */
-  corroboration: ObservationCorroborationPort;
   /** Story 3.7's seam. `NO_EVALUATION` is the explicit "not yet", for the same reason. */
   evaluation: ObservationEvaluationPort;
 }
@@ -208,26 +205,6 @@ export function parseExtractionRows(artifact: AcquiredArtifact): {
 }
 
 /**
- * §B normalization for one captured value.
- *
- * Only a `time` value is normalized, and only to UTC with the original retained beside
- * it. Everything else is returned unchanged: compiler 1 authorizes no lossy or
- * equivalence-expanding transformation, so the normalized identifier IS the validated
- * original string — leading zeros, case, whitespace and Unicode composition included.
- */
-export function normalizeObservationValue(valueType: string, value: JsonValue): JsonValue {
-  if (valueType !== 'time' || typeof value !== 'string' || value === '') return value;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return value;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
-}
-
-function extractedText(value: JsonValue): string {
-  const text = typeof value === 'string' ? value : canonicalJson(value);
-  return text.length > OBSERVATION_LIMITS.value ? text.slice(0, OBSERVATION_LIMITS.value) : text;
-}
-
-/**
  * Build one registration item per included population record for one adapter Work Item.
  *
  * The join is the Template's frozen lookup column, compared as an exact opaque string.
@@ -308,7 +285,7 @@ export function buildAdapterObservations(input: {
             evidenceId: input.evidenceId,
             locator: `$.${input.collection}[${String(position)}].${name}`,
             label: name,
-            extractedText: extractedText(original),
+            extractedText: groundedText(original),
           },
           corroboration: null,
         };
@@ -881,6 +858,18 @@ async function runWorkItem(
       evidence.digest = frozen.digest;
       evidence.size = frozen.size;
       const parsed = parseExtractionRows(artifact);
+      // Story 3.6: corroboration against the STORED Structural Snapshot. The bytes are the
+      // ones `freezeArtifact` just read back out of the object store and proved identical,
+      // byte for byte, to what was uploaded — so re-reading them IS re-reading what was
+      // frozen. There is deliberately no `corroboration` dependency to inject and none to
+      // forget: the stage that froze the artifact is the stage that re-reads it, so no
+      // composition root can register an adapter Observation as unjudged forever.
+      const substrate = snapshotSubstrateForMediaType(artifact.mediaType);
+      const corroboration = snapshotCorroboration(
+        substrate === null
+          ? []
+          : [{ evidenceId: evidence.evidenceId, substrate, bytes: artifact.bytes }],
+      );
       const built = buildAdapterObservations({
         plan,
         target: entry.target,
@@ -931,7 +920,7 @@ async function runWorkItem(
             registeredAt: deps.clock.now().toISOString(),
             items: built.items,
           },
-          { corroboration: deps.corroboration, evaluation: deps.evaluation },
+          { corroboration, evaluation: deps.evaluation },
         );
         await event(context, 'work-item-observed', 'RUNNING', checkpoint, {
           workItemId: item.workItemId,

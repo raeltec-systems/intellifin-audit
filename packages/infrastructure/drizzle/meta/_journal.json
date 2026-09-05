@@ -155,6 +155,13 @@
       "when": 1788633858152,
       "tag": "0021_same_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788637717904,
+      "tag": "0022_pink_mantis",
+      "breakpoints": true
     }
   ]
 }

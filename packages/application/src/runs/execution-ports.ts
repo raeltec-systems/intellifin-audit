@@ -11,6 +11,7 @@ import type {
   JsonValue,
   ObservationCheckResult,
   ObservationCorroboration,
+  ObservationCorroborationState,
   ObservationCoverage,
   ObservationEvaluation,
   ObservationRecord,
@@ -306,6 +307,15 @@ export interface RegisteredObservation {
   /** `observationDigest(record)`. Recomputed on read; never taken from a caller. */
   readonly digest: string;
   readonly coverage: ObservationCoverage;
+  /**
+   * The Story 3.6 rollup of the record's per-attribute corroboration.
+   *
+   * Derived by `observationCorroborationState`, stored beside the row exactly as
+   * `coverage` is, and pinned to the attributes it was derived from by a generation-22
+   * CHECK. `run_observation_evaluation` carries it too, so "a record its own snapshot
+   * contradicts is never Compliant" is a foreign key rather than a rule in a command.
+   */
+  readonly corroboration: ObservationCorroborationState;
   /** §B: the capture time exactly as the source presented it, offset retained. */
   readonly observedAtSource: string;
 }
@@ -319,8 +329,9 @@ export interface ObservationCheckRow {
 
 export interface ObservationEvaluationRow {
   readonly observationId: string;
-  /** Denormalized so `(observation_id, coverage)` can carry the "never Compliant" FK. */
+  /** Denormalized so the composite FK can carry the two "never Compliant" rules. */
   readonly coverage: ObservationCoverage;
+  readonly corroboration: ObservationCorroborationState;
   readonly evaluation: ObservationEvaluation;
 }
 
@@ -354,14 +365,19 @@ export interface ObservationRegistrationContext {
 }
 
 /**
- * Story 3.6's seam.
+ * Story 3.6's seam, filled by `snapshot-corroboration.ts`.
  *
  * Corroboration is set by the Evidence Quality Gate AT REGISTRATION (§B.1), so it runs
  * BEFORE the digest is taken — the digest covers the record as it is stored, and a value
- * written afterwards would leave every row disagreeing with its own digest.
+ * written afterwards would leave every row disagreeing with its own digest. For the same
+ * reason an implementation has to be DETERMINISTIC over stored bytes: a verdict that could
+ * differ between two reads would make a redelivered batch produce a different digest and
+ * read as an integrity failure.
  *
- * Until Story 3.6 fills it, `NO_CORROBORATION` judges nothing: every attribute keeps
- * `corroboration: null`, which means "not yet judged" and never "matched".
+ * `NO_CORROBORATION` remains the explicit "nothing judged this" for a producer that has no
+ * snapshot to re-read. The adapter stage cannot reach it: `executeAdapterSteps` builds a
+ * `snapshotCorroboration` over the bytes it just froze, so there is no composition root
+ * that can register an adapter Observation as unjudged forever.
  */
 export interface ObservationCorroborationPort {
   corroborate(
@@ -372,8 +388,23 @@ export interface ObservationCorroborationPort {
 export interface ObservationCorroborationVerdict {
   readonly observationId: string;
   readonly outcome: ObservationCheckResult['outcome'];
-  readonly diagnostic: string | null;
-  /** Per attribute, by name. The identity attribute is named by its own attribute name. */
+  /**
+   * Closed at compile time, not cast at the call site.
+   *
+   * `run_observation_check` does not constrain its diagnostic text, so a corroborator
+   * returning an invented string would put it in the chain. The union is the guard, the
+   * way `TELEMETRY_MESSAGES` is for a log line.
+   */
+  readonly diagnostic: ObservationCheckResult['diagnostic'];
+  /**
+   * The identity attribute's verdict, carried APART from the declared attributes.
+   *
+   * §B.1 lets a declared attribute share the identity's name, and the two are grounded at
+   * different locators, so one verdict list keyed by name would silently give one of them
+   * the other's answer. `null` means the identity was not judged, or there is none.
+   */
+  readonly identity: ObservationCorroboration | null;
+  /** Per declared attribute, by name. Names are unique within `attributes` by schema. */
   readonly attributes: readonly {
     readonly name: string;
     readonly corroboration: ObservationCorroboration;

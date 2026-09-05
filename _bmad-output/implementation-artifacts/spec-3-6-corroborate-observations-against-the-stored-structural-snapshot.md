@@ -2,7 +2,7 @@
 title: 'Story 3.6: Corroborate Observations against the stored Structural Snapshot'
 type: 'feature'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -81,3 +81,46 @@ deferred: []
 - `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied, all pass against PostgreSQL 18 on a `test`- or `ci`-named database.
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** One pure domain extractor re-reads every declared attribute and the
+grounded identity from the stored Structural Snapshot. It names all four substrates;
+`sheet` and `json` are implemented and the other two are refused BY NAME with a failing
+check, never a silent fallthrough. `matched` requires six things together, including that
+the re-read label is the declared one and the value equals `originalValue` as canonical
+bytes.
+
+**The seam is filled, not injected.** `corroboration` was removed from
+`AdapterExecutionDependencies`, so there is no configuration in which an adapter's claim
+goes unchecked. The registration transaction and the pinned digest are untouched.
+
+**The invariant is now a three-column foreign key.** `(observation_id, coverage,
+corroboration)` plus `CHECK (value <> 'COMPLIANT' OR corroboration <> 'CONTRADICTORY')`
+means a record its own snapshot contradicts can never be recorded Compliant, by any
+command, migration or psql session. Generation 22's column has an honest backfill.
+
+**Golden vector produced independently** by `scripts/make-snapshot-extraction-golden.py`
+(Python csv + json + rfc8785); its `sheet` vectors are the real served `role-matrix.csv`
+and the test fails if those bytes move. The Story 3.3 `entry` ordinal is asserted.
+
+**Two defects found on the way:** `normalizeObservationValue` used `Date.parse`, which
+rolls an impossible date over — a 30 February would silently become 2 March, making two
+different source values compare equal. And Story 3.4's name-keyed verdict map would have
+given an identity and a same-named attribute each other's verdict.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18.4:**
+typecheck PASS; boundaries PASS (360 modules); `db:migrate` schemaVersion 22; unit
+2367/2367; integration 285/285; `db:generate` no drift; both builds PASS; browser + axe
+109/109 with zero accessibility violations.
+
+**Residual risks.** The `sheet` substrate has no production caller yet, since a
+`versioned-file` Target is a Reference Source with no Work Items; it is proved by the
+golden vector and by an integration batch through the seam. "A contradictory attribute
+makes the record UNEVALUATED" is enforced here only as far as COMPLIANT being unreachable;
+forcing the per-condition value needs the evaluator, which alone knows which condition
+reads which attribute, and blanketing it would suppress a real Exception raised on an
+attribute that corroborated fine. That split is written down in the contract.
