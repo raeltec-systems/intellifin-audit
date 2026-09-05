@@ -60,12 +60,12 @@ development_status:
   epic-3: in-progress
   3-1-initiate-a-run-for-an-active-version-and-period: done
   3-2-acquire-the-population-source-deterministically: done
-  3-3-extract-adapter-acquired-target-systems-and-freeze-reference: backlog
-  3-4-register-observations-in-the-one-wire-schema-in-batches: backlog
-  3-5-seal-evidence-with-reservation-and-digest-verification: backlog
-  3-6-corroborate-observations-against-the-stored-structural-snaps: backlog
-  3-7-evaluate-corroborated-observations-deterministically-and-rai: backlog
-  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: backlog
+  3-3-extract-adapter-acquired-target-systems-and-freeze-reference: done
+  3-4-register-observations-in-the-one-wire-schema-in-batches: done
+  3-5-seal-evidence-with-reservation-and-digest-verification: done
+  3-6-corroborate-observations-against-the-stored-structural-snaps: done
+  3-7-evaluate-corroborated-observations-deterministically-and-rai: done
+  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: in-progress
   3-9-seal-the-result-and-publish-the-adapter-run-s-outputs: backlog
   3-10-cancel-an-active-run-and-start-a-linked-rerun: backlog
   3-11-see-runs-and-inspect-an-adapter-run-s-result-evidence-except: backlog
