@@ -60,7 +60,9 @@ export async function signIn(page: Page, email: string): Promise<void> {
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   // The shell is proof of a session: `layout.tsx` renders it only when one resolves.
-  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({
+    timeout: process.env['INTELLIFIN_LOW_DISK'] === '1' ? 90_000 : 10_000,
+  });
 }
 
 /**

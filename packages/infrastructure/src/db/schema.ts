@@ -2,6 +2,9 @@ import type { PlanDerivationFields } from '@intellifin/application';
 import type { VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
 import { sql } from 'drizzle-orm';
 import {
+  primaryKey,
+  foreignKey,
+  date,
   bigint,
   boolean,
   check,
@@ -655,6 +658,7 @@ export const procedureVersion = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex('procedure_version_owner_uidx').on(table.procedureId, table.versionId),
     uniqueIndex('procedure_version_procedure_number_uidx').on(
       table.procedureId,
       table.versionNumber,
@@ -756,3 +760,34 @@ export const procedureSuccession = pgTable('procedure_succession', {
   check('procedure_succession_no_self', sql`${table.predecessorId} <> ${table.successorId}`),
   check('procedure_succession_boundary', sql`${table.handoverAt} IS NULL OR (${table.activatedAt} IS NOT NULL AND ${table.handoverAt} > ${table.activatedAt})`),
 ]);
+
+export const auditRun = pgTable('audit_run', {
+  requestToken: uuid('request_token').notNull(),
+  runId: uuid('run_id').primaryKey(), correlationId: uuid('correlation_id').notNull(),
+  procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
+  versionId: uuid('version_id').notNull().references(() => procedureVersion.versionId),
+  versionNumber: integer('version_number').notNull(), procedureName: text('procedure_name').notNull(),
+  periodFrom: date('period_from').notNull(), periodTo: date('period_to').notNull(),
+  state: text('state').$type<import('@intellifin/domain').RunState>().notNull(),
+  kind: text('kind').$type<import('@intellifin/domain').RunKind>().notNull(),
+  initiatorId: text('initiator_id').notNull(), sessionId: text('session_id').notNull(),
+  authorizationRole: text('authorization_role').notNull(),
+  initiatedAt: timestamp('initiated_at', { withTimezone: true }).notNull(),
+}, table => [
+  uniqueIndex('audit_run_initiator_request').on(table.initiatorId, table.requestToken),
+  foreignKey({ name: 'audit_run_version_owner_fk', columns: [table.procedureId, table.versionId], foreignColumns: [procedureVersion.procedureId, procedureVersion.versionId] }),
+  uniqueIndex('audit_run_active_standard_period').on(table.procedureId, table.periodFrom, table.periodTo).where(sql`${table.kind} = 'STANDARD' AND ${table.state} IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR')`),
+  check('audit_run_state', sql`${table.state} IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR','COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`),
+  check('audit_run_kind', sql`${table.kind} IN ('STANDARD','REGRESSION')`),
+  check('audit_run_period', sql`${table.periodFrom} >= DATE '0001-01-01' AND ${table.periodTo} <= DATE '9999-12-31' AND ${table.periodFrom} <= ${table.periodTo}`),
+  check('audit_run_version', sql`${table.versionNumber} > 0`),
+  check('audit_run_authorization', sql`${table.authorizationRole} IN ('auditor','audit-manager')`),
+  check('audit_run_uuid_v7', sql`substring(${table.runId}::text, 15, 1) = '7' AND substring(${table.correlationId}::text, 15, 1) = '7'`),
+]);
+
+
+/** Multiple acknowledgement attempts may point at the same active or terminal Run. */
+export const runInitiationRequest = pgTable('run_initiation_request', {
+  initiatorId: text('initiator_id').notNull(), requestToken: uuid('request_token').notNull(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+}, table => [primaryKey({ columns: [table.initiatorId, table.requestToken] })]);

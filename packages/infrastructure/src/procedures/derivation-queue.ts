@@ -10,7 +10,7 @@ export const PROCEDURES_QUEUE = 'procedures';
 
 /** pg-boss error/output JSON is an object; postgres.js needs its JSON text parameter.
  * SQL arrays remain arrays (job-id ANY predicates); transaction ownership is unchanged. */
-function queueDatabase(connection: Database | Transaction): Db {
+export function queueDatabase(connection: Database | Transaction): Db {
   const adapter = fromDrizzle(connection, sql);
   return { executeSql: (text, values) => adapter.executeSql(text, values?.map((value) =>
     typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype

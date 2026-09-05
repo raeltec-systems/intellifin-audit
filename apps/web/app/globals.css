@@ -440,6 +440,11 @@ a {
   line-height: var(--type-body-sm-line-height);
 }
 
+.ls-run-details > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Button ------------------------------------------------------------------- */
 
 .ls-button {

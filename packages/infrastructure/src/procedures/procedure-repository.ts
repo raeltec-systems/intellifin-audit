@@ -5,6 +5,7 @@ import { planAuthoringDigest, planAuthoringInputs, UnverifiablePreviousVersion }
 import { isUuidText } from '../db/identifier.js';
 
 import type {
+  ProcedurePeriodOwnerReader,
   ReferencingProcedureCounter,
   PlanDerivationFields,
   VersionReviewFields,
@@ -16,6 +17,7 @@ import type {
   ProcedureWriter,
 } from '@intellifin/application';
 import {
+  periodOwner,
   ExecutablePlanSchema,
   PlatformPublicationSchema,
   validVersionLifecycleMetadata,
@@ -593,5 +595,28 @@ export class DrizzleProcedureWriter implements ProcedureWriter {
       .orderBy(desc(procedureVersion.versionNumber))
       .limit(1);
     return rows[0]?.versionNumber ?? 0;
+  }
+}
+
+/** Full activated lineage, read only through the Procedures module. */
+export class DrizzleProcedurePeriodOwnerReader implements ProcedurePeriodOwnerReader {
+  constructor(private readonly transaction: Database | Transaction) {}
+  async findPeriodOwner(procedureId: string, period: import('@intellifin/domain').ExplicitPeriod): Promise<ProcedureVersionRecord | null> {
+    if (!isUuidText(procedureId)) return null;
+    const rows = await this.transaction.select(VERSION_SELECTION).from(procedureVersion).where(and(eq(procedureVersion.procedureId, procedureId), inArray(procedureVersion.state, ['ACTIVE', 'RETIRED'])));
+    const edges = await this.transaction.select().from(procedureSuccession).where(eq(procedureSuccession.procedureId, procedureId));
+    for (const row of rows) {
+      if (!validReviewFields(row)) return null;
+      const incoming = edges.find(edge => edge.successorId === row.versionId && edge.activatedAt !== null);
+      if ((row.lifecycle?.priorActiveVersionId ?? null) !== (incoming?.predecessorId ?? null)) return null;
+      if (incoming && (row.lifecycle?.activatedAt !== incoming.activatedAt?.toISOString() || row.lifecycle?.handoverAt !== (incoming.handoverAt?.toISOString() ?? null))) return null;
+    }
+    const ownerId = periodOwner(rows, edges.map(edge => ({ ...edge, activatedAt: edge.activatedAt?.toISOString() ?? null, handoverAt: edge.handoverAt?.toISOString() ?? null })), period);
+    if (!ownerId) return null;
+    const raw = rows.find(row => row.versionId === ownerId);
+    if (!raw) return null;
+    const owner = toVersionRecord(raw);
+    if (!owner?.frozenReview || canonicalJson(owner.frozenReview.definition.inputs as unknown as JsonValue) !== canonicalJson(planAuthoringInputs(owner) as unknown as JsonValue) || canonicalJson(owner.frozenReview.definition.compiledPlan as unknown as JsonValue) !== canonicalJson(owner.compiledPlan as unknown as JsonValue)) return null;
+    return owner;
   }
 }

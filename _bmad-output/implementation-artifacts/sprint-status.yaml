@@ -57,8 +57,8 @@ development_status:
   2-8-immutable-versions-and-platform-authored-drafts: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-initiate-a-run-for-an-active-version-and-period: backlog
+  epic-3: in-progress
+  3-1-initiate-a-run-for-an-active-version-and-period: done
   3-2-acquire-the-population-source-deterministically: backlog
   3-3-extract-adapter-acquired-target-systems-and-freeze-reference: backlog
   3-4-register-observations-in-the-one-wire-schema-in-batches: backlog

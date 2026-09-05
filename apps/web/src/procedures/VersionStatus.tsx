@@ -1,4 +1,5 @@
 import type { ProcedureVersionView } from '@intellifin/application';
+import Link from 'next/link';
 
 export function VersionStatus({ version, successorNumber }: { version: ProcedureVersionView; successorNumber?: number | null }): React.JSX.Element {
   const lastRejection = [...version.decisions ?? []].reverse().find(decision => decision.decision === 'reject');
@@ -11,8 +12,7 @@ export function VersionStatus({ version, successorNumber }: { version: Procedure
     {version.state === 'ACTIVE' && <>
       <p>Active. Saved Schedule: {version.schedule?.frequency} at {version.schedule?.startTime} UTC.</p>
       {version.schedule?.frequency === 'once' ? <p>No automatic Schedule boundary. The authored Period {version.period?.from} to {version.period?.to} is preserved for later manual initiation.</p> : <p>First period start after activation: {version.lifecycle?.handoverAt ?? 'Not recorded'}.</p>}
-      <button disabled aria-describedby={`run-unavailable-${version.versionId}`}>Initiate Run</button>
-      <p id={`run-unavailable-${version.versionId}`}>Unavailable actions: Run execution is not available yet. No next Run is scheduled.</p>
+      <p><Link href={`/procedures/${version.procedureId}#initiate-run`}>Choose a period to initiate a Run</Link>. The period selects its owning Active version. No automatic Run is scheduled.</p>
     </>}
     {version.state === 'RETIRED' && <p>Retired; this version is read-only.{successorNumber === undefined ? ' Successor history has not been loaded.' : successorNumber === null ? ' No successor is recorded.' : ` Superseded by v${successorNumber}.`}</p>}
   </div>;

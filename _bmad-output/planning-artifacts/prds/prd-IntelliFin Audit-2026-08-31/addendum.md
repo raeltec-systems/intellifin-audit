@@ -1,9 +1,9 @@
 ---
 title: "IntelliFin Audit PoC — Product Detail Addendum"
 status: final
-revision: 2
+revision: 3
 created: 2026-08-31
-updated: 2026-09-01
+updated: 2026-09-05
 ---
 
 # IntelliFin Audit PoC — Product Detail Addendum
@@ -11,6 +11,10 @@ updated: 2026-09-01
 This addendum preserves inferred product detail needed to make the PoC requirements testable, plus user-contributed depth that belongs downstream. It is not an architecture specification.
 
 **Status legend:** `[ASSUMPTION]` means the product decision awaits explicit confirmation. "Normative" means the rule is binding for implementation and testing of this PoC draft, but it does not convert the underlying product decision into a confirmed long-term requirement.
+
+## 0. Owner-approved adapter retry policy — 2026-09-05
+
+For adapter-acquired Work Items, the owner selected one automatic additional bounded retry cycle after first exhaustion. A second exhaustion marks the Work Item `FAILED`; the Run continues and incomplete coverage yields `INCONCLUSIVE`. No human retry/skip Escalation is required on this path. Each cycle remains bounded by the frozen per-Step retry limit and all attempts count against the Run limits. Agent-driven retry/skip Escalations and Session Step failure mapping remain unchanged. This scoped rule supersedes the general retry/skip wording in sections E and E.1 for adapter Work Items. Prior downstream adapter retry assumptions require revalidation; Story 3.8, AD-3, the build SPEC and Epic 3 context are updated with this decision.
 
 ## A. Synthetic Organization, Population Sources, and Target Systems
 

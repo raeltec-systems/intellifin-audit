@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-14 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-17 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -70,6 +70,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     expect(names).toEqual([
       'audit_event_heads',
       'audit_events',
+      'audit_run',
       'auth_account',
       'auth_rate_limit',
       'auth_session',
@@ -84,6 +85,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'procedure_configuration',
       'procedure_succession',
       'procedure_version',
+      'run_initiation_request',
       'schema_meta',
       'target_system_probe',
       'target_system_registration',
