@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-19 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-20 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -96,6 +96,11 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_execution',
       'run_initiation_request',
       'run_observation',
+      // Story 3.4. Observation registration: the per-Observation Gate check outcomes and
+      // the per-condition evaluations, both committed in the same transaction as the
+      // Observation rows they describe.
+      'run_observation_check',
+      'run_observation_evaluation',
       'run_session_step',
       'run_step_execution',
       'run_work_item',

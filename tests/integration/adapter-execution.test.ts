@@ -3,14 +3,24 @@ import {
   acquirePopulation,
   executeAdapterSteps,
   initiateRun,
+  NO_CORROBORATION,
+  NO_EVALUATION,
   PopulationAcquisitionError,
+  registerObservations,
+  type ObservationBatch,
   type AcquiredArtifact,
   type EvidenceStore,
+  type ObservationCorroborationPort,
+  type ObservationEvaluationPort,
   type ResolvedCredential,
 } from '@intellifin/application';
 import {
   bindingDigest,
   bindingDigestEnvelope,
+  OBSERVATION_CHECKS,
+  observationBatchDigest,
+  observationDigest,
+  observationIdFor,
   initialDraftPopulation,
   initialDraftCompliance,
   initialDraftEvidence,
@@ -50,27 +60,45 @@ const url = process.env.DATABASE_URL;
 const TOKEN = 'SECRET-TOKEN-integration-do-not-store-me';
 const CREDENTIAL = 'cred://synthetic/adapter-execution';
 
-const ACCOUNTS = JSON.stringify({
-  accounts: [
-    { account_id: 'AG-1001', roles: ['AP_CLERK'], status: 'Active' },
-    { account_id: 'AG-1003', roles: ['VENDOR_MAINTAINER', 'VENDOR_APPROVER'], status: 'Active' },
-    { account_id: 'AG-1007', roles: ['OPS_CLERK'], status: 'Active' },
-    { account_id: 'AG-1007', roles: ['LOAN_ADMIN'], status: 'Active' },
-  ],
-});
+const ACCOUNT_ROWS = [
+  { account_id: 'AG-1001', roles: ['AP_CLERK'], status: 'Active' },
+  { account_id: 'AG-1003', roles: ['VENDOR_MAINTAINER', 'VENDOR_APPROVER'], status: 'Active' },
+  { account_id: 'AG-1007', roles: ['OPS_CLERK'], status: 'Active' },
+  { account_id: 'AG-1007', roles: ['LOAN_ADMIN'], status: 'Active' },
+];
+
+/** The CLOSED collection envelope a Northstar API actually serves, `complete` included. */
+function collection(itemsKey: string, items: readonly unknown[], schema: readonly string[]): string {
+  return JSON.stringify({
+    // The NFR-13 marker every Northstar response carries, and part of the closed envelope.
+    synthetic: { marker: 'SYNTHETIC-NORTHSTAR-FIXTURE' },
+    schema_version: 1, representation: 'population-rows-v1', source: itemsKey,
+    title: itemsKey, generation: 'g1', generated_at: '2026-09-01T00:00:00.000Z',
+    effective_period: { from: '2026-01-01', to: '2026-12-31' },
+    schema, complete: true, returned: items.length,
+    declared_count_endpoint: `/${itemsKey}/count`,
+    [itemsKey]: items,
+  });
+}
+
+const ACCOUNTS = collection('accounts', ACCOUNT_ROWS, ['account_id', 'roles', 'status']);
+/** The same rows with no completeness declaration: an absence from it proves nothing. */
+const INCOMPLETE_ACCOUNTS = JSON.stringify({ accounts: ACCOUNT_ROWS });
 const ROLE_MATRIX =
   'entry,role,permission\n10,AMBIGUOUS_DUAL,CREATE_PAYMENT\n10,AMBIGUOUS_DUAL,VIEW_PAYMENT\n11,AMBIGUOUS_DUAL,RELEASE_PAYMENT\n11,AMBIGUOUS_DUAL,VIEW_PAYMENT\n';
 
 const POPULATION = 'account_id,status\nAG-1001,Active\nAG-1003,Active\nAG-1007,Active\nAG-9999,Active\n';
 
 /** P-3: approvals joined by transaction_id, with a found, an absent and a contradiction. */
-const APPROVALS = JSON.stringify({
-  approvals: [
+const APPROVALS = collection(
+  'approvals',
+  [
     { approval_id: 'APV-9001', transaction_id: 'TX-500001', decision: 'APPROVED', decided_at: '2026-08-10T10:30:00+02:00', approver_limit: '500000.00', currency: 'USD' },
     { approval_id: 'APV-9009', transaction_id: 'TX-500009', decision: 'APPROVED', decided_at: '2026-08-14T10:05:00+02:00', approver_limit: '300000.00', currency: 'USD' },
     { approval_id: 'APV-9009B', transaction_id: 'TX-500009', decision: 'REJECTED', decided_at: '2026-08-14T11:05:00+02:00', approver_limit: '300000.00', currency: 'USD' },
   ],
-});
+  ['approval_id', 'transaction_id', 'decision', 'decided_at', 'approver_limit', 'currency'],
+);
 /** The columns P-3's frozen inclusion rule names, so every row is included. */
 const TRANSACTIONS =
   'transaction_id,amount,currency,processed_time\n' +
@@ -107,6 +135,8 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
         const runs = await sql`SELECT run_id::text AS id FROM audit_run WHERE procedure_id=${id}`;
         for (const run of runs) {
           await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${run.id}`;
+          await sql`DELETE FROM run_observation_evaluation WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_observation_check WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_observation WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_step_execution WHERE run_id=${run.id}`;
           // Steps and Work Items name their Evidence with a real foreign key, and an
@@ -256,6 +286,8 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     options: {
       extract?: (target: ProcedureTargetSnapshot, credential: ResolvedCredential) => Promise<AcquiredArtifact>;
       reference?: (target: ProcedureTargetSnapshot) => Promise<AcquiredArtifact>;
+      corroboration?: ObservationCorroborationPort;
+      evaluation?: ObservationEvaluationPort;
     } = {},
   ) {
     const wire: (string | null)[] = [];
@@ -287,6 +319,9 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
         store: seeded.store,
         clock: new SystemClock(),
         ids,
+        // Story 3.4's seams. `NO_*` is the explicit "not yet judged" the worker composes.
+        corroboration: options.corroboration ?? NO_CORROBORATION,
+        evaluation: options.evaluation ?? NO_EVALUATION,
       },
     };
   }
@@ -442,6 +477,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
 
     expect(extractions).toBe(1);
     expect((await sql`SELECT count(*)::int AS count FROM run_observation WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(4);
+    // A real redelivery: the completed Work Item is skipped, so the registration event
+    // and every per-Observation check outcome exist exactly once.
+    expect((await sql`SELECT count(*)::int AS count FROM run_observation_check WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(15);
+    expect((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.count).toBe(1);
     expect(await sql`SELECT evidence_id,digest FROM run_evidence WHERE run_id=${seeded.run.runId} ORDER BY evidence_id`).toEqual(before);
     expect((await sql`SELECT status,attempts FROM run_execution WHERE run_id=${seeded.run.runId}`)[0]).toMatchObject({ status: 'EXTRACTION_COMPLETE', attempts: 2 });
   });
@@ -499,7 +538,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const observation = ids.next();
     const insert = (found: string, identity: string) =>
       sql.unsafe(
-        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids) VALUES ($1,$2,$3,1,'X','t',$4,now(),$5,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb)`,
+        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source) VALUES ($1,$2,$3,1,'X-'||gen_random_uuid()::text,'t',$4,now(),$5,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb,repeat('a',64),CASE $4 WHEN 'ambiguous' THEN 'AMBIGUOUS' WHEN 'true' THEN 'COVERED' ELSE 'UNINSPECTED' END,'2026-09-05T00:00:00.000Z')`,
         [observation, seeded.run.runId, String(item!.work_item_id), found, String(step!.step_execution_id)],
       );
     // found = true with no identity, and found = false WITH one, are both refused.
@@ -518,5 +557,345 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
         [ids.next(), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_evidence_state/);
+  });
+
+  /* --------------------------------------------------------------- Story 3.4 --- */
+
+  it('registers a batch as one transaction, with one event carrying every digest', async () => {
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+
+    const rows = await sql`SELECT observation_id::text AS id,digest,coverage,observed_at_source,found,attributes,identity,evidence_ids,schema_version,step_execution_id::text AS step,work_item_id::text AS item,population_record_key AS key,target_system,capture_method,match_origin,to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS observed_at FROM run_observation WHERE run_id=${seeded.run.runId} ORDER BY population_record_key`;
+    expect(rows).toHaveLength(4);
+
+    // The stored digest is the domain's digest over the record as stored. Recomputing it
+    // here from the ROW rather than from the batch is the whole point: it is what a later
+    // integrity check does, and what detects an edit.
+    for (const row of rows) {
+      const record = {
+        schemaVersion: Number(row.schema_version) as 1,
+        observationId: String(row.id),
+        workItemId: String(row.item),
+        populationRecordKey: String(row.key),
+        targetSystem: String(row.target_system),
+        found: String(row.found) as 'true' | 'false' | 'ambiguous',
+        observedAt: String(row.observed_at),
+        stepExecutionId: String(row.step),
+        captureMethod: String(row.capture_method) as 'adapter',
+        matchOrigin: String(row.match_origin) as 'platform',
+        identity: row.identity as never,
+        attributes: row.attributes as never,
+        evidenceIds: row.evidence_ids as string[],
+      };
+      expect(row.digest).toBe(observationDigest(record));
+      // The identity is DERIVED, so a redelivery names the same Observation.
+      expect(row.id).toBe(observationIdFor(String(row.item), String(row.key)));
+      expect(row.observed_at_source).toBe(record.observedAt);
+    }
+
+    const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`;
+    expect(events).toHaveLength(1);
+    const payload = events[0]!.payload as Record<string, unknown>;
+    const digests = payload['digests'] as string[];
+    expect(new Set(digests)).toEqual(new Set(rows.map((row) => String(row.digest))));
+    expect(payload['batchDigest']).toBe(observationBatchDigest(digests));
+    expect(payload['registered']).toBe(4);
+    expect(payload['coverage']).toEqual({ COVERED: 3, UNINSPECTED: 0, AMBIGUOUS: 1 });
+
+    // Per-Observation check outcomes committed with the rows.
+    const checks = await sql`SELECT check_name,outcome,diagnostic FROM run_observation_check WHERE run_id=${seeded.run.runId} ORDER BY check_name`;
+    expect(checks.length).toBeGreaterThan(0);
+    expect(checks.filter((row) => row.outcome === 'FAIL')).toEqual([
+      { check_name: 'ambiguous-match', outcome: 'FAIL', diagnostic: 'ambiguous-match' },
+    ]);
+    expect(new Set(checks.map((row) => row.check_name))).toEqual(
+      new Set(['identity-corroboration', 'search-completeness', 'ambiguous-match', 'required-evidence', 'freshness']),
+    );
+  });
+
+  it('covers an honest absence and leaves a dishonest one UNINSPECTED', async () => {
+    const honest = await seed(['api']);
+    await executeAdapterSteps(dependencies(honest).deps, honest.job);
+    expect(
+      (await sql`SELECT coverage FROM run_observation WHERE run_id=${honest.run.runId} AND population_record_key='AG-9999'`)[0]?.coverage,
+    ).toBe('COVERED');
+
+    // The same extraction with no completeness declaration. "Not in the system" is then
+    // really "not on the page I happened to read", so nobody proved they looked.
+    const dishonest = await seed(['api']);
+    await executeAdapterSteps(
+      dependencies(dishonest, {
+        extract: async (_target, credential) => {
+          credential.authorize({ set: () => undefined });
+          return { bytes: utf8Bytes(INCOMPLETE_ACCOUNTS), mediaType: 'application/json', location: 'x' };
+        },
+      }).deps,
+      dishonest.job,
+    );
+    const rows = await sql`SELECT population_record_key AS key,coverage FROM run_observation WHERE run_id=${dishonest.run.runId} ORDER BY population_record_key`;
+    expect(rows.map((row) => [row.key, row.coverage])).toEqual([
+      ['AG-1001', 'COVERED'],
+      ['AG-1003', 'COVERED'],
+      ['AG-1007', 'AMBIGUOUS'],
+      ['AG-9999', 'UNINSPECTED'],
+    ]);
+    expect(
+      (await sql`SELECT diagnostic FROM run_observation_check WHERE run_id=${dishonest.run.runId} AND check_name='search-completeness' AND outcome='FAIL'`)[0]?.diagnostic,
+    ).toBe('extraction-incomplete');
+  });
+
+  /**
+   * Read back what a Run registered, as the batch that produced it.
+   *
+   * Reconstructing the batch FROM THE ROWS is the point: re-registering it is the same
+   * batch by construction, so an idempotency test cannot pass by accident, and a test
+   * that edits a row first is measuring the edit and nothing else.
+   */
+  async function registeredBatch(seeded: Awaited<ReturnType<typeof seed>>) {
+    const rows = await sql`SELECT observation_id::text AS id,found,attributes,identity,evidence_ids,schema_version,step_execution_id::text AS step,work_item_id::text AS item,population_record_key AS key,target_system,capture_method,match_origin,to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS observed_at FROM run_observation WHERE run_id=${seeded.run.runId} ORDER BY population_record_key`;
+    const [stage] = await sql`SELECT to_char(run_started_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started FROM run_execution WHERE run_id=${seeded.run.runId}`;
+    const items = rows.map((row) => {
+      const record = {
+        schemaVersion: 1 as const,
+        observationId: String(row.id),
+        workItemId: String(row.item),
+        populationRecordKey: String(row.key),
+        targetSystem: String(row.target_system),
+        found: String(row.found) as 'true' | 'false' | 'ambiguous',
+        observedAt: String(row.observed_at),
+        stepExecutionId: String(row.step),
+        captureMethod: String(row.capture_method) as 'adapter',
+        matchOrigin: String(row.match_origin) as 'platform',
+        identity: row.identity as never,
+        attributes: row.attributes as never,
+        evidenceIds: row.evidence_ids as string[],
+      };
+      return {
+        record,
+        observedAtSource: record.observedAt,
+        absence:
+          record.found === 'false'
+            ? {
+                queryKeys: [{ key: 'account_id', value: record.populationRecordKey }],
+                emptyResultEvidenceId: record.evidenceIds[0]!,
+                extractionComplete: true,
+              }
+            : null,
+        expectedQueryKeys: [{ key: 'account_id', value: record.populationRecordKey }],
+      };
+    });
+    return {
+      run: seeded.run,
+      workItemId: String(rows[0]!.item),
+      stepExecutionId: String(rows[0]!.step),
+      targetSystem: String(rows[0]!.target_system),
+      runStartedAt: String(stage!.started),
+      registeredAt: new Date().toISOString(),
+      items,
+    };
+  }
+
+  /** Register a batch through a real `PostgresAdapterExecutionRepository` transaction. */
+  async function register(runId: string, batch: ObservationBatch): Promise<unknown> {
+    return new PostgresAdapterExecutionRepository(db).transaction(runId, (context) =>
+      registerObservations(context, batch, {
+        corroboration: NO_CORROBORATION,
+        evaluation: NO_EVALUATION,
+      }),
+    );
+  }
+
+  it('writes no duplicate row, check, evaluation or event when a batch is registered twice', async () => {
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const batch = await registeredBatch(seeded);
+    const counts = async () => ({
+      observations: (await sql`SELECT count(*)::int AS c FROM run_observation WHERE run_id=${seeded.run.runId}`)[0]?.c,
+      checks: (await sql`SELECT count(*)::int AS c FROM run_observation_check WHERE run_id=${seeded.run.runId}`)[0]?.c,
+      evaluations: (await sql`SELECT count(*)::int AS c FROM run_observation_evaluation WHERE run_id=${seeded.run.runId}`)[0]?.c,
+      events: (await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.c,
+    });
+    // Four Observations: two resolved (identity-corroboration, ambiguous-match,
+    // required-evidence, freshness), one ambiguous (no identity check) and one absent
+    // (search-completeness instead of identity-corroboration) - fifteen check rows.
+    const before = await counts();
+    expect(before).toEqual({ observations: 4, checks: 15, evaluations: 0, events: 1 });
+
+    expect(await register(seeded.run.runId, batch)).toMatchObject({
+      registered: 0,
+      alreadyRegistered: 4,
+      batchDigest: null,
+    });
+    expect(await counts()).toEqual(before);
+  });
+
+  it('raises the integrity failure when a stored Observation no longer matches its digest', async () => {
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const batch = await registeredBatch(seeded);
+
+    // Somebody edited a stored row after registration. The digest the chain recorded no
+    // longer describes it, and re-registering the batch that produced it says so.
+    await sql`UPDATE run_observation SET target_system='tampered' WHERE run_id=${seeded.run.runId} AND population_record_key='AG-1001'`;
+    await expect(register(seeded.run.runId, batch)).rejects.toMatchObject({
+      name: 'ObservationRegistrationError',
+      refusal: 'observation-integrity',
+    });
+    // The refusal is thrown, so nothing was written over the row that was edited.
+    expect(
+      (await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.c,
+    ).toBe(1);
+    expect((await sql`SELECT target_system FROM run_observation WHERE run_id=${seeded.run.runId} AND population_record_key='AG-1001'`)[0]?.target_system).toBe('tampered');
+  });
+
+  it('leaves nothing visible when a batch is refused mid-transaction', async () => {
+    // The refusal is THROWN from inside the registration, so PostgreSQL takes back the
+    // Work Item state, the Step Execution outcome and every row the batch would have
+    // written. A refusal RETURNED from inside a unit of work would have committed them.
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        evaluation: {
+          evaluate: async (subjects) =>
+            subjects.map((subject) => ({
+              observationId: subject.record.observationId,
+              evaluations: [
+                {
+                  conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+                  confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [],
+                },
+              ],
+            })),
+        },
+      }).deps,
+      seeded.job,
+    );
+    // AG-1007 is ambiguous, so calling it Compliant is refused and the batch fails whole.
+    for (const table of ['run_observation', 'run_observation_check', 'run_observation_evaluation']) {
+      const rows = await sql.unsafe(`SELECT count(*)::int AS count FROM ${table} WHERE run_id=$1`, [seeded.run.runId]);
+      expect(rows[0]?.count).toBe(0);
+    }
+    expect(
+      (await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.count,
+    ).toBe(0);
+    const item = (await sql`SELECT state,diagnostic,observations,attempts FROM run_work_item WHERE run_id=${seeded.run.runId}`)[0];
+    // The Work Item never reports Observations that are not there.
+    expect(item).toMatchObject({ state: 'FAILED', diagnostic: 'observation-registration-refused', observations: 0, attempts: 1 });
+    expect(
+      (await sql`SELECT count(*)::int AS count FROM run_step_execution WHERE run_id=${seeded.run.runId} AND state='SUCCEEDED'`)[0]?.count,
+    ).toBe(0);
+  });
+
+  it('commits evaluations in the same transaction as the rows they describe', async () => {
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        evaluation: {
+          evaluate: async (subjects) =>
+            subjects.map((subject) => ({
+              observationId: subject.record.observationId,
+              evaluations: [
+                {
+                  conditionId: 'C1',
+                  origin: 'RULE' as const,
+                  value: subject.coverage === 'COVERED' ? ('EXCEPTION' as const) : ('UNEVALUATED' as const),
+                  confirmation: null,
+                  confidence: null,
+                  rationale: null,
+                  diagnostic: subject.coverage === 'COVERED' ? null : 'record was not resolved',
+                  evidenceIds: [],
+                },
+              ],
+            })),
+        },
+      }).deps,
+      seeded.job,
+    );
+    const rows = await sql`SELECT e.value,e.coverage,e.origin,o.population_record_key AS key FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${seeded.run.runId} ORDER BY o.population_record_key`;
+    expect(rows.map((row) => [row.key, row.coverage, row.value])).toEqual([
+      ['AG-1001', 'COVERED', 'EXCEPTION'],
+      ['AG-1003', 'COVERED', 'EXCEPTION'],
+      ['AG-1007', 'AMBIGUOUS', 'UNEVALUATED'],
+      ['AG-9999', 'COVERED', 'EXCEPTION'],
+    ]);
+    expect(rows.every((row) => row.origin === 'RULE')).toBe(true);
+  });
+
+  it('normalizes an offset-bearing capture time to UTC and keeps the original', async () => {
+    // The platform clock is UTC, so the adapter's own source text already is; the rule is
+    // proved where an agent read would exercise it, against the column itself.
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const [row] = await sql`SELECT to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS observed_at,observed_at_source FROM run_observation WHERE run_id=${seeded.run.runId} LIMIT 1`;
+    // The retained source and the normalized column are provably the same instant.
+    expect(Date.parse(String(row!.observed_at_source))).toBe(Date.parse(String(row!.observed_at)));
+    await expect(
+      sql`UPDATE run_observation SET observed_at_source=NULL WHERE run_id=${seeded.run.runId}`,
+    ).rejects.toThrow(/observed_at_source/);
+  });
+
+  it('refuses at the database what no registration may store', async () => {
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const [item] = await sql`SELECT work_item_id FROM run_work_item WHERE run_id=${seeded.run.runId}`;
+    const [step] = await sql`SELECT step_execution_id FROM run_step_execution WHERE run_id=${seeded.run.runId}`;
+    const insert = (found: string, coverage: string, digest: string, identity = 'NULL') =>
+      sql.unsafe(
+        `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source) VALUES (gen_random_uuid(),$1,$2,1,'RAW-'||gen_random_uuid()::text,'t',$3,now(),$4,'adapter','platform',${identity},'[]'::jsonb,'["e"]'::jsonb,$5,$6,'2026-09-05T00:00:00.000Z')`,
+        [seeded.run.runId, String(item!.work_item_id), found, String(step!.step_execution_id), digest, coverage],
+      );
+    const digest = 'a'.repeat(64);
+    // The digest is a digest, and nothing else.
+    await expect(insert('false', 'COVERED', 'not-a-digest')).rejects.toThrow(/run_observation_digest/);
+    // The coverage vocabulary, and its cross-field rules with `found`.
+    await expect(insert('false', 'INSPECTED', digest)).rejects.toThrow(/run_observation_coverage/);
+    await expect(insert('ambiguous', 'COVERED', digest)).rejects.toThrow(/run_observation_coverage/);
+    await expect(insert('false', 'AMBIGUOUS', digest)).rejects.toThrow(/run_observation_coverage/);
+    await expect(insert('true', 'UNINSPECTED', digest, `'{"name":"x"}'::jsonb`)).rejects.toThrow(/run_observation_coverage/);
+    await expect(insert('false', 'UNINSPECTED', digest)).resolves.toBeDefined();
+
+    // An uninspected or ambiguous record can never be recorded Compliant — by anybody,
+    // through any path, because it is a CHECK over a foreign-keyed coverage column.
+    const [uninspected] = await sql`SELECT observation_id::text AS id,coverage FROM run_observation WHERE run_id=${seeded.run.runId} AND coverage='UNINSPECTED' LIMIT 1`;
+    const evaluate = (coverage: string, value: string) =>
+      sql.unsafe(
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,$2,$3,'C-'||gen_random_uuid()::text,'RULE',$4,NULL,NULL,NULL,NULL,'[]'::jsonb)`,
+        [String(uninspected!.id), coverage, seeded.run.runId, value],
+      );
+    await expect(evaluate('UNINSPECTED', 'COMPLIANT')).rejects.toThrow(/run_observation_evaluation_coverage/);
+    // Claiming the row is covered does not help: the pair must exist in run_observation.
+    await expect(evaluate('COVERED', 'COMPLIANT')).rejects.toThrow(/run_observation_evaluation_coverage_fk/);
+    await expect(evaluate('UNINSPECTED', 'UNEVALUATED')).resolves.toBeDefined();
+    // Confirmation and confidence belong to an Agent-Judged evaluation and to no other.
+    await expect(
+      sql.unsafe(
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED',$2,'C-CONF','RULE','UNEVALUATED','pending',NULL,NULL,NULL,'[]'::jsonb)`,
+        [String(uninspected!.id), seeded.run.runId],
+      ),
+    ).rejects.toThrow(/run_observation_evaluation_confirmation/);
+    await expect(
+      sql.unsafe(
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED',$2,'C-CONFID','AGENT_JUDGED','UNEVALUATED',NULL,1.5,NULL,NULL,'[]'::jsonb)`,
+        [String(uninspected!.id), seeded.run.runId],
+      ),
+    ).rejects.toThrow(/run_observation_evaluation_confidence/);
+
+    // A PASS never carries a diagnostic, and a FAIL always does.
+    const check = (outcome: string, diagnostic: string, name = 'freshness') =>
+      sql.unsafe(
+        `INSERT INTO run_observation_check(observation_id,run_id,check_name,outcome,diagnostic) VALUES ($1,$2,$3,$4,${diagnostic})`,
+        [String(uninspected!.id), seeded.run.runId, name, outcome],
+      );
+    await expect(check('PASS', `'stale'`, 'ambiguous-match')).rejects.toThrow(/run_observation_check_outcome/);
+    await expect(check('FAIL', 'NULL', 'identity-corroboration')).rejects.toThrow(/run_observation_check_outcome/);
+    await expect(check('FAIL', `'stale'`, 'invented-check')).rejects.toThrow(/run_observation_check_name/);
+    // One outcome per check per Observation: a redelivery cannot record a second.
+    await expect(check('PASS', 'NULL', 'required-evidence')).resolves.toBeDefined();
+    await expect(check('FAIL', `'stale'`, 'required-evidence')).rejects.toThrow(/duplicate key/);
+    // Both directions: the CHECK is a transcription of `OBSERVATION_CHECKS`, so a name
+    // the domain has and the migration does not would be refused with the suite green.
+    for (const name of OBSERVATION_CHECKS.filter((entry) => entry !== 'required-evidence')) {
+      await expect(check('FAIL', `'stale'`, name)).resolves.toBeDefined();
+    }
   });
 });

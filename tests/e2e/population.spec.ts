@@ -6,8 +6,9 @@ import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import {
   bindingDigest, bindingDigestEnvelope, initialDraftCompliance, initialDraftEvidence,
-  initialDraftPopulation, initialDraftSections, registrationDigest, snapshotFromRegistration,
-  type FrozenPlanInputs,
+  initialDraftPopulation, initialDraftSections, observationBatchDigest, observationDigest,
+  observationIdFor, registrationDigest, snapshotFromRegistration,
+  type FrozenPlanInputs, type ObservationRecord,
 } from '@intellifin/domain';
 import {
   createDb, createSqlClient, CryptoUuidV7Generator,
@@ -116,6 +117,12 @@ test.afterAll(async () => {
   if (sql) {
     try {
       await sql`DELETE FROM pgboss.job WHERE data->>'runId' IN (SELECT run_id::text FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      // The check outcomes and evaluations name their Observation with a real foreign
+      // key, so they go first. A cleanup that does not know about a new table throws, and
+      // then EVERY row this file created survives — which is how one missing DELETE made
+      // `procedures.spec.ts`'s empty-list test fail for a reason that was not its own.
+      await sql`DELETE FROM run_observation_evaluation WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      await sql`DELETE FROM run_observation_check WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_observation WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_step_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_session_step WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
@@ -190,7 +197,7 @@ test.describe('Auditor population acquisition', () => {
     expect(Buffer.from(storage.objects.get(String(referenceEvidence!.object_key))!)).toEqual(served);
     expect(String(referenceEvidence!.digest)).toBe(createHash('sha256').update(served).digest('hex'));
 
-    const [item] = await sql`SELECT work_item_id,state,attempts,observations,evidence_id FROM run_work_item WHERE run_id=${firstRunId}`;
+    const [item] = await sql`SELECT work_item_id,state,attempts,observations,evidence_id,diagnostic FROM run_work_item WHERE run_id=${firstRunId}`;
     expect(item).toMatchObject({ state: 'OBSERVED', attempts: 1 });
     // Twelve Active accounts, eleven distinct: AG-1007 is seeded twice.
     expect(Number(item!.observations)).toBe(11);
@@ -204,6 +211,62 @@ test.describe('Auditor population acquisition', () => {
     expect((grounded.identity as { grounding: { evidenceId: string } }).grounding.evidenceId).toBe(item!.evidence_id);
     const [roles] = await sql`SELECT attributes FROM run_observation WHERE run_id=${firstRunId} AND population_record_key='AG-1001'`;
     expect((roles!.attributes as { name: string; originalValue: unknown }[]).find(a => a.name === 'roles')?.originalValue).toEqual(['AP_CLERK']);
+
+    // Story 3.4, against the bytes the synthetic system really served. The real
+    // AccessGate collection envelope satisfies the closed-envelope completeness rule, so
+    // the extraction is PROVABLY complete: a key outside `EXTRACTION_ENVELOPE_KEYS`, or a
+    // missing `complete`, would put `extraction-incomplete` here and make every absence
+    // from this extraction UNINSPECTED.
+    // `diagnostic` is in the SELECT above, deliberately: without it this read `undefined`
+    // and the assertion could not fail — which is how it stayed green against a build
+    // whose closed envelope did not name `synthetic` and judged this extraction partial.
+    expect(item!.diagnostic).toBe('duplicate-record-keys:1');
+
+    // Every stored row's digest recomputed FROM THE ROW, the way an integrity check does.
+    const registered = await sql`SELECT observation_id::text AS id,work_item_id::text AS item,step_execution_id::text AS step,population_record_key AS key,target_system,found,capture_method,match_origin,schema_version,identity,attributes,evidence_ids,digest,coverage,observed_at_source,to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS observed_at FROM run_observation WHERE run_id=${firstRunId} ORDER BY population_record_key`;
+    const digests = registered.map((row) => {
+      const record: ObservationRecord = {
+        schemaVersion: Number(row.schema_version) as 1,
+        observationId: String(row.id),
+        workItemId: String(row.item),
+        populationRecordKey: String(row.key),
+        targetSystem: String(row.target_system),
+        found: String(row.found) as ObservationRecord['found'],
+        observedAt: String(row.observed_at),
+        stepExecutionId: String(row.step),
+        captureMethod: String(row.capture_method) as ObservationRecord['captureMethod'],
+        matchOrigin: String(row.match_origin) as ObservationRecord['matchOrigin'],
+        identity: row.identity as ObservationRecord['identity'],
+        attributes: row.attributes as ObservationRecord['attributes'],
+        evidenceIds: row.evidence_ids as string[],
+      };
+      expect(String(row.digest)).toBe(observationDigest(record));
+      // Derived, not minted, so a redelivery names the same Observation.
+      expect(String(row.id)).toBe(observationIdFor(String(row.item), String(row.key)));
+      // The retained source and the normalized column are the same instant.
+      expect(Date.parse(String(row.observed_at_source))).toBe(Date.parse(String(row.observed_at)));
+      return String(row.digest);
+    });
+    // Ten resolved matches are COVERED; the ambiguous one is its own coverage state,
+    // because H's per-record coverage counts found in {true, false} only.
+    expect(registered.filter((row) => row.coverage === 'COVERED')).toHaveLength(10);
+    // `population_record_key AS key` in the SELECT above: the row property is `key`.
+    expect(registered.find((row) => row.key === 'AG-1007')?.coverage).toBe('AMBIGUOUS');
+
+    // ONE registration event, carrying every digest, committed with the rows.
+    const registrations = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='execution.observations-registered'`;
+    expect(registrations).toHaveLength(1);
+    const payload = registrations[0]!.payload as Record<string, unknown>;
+    expect(new Set(payload['digests'] as string[])).toEqual(new Set(digests));
+    expect(payload['batchDigest']).toBe(observationBatchDigest(payload['digests'] as string[]));
+    expect(payload['coverage']).toEqual({ COVERED: 10, UNINSPECTED: 0, AMBIGUOUS: 1 });
+    // Every per-Observation check outcome committed with them: four apiece for the ten
+    // resolved matches, three for the ambiguous one (no identity check without a match).
+    const checks = await sql`SELECT check_name,outcome,count(*)::int AS n FROM run_observation_check WHERE run_id=${firstRunId} GROUP BY 1,2 ORDER BY 1`;
+    expect(checks.reduce((total, row) => total + Number(row.n), 0)).toBe(43);
+    expect(checks.filter((row) => row.outcome === 'FAIL')).toEqual([
+      { check_name: 'ambiguous-match', outcome: 'FAIL', n: 1 },
+    ]);
 
     // The one Session Step ran before the one Work Item, in the chain itself.
     const events = await sql`SELECT payload->>'diagnostic' AS diagnostic FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='lifecycle.adapter-execution' ORDER BY sequence`;

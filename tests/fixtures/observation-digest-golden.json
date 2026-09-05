@@ -1,0 +1,641 @@
+{
+  "producer": "Python 3.11.15 + rfc8785 0.1.4 + hashlib.sha256",
+  "producedBy": "scripts/make-observation-digest-golden.py",
+  "regenerateWith": "uv run scripts/make-observation-digest-golden.py",
+  "why": "Observation digest vectors, produced by an implementation that is NOT the code under test. packages/domain/src/runs/observation.ts is checked against these bytes; a fixture produced by that module would prove only that it equals itself. The envelopes in the generator are written out by hand, so the projection from a wire record to its thirteen hashed keys is checked too, not just the hash of an envelope this repository derived.",
+  "algorithm": "digest = SHA-256( RFC 8785 canonical JSON of the thirteen-key envelope {attributes, capture_method, evidence_ids, found, identity, match_origin, observation_id, observed_at, population_record_key, schema_version, step_execution_id, target_system, work_item_id} ), lower-case hex. Attributes keep their declared order. No operational field — attempt, lease, revision, row version, coverage, registration time — is in the envelope. batchDigest = SHA-256( RFC 8785 canonical JSON of the ordered list of per-Observation digests ).",
+  "vectors": [
+    {
+      "name": "found-grounded-identity",
+      "note": "A resolved match: a grounded identity attribute, one grounded declared attribute whose value is an array, and one linked Evidence item. Every grounding is projected under snake_case keys, and `corroboration` is null because nothing has judged it yet — null means 'not yet judged' and never 'matched'.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "0f9a1a3d-2f2c-8a1b-9f0c-6b4e2d1c8a70",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "AG-1003",
+        "targetSystem": "accessgate",
+        "found": "true",
+        "observedAt": "2026-09-05T00:00:00.000Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "adapter",
+        "matchOrigin": "platform",
+        "identity": {
+          "name": "account_id",
+          "originalValue": "AG-1003",
+          "normalizedValue": "AG-1003",
+          "grounding": {
+            "evidenceId": "01990000-0000-7000-8000-00000000c001",
+            "locator": "$.accounts[1].account_id",
+            "label": "account_id",
+            "extractedText": "AG-1003"
+          },
+          "corroboration": null
+        },
+        "attributes": [
+          {
+            "name": "roles",
+            "originalValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "normalizedValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "grounding": {
+              "evidenceId": "01990000-0000-7000-8000-00000000c001",
+              "locator": "$.accounts[1].roles",
+              "label": "roles",
+              "extractedText": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]"
+            },
+            "corroboration": null
+          }
+        ],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [
+          {
+            "corroboration": null,
+            "grounding": {
+              "evidence_id": "01990000-0000-7000-8000-00000000c001",
+              "extracted_text": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]",
+              "label": "roles",
+              "locator": "$.accounts[1].roles"
+            },
+            "name": "roles",
+            "normalized_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "original_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ]
+          }
+        ],
+        "capture_method": "adapter",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "true",
+        "identity": {
+          "corroboration": null,
+          "grounding": {
+            "evidence_id": "01990000-0000-7000-8000-00000000c001",
+            "extracted_text": "AG-1003",
+            "label": "account_id",
+            "locator": "$.accounts[1].account_id"
+          },
+          "name": "account_id",
+          "normalized_value": "AG-1003",
+          "original_value": "AG-1003"
+        },
+        "match_origin": "platform",
+        "observation_id": "0f9a1a3d-2f2c-8a1b-9f0c-6b4e2d1c8a70",
+        "observed_at": "2026-09-05T00:00:00.000Z",
+        "population_record_key": "AG-1003",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"[\\\"VENDOR_MAINTAINER\\\",\\\"VENDOR_APPROVER\\\"]\",\"label\":\"roles\",\"locator\":\"$.accounts[1].roles\"},\"name\":\"roles\",\"normalized_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"],\"original_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]}],\"capture_method\":\"adapter\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"true\",\"identity\":{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"AG-1003\",\"label\":\"account_id\",\"locator\":\"$.accounts[1].account_id\"},\"name\":\"account_id\",\"normalized_value\":\"AG-1003\",\"original_value\":\"AG-1003\"},\"match_origin\":\"platform\",\"observation_id\":\"0f9a1a3d-2f2c-8a1b-9f0c-6b4e2d1c8a70\",\"observed_at\":\"2026-09-05T00:00:00.000Z\",\"population_record_key\":\"AG-1003\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "9531fe3db4b29ceac14458e3defec8acc694ac6fbf5555dce760966c794e2899"
+    },
+    {
+      "name": "found-after-corroboration",
+      "note": "The same Observation after the Evidence Quality Gate set corroboration on every attribute. Its digest MUST differ from the vector above: corroboration is set at registration and is part of the record the digest covers, which is why corroboration runs before the digest is taken and never after.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "0f9a1a3d-2f2c-8a1b-9f0c-6b4e2d1c8a70",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "AG-1003",
+        "targetSystem": "accessgate",
+        "found": "true",
+        "observedAt": "2026-09-05T00:00:00.000Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "adapter",
+        "matchOrigin": "platform",
+        "identity": {
+          "name": "account_id",
+          "originalValue": "AG-1003",
+          "normalizedValue": "AG-1003",
+          "grounding": {
+            "evidenceId": "01990000-0000-7000-8000-00000000c001",
+            "locator": "$.accounts[1].account_id",
+            "label": "account_id",
+            "extractedText": "AG-1003"
+          },
+          "corroboration": "matched"
+        },
+        "attributes": [
+          {
+            "name": "roles",
+            "originalValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "normalizedValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "grounding": {
+              "evidenceId": "01990000-0000-7000-8000-00000000c001",
+              "locator": "$.accounts[1].roles",
+              "label": "roles",
+              "extractedText": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]"
+            },
+            "corroboration": "matched"
+          }
+        ],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [
+          {
+            "corroboration": "matched",
+            "grounding": {
+              "evidence_id": "01990000-0000-7000-8000-00000000c001",
+              "extracted_text": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]",
+              "label": "roles",
+              "locator": "$.accounts[1].roles"
+            },
+            "name": "roles",
+            "normalized_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "original_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ]
+          }
+        ],
+        "capture_method": "adapter",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "true",
+        "identity": {
+          "corroboration": "matched",
+          "grounding": {
+            "evidence_id": "01990000-0000-7000-8000-00000000c001",
+            "extracted_text": "AG-1003",
+            "label": "account_id",
+            "locator": "$.accounts[1].account_id"
+          },
+          "name": "account_id",
+          "normalized_value": "AG-1003",
+          "original_value": "AG-1003"
+        },
+        "match_origin": "platform",
+        "observation_id": "0f9a1a3d-2f2c-8a1b-9f0c-6b4e2d1c8a70",
+        "observed_at": "2026-09-05T00:00:00.000Z",
+        "population_record_key": "AG-1003",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[{\"corroboration\":\"matched\",\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"[\\\"VENDOR_MAINTAINER\\\",\\\"VENDOR_APPROVER\\\"]\",\"label\":\"roles\",\"locator\":\"$.accounts[1].roles\"},\"name\":\"roles\",\"normalized_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"],\"original_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]}],\"capture_method\":\"adapter\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"true\",\"identity\":{\"corroboration\":\"matched\",\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"AG-1003\",\"label\":\"account_id\",\"locator\":\"$.accounts[1].account_id\"},\"name\":\"account_id\",\"normalized_value\":\"AG-1003\",\"original_value\":\"AG-1003\"},\"match_origin\":\"platform\",\"observation_id\":\"0f9a1a3d-2f2c-8a1b-9f0c-6b4e2d1c8a70\",\"observed_at\":\"2026-09-05T00:00:00.000Z\",\"population_record_key\":\"AG-1003\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "8a516e6aebc1dad96bfd73184358081fb6d71ea1a0452efedc63f392e4039d25"
+    },
+    {
+      "name": "absent-no-identity",
+      "note": "A proven-absence candidate. `identity` is null and there are no attributes, because an absent Observation that carried either would be asserting the match it exists to say did not resolve. The absence PROOF is deliberately absent from the envelope: it is registration evidence, not the wire record, and the coverage state derived from it is a column beside the row rather than a hashed field.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "2c7b5f11-0a8e-8d42-b1a7-3e5c9d0f7a21",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "AG-9999",
+        "targetSystem": "accessgate",
+        "found": "false",
+        "observedAt": "2026-09-05T00:00:00.000Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "adapter",
+        "matchOrigin": "platform",
+        "identity": null,
+        "attributes": [],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [],
+        "capture_method": "adapter",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "false",
+        "identity": null,
+        "match_origin": "platform",
+        "observation_id": "2c7b5f11-0a8e-8d42-b1a7-3e5c9d0f7a21",
+        "observed_at": "2026-09-05T00:00:00.000Z",
+        "population_record_key": "AG-9999",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[],\"capture_method\":\"adapter\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"false\",\"identity\":null,\"match_origin\":\"platform\",\"observation_id\":\"2c7b5f11-0a8e-8d42-b1a7-3e5c9d0f7a21\",\"observed_at\":\"2026-09-05T00:00:00.000Z\",\"population_record_key\":\"AG-9999\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "dbb67cec9d53b8ab2a0c10f7db610f10e7d6433f7b079be4d539a80414a9bbcc"
+    },
+    {
+      "name": "ambiguous-no-identity",
+      "note": "More than one candidate. Byte-identical to the absent vector except for `found` and the Observation id, so its digest proves the `found` value is hashed rather than folded into a boolean.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "6b1d0e44-5c3a-8f19-8c22-9a7f4b2e6d03",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "AG-1007",
+        "targetSystem": "accessgate",
+        "found": "ambiguous",
+        "observedAt": "2026-09-05T00:00:00.000Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "adapter",
+        "matchOrigin": "platform",
+        "identity": null,
+        "attributes": [],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [],
+        "capture_method": "adapter",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "ambiguous",
+        "identity": null,
+        "match_origin": "platform",
+        "observation_id": "6b1d0e44-5c3a-8f19-8c22-9a7f4b2e6d03",
+        "observed_at": "2026-09-05T00:00:00.000Z",
+        "population_record_key": "AG-1007",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[],\"capture_method\":\"adapter\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"ambiguous\",\"identity\":null,\"match_origin\":\"platform\",\"observation_id\":\"6b1d0e44-5c3a-8f19-8c22-9a7f4b2e6d03\",\"observed_at\":\"2026-09-05T00:00:00.000Z\",\"population_record_key\":\"AG-1007\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "8d10ac5f149a2c2483afcda5c686f0cb492ad5c9db0718319b529b40ad89f746"
+    },
+    {
+      "name": "attribute-order-is-hashed",
+      "note": "The found vector with a second declared attribute, given in the order the frozen plan declares. Attributes are a LIST, not a set: `[roles, status]` and `[status, roles]` are different records, because the plan declares an order and a reader told the other one reads the wrong field. The reversed pair is the next vector, and the two digests must differ.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "8e0c2a77-1b6d-8e55-a0f3-7c1b5e9d4a62",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "AG-1003",
+        "targetSystem": "accessgate",
+        "found": "true",
+        "observedAt": "2026-09-05T00:00:00.000Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "adapter",
+        "matchOrigin": "platform",
+        "identity": {
+          "name": "account_id",
+          "originalValue": "AG-1003",
+          "normalizedValue": "AG-1003",
+          "grounding": {
+            "evidenceId": "01990000-0000-7000-8000-00000000c001",
+            "locator": "$.accounts[1].account_id",
+            "label": "account_id",
+            "extractedText": "AG-1003"
+          },
+          "corroboration": null
+        },
+        "attributes": [
+          {
+            "name": "roles",
+            "originalValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "normalizedValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "grounding": {
+              "evidenceId": "01990000-0000-7000-8000-00000000c001",
+              "locator": "$.accounts[1].roles",
+              "label": "roles",
+              "extractedText": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]"
+            },
+            "corroboration": null
+          },
+          {
+            "name": "status",
+            "originalValue": "Active",
+            "normalizedValue": "Active",
+            "grounding": {
+              "evidenceId": "01990000-0000-7000-8000-00000000c001",
+              "locator": "$.accounts[1].status",
+              "label": "status",
+              "extractedText": "Active"
+            },
+            "corroboration": null
+          }
+        ],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [
+          {
+            "corroboration": null,
+            "grounding": {
+              "evidence_id": "01990000-0000-7000-8000-00000000c001",
+              "extracted_text": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]",
+              "label": "roles",
+              "locator": "$.accounts[1].roles"
+            },
+            "name": "roles",
+            "normalized_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "original_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ]
+          },
+          {
+            "corroboration": null,
+            "grounding": {
+              "evidence_id": "01990000-0000-7000-8000-00000000c001",
+              "extracted_text": "Active",
+              "label": "status",
+              "locator": "$.accounts[1].status"
+            },
+            "name": "status",
+            "normalized_value": "Active",
+            "original_value": "Active"
+          }
+        ],
+        "capture_method": "adapter",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "true",
+        "identity": {
+          "corroboration": null,
+          "grounding": {
+            "evidence_id": "01990000-0000-7000-8000-00000000c001",
+            "extracted_text": "AG-1003",
+            "label": "account_id",
+            "locator": "$.accounts[1].account_id"
+          },
+          "name": "account_id",
+          "normalized_value": "AG-1003",
+          "original_value": "AG-1003"
+        },
+        "match_origin": "platform",
+        "observation_id": "8e0c2a77-1b6d-8e55-a0f3-7c1b5e9d4a62",
+        "observed_at": "2026-09-05T00:00:00.000Z",
+        "population_record_key": "AG-1003",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"[\\\"VENDOR_MAINTAINER\\\",\\\"VENDOR_APPROVER\\\"]\",\"label\":\"roles\",\"locator\":\"$.accounts[1].roles\"},\"name\":\"roles\",\"normalized_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"],\"original_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]},{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"Active\",\"label\":\"status\",\"locator\":\"$.accounts[1].status\"},\"name\":\"status\",\"normalized_value\":\"Active\",\"original_value\":\"Active\"}],\"capture_method\":\"adapter\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"true\",\"identity\":{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"AG-1003\",\"label\":\"account_id\",\"locator\":\"$.accounts[1].account_id\"},\"name\":\"account_id\",\"normalized_value\":\"AG-1003\",\"original_value\":\"AG-1003\"},\"match_origin\":\"platform\",\"observation_id\":\"8e0c2a77-1b6d-8e55-a0f3-7c1b5e9d4a62\",\"observed_at\":\"2026-09-05T00:00:00.000Z\",\"population_record_key\":\"AG-1003\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "c9bba51ca57dd70637c706eb1a5793b0d835961acf8ff20c164f6fc5c89d8efe"
+    },
+    {
+      "name": "attribute-order-reversed",
+      "note": "The vector above with its two attributes swapped and nothing else changed. Its digest must DIFFER. This is the vector that fails if attributes are ever sorted before hashing.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "8e0c2a77-1b6d-8e55-a0f3-7c1b5e9d4a62",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "AG-1003",
+        "targetSystem": "accessgate",
+        "found": "true",
+        "observedAt": "2026-09-05T00:00:00.000Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "adapter",
+        "matchOrigin": "platform",
+        "identity": {
+          "name": "account_id",
+          "originalValue": "AG-1003",
+          "normalizedValue": "AG-1003",
+          "grounding": {
+            "evidenceId": "01990000-0000-7000-8000-00000000c001",
+            "locator": "$.accounts[1].account_id",
+            "label": "account_id",
+            "extractedText": "AG-1003"
+          },
+          "corroboration": null
+        },
+        "attributes": [
+          {
+            "name": "status",
+            "originalValue": "Active",
+            "normalizedValue": "Active",
+            "grounding": {
+              "evidenceId": "01990000-0000-7000-8000-00000000c001",
+              "locator": "$.accounts[1].status",
+              "label": "status",
+              "extractedText": "Active"
+            },
+            "corroboration": null
+          },
+          {
+            "name": "roles",
+            "originalValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "normalizedValue": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "grounding": {
+              "evidenceId": "01990000-0000-7000-8000-00000000c001",
+              "locator": "$.accounts[1].roles",
+              "label": "roles",
+              "extractedText": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]"
+            },
+            "corroboration": null
+          }
+        ],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [
+          {
+            "corroboration": null,
+            "grounding": {
+              "evidence_id": "01990000-0000-7000-8000-00000000c001",
+              "extracted_text": "Active",
+              "label": "status",
+              "locator": "$.accounts[1].status"
+            },
+            "name": "status",
+            "normalized_value": "Active",
+            "original_value": "Active"
+          },
+          {
+            "corroboration": null,
+            "grounding": {
+              "evidence_id": "01990000-0000-7000-8000-00000000c001",
+              "extracted_text": "[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]",
+              "label": "roles",
+              "locator": "$.accounts[1].roles"
+            },
+            "name": "roles",
+            "normalized_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ],
+            "original_value": [
+              "VENDOR_MAINTAINER",
+              "VENDOR_APPROVER"
+            ]
+          }
+        ],
+        "capture_method": "adapter",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "true",
+        "identity": {
+          "corroboration": null,
+          "grounding": {
+            "evidence_id": "01990000-0000-7000-8000-00000000c001",
+            "extracted_text": "AG-1003",
+            "label": "account_id",
+            "locator": "$.accounts[1].account_id"
+          },
+          "name": "account_id",
+          "normalized_value": "AG-1003",
+          "original_value": "AG-1003"
+        },
+        "match_origin": "platform",
+        "observation_id": "8e0c2a77-1b6d-8e55-a0f3-7c1b5e9d4a62",
+        "observed_at": "2026-09-05T00:00:00.000Z",
+        "population_record_key": "AG-1003",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"Active\",\"label\":\"status\",\"locator\":\"$.accounts[1].status\"},\"name\":\"status\",\"normalized_value\":\"Active\",\"original_value\":\"Active\"},{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"[\\\"VENDOR_MAINTAINER\\\",\\\"VENDOR_APPROVER\\\"]\",\"label\":\"roles\",\"locator\":\"$.accounts[1].roles\"},\"name\":\"roles\",\"normalized_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"],\"original_value\":[\"VENDOR_MAINTAINER\",\"VENDOR_APPROVER\"]}],\"capture_method\":\"adapter\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"true\",\"identity\":{\"corroboration\":null,\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"AG-1003\",\"label\":\"account_id\",\"locator\":\"$.accounts[1].account_id\"},\"name\":\"account_id\",\"normalized_value\":\"AG-1003\",\"original_value\":\"AG-1003\"},\"match_origin\":\"platform\",\"observation_id\":\"8e0c2a77-1b6d-8e55-a0f3-7c1b5e9d4a62\",\"observed_at\":\"2026-09-05T00:00:00.000Z\",\"population_record_key\":\"AG-1003\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "b83f5b4a579fedcf66d0255d7151cc0ba789237ad7d9a455e051e14836c6a18f"
+    },
+    {
+      "name": "unicode-and-leading-zeros",
+      "note": "A multi-byte label, an astral-plane character in an extracted value, and a population key with leading zeros. RFC 8785 sorts object keys by UTF-16 code unit and emits characters unescaped; §B requires leading zeros to survive, so `000123` is hashed as the string it is and never as a number.",
+      "record": {
+        "schemaVersion": 1,
+        "observationId": "3a5e7c99-4d2b-8b07-bf14-2e8d6a0c9b55",
+        "workItemId": "01990000-0000-7000-8000-00000000a001",
+        "populationRecordKey": "000123",
+        "targetSystem": "accessgate",
+        "found": "true",
+        "observedAt": "2026-09-05T12:34:56.789Z",
+        "stepExecutionId": "01990000-0000-7000-8000-00000000b001",
+        "captureMethod": "agent",
+        "matchOrigin": "human-matched",
+        "identity": {
+          "name": "N° de pièce",
+          "originalValue": "000123",
+          "normalizedValue": "000123",
+          "grounding": {
+            "evidenceId": "01990000-0000-7000-8000-00000000c001",
+            "locator": "$.金額[0].N° de pièce",
+            "label": "N° de pièce",
+            "extractedText": "🔎 000123"
+          },
+          "corroboration": "model-read"
+        },
+        "attributes": [],
+        "evidenceIds": [
+          "01990000-0000-7000-8000-00000000c001"
+        ]
+      },
+      "envelope": {
+        "attributes": [],
+        "capture_method": "agent",
+        "evidence_ids": [
+          "01990000-0000-7000-8000-00000000c001"
+        ],
+        "found": "true",
+        "identity": {
+          "corroboration": "model-read",
+          "grounding": {
+            "evidence_id": "01990000-0000-7000-8000-00000000c001",
+            "extracted_text": "🔎 000123",
+            "label": "N° de pièce",
+            "locator": "$.金額[0].N° de pièce"
+          },
+          "name": "N° de pièce",
+          "normalized_value": "000123",
+          "original_value": "000123"
+        },
+        "match_origin": "human-matched",
+        "observation_id": "3a5e7c99-4d2b-8b07-bf14-2e8d6a0c9b55",
+        "observed_at": "2026-09-05T12:34:56.789Z",
+        "population_record_key": "000123",
+        "schema_version": 1,
+        "step_execution_id": "01990000-0000-7000-8000-00000000b001",
+        "target_system": "accessgate",
+        "work_item_id": "01990000-0000-7000-8000-00000000a001"
+      },
+      "canonicalText": "{\"attributes\":[],\"capture_method\":\"agent\",\"evidence_ids\":[\"01990000-0000-7000-8000-00000000c001\"],\"found\":\"true\",\"identity\":{\"corroboration\":\"model-read\",\"grounding\":{\"evidence_id\":\"01990000-0000-7000-8000-00000000c001\",\"extracted_text\":\"🔎 000123\",\"label\":\"N° de pièce\",\"locator\":\"$.金額[0].N° de pièce\"},\"name\":\"N° de pièce\",\"normalized_value\":\"000123\",\"original_value\":\"000123\"},\"match_origin\":\"human-matched\",\"observation_id\":\"3a5e7c99-4d2b-8b07-bf14-2e8d6a0c9b55\",\"observed_at\":\"2026-09-05T12:34:56.789Z\",\"population_record_key\":\"000123\",\"schema_version\":1,\"step_execution_id\":\"01990000-0000-7000-8000-00000000b001\",\"target_system\":\"accessgate\",\"work_item_id\":\"01990000-0000-7000-8000-00000000a001\"}",
+      "digest": "051bf44aca3afaea73056023f07349d4a4cddc1c88b7866e1fd922e0f4e11851"
+    }
+  ],
+  "batches": [
+    {
+      "name": "empty",
+      "note": "No Observations registered. A digest over the empty list.",
+      "members": [],
+      "digests": [],
+      "canonicalText": "[]",
+      "batchDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "three-in-order",
+      "note": "The first three vectors in registration order.",
+      "members": [
+        "found-grounded-identity",
+        "absent-no-identity",
+        "ambiguous-no-identity"
+      ],
+      "digests": [
+        "9531fe3db4b29ceac14458e3defec8acc694ac6fbf5555dce760966c794e2899",
+        "dbb67cec9d53b8ab2a0c10f7db610f10e7d6433f7b079be4d539a80414a9bbcc",
+        "8d10ac5f149a2c2483afcda5c686f0cb492ad5c9db0718319b529b40ad89f746"
+      ],
+      "canonicalText": "[\"9531fe3db4b29ceac14458e3defec8acc694ac6fbf5555dce760966c794e2899\",\"dbb67cec9d53b8ab2a0c10f7db610f10e7d6433f7b079be4d539a80414a9bbcc\",\"8d10ac5f149a2c2483afcda5c686f0cb492ad5c9db0718319b529b40ad89f746\"]",
+      "batchDigest": "cf0fc09ed8b58c9d4f5829d831467dca7ef9240a4077ba9c0e1ed22f7592e691"
+    },
+    {
+      "name": "three-reordered",
+      "note": "The same three digests in a different order. Its batch digest must DIFFER: order is part of what the event records.",
+      "members": [
+        "absent-no-identity",
+        "found-grounded-identity",
+        "ambiguous-no-identity"
+      ],
+      "digests": [
+        "dbb67cec9d53b8ab2a0c10f7db610f10e7d6433f7b079be4d539a80414a9bbcc",
+        "9531fe3db4b29ceac14458e3defec8acc694ac6fbf5555dce760966c794e2899",
+        "8d10ac5f149a2c2483afcda5c686f0cb492ad5c9db0718319b529b40ad89f746"
+      ],
+      "canonicalText": "[\"dbb67cec9d53b8ab2a0c10f7db610f10e7d6433f7b079be4d539a80414a9bbcc\",\"9531fe3db4b29ceac14458e3defec8acc694ac6fbf5555dce760966c794e2899\",\"8d10ac5f149a2c2483afcda5c686f0cb492ad5c9db0718319b529b40ad89f746\"]",
+      "batchDigest": "46faaf33e59ad892c2d1ee6b684d0d346c7fb84fd9347e74b28388fbaf6e222d"
+    }
+  ]
+}

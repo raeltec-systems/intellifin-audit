@@ -217,6 +217,19 @@ export function executionUnitOrder(
  * frozen plan text. A second copy would agree on every value anybody thought to try.
  */
 export function adapterLookupColumn(templateId: string): string | null {
+  return adapterSearchKeys(templateId)?.[0] ?? null;
+}
+
+/**
+ * EVERY declared search key for a Template, in declared order (contract v1).
+ *
+ * The join uses the first; an absence has to prove it searched them ALL (§B.1's Absence
+ * Observation). P-1 declares `employee_id` and `full_name`, so an adapter that indexed
+ * one of them has not proven a record absent and its coverage stays `UNINSPECTED` — the
+ * safe direction, and the reason this is a separate function rather than the first
+ * element of one.
+ */
+export function adapterSearchKeys(templateId: string): readonly string[] | null {
   if (!Object.hasOwn(PLAN_LOOKUP_COLUMNS, templateId)) return null;
-  return (PLAN_LOOKUP_COLUMNS as Record<string, readonly string[]>)[templateId]![0] ?? null;
+  return (PLAN_LOOKUP_COLUMNS as Record<string, readonly string[]>)[templateId]!;
 }

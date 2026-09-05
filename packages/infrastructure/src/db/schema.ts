@@ -11,6 +11,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -907,9 +908,19 @@ export const runObservation = pgTable('run_observation', {
   identity: jsonb('identity').$type<import('@intellifin/domain').ObservationAttribute | null>(),
   attributes: jsonb('attributes').$type<import('@intellifin/domain').ObservationAttribute[]>().notNull(),
   evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull(),
+  // Generation 20. The digest is over the RFC 8785 canonical JSON of the WIRE RECORD and
+  // nothing else, so a row edited after registration stops agreeing with the digest the
+  // registration event recorded. `observed_at_source` is §B's retained original offset:
+  // the instant is normalized to UTC in `observed_at` and never silently shifted.
+  digest: text('digest').notNull(),
+  coverage: text('coverage').notNull(),
+  observedAtSource: text('observed_at_source').notNull(),
 }, t=>[
   // A redelivered job cannot create a second Observation for the same record.
   uniqueIndex('run_observation_item_record').on(t.workItemId,t.populationRecordKey),
+  // The composite key `run_observation_evaluation` points at, so "an uninspected record
+  // is never Compliant" is a foreign key plus a CHECK rather than a rule in one command.
+  uniqueIndex('run_observation_coverage_key').on(t.observationId,t.coverage),
   check('run_observation_schema',sql`${t.schemaVersion} = 1`),
   check('run_observation_found',sql`${t.found} IN ('true','false','ambiguous')`),
   check('run_observation_capture',sql`${t.captureMethod} IN ('agent','adapter')`),
@@ -920,4 +931,58 @@ export const runObservation = pgTable('run_observation', {
   check('run_observation_identity',sql`(${t.found} = 'true') = (${t.identity} IS NOT NULL) AND (${t.identity} IS NULL OR jsonb_typeof(${t.identity}) = 'object')`),
   check('run_observation_attributes',sql`coalesce(jsonb_typeof(${t.attributes}) = 'array' AND jsonb_array_length(${t.attributes}) <= 64, false)`),
   check('run_observation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) BETWEEN 1 AND 16, false)`),
+  check('run_observation_digest',sql`${t.digest} ~ '^[0-9a-f]{64}$'`),
+  // §H per-record coverage counts `found ∈ {true, false}` only, so an ambiguous match is
+  // its own coverage state and never `COVERED`; a resolved match always is; an absence is
+  // covered only when it proved it looked, and `UNINSPECTED` otherwise.
+  check('run_observation_coverage',sql`${t.coverage} IN ('COVERED','UNINSPECTED','AMBIGUOUS') AND (${t.found} = 'ambiguous') = (${t.coverage} = 'AMBIGUOUS') AND (${t.found} <> 'true' OR ${t.coverage} = 'COVERED')`),
+]);
+
+/**
+ * `run_observation_check` — one §H per-Observation check outcome, and its diagnostic.
+ *
+ * A failing check is a FINDING, not a refusal: it is recorded here and the Run-level Gate
+ * (Story 3.8) turns it into `INCONCLUSIVE`. A PASS never carries a diagnostic and a FAIL
+ * always does — a passing check with a reason attached reads as a finding to everything
+ * downstream, and a failing one with none is a finding nobody can act on.
+ */
+export const runObservationCheck = pgTable('run_observation_check', {
+  observationId: uuid('observation_id').notNull().references(() => runObservation.observationId),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  checkName: text('check_name').notNull(), outcome: text('outcome').notNull(), diagnostic: text('diagnostic'),
+}, t=>[
+  primaryKey({columns:[t.observationId,t.checkName]}),
+  index('run_observation_check_run_idx').on(t.runId,t.checkName),
+  check('run_observation_check_name',sql`${t.checkName} IN ('identity-corroboration','search-completeness','ambiguous-match','required-evidence','freshness','observation-corroboration')`),
+  check('run_observation_check_outcome',sql`${t.outcome} IN ('PASS','FAIL') AND (${t.outcome} = 'PASS') = (${t.diagnostic} IS NULL)`),
+]);
+
+/**
+ * `run_observation_evaluation` — §B.1's per-condition evaluation, one row per condition.
+ *
+ * `coverage` is denormalized from `run_observation` and held there by a composite foreign
+ * key, so `value <> 'COMPLIANT' OR coverage = 'COVERED'` is a guarantee no command,
+ * migration or psql session can route around: an uninspected or ambiguous record cannot
+ * be recorded Compliant, by anybody. `UNEVALUATED` is a VALUE, never an origin.
+ */
+export const runObservationEvaluation = pgTable('run_observation_evaluation', {
+  observationId: uuid('observation_id').notNull(),
+  coverage: text('coverage').notNull(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  conditionId: text('condition_id').notNull(), origin: text('origin').notNull(), value: text('value').notNull(),
+  confirmation: text('confirmation'), confidence: numeric('confidence',{precision:7,scale:6}),
+  rationale: text('rationale'), diagnostic: text('diagnostic'),
+  evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull(),
+}, t=>[
+  primaryKey({columns:[t.observationId,t.conditionId]}),
+  index('run_observation_evaluation_run_idx').on(t.runId,t.value),
+  foreignKey({columns:[t.observationId,t.coverage],foreignColumns:[runObservation.observationId,runObservation.coverage],name:'run_observation_evaluation_coverage_fk'}),
+  check('run_observation_evaluation_origin',sql`${t.origin} IN ('RULE','AGENT_JUDGED','HUMAN')`),
+  check('run_observation_evaluation_value',sql`${t.value} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')`),
+  // Confirmation and confidence belong to an Agent-Judged evaluation and to no other.
+  check('run_observation_evaluation_confirmation',sql`${t.confirmation} IS NULL OR (${t.origin} = 'AGENT_JUDGED' AND ${t.confirmation} IN ('pending','confirmed','rejected'))`),
+  check('run_observation_evaluation_confidence',sql`${t.confidence} IS NULL OR (${t.origin} = 'AGENT_JUDGED' AND ${t.confidence} >= 0 AND ${t.confidence} <= 1)`),
+  // §H: uninspected records are never Compliant, and neither is an ambiguous match.
+  check('run_observation_evaluation_coverage',sql`${t.value} <> 'COMPLIANT' OR ${t.coverage} = 'COVERED'`),
+  check('run_observation_evaluation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) <= 16, false)`),
 ]);

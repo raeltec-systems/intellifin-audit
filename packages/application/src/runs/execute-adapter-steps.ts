@@ -1,7 +1,10 @@
 import {
   adapterLookupColumn,
+  adapterSearchKeys,
   classifyPlanTargets,
   decodePopulationUtf8,
+  isCompleteCollectionEnvelope,
+  observationIdFor,
   sha256HexOfBytes,
   canonicalJson,
   OBSERVATION_LIMITS,
@@ -11,6 +14,7 @@ import {
   type JsonValue,
   type ObservationAttribute,
   type ObservationFound,
+  type ObservationQueryKey,
   type ObservationRecord,
   type ProcedureTargetSnapshot,
   type RunRecord,
@@ -26,6 +30,8 @@ import {
   type AdapterExtractionPort,
   type CredentialResolver,
   type EvidenceStore,
+  type ObservationCorroborationPort,
+  type ObservationEvaluationPort,
   type PopulationRecord,
   type ReferenceAcquisitionPort,
   type SessionStepRecord,
@@ -33,6 +39,11 @@ import {
   type WorkItemRecord,
 } from './execution-ports.js';
 import type { PopulationJob } from './acquire-population.js';
+import {
+  ObservationRegistrationError,
+  registerObservations,
+  type ObservationBatchItem,
+} from './register-observations.js';
 
 /**
  * The execution stage after population acquisition (Story 3.3).
@@ -69,6 +80,14 @@ export interface AdapterExecutionDependencies {
   store: EvidenceStore;
   clock: Clock;
   ids: UuidV7Generator;
+  /**
+   * Story 3.6's seam. Required, not optional: a composition root that forgets it would
+   * silently register every attribute as "not yet judged" forever, and the next story
+   * would have nowhere obvious to plug in. `NO_CORROBORATION` is the explicit "not yet".
+   */
+  corroboration: ObservationCorroborationPort;
+  /** Story 3.7's seam. `NO_EVALUATION` is the explicit "not yet", for the same reason. */
+  evaluation: ObservationEvaluationPort;
 }
 
 /** The closed diagnostic vocabulary. Never an error message, never a URL, never a value. */
@@ -84,7 +103,8 @@ export type AdapterExecutionDiagnostic =
   | 'reference-contract-failed'
   | 'extraction-transport-failed'
   | 'extraction-integrity-failed'
-  | 'extraction-contract-failed';
+  | 'extraction-contract-failed'
+  | 'observation-registration-refused';
 
 /** The collection names an extraction response may carry (population contract v1). */
 const COLLECTION_KEYS = ['accounts', 'transactions', 'employees', 'approvals'] as const;
@@ -136,10 +156,19 @@ function objectValue(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** The declared collection of an extraction response, or a contract failure. */
+/**
+ * The declared collection of an extraction response, or a contract failure.
+ *
+ * `complete` is the §H extraction-completeness verdict, and it is the third leg of an
+ * honest absence: the response DECLARES itself complete, the row count it reports is the
+ * row count it carries, and its envelope holds no key outside the closed set. Absent or
+ * contradicted, the extraction is not provably complete and every `found = false` it
+ * produced is `UNINSPECTED` rather than a finding.
+ */
 export function parseExtractionRows(artifact: AcquiredArtifact): {
   collection: string;
   rows: readonly Record<string, JsonValue>[];
+  complete: boolean;
 } {
   if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(artifact.mediaType)) {
     throw new PopulationAcquisitionError('contract');
@@ -153,14 +182,26 @@ export function parseExtractionRows(artifact: AcquiredArtifact): {
   if (!objectValue(value)) throw new PopulationAcquisitionError('contract');
   const keys = COLLECTION_KEYS.filter((key) => Object.hasOwn(value, key));
   if (keys.length !== 1) throw new PopulationAcquisitionError('contract');
-  const rows: unknown = value[keys[0]!];
+  const collection = keys[0]!;
+  const rows: unknown = value[collection];
   if (!Array.isArray(rows) || !rows.every(objectValue)) throw new PopulationAcquisitionError('contract');
   try {
     canonicalJson(rows as JsonValue);
   } catch {
     throw new PopulationAcquisitionError('contract');
   }
-  return { collection: keys[0]!, rows: rows as Record<string, JsonValue>[] };
+  // The CLOSED v1 collection envelope, and the ONE list of its keys — the same one
+  // Story 3.2 reconciles an API population against. An open envelope lets an alternate or
+  // nested continuation marker (`next`, `cursor`, a name nobody thought of) pass
+  // unnoticed, and a partial page then reads as a complete extraction, which turns "this
+  // record is not in the system" into "this record is not on the page I happened to
+  // read". A key the envelope does not name does not fail the PARSE — the bytes are still
+  // what the Target System answered and are still frozen as Evidence — it makes the
+  // extraction NOT PROVABLY COMPLETE, so every absence from it becomes `UNINSPECTED`.
+  const returned = value['returned'];
+  const complete =
+    isCompleteCollectionEnvelope(value) && (returned === undefined || returned === rows.length);
+  return { collection, rows: rows as Record<string, JsonValue>[], complete };
 }
 
 /**
@@ -184,11 +225,19 @@ function extractedText(value: JsonValue): string {
 }
 
 /**
- * Build one Observation per included population record for one adapter Work Item.
+ * Build one registration item per included population record for one adapter Work Item.
  *
  * The join is the Template's frozen lookup column, compared as an exact opaque string.
- * Exactly one match resolves; zero is a proven-absence candidate (`found = false`, whose
- * completeness rules are Story 3.4's); more than one is `ambiguous` and never picks.
+ * Exactly one match resolves; zero is a proven-absence candidate; more than one is
+ * `ambiguous` and never picks.
+ *
+ * Each `found = false` item carries the absence proof the adapter can actually make: the
+ * query key it DERIVED (the first frozen lookup column, which is the one it indexed by),
+ * the extraction Evidence that holds the empty result, and whether the extraction proved
+ * itself complete. Beside it goes the EXPECTED list — every declared search key with the
+ * population record's normalized value — which the registration compares the proof
+ * against. A Template declaring two search keys is therefore not proven absent by an
+ * adapter that searched one of them.
  */
 export function buildAdapterObservations(input: {
   plan: ExecutablePlan;
@@ -200,10 +249,12 @@ export function buildAdapterObservations(input: {
   rows: readonly Record<string, JsonValue>[];
   records: readonly PopulationRecord[];
   observedAt: string;
-  nextId: () => string;
-}): { observations: readonly ObservationRecord[]; unkeyed: number; duplicates: number } {
+  /** The §H extraction-completeness verdict from `parseExtractionRows`. */
+  complete: boolean;
+}): { items: readonly ObservationBatchItem[]; unkeyed: number; duplicates: number } {
   const column = adapterLookupColumn(input.plan.inputs.templateId);
-  if (column === null) throw new PopulationAcquisitionError('contract');
+  const searchKeys = adapterSearchKeys(input.plan.inputs.templateId);
+  if (column === null || searchKeys === null) throw new PopulationAcquisitionError('contract');
   const declared = input.plan.observations.filter((field) => field.attributeName !== 'found');
   const index = new Map<string, number[]>();
   for (const [position, row] of input.rows.entries()) {
@@ -214,7 +265,7 @@ export function buildAdapterObservations(input: {
     else index.set(key, [position]);
   }
 
-  const observations: ObservationRecord[] = [];
+  const items: ObservationBatchItem[] = [];
   const seen = new Set<string>();
   let unkeyed = 0;
   let duplicates = 0;
@@ -273,9 +324,12 @@ export function buildAdapterObservations(input: {
         continue;
       }
     }
-    observations.push({
+    const observation: ObservationRecord = {
       schemaVersion: OBSERVATION_SCHEMA_VERSION,
-      observationId: input.nextId(),
+      // DERIVED, never minted: a redelivered batch has to produce the same Observation,
+      // or the row that survives the unique index and the row the second event describes
+      // are two different things (Story 3.4).
+      observationId: observationIdFor(input.workItemId, key),
       workItemId: input.workItemId,
       populationRecordKey: key,
       targetSystem: input.target.registrationId,
@@ -287,9 +341,35 @@ export function buildAdapterObservations(input: {
       identity,
       attributes,
       evidenceIds: [input.evidenceId],
+    };
+    // Every declared search key with the population record's value for it. A key the
+    // record does not carry as a non-empty string gets the empty string, which no derived
+    // query key can equal — fail-closed, so an absence over a record missing a declared
+    // search value is `UNINSPECTED` rather than quietly believed.
+    const expectedQueryKeys: ObservationQueryKey[] = searchKeys.map((name) => {
+      const value = record.values[name];
+      return { key: name, value: typeof value === 'string' ? value : '' };
+    });
+    items.push({
+      record: observation,
+      // The platform clock is UTC, so the source text and the normalized instant are the
+      // same string here. An agent read whose Target System reports a source offset
+      // supplies a different one and registration normalizes it.
+      observedAtSource: input.observedAt,
+      absence:
+        found === 'false'
+          ? {
+              // What the adapter ACTUALLY searched: the frozen lookup column it indexed
+              // the extraction by, with the value it took from the population record.
+              queryKeys: [{ key: column, value: key }],
+              emptyResultEvidenceId: input.evidenceId,
+              extractionComplete: input.complete,
+            }
+          : null,
+      expectedQueryKeys,
     });
   }
-  return { observations, unkeyed, duplicates };
+  return { items, unkeyed, duplicates };
 }
 
 function evidenceKey(kind: 'reference' | 'extraction', runId: string, stepId: string): string {
@@ -301,6 +381,11 @@ function failureDiagnostic(
   unit: 'reference' | 'extraction',
   error: unknown,
 ): AdapterExecutionDiagnostic {
+  // A refused registration is not a transport failure, and reporting it as one would send
+  // an operator to look at a Target System that answered perfectly well. It is also not
+  // retryable: the same bytes produce the same batch, so retrying it eight times against
+  // a live system proves nothing (the `credential-unresolved` rule, one layer along).
+  if (error instanceof ObservationRegistrationError) return 'observation-registration-refused';
   const code = error instanceof PopulationAcquisitionError ? error.code : 'transport';
   return `${unit}-${code}-failed` as AdapterExecutionDiagnostic;
 }
@@ -759,6 +844,11 @@ async function runWorkItem(
 
   while (item.attempts < maxAttempts) {
     item.attempts += 1;
+    // What the row said before this attempt. A failed attempt restores it: the count is
+    // set optimistically before the commit that stores the Observations, and a commit
+    // that rolls back would otherwise leave the Work Item reporting Observations that
+    // are not there.
+    const priorObservations = item.observations;
     const execution = unit.startStepExecution(entry.stepId, item.workItemId, 'extract-adapter', item.attempts);
     const evidence = evidenceFor(
       unit,
@@ -821,13 +911,14 @@ async function runWorkItem(
         rows: parsed.rows,
         records: unit.records,
         observedAt: deps.clock.now().toISOString(),
-        nextId: () => deps.ids.next(),
+        complete: parsed.complete,
       });
       item.state = 'OBSERVED';
-      item.observations = built.observations.length;
+      item.observations = built.items.length;
       const notes = [
         ...(built.unkeyed > 0 ? [`unkeyed-records:${String(built.unkeyed)}`] : []),
         ...(built.duplicates > 0 ? [`duplicate-record-keys:${String(built.duplicates)}`] : []),
+        ...(parsed.complete ? [] : ['extraction-incomplete']),
       ];
       item.diagnostic = notes.length > 0 ? notes.join(', ') : null;
       // A `let` captured by a closure widens back to its declared type, so the digest and
@@ -845,7 +936,23 @@ async function runWorkItem(
           completedAt: deps.clock.now().toISOString(),
           diagnostic: item.diagnostic,
         });
-        await context.saveObservations(built.observations);
+        // The one transactional registration (Story 3.4): the rows, their per-Observation
+        // check outcomes, their evaluations, the audit event carrying every digest and
+        // the Timeline notification, inside THIS transaction with the Evidence, the Work
+        // Item and the Step Execution above. A refusal throws and takes all of it back.
+        await registerObservations(
+          context,
+          {
+            run: unit.run,
+            workItemId: item.workItemId,
+            stepExecutionId: execution.stepExecutionId,
+            targetSystem: entry.target.registrationId,
+            runStartedAt: checkpoint.runStartedAt,
+            registeredAt: deps.clock.now().toISOString(),
+            items: built.items,
+          },
+          { corroboration: deps.corroboration, evaluation: deps.evaluation },
+        );
         await event(context, 'work-item-observed', 'RUNNING', checkpoint, {
           workItemId: item.workItemId,
           stepId: item.stepId,
@@ -854,7 +961,7 @@ async function runWorkItem(
           stepExecutionId: execution.stepExecutionId,
           digest,
           size,
-          observations: built.observations.length,
+          observations: built.items.length,
           attempt: item.attempts,
         });
       });
@@ -864,8 +971,12 @@ async function runWorkItem(
         error instanceof CredentialUnresolved ? 'credential-unresolved' : failureDiagnostic('extraction', error);
     }
 
+    item.observations = priorObservations;
     const cycleExhausted = item.attempts % unit.attemptsPerCycle === 0;
-    const terminal = item.attempts >= maxAttempts || diagnostic === 'credential-unresolved';
+    const terminal =
+      item.attempts >= maxAttempts ||
+      diagnostic === 'credential-unresolved' ||
+      diagnostic === 'observation-registration-refused';
     item.cycles = Math.min(2, Math.ceil(item.attempts / unit.attemptsPerCycle));
     item.state = terminal ? 'FAILED' : cycleExhausted ? 'AWAITING' : 'IN_PROGRESS';
     item.diagnostic = diagnostic;

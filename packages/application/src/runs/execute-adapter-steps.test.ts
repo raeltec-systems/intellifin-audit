@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  observationBatchDigest,
+  observationDigest,
+  observationIdFor,
   registrationDigest,
   registrationDigestEnvelope,
   decodePopulationUtf8,
@@ -13,14 +16,21 @@ import {
 } from '@intellifin/domain';
 import { executeAdapterSteps, type AdapterExecutionDependencies } from './execute-adapter-steps.js';
 import {
+  NO_CORROBORATION,
+  NO_EVALUATION,
   PopulationAcquisitionError,
+  type ObservationCorroborationPort,
+  type ObservationEvaluationPort,
   type AcquiredArtifact,
   type AdapterEvidenceRecord,
   type AdapterExecutionCheckpoint,
   type AdapterExecutionContext,
   type AdapterExecutionRepository,
+  type ObservationCheckRow,
+  type ObservationEvaluationRow,
   type PopulationCheckpoint,
   type PopulationRecord,
+  type RegisteredObservation,
   type ResolvedCredential,
   type SessionStepRecord,
   type StepExecutionRecord,
@@ -100,14 +110,34 @@ const RUN: RunRecord = {
 
 const JOB = { schemaVersion: 1 as const, runId: RUN.runId, correlationId: RUN.correlationId };
 
+const ROWS = [
+  { account_id: 'AG-1001', roles: ['AP_CLERK'], status: 'Active' },
+  { account_id: 'AG-1003', roles: ['VENDOR_MAINTAINER', 'VENDOR_APPROVER'], status: 'Active' },
+  { account_id: 'AG-1007', roles: ['OPS_CLERK'], status: 'Active' },
+  { account_id: 'AG-1007', roles: ['LOAN_ADMIN'], status: 'Active' },
+];
+
+/**
+ * The CLOSED envelope a Northstar collection actually serves, `complete` included.
+ *
+ * A response that does not declare itself complete, or that carries a key outside the
+ * closed set (an alternate continuation marker), is not PROVABLY complete, and every
+ * `found = false` it produced is `UNINSPECTED` rather than a finding. `INCOMPLETE_ACCOUNTS`
+ * below is the same rows without that declaration.
+ */
 const ACCOUNTS = JSON.stringify({
-  accounts: [
-    { account_id: 'AG-1001', roles: ['AP_CLERK'], status: 'Active' },
-    { account_id: 'AG-1003', roles: ['VENDOR_MAINTAINER', 'VENDOR_APPROVER'], status: 'Active' },
-    { account_id: 'AG-1007', roles: ['OPS_CLERK'], status: 'Active' },
-    { account_id: 'AG-1007', roles: ['LOAN_ADMIN'], status: 'Active' },
-  ],
+  // The NFR-13 synthetic marker every Northstar response carries. It is part of the
+  // closed envelope, and leaving it out of a fixture is how a closed list written twice
+  // stayed green here while the real served bytes were judged incomplete.
+  synthetic: { marker: 'SYNTHETIC-NORTHSTAR-FIXTURE' },
+  schema_version: 1, representation: 'population-rows-v1', source: 'accessgate',
+  title: 'AccessGate accounts', generation: 'g1', generated_at: '2026-09-01T00:00:00.000Z',
+  effective_period: { from: '2026-01-01', to: '2026-12-31' },
+  schema: ['account_id', 'roles', 'status'], complete: true, returned: ROWS.length,
+  declared_count_endpoint: '/accessgate/accounts/count',
+  accounts: ROWS,
 });
+const INCOMPLETE_ACCOUNTS = JSON.stringify({ accounts: ROWS });
 const ROLE_MATRIX = 'entry,role,permission\n1,AP_CLERK,CREATE_PAYMENT\n';
 
 const RECORDS: readonly PopulationRecord[] = [
@@ -134,7 +164,9 @@ class FakeRepository implements AdapterExecutionRepository {
   items = new Map<string, WorkItemRecord>();
   evidence = new Map<string, AdapterEvidenceRecord>();
   executions: StepExecutionRecord[] = [];
-  observations: ObservationRecord[] = [];
+  observations: RegisteredObservation[] = [];
+  checks = new Map<string, ObservationCheckRow>();
+  evaluations = new Map<string, ObservationEvaluationRow>();
   events: { payload: Record<string, unknown>; outcome: string }[] = [];
   timeline: number[] = [];
   records: readonly PopulationRecord[] = RECORDS;
@@ -183,14 +215,45 @@ class FakeRepository implements AdapterExecutionRepository {
       saveEvidence: async (record) => {
         repository.evidence.set(record.evidenceId, { ...record });
       },
-      saveObservations: async (observations) => {
-        for (const observation of observations) {
-          const clash = repository.observations.some(
+      readObservations: async (workItemId, keys) =>
+        repository.observations
+          .filter(
             (row) =>
-              row.workItemId === observation.workItemId &&
-              row.populationRecordKey === observation.populationRecordKey,
+              row.record.workItemId === workItemId &&
+              keys.includes(row.record.populationRecordKey),
+          )
+          .map((row) => ({
+            observationId: row.record.observationId,
+            populationRecordKey: row.record.populationRecordKey,
+            record: row.record,
+            digest: row.digest,
+            coverage: row.coverage,
+          })),
+      readEvidenceStates: async (ids) =>
+        ids
+          .map((id) => repository.evidence.get(id))
+          .filter((row): row is AdapterEvidenceRecord => row !== undefined)
+          .map((row) => ({ evidenceId: row.evidenceId, state: row.state })),
+      saveObservations: async (rows) => {
+        for (const row of rows) {
+          const clash = repository.observations.some(
+            (existing) =>
+              existing.record.workItemId === row.record.workItemId &&
+              existing.record.populationRecordKey === row.record.populationRecordKey,
           );
-          if (!clash) repository.observations.push(observation);
+          if (!clash) repository.observations.push(row);
+        }
+      },
+      saveObservationChecks: async (rows) => {
+        for (const row of rows) {
+          const key = `${row.observationId} ${row.check}`;
+          if (!repository.checks.has(key)) repository.checks.set(key, row);
+        }
+      },
+      saveObservationEvaluations: async (rows) => {
+        for (const row of rows) {
+          const key = `${row.observationId} ${row.evaluation.conditionId}`;
+          if (!repository.evaluations.has(key)) repository.evaluations.set(key, row);
         }
       },
       notifyTimeline: async (sequence) => {
@@ -217,6 +280,8 @@ function harness(options: {
   extract?: (target: ProcedureTargetSnapshot, credential: ResolvedCredential) => Promise<AcquiredArtifact>;
   reference?: (target: ProcedureTargetSnapshot) => Promise<AcquiredArtifact>;
   resolve?: (reference: string) => Promise<ResolvedCredential>;
+  corroboration?: ObservationCorroborationPort;
+  evaluation?: ObservationEvaluationPort;
 }): Harness {
   const repository = new FakeRepository(options.plan);
   const objects = new Map<string, Uint8Array>();
@@ -274,6 +339,10 @@ function harness(options: {
         return `01920000-0000-7000-8000-${String(counter).padStart(12, '0')}`;
       },
     },
+    // Story 3.4's seams, at their explicit "not yet judged" values unless a test replaces
+    // them. Both are exercised with real implementations in `register-observations.test.ts`.
+    corroboration: options.corroboration ?? NO_CORROBORATION,
+    evaluation: options.evaluation ?? NO_EVALUATION,
   };
   return { repository, deps, objects, puts, wire };
 }
@@ -331,7 +400,7 @@ describe('executeAdapterSteps', () => {
   it('produces one Observation per included record, grounded, with the right found value', async () => {
     const test = harness({ plan: plan([adapter]) });
     await executeAdapterSteps(test.deps, JOB);
-    const byKey = new Map(test.repository.observations.map((row) => [row.populationRecordKey, row]));
+    const byKey = new Map(test.repository.observations.map((row) => [row.record.populationRecordKey, row.record]));
     expect([...byKey.keys()].sort()).toEqual(['AG-1001', 'AG-1003', 'AG-1007', 'AG-9999']);
     expect(byKey.get('AG-1001')?.found).toBe('true');
     // Two extraction rows carry AG-1007: never pick one.
@@ -531,6 +600,83 @@ describe('executeAdapterSteps', () => {
     expect(item.diagnostic).toBe('duplicate-record-keys:1');
   });
 
+  it('registers every Observation through the one transactional contract', async () => {
+    // Story 3.4: the rows, their check outcomes and the event carrying every digest are
+    // written by `registerObservations`, not by this stage. The digest on each stored row
+    // is the domain's digest over the record as stored, and one event carries them all.
+    const test = harness({ plan: plan([adapter]) });
+    await executeAdapterSteps(test.deps, JOB);
+    for (const row of test.repository.observations) {
+      expect(row.digest).toBe(observationDigest(row.record));
+      expect(row.observedAtSource).toBe(row.record.observedAt);
+    }
+    const registered = test.repository.events.filter(
+      (row) => Array.isArray((row.payload as Record<string, unknown>)['digests']),
+    );
+    expect(registered).toHaveLength(1);
+    const payload = registered[0]!.payload as Record<string, unknown>;
+    expect(payload['digests']).toEqual(test.repository.observations.map((row) => row.digest));
+    expect(payload['batchDigest']).toBe(observationBatchDigest(payload['digests'] as string[]));
+    expect(payload['coverage']).toEqual({ COVERED: 3, UNINSPECTED: 0, AMBIGUOUS: 1 });
+    // Every check the registration decided is committed with the rows.
+    expect(new Set(test.repository.checks.values()).size).toBeGreaterThan(0);
+    expect([...test.repository.checks.values()].filter((row) => row.outcome === 'FAIL')).toEqual([
+      {
+        observationId: observationIdFor([...test.repository.items.values()][0]!.workItemId, 'AG-1007'),
+        check: 'ambiguous-match',
+        outcome: 'FAIL',
+        diagnostic: 'ambiguous-match',
+      },
+    ]);
+  });
+
+  it('leaves an absence UNINSPECTED when the extraction did not prove itself complete', async () => {
+    // An extraction with no completeness declaration might be one page of several, so
+    // "this record is not in the system" is really "not on the page I happened to read".
+    const test = harness({
+      plan: plan([adapter]),
+      extract: async () => ({ bytes: utf8Bytes(INCOMPLETE_ACCOUNTS), mediaType: 'application/json', location: 'x' }),
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const byKey = new Map(test.repository.observations.map((row) => [row.record.populationRecordKey, row]));
+    expect(byKey.get('AG-9999')?.coverage).toBe('UNINSPECTED');
+    // A resolved match is still covered: completeness only bears on an absence.
+    expect(byKey.get('AG-1001')?.coverage).toBe('COVERED');
+    expect([...test.repository.items.values()][0]!.diagnostic).toContain('extraction-incomplete');
+  });
+
+  it('fails the Work Item, without retrying, when its registration is refused', async () => {
+    // The refusal is THROWN from inside the transaction, so a real database takes the
+    // Evidence row, the Work Item and the Step Execution back with it; that half is
+    // proved against PostgreSQL in `tests/integration/adapter-execution.test.ts`, since
+    // this in-memory repository has no rollback to observe. What is proved here is the
+    // stage's own response: no Observation, a named diagnostic, and no second attempt.
+    const test = harness({
+      plan: plan([adapter]),
+      evaluation: {
+        evaluate: async (subjects) =>
+          subjects.map((subject) => ({
+            observationId: subject.record.observationId,
+            evaluations: [
+              {
+                conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+                confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [],
+              },
+            ],
+          })),
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const item = [...test.repository.items.values()][0]!;
+    // AG-1007 is ambiguous, so calling it Compliant is refused and the batch fails.
+    expect(item.state).toBe('FAILED');
+    expect(item.diagnostic).toBe('observation-registration-refused');
+    // Not retried eight times against a live system: the same bytes make the same batch.
+    expect(item.attempts).toBe(1);
+    expect(test.repository.observations).toEqual([]);
+    expect(test.repository.run.state).toBe('RUNNING');
+  });
+
   it('counts a record with no usable key instead of inventing one', async () => {
     const test = harness({ plan: plan([adapter]) });
     test.repository.records = [{ ordinal: 1, values: { account_id: '', status: 'Active' } }];
@@ -547,7 +693,7 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.executions.map((row) => row.planStepId)).toEqual(['session-2', 'session-3']);
     expect(test.repository.executions.every((row) => row.action === 'extract-adapter')).toBe(true);
     expect(test.repository.executions.every((row) => row.state === 'SUCCEEDED')).toBe(true);
-    const observation = test.repository.observations[0]!;
+    const observation = test.repository.observations[0]!.record;
     expect(test.repository.executions.some((row) => row.stepExecutionId === observation.stepExecutionId)).toBe(true);
   });
 });

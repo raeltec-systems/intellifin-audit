@@ -50,7 +50,10 @@ Both readings come from bytes that are already frozen, so no canonical plan byte
 every ACTIVE version stays executable. The adapter interpreter implements
 [adapter extraction v1](adapter-extraction-v1.md), which also fixes the extraction
 location, the just-in-time credential boundary, the reserve/upload/verify Evidence sequence
-and the §B.1 Observation projection.
+and the §B.1 Observation projection. Those Observations are written through
+[observation registration v1](observation-registration-v1.md) — one batch, one
+transaction, one event carrying every Observation's digest — which is the seam every
+producer goes through, an agent read later included.
 
 Execution order is: every Reference Source in authored order, then every adapter Work Item
 in authored order, sequentially. A Session Step failure after bounded retries is

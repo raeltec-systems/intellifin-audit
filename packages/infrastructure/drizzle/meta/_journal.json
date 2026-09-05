@@ -141,6 +141,13 @@
       "when": 1788625115341,
       "tag": "0019_curvy_lord_tyger",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788628741536,
+      "tag": "0020_glamorous_puppet_master",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,10 @@ import type {
   ProcedureTargetSnapshot,
   ExecutablePlan,
   JsonValue,
+  ObservationCheckResult,
+  ObservationCorroboration,
+  ObservationCoverage,
+  ObservationEvaluation,
   ObservationRecord,
   RunRecord,
   PopulationResult,
@@ -220,7 +224,7 @@ export interface PopulationRecord {
   readonly values: Record<string, JsonValue>;
 }
 
-export interface AdapterExecutionContext {
+export interface AdapterExecutionContext extends ObservationRegistrationContext {
   run: RunRecord | null;
   population: PopulationCheckpoint | null;
   checkpoint: AdapterExecutionCheckpoint | null;
@@ -235,9 +239,6 @@ export interface AdapterExecutionContext {
   saveWorkItem(item: WorkItemRecord): Promise<void>;
   saveStepExecution(execution: StepExecutionRecord): Promise<void>;
   saveEvidence(evidence: AdapterEvidenceRecord): Promise<void>;
-  /** Insert Observations. Re-inserting an existing one is a no-op, never a duplicate. */
-  saveObservations(observations: readonly ObservationRecord[]): Promise<void>;
-  notifyTimeline(sequence: number): Promise<void>;
 }
 
 export interface AdapterExecutionRepository {
@@ -248,3 +249,147 @@ export interface AdapterExecutionRepository {
   /** Runs whose population is ready and whose extraction is unclaimed or stale. */
   recoverableRunIds(limit: number): Promise<string[]>;
 }
+
+/* ------------------------------------------------------------------ Story 3.4 --- */
+
+/**
+ * Observation registration: the one transactional contract every producer goes through.
+ *
+ * An adapter extraction writes through it today and an agent read will write through it
+ * later. `AdapterExecutionContext` EXTENDS it rather than owning a `saveObservations` of
+ * its own, so there is no reachable write path that skips the digest, the coverage rule,
+ * the per-Observation checks or the event that records them — the same containment
+ * `PostgresIdentityUnitOfWork` gives the identity commands.
+ */
+
+/**
+ * One Observation as it is already stored: the wire record read back out of its columns,
+ * and the digest column beside it.
+ *
+ * The record is here because a digest nobody recomputes proves nothing. Reading both is
+ * what turns "a row was edited after registration" from a claim into a detection: the
+ * digest column is not touched by an edit to the row, so comparing a NEW batch against
+ * it would find them in agreement and see nothing.
+ */
+export interface StoredObservation {
+  readonly observationId: string;
+  readonly populationRecordKey: string;
+  /** The stored row, rebuilt from its columns. Unvalidated: the caller judges it. */
+  readonly record: unknown;
+  readonly digest: string;
+  readonly coverage: ObservationCoverage;
+}
+
+/** One Observation as it is written: the wire record, plus what registration derived. */
+export interface RegisteredObservation {
+  readonly record: ObservationRecord;
+  /** `observationDigest(record)`. Recomputed on read; never taken from a caller. */
+  readonly digest: string;
+  readonly coverage: ObservationCoverage;
+  /** §B: the capture time exactly as the source presented it, offset retained. */
+  readonly observedAtSource: string;
+}
+
+export interface ObservationCheckRow {
+  readonly observationId: string;
+  readonly check: ObservationCheckResult['check'];
+  readonly outcome: ObservationCheckResult['outcome'];
+  readonly diagnostic: string | null;
+}
+
+export interface ObservationEvaluationRow {
+  readonly observationId: string;
+  /** Denormalized so `(observation_id, coverage)` can carry the "never Compliant" FK. */
+  readonly coverage: ObservationCoverage;
+  readonly evaluation: ObservationEvaluation;
+}
+
+/** The Evidence state registration needs: an artifact is proof only once REGISTERED. */
+export interface EvidenceState {
+  readonly evidenceId: string;
+  readonly state: AdapterEvidenceRecord['state'];
+}
+
+/**
+ * The transaction an Observation batch is registered inside.
+ *
+ * Every method here is bound to ONE PostgreSQL transaction. The rows, their check
+ * outcomes, their evaluations, the audit event and the Timeline notification commit
+ * together or not at all.
+ */
+export interface ObservationRegistrationContext {
+  auditEvents: AuditEventWriter;
+  /** What is already stored for these record keys under this Work Item. */
+  readObservations(
+    workItemId: string,
+    populationRecordKeys: readonly string[],
+  ): Promise<readonly StoredObservation[]>;
+  /** The state of the Evidence items this batch's Observations link. */
+  readEvidenceStates(evidenceIds: readonly string[]): Promise<readonly EvidenceState[]>;
+  /** Insert, in order. Re-inserting an existing record key is a no-op, never a duplicate. */
+  saveObservations(rows: readonly RegisteredObservation[]): Promise<void>;
+  saveObservationChecks(rows: readonly ObservationCheckRow[]): Promise<void>;
+  saveObservationEvaluations(rows: readonly ObservationEvaluationRow[]): Promise<void>;
+  notifyTimeline(sequence: number): Promise<void>;
+}
+
+/**
+ * Story 3.6's seam.
+ *
+ * Corroboration is set by the Evidence Quality Gate AT REGISTRATION (§B.1), so it runs
+ * BEFORE the digest is taken — the digest covers the record as it is stored, and a value
+ * written afterwards would leave every row disagreeing with its own digest.
+ *
+ * Until Story 3.6 fills it, `NO_CORROBORATION` judges nothing: every attribute keeps
+ * `corroboration: null`, which means "not yet judged" and never "matched".
+ */
+export interface ObservationCorroborationPort {
+  corroborate(
+    subjects: readonly ObservationRecord[],
+  ): Promise<readonly ObservationCorroborationVerdict[]>;
+}
+
+export interface ObservationCorroborationVerdict {
+  readonly observationId: string;
+  readonly outcome: ObservationCheckResult['outcome'];
+  readonly diagnostic: string | null;
+  /** Per attribute, by name. The identity attribute is named by its own attribute name. */
+  readonly attributes: readonly {
+    readonly name: string;
+    readonly corroboration: ObservationCorroboration;
+  }[];
+}
+
+/** The seam's identity implementation: it judges nothing and says so by returning none. */
+export const NO_CORROBORATION: ObservationCorroborationPort = {
+  corroborate: () => Promise.resolve([]),
+};
+
+/**
+ * Story 3.7's seam.
+ *
+ * The deterministic evaluator runs INSIDE the registration transaction, over the records
+ * exactly as they are being stored, so an evaluation can never describe an Observation
+ * that was not committed. Until Story 3.7 fills it, `NO_EVALUATION` produces none: this
+ * story must not implement the compiled condition rules.
+ */
+export interface ObservationEvaluationPort {
+  evaluate(
+    subjects: readonly ObservationEvaluationSubject[],
+  ): Promise<readonly ObservationEvaluationResult[]>;
+}
+
+export interface ObservationEvaluationSubject {
+  readonly record: ObservationRecord;
+  readonly coverage: ObservationCoverage;
+  readonly checks: readonly ObservationCheckResult[];
+}
+
+export interface ObservationEvaluationResult {
+  readonly observationId: string;
+  readonly evaluations: readonly ObservationEvaluation[];
+}
+
+export const NO_EVALUATION: ObservationEvaluationPort = {
+  evaluate: () => Promise.resolve([]),
+};

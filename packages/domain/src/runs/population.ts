@@ -4,6 +4,36 @@ import { compareComplianceDecimals } from '../procedures/compliance-draft.js';
 import { isExplicitPeriod, isGregorianDate, isRuleDecimal, type ExplicitPeriod, type InclusionRule, type ProcedureSourceSnapshot } from '../procedures/population-draft.js';
 
 export const POPULATION_LIMITS = { bytes: 16 * 1024 * 1024, rows: 100000 } as const;
+
+/**
+ * The CLOSED v1 collection envelope, beside the one collection key.
+ *
+ * V1 is a complete response, not a pagination protocol: an unknown envelope field could
+ * silently introduce a cursor, nested pagination or another continuation, and a partial
+ * page would then read as a complete extraction. Story 3.2 reads this when it reconciles
+ * an API population; Story 3.4 reads it when it decides whether an adapter extraction can
+ * prove an absence. It is ONE list because two copies agree on every value anybody thinks
+ * to try and diverge on the first one nobody does — this one diverged on `synthetic`, the
+ * NFR-13 marker every Northstar response carries, the first time it was written twice.
+ */
+export const COLLECTION_ENVELOPE_KEYS = [
+  'synthetic', 'title', 'schema_version', 'representation', 'source', 'generation',
+  'generated_at', 'effective_period', 'schema', 'complete', 'returned',
+  'declared_count_endpoint', 'count', 'sha256',
+  'accounts', 'transactions', 'employees', 'approvals',
+] as const;
+
+const COLLECTION_ENVELOPE = new Set<string>(COLLECTION_ENVELOPE_KEYS);
+
+/**
+ * Does this response DECLARE itself a complete extraction, in the closed envelope?
+ *
+ * `complete` is true, and every key is one the envelope names. A caller that also knows
+ * how many rows it parsed should compare that with `returned` as well.
+ */
+export function isCompleteCollectionEnvelope(envelope: Record<string, unknown>): boolean {
+  return envelope['complete'] === true && Object.keys(envelope).every((key) => COLLECTION_ENVELOPE.has(key));
+}
 export interface PopulationRow { ordinal: number; values: Record<string, JsonValue>; disposition: 'included' | 'excluded' | 'indeterminate'; reasons: string[] }
 export interface PopulationCheck { name: string; passed: boolean }
 export interface PopulationResult { rows: PopulationRow[]; checks: PopulationCheck[]; rawDigest: string; rowsDigest: string | null; included: number; excluded: number; indeterminate: number; ready: boolean }
@@ -116,10 +146,7 @@ export function reconcilePopulation(input: { bytes: Uint8Array; mediaType: strin
   check('declared-digest',d['sha256'] === (csv ? rawDigest : rowsDigest));
   check('declared-schema',Array.isArray(d['schema']) && JSON.stringify(d['schema']) === JSON.stringify(input.source.contract.declared_schema) && (csv ? JSON.stringify(csvHeaders)===JSON.stringify(d['schema']) : true) && rawRows.every(row => Object.keys(row).length===input.source.contract.declared_schema.length && input.source.contract.declared_schema.every(k => Object.hasOwn(row,k))));
   check('declared-period',isExplicitPeriod(d['effective_period']) && d['effective_period'].from <= input.period.from && d['effective_period'].to >= input.period.to && (csv || (isExplicitPeriod(metadata['effective_period']) && metadata['effective_period'].from===d['effective_period'].from && metadata['effective_period'].to===d['effective_period'].to)));
-  // V1 is a complete response, not a pagination protocol. Unknown envelope fields
-  // cannot silently introduce cursors, nested pagination, or another continuation.
-  const envelopeKeys = new Set(['synthetic','title','schema_version','representation','source','generation','generated_at','effective_period','schema','complete','returned','declared_count_endpoint','count','sha256','accounts','transactions','employees','approvals']);
-  check('complete-extraction',d['complete'] === true && (csv || (metadata['complete'] === true && Object.keys(metadata).every(key => envelopeKeys.has(key)))));
+  check('complete-extraction',d['complete'] === true && (csv || isCompleteCollectionEnvelope(metadata)));
   check('generation',typeof d['generation'] === 'string' && d['generation'] !== '' && (csv || metadata['generation'] === d['generation']));
   check('source-identity',typeof d['source'] === 'string' && d['source'] !== '' && (csv || metadata['source'] === d['source']));
   check('freshness',typeof d['generated_at'] === 'string' && d['generated_at'].includes('T') && populationUtcDate(d['generated_at']) !== null && Date.parse(d['generated_at']) >= Date.parse(input.period.to+'T23:59:59.999Z') && Date.parse(d['generated_at']) <= Date.parse(input.initiatedAt) && (csv || metadata['generated_at'] === d['generated_at']));

@@ -137,10 +137,19 @@ counted in the Work Item's diagnostic. Inventing a key would fabricate coverage;
 coverage check then sees fewer Observations than included records, which is the safe
 direction.
 
-What this contract does **not** decide: the `found = false` completeness rules, batching,
-per-Observation Gate checks (Story 3.4), corroboration against a Structural Snapshot
-(3.6), condition evaluation and Exceptions (3.7), the Run-level Gate (3.8) or Result
-sealing (3.9).
+How those Observations are WRITTEN — the batch as one transaction, the digest over each
+wire record, the `found = false` completeness rules, the coverage state and the
+per-Observation Gate checks — is
+[observation registration v1](observation-registration-v1.md), which this stage calls
+rather than writing rows itself. One relevant consequence lands here: an extraction is
+provably COMPLETE only when its response declares itself `complete`, reports a row count
+equal to the rows it carries, and holds no envelope key outside the closed set. An
+extraction that is not provably complete cannot prove an absence, so every `found = false`
+it produced is `UNINSPECTED`.
+
+What this contract does **not** decide: corroboration against a Structural Snapshot (3.6),
+condition evaluation and Exceptions (3.7), the Run-level Gate (3.8) or Result sealing
+(3.9).
 
 ## Limits, failure and resume
 

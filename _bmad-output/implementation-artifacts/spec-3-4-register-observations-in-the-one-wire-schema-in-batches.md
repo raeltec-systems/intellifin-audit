@@ -2,7 +2,7 @@
 title: 'Story 3.4: Register Observations in the one wire schema, in batches'
 type: 'feature'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -92,3 +92,42 @@ Honest absence is the subtle rule. Three things together make `found = false` a 
 - `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied and every test passing against real PostgreSQL 18, on a database whose name contains `test` or `ci`.
 - `pnpm db:generate` — expected: no drift.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** Observation registration is one transactional contract every producer
+goes through. `AdapterExecutionContext` extends `ObservationRegistrationContext` rather
+than owning a `saveObservations` of its own, so there is no reachable write that skips the
+digest, the coverage rule, the checks or the event.
+
+**"An uninspected record is never Compliant" is enforced by the database.** An evaluation
+row may be COMPLIANT only when its Observation's coverage is COVERED, through a composite
+foreign key against a unique index on the pair. No command, migration or psql session can
+route around it — the strongest available form of the epic's central invariant.
+
+**The digest is pinned by an independently produced vector**, seven cases and three batch
+cases from `scripts/make-observation-digest-golden.py` (Python rfc8785 + hashlib), not by
+the TypeScript under test.
+
+**Four defects found and fixed inside the story's own work**, two of which were tests that
+could not fail: a `required-evidence` check that demanded attributes living in the
+population rather than the Target System, a second copy of the closed collection envelope
+that diverged on the NFR-13 `synthetic` marker and judged every real extraction
+incomplete, a browser assertion reading a column its query never selected, and a browser
+cleanup that missed two new child tables and broke an unrelated spec.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18.4:**
+typecheck PASS; boundaries PASS (350 modules); `db:migrate` schemaVersion 20; unit
+2266/2266; integration 270/270; `db:generate` no drift; both builds PASS; browser + axe
+109/109 with zero accessibility violations.
+
+**Residual risks.** The corroboration and evaluation seams produce nothing in production
+(`NO_CORROBORATION` / `NO_EVALUATION`); Stories 3.6 and 3.7 fill them. A genuine
+re-capture of the same (Work Item, record key) is refused as `digest-mismatch`; an
+agent-driven producer that re-captures inside one Work Item needs a design decision.
+Generation 20 adds three NOT NULL columns with no backfill: production is at generation
+14 and 15-20 are unreleased, so `run_observation` cannot hold rows there, but a developer
+database with rows needs them cleared first.

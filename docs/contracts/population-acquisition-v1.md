@@ -59,6 +59,13 @@ including nested pagination containers or null continuation markers, fail comple
 Response version, representation and ordered schema have their own `response-contract`
 check. Extending this envelope requires an explicit contract change.
 
+That list is `COLLECTION_ENVELOPE_KEYS` in `packages/domain/src/runs/population.ts`, and
+it is the ONE list: [observation registration v1](observation-registration-v1.md) reads
+the same one when it decides whether an adapter extraction can prove a `found = false`
+Observation. Written twice it diverged on `synthetic`, and every real response was judged
+incomplete; `tests/unit/collection-envelope.test.ts` now calls the real synthetic handler
+and pins the list against the bytes it actually serves.
+
 The source effective period must contain the Run period:
 
 ```text
