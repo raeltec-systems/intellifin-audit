@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { deriveExecutablePlan } from '@intellifin/domain';
+import { authoredEvidenceInput, deriveExecutablePlan } from '@intellifin/domain';
 import { derivePlan, updateEvidenceDraft, retryPlanDerivation, initialPlanDerivation, planAuthoringDigest, procedureVersionRowVersion, transitionVersion, deliverNotifications, type ProcedureVersionRecord, type ProceduresUnitOfWorkContext, type AuditUnitOfWork } from '@intellifin/application';
 import { createDb, createSqlClient, CryptoUuidV7Generator, DrizzleProcedureRepository, DrizzleRoleRepository, PostgresProceduresUnitOfWork, DrizzleNotificationRepository, InAppNotificationSender, type Database, type Sql } from '@intellifin/infrastructure';
 import { executablePlanInputs } from '../fixtures/executable-plan.js';
@@ -172,7 +172,7 @@ describe.skipIf(!url)('transactional Procedure Version decisions', () => {
     let row = await seed();
     const dependencies = {roles:new DrizzleRoleRepository(db),unitOfWork:uow,ids};
     const request = (actor:string) => ({session:{userId:actor,sessionId:actor},correlationId:ids.next(),procedureId:row.procedureId,versionId:row.versionId,expectedRowVersion:procedureVersionRowVersion(row)});
-    const evidence = () => row.evidenceRequirements.map(({platformCaptured:_,...fields})=>fields);
+    const evidence = () => row.evidenceRequirements.map(authoredEvidenceInput);
     if (section==='evidence-requirements') {
       expect(await updateEvidenceDraft(dependencies,{...request(author),edit:{section,requirements:[{attributeName:'Parameter',modelRead:false,groundedBy:['structural-snapshot'],screenshot:true,recordingSegment:false}]}})).toMatchObject({ok:true});
       row=(await repository.findVersion(row.versionId))!;

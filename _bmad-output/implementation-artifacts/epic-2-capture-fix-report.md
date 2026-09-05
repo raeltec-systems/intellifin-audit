@@ -22,6 +22,7 @@ The regression coverage includes repeated Target saves, authored snapshot/screen
 | --- | --- |
 | Full unit suite | 81 files, 1,956 tests passed; one worker, 30-second per-test limit |
 | Procedure PostgreSQL integration suite | 59 tests passed against the isolated PostgreSQL 18.6 test database, schema generation 14 |
+| Full PostgreSQL integration suite after CI fixture correction | 14 files, 214 tests passed |
 | Real browser and WCAG checks | 5 passed: three authentication/setup checks and both evidence authoring journeys |
 | TypeScript checks | Passed across the workspace and root tests |
 | Package, worker and Northstar builds | Passed |
@@ -30,6 +31,8 @@ The regression coverage includes repeated Target saves, authored snapshot/screen
 | Delivery report | HTML structure and 11 link targets checked; whitespace check passed |
 
 An earlier unit run had an authentication import timeout and ran the new grounding test against code still being updated. The focused rerun passed all 139 tests; the final full run above passed all 1,956. Those earlier failures are not counted as passes. Browser assertions and retries were not weakened.
+
+CI run 57 then exposed a version-decision fixture that removed only `platformCaptured` when forming command input, leaking the new provenance field. The command correctly rejected that input. The fixture now uses the same `authoredEvidenceInput` projection as the editor; its no-op and authorship assertions are unchanged. The full integration suite above passed after this test-only correction.
 
 ## Decision and owner action
 
