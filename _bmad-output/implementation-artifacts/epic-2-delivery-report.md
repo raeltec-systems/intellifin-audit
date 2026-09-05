@@ -40,6 +40,22 @@ Provider HTTP is synthetic: this proves wiring and contract enforcement, not liv
 
 Earlier delivered checkpoints also passed: [Story 2.5, run 48](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33921238170), [Story 2.6, run 50](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33929302513), and [Story 2.7, run 51](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33948294403).
 
+## Independent review after CI green
+
+A second review of the whole PR diff — correctness, verification gaps and security — plus the automated Codex review found seven defects after run 53 was green. Six are fixed on this branch, and each fix carries a test that fails when the fix is reverted:
+
+- The Builder's Population Source picker inherited the administration list's 200-row cap, so a source past the cap could not be bound (Codex finding). The picker read is unpaged and active-only now.
+- The worker-backed review journey started its fixture worker even against an external web server, where it cannot pass (Codex finding). It skips itself there and says why.
+- The ripple count and the platform-Draft fan-out ignored activated succession: an administrator confirmed "1 Procedure" and two Drafts appeared, one copied from the superseded definition. Both now apply the same "current version" rule as the Active-version read.
+- A configuration publication that left the model unchanged moved `@current` with nothing in the audit chain. Every first publication is appended now; a replay appends nothing.
+- The platform-configuration script's entry-point guard would report success having done nothing when invoked through a symlink — the Story 1.8 defect. It uses `import.meta.main`, and the entry-point test covers it.
+- The plan-derivation retry action could answer a framework 500 instead of a sentence. It fails like its sibling actions.
+- Raw-SQL immutability of recorded activation metadata and succession edges, and the platform-change trigger branches, gained the integration tests nothing had exercised.
+
+One Codex finding stays open for the owner: when the last agent-driven Target is deselected, the requirements the platform forced (Structural Snapshot grounding and the screenshot flag) remain as if authored. CLAUDE.md records "deselecting clears the derived flag without discarding authored grounding" as the deliberate rule, and the auditor can edit those requirements afterwards. Undoing forced values needs the platform to remember which values it forced — a design change, not a patch. Smaller hardening follow-ups were noted and none blocks: a dependency rule keeping plan derivation out of web requests, a trigger for the APPROVED-to-ACTIVE progression without lifecycle metadata, and plain-form fallbacks on the New version, decision and retry controls.
+
+Final verification of this branch on a fresh PostgreSQL 18.4 at generation 14: 1,950 unit tests, 214 integration tests, typecheck, boundaries, build, and the 31 browser tests of the three touched specs. [CI run 54](https://github.com/raeltec-systems/intellifin-audit/actions/runs/33961029548) covers the last code change, `26fd0e8`; this report update changes no code.
+
 ## Decisions and gotchas
 
 - **Review is a saved record.** Background work cannot change what the Manager sees or approves. Definitions, provenance and previous values remain fixed.
@@ -52,8 +68,12 @@ Earlier delivered checkpoints also passed: [Story 2.5, run 48](https://github.co
 - **Native PostgreSQL bypassed Docker's startup failure.** Verification used an isolated test database. Disk-full and stale Next-cache interruptions were recovered; the final passes above are from completed runs.
 - **Correlated SQL must qualify its outer reference.** Browser testing caught another Procedure's name appearing in a list; the query and a persisted two-Procedure regression now protect against that mistake.
 
-Reusable details and the report/PR delivery rule are recorded in [CLAUDE.md](../../CLAUDE.md). The earlier editor-concurrency audit is closed; no review repair remains deferred.
+Reusable details and the report/PR delivery rule are recorded in [CLAUDE.md](../../CLAUDE.md). The earlier editor-concurrency audit is closed; one automated-review finding is deferred to the owner, above.
 
 ## What needs you
 
-No product decision remains open. Review this report and approve the PR when satisfied. Deployment is a separate action: configure the intended environment and provider credentials, use the release migration workflow, and apply a model revision if changing the published configuration. Live provider acceptance has not been claimed by the synthetic tests.
+Three decisions, none of them a product decision:
+
+- **Where to merge.** There is no `develop` branch. The PR targets `main`, and a merge to `main` is the production release: the release workflow migrates the production database from generation 7 to 14 and deploys web, worker and Northstar to Railway. Merging to a new `develop` branch deploys nothing until the release workflow is changed to read it.
+- **The deferred finding.** Merge with the forced-evidence finding as a follow-up story, or fix it first as a design change.
+- **Live model proof.** The Anthropic account answers "credit balance is too low" and OpenAI is unreachable from the review environment, so the model path is proven only through synthetic provider HTTP. The production worker has no `MODEL_*` variables, so the release derives plans deterministically. To run a model live: fund the account, set `MODEL_PROVIDER`, `MODEL_ID`, `MODEL_PROMPT_VERSION`, `MODEL_MAX_OUTPUT_TOKENS` and `MODEL_API_KEY` on the worker service, and publish a model revision with the configuration script.
