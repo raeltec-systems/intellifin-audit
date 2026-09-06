@@ -62,6 +62,11 @@ export type WorkspaceDiagnostic =
   | 'workspace-reattached'
   /** Reattach was impossible, so the stale identity was released and a new one made. */
   | 'workspace-reattach-failed'
+  /**
+   * Reattach was impossible AND giving the stale identity back FAILED, so nothing was
+   * replaced and the row still names the workspace this Run already holds.
+   */
+  | 'workspace-release-failed'
   | 'workspace-released'
   /** The provider's own hard deadline had passed, so the stored identity was gone. */
   | 'workspace-expired'
@@ -132,6 +137,23 @@ function failureCode(error: unknown): WorkspaceFailureCode {
 
 function diagnosticOf(code: WorkspaceFailureCode): WorkspaceDiagnostic {
   return Object.hasOwn(FAILURE_DIAGNOSTIC, code) ? FAILURE_DIAGNOSTIC[code] : 'workspace-refused';
+}
+
+/**
+ * Giving the STALE identity back failed, carried to the one failure handler below.
+ *
+ * Private, and it never leaves this module. It exists because that outcome is not a
+ * `WorkspaceProvisionError` and must not be spelled as one: nothing was provisioned, and
+ * the workspace this Run already holds is very possibly still alive at the provider. A
+ * create-side diagnostic on a release-side failure would lose exactly the distinction that
+ * decides whether a replacement may be made.
+ *
+ * It carries no `cause`. The provider's error is dropped rather than kept, because the
+ * diagnostic vocabulary is closed and an error message is where a wire-protocol endpoint, a
+ * URL or a value would ride into a checkpoint and an immutable event.
+ */
+class StaleReleaseFailed extends Error {
+  override readonly name = 'StaleReleaseFailed';
 }
 
 interface EventFields {
@@ -351,8 +373,11 @@ export async function provisionWorkspace(
     // Reattach FIRST, always, when an identity is already recorded: a resumed claim must
     // find the workspace it left rather than making a second one (AD-16). `attach`
     // answering `null` is expected rather than exceptional — a browser does not survive
-    // the process that connected to it — and the stale identity is released before a
+    // the process that connected to it — and the stale identity is released BEFORE a
     // replacement is made, so "never a second workspace" holds across the failure too.
+    //
+    // A release that FAILS is therefore not a step to get past: it is the one case in
+    // which a replacement must not be made at all.
     if (checkpoint.workspaceId !== null) {
       const ref: WorkspaceRef = {
         runId: run.runId,
@@ -369,7 +394,39 @@ export async function provisionWorkspace(
       handle = expired ? null : await deps.browser.attach(ref);
       if (handle === null) {
         diagnostic = expired ? 'workspace-expired' : 'workspace-reattach-failed';
-        await deps.browser.release(ref, remaining()).catch(() => undefined);
+        // Evaluated once, and outside both branches: a lease already spent is not a
+        // release that failed, and recording it as one would name something that never
+        // happened. It throws `unavailable`, which is honest — nothing was released and
+        // nothing was created — and the identity survives either way.
+        const releaseTimeoutMs = remaining();
+        if (expired) {
+          // The provider's HARD deadline has passed, so the session auto-released itself.
+          // There is nothing here to leak, the call is a courtesy, and a failure means the
+          // identity was already gone — which is the outcome asked for. A replacement is
+          // correct, and this is the ONLY branch where swallowing is.
+          await deps.browser.release(ref, releaseTimeoutMs).catch(() => undefined);
+        } else {
+          try {
+            await deps.browser.release(ref, releaseTimeoutMs);
+          } catch {
+            // NOT swallowed, and NO replacement is made. `release` already resolves
+            // `InvalidSessionId` and a 404 as SUCCESS — on a release, "the stored identity
+            // is gone" is the outcome asked for — so a throw is an outage, a capacity
+            // refusal or a policy denial, and the remote session is very possibly still
+            // running. Creating a replacement here would overwrite `checkpoint.workspaceId`
+            // and erase the only durable record of it: the reaper reads `run_workspace`,
+            // and that row would name the new workspace, so nothing could ever release the
+            // old one. It would be held until the provider's own plan deadline with no
+            // operator able to find it.
+            //
+            // So the attempt ends instead, keeping the identity. The next claim reattaches
+            // (failing again) and retries the release; the attempt budget bounds that, and
+            // when it is spent the row is FAILED and STILL names the workspace — which is
+            // the property that matters, because the reaper is what finishes the job once
+            // the Run has ended.
+            throw new StaleReleaseFailed();
+          }
+        }
       } else {
         diagnostic = 'workspace-reattached';
       }
@@ -381,9 +438,20 @@ export async function provisionWorkspace(
     });
   } catch (error) {
     const code = failureCode(error);
-    const failure = diagnosticOf(code);
-    const spent = terminalCode(code) || checkpoint.attempts >= budget;
+    // A failed release of the stale identity is its own outcome and never a provision
+    // code: nothing was created, so `TERMINAL_CODES` — which answers "will CREATING refuse
+    // identically again?" — has no bearing on it. It is retryable under the same budget,
+    // because a retry costs one reattach and one release against a session that may still
+    // be alive, and that is exactly the case worth spending an attempt on.
+    const releaseFailed = error instanceof StaleReleaseFailed;
+    const failure: WorkspaceDiagnostic = releaseFailed
+      ? 'workspace-release-failed'
+      : diagnosticOf(code);
+    const spent = (releaseFailed ? false : terminalCode(code)) || checkpoint.attempts >= budget;
     const { state } = runStopFor('session-step-failed');
+    // `...checkpoint` carries `workspaceId` and `expiresAt` forward UNCHANGED, which is
+    // what keeps a workspace nothing could give back nameable — by the next claim, and by
+    // the reaper after this Run has ended.
     const next: WorkspaceCheckpoint = {
       ...checkpoint,
       revision: checkpoint.revision + 1,

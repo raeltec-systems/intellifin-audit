@@ -234,6 +234,15 @@ interface FakeBrowserOptions {
   readonly expiresAt?: string | null;
   /** Throw on the nth create (1-based); `null` never throws. */
   readonly failCreate?: WorkspaceProvisionError | null;
+  /**
+   * Throw on every release; `null` never throws.
+   *
+   * The real adapter resolves `InvalidSessionId` and a 404 as SUCCESS — on a release, "the
+   * stored identity is gone" is the outcome asked for — so a release that THROWS is an
+   * outage, a capacity refusal or a policy denial, and the remote session may well still be
+   * running. There is no provider error this fake could raise that means "already gone".
+   */
+  readonly failRelease?: Error | null;
   readonly attachable?: boolean;
   readonly denials?: readonly WorkspaceDenial[];
 }
@@ -262,8 +271,11 @@ class FakeBrowser implements BrowserExecution {
     return this.options.attachable === true ? this.handle(ref) : null;
   };
 
+  // Recorded BEFORE it can throw, so a test can tell "the release was attempted and
+  // failed" from "the release was never attempted at all".
   release = async (ref: WorkspaceRef): Promise<void> => {
     this.released.push(ref);
+    if (this.options.failRelease) throw this.options.failRelease;
   };
 
   /**
@@ -384,6 +396,99 @@ describe('provisionWorkspace', () => {
     expect(browser.created).toEqual(['ws-1', 'ws-2']);
     expect(state.checkpoint).toMatchObject({ workspaceId: 'ws-2', status: 'OPEN' });
     expect(state.events.at(-1)?.payload).toMatchObject({ diagnostic: 'workspace-reattach-failed' });
+  });
+
+  it('makes no replacement when the stale release FAILS, and keeps the identity', async () => {
+    const state = store(agentPlan());
+    // Three facts at once, which is the point: the reattach is impossible, giving the
+    // stale identity back FAILS, and a replacement is therefore attempted over the top of
+    // the only durable record of a session that may still be running.
+    const browser = new FakeBrowser({
+      attachable: false,
+      failRelease: new Error('the provider did not answer'),
+    });
+    await provisionWorkspace(DEPS(state, browser), JOB);
+    expect(state.checkpoint).toMatchObject({ workspaceId: 'ws-1' });
+    state.checkpoint = { ...state.checkpoint!, status: 'RETRY' };
+
+    expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
+      retry: true,
+      provisioned: false,
+    });
+    // The release was ATTEMPTED, and it failed. The adapter resolves an identity the
+    // provider no longer knows about as success, so a throw is an outage or a refusal and
+    // the workspace is very possibly still held.
+    expect(browser.released).toEqual([{ runId: RUN.runId, workspaceId: 'ws-1', mode: 'local' }]);
+    // No second workspace was made — the whole reason the release comes first.
+    expect(browser.created).toEqual(['ws-1']);
+    // And `ws-1` is still on the row. Overwriting it would leave nothing anywhere able to
+    // name that session: the reaper reads `run_workspace`, and this is that row.
+    expect(state.checkpoint).toMatchObject({
+      status: 'RETRY',
+      workspaceId: 'ws-1',
+      diagnostic: 'workspace-release-failed',
+    });
+    expect(state.run?.state).toBe('RUNNING');
+    expect(state.events.at(-1)?.payload).toMatchObject({
+      diagnostic: 'workspace-release-failed',
+      workspaceId: 'ws-1',
+    });
+  });
+
+  it('still names the workspace once the budget is spent, so the reaper can find it', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({
+      attachable: false,
+      failRelease: new Error('the provider did not answer'),
+    });
+    await provisionWorkspace(DEPS(state, browser), JOB);
+    for (const attempt of [2, 3]) {
+      state.checkpoint = { ...state.checkpoint!, status: 'RETRY' };
+      expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
+        retry: true,
+        provisioned: false,
+      });
+      expect(state.checkpoint).toMatchObject({ status: 'RETRY', attempts: attempt, workspaceId: 'ws-1' });
+    }
+    state.checkpoint = { ...state.checkpoint!, status: 'RETRY' };
+    expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
+      retry: false,
+      provisioned: false,
+    });
+    // §E: a Run-level Session Step failing after bounded retries is RUN_FAILED — and the
+    // row STILL names the workspace nothing could give back. That is the property that
+    // matters: `reapableRunIds` selects a FAILED row that names one whose Run has ended.
+    expect(state.checkpoint).toMatchObject({
+      status: 'FAILED',
+      attempts: 4,
+      workspaceId: 'ws-1',
+      diagnostic: 'workspace-release-failed',
+    });
+    expect(state.run?.state).toBe('RUN_FAILED');
+    expect(browser.created).toEqual(['ws-1']);
+  });
+
+  it('replaces an EXPIRED workspace even when the release fails, because nothing can leak', async () => {
+    const state = store(agentPlan());
+    // The two paths must not be collapsed. Past the provider's HARD deadline the session
+    // has auto-released itself, so the release is a courtesy and its failure means the
+    // identity was already gone — which is the outcome asked for. A replacement is right.
+    const browser = new FakeBrowser({
+      attachable: true,
+      expiresAt: '2026-09-05T00:00:00.000Z',
+      failRelease: new Error('the provider did not answer'),
+    });
+    await provisionWorkspace(DEPS(state, browser), JOB);
+    state.checkpoint = { ...state.checkpoint!, status: 'RETRY' };
+    expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
+      retry: false,
+      provisioned: true,
+    });
+    // Nothing is attached to past the deadline, and the replacement is made regardless.
+    expect(browser.attached).toEqual([]);
+    expect(browser.created).toEqual(['ws-1', 'ws-2']);
+    expect(state.checkpoint).toMatchObject({ status: 'OPEN', workspaceId: 'ws-2' });
+    expect(state.events.at(-1)?.payload).toMatchObject({ diagnostic: 'workspace-expired' });
   });
 
   it('retries an outage under the Session Step budget and fails the Run when it is spent', async () => {

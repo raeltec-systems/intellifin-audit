@@ -419,6 +419,72 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
     expect(await row(live.runId)).toMatchObject({ status: 'OPEN', released_at: null });
   }, 90_000);
 
+  it('reaps a FAILED workspace that still names a session nothing could give back', async () => {
+    const job = await seed('web');
+    const workspaceId = ids.next();
+    // Reattach impossible AND the release throws. The adapter resolves `InvalidSessionId`
+    // and a 404 as SUCCESS, so a throw is an outage, a capacity refusal or a policy denial
+    // and the remote session may well still be running. No replacement is made, the row
+    // keeps the identity, and the budget runs out with it still there.
+    const holding: BrowserExecution = {
+      mode: 'local',
+      create: (input: { runId: string }): Promise<WorkspaceHandle> =>
+        Promise.resolve({
+          ref: { runId: input.runId, workspaceId, mode: 'local' },
+          expiresAt: null,
+          takeDenials: () => [],
+          denied: () => 0,
+        }),
+      attach: (): Promise<WorkspaceHandle | null> => Promise.resolve(null),
+      release: (_ref: WorkspaceRef) => Promise.reject(new Error('the provider did not answer')),
+      perform: () => Promise.reject(new BrowserActionError('unavailable')),
+    };
+    await provisionWorkspace(deps(holding), job);
+    expect(await row(job.runId)).toMatchObject({ status: 'OPEN', workspace_id: workspaceId });
+    // The claim was lost once; every attempt after that fails on its own and leaves RETRY.
+    await sql`UPDATE run_workspace SET status='RETRY' WHERE run_id=${job.runId}`;
+    for (const attempt of [2, 3]) {
+      expect(await provisionWorkspace(deps(holding), job)).toEqual({ retry: true, provisioned: false });
+      expect(await row(job.runId)).toMatchObject({
+        status: 'RETRY',
+        attempts: attempt,
+        workspace_id: workspaceId,
+        diagnostic: 'workspace-release-failed',
+      });
+    }
+    await provisionWorkspace(deps(holding), job);
+    expect(await row(job.runId)).toMatchObject({
+      status: 'FAILED',
+      attempts: 4,
+      workspace_id: workspaceId,
+      diagnostic: 'workspace-release-failed',
+    });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUN_FAILED');
+
+    // The property the whole thing turns on. Keeping the identity is worth nothing if the
+    // backstop cannot see the row it is kept on, and `FAILED` is exactly where a Run in a
+    // terminal state ends: a read that omitted the status could never finish the job.
+    const repository = new PostgresWorkspaceRepository(db);
+    expect(await repository.reapableRunIds(null, 100)).toContain(job.runId);
+
+    // And once the provider answers again, the reaper is what gives the session back.
+    const answering: BrowserExecution = { ...holding, release: () => Promise.resolve() };
+    const reaped: string[] = [];
+    const stop = startWorkspaceReaper(
+      { reapableRunIds: (after, limit) => repository.reapableRunIds(after, limit) },
+      async (runId) => {
+        reaped.push(runId);
+        await releaseWorkspace(deps(answering), runId);
+      },
+      () => undefined,
+      { intervalMs: 3_600_000, page: 100 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await stop();
+    expect(reaped).toContain(job.runId);
+    expect(await row(job.runId)).toMatchObject({ status: 'RELEASED', workspace_id: workspaceId });
+  }, 90_000);
+
   it('fails the Run when provisioning is exhausted, and seals a Result for it', async () => {
     const job = await seed('web');
     const failing: BrowserExecution = {

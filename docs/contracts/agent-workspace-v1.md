@@ -134,7 +134,14 @@ latency.
    requirement means no row is written at all. A cancellation is honoured here.
 2. **Provider I/O.** Reattach by the stored identity if there is one; otherwise create.
    A reattach that is impossible RELEASES the stale identity before making a replacement,
-   so "never a second workspace" holds across the failure too.
+   so "never a second workspace" holds across the failure too. **A release that FAILS
+   makes no replacement at all**: `release` already resolves `InvalidSessionId` and a 404
+   as success, so a throw means the session may still be running, and creating a
+   replacement would overwrite `workspace_id` — the only durable record of it — leaving
+   nothing able to name it. The attempt ends on `workspace-release-failed` with the
+   identity untouched, and the next claim retries. An EXPIRED identity is the one
+   exception: the provider auto-released it at its own deadline, so there is nothing to
+   leak and the replacement is correct whatever the release answered.
 3. **Commit.** The workspace row, the `create-workspace` Step Execution, the
    `lifecycle.agent-workspace` event and any drained denials, in one transaction. A lost
    claim writes nothing and releases the workspace this attempt made.
@@ -152,6 +159,12 @@ stages; the reaper is the backstop for a worker that died before reaching it.
 | `entitlement` (`FeatureRequiresPlan`, `PlanLimitExceeded`, 401/402/403) | `workspace-entitlement` | No |
 | `refused` (a provider code this build does not recognise) | `workspace-refused` | No |
 | `policy` (an unreadable frozen allowlist) | `workspace-policy` | No |
+| a failed release of the STALE identity | `workspace-release-failed` | Yes |
+
+The release failure is not a provision code and is deliberately not spelled as one: nothing
+was created, so "will creating refuse identically again?" — which is what `TERMINAL_CODES`
+answers — has no bearing on it. It is retried because a retry costs one reattach and one
+release against a session that may still be alive.
 
 `SolariErrorCode` is widened with `| string`, so an unrecognised code is TERMINAL: calling
 it transient would retry it four times on the strength of not knowing what it is.
@@ -171,9 +184,14 @@ no security event, and `completeRun` seals the Result in the same transition.
 per tick (10), one Run at a time, a rotating cursor that resets on a short page, and a stop
 that lets the active release finish and starts none of the rest.
 
-It selects `PROVISIONING`, `OPEN` and `RETRY` rows that NAME a workspace and whose Run is
-terminal. "Whose Run is absent" is unreachable by construction: `run_workspace.run_id` is a
-real foreign key, so there is no dangling row to find.
+It selects `PROVISIONING`, `OPEN`, `RETRY` and `FAILED` rows that NAME a workspace and whose
+Run is terminal. "Whose Run is absent" is unreachable by construction:
+`run_workspace.run_id` is a real foreign key, so there is no dangling row to find.
+
+`FAILED` is in that list because it is where a row ends when the attempt budget is spent,
+and every path that keeps the identity through a failure — `workspace-release-failed` above
+all — ends there with a `workspace_id` still set. Omitting it would make the one row the
+reaper most has to find the one row it could never select.
 
 **The one leak this contract cannot close**: a provider session created and this process
 dying before the identity is committed. Nothing on this side can release a session it

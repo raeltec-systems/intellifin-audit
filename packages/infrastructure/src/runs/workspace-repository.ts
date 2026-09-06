@@ -126,6 +126,14 @@ export class PostgresWorkspaceRepository implements WorkspaceExecutionRepository
    * row that still names a session, and that session is exactly what would otherwise be
    * held until the provider's own grace timer reaped it.
    *
+   * `FAILED` is selected for the same reason and was the hole this read had. A row reaches
+   * it while still NAMING a workspace on every path that keeps the identity through a
+   * failure — a reattach whose release of the stale identity threw, spent to the end of the
+   * attempt budget, is the case built for exactly that — and `FAILED` is precisely the
+   * status a Run in a terminal state ends on. Omitting it meant the one row the reaper most
+   * had to find was the one row it could never select, so the backstop stopped exactly where
+   * the leak started.
+   *
    * It selects only rows that NAME a workspace, because a row with no identity has nothing
    * to release; `releaseWorkspace` closes such a row when it meets one, and this read does
    * not make the sweep walk them forever.
@@ -142,7 +150,7 @@ export class PostgresWorkspaceRepository implements WorkspaceExecutionRepository
       .innerJoin(auditRun, eq(auditRun.runId, runWorkspace.runId))
       .where(
         and(
-          sql`${runWorkspace.status} IN ('PROVISIONING','OPEN','RETRY')`,
+          sql`${runWorkspace.status} IN ('PROVISIONING','OPEN','RETRY','FAILED')`,
           isNotNull(runWorkspace.workspaceId),
           sql`${auditRun.state} IN ('COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`,
           ...(cursor === null ? [] : [gt(runWorkspace.runId, cursor)]),
