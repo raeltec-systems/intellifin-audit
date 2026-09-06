@@ -7,6 +7,7 @@ review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
+  - '{project-root}/_bmad-output/implementation-artifacts/epic-4-loancore-authentication-decision.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-browser-provider-decision.md'
 warnings: []
 deferred: []
@@ -144,12 +145,29 @@ able to save prose a checker misreads. Execution is where it becomes a refusal. 
 an implementation, making one strict would silently make the other strict too, and a false
 positive would then block a save.
 
-**LoanCore has no sign-in form, on purpose.** Every synthetic system refuses a POST at the system
-level, and registering a real credential in that environment is the one thing it must not have.
-So the sign-in Session Step cannot be proved by "the form submitted". Decide deliberately what
-it IS proved by — the session established in the workspace, the audited retrieval, the denial of
-everything outside scope — and say so, rather than writing an assertion that passes because
-nothing happened.
+**LoanCore had no sign-in form, and this story adds authentication rather than a form.** The
+decision is settled in `epic-4-loancore-authentication-decision.md` and is NOT an open question:
+LoanCore gains an `Authorization` header on GET, above routing beside `enforceReadOnly`, so an
+unauthenticated GET to any `/loancore` path answers **401** with `WWW-Authenticate` and a JSON
+body in the shape the 405 denial already uses, and the sign-in Session Step is a GET carrying
+the credential that returns a session cookie the workspace then holds.
+
+The read-only rule is UNTOUCHED — no POST, no relaxation, no route exempted. A `method="get"`
+form was rejected categorically: it puts the credential in the URL, in history, in the Referer
+header and in every access log, which is the defect this repository has shipped three times and
+now has `form-method.test.ts` against. Leaving LoanCore unauthenticated was rejected because
+Story 4.11 then asserts that no credential reaches an artifact against a system that has no
+credential at all.
+
+**So the sign-in Session Step is proved by the SESSION BEING ESTABLISHED**: the credential
+resolved through the port, the retrieval audited by Target System and never by reference, a 401
+before and a 200 after, and the session held in the workspace. Never by "a form submitted",
+which there still is not. The credential is SYNTHETIC and lives in the fixtures — Story 1.8's
+rule that a REAL credential is the one thing this environment must not have is unchanged, and is
+exactly why.
+
+**Update CLAUDE.md's Story 1.8 note in the same commit**, with the reason. It currently says
+LoanCore has no sign-in form because a sign-in is a POST; that is superseded on this one point.
 
 ## Verification
 
