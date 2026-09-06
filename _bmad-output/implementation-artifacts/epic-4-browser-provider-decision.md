@@ -203,3 +203,32 @@ rather than consume its retry budget — the `credential-unresolved` rule from S
 `SOLARI_API_KEY` looks like `slr_live_…`, from console.getsolari.com. `region` defaults to
 `us-west`; `baseUrl` replaces it for a staging or self-hosted gateway. Neither is hard-coded —
 both are configuration read in a composition root, per AD-11.
+
+## How to verify the key when it arrives
+
+There is deliberately **no `scripts/check-solari.mts`**. One was written and then deleted: the
+worker already answers the question through its real composition root, and a bespoke script
+would be a second, less faithful way to ask it — the shape this project rejects everywhere else.
+
+```bash
+printf 'SOLARI_API_KEY=slr_live_...\n' >> .env && chmod 600 .env
+```
+
+Then start the worker and read one line:
+
+```
+{"message":"Agent Workspace mode selected","mode":"solari","reason":"..."}
+```
+
+`mode` is `solari` or `local`, and `reason` says why. That is emitted by `agentWorkspace(config)`
+in `apps/worker/src/startup.ts`, the same decision every Run then inherits and the same value
+`run_workspace.mode` records — so a green line here means the thing a Run will actually do,
+which is more than a standalone probe could prove.
+
+The key never appears in that line, or anywhere else: `WorkspaceRef` has no field for a key, a
+token or an endpoint, so no checkpoint, payload, log field or error message has anywhere to pick
+one up from.
+
+If the key is refused rather than absent, the mapped `SolariError` code says which: an
+entitlement refusal is terminal and an outage is retried, and the table above says which is
+which.
