@@ -77,7 +77,7 @@ is not revisited there.
   the addendum off disk — the `GATE_CHECKS` and `OUTCOME_ROWS` discipline.
 - `packages/application/src/runs/raise-escalation.ts` — the command. Refuses a kind whose
   condition the platform could have decided.
-- `packages/infrastructure/src/runs/wait-repository.ts` + the migration (generation 27):
+- `packages/infrastructure/src/runs/wait-repository.ts` + the next migration generation:
   `run_wait`, with a partial unique index making at most one OPEN wait per Run.
 
 **Modified:**
