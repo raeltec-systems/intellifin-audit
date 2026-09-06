@@ -895,7 +895,12 @@ describe('executeAdapterSteps', () => {
     const payload = registered[0]!.payload as Record<string, unknown>;
     expect(payload['digests']).toEqual(test.repository.observations.map((row) => row.digest));
     expect(payload['batchDigest']).toBe(observationBatchDigest(payload['digests'] as string[]));
-    expect(payload['coverage']).toEqual({ COVERED: 3, UNINSPECTED: 0, AMBIGUOUS: 1 });
+    // Two resolved matches are COVERED, AG-1007 is AMBIGUOUS, and AG-9999 is UNINSPECTED:
+    // this plan is P-2, whose §C coverage rule is satisfied only when every population
+    // account "appears in the extraction with a grounded role list". The absence proof is
+    // honest and `search-completeness` passes; the Template simply does not accept an
+    // absence as coverage.
+    expect(payload['coverage']).toEqual({ COVERED: 2, UNINSPECTED: 1, AMBIGUOUS: 1 });
     // Every check the registration decided is committed with the rows.
     expect(new Set(test.repository.checks.values()).size).toBeGreaterThan(0);
     expect([...test.repository.checks.values()].filter((row) => row.outcome === 'FAIL')).toEqual([
@@ -1011,16 +1016,24 @@ describe('executeAdapterSteps', () => {
     const keyOf = (observationId: string): string =>
       test.repository.observations.find((row) => row.record.observationId === observationId)!
         .record.populationRecordKey;
-    // AG-9999 is absent from the extraction, so P-2's frozen `found = true` applicability
-    // does not apply to it: compiler 1 gives a non-applicable condition COMPLIANT, and the
-    // row says why so the §H count of APPLICABLE conditions can exclude it.
+    // AG-9999 is absent from the extraction. P-2's §C coverage rule requires every
+    // population account to APPEAR in the extraction, so the record is `UNINSPECTED`, the
+    // evidence facts are not `inspected`, and every condition is Unevaluated. It used to
+    // be COMPLIANT here — P-2's frozen `found = true` applicability does not apply to an
+    // absent record, and compiler 1 gives a non-applicable condition the value COMPLIANT —
+    // which meant an account whose permissions nothing could read passed its own control.
     const absent = rows.find((row) => keyOf(row.observationId) === 'AG-9999')!;
-    expect(absent.evaluation.value).toBe('COMPLIANT');
-    expect(absent.evaluation.diagnostic).toBe('condition does not apply to this record');
-    expect(
-      rows.filter((row) => keyOf(row.observationId) !== 'AG-9999')
-        .map((row) => row.evaluation.value),
-    ).toEqual(['UNEVALUATED', 'UNEVALUATED', 'UNEVALUATED']);
+    expect(absent.evaluation.value).toBe('UNEVALUATED');
+    // Both halves, in the compiler's order: the evidence facts are what DECIDED the value
+    // (an uninspected record is never Compliant), and the non-applicability marker is
+    // still recorded so a §H count of APPLICABLE conditions can exclude the row.
+    expect(absent.evaluation.diagnostic).toBe(
+      'missing, ambiguous, contradictory, uninspected, or unproven Evidence; ' +
+        'condition does not apply to this record',
+    );
+    expect(rows.map((row) => row.evaluation.value)).toEqual([
+      'UNEVALUATED', 'UNEVALUATED', 'UNEVALUATED', 'UNEVALUATED',
+    ]);
     expect(test.repository.exceptions.size).toBe(0);
   });
 

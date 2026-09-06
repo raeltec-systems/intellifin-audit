@@ -77,18 +77,44 @@ digests.
 
 ## Coverage, and honest absence
 
-`coverage` is derived on every registration and stored beside the row:
+`coverage` is derived on every registration and stored beside the row. §H computes it
+"per the Template's coverage rule (§C)", so the batch's FROZEN `templateId` is an input:
 
-| `found` | Absence proof | `coverage` |
-| --- | --- | --- |
-| `true` | — | `COVERED` |
-| `false` | all three legs | `COVERED` |
-| `false` | any leg missing | `UNINSPECTED` |
-| `ambiguous` | — | `AMBIGUOUS` |
+| `found` | Template coverage rule | Absence proof | `coverage` |
+| --- | --- | --- | --- |
+| `true` | either | — | `COVERED` |
+| `false` | `found-or-proven-absent` | all three legs | `COVERED` |
+| `false` | `found-or-proven-absent` | any leg missing | `UNINSPECTED` |
+| `false` | `must-appear` | any | `UNINSPECTED` |
+| `ambiguous` | either | — | `AMBIGUOUS` |
 
 §H's per-record coverage counts `found ∈ {true, false}` only, so an ambiguous match is its
 own state and never `COVERED`; calling it covered would be a lie in exactly the place the
 Gate reads.
+
+The two coverage rules are `TEMPLATE_COVERAGE_RULES` in
+`packages/domain/src/procedures/templates.ts`, one per Template, beside the §C prose each
+is transcribed from and derived from that prose by `tests/unit/procedure-templates.test.ts`
+against the addendum on disk:
+
+| Template | Rule | Why §C says so |
+| --- | --- | --- |
+| P-1 Terminated users | `found-or-proven-absent` | C1 is Compliant when `found = false` (proven absence): for a terminated employee the missing account IS the finding. |
+| P-2 SoD conflicts | `must-appear` | "per-record coverage is satisfied when every population account appears in the extraction with a grounded role list" — no "or proven absent". |
+| P-3 High-value approvals | `found-or-proven-absent` | "a grounded approval lookup result (found or proven absent)", in as many words. |
+| P-4 Config deviation | `must-appear` | each Observation "grounded in the page's Structural Snapshot"; a parameter the page never showed is "required parameter absent from the observation". |
+
+An unknown Template id gets `must-appear`. That is the direction that can only DEGRADE
+coverage: a proven absence under a Template this build ships no contract for becomes
+`UNINSPECTED` rather than a Compliant record nobody has a rule for.
+
+`must-appear` is a coverage rule and NOT a new check. The absence proof is still judged by
+`search-completeness`, which says whether the adapter looked; whether an absence satisfies
+this Template's coverage is a different question, and under `must-appear` a fully honest
+absence PASSES that check and is still `UNINSPECTED`. Without the rule, P-2's own frozen
+`found = true` applicability made an absent account NON-APPLICABLE, compiler 1 gives a
+non-applicable condition the value `COMPLIANT`, and an account whose permissions nothing
+could read passed its own control.
 
 An absence is a **finding** rather than a gap only with all three of:
 

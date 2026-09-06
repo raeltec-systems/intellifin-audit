@@ -465,6 +465,12 @@ export const NO_CORROBORATION: ObservationCorroborationPort = {
  * compiled conditions to evaluate. The adapter stage cannot reach it: `executeAdapterSteps`
  * builds a `ruleEvaluation` from the plan it is executing, so no composition root can
  * register an adapter Observation as unevaluated forever.
+ *
+ * An implementation answers about EVERY subject it was given, exactly once. "Nothing
+ * judged this" is a result carrying no evaluations, never an omitted result: an omission
+ * leaves that Observation with no evaluation row, which downstream is indistinguishable
+ * from a frozen plan this build cannot recompile. `registerObservations` refuses a partial
+ * answer as `evaluation-shape`.
  */
 export interface ObservationEvaluationPort {
   evaluate(
@@ -486,7 +492,10 @@ export interface ObservationEvaluationResult {
 }
 
 export const NO_EVALUATION: ObservationEvaluationPort = {
-  evaluate: () => Promise.resolve([]),
+  evaluate: (subjects) =>
+    Promise.resolve(
+      subjects.map((subject) => ({ observationId: subject.record.observationId, evaluations: [] })),
+    ),
 };
 
 /**

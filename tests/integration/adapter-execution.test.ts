@@ -155,12 +155,24 @@ const APPROVALS = collection(
   ],
   ['approval_id', 'transaction_id', 'decision', 'decided_at', 'approver_limit', 'currency'],
 );
+/** The same approvals with no completeness declaration: an absence from it proves nothing. */
+const INCOMPLETE_APPROVALS = JSON.stringify({
+  approvals: [
+    { approval_id: 'APV-9001', transaction_id: 'TX-500001', decision: 'APPROVED', decided_at: '2026-08-10T10:30:00+02:00', approver_limit: '500000.00', currency: 'USD' },
+    { approval_id: 'APV-9009', transaction_id: 'TX-500009', decision: 'APPROVED', decided_at: '2026-08-14T10:05:00+02:00', approver_limit: '300000.00', currency: 'USD' },
+    { approval_id: 'APV-9009B', transaction_id: 'TX-500009', decision: 'REJECTED', decided_at: '2026-08-14T11:05:00+02:00', approver_limit: '300000.00', currency: 'USD' },
+  ],
+});
+
 /** The columns P-3's frozen inclusion rule names, so every row is included. */
 const TRANSACTIONS =
   'transaction_id,amount,currency,processed_time\n' +
   'TX-500001,100000.00,USD,2026-08-10T11:02:00Z\n' +
   'TX-500003,250000.00,USD,2026-08-11T09:00:00Z\n' +
   'TX-500009,300000.00,USD,2026-08-14T12:00:00Z\n';
+
+/** The same population plus one row nothing can place in or out of the Period. */
+const UNACCOUNTED_TRANSACTIONS = TRANSACTIONS + 'TX-500007,180000.00,USD,\n';
 
 describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   let sql: Sql;
@@ -478,6 +490,51 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     const limit = found.attributes.find((attribute) => attribute.name === 'approver_limit')!;
     expect(limit.originalValue).toBe('500000.00');
     expect(limit.normalizedValue).toBe('500000.00');
+  });
+
+  it('carries a Run with an unaccounted row to the Run-level Gate rather than ending it', async () => {
+    // §H's early-stop row is "Population acquisition", which is about acquisition FAILING;
+    // an indeterminate row is not that, and §E decides the Gate rows after the last Work
+    // Item. So the Run executes, its other transactions get Observations, evaluations and
+    // whatever Exceptions they earn, and `count-reconciliation-inclusion` concludes it
+    // INCONCLUSIVE at the end. The outcome is the one an indeterminate row always had;
+    // what changed is WHEN it is decided and what exists by then.
+    const seeded = await seed(['api'], 'P-3', UNACCOUNTED_TRANSACTIONS);
+    const [population] = await sql`SELECT status,checks FROM population_snapshot s JOIN population_execution e USING (run_id) WHERE run_id=${seeded.run.runId}`;
+    expect(population!.status).toBe('POPULATION_READY');
+    expect(
+      (population!.checks as { name: string; passed: boolean }[]).filter((check) => !check.passed),
+    ).toEqual([{ name: 'complete-inclusion', passed: false }]);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUNNING');
+
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        extract: async (_target, credential) => {
+          credential.authorize({ set: () => undefined });
+          return { bytes: utf8Bytes(APPROVALS), mediaType: 'application/json', location: 'https://synthetic.invalid/approvals' };
+        },
+      }).deps,
+      seeded.job,
+    );
+
+    // The Work Item ran and the included transactions were judged. TX-500007 is not among
+    // them: the inclusion rule could not place it, so it never becomes an Observation.
+    expect((await sql`SELECT state,observations FROM run_work_item WHERE run_id=${seeded.run.runId}`)[0])
+      .toMatchObject({ state: 'OBSERVED', observations: 3 });
+    const evaluations = await sql`SELECT o.population_record_key AS key,e.value FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${seeded.run.runId} ORDER BY o.population_record_key`;
+    expect(evaluations.map((row) => String(row.key))).toEqual(['TX-500001', 'TX-500003', 'TX-500009']);
+
+    // And the Gate concluded it, on the row that owns an unaccounted population record.
+    const gate = await sql`SELECT check_name,outcome,diagnostics,total FROM run_gate_check WHERE run_id=${seeded.run.runId} AND outcome='FAIL' ORDER BY check_name`;
+    const inclusion = gate.find((row) => row.check_name === 'count-reconciliation-inclusion');
+    expect(inclusion).toBeDefined();
+    expect(inclusion!.diagnostics).toEqual(['rows-unaccounted']);
+    // ONE unaccounted row, counted once: the recorded check and the Gate's own arithmetic
+    // say the same thing, and `total` is exact.
+    expect(inclusion!.total).toBe(1);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('INCONCLUSIVE');
+    expect((await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${seeded.run.runId}`)[0]?.run_state)
+      .toBe('INCONCLUSIVE');
   });
 
   it('keeps the credential out of every stored row, event and Evidence object', async () => {
@@ -920,7 +977,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(new Set(digests)).toEqual(new Set(rows.map((row) => String(row.digest))));
     expect(payload['batchDigest']).toBe(observationBatchDigest(digests));
     expect(payload['registered']).toBe(4);
-    expect(payload['coverage']).toEqual({ COVERED: 3, UNINSPECTED: 0, AMBIGUOUS: 1 });
+    // P-2's §C coverage rule is satisfied only when every population account "appears in
+    // the extraction with a grounded role list", so AG-9999 — absent, and honestly so —
+    // is `UNINSPECTED` rather than covered.
+    expect(payload['coverage']).toEqual({ COVERED: 2, UNINSPECTED: 1, AMBIGUOUS: 1 });
 
     // Per-Observation check outcomes committed with the rows.
     const checks = await sql`SELECT check_name,outcome,diagnostic FROM run_observation_check WHERE run_id=${seeded.run.runId} ORDER BY check_name`;
@@ -937,34 +997,79 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
   });
 
   it('covers an honest absence and leaves a dishonest one UNINSPECTED', async () => {
-    const honest = await seed(['api']);
+    // P-3, whose §C coverage rule is "a grounded approval lookup result (found or proven
+    // absent)". That is the rule under which the three legs of an honest absence decide
+    // anything at all; under P-2's `must-appear` every absence is `UNINSPECTED` whatever
+    // it proves, so this test written against P-2 would pass against an implementation
+    // that had none of the legs. TX-500003 has no approval row.
+    const honest = await seed(['api'], 'P-3');
     await executeAdapterSteps(dependencies(honest).deps, honest.job);
     expect(
-      (await sql`SELECT coverage FROM run_observation WHERE run_id=${honest.run.runId} AND population_record_key='AG-9999'`)[0]?.coverage,
+      (await sql`SELECT coverage FROM run_observation WHERE run_id=${honest.run.runId} AND population_record_key='TX-500003'`)[0]?.coverage,
     ).toBe('COVERED');
 
     // The same extraction with no completeness declaration. "Not in the system" is then
     // really "not on the page I happened to read", so nobody proved they looked.
-    const dishonest = await seed(['api']);
+    const dishonest = await seed(['api'], 'P-3');
     await executeAdapterSteps(
       dependencies(dishonest, {
         extract: async (_target, credential) => {
           credential.authorize({ set: () => undefined });
-          return { bytes: utf8Bytes(INCOMPLETE_ACCOUNTS), mediaType: 'application/json', location: 'x' };
+          return { bytes: utf8Bytes(INCOMPLETE_APPROVALS), mediaType: 'application/json', location: 'x' };
         },
       }).deps,
       dishonest.job,
     );
     const rows = await sql`SELECT population_record_key AS key,coverage FROM run_observation WHERE run_id=${dishonest.run.runId} ORDER BY population_record_key`;
     expect(rows.map((row) => [row.key, row.coverage])).toEqual([
-      ['AG-1001', 'COVERED'],
-      ['AG-1003', 'COVERED'],
-      ['AG-1007', 'AMBIGUOUS'],
-      ['AG-9999', 'UNINSPECTED'],
+      ['TX-500001', 'COVERED'],
+      ['TX-500003', 'UNINSPECTED'],
+      ['TX-500009', 'AMBIGUOUS'],
     ]);
     expect(
       (await sql`SELECT diagnostic FROM run_observation_check WHERE run_id=${dishonest.run.runId} AND check_name='search-completeness' AND outcome='FAIL'`)[0]?.diagnostic,
     ).toBe('extraction-incomplete');
+  });
+
+  it('leaves a P-2 account proven absent UNINSPECTED, and never Compliant', async () => {
+    // §H computes per-record coverage "per the Template's coverage rule (§C)", and P-2's
+    // rule has no "or proven absent": an account whose permissions nothing could read is a
+    // gap. It used to be COMPLIANT — the absence made P-2's frozen `found = true`
+    // applicability not apply, and compiler 1 gives a non-applicable condition the value
+    // COMPLIANT — so an account nobody could inspect passed its own control.
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(
+      dependencies(seeded, {
+        reference: async () => ({
+          bytes: utf8Bytes(SOD_ROLE_MATRIX), mediaType: 'text/csv', location: 'https://synthetic.invalid/rm.csv',
+        }),
+      }).deps,
+      seeded.job,
+    );
+    const [row] = await sql`SELECT coverage,found FROM run_observation WHERE run_id=${seeded.run.runId} AND population_record_key='AG-9999'`;
+    expect(row).toMatchObject({ found: 'false', coverage: 'UNINSPECTED' });
+    // The absence proof is still HONEST, and `search-completeness` still says so: whether
+    // the adapter looked is a different question from whether this Template accepts an
+    // absence as coverage.
+    const checks = await sql`SELECT outcome FROM run_observation_check c JOIN run_observation o ON o.observation_id=c.observation_id WHERE c.run_id=${seeded.run.runId} AND c.check_name='search-completeness' AND o.population_record_key='AG-9999'`;
+    expect(checks.map((entry) => entry.outcome)).toEqual(['PASS']);
+    // Every condition Unevaluated, and no Exception raised on a record nobody inspected.
+    const evaluations = await sql`SELECT e.value,e.coverage,e.diagnostic FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${seeded.run.runId} AND o.population_record_key='AG-9999'`;
+    expect(evaluations.map((entry) => [entry.coverage, entry.value])).toEqual([['UNINSPECTED', 'UNEVALUATED']]);
+    expect(String(evaluations[0]!.diagnostic)).toContain(
+      'missing, ambiguous, contradictory, uninspected, or unproven Evidence',
+    );
+    expect(
+      (await sql`SELECT count(*)::int AS c FROM run_exception WHERE run_id=${seeded.run.runId} AND population_record_key='AG-9999'`)[0]?.c,
+    ).toBe(0);
+    // The database refuses to call it Compliant, whatever an evaluator offered.
+    const [observation] = await sql`SELECT observation_id::text AS id FROM run_observation WHERE run_id=${seeded.run.runId} AND population_record_key='AG-9999'`;
+    await expect(
+      sql.unsafe(
+        `INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,'UNINSPECTED','UNJUDGED',$2,'C-FORCED','RULE','COMPLIANT',NULL,NULL,NULL,NULL,'[]'::jsonb)`,
+        [String(observation!.id), seeded.run.runId],
+      ),
+    ).rejects.toThrow(/run_observation_evaluation_coverage/);
   });
 
   /**
@@ -1139,17 +1244,20 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       ['AG-1003', 'COVERED', 'EXCEPTION'],
       // Two extraction rows carry AG-1007, so the match never resolves.
       ['AG-1007', 'AMBIGUOUS', 'UNEVALUATED'],
-      // Absent from the extraction, so P-2's `found = true` applicability does not apply.
-      ['AG-9999', 'COVERED', 'COMPLIANT'],
+      // Absent from the extraction. P-2's §C coverage rule requires every account to
+      // APPEAR, so the record is UNINSPECTED and no condition can be decided about it.
+      ['AG-9999', 'UNINSPECTED', 'UNEVALUATED'],
     ]);
     expect(rows.every((row) => row.origin === 'RULE')).toBe(true);
     expect(rows.find((row) => row.key === 'AG-1003')!.diagnostic).toContain(
       'prohibited permission pair CREATE_VENDOR + APPROVE_VENDOR',
     );
-    // A non-applicable condition says so, so the §H count of APPLICABLE conditions can
-    // exclude it rather than reading it as a rule that was evaluated and passed.
+    // Both halves, in the compiler's order: the evidence facts DECIDED the value (an
+    // uninspected record is never Compliant), and the non-applicability marker is still
+    // recorded so the §H count of APPLICABLE conditions can exclude the row.
     expect(rows.find((row) => row.key === 'AG-9999')!.diagnostic).toBe(
-      'condition does not apply to this record',
+      'missing, ambiguous, contradictory, uninspected, or unproven Evidence; ' +
+        'condition does not apply to this record',
     );
   });
 
@@ -1557,7 +1665,11 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
 
     // An uninspected or ambiguous record can never be recorded Compliant — by anybody,
     // through any path, because it is a CHECK over a foreign-keyed coverage column.
-    const [uninspected] = await sql`SELECT observation_id::text AS id,coverage FROM run_observation WHERE run_id=${seeded.run.runId} AND coverage='UNINSPECTED' LIMIT 1`;
+    // The row THIS test just inserted, named by its own `RAW-` key. An unqualified
+    // `LIMIT 1` over the Run's UNINSPECTED rows also matches a real Observation — AG-9999
+    // is one under P-2's coverage rule — whose check outcomes the raw inserts below then
+    // collide with, and which row it picks is not even determined.
+    const [uninspected] = await sql`SELECT observation_id::text AS id,coverage FROM run_observation WHERE run_id=${seeded.run.runId} AND coverage='UNINSPECTED' AND population_record_key LIKE 'RAW-%' ORDER BY population_record_key LIMIT 1`;
     const evaluate = (coverage: string, value: string) =>
       sql.unsafe(
         `INSERT INTO run_observation_evaluation(observation_id,coverage,corroboration,run_id,condition_id,origin,value,confirmation,confidence,rationale,diagnostic,evidence_ids) VALUES ($1,$2,'UNJUDGED',$3,'C-'||gen_random_uuid()::text,'RULE',$4,NULL,NULL,NULL,NULL,'[]'::jsonb)`,

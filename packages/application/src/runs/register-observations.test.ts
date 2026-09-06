@@ -115,13 +115,24 @@ function item(record: ObservationRecord, overrides: Partial<ObservationBatchItem
   };
 }
 
+/**
+ * The Template every batch below names, unless it says otherwise.
+ *
+ * P-3, whose §C coverage rule is "found or proven absent". That is the rule under which
+ * the three legs of an honest absence decide anything at all: under P-2's `must-appear`
+ * every `found = false` is `UNINSPECTED` whatever it proves, so a test of the legs written
+ * against P-2 would pass against an implementation that had none of them. The one test
+ * that exercises `must-appear` names P-2 explicitly.
+ */
+const TEMPLATE_ID = 'P-3';
+
 function batch(items: readonly ObservationBatchItem[], overrides: Partial<ObservationBatch> = {}): ObservationBatch {
   return {
     run: RUN,
     workItemId: WORK_ITEM,
     stepExecutionId: STEP_EXECUTION,
     targetSystem: TARGET,
-    templateId: 'P-2',
+    templateId: TEMPLATE_ID,
     runStartedAt: '2026-09-05T09:00:00.000Z',
     registeredAt: '2026-09-05T11:00:00.000Z',
     items,
@@ -273,6 +284,21 @@ describe('registerObservations', () => {
     expect(failed).toEqual([
       { observationId: observationIdFor(WORK_ITEM, 'AG-8888'), check: 'search-completeness', outcome: 'FAIL', diagnostic: 'absence-proof-missing' },
     ]);
+  });
+
+  it('leaves an absence UNINSPECTED under a must-appear Template, however honest', async () => {
+    // §H computes per-record coverage "per the Template's coverage rule (§C)". P-2's rule
+    // is satisfied only when every population account "appears in the extraction with a
+    // grounded role list", so an account whose permissions nothing could read is a gap —
+    // and `UNINSPECTED` is what the composite foreign key already refuses to call
+    // Compliant. The absence below is fully honest, and `search-completeness` still PASSES:
+    // the adapter did look, and whether it looked is a different question from whether
+    // this Template accepts an absence as coverage.
+    const context = new FakeContext();
+    await registerObservations(context, batch([item(absent('AG-9999'))], { templateId: 'P-2' }), SEAMS);
+    expect(context.observations[0]!.coverage).toBe('UNINSPECTED');
+    expect(context.checks.find((row) => row.check === 'search-completeness')?.outcome).toBe('PASS');
+    expect(context.events[0]!.payload['coverage']).toEqual({ COVERED: 0, UNINSPECTED: 1, AMBIGUOUS: 0 });
   });
 
   it('makes an absence UNINSPECTED when its empty result is not registered Evidence', async () => {
@@ -600,6 +626,63 @@ describe('registerObservations', () => {
       );
       expect(context.wroteNothing()).toBe(true);
     }
+  });
+
+  it('refuses an evaluation port that answers about only some of the batch', async () => {
+    // A short answer leaves the unanswered Observations with no evaluation row at all,
+    // which downstream is indistinguishable from a frozen plan whose Compliance Rule this
+    // build cannot recompile: §H's condition-completeness row reports both as
+    // `condition-evaluation-missing` and nothing says which happened. "Nothing judged
+    // this" is a result with NO evaluations, never an omitted result.
+    const partial: ObservationEvaluationPort = {
+      evaluate: async (subjects) =>
+        subjects
+          .slice(0, 1)
+          .map((subject) => ({ observationId: subject.record.observationId, evaluations: [] })),
+    };
+    const context = new FakeContext();
+    expect(
+      await refusal(() =>
+        registerObservations(
+          context,
+          batch([item(found('AG-1001')), item(found('AG-1002'))]),
+          { ...SEAMS, evaluation: partial },
+        ),
+      ),
+    ).toBe('evaluation-shape');
+    expect(context.wroteNothing()).toBe(true);
+
+    // The same length, but twice about one record and never about the other.
+    const lopsided: ObservationEvaluationPort = {
+      evaluate: async (subjects) =>
+        subjects.map(() => ({ observationId: subjects[0]!.record.observationId, evaluations: [] })),
+    };
+    const second = new FakeContext();
+    expect(
+      await refusal(() =>
+        registerObservations(
+          second,
+          batch([item(found('AG-1001')), item(found('AG-1002'))]),
+          { ...SEAMS, evaluation: lopsided },
+        ),
+      ),
+    ).toBe('evaluation-shape');
+    expect(second.wroteNothing()).toBe(true);
+  });
+
+  it('accepts "nothing judged this" as a result per Observation carrying no evaluations', async () => {
+    // What `NO_EVALUATION` and a Template this build has no rules for both answer. The
+    // rows, their checks and their coverage still commit; the absence of an evaluation is
+    // the Run-level Gate's business, not a refusal that would take the Work Item with it.
+    const context = new FakeContext();
+    const outcome = await registerObservations(
+      context,
+      batch([item(found('AG-1001')), item(found('AG-1002'))]),
+      SEAMS,
+    );
+    expect(outcome).toMatchObject({ registered: 2, evaluations: 0, exceptions: 0 });
+    expect(context.evaluations).toEqual([]);
+    expect(context.observations).toHaveLength(2);
   });
 
   it('refuses an evaluation outside the shape, about an unknown row, or repeated', async () => {

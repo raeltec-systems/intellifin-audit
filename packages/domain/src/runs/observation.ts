@@ -1,5 +1,8 @@
 import { canonicalJson, type JsonValue } from '../canonical-json.js';
 import { sha256Hex } from '../sha256.js';
+// Type-only: the §H per-record coverage rule is a Template contract (§C) and this module
+// applies it. An `import type` is erased, so no runtime edge is added in either direction.
+import type { TemplateCoverageRule } from '../procedures/templates.js';
 
 /**
  * The versioned Observation wire schema (addendum §B.1), and its validator.
@@ -717,20 +720,32 @@ export function observationChecks(input: ObservationCheckInput): readonly Observ
 }
 
 /**
- * The coverage state, derived from the record and its absence proof.
+ * The coverage state, derived from the record, its absence proof and the Template's own
+ * coverage rule.
  *
  * Derived on every registration and stored beside the row, the way Story 2.4's compiled
  * status is: the Gate and the evaluator read one column instead of re-deriving a rule
  * each of them would have to hold a second copy of.
+ *
+ * `coverageRule` is §H's own words — per-record coverage is "computed over Observations
+ * per the Template's coverage rule (§C)" — and it is a REQUIRED input rather than a
+ * default, because the generic `found ∈ {true, false}` reading is wrong for two of the
+ * four Templates. Under `must-appear` an absence is `UNINSPECTED` however honestly it was
+ * proven: P-2's §C rule is satisfied only when every population account "appears in the
+ * extraction with a grounded role list", so an account whose permissions nothing could
+ * read is a gap. It stays a separate question from `search-completeness`, which is about
+ * whether the adapter looked and is judged the same way under both rules.
  */
 export function observationCoverage(input: {
   readonly record: ObservationRecord;
   readonly absence: ObservationAbsenceProof | null;
   readonly expectedQueryKeys: readonly ObservationQueryKey[];
   readonly registeredEvidenceIds: readonly string[];
+  readonly coverageRule: TemplateCoverageRule;
 }): ObservationCoverage {
   if (input.record.found === 'ambiguous') return 'AMBIGUOUS';
   if (input.record.found === 'true') return 'COVERED';
+  if (input.coverageRule === 'must-appear') return 'UNINSPECTED';
   return isHonestAbsence({
     proof: input.absence,
     expected: input.expectedQueryKeys,

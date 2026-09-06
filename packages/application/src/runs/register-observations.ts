@@ -13,6 +13,7 @@ import {
   observationCoverage,
   observationDigest,
   observationIdFor,
+  templateCoverageRule,
   type ObservationAbsenceProof,
   type ObservationAttribute,
   type ObservationCheckResult,
@@ -255,6 +256,12 @@ export async function registerObservations(
     .filter((row) => row.state === 'REGISTERED')
     .map((row) => row.evidenceId);
 
+  // §H reads per-record coverage "per the Template's coverage rule (§C)", and the four
+  // rules differ: P-2 requires every population account to APPEAR in the extraction, so a
+  // proven absence there is a gap rather than the Compliant finding it is under P-3. Taken
+  // from the batch's FROZEN Template id, never from a current Procedure.
+  const coverageRule = templateCoverageRule(batch.templateId);
+
   const verdicts = await seams.corroboration.corroborate(batch.items.map((item) => item.record));
   const byObservation = new Map(verdicts.map((verdict) => [verdict.observationId, verdict]));
   if (byObservation.size !== verdicts.length) refuse('corroboration-shape');
@@ -303,6 +310,7 @@ export async function registerObservations(
       absence: item.absence,
       expectedQueryKeys: item.expectedQueryKeys,
       registeredEvidenceIds,
+      coverageRule,
     });
     const checks: ObservationCheckResult[] = [
       ...observationChecks({
@@ -375,6 +383,14 @@ export async function registerObservations(
       checks: entry.checks,
     })),
   );
+  // ONE result per Observation offered, and the port says so by answering about all of
+  // them. A port that answers about fewer leaves the rest with no evaluation row at all,
+  // which is indistinguishable downstream from a frozen plan whose Compliance Rule this
+  // build cannot recompile — the Run-level Gate's condition-completeness row would report
+  // both as `condition-evaluation-missing` and nothing would say which happened. "Nothing
+  // judged this" is said by returning a result with NO evaluations, not by omitting it.
+  const answered = new Set(results.map((result) => result.observationId));
+  if (results.length !== fresh.length || answered.size !== results.length) refuse('evaluation-shape');
   const judgedOf = new Map(
     fresh.map((entry) => [entry.record.observationId, entry] as const),
   );

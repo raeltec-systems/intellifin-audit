@@ -201,10 +201,31 @@ export async function runRunLevelGate(
   }
 
   // §H condition completeness and unnamed values, over the version's frozen conditions.
-  const expectedConditions = plan?.inputs.complianceConditions.length ?? 0;
-  const conditionGaps = await context.readConditionGaps(expectedConditions);
-  const gapTally = fromTally(conditionGaps, 'condition-evaluation-missing');
-  if (gapTally !== null) findings.push(gapTally);
+  //
+  // Counted from the FROZEN PLAN, never from the stored evaluation rows: a version whose
+  // Compliance Rule this build can no longer recompile produces ZERO evaluations while its
+  // plan still declares its conditions, so every Observation reports a gap and the Run is
+  // `INCONCLUSIVE` — which is the whole point of counting it here.
+  //
+  // A plan this build cannot read at all declares nothing, so there is no count to compare
+  // against and `readConditionGaps(0)` finds no gaps. That must not read as a PASS: a Run
+  // whose plan could not be read has no condition anybody verified an evaluation for. The
+  // adapter stage refuses such a plan as `unsupported-frozen-plan` before its first Work
+  // Item, so this is the second lock on that door rather than the first — but a row that
+  // passes for want of a number is exactly the kind of pass §H exists to refuse.
+  if (plan === null) {
+    findings.push({
+      diagnostic: 'condition-evaluation-missing',
+      total: 1,
+      targetSystems: [],
+      workItems: [],
+      records: [],
+    });
+  } else {
+    const conditionGaps = await context.readConditionGaps(plan.inputs.complianceConditions.length);
+    const gapTally = fromTally(conditionGaps, 'condition-evaluation-missing');
+    if (gapTally !== null) findings.push(gapTally);
+  }
   const unnamed = fromTally(await context.readUnnamedValues(), 'unnamed-value');
   if (unnamed !== null) findings.push(unnamed);
 

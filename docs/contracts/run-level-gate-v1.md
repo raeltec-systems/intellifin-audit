@@ -39,6 +39,22 @@ first one nobody did, and here the divergence would be an audit conclusion.
 population check added without a §H row does not compile. The per-Observation table is
 `Record<ObservationCheckName, GateDiagnostic>` for the same reason.
 
+One recorded check is **recomputed rather than routed**: `complete-inclusion` is the stored
+boolean for the inclusion arithmetic this module performs itself, and the stored boolean is
+exactly what a defect in that counting would have written. It is listed in
+`RECOMPUTED_POPULATION_CHECKS` and skipped in the routing loop, so one unaccounted row is
+reported once and `total` stays exact.
+
+Reaching the Gate at all is a separate question from failing a row there. Every population
+check EXCEPT `complete-inclusion` still stops the Run at acquisition — those are about
+whether the bytes are what they claim to be, and a Run that cannot trust its bytes has
+nothing to execute over. An unaccounted row does not make the INCLUDED set untrustworthy,
+so §E's "after the last Work Item" applies to it: the Run executes, and
+`count-reconciliation-inclusion` concludes it `INCONCLUSIVE` here. Same outcome, decided at
+the end, with the period's other records observed, evaluated and (where earned) excepted by
+then. See `POPULATION_CHECKS_DECIDED_AT_THE_GATE` in
+`packages/domain/src/runs/population.ts`.
+
 ## The failure outcome belongs to the DIAGNOSTIC
 
 §H gives two rows both outcomes — population acquisition is `RUN_FAILED` when acquisition
@@ -102,11 +118,31 @@ Every included population record × every required Target System (the frozen pla
 | Cell | Diagnostic |
 | --- | --- |
 | no Observation at all | `record-uncovered` |
-| `UNINSPECTED` (an absence that could not prove it looked) | `record-uninspected` |
+| `UNINSPECTED` (an absence this Template's coverage rule does not accept) | `record-uninspected` |
 | `AMBIGUOUS` (more than one candidate) | `record-ambiguous` |
 
 A record whose key the extraction could not use has no Observation; inventing coverage for
 it is exactly the lie this row exists to catch.
+
+An absence is `UNINSPECTED` either because it could not prove it looked, or because the
+Template's §C coverage rule is `must-appear` — P-2 requires every population account to
+appear in the extraction with a grounded role list, so an absence there is a gap however
+honestly it was proven. The rule is `TEMPLATE_COVERAGE_RULES` and the whole table is in
+`observation-registration-v1.md`.
+
+## Condition completeness counts against the FROZEN PLAN
+
+`expectedConditions` is `plan.inputs.complianceConditions.length`, never the number of
+evaluation rows that happen to exist. A version whose Compliance Rule this build can no
+longer recompile produces ZERO evaluations while its plan still declares its conditions, so
+every Observation reports a gap and the Run is `INCONCLUSIVE` with
+`condition-evaluation-missing` — which is the whole point of counting it from the plan.
+
+A plan this build cannot read **at all** declares nothing, so there is no count to compare
+against and the gap reader would find no gaps: a PASS for want of a number. That row is
+failed outright instead. The adapter stage refuses such a plan as `unsupported-frozen-plan`
+before its first Work Item, so this is the second lock on that door rather than the first,
+but a §H row must never pass because a fact was missing.
 
 ## The population field rows
 

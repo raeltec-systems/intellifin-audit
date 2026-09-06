@@ -240,6 +240,15 @@ export const POPULATION_CHECK_DIAGNOSTIC: Readonly<Record<PopulationCheckName, G
   'nonempty-population': 'population-empty',
 };
 
+/**
+ * Recorded population checks whose §H row this module derives from the counts instead.
+ *
+ * They keep their entry in `POPULATION_CHECK_DIAGNOSTIC` — the closed mapping is what
+ * guarantees every recorded check has a row — but the row is decided by the arithmetic in
+ * `runGateChecks`, so routing the boolean as well would double-count the same fact.
+ */
+const RECOMPUTED_POPULATION_CHECKS: readonly PopulationCheckName[] = ['complete-inclusion'];
+
 /* ------------------------------------------------------------------- findings --- */
 
 /**
@@ -641,6 +650,11 @@ export function runGateChecks(facts: RunGateFacts): readonly GateCheckResult[] {
   } else {
     for (const check of facts.populationChecks) {
       if (check.passed) continue;
+      // `complete-inclusion` is the ONE recorded check this row recomputes below from the
+      // counts rather than routing from the stored boolean — the stored boolean is exactly
+      // what a defect in the counting would have written. Routing it as well would count a
+      // single unaccounted row twice, and `total` is exact.
+      if (RECOMPUTED_POPULATION_CHECKS.includes(check.name)) continue;
       const diagnostic = Object.hasOwn(POPULATION_CHECK_DIAGNOSTIC, check.name)
         ? POPULATION_CHECK_DIAGNOSTIC[check.name]
         : undefined;

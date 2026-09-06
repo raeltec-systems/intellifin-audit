@@ -92,7 +92,18 @@ export function ruleEvaluation(inputs: RuleEvaluationInputs): ObservationEvaluat
     evaluate: (subjects: readonly ObservationEvaluationSubject[]) =>
       Promise.resolve(
         templateId === null
-          ? []
+          ? // A Template this build has no compiled rules for is answered about, with
+            // nothing judged. An EMPTY array would be a partial answer about a whole
+            // batch, which `registerObservations` refuses — and refusing rolls the Work
+            // Item and its Step Execution back, destroying a Run where §H only wanted to
+            // degrade it. The Observations still register and the Run-level Gate's
+            // condition-completeness row is what makes the Run INCONCLUSIVE.
+            subjects.map(
+              (subject): ObservationEvaluationResult => ({
+                observationId: subject.record.observationId,
+                evaluations: [],
+              }),
+            )
           : subjects.map((subject): ObservationEvaluationResult => {
               const key = subject.record.populationRecordKey;
               const { evaluations } = evaluateObservationRecord(

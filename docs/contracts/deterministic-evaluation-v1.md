@@ -97,6 +97,13 @@ A record with any failing check is not `complete`, and the compiler then records
 record whose identity did not corroborate is a finding about a record nobody has established the
 identity of.
 
+`inspected` is where the Template's §C coverage rule reaches the rules. Under `must-appear`
+(P-2, P-4) a proven absence is `UNINSPECTED`, so `inspected` is false and every condition is
+Unevaluated. Without that, a P-2 account absent from its own Target System was `COVERED`, P-2's
+frozen `found = true` applicability did not apply to it, and compiler 1 gives a non-applicable
+condition the value `COMPLIANT` — so an account whose permissions nothing could read passed its
+own control. The rule table is in `observation-registration-v1.md`.
+
 Because the facts are derived from the coverage and the corroboration, a `COMPLIANT` is
 structurally unreachable for a record that is not `COVERED` or whose snapshot contradicts it.
 `UNSUPPORTABLE_COMPLIANT` is a second lock on that same door and never turns while the two

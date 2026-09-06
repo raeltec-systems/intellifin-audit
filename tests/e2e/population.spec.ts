@@ -35,6 +35,7 @@ let storage: Awaited<ReturnType<typeof startSyntheticS3>>;
 let stopWorker: ((force?: boolean) => Promise<void>) | undefined;
 let workerLog = '';
 let firstRunId: string;
+let p3RunId: string;
 
 function inputs(templateId: 'P-2' | 'P-3', index: number): FrozenPlanInputs {
   const declaredSchema = templateId === 'P-2'
@@ -420,18 +421,147 @@ test.describe('Auditor population acquisition', () => {
   });
   test('API population preserves the decimal boundary, exclusions and unknown date', async ({ page }) => {
     test.setTimeout(90_000);
-    const runId = await start(page, 2);
-    await expect(page.getByText('Inconclusive', { exact: true })).toBeVisible();
+    p3RunId = await start(page, 2);
+    // The lifecycle label is NOT asserted here. TX-500007 carries no processed_time, so
+    // the inclusion accounting is incomplete — and that no longer ends the Run at
+    // acquisition: §H's early-stop row is "Population acquisition", which is about
+    // acquisition FAILING, and §E decides the Gate rows after the last Work Item. The Run
+    // carries on into its adapter stage and the journey below waits for it deliberately
+    // rather than racing it.
     await displayedCount(page, 'Rows acquired', 13);
     await displayedCount(page, 'Included', 10);
     await displayedCount(page, 'Excluded', 2);
     await displayedCount(page, 'Indeterminate', 1);
-    const rows = await sql`SELECT values->>'transaction_id' AS key,disposition,reasons FROM population_row WHERE run_id=${runId} ORDER BY ordinal`;
+    const rows = await sql`SELECT values->>'transaction_id' AS key,disposition,reasons FROM population_row WHERE run_id=${p3RunId} ORDER BY ordinal`;
     expect(rows.find(row => row.key === 'TX-500001')?.disposition).toBe('included');
     expect(rows.find(row => row.key === 'TX-500010')?.disposition).toBe('excluded');
     expect(rows.find(row => row.key === 'TX-500011')?.disposition).toBe('excluded');
     expect(rows.find(row => row.key === 'TX-500007')?.disposition).toBe('indeterminate');
-    await expect(page.getByRole('table')).toContainText('Invalid date: processed_time');
+    // Scoped to the population region: the Run now reaches its adapter stage, so the page
+    // also carries the Target System execution table and a bare `getByRole('table')` is
+    // ambiguous.
+    await expect(
+      page.getByRole('region', { name: 'Population acquisition' }).getByRole('table'),
+    ).toContainText('Invalid date: processed_time');
+    // The check the Run will conclude on was recorded here, at acquisition, and the Run is
+    // still executable: the included set is well defined, only its accounting is short.
+    const [snapshot] = await sql`SELECT checks FROM population_snapshot WHERE run_id=${p3RunId}`;
+    expect((snapshot!.checks as { name: string; passed: boolean }[]).filter(check => !check.passed))
+      .toEqual([{ name: 'complete-inclusion', passed: false }]);
+    expect((await sql`SELECT status FROM population_execution WHERE run_id=${p3RunId}`)[0]?.status)
+      .toBe('POPULATION_READY');
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
+  });
+
+  test('observes the ApproveNow extraction and concludes P-3 at the Run-level Gate', async ({ page }) => {
+    test.setTimeout(120_000);
+    // The P-3 counterpart of the AccessGate journey above: a real worker, the real
+    // synthetic ApproveNow service, the real golden LedgerFlow population, and every named
+    // per-record case of `fixtures/northstar/expectations/p-3-high-value-approvals.json`
+    // asserted against what the Run actually stored. Before the inclusion check moved to
+    // the Gate, none of these cases could be produced by a Run at all: one indeterminate
+    // row ended it before its first Work Item, and twelve of the thirteen were reachable
+    // only through a hand-built unit test.
+    // Playwright restarts its worker after a failure, which reloads this module and loses
+    // the id the previous test set. Say so, rather than letting the driver report
+    // `UNDEFINED_VALUE` from inside a query and hiding which failure was the first one.
+    expect(p3RunId, 'the P-3 Run was never initiated: read the FIRST failure in this run').toBeTruthy();
+    await expect.poll(async () => (await sql`SELECT status FROM run_execution WHERE run_id=${p3RunId}`)[0]?.status,
+      { timeout: 60_000 }).toBe('EXTRACTION_COMPLETE');
+
+    const [item] = await sql`SELECT state,attempts,observations,diagnostic FROM run_work_item WHERE run_id=${p3RunId}`;
+    // Ten included rows, nine distinct: TX-500008 is seeded twice with different amounts.
+    expect(item).toMatchObject({ state: 'OBSERVED', attempts: 1, observations: 9 });
+    expect(item!.diagnostic).toBe('duplicate-record-keys:1');
+    const observations = await sql`SELECT population_record_key AS key,found,coverage FROM run_observation WHERE run_id=${p3RunId} ORDER BY population_record_key`;
+    expect(observations.map(row => [String(row.key), String(row.found)])).toEqual([
+      ['TX-500001', 'true'], ['TX-500002', 'true'],
+      // No approval row names TX-500003, and P-3's §C coverage rule accepts "found or
+      // proven absent", so the absence is COVERED and the Exception is a real finding.
+      ['TX-500003', 'false'],
+      ['TX-500004', 'true'], ['TX-500005', 'true'], ['TX-500006', 'true'], ['TX-500008', 'true'],
+      // APV-9009 APPROVED and APV-9009B REJECTED both name TX-500009.
+      ['TX-500009', 'ambiguous'],
+      ['TX-500012', 'true'],
+    ]);
+    expect(observations.find(row => row.key === 'TX-500003')?.coverage).toBe('COVERED');
+
+    const expectations = JSON.parse(
+      await readFile(join(process.cwd(), 'fixtures/northstar/expectations/p-3-high-value-approvals.json'), 'utf8'),
+    ) as {
+      run_expectation: { terminal_outcome: string };
+      cases: { case_id: string; record_key: string | null; expected_record_evaluation: string | null }[];
+    };
+    const evaluations = await sql`SELECT o.population_record_key AS key,e.value,e.origin FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id WHERE e.run_id=${p3RunId} ORDER BY o.population_record_key`;
+    expect(evaluations.every(row => row.origin === 'RULE')).toBe(true);
+    const verdict = new Map(evaluations.map(row => [String(row.key), String(row.value)]));
+    const named = expectations.cases.filter(entry => entry.record_key !== null);
+    expect(named).toHaveLength(13);
+    for (const entry of named) {
+      const key = entry.record_key!;
+      if (entry.expected_record_evaluation === null) {
+        // TX-500010 (one cent under the threshold) and TX-500011 (not USD) are outside the
+        // population: their correct treatment is absence, so nothing evaluated them.
+        expect(verdict.has(key), `${entry.case_id} (${key}) must not be evaluated`).toBe(false);
+        continue;
+      }
+      if (key === 'TX-500007') {
+        // Case D4, and the only one reached this way: no processed_time, so the frozen
+        // inclusion rule cannot place it in or out of the Period. It never becomes an
+        // Observation, and it is the unaccounted row the Gate concludes the Run on below.
+        expect(verdict.has(key)).toBe(false);
+        expect(
+          (await sql`SELECT disposition FROM population_row WHERE run_id=${p3RunId} AND values->>'transaction_id'=${key}`)[0]?.disposition,
+        ).toBe('indeterminate');
+        continue;
+      }
+      expect(verdict.get(key), `${entry.case_id} (${key})`).toBe(entry.expected_record_evaluation);
+    }
+
+    // One permanent Exception per failing record, and no others.
+    const raised = await sql`SELECT population_record_key AS key,fingerprint,fingerprint_key_id FROM run_exception WHERE run_id=${p3RunId} ORDER BY population_record_key`;
+    expect(raised.map(row => String(row.key))).toEqual([
+      'TX-500003', 'TX-500004', 'TX-500005', 'TX-500006',
+    ]);
+    expect(raised.every(row => /^[0-9a-f]{64}$/.test(String(row.fingerprint)))).toBe(true);
+    expect(raised.every(row => row.fingerprint_key_id === EXCEPTION_FINGERPRINT_KEY_ID)).toBe(true);
+
+    // The terminal outcome the EXPECTATION FILE names, read off disk. Its own `why` names
+    // three causes — a missing processed time, a duplicate transaction id and
+    // contradictory approval decisions — and only a Run that reaches all three can have
+    // them. Each is one of the failing §H rows below.
+    const outcome = expectations.run_expectation.terminal_outcome;
+    expect(outcome).toBe('Inconclusive');
+    await expect
+      .poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${p3RunId}`)[0]?.state,
+        { timeout: 60_000 })
+      .toBe(outcome.toUpperCase());
+    const gate = await sql`SELECT check_name,outcome,diagnostics,records,total FROM run_gate_check WHERE run_id=${p3RunId} ORDER BY check_name`;
+    expect(gate).toHaveLength(20);
+    const failed = gate.filter(row => row.outcome === 'FAIL');
+    expect(failed.map(row => String(row.check_name)).sort()).toEqual([
+      'ambiguous-match', 'count-reconciliation-inclusion', 'duplicate-primary-keys',
+      'mandatory-values', 'per-record-coverage',
+    ]);
+    // The missing processed time: ONE unaccounted row, counted once.
+    const inclusion = failed.find(row => row.check_name === 'count-reconciliation-inclusion')!;
+    expect(inclusion.diagnostics).toEqual(['rows-unaccounted']);
+    expect(inclusion.total).toBe(1);
+    // The duplicate transaction id, and the contradictory decisions.
+    expect(failed.find(row => row.check_name === 'duplicate-primary-keys')?.records).toEqual(['TX-500008']);
+    expect(failed.find(row => row.check_name === 'ambiguous-match')?.records).toEqual(['TX-500009']);
+    expect(failed.find(row => row.check_name === 'per-record-coverage')?.diagnostics).toEqual(['record-ambiguous']);
+    // TX-500003 has no approval id in the population row: a mandatory evaluation field the
+    // binding declared and the row does not carry.
+    expect(failed.find(row => row.check_name === 'mandatory-values')?.records).toEqual(['TX-500003']);
+    expect((await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${p3RunId}`)[0]?.run_state)
+      .toBe('INCONCLUSIVE');
+
+    await page.goto(`/runs/${p3RunId}`);
+    await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
+    const section = page.getByRole('region', { name: 'Target System execution' });
+    await expect(section.getByRole('cell', { name: 'ApproveNow', exact: true })).toBeVisible();
+    await expect(section.getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
   test('a killed worker resumes the stored acquisition envelope without replacing Evidence', async ({ page }) => {

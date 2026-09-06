@@ -23,7 +23,30 @@ describe('deterministic population',()=>{
  it('reconciles independent declarations before inclusion and allows covered subperiod',()=>expect(reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n').ready).toBe(true));
  it.each([{count:2},{sha256:'0'.repeat(64)},{schema:['wrong']},{complete:false},{effective_period:{from:'2026-07-01',to:'2026-07-31'}},{generated_at:'2026-10-01T00:00:00.000Z'},{generated_at:'2026-09-01'}])('fails independent check %j',patch=>{ const result=reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n',patch);expect(result.ready).toBe(false);expect(result.rows).toHaveLength(1); });
  it('opt-in never overrides malformed headers or other failed checks',()=>{expect(reconcile('amount,currency,date\n',{count:0},true).ready).toBe(true);expect(reconcile('wrong,header,names\n',{count:0},true).ready).toBe(false);expect(reconcile('amount,currency,date\n',{count:0},false).ready).toBe(false);});
- it('retains missing inclusion values as indeterminate',()=>{const result=reconcile('amount,currency,date\n,EUR,2026-08-01\n');expect(result.indeterminate).toBe(1);expect(result.excluded).toBe(0);expect(result.ready).toBe(false);});
+ it('retains missing inclusion values as indeterminate',()=>{const result=reconcile('amount,currency,date\n,EUR,2026-08-01\n');expect(result.indeterminate).toBe(1);expect(result.excluded).toBe(0);
+  // Not ready, but on `nonempty-population`: nothing was included at all.
+  expect(result.checks.filter(c=>!c.passed).map(c=>c.name)).toEqual(['complete-inclusion','nonempty-population']);expect(result.ready).toBe(false);});
+ it('lets an indeterminate row reach the Run-level Gate instead of ending the Run',()=>{
+  // §H's early-stop row is "Population acquisition", which is about acquisition FAILING;
+  // an unaccounted row is not that. §E decides the Gate rows "after the last Work Item",
+  // so the Run executes and `count-reconciliation-inclusion` concludes it INCONCLUSIVE at
+  // the end — by which time the period's other records have Observations, evaluations and
+  // Exceptions. P-3's golden expectations name three causes of its Inconclusive outcome,
+  // and only a Run that reaches all three can have them.
+  const result=reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n,EUR,2026-08-02\n',{count:2});
+  expect([result.included,result.excluded,result.indeterminate]).toEqual([1,0,1]);
+  expect(result.checks.filter(c=>!c.passed).map(c=>c.name)).toEqual(['complete-inclusion']);
+  expect(result.ready).toBe(true);
+ });
+ it('still stops the Run for every check about the bytes themselves',()=>{
+  // The one exception is `complete-inclusion` and nothing else: a Run that cannot trust
+  // its bytes has nothing to execute over.
+  const rows='amount,currency,date\n100000.00,USD,2026-08-01\n,EUR,2026-08-02\n';
+  for (const patch of [{count:1},{sha256:'0'.repeat(64)},{schema:['wrong']},{complete:false},{representation:'wrong'},{source:''},{generation:''},{effective_period:{from:'2026-07-01',to:'2026-07-31'}},{generated_at:'2026-10-01T00:00:00.000Z'}]) {
+   expect(reconcile(rows,{count:2,...patch}).ready,JSON.stringify(patch)).toBe(false);
+  }
+  expect(reconcile('not,a,population\n1,2,3\n',{count:2}).ready).toBe(false);
+ });
  it('checks API raw bytes separately from versioned row digests and completeness',()=>{
   const rows=[{amount:'100000.00',currency:'USD',date:'2026-08-01'}];
   const declaration={schema_version:1,representation:'population-rows-v1',source:'transactions',generation:'g1',generated_at:'2026-09-01T00:00:00Z',effective_period:period,schema:fields.declaredSchema,count:1,sha256:sha256Hex(canonicalJson({schema_version:1,rows})),complete:true};

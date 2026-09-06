@@ -26,6 +26,7 @@ import {
   type ObservationEvaluation,
   type ObservationRecord,
 } from './observation.js';
+import type { TemplateCoverageRule } from '../procedures/templates.js';
 
 const grounding = {
   evidenceId: 'evidence-1',
@@ -269,10 +270,12 @@ describe('the coverage state', () => {
     subject: ObservationRecord,
     proof: ObservationAbsenceProof | null = null,
     registered = REGISTERED,
-  ) => observationCoverage({ record: subject, absence: proof, expectedQueryKeys: EXPECTED, registeredEvidenceIds: registered });
+    coverageRule: TemplateCoverageRule = 'found-or-proven-absent',
+  ) => observationCoverage({ record: subject, absence: proof, expectedQueryKeys: EXPECTED, registeredEvidenceIds: registered, coverageRule });
 
   it('covers a resolved match', () => {
     expect(coverage(FOUND)).toBe('COVERED');
+    expect(coverage(FOUND, null, REGISTERED, 'must-appear')).toBe('COVERED');
   });
 
   it('covers an absence that proved it looked', () => {
@@ -284,10 +287,22 @@ describe('the coverage state', () => {
     expect(coverage(ABSENT, { ...PROOF, extractionComplete: false })).toBe('UNINSPECTED');
   });
 
+  it('leaves EVERY absence UNINSPECTED under a must-appear Template, however honest', () => {
+    // §H computes per-record coverage "per the Template's coverage rule (§C)", and P-2's
+    // rule is satisfied only when every population account "appears in the extraction with
+    // a grounded role list" — no "or proven absent". An account whose permissions nothing
+    // could read is a gap, and `UNINSPECTED` is what the composite foreign key already
+    // refuses to call Compliant. The proof below is the fully honest one: a derived query
+    // key for every declared search key, a REGISTERED empty result, a complete extraction.
+    expect(coverage(ABSENT, PROOF, REGISTERED, 'found-or-proven-absent')).toBe('COVERED');
+    expect(coverage(ABSENT, PROOF, REGISTERED, 'must-appear')).toBe('UNINSPECTED');
+  });
+
   it('never calls an ambiguous match covered, whatever proof is offered', () => {
     // H's per-record coverage counts found in {true, false} only, so calling this
     // COVERED would be a lie in exactly the place the Gate reads.
     expect(coverage(AMBIGUOUS, PROOF)).toBe('AMBIGUOUS');
+    expect(coverage(AMBIGUOUS, PROOF, REGISTERED, 'must-appear')).toBe('AMBIGUOUS');
   });
 
   it('lets only a covered record be Compliant', () => {

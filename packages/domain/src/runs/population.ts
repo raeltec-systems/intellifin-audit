@@ -54,6 +54,28 @@ export interface PopulationCheck { name: PopulationCheckName; passed: boolean }
 export function isPopulationCheckName(value: unknown): value is PopulationCheckName {
   return typeof value === 'string' && (POPULATION_CHECK_NAMES as readonly string[]).includes(value);
 }
+/**
+ * The checks whose failure does NOT stop the Run at acquisition.
+ *
+ * Every other check above is about whether the population BYTES are what they claim to be
+ * — they parsed, the declaration exists and agrees, the count and digest match, the
+ * schema, period, generation, source and freshness are the declared ones, the extraction
+ * completed and the result is non-empty. A Run that cannot trust its bytes has nothing to
+ * execute over, so those still end it where they end it now, with the acquired Evidence
+ * preserved.
+ *
+ * `complete-inclusion` is different in kind: it says the ACCOUNTING of rows is incomplete
+ * — some row could not be placed in or out of the Period — and that does not make the
+ * INCLUDED set untrustworthy. Addendum §E decides the §H Gate rows "after the last Work
+ * Item", and §H's own early-stop row is "Population acquisition", which is about
+ * acquisition FAILING; an indeterminate row is not acquisition failing. The outcome is
+ * unchanged — the recorded failing check reaches the Run-level Gate on the checkpoint
+ * summary and `count-reconciliation-inclusion` makes the Run `INCONCLUSIVE` — but it is
+ * decided at the end, so the Work Items, Observations, evaluations and Exceptions the
+ * period's other records produce exist by then. P-3's golden expectations name three
+ * causes of its Inconclusive outcome, and only a Run that reaches all three can have them.
+ */
+export const POPULATION_CHECKS_DECIDED_AT_THE_GATE: readonly PopulationCheckName[] = ['complete-inclusion'];
 export interface PopulationResult {
   rows: PopulationRow[]; checks: PopulationCheck[]; rawDigest: string; rowsDigest: string | null;
   included: number; excluded: number; indeterminate: number; ready: boolean;
@@ -189,5 +211,5 @@ export function reconcilePopulation(input: { bytes: Uint8Array; mediaType: strin
   // read. Never invented and never defaulted to now(): a fabricated generation time would
   // make the §H freshness row report a snapshot nobody generated.
   const generatedAt = typeof d['generated_at'] === 'string' && populationUtcDate(d['generated_at']) !== null ? d['generated_at'] : null;
-  return { rows, checks, rawDigest, rowsDigest, included, excluded, indeterminate, ready:checks.every(c=>c.passed), generatedAt };
+  return { rows, checks, rawDigest, rowsDigest, included, excluded, indeterminate, ready:checks.every(c=>c.passed||POPULATION_CHECKS_DECIDED_AT_THE_GATE.includes(c.name)), generatedAt };
 }

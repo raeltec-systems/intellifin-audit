@@ -85,6 +85,13 @@ describe('runGateChecks', () => {
           populationChecks: PASSING_POPULATION.map((check) =>
             check.name === name ? { name, passed: false } : check,
           ),
+          // `complete-inclusion` is recorded as `indeterminate === 0`, so the state in
+          // which the reconciler writes `false` is a state in which the counts carry an
+          // indeterminate row. Both are supplied together because both are what really
+          // happens; the row itself is decided by the counts (see the test below).
+          ...(name === 'complete-inclusion'
+            ? { population: { rowsParsed: 3, included: 2, excluded: 0, indeterminate: 1, unexplained: [] } }
+            : {}),
         }),
       );
       expect(
@@ -92,6 +99,32 @@ describe('runGateChecks', () => {
         `population check ${name} failed nothing`,
       ).toBe(true);
     }
+  });
+
+  it('counts ONE unaccounted row once, whatever the stored check also said', () => {
+    // The recorded `complete-inclusion` boolean and the arithmetic below it say the same
+    // thing, so routing the boolean AND recomputing the counts would report two unaccounted
+    // rows where the population has one. `total` is exact and is what the Result shows.
+    const population = { rowsParsed: 3, included: 2, excluded: 0, indeterminate: 1, unexplained: [] };
+    const stored = runGateChecks(
+      clean({
+        population,
+        populationChecks: PASSING_POPULATION.map((check) =>
+          check.name === 'complete-inclusion' ? { name: check.name, passed: false } : check,
+        ),
+      }),
+    );
+    const reconciliation = row(stored, 'count-reconciliation-inclusion');
+    expect(reconciliation.outcome).toBe('FAIL');
+    expect(reconciliation.diagnostics).toEqual(['rows-unaccounted']);
+    expect(reconciliation.affected.total).toBe(1);
+    // And the Run is INCONCLUSIVE, which is the outcome an indeterminate row must reach
+    // whether it is decided at acquisition or, as it now is, at the Run-level Gate.
+    expect(runGateDecision(stored)).toMatchObject({
+      passed: false,
+      state: 'INCONCLUSIVE',
+      failed: ['count-reconciliation-inclusion'],
+    });
   });
 
   it('treats a Run with no population reconciliation as an acquisition that could not complete', () => {
