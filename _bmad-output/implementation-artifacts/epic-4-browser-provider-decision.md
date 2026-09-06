@@ -85,3 +85,75 @@ and is documented as the weaker guarantee rather than presented as equivalent.
   an escalation ladder that swaps egress mid-session is the opposite of that guarantee. If a
   later epic wants them for a real Target System, that is a scope decision with an audit
   consequence, not a configuration flag.
+
+## SDK lifecycle and options, read from the cookbook
+
+The owner supplied <https://github.com/solari-sdk/solari-cookbook/>. What follows was read from
+it and from the installed packages, and each item changes something an implementer would
+otherwise get wrong.
+
+### `solari.close()` is required in Node, and `browser.close()` is not enough
+
+```ts
+const solari = new Solari({ apiKey: process.env.SOLARI_API_KEY! });
+const browser = await solari.launch();
+try {
+  const page = await browser.newPage();
+  await page.goto('https://example.com');
+} finally {
+  await browser.close();   // ends the session and releases the slot
+  await solari.close();    // releases the client's loopback proxy server
+}
+```
+
+The client keeps a loopback proxy server open for its connection-retry path, and that handle
+keeps the Node event loop alive. A worker that closes only the browser **never exits**. This is
+the same defect class this repository has already recorded three times — `fetch` resolves on
+headers and an unread body holds the socket (Story 1.8), and `controller.abort()` missing from a
+deadline's `dispose` (PR 23) — so it is a `finally`, not a happy-path call.
+
+`browser.close()` also **releases the Solari session**. Leaving the browser open holds the
+session slot until the plan deadline, so an abandoned Run costs capacity until it times out.
+
+### `timeoutMs` is a rolling idle window, not a deadline
+
+It resets on each use. A Run that keeps acting therefore never trips it, and a Run that stalls
+trips it at an instant nothing in this platform chose. **The frozen Run limits stay the
+authority** — `exhaustedRunLimit(usage, plan.limits)` on elapsed time and Step Executions is
+enforced independently, exactly as it is for the adapter path. Solari's window is a backstop
+against a leaked session, never the mechanism that ends a Run.
+
+### `recording: true` must be passed at session creation
+
+There is no way to turn it on later, and the replay endpoint 404s forever for a session created
+without it. Upload is asynchronous — roughly 30 seconds of polling after release. **This is an
+Epic 5 constraint that has to be honoured in Epic 4**, because the decision is taken at
+`sessions.create()`, which is Story 4.1's code. Story 4.1 therefore threads the flag through the
+workspace options even though nothing reads a replay yet.
+
+### Profiles are opt-in and explicit
+
+Cookies and `localStorage` persist server-side only when a profile is named AND
+`solari.profiles.save()` is called. Without one, every session starts clean — **which is what
+per-Run isolation wants**, so this platform names no profile and never calls save. Stated here so
+a later story adding "resume where the agent left off" knows it is choosing to weaken isolation.
+
+### `proxy` and `captcha` both require `stealth: true`, and all three stay off
+
+Confirmed against the SDK. `proxy: "smart"` runs an escalation ladder and swaps egress in place
+when it detects a block — the opposite of confining a Run to the Procedure Version's frozen
+allowed origins. Off, deliberately, and named in the Story 4.1 spec rather than left to a
+default.
+
+### Session identity and errors
+
+`browser.id` is the session id and is the value to record on the workspace row and in the
+Timeline event — it is what makes a Solari-side session correlatable with a Run. `SolariError`
+carries a `code`; `FeatureRequiresPlan` is a refusal, not an outage, so it must fail the Run
+rather than consume its retry budget — the `credential-unresolved` rule from Story 3.3.
+
+### Key format and region
+
+`SOLARI_API_KEY` looks like `slr_live_…`, from console.getsolari.com. `region` defaults to
+`us-west`; `baseUrl` replaces it for a staging or self-hosted gateway. Neither is hard-coded —
+both are configuration read in a composition root, per AD-11.
