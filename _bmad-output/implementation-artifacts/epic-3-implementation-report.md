@@ -117,3 +117,87 @@ and the golden fixtures. The golden reconciliation agreed on all twelve named pe
 cases. Seven defects were found around the evaluator rather than in it, and are repaired in
 their own commits; section 4 records the decisions those repairs settled.
 
+## 4. Decisions taken, and why
+
+These are the decisions a reader would otherwise have to reconstruct from the diff. Every one
+is also in `CLAUDE.md` beside the code it governs.
+
+**A Gate row's failure outcome belongs to its diagnostic, not to its row.** The addendum
+gives two rows both possible outcomes, so a table keyed by row loses half the contract. One
+failure genuinely lands on two rows, and the addendum says so twice.
+
+**Per-record coverage is per Template, and is now machine-readable.** The addendum computes
+coverage "per the Template's coverage rule", and the four rules genuinely differ: one names
+"found or proven absent" in as many words, while the segregation-of-duties Template is
+satisfied only when every account appears in the extraction with a grounded role list. That
+rule was prose, so the permissive reading was applied to all four — and an account whose
+permissions nothing could read passed its own control. It fails closed to the strict reading,
+which can only ever degrade coverage.
+
+**An unaccounted population row is decided at the Gate, not at acquisition.** The addendum's
+early-stop rule is about acquisition failing, and an indeterminate row is not that; the Gate
+rows are decided after the last Work Item. Exactly one check moved. The outcome is unchanged
+— only when it is decided, and what exists by the time it is. Every other check still stops
+the Run where it did, because those ask whether the bytes are what they claim, and a Run that
+cannot trust its bytes has nothing to execute over.
+
+**An Evidence artifact frozen before it is parsed is named with its attempt.** Otherwise a
+retry uploads different bytes to the first attempt's key, the store refuses them, and every
+retry dies accusing storage of an integrity failure against a system that is answering
+correctly. A crash does not advance the attempt counter, so a resumed attempt keeps its own
+key and the earlier idempotency guarantee is untouched.
+
+**A refusal is thrown from inside a unit of work, never returned.** A returned refusal commits
+everything written before it. This is the oldest rule in the codebase and it still applies to
+every command added here.
+
+**Canceled is never produced by a timeout or a limit.** That state is reserved for a person
+cancelling, and the outcome rules read it to decide what a human may do next. A timeout that
+wrote it would put a sentence naming an actor on a Run nobody touched.
+
+**The frozen limits are read from the plan, never restated.** A Run is bounded by the contract
+its own version froze.
+
+## 5. What is deferred, and named
+
+Nothing here is hidden. Each item is named in the code or a story specification as well.
+
+- **The desktop Target System** and its execution port. Deferred since Epic 1; the desktop
+  path is exercised with a registered synthetic desktop rather than a real one.
+- **The token limit mapping** is implemented and unit-tested but never exercised, because
+  nothing in this epic calls a model. It is wired so the agent epic fills it rather than
+  adding a limit that was never mapped.
+- **Two Gate rows are transcribed backstops.** They can only fail from a Session Step failure
+  that already stops the Run before the Gate runs. They are tested in the domain.
+- **A residual storage race.** Object immutability rests on a read before write plus a
+  conditional header; two writers landing between one's read and its write, on a backend that
+  ignores the header, is still possible. It is written down rather than claimed away.
+- **Two findings were left alone deliberately**, because a test pins each as intended
+  behaviour and changing them is a contract decision rather than a repair. Both are recorded
+  in `CLAUDE.md` for the owner: a redelivered job past the Run time limit discards a
+  population that was already acquired and verified, and replaying an initiation token after
+  a duplicate refusal redirects into the other auditor's Run.
+
+## 6. How this was built and checked
+
+Each story was specified before it was built, implemented by a separate agent against that
+specification, then verified independently in this session against a real database before it
+was committed. No story was committed on a reported result; the numbers in section 3 are from
+the independent run.
+
+Two adversarial reviews then read the landed stories against the contracts and the golden
+fixtures rather than against the code. They agreed on all twelve named per-record cases and
+found seven defects around the evaluator, which were repaired in two further passes. Neither
+reviewer could construct a path on which a record is counted compliant without inspection.
+
+Where a fix mattered, it was mutation-proven: the fix was inverted, the test was watched
+failing, and the fix restored. A test that has never failed is not a test.
+
+**Two interruptions are worth recording rather than hiding.** Three background agents were
+killed at once by a session rate limit; one had already written its work, which was picked up
+and verified rather than redone. Separately, two mistakes of mine cost time: editing the
+verification script while it was running, which corrupted that run, and killing a browser
+suite so its cleanup never ran, which left a row that failed an unrelated test afterwards.
+Both are now recorded in the project's decision log, and the verification script no longer
+exits successfully over a failing step.
+
