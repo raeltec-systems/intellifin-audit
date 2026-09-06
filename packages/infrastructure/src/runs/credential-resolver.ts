@@ -2,6 +2,7 @@ import {
   PopulationAcquisitionError,
   type CredentialHeaderSink,
   type CredentialResolver,
+  type CredentialValueSink,
   type ResolvedCredential,
 } from '@intellifin/application';
 import {
@@ -59,6 +60,13 @@ export function resolvedCredential(reference: string, token: string): ResolvedCr
     reference,
     authorize(headers: CredentialHeaderSink): void {
       headers.set(AUTHORIZATION_HEADER, `Bearer ${token}`);
+    },
+    enter(field: CredentialValueSink): void {
+      // The VALUE, because a form field carries the credential itself rather than a
+      // presentation of it. Same containment as `authorize`: the token is a parameter of
+      // this factory, this closure is the only thing that can read it, and nothing here
+      // returns it.
+      field.set(token);
     },
     redact(text: string): string {
       return redactCompiled(text, secret);

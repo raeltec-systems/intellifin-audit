@@ -38,4 +38,4 @@ export const UNREACHABLE_BASE_URL = `http://localhost:${String(NORTHSTAR_PORT + 
 /** The verbatim rule the read-only denial names. Held to the character by the specs. */
 export const READ_ONLY_RULE =
   'FR-3: an audit credential may not write. Every Northstar synthetic system is read-only ' +
-  'at the system level and refuses any method other than GET or HEAD.';
+  'at the system level and refuses any operation a route has not declared non-mutating.';

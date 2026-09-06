@@ -117,21 +117,31 @@ that matters. Do not suppress the Tool Action itself, only its capture.
 
 ## Design Notes
 
-**"Entry" is credential USE, not typing — settled in `epic-4-loancore-authentication-decision.md`.**
-LoanCore authenticates by an `Authorization` header on GET, not by a form, because every
-synthetic system refuses a POST above routing and a `method="get"` form would put the credential
-in the URL. So there is no typing to suppress capture around, and the target of the suppression
-is the REQUEST HEADER and every artifact that could carry it: a network artifact, a Structural
-Snapshot, a screenshot, a frame. That is the stronger guarantee, not the weaker one — the
-credential must have nowhere to land, whatever the capture mechanism, rather than merely not
-being photographed while it is typed. Everything else in this story is unchanged: the resolver
-port whose result has no field holding a value, the audit that names the Target System and never
-the reference, the redaction BEFORE registration, and the artifact that FAILS registration
-rather than being stored. The Tool Action still appears on the Timeline saying capture was
-suppressed, because a gap is something a reader takes for nothing having happened.
+**"Entry" is credential USE, which is wider than typing and INCLUDES it — settled in
+`epic-4-loancore-authentication-decision.md`.** `[REVISED 2026-09-06]` This note first read "not
+typing", because LoanCore then authenticated by an `Authorization` header on a GET and had no
+form: every synthetic system refused a POST above routing. The owner overturned that rule —
+read-only means no mutation of audited business data, and a sign-in POST creates a session — so
+LoanCore has a real form again and BOTH cases are live:
 
-If a later story adds a Target System that really does have a form — a desktop application, say —
-the typing case joins this one; it does not replace it.
+- **typed into a form**, by the agent sign-in, which navigates to the frozen origin, types the
+  value into the system's own `<input type="password">` and submits a `POST`;
+- **presented in a header**, by an adapter extraction, and echoed straight back by the
+  deliberately hostile `/accessgate/credential-echo`.
+
+The target of the suppression is therefore the form field, the request body, the request header
+and every artifact that could carry any of them: a network artifact, a Structural Snapshot, a
+screenshot, a frame. The credential must have nowhere to land, whatever the capture mechanism —
+which is the guarantee this story built, and it is unchanged and undiminished by the form
+arriving. So is everything else here: the resolver port whose result has no field holding a
+value, the audit that names the Target System and never the reference, the redaction BEFORE
+registration, and the artifact that FAILS registration rather than being stored. The Tool Action
+still appears on the Timeline saying capture was suppressed, because a gap is something a reader
+takes for nothing having happened.
+
+The byte-level scanner covers both cases and none of it was removed. What the form ADDS is a
+page with a working credential on it while the action runs, which is exactly the case the
+original spec text meant, so the tests cover both rather than swapping one for the other.
 
 
 **Containment by shape, not by discipline.** This is the fourth time this codebase has made the
@@ -151,10 +161,13 @@ auditor as "nothing happened here", which is the same defect class as a dash tha
 "fine" and an empty Gate checklist that reads as a passed control. The Timeline says the action
 occurred and that its capture was suppressed, and why.
 
-**The synthetic environment has no real credential and must not gain one.** LoanCore serves the
-audit account as already signed in precisely so this environment never holds a working secret.
-So the negative test seeds a credential-shaped value into the capture path deliberately, rather
-than using a real one — and the seeded value must be recognisable as synthetic under NFR-13.
+**The synthetic environment has no real credential and must not gain one.** `[REVISED
+2026-09-06]` This first read "LoanCore serves the audit account as already signed in"; it signs
+in through its own form now, with an INVENTED credential declared in
+`fixtures/northstar/datasets/systems.json`, so the rule is unchanged and the reason it is
+satisfied is different: the value authenticates nothing outside this repository. The negative
+test seeds a credential-shaped value into the capture path deliberately, rather than using a
+real one — and the seeded value must be recognisable as synthetic under NFR-13.
 
 ## Verification
 

@@ -1,3 +1,11 @@
+import {
+  CREDENTIAL_FIELD,
+  SIGN_IN_PATH,
+  authenticationDenial,
+  presentedCredential,
+  presentedSession,
+  withSession,
+} from './authentication.js';
 import { datasets, type LoanCoreAccount } from './fixtures.js';
 import { escapeHtml, html, json, type NorthstarRequest, type NorthstarResponse } from './http.js';
 import { field, layout, tableHead, tableRows } from './page.js';
@@ -5,9 +13,16 @@ import { field, layout, tableHead, tableRows } from './page.js';
 /**
  * LoanCore — the synthetic loan origination and servicing web application (addendum A.2).
  *
- * The P-1 Target System. An agent signs in (this account is already signed in: a sign-in
- * form would be a POST, and this system refuses every write), searches by employee ID or
- * full name, opens an account page, and reads Status, Username, Roles and Employee ID.
+ * The P-1 Target System. An agent signs in through a real form, searches by employee ID
+ * or full name, opens an account page, and reads Status, Username, Roles and Employee ID.
+ *
+ * The sign-in is a `POST` with a body, like an application. It is declared non-mutating on
+ * its route, because it creates a session and no audited business data — which is what the
+ * system-level read-only guard actually constrains
+ * (`epic-4-loancore-authentication-decision.md`). `/loancore` is the sign-in surface as
+ * well as the home page: a caller with no session is shown the form there, so the frozen
+ * allowed origin a Procedure Version carries IS where a Run signs in, and nothing has to
+ * guess a path or read one out of a page.
  *
  * The seeded cases live in the DATASET, not here. `page_behaviour` names which of the
  * addendum D situations an account is: a page that cannot render, a system failure, a
@@ -29,7 +44,70 @@ function byEmployeeId(): ReadonlyMap<string, LoanCoreAccount> {
   return index;
 }
 
-export function home(): NorthstarResponse {
+/**
+ * The home page — the sign-in form to a caller with no session, the administration home
+ * to one with a session.
+ *
+ * The same URL, which is how a great many real applications behave and is what lets the
+ * frozen origin be the sign-in destination. `authenticate` allowlists this path for
+ * exactly this reason, the way `apps/web`'s `isPublicPath` allowlists `/sign-in`.
+ */
+export function home(request: NorthstarRequest): NorthstarResponse {
+  return presentedSession(request) ? administrationHome() : signInPage();
+}
+
+/**
+ * The sign-in form, and the submission that establishes a session.
+ *
+ * `GET` renders it; `POST` checks the credential and answers a **303** to the home page,
+ * so the session is established by a redirect a browser follows rather than by a body that
+ * a resubmission would repeat. A submission that does not carry the declared credential is
+ * refused in the SAME JSON shape every other refusal on this process uses: a Run must be
+ * able to record it without parsing a page.
+ */
+export function signIn(request: NorthstarRequest): NorthstarResponse {
+  if (request.method !== 'POST') return signInPage();
+  if (!presentedCredential(request)) return authenticationDenial(request);
+  return withSession({
+    status: 303,
+    headers: { location: '/loancore', 'cache-control': 'no-store' },
+    body: '',
+  });
+}
+
+/**
+ * The form itself.
+ *
+ * `method="post"` — this repository has shipped a credential-carrying form with no method
+ * three times, and a form with none submits as a GET, which puts whatever was typed into
+ * the URL, into browser history, into the `Referer` header and into every access log.
+ * `type="password"` is not decoration either: it is the input type whose defined meaning
+ * is "a credential goes here", and it is what the Agent Workspace's sign-in mechanism
+ * looks for.
+ */
+function signInPage(): NorthstarResponse {
+  return html(
+    200,
+    layout({
+      system: SYSTEM,
+      title: 'Sign in',
+      body: `
+<h2>Sign in</h2>
+<p>This account directory requires the audit account credential.</p>
+<form method="post" action="${SIGN_IN_PATH}" id="loancore-sign-in">
+  <p>
+    <label for="${CREDENTIAL_FIELD}">Audit account credential</label>
+    <input id="${CREDENTIAL_FIELD}" name="${CREDENTIAL_FIELD}" type="password" autocomplete="off" required>
+  </p>
+  <p><button type="submit">Sign in</button></p>
+</form>
+<p class="note">This account holds read access only. Creating, changing and disabling accounts are not available to it, and the system refuses the attempt.</p>
+`,
+    }),
+  );
+}
+
+function administrationHome(): NorthstarResponse {
   return html(
     200,
     layout({

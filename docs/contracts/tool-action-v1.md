@@ -31,7 +31,11 @@ permitted.
 - **A write action is not expressible.** `PermittedReadAction` is a union of eight literals
   and every member observes, so `disable`, `delete-record` and `POST` fail rule 1 whatever a
   registration says. The check is `includes` over the frozen array, never an object index:
-  the action is request input and `PERMITTED['constructor']` would answer a function.
+  the action is request input and `PERMITTED['constructor']` would answer a function. This
+  is the gate over ACTIONS and it is not a gate over HTTP methods: a sign-in's `navigate`
+  submits the Target System's own form, which is a `POST` on the wire and creates a session
+  and no audited business data. The method was never the thing FR-3 constrains
+  (`epic-4-loancore-authentication-decision.md`).
 - **A desktop contract admits no destination.** Its application identity occupies the
   `allowed_origins` slot of the six-key envelope and is not a URL, so rule 2b denies
   everything — the truth about a browser action against a system with no origin.
@@ -102,7 +106,7 @@ provider object.
 | `destination` | scheme, authority and path only. Never a query string, which is where a token or a signed URL lives |
 | `parameters` | the PLATFORM's own name/value pairs, so §B.1 can derive an absence proof's query string from this log rather than from anything the agent reported about itself |
 | `outcome` | `performed`, `denied` or `failed`. A denial ALWAYS names its rule and a performed action never carries one — `run_tool_action_denied` is one CHECK because either half alone permits a row that reads as the other |
-| `method` | `GET` or `HEAD`, at the database. A read-only execution takes no other, and the system it reads refuses every other at its own level |
+| `method` | `TOOL_ACTION_METHODS` at the database — `GET`, `HEAD`, `POST` — and the method the workspace ENDED on, read back from the request that produced the final response rather than assumed. `POST` is there for one operation: submitting a Target System's own sign-in form. Recording the `GET` a sign-in starts with would leave the submission invisible in the one record a reader checks the read-only guarantee against |
 | `status` | the response status when one came back. A 401 is `performed` with `status: 401`: the action HAPPENED and the system said no, which is a different fact from a gate refusal |
 | `redirected`, `downloads` | what the workspace observed. A download is offered and never executed (`acceptDownloads: false`) |
 | `capture`, `capture_suppression` | whether the platform captured anything from this action, and why not. Story 4.3; the whole rule is `credential-containment-v1.md` |

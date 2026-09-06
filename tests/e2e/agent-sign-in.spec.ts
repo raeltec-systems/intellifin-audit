@@ -36,10 +36,12 @@ import {
  * The agent signs in to LoanCore, through the real worker and the real synthetic system
  * (Story 4.2).
  *
- * The Session Step is proved by the SESSION BEING ESTABLISHED — a 401 before it, a 200
- * after it, the credential resolved through the port, the retrieval audited by Target
- * System — and never by "a form submitted", which LoanCore still does not have: a sign-in
- * is a POST, and every Northstar system refuses one above routing.
+ * The Session Step is proved by the SESSION BEING ESTABLISHED — a 401 before it, a session
+ * after it, the credential resolved through the port and typed into LoanCore's own sign-in
+ * form, the retrieval audited by Target System. The form is real: `/loancore` serves it to
+ * a caller with no session and `POST /loancore/sign-in` is the ONE operation on this
+ * process a route declares non-mutating, because it creates a session and no audited
+ * business data (`epic-4-loancore-authentication-decision.md`).
  *
  * Everything here runs the actual `apps/worker/dist/main.js` against the actual Northstar
  * process. A stub browser or a stub system would prove the shape of this code and nothing
@@ -206,33 +208,39 @@ async function start(page: Page): Promise<string> {
 test.describe('the agent signs in to LoanCore', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('LoanCore refuses an unauthenticated read, and still refuses every write', async ({ page }) => {
-    // A 401 BEFORE. This is the half that makes the 200 after it mean anything: without a
-    // system that actually requires a credential, "the agent signed in" is an assertion
+  test('LoanCore refuses an unauthenticated read, and still refuses every mutation', async ({ page }) => {
+    // A 401 BEFORE. This is the half that makes the session after it mean anything: without
+    // a system that actually requires a credential, "the agent signed in" is an assertion
     // that passes because nothing happened.
-    const anonymous = await page.request.get(`${NORTHSTAR_BASE_URL}/loancore`, {
+    const anonymous = await page.request.get(`${NORTHSTAR_BASE_URL}/loancore/users`, {
       failOnStatusCode: false,
     });
     expect(anonymous.status()).toBe(401);
-    expect(anonymous.headers()['www-authenticate']).toContain('Bearer');
+    // The challenge names the FORM. A `Bearer` challenge would name a way of authenticating
+    // this system no longer has.
+    expect(anonymous.headers()['www-authenticate']).toContain('/loancore/sign-in');
     expect((await anonymous.json())['error']).toBe('authentication_required');
 
-    // The read-only rule is UNTOUCHED by this story: a POST is refused above routing, with
-    // or without the credential, and the refusal still names the rule verbatim.
-    const write = await page.request.post(`${NORTHSTAR_BASE_URL}/loancore`, {
+    // The read-only rule still refuses every operation a route has not declared, with or
+    // without a credential, and the refusal still names the rule verbatim.
+    const write = await page.request.post(`${NORTHSTAR_BASE_URL}/loancore/users`, {
       failOnStatusCode: false,
-      headers: { authorization: `Bearer ${LOANCORE_TOKEN}` },
     });
     expect(write.status()).toBe(405);
     expect(write.headers()['allow']).toBe('GET, HEAD');
     expect((await write.json())['rule']).toBe(READ_ONLY_RULE);
 
-    // A 200 after, for a request carrying the credential — the sign-in the agent performs.
-    const authorized = await page.request.get(`${NORTHSTAR_BASE_URL}/loancore`, {
-      headers: { authorization: `Bearer ${LOANCORE_TOKEN}` },
+    // And a session after, granted by the form's own POST — the sign-in the agent performs.
+    const signedIn = await page.request.post(`${NORTHSTAR_BASE_URL}/loancore/sign-in`, {
+      form: { credential: LOANCORE_TOKEN },
+      maxRedirects: 0,
+      failOnStatusCode: false,
     });
-    expect(authorized.status()).toBe(200);
-    expect(authorized.headers()['set-cookie'] ?? '').toContain('loancore_session=');
+    expect(signedIn.status()).toBe(303);
+    expect(signedIn.headers()['set-cookie'] ?? '').toContain('loancore_session=');
+    // The credential is not in what the system hands back, and never in a URL.
+    expect(signedIn.headers()['set-cookie'] ?? '').not.toContain(LOANCORE_TOKEN);
+    expect(signedIn.headers()['location']).toBe('/loancore');
   });
 
   test('the Run signs in, and the session is held in the workspace', async ({ page }) => {
@@ -255,11 +263,15 @@ test.describe('the agent signs in to LoanCore', () => {
     expect(action).toMatchObject({
       surface: 'agent',
       action: 'navigate',
-      method: 'GET',
+      // The form's own POST, read back from the workspace. Recording the `GET` the action
+      // started with would leave the submission invisible in the one record a reader
+      // checks the read-only guarantee against.
+      method: 'POST',
       outcome: 'performed',
       denial: null,
       status: 200,
-      redirected: false,
+      // LoanCore answers the submission with a 303 the browser follows.
+      redirected: true,
       downloads: 0,
     });
     expect(String(action!['destination'])).toBe(`${NORTHSTAR_BASE_URL}/loancore`);

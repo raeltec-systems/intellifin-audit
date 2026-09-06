@@ -148,6 +148,20 @@ export interface ResolvedCredential {
   /** Write the credential onto an outbound request. Called once, on the wire, only. */
   authorize(headers: CredentialHeaderSink): void;
   /**
+   * Type the credential into one form field. Called once, on the wire, only.
+   *
+   * The same containment as `authorize`, for the other way a credential reaches a system:
+   * a method that WRITES the value into a sink the caller owns, never a field anything can
+   * read. `JSON.stringify` of a resolved credential still yields its reference alone.
+   *
+   * It exists because LoanCore signs in through a real form
+   * (`epic-4-loancore-authentication-decision.md`) and a form carries the credential in a
+   * body, not in a header. `authorize` writes `Authorization: Bearer <token>`, which is a
+   * presentation and not the value; a field needs the value itself, so the two are
+   * different methods rather than one with a mode.
+   */
+  enter(field: CredentialValueSink): void;
+  /**
    * Every whole-value spelling of the credential in `text`, replaced (Story 4.3).
    *
    * The redaction half of the same containment. It ANSWERS A QUESTION about the value and
@@ -183,6 +197,18 @@ export interface ResolvedCredential {
  */
 export interface CredentialHeaderSink {
   set(name: string, value: string): void;
+}
+
+/**
+ * Just enough of a form field to fill one.
+ *
+ * Structural for the same reason `CredentialHeaderSink` is, and NAMELESS on purpose: which
+ * field a credential is typed into is the mechanism's business, decided at the workspace
+ * against the page in front of it. A resolver that chose the name would be a resolver that
+ * knows what a Target System's sign-in form looks like.
+ */
+export interface CredentialValueSink {
+  set(value: string): void;
 }
 
 /**
@@ -1134,10 +1160,12 @@ interface BrowserToolActionBase {
  * is why suppression is not a flag the caller sets and the implementation is trusted to
  * honour.
  *
- * "Entry" here is credential USE and not typing: LoanCore authenticates a GET with an
- * `Authorization` header and has no form, so what must have nowhere to land is the request
- * header and every artifact that could carry it. That is the stronger guarantee, not the
- * weaker one (`epic-4-loancore-authentication-decision.md`).
+ * "Entry" here is credential USE, which is wider than typing and includes it: LoanCore
+ * signs in through a real form, so the credential is TYPED into a field and submitted in a
+ * body, and an adapter presents one in an `Authorization` header. Both are credential
+ * entry, and what must have nowhere to land is the field, the body, the header and every
+ * artifact that could carry any of them
+ * (`epic-4-loancore-authentication-decision.md`).
  */
 export type BrowserToolAction =
   | (BrowserToolActionBase & {
@@ -1179,6 +1207,18 @@ export type BrowserCaptureKind = (typeof BROWSER_CAPTURE_KINDS)[number];
 export interface BrowserActionResult {
   /** The main document's response status, or `null` when nothing answered. */
   readonly status: number | null;
+  /**
+   * The method of the request the action ENDED on, upper-cased.
+   *
+   * Reported rather than assumed, because a credential-entry action does not always put
+   * the same method on the wire as the one it started with: a sign-in navigates to the
+   * frozen origin with a `GET` and then SUBMITS the system's own form, which is a `POST`.
+   * That `POST` mutates no audited business data — the system itself declares the
+   * operation non-mutating, which is what FR-3 actually constrains
+   * (`epic-4-loancore-authentication-decision.md`) — but it is what happened, and the
+   * immutable action log records what happened rather than what was intended.
+   */
+  readonly method: string;
   /**
    * The location the workspace actually ended on, scheme+authority+path only.
    *

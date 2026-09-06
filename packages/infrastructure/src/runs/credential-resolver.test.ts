@@ -50,10 +50,17 @@ describe('resolvedCredential', () => {
   it('has no field holding the token, so nothing can serialize it', () => {
     const credential = resolvedCredential('cred://a', SECRET);
     expect(JSON.stringify(credential)).toBe('{"reference":"cred://a"}');
-    // Story 4.3 added `redact` and `discloses`. Both are METHODS, like `authorize`: the
-    // value lives in the closure and there is still no field for a checkpoint, an audit
-    // payload, a log line or an error message to pick it up from.
-    expect(Object.keys(credential)).toEqual(['reference', 'authorize', 'redact', 'discloses']);
+    // Story 4.3 added `redact` and `discloses`, and the form sign-in added `enter`. All of
+    // them are METHODS, like `authorize`: the value lives in the closure and there is still
+    // no field for a checkpoint, an audit payload, a log line or an error message to pick
+    // it up from.
+    expect(Object.keys(credential)).toEqual([
+      'reference',
+      'authorize',
+      'enter',
+      'redact',
+      'discloses',
+    ]);
     expect(Object.values(credential).some((value) => String(value).includes(SECRET))).toBe(false);
   });
 
@@ -62,6 +69,15 @@ describe('resolvedCredential', () => {
     resolvedCredential('cred://a', SECRET).authorize({ set: (name, value) => headers.set(name, value) });
     expect(headers.get('authorization')).toBe(`Bearer ${SECRET}`);
     expect(headers.size).toBe(1);
+  });
+
+  it('types the VALUE into a form field, because a form carries no presentation', () => {
+    // `authorize` writes `Authorization: Bearer <token>`, which is a presentation of the
+    // credential; a form field carries the credential itself. Two methods rather than one
+    // with a mode, and neither of them a field anything can read.
+    const typed: string[] = [];
+    resolvedCredential('cred://a', SECRET).enter({ set: (value) => typed.push(value) });
+    expect(typed).toEqual([SECRET]);
   });
 
   it('removes the value from text without ever returning it', () => {

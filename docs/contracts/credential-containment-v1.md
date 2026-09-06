@@ -6,29 +6,45 @@ for every producer that registers Evidence.
 
 ## The one word that changed meaning
 
-The spec says "suppress capture during **entry**". Entry is credential **USE**, not typing.
-LoanCore authenticates a `GET` with an `Authorization` header and has no sign-in form —
-every synthetic Northstar system refuses a POST above routing, and a `method="get"` form
-would put the credential in the URL, in browser history, in the `Referer` header and in
-every access log (`epic-4-loancore-authentication-decision.md`). There is therefore nothing
-being typed to photograph.
+The spec says "suppress capture during **entry**". Entry is credential **USE**, which is
+wider than typing and includes it. Both cases exist in the fixtures and both are covered:
 
-What must have nowhere to land is the **request header and every artifact that could carry
-it**: a network artifact, a Structural Snapshot, a screenshot, a frame. That is the
-stronger guarantee, not the weaker one. If a later story adds a Target System that really
-does have a form — a desktop application, say — the typing case JOINS this one; it does not
-replace it.
+- **Typed into a form.** LoanCore signs in through a real form. `/loancore` serves it to a
+  caller with no session and `POST /loancore/sign-in` carries the credential in a body —
+  the one operation on that process a route declares non-mutating, because it creates a
+  session and no audited business data (`epic-4-loancore-authentication-decision.md`). The
+  form is `method="post"`: a `method="get"` form would put the credential in the URL, in
+  browser history, in the `Referer` header and in every access log, and the workspace's
+  sign-in mechanism REFUSES to type into one.
+- **Presented in a header.** An adapter extraction presents one on an outbound `GET`, and
+  `/accessgate/credential-echo` is the deliberately hostile system that echoes it straight
+  back into a response body.
+
+What must have nowhere to land is therefore the **form field, the request body, the request
+header and every artifact that could carry any of them**: a network artifact, a Structural
+Snapshot, a screenshot, a frame. An earlier revision of this contract said LoanCore had no
+form and that there was "nothing being typed to photograph". That was true of a fixture
+built around a rule that used the HTTP method as a proxy for mutation, and it is not true
+now; the byte-level scanner it justified is unchanged and still covers everything it did.
 
 ## Where the value lives
 
-`ResolvedCredential`, and nowhere else. It has a `reference` and three METHODS, and no
+`ResolvedCredential`, and nowhere else. It has a `reference` and four METHODS, and no
 field holding a value:
 
 | Member | What it does | What it returns |
 |---|---|---|
-| `authorize(headers)` | Writes the credential onto one outbound request | nothing |
+| `authorize(headers)` | Writes `Authorization: Bearer <token>` onto one outbound request | nothing |
+| `enter(field)` | Types the VALUE into one form field, for a sign-in that submits a form | nothing |
 | `redact(text)` | Removes every whole-value spelling of it from text | text without it |
 | `discloses(bytes)` | Says whether these bytes carry it | a boolean |
+
+`authorize` and `enter` are two methods rather than one with a mode, because a header
+carries a PRESENTATION of the credential and a field carries the credential itself. The
+sink `enter` writes into is nameless: which field a credential goes in is the mechanism's
+business, decided at the workspace against the page in front of it, and a resolver that
+chose the name would be a resolver that knows what a Target System's sign-in form looks
+like.
 
 `JSON.stringify` of one is `{"reference":"..."}`. The token lives in the closure
 `resolvedCredential(reference, token)` captures, so there is nowhere for a checkpoint, an
@@ -139,6 +155,23 @@ before the workspace is even looked up: it is a fact about the REQUEST rather th
 workspace, and reporting it as `unavailable` because the browser happened to be gone would
 name the wrong thing.
 
+The suppression now covers a page with a credential ON IT: the mechanism navigates to the
+frozen origin, types the value into the Target System's own field and submits, so a
+screenshot or a Structural Snapshot of that action would hold a working credential as
+plainly as a captured request header would. That is the case the spec meant by "entry", and
+it is back.
+
+**The form itself is judged before anything is typed.** Exactly one `<form>` carrying
+exactly one `<input type="password">` and exactly one submit control; the form must declare
+`POST`; its resolved action, and the submitter's own `formaction`, must be inside the
+DESTINATION's frozen origin. A plan naming two web Target Systems has both origins in the
+workspace's egress allowlist, so a form on one system's page pointing at the other's would
+hand it the first one's credential and the interception would let it through — this check is
+what stops it, and it is `withinFrozenOrigin`, the same rule the gate applies, so there is
+one answer to "inside the frozen origin" and not two. It replaced the interception's
+origin-scoped header injection, which became unreachable when the sign-in stopped using a
+header: a branch nothing exercises is a branch that can be inverted silently.
+
 **`[NAMED, NOT BUILT]`: nothing in this build captures.** `BROWSER_CAPTURE_KINDS` is the
 vocabulary and Story 4.4 is what implements the `web_tree` Structural Snapshot and the
 screenshot. What is built here is that a credential-entry action can never ask for one.
@@ -199,7 +232,9 @@ that list before adding any payload key that sounds credential-shaped.
 - `packages/application/src/runs/credential-guard.test.ts` — the guard, and the wall.
 - `tests/integration/adapter-execution.test.ts` and `agent-execution.test.ts` — the same,
   against a real PostgreSQL, a real Evidence store and the real stage; plus a synthetic
-  system that redirects the sign-in to a path carrying the token.
+  system that redirects the sign-in to a path carrying the token, and one whose sign-in
+  form posts to ANOTHER frozen origin, which is refused with `scope` and whose server log
+  shows the credential was never sent to either.
 - `tests/e2e/credential-containment.spec.ts` — the **seeded negative test**. A deliberately
   hostile synthetic surface, `/accessgate/credential-echo`, echoes the presented
   `Authorization` header into its own response body, and a real Run against the real worker,

@@ -218,6 +218,13 @@
       "when": 1788709490592,
       "tag": "0030_silly_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788724779906,
+      "tag": "0031_furry_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

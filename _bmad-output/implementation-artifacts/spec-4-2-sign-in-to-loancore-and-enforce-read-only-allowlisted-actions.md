@@ -91,10 +91,13 @@ no field holding a value.
   causes mapping to `RUN_FAILED` with a security event. They were written for this.
 - `packages/domain/src/audit-event.ts` — `FORBIDDEN_PAYLOAD_KEYS` refuses credential-shaped
   keys outright. Check that list before adding any payload field that names a credential.
-- `apps/northstar/src/` — LoanCore serves the audit account as ALREADY SIGNED IN, deliberately:
-  a sign-in is a POST and every synthetic system refuses one at the system level. So this
-  story's sign-in Session Step must be provable against a system that has no sign-in form. Say
-  how you resolved that — it is the most likely place to write a test that cannot fail.
+- `apps/northstar/src/` — `[REVISED 2026-09-06]` LoanCore has a real sign-in FORM. This entry
+  first said the audit account was ALREADY SIGNED IN because a sign-in is a POST and every
+  synthetic system refused one at the system level; the owner corrected that rule, so the guard
+  refuses only what a route has not declared non-mutating and `POST /loancore/sign-in` is
+  declared. The sign-in Session Step submits that form. It is still the most likely place to
+  write a test that cannot fail: a suite asserting only refusals passes against a guard that
+  refuses everything, sign-in included, so assert BOTH directions.
 
 ## Tasks & Acceptance
 
@@ -145,29 +148,41 @@ able to save prose a checker misreads. Execution is where it becomes a refusal. 
 an implementation, making one strict would silently make the other strict too, and a false
 positive would then block a save.
 
-**LoanCore had no sign-in form, and this story adds authentication rather than a form.** The
-decision is settled in `epic-4-loancore-authentication-decision.md` and is NOT an open question:
-LoanCore gains an `Authorization` header on GET, above routing beside `enforceReadOnly`, so an
-unauthenticated GET to any `/loancore` path answers **401** with `WWW-Authenticate` and a JSON
-body in the shape the 405 denial already uses, and the sign-in Session Step is a GET carrying
-the credential that returns a session cookie the workspace then holds.
+**LoanCore signs in through a REAL FORM, and the read-only rule refuses mutation rather than
+methods.** `[REVISED 2026-09-06]` This section first said LoanCore had no sign-in form and that
+the story added an `Authorization` header on a GET, because `enforceReadOnly` refused every
+method but GET and HEAD. The owner overturned that rule: *read-only means no mutation of audited
+business data; it should not force a specially invented GET-only sign-in solely to satisfy an
+earlier fixture rule.* The revised decision is `epic-4-loancore-authentication-decision.md` and
+is NOT an open question.
 
-The read-only rule is UNTOUCHED — no POST, no relaxation, no route exempted. A `method="get"`
-form was rejected categorically: it puts the credential in the URL, in history, in the Referer
-header and in every access log, which is the defect this repository has shipped three times and
-now has `form-method.test.ts` against. Leaving LoanCore unauthenticated was rejected because
-Story 4.11 then asserts that no credential reaches an artifact against a system that has no
-credential at all.
+The system-level guard keeps every property it had — one rule, applied once, above routing;
+fail-closed by declaration; a write to a path no route serves refused rather than 404'd; a JSON
+denial naming FR-3 — and only its predicate changes, to "is this a declared non-mutating
+operation?". `POST /loancore/sign-in` is declared non-mutating on its own route, because it
+creates a SESSION and no audited business data, which is what FR-3 constrains. `/loancore`
+serves the form to a caller with no session, so the frozen allowed origin IS the sign-in
+destination and nothing guesses a path; every other `/loancore` path answers **401** with a
+`WWW-Authenticate` challenge naming the form and a JSON body in the shape the 405 denial already
+uses.
+
+A `method="get"` form is still rejected categorically: it puts the credential in the URL, in
+history, in the Referer header and in every access log, which is the defect this repository has
+shipped three times and now has `form-method.test.ts` against. The form is `method="post"`, and
+the workspace's sign-in mechanism REFUSES to type into a form that declares anything else.
+Leaving LoanCore unauthenticated was rejected because Story 4.11 then asserts that no credential
+reaches an artifact against a system that has no credential at all. Leaving the header sign-in
+beside the form was rejected too: it would make the form decorative, and every test would pass
+with the form deleted.
 
 **So the sign-in Session Step is proved by the SESSION BEING ESTABLISHED**: the credential
-resolved through the port, the retrieval audited by Target System and never by reference, a 401
-before and a 200 after, and the session held in the workspace. Never by "a form submitted",
-which there still is not. The credential is SYNTHETIC and lives in the fixtures — Story 1.8's
-rule that a REAL credential is the one thing this environment must not have is unchanged, and is
-exactly why.
+resolved through the port and typed into the system's own form, the retrieval audited by Target
+System and never by reference, a 401 before and a session after, and the session held in the
+workspace. The credential is SYNTHETIC and lives in the fixtures — Story 1.8's rule that a REAL
+credential is the one thing this environment must not have is unchanged, and is exactly why.
 
-**Update CLAUDE.md's Story 1.8 note in the same commit**, with the reason. It currently says
-LoanCore has no sign-in form because a sign-in is a POST; that is superseded on this one point.
+**Update CLAUDE.md's Story 1.8 and Story 4.2 notes in the same commit**, with the reason. Both
+described the method rule and the headerless sign-in it forced.
 
 ## Verification
 

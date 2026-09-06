@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
+import { CREDENTIAL_FIELD, SIGN_IN_PATH } from './authentication.js';
 import { loanCoreCredential, apiDeclaration, countDeclaration, datasets } from './fixtures.js';
 import { ARTIFACTS } from './files.js';
 import { handleRequest } from './server.js';
@@ -15,13 +16,25 @@ import { handleRequest } from './server.js';
  */
 
 /**
- * The audit account's credential, on every request (Story 4.2).
+ * A signed-in LoanCore session, on every request (Story 4.2).
  *
- * LoanCore requires it and every other synthetic system ignores it, so presenting it
- * everywhere keeps these assertions about what each system SERVES rather than about who is
- * asking. `authentication.test.ts` is where the refusal itself is asserted.
+ * Obtained the only way there is to obtain one: by submitting the real sign-in form. There
+ * is no header sign-in — leaving one would make the form decorative — so this cookie is
+ * the product of the same POST a Run performs. LoanCore requires it and every other
+ * synthetic system ignores it, so presenting it everywhere keeps these assertions about
+ * what each system SERVES rather than about who is asking. `authentication.test.ts` is
+ * where the refusal itself is asserted.
  */
-const AUDIT_HEADERS = { authorization: `Bearer ${loanCoreCredential().token}` } as const;
+const AUDIT_HEADERS = {
+  cookie: (
+    handleRequest(
+      'POST',
+      SIGN_IN_PATH,
+      { 'content-type': 'application/x-www-form-urlencoded' },
+      new URLSearchParams({ [CREDENTIAL_FIELD]: loanCoreCredential().token }).toString(),
+    ).headers['set-cookie'] ?? ''
+  ).split(';')[0]!,
+} as const;
 
 function text(url: string, method = 'GET'): string {
   const response = handleRequest(method, url, AUDIT_HEADERS);

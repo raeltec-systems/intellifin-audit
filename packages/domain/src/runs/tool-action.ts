@@ -372,6 +372,23 @@ export function captureStateFor(presentsCredential: boolean): {
 }
 
 /**
+ * Every method a read-only execution may put on the wire, and the vocabulary the
+ * `run_tool_action_method` CHECK pins.
+ *
+ * `GET` and `HEAD` are the reads. `POST` is here for exactly one operation — submitting a
+ * Target System's own sign-in form — which mutates no audited business data and which the
+ * system itself declares non-mutating. It is a CLOSED set and not a permission: the gate
+ * decides what an action may do, and this decides only what can be truthfully recorded, so
+ * a method outside it is a request this build did not make and a row nothing may write.
+ */
+export const TOOL_ACTION_METHODS = ['GET', 'HEAD', 'POST'] as const;
+export type ToolActionMethod = (typeof TOOL_ACTION_METHODS)[number];
+
+export function isToolActionMethod(method: unknown): method is ToolActionMethod {
+  return typeof method === 'string' && (TOOL_ACTION_METHODS as readonly string[]).includes(method);
+}
+
+/**
  * One action, as it is recorded — the SAME shape for both surfaces.
  *
  * There is nowhere here for a credential, a request body, a response body, a header or a
@@ -391,7 +408,16 @@ export interface SanitizedToolAction {
   readonly targetSystem: string;
   /** The requested action, verbatim — including one the gate refused. */
   readonly action: string;
-  /** The request method. Read-only execution means this is `GET` or `HEAD`. */
+  /**
+   * The request method the platform put on the wire.
+   *
+   * Read-only execution means one of {@link TOOL_ACTION_METHODS}. `POST` is in that set
+   * because a sign-in submits the Target System's own form, and that operation creates a
+   * SESSION and no audited business data — which is what FR-3 constrains
+   * (`epic-4-loancore-authentication-decision.md`). Recording only the `GET` a sign-in
+   * starts with would put the old method-as-a-proxy-for-mutation equivalence back one
+   * layer down, in the log a reader checks the guarantee against.
+   */
   readonly method: string;
   readonly destination: string;
   readonly parameters: readonly ToolActionParameter[];

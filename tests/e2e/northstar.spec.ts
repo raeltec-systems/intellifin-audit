@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 import { createSqlClient } from '@intellifin/infrastructure';
 
@@ -31,16 +31,31 @@ const reachableName = `E2E Northstar LoanCore ${stamp}`;
 const unreachableName = `E2E Northstar Offline ${stamp}`;
 
 /**
- * The audit account's credential, on every LoanCore read (Story 4.2).
+ * Sign in to LoanCore, the only way there is to (Story 4.2).
  *
- * LoanCore is the one synthetic system that requires one: an unauthenticated GET under
- * `/loancore` answers 401 with a challenge, and a GET carrying this header is answered and
- * granted a session cookie. Every other Northstar system ignores it. The refusal itself is
- * asserted in `agent-sign-in.spec.ts`, where a 401 before and a 200 after is the whole
- * point; here the header is present so these assertions stay about what the system SERVES
- * rather than about who is asking.
+ * LoanCore is the one synthetic system that requires a credential, and it takes it through
+ * a real form: `/loancore` serves the form to a caller with no session, and the `POST` it
+ * declares non-mutating grants the session cookie. There is no header sign-in — leaving one
+ * would make the form decorative. The refusal itself is asserted in `agent-sign-in.spec.ts`,
+ * where a 401 before and a session after is the whole point; here the session is
+ * established so these assertions stay about what the system SERVES rather than about who
+ * is asking.
  */
-const AUDIT_HEADERS = { authorization: `Bearer ${LOANCORE_TOKEN}` } as const;
+async function signInToLoanCore(api: APIRequestContext): Promise<void> {
+  const response = await api.post(`${NORTHSTAR_BASE_URL}/loancore/sign-in`, {
+    form: { credential: LOANCORE_TOKEN },
+  });
+  // The 303 is followed, so this is the home page the session now reaches.
+  expect(response.status()).toBe(200);
+}
+
+/** The same sign-in, through the browser, by submitting the form a person would. */
+async function signInWithBrowser(page: Page): Promise<void> {
+  await page.goto(`${NORTHSTAR_BASE_URL}/loancore`);
+  await page.locator('#loancore-sign-in input[type="password"]').fill(LOANCORE_TOKEN);
+  await page.locator('#loancore-sign-in button[type="submit"]').click();
+  await expect(page.getByRole('heading', { name: 'User administration' })).toBeVisible();
+}
 
 const PROBE_ENTRY_POINT = fileURLToPath(
   new URL('../../packages/infrastructure/dist/registrations/probe-runner.js', import.meta.url),
@@ -95,16 +110,45 @@ test.describe('the synthetic Northstar systems', () => {
       '/files/role-matrix.csv',
       '/files/config-registry.csv',
     ];
+    await signInToLoanCore(request);
     for (const surface of surfaces) {
-      const response = await request.get(`${NORTHSTAR_BASE_URL}${surface}`, {
-        headers: AUDIT_HEADERS,
-      });
+      const response = await request.get(`${NORTHSTAR_BASE_URL}${surface}`);
       expect(response.status(), surface).toBe(200);
     }
   });
 
+  test('sign in through a real form, and refuse every other operation on it', async ({
+    page,
+    request,
+  }) => {
+    // The half a suite that asserted only refusals could not see. `/loancore/sign-in` is
+    // the ONE route on this process that declares a POST non-mutating, and the form is what
+    // establishes a session: with it removed, nothing here reaches an account page.
+    await expect(page.goto(`${NORTHSTAR_BASE_URL}/loancore/users`)).resolves.toBeTruthy();
+    const anonymous = await request.get(`${NORTHSTAR_BASE_URL}/loancore/users`);
+    expect(anonymous.status()).toBe(401);
+    // The challenge names the FORM, not a scheme this system no longer has.
+    expect(anonymous.headers()['www-authenticate']).toContain('/loancore/sign-in');
+
+    await signInWithBrowser(page);
+    await page.goto(`${NORTHSTAR_BASE_URL}/loancore/users/E-000103`);
+    await expect(page.getByText('E-000103', { exact: true })).toBeVisible();
+
+    // The declaration is per ROUTE, and there is no "a POST that looks like a read is
+    // fine" heuristic: the sign-in's siblings still refuse one.
+    const sibling = await request.post(`${NORTHSTAR_BASE_URL}/loancore/users`);
+    expect(sibling.status()).toBe(405);
+    expect(sibling.headers()['allow']).toBe('GET, HEAD');
+    // And the sign-in route itself refuses everything it did not declare, with an `Allow`
+    // that names exactly what it does.
+    const other = await request.fetch(`${NORTHSTAR_BASE_URL}/loancore/sign-in`, { method: 'PUT' });
+    expect(other.status()).toBe(405);
+    expect(other.headers()['allow']).toBe('GET, HEAD, POST');
+    expect((await other.json())['rule']).toBe(READ_ONLY_RULE);
+  });
+
   test('render a LoanCore account page with the declared attribute labels', async ({ page }) => {
-    await page.setExtraHTTPHeaders(AUDIT_HEADERS);
+    await signInWithBrowser(page);
     await page.goto(`${NORTHSTAR_BASE_URL}/loancore/users/E-000103`);
     for (const label of ['Employee ID', 'Username', 'Status', 'Roles']) {
       await expect(page.getByText(label, { exact: true })).toBeVisible();
@@ -113,13 +157,12 @@ test.describe('the synthetic Northstar systems', () => {
   });
 
   test('render a not-found page for a missing employee, never a 500', async ({ page, request }) => {
-    const response = await request.get(`${NORTHSTAR_BASE_URL}/loancore/users/E-999999`, {
-      headers: AUDIT_HEADERS,
-    });
-    // 404 and not 401: authentication runs above routing, so the credential is what turns
+    await signInToLoanCore(request);
+    const response = await request.get(`${NORTHSTAR_BASE_URL}/loancore/users/E-999999`);
+    // 404 and not 401: authentication runs above routing, so the session is what turns
     // "you are not authenticated to this system" into a statement about its contents.
     expect(response.status()).toBe(404);
-    await page.setExtraHTTPHeaders(AUDIT_HEADERS);
+    await signInWithBrowser(page);
     await page.goto(`${NORTHSTAR_BASE_URL}/loancore/users/E-999999`);
     await expect(page.getByRole('heading', { name: 'Account not found' })).toBeVisible();
   });

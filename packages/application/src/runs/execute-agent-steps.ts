@@ -2,6 +2,7 @@ import {
   authorizeToolAction,
   captureStateFor,
   exhaustedRunLimit,
+  isToolActionMethod,
   runStopFor,
   sanitizeDestination,
   sessionStepAttemptBudget,
@@ -116,7 +117,14 @@ const SIGN_IN_ACTION = 'sign-in';
 /** The Tool Action a sign-in takes: navigate to the frozen origin, carrying the credential. */
 const SIGN_IN_TOOL_ACTION = 'navigate';
 
-/** A read-only execution takes exactly one method. */
+/**
+ * The method every Tool Action STARTS with.
+ *
+ * What it ends on is read back from the workspace: a sign-in navigates with this and then
+ * submits the Target System's own form, which is a `POST`. This is what a denied or failed
+ * action records, because nothing reached the wire and the method the platform was about
+ * to use is the only true thing there is to say.
+ */
 const READ_METHOD = 'GET';
 
 /**
@@ -353,12 +361,33 @@ export async function performToolAction(
           },
       input.timeoutMs(),
     );
+    // The immutable action log records what happened, and a method this build cannot have
+    // produced is a result it does not understand — recorded as a contract failure rather
+    // than written into a row whose CHECK would refuse it and take the transaction with it.
+    if (!isToolActionMethod(result.method)) {
+      return {
+        ok: false,
+        diagnostic: ACTION_FAILURE.contract,
+        action: {
+          ...base,
+          outcome: 'failed',
+          denial: null,
+          offending: null,
+          status: null,
+          completedAt: input.completedAt(),
+          diagnostic: ACTION_FAILURE.contract,
+        },
+      };
+    }
     return {
       ok: true,
       status: result.status,
       session: result.session,
       action: {
         ...base,
+        // What the workspace actually put on the wire, before any redirect the SYSTEM
+        // chose. A sign-in's is `POST`; a plain navigation's is the `GET` it started with.
+        method: result.method,
         // What the workspace ENDED on, which is not always what it was sent to: a
         // same-origin redirect is followed and a cross-origin one is aborted by the
         // egress interception, and the difference has to be visible in the log. Redacted

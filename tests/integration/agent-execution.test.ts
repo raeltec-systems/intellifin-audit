@@ -17,6 +17,7 @@ import {
   registrationDigest,
   snapshotFromRegistration,
   REDACTED_CREDENTIAL,
+  TOOL_ACTION_METHODS,
 } from '@intellifin/domain';
 import {
   createDb,
@@ -67,8 +68,8 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
   const procedures: string[] = [];
   const bindings: string[] = [];
   const browsers: PlaywrightBrowserExecution[] = [];
-  /** Every request the real server was asked for, with the credential it carried. */
-  let requested: { path: string; authorized: boolean; cookie: string }[] = [];
+  /** Every request the real server was asked for, and whether it carried the credential. */
+  let requested: { path: string; method: string; credential: boolean; cookie: string }[] = [];
   /**
    * A synthetic system that puts the credential in a PATH it redirects to (Story 4.3).
    *
@@ -77,6 +78,24 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
    * off by default, because it is the hostile case rather than the ordinary one.
    */
   let leakCredentialInPath = false;
+  /**
+   * A synthetic system whose sign-in form posts to ANOTHER origin (Story 4.2).
+   *
+   * The hostile case the form mechanism has to refuse: a plan naming two web Target
+   * Systems puts BOTH origins in the workspace's egress allowlist, so a form on one
+   * system's page pointing at the other's would hand it the first one's credential and the
+   * interception would let it through. Off by default.
+   */
+  let crossOriginSignInForm = false;
+  /**
+   * A synthetic system whose sign-in form is `method="get"` (Story 4.2).
+   *
+   * The defect this repository has shipped three times, seen from the other side: a GET
+   * form puts whatever is typed into the URL, into browser history, into the `Referer`
+   * header and into every access log. The workspace refuses to type into one. Off by
+   * default.
+   */
+  let getSignInForm = false;
 
   beforeAll(async () => {
     const target = new URL(url!);
@@ -90,43 +109,56 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     db = createDb(sql);
     await sql`INSERT INTO auth_user(id,name,email) VALUES(${author},'Agent test',${author + '@test.invalid'})`;
     await sql`INSERT INTO user_role(user_id,role) VALUES(${author},'auditor')`;
-    // The synthetic system, in the shape Story 4.2 gave LoanCore: no sign-in form, a
-    // credential on a GET, a 401 with a challenge without it, and a session cookie with it.
+    // The synthetic system, in the shape LoanCore now has: a real sign-in FORM at the
+    // frozen origin, a `POST` that carries the credential in a body, a `303` to the home
+    // page, and a session cookie. There is no header sign-in — leaving one would let every
+    // assertion below pass against a build whose form does nothing.
+    //
+    // The page a signed-out caller is shown references a sub-resource at a DIFFERENT
+    // system's origin. In the cross-origin test below both are inside the workspace's
+    // egress allowlist — the UNION of the frozen web Targets' origins — so that is the
+    // request which must not carry LoanCore's credential. In every other test it is
+    // outside the allowlist, aborted in the browser, and must NOT fail the Tool Action: a
+    // page referencing a font, a beacon or an image off-origin is ordinary.
     server = createServer((request: IncomingMessage, response) => {
-      const authorized = (request.headers['authorization'] ?? '') === `Bearer ${TOKEN}`;
+      const path = request.url ?? '';
+      const method = (request.method ?? 'GET').toUpperCase();
       const cookie = String(request.headers['cookie'] ?? '');
-      requested.push({ path: request.url ?? '', authorized, cookie });
-      if (!authorized && !cookie.includes('session=granted')) {
-        response.writeHead(401, {
-          'content-type': 'application/json; charset=utf-8',
-          'www-authenticate': 'Bearer realm="synthetic"',
-        });
-        response.end('{"error":"authentication_required"}');
-        return;
-      }
-      if (leakCredentialInPath && (request.url ?? '') === '/loancore') {
-        response.writeHead(302, {
-          location: `/loancore/session/${TOKEN}`,
-          ...(authorized ? { 'set-cookie': 'session=granted; Path=/' } : {}),
-        });
-        response.end();
-        return;
-      }
-      response.writeHead(200, {
-        'content-type': 'text/html; charset=utf-8',
-        ...(authorized ? { 'set-cookie': 'session=granted; Path=/' } : {}),
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const credential = new URLSearchParams(body).get('credential') === TOKEN;
+        requested.push({ path, method, credential, cookie });
+        const signedIn = cookie.includes('session=granted');
+
+        if (method === 'POST' && path.startsWith('/loancore/sign-in')) {
+          if (!credential) {
+            response.writeHead(401, { 'content-type': 'application/json; charset=utf-8' });
+            response.end('{"error":"authentication_required"}');
+            return;
+          }
+          response.writeHead(303, {
+            location: '/loancore',
+            'set-cookie': 'session=granted; Path=/',
+          });
+          response.end();
+          return;
+        }
+        if (leakCredentialInPath && signedIn && path === '/loancore') {
+          response.writeHead(302, { location: `/loancore/session/${TOKEN}` });
+          response.end();
+          return;
+        }
+        const other = origin.replace('/loancore', '/zelsewhere');
+        const form = `<form method="${getSignInForm ? 'get' : 'post'}" action="${crossOriginSignInForm ? `${other}/sign-in` : '/loancore/sign-in'}"><input name="credential" type="password"><button type="submit">Sign in</button></form>`;
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(
+          path.startsWith('/loancore')
+            ? `<!doctype html><title>synthetic</title><body>synthetic<img src="/zelsewhere/pixel" alt="">${signedIn ? '' : form}</body>`
+            : '<!doctype html><title>synthetic</title><body>synthetic</body>',
+        );
       });
-      // The LoanCore page references a sub-resource at a DIFFERENT system's origin. In the
-      // cross-origin test below both are inside the workspace's egress allowlist — which is
-      // the UNION of the frozen web Targets' origins — so that is the request which must
-      // not carry LoanCore's credential. In every other test it is outside the allowlist,
-      // aborted in the browser, and must NOT fail the Tool Action: a page referencing a
-      // font, a beacon or an image off-origin is ordinary.
-      response.end(
-        (request.url ?? '').startsWith('/loancore')
-          ? '<!doctype html><title>synthetic</title><body>synthetic<img src="/zelsewhere/pixel" alt=""></body>'
-          : '<!doctype html><title>synthetic</title><body>synthetic</body>',
-      );
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     origin = `http://127.0.0.1:${String((server.address() as { port: number }).port)}/loancore`;
@@ -294,10 +326,16 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     expect(executions.map((row) => row.action)).toEqual(['create-workspace', 'sign-in']);
     expect(executions[1]).toMatchObject({ state: 'SUCCEEDED' });
 
-    // The system was asked, and it was asked WITH the credential.
-    expect(requested.length).toBeGreaterThanOrEqual(1);
-    expect(requested[0]?.authorized).toBe(true);
-    expect(requested[0]?.path).toBe('/loancore');
+    // The system was asked, and the credential reached it — through the form's own POST,
+    // which is the only place the token appears in the server's log.
+    expect(requested.length).toBeGreaterThanOrEqual(2);
+    expect(requested[0]).toMatchObject({ path: '/loancore', method: 'GET', credential: false });
+    const submission = requested.filter((entry) => entry.credential);
+    expect(submission).toHaveLength(1);
+    expect(submission[0]).toMatchObject({ path: '/loancore/sign-in', method: 'POST' });
+    // And the redirect the submission answered was followed with the session it granted.
+    expect(requested.at(-1)).toMatchObject({ path: '/loancore', method: 'GET' });
+    expect(requested.at(-1)?.cookie).toContain('session=granted');
   }, 120_000);
 
   it('records the action in the shared log, with no credential anywhere in it', async () => {
@@ -326,11 +364,16 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     expect(action).toMatchObject({
       surface: 'agent',
       action: 'navigate',
-      method: 'GET',
+      // The form's own POST, which is what the platform actually put on the wire. It is
+      // read back from the workspace rather than assumed, and recording the `GET` the
+      // action started with would leave the submission invisible in the one record a
+      // reader checks the read-only guarantee against.
+      method: 'POST',
       outcome: 'performed',
       denial: null,
       status: 200,
-      redirected: false,
+      // The system answered the submission with a 303 the browser followed.
+      redirected: true,
       downloads: 0,
     });
     expect(action?.parameters).toEqual([]);
@@ -466,11 +509,100 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
 
     const loancore = requested.filter((entry) => entry.path.startsWith('/loancore'));
     const elsewhere = requested.filter((entry) => entry.path.startsWith('/zelsewhere'));
-    expect(loancore.length).toBeGreaterThanOrEqual(1);
-    expect(loancore[0]?.authorized).toBe(true);
+    expect(loancore.filter((entry) => entry.credential)).toHaveLength(1);
     // The sub-resource was fetched — the allowlist permits it — and it carried nothing.
     expect(elsewhere.length).toBeGreaterThanOrEqual(1);
-    expect(elsewhere.every((entry) => !entry.authorized)).toBe(true);
+    expect(elsewhere.every((entry) => !entry.credential)).toBe(true);
+  }, 120_000);
+
+  it('signs in again in a workspace that already holds the session, without a form', async () => {
+    // The IDEMPOTENT branch, and it is reachable: a database failure between a successful
+    // sign-in and its commit leaves the checkpoint saying `RETRY` while the browser still
+    // holds the cookie, and the phase's own sweep re-claims in the same process. The system
+    // then serves the administration home rather than the form, and a mechanism that
+    // insisted on a form would report `contract` and cost the Run.
+    requested = [];
+    const job = await seed();
+    const execution = browser();
+    await ready(job, execution);
+    await executeAgentSteps(deps(execution), job);
+    const submissions = requested.filter((entry) => entry.credential).length;
+    expect(submissions).toBe(1);
+
+    const target = (await new PostgresAgentExecutionRepository(db).transaction(job.runId, async (context) =>
+      (await context.frozenPlan())!.inputs.targets[0]!,
+    ))!;
+    const [workspace] = await sql<{ id: string }[]>`SELECT workspace_id AS id FROM run_workspace WHERE run_id=${job.runId}`;
+    const again = await execution.perform(
+      { runId: job.runId, workspaceId: workspace!.id, mode: 'local' },
+      {
+        action: 'navigate',
+        destination: target.contract.allowed_origins[0]!,
+        credential: await new ManifestCredentialResolver(new Map([[CREDENTIAL_REF, TOKEN]])).resolve(
+          CREDENTIAL_REF,
+          10_000,
+        ),
+      },
+      10_000,
+    );
+    expect(again).toMatchObject({ status: 200, session: true });
+    // Nothing was typed and nothing was submitted the second time: the session was already
+    // there, and saying so is what makes this branch honest rather than convenient.
+    expect(requested.filter((entry) => entry.credential)).toHaveLength(submissions);
+    expect(again.method).toBe('GET');
+  }, 120_000);
+
+  it('REFUSES a sign-in form that is method="get", and types nothing into it', async () => {
+    // A GET form puts the credential in the URL, in browser history, in the `Referer`
+    // header and in every access log. `form-method.test.ts` is the product's guard against
+    // shipping one; this is the workspace refusing to USE one a Target System serves,
+    // which is the half a fixture's own tests cannot cover.
+    getSignInForm = true;
+    requested = [];
+    try {
+      const job = await seed();
+      const execution = browser();
+      await ready(job, execution);
+      await executeAgentSteps(deps(execution), job);
+
+      // The server's own log FIRST, because it is the proof: nothing carrying the
+      // credential was ever sent, in a body or in a query string. Asserting the diagnostic
+      // first would let a build that typed the credential and then failed for some other
+      // reason fail this test for the wrong reason, and the leak would go unnamed.
+      expect(requested.filter((entry) => entry.credential)).toEqual([]);
+      expect(requested.filter((entry) => entry.path.includes(TOKEN))).toEqual([]);
+      const [step] = await sql<{ state: string; diagnostic: string }[]>`
+        SELECT state, diagnostic FROM run_session_step WHERE run_id=${job.runId}`;
+      expect(step).toMatchObject({ state: 'FAILED', diagnostic: 'sign-in-scope-violation' });
+    } finally {
+      getSignInForm = false;
+    }
+  }, 120_000);
+
+  it('REFUSES a sign-in form that posts to another origin, and posts nothing to it', async () => {
+    // The guarantee the interception's header injection used to give, in the shape the
+    // form mechanism has to give it. Both origins are inside the workspace's egress
+    // allowlist, so the interception would happily let this request out; what stops it is
+    // the mechanism judging the form's own resolved action against the DESTINATION's
+    // frozen origin before anything is typed.
+    crossOriginSignInForm = true;
+    requested = [];
+    try {
+      const job = await seed({ allowedOrigins: [origin, origin.replace('/loancore', '/zelsewhere')] });
+      const execution = browser();
+      await ready(job, execution);
+      await executeAgentSteps(deps(execution), job);
+
+      // The proof is the server's own log, not the mechanism agreeing with itself, and it
+      // is asserted FIRST: nothing carrying the credential was ever sent, to either origin.
+      expect(requested.filter((entry) => entry.credential)).toEqual([]);
+      expect(requested.filter((entry) => entry.method === 'POST')).toEqual([]);
+      const [step] = await sql<{ state: string; diagnostic: string }[]>`
+        SELECT state, diagnostic FROM run_session_step WHERE run_id=${job.runId}`;
+      expect(step).toMatchObject({ state: 'FAILED', diagnostic: 'sign-in-scope-violation' });
+    } finally {
+      crossOriginSignInForm = false;
+    }
   }, 120_000);
 
   it('aborts an out-of-scope destination inside the browser even with the gate bypassed', async () => {
@@ -579,11 +711,24 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
       sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
           VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed','origin-not-allowed',false,0,now(),'PERMITTED')`,
     ).rejects.toThrow(/run_tool_action_denied/);
-    // A write method cannot be recorded at all: FR-3 is enforced by the schema as well.
-    await expect(
-      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
-          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','POST','http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'PERMITTED')`,
-    ).rejects.toThrow(/run_tool_action_method/);
+    // The method vocabulary is CLOSED, and it is the domain's `TOOL_ACTION_METHODS` rather
+    // than a list retyped into SQL. `POST` is in it for one operation — submitting a Target
+    // System's own sign-in form, which creates a session and no audited business data — so
+    // the CHECK is asserted in BOTH directions: every method the domain names is storable,
+    // and a method it does not name is refused. A CHECK that quietly refused a method the
+    // platform really makes would be found by nothing else.
+    for (const method of TOOL_ACTION_METHODS) {
+      await expect(
+        sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+            VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate',${method},'http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'PERMITTED')`,
+      ).resolves.toBeDefined();
+    }
+    for (const method of ['PUT', 'DELETE', 'PATCH', 'post']) {
+      await expect(
+        sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+            VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate',${method},'http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'PERMITTED')`,
+      ).rejects.toThrow(/run_tool_action_method/);
+    }
     // And a denial reason outside the closed vocabulary.
     await expect(
       sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)

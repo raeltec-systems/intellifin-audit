@@ -267,8 +267,12 @@ interface FakeBrowserOptions {
 class FakeBrowser implements BrowserExecution {
   readonly mode = 'local' as const;
   readonly performed: BrowserToolAction[] = [];
-  /** Every header the credential was allowed to write. Proves the port received it. */
-  readonly headers: Record<string, string>[] = [];
+  /**
+   * Every value the credential was allowed to type into a form field. Proves the port
+   * received it — a sign-in submits the Target System's own form, so the credential
+   * leaves through `enter` rather than through a header.
+   */
+  readonly entered: string[] = [];
   private failures = 0;
 
   constructor(private readonly options: FakeBrowserOptions = {}) {}
@@ -282,17 +286,18 @@ class FakeBrowser implements BrowserExecution {
     action: BrowserToolAction,
   ): Promise<BrowserActionResult> => {
     this.performed.push(action);
-    const written: Record<string, string> = {};
-    action.credential?.authorize({ set: (name, value) => (written[name] = value) });
-    this.headers.push(written);
+    action.credential?.enter({ set: (value) => this.entered.push(value) });
     if (this.options.fail && this.failures < (this.options.failTimes ?? Number.MAX_SAFE_INTEGER)) {
       this.failures += 1;
       throw this.options.fail;
     }
     return {
       status: 200,
+      // What the real workspace reports for a sign-in: the method of the request that
+      // produced the final response, which is the form's own `POST`.
+      method: action.credential === null ? 'GET' : 'POST',
       location: `${ORIGIN}/`,
-      redirected: false,
+      redirected: action.credential !== null,
       downloads: 0,
       session: true,
       ...this.options.result,
@@ -313,6 +318,9 @@ function credential(reference = CREDENTIAL_REF, token = TOKEN): ResolvedCredenti
     reference,
     authorize(headers) {
       headers.set('authorization', `Bearer ${token}`);
+    },
+    enter(field) {
+      field.set(token);
     },
     redact: (text) => redactCompiled(text, secret),
     discloses: (bytes) => bytesDiscloseCompiled(bytes, secret),
@@ -379,8 +387,9 @@ describe('the sign-in Session Step', () => {
     expect(browser.performed).toHaveLength(1);
     expect(browser.performed[0]).toMatchObject({ action: 'navigate', destination: ORIGIN });
     expect(browser.performed[0]?.credential?.reference).toBe(CREDENTIAL_REF);
-    // The credential reaches the WIRE and nowhere else: the port is what calls `authorize`.
-    expect(browser.headers[0]).toEqual({ authorization: `Bearer ${TOKEN}` });
+    // The credential reaches the WIRE and nowhere else: the port is what types it into the
+    // Target System's own sign-in form.
+    expect(browser.entered).toEqual([TOKEN]);
   });
 
   it('records the action in the shared sanitized log, with no credential in it', async () => {
@@ -390,12 +399,16 @@ describe('the sign-in Session Step', () => {
     expect(state.actions[0]).toMatchObject({
       surface: 'agent',
       action: 'navigate',
-      method: 'GET',
+      // The method the workspace ENDED on: a sign-in submits the system's own form, so the
+      // log says `POST`. Recording the `GET` it started with would leave the submission
+      // invisible in the one record a reader checks the read-only guarantee against.
+      method: 'POST',
       outcome: 'performed',
       denial: null,
       offending: null,
       status: 200,
-      redirected: false,
+      // The system answered the submission with a redirect the browser followed.
+      redirected: true,
       downloads: 0,
       parameters: [],
       workItemId: null,

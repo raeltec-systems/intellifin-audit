@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
 import { Solari, SolariError } from '@solarisdk/browser';
-import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright-core';
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+  type Response,
+  type Route,
+} from 'playwright-core';
 
 import {
   BrowserActionError,
@@ -10,6 +18,7 @@ import {
   type BrowserActionResult,
   type BrowserExecution,
   type BrowserToolAction,
+  type ResolvedCredential,
   type WorkspaceDenial,
   type WorkspaceEgressPolicy,
   type WorkspaceHandle,
@@ -213,17 +222,6 @@ interface LiveWorkspace {
   page: Page | null;
   /** Downloads this workspace was offered. Offered, and never executed. */
   downloads: number;
-  /**
-   * The credential a Tool Action is presenting RIGHT NOW, and the origin it may reach.
-   *
-   * `setExtraHTTPHeaders` would put the header on every request the page makes until it is
-   * cleared — including, once a plan names two web Target Systems, requests to the OTHER
-   * one, because the egress allowlist is the union of their frozen origins. So the header
-   * is attached in the interception instead, to requests inside the destination's OWN
-   * frozen origin only, and dropped the moment the action finishes. Story 4.3 owns the full
-   * just-in-time guarantee; this is the narrowest surface it can have meanwhile.
-   */
-  credential: { origin: string; headers: Record<string, string> } | null;
   /** The workspace's compiled egress allowlist, so an action can ask it too. */
   readonly allowed: (destination: string) => boolean;
 }
@@ -310,9 +308,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       // `download` event still fires, which is what lets a Tool Action record that one was
       // offered — "handled per the conformance contract, never executed".
       const context = await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });
-      // Filled in below, once the handle exists. The route handler closes over it so a
-      // credential can be attached to one action's own requests and to nothing else.
-      let live: LiveWorkspace | null = null;
+      let live: LiveWorkspace;
       const denials: WorkspaceDenial[] = [];
       let deniedTotal = 0;
       const deny = (destination: string, method: string, resourceType: string): void => {
@@ -329,14 +325,6 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
           const request = route.request();
           const url = request.url();
           if (allowed(url)) {
-            const presenting = live?.credential ?? null;
-            // Only inside the destination's OWN frozen origin. A second web Target System
-            // is inside the workspace's allowlist and must never receive the first one's
-            // credential.
-            if (presenting !== null && withinFrozenOrigin(presenting.origin, url)) {
-              await route.continue({ headers: { ...request.headers(), ...presenting.headers } });
-              return;
-            }
             await route.continue();
             return;
           }
@@ -365,7 +353,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         takeDenials: () => denials.splice(0, denials.length),
         denied: () => deniedTotal,
       };
-      live = { ref, browser, context, handle, page: null, downloads: 0, credential: null, allowed };
+      live = { ref, browser, context, handle, page: null, downloads: 0, allowed };
       this.live.set(workspaceId, live);
       return handle;
     } catch (error) {
@@ -473,31 +461,20 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       throw new BrowserActionError('unavailable');
     }
 
-    // The credential exists here for the length of ONE navigation. `authorize` is the only
-    // way it can be read, it writes into a record this method owns, and it is dropped in
-    // the `finally` — a workspace that kept it would present the credential on every later
-    // request of the Run, which is the opposite of just in time. The interception attaches
-    // it, not `setExtraHTTPHeaders`, so it reaches the destination's own frozen origin and
-    // nothing else the allowlist happens to cover.
-    const headers: Record<string, string> = {};
-    action.credential?.authorize({
-      set: (name: string, value: string) => {
-        headers[name] = value;
-      },
-    });
-    live.credential =
-      Object.keys(headers).length > 0 ? { origin: action.destination, headers } : null;
-
     let response: Awaited<ReturnType<Page['goto']>>;
     try {
       response = await page.goto(action.destination, {
         waitUntil: 'domcontentloaded',
         timeout,
       });
+      // The credential exists for the length of ONE submission and is dropped as soon as
+      // the navigation it caused has settled. A workspace that kept it would present it on
+      // every later request of the Run, which is the opposite of just in time.
+      if (action.credential !== null && response !== null) {
+        response = await signIn(live, page, action.destination, action.credential, timeout, response);
+      }
     } catch (error) {
       throw actionFailure(error, live.handle.denied() > before);
-    } finally {
-      live.credential = null;
     }
     // `null` is a same-document navigation, which is not something this platform asked
     // for and not something it can record a status for.
@@ -517,6 +494,10 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     const location = safeDestination(page.url());
     return {
       status: response.status(),
+      // What the workspace actually put on the wire last, which for a sign-in is the
+      // form's own `POST` and not the `GET` the action started with. Read from the request
+      // rather than assumed, because the immutable action log records what happened.
+      method: originatingMethod(response),
       location,
       redirected: response.request().redirectedFrom() !== null,
       downloads: live.downloads,
@@ -573,6 +554,163 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (context) await withTimeout(context.close(), timeoutMs);
     await withTimeout(browser.close(), timeoutMs);
   }
+}
+
+/**
+ * The resolved fields of a form and of its submitter, named structurally.
+ *
+ * `packages/infrastructure` has no DOM lib — nothing on this side of the boundary is a
+ * browser — so the shapes the evaluated callback reads are declared here rather than
+ * borrowed from `HTMLFormElement`. These are the RESOLVED values the browser will use,
+ * not the attribute text, which may be relative, absent or overridden.
+ */
+interface SubmittableForm {
+  readonly action: string;
+  readonly method: string;
+}
+interface FormSubmitter {
+  readonly formAction: string;
+}
+
+/**
+ * Sign in through the Target System's OWN form (Story 4.2).
+ *
+ * The credential-entry mechanism. It runs after the action's navigation has landed on the
+ * frozen origin, which — for a system that requires a credential — is where that system
+ * serves its sign-in form. Nothing here guesses a path, follows a link or reads a location
+ * out of the page: the destination is the one the Procedure Version froze and the gate
+ * already authorized, and the only thing taken from the document is the form's own
+ * declaration of where it posts, which is then checked against that same frozen origin.
+ *
+ * **A stated mechanism contract, not a heuristic.** Exactly one `<form>` carrying exactly
+ * one `<input type="password">` and exactly one submit control; the form must declare
+ * `POST`; its action, and the submitter's own `formaction`, must be inside the
+ * destination's own frozen origin. Anything else is refused rather than guessed at — a
+ * mechanism that picked one of several forms would be choosing, on a page a Target System
+ * controls, where a credential goes.
+ *
+ * The origin check is what the interception's header injection used to do, and it is why
+ * that injection could be removed rather than left unreachable: a plan naming two web
+ * Target Systems has BOTH their origins in the workspace allowlist, so a form on one
+ * system's page pointing at the other's origin would hand it the first one's credential.
+ * `withinFrozenOrigin` is the same authority-plus-path-boundary rule the gate applies, so
+ * there is one answer to "inside the frozen origin" and not two.
+ *
+ * The value exists in `enterCredential` and nowhere else — the same just-in-time shape the
+ * header presentation had, one presentation along.
+ */
+async function signIn(
+  live: LiveWorkspace,
+  page: Page,
+  destination: string,
+  credential: ResolvedCredential,
+  timeoutMs: number,
+  landed: Response,
+): Promise<Response> {
+  // Already signed in: the system answered the navigation and the workspace holds a session
+  // for this origin, so there is nothing to enter and nothing to submit. The IDEMPOTENT
+  // branch, and it is reachable — a database failure between a successful sign-in and its
+  // commit leaves the checkpoint saying `RETRY` while the browser still holds the cookie,
+  // and the phase's own sweep re-claims in the same process. Without it that blip would
+  // report `contract` and cost the Run, which is the opposite of what AD-16 asks for.
+  if (landed.status() < 300 && (await live.context.cookies(destination)).length > 0) {
+    return landed;
+  }
+
+  const forms = page.locator('form:has(input[type="password"])');
+  if ((await forms.count()) !== 1) throw new BrowserActionError('contract');
+  const form = forms.first();
+  const fields = form.locator('input[type="password"]');
+  const submits = form.locator('button[type="submit"], input[type="submit"]');
+  if ((await fields.count()) !== 1 || (await submits.count()) !== 1) {
+    throw new BrowserActionError('contract');
+  }
+  const submitter = submits.first();
+
+  // `HTMLFormElement.action`/`.method` and `HTMLButtonElement.formAction` are the RESOLVED
+  // values the browser will actually use, which is what has to be judged — not the
+  // attribute text, which may be relative, absent, or overridden by the submitter.
+  const [formAction, formMethod, submitterAction] = await Promise.all([
+    form.evaluate((element) => (element as unknown as SubmittableForm).action),
+    form.evaluate((element) => (element as unknown as SubmittableForm).method),
+    submitter.evaluate((element) => (element as unknown as FormSubmitter).formAction),
+  ]);
+  // A `GET` form would put the credential in the URL, in browser history, in the `Referer`
+  // header and in every access log. This platform will not type one into it.
+  if (formMethod.toUpperCase() !== 'POST') throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, formAction)) throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, submitterAction)) throw new BrowserActionError('scope');
+
+  await enterCredential(credential, fields.first(), timeoutMs);
+
+  // The FIRST non-redirect navigation response of the main frame after the submission.
+  // Filtering the redirects out is what makes this the answer the system settled on rather
+  // than the `303` it passed through on the way.
+  const settled = page.waitForResponse(
+    (response) =>
+      response.request().isNavigationRequest() &&
+      response.frame() === page.mainFrame() &&
+      (response.status() < 300 || response.status() >= 400),
+    { timeout: timeoutMs },
+  );
+  await submitter.click({ timeout: timeoutMs });
+  const response = await settled;
+  await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs });
+  // The workspace is still inside its frozen allowlist. The interception should already
+  // have aborted anything else; this is the second lock on that door, checked here as well
+  // as by the caller because a sign-in is where a system most wants to send a browser
+  // somewhere new.
+  if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+  return response;
+}
+
+/**
+ * Type the credential into one field, and hold it nowhere else.
+ *
+ * `enter` writes the value into a sink; the sink is a local binding of this function; the
+ * binding is cleared in the `finally`. `ResolvedCredential` has no field holding the value,
+ * so this is the only place in the browser path where it exists at all, and it exists for
+ * the length of one `fill`.
+ */
+async function enterCredential(
+  credential: ResolvedCredential,
+  field: Locator,
+  timeoutMs: number,
+): Promise<void> {
+  let typed = '';
+  credential.enter({
+    set: (value: string) => {
+      typed = value;
+    },
+  });
+  // A resolver whose `enter` wrote nothing has not presented a credential, and submitting
+  // an empty field would fail for a reason that is not the true one.
+  if (typed === '') throw new BrowserActionError('contract');
+  try {
+    await field.fill(typed, { timeout: timeoutMs });
+  } finally {
+    typed = '';
+  }
+}
+
+/**
+ * The method of the request that produced this response, before any redirect the SYSTEM
+ * chose.
+ *
+ * A sign-in navigates with a `GET`, submits the system's form with a `POST`, and the
+ * system answers a `303` the browser follows with a second `GET`. Reading the final
+ * request's method would record that last `GET` and leave the `POST` invisible — which
+ * would put the old false equivalence ("read-only means the log only ever shows a GET")
+ * back, one layer down. The chain's ORIGIN is the request this platform actually made.
+ */
+export function originatingMethod(response: Response): string {
+  let request = response.request();
+  for (let hop = 0; hop < 20; hop += 1) {
+    const previous = request.redirectedFrom();
+    if (previous === null) break;
+    request = previous;
+  }
+  return request.method().toUpperCase();
 }
 
 /** A close that cannot hang the worker's shutdown on a browser that has stopped answering. */

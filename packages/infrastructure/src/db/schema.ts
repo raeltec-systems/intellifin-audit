@@ -1126,9 +1126,15 @@ export const runToolAction = pgTable('run_tool_action', {
   index('run_tool_action_run_idx').on(t.runId,t.startedAt),
   check('run_tool_action_surface',sql`${t.surface} IN ('agent','adapter')`),
   check('run_tool_action_outcome',sql`${t.outcome} IN ('performed','denied','failed')`),
-  // A read-only execution takes exactly two methods, and the system it reads refuses every
-  // other at its own level (FR-3). A row claiming otherwise is a row nothing wrote.
-  check('run_tool_action_method',sql`${t.method} IN ('GET','HEAD')`),
+  // Generation 31. The vocabulary is `TOOL_ACTION_METHODS` in the domain, and `POST` is in
+  // it for exactly one operation: submitting a Target System's own sign-in form, which
+  // creates a SESSION and no audited business data. It read `IN ('GET','HEAD')` while the
+  // system-level guard used the method as a proxy for mutation; FR-3 constrains what the
+  // platform may INVOKE — enforced against the registration's frozen `permitted_actions` —
+  // and neither this CHECK nor a fixture's guard is what makes an execution read-only
+  // (`epic-4-loancore-authentication-decision.md`). It stays a CLOSED set: a method
+  // outside it is a request this build did not make.
+  check('run_tool_action_method',sql`${t.method} IN ('GET','HEAD','POST')`),
   check('run_tool_action_denial',sql`${t.denial} IS NULL OR ${t.denial} IN ('action-not-permitted','destination-refused','origin-not-allowed','parameter-out-of-scope')`),
   // A denial ALWAYS names its rule and a performed action never carries one. The two halves
   // are one CHECK because either alone permits a row that reads as the other.

@@ -18,12 +18,19 @@ export interface NorthstarRequest {
   /**
    * The request headers, names lower-cased, one value each (Story 4.2).
    *
-   * LoanCore authenticates a GET, so the credential arrives in a header rather than in a
-   * form — a form is a POST, and every Northstar system refuses one at the system level.
-   * A repeated header keeps its FIRST value: a second `Authorization` is not a second
-   * chance at the credential.
+   * A repeated header keeps its FIRST value: a second spelling of anything this system
+   * judges a request by is not a second chance at it.
    */
   readonly headers: Readonly<Record<string, string>>;
+  /**
+   * The request body, decoded as UTF-8. Empty for every method that carries none.
+   *
+   * LoanCore signs in through a real form, so a body is something this system reads
+   * (`epic-4-loancore-authentication-decision.md`). It is bounded by the composition
+   * root: a synthetic system whose memory a caller can choose is a system that can be
+   * made to stop answering while a Run is being observed.
+   */
+  readonly body: string;
 }
 
 /** Node's raw header bag, normalized to what a request may be judged against. */
@@ -48,13 +55,17 @@ export interface NorthstarResponse {
   readonly body: string | Uint8Array;
 }
 
-/** The two methods every Northstar system serves. There is no third. */
-export const READ_METHODS = ['GET', 'HEAD'] as const;
-export type ReadMethod = (typeof READ_METHODS)[number];
-
-export function isReadMethod(method: string): method is ReadMethod {
-  return (READ_METHODS as readonly string[]).includes(method);
-}
+/**
+ * The two methods an ordinary read-only surface serves, for a route to DECLARE.
+ *
+ * It was called `READ_METHODS` and it was the whole read-only rule: `enforceReadOnly`
+ * refused everything else, everywhere. That name now lies about its own job, because the
+ * rule is no longer a method test — a route declares which of its operations mutate no
+ * audited business data, and this is the declaration nearly every route makes
+ * (`epic-4-loancore-authentication-decision.md`). It is a value a route reaches for, not
+ * a rule anything applies, so it is named for what it is.
+ */
+export const NON_MUTATING_READS = ['GET', 'HEAD'] as const;
 
 /**
  * `decodeURIComponent` throws on a malformed escape, and `/loancore/users/%E0%A4%A` is a

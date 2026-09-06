@@ -68,6 +68,7 @@ function testCredential(reference: string, token: string): ResolvedCredential {
   return {
     reference,
     authorize: (headers) => headers.set('authorization', `Bearer ${token}`),
+    enter: (field) => field.set(token),
     redact: (text) => redactCompiled(text, secret),
     discloses: (bytes) => bytesDiscloseCompiled(bytes, secret),
   };
