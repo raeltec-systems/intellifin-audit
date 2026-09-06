@@ -55,6 +55,24 @@ Story 4.1. Its load-bearing sentence: a browser context isolates browser STATE p
 than at the network. Story 4.1's acceptance text says nothing crosses between Runs. That is
 true of browser state and false of process memory, and the story must say so in those words.
 
+## The four decisions taken in the main thread, before any story was implemented
+
+Each is a full document; each was taken here rather than left to an implementer, because each
+either changes something an earlier story recorded or would otherwise be settled differently by
+whoever hit it first. **Read them; do not re-decide them.**
+
+| Decision | Where | Why it was taken here |
+|---|---|---|
+| **Solari is the browser provider**, driven with the Playwright client API. Local Chromium is the same code path for tests and is documented as the WEAKER guarantee | `epic-4-browser-provider-decision.md` | An earlier version of that document treated Solari and Playwright as alternatives and chose Playwright, because Solari was absent from this repository. It is published and installable, and it is a managed remote browser you drive WITH Playwright. The error is recorded rather than deleted |
+| **LoanCore gains authentication on GET**, through an `Authorization` header above routing. No form, no POST, the read-only rule untouched | `epic-4-loancore-authentication-decision.md` | Story 4.2 is "sign in to LoanCore" and LoanCore deliberately has no sign-in. Left open, it becomes an assertion that passes because nothing happened |
+| **Email notifications are written behind configuration and record an `unconfigured` delivery outcome** rather than a send that did not happen | `spec-4-8-…` Design Notes | This deployment has no mail transport. Wiring one is an owner decision with a cost; claiming a send is a lie in an audit trail |
+| **Every seeded fixture case is mapped to the story that proves it**, and the golden P-1 and P-4 Runs are INCONCLUSIVE | `epic-4-fixture-map.md` | Correcting one spec against the real fixture found the epic text and the dataset deliberately differ. A dataset that seeds every failure mode cannot also demonstrate success — the Epic 3 lesson, repeating |
+
+The Solari lifecycle notes in the provider decision were **corrected once against the installed
+`.d.ts`** after being written from the cookbook prose: `timeoutMs` is the client's HTTP timeout
+and not a session idle window, and what ends a session is `Session.expiresAt`, a hard plan-tier
+deadline. Read the corrected table, not a memory of the first version.
+
 ## Story order and why
 
 1. **4.1 Workspace** — everything else runs inside it.
