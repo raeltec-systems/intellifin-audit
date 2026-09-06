@@ -29,3 +29,5 @@ export * from './runs/evaluation.js';
 export * from './runs/evidence.js';
 export * from './runs/gate.js';
 export * from './runs/limits.js';
+export * from './runs/outcome.js';
+export * from './runs/result.js';

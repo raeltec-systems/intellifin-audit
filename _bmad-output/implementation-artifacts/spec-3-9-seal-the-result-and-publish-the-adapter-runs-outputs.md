@@ -2,7 +2,7 @@
 title: "Story 3.9: Seal the Result and publish the adapter Run's outputs"
 type: 'feature'
 created: '2026-09-05'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -115,3 +115,59 @@ platform's words where a human's belong.
 - `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
 
 ## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** The System Outcome is computed exactly once, in the transaction that
+completes the Run, by applying the addendum §E.1 rows in order and taking the first match.
+The Result is sealed so the outcome can never change, and it publishes the population, the
+exclusions with their reasons, inspected and uninspected records per Target System,
+per-condition counts by origin and confirmation state, the Template's §C control-specific
+fields, and the version's scope statement verbatim. The whole rule is
+`docs/contracts/run-result-v1.md`.
+
+**All seven rows ship, in the addendum's order, each carrying the addendum's own cell text**,
+and `tests/unit/outcome-rules.test.ts` reads the §E.1 table off disk and compares cell by
+cell. The row that decided is stored on the Result, so a reader can see WHY a Run concluded
+as it did rather than inferring it. The two rows this epic cannot reach are still written and
+are tested with constructed state, because the order is the contract.
+
+**The table had a hole, and closing it is this story's most important decision.** §E.1's
+Inconclusive row says a condition is `UNEVALUATED` "(by human rejection)". Read as a
+PREDICATE, a record unevaluated any other way — a rule that could not read a value, which is
+exactly P-2's account with an empty role list — matches no row at all and falls through to
+Pass, whose own cell requires every condition on every record Compliant. The parenthetical is
+treated as PROVENANCE instead: every other route to `UNEVALUATED` is caught by a §H row
+above, and where one is not, "excluded, uninspected and Unevaluated records are never counted
+Compliant" is the rule that has to hold. The Pass row independently requires zero unevaluated
+and zero pending, so the door is shut twice.
+
+**A passed Gate is necessary and never sufficient.** `gatePassed` is read from the twenty
+stored Gate rows — fewer than twenty is not a pass — and
+`run_result_pass_requires_gate` holds the necessary half at the database. Hard-coding it true
+passed EVERY integration test, because the Gate sets the Run state first and the state was
+silently standing in for the check; that is recorded in `CLAUDE.md`.
+
+**There is no seam a composition root could omit.** `completeRun` replaced the previous seal
+call at all six terminal-transition sites in both producers, and its context is extended by
+the Gate and population contexts rather than injected beside them. Generation 25 adds a
+deferred trigger refusing any Run that reaches a terminal state without a Result — the same
+forcing function the Evidence package already uses — plus constraints tying the outcome to
+the Run state, to the row that produced it, and to a passed Gate.
+
+**Mutation-proved.** Reordering the Gate row below Control Failure fails the domain table,
+the integration ordering test AND both golden populations. Dropping the timeout clause,
+disabling the unevaluated row, editing a verbatim cell, accepting a partial Gate, and eight
+more each failed their own test and were reverted.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18:** typecheck
+PASS; boundaries PASS; `db:migrate` schemaVersion 25; unit 2522/2522; integration 319/319;
+`db:generate` no drift; both builds PASS; browser + axe 110/110 with zero accessibility
+violations. Every number matches what the implementing agent reported.
+
+**Residual risks.** The Pending Confirmation and human-rejection rows produce nothing in this
+epic and are proved only with constructed state; Epic 4 and Epic 6 make them reachable. Every
+test file that writes Run rows must now delete `run_result` before `audit_run` — the fourth
+such table — and a file that raises real Exceptions must NOT delete them first, because
+generation 23 refuses it and the Observation cascade carries them.

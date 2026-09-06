@@ -1,7 +1,7 @@
 import {
-  adapterLookupColumn,
-  classifyPlanTargets,
   coverageFindings,
+  includedRecordKeys,
+  requiredTargetSystems,
   populationFieldFindings,
   runGateChecks,
   runGateDecision,
@@ -24,7 +24,7 @@ import type {
   GateFactTally,
   RunGateContext,
 } from './execution-ports.js';
-import { sealIfTerminal } from './seal-package.js';
+import { completeRun } from './complete-run.js';
 
 /**
  * The Run-level Evidence Quality Gate (Story 3.8).
@@ -102,8 +102,12 @@ function fromTally(tally: GateFactTally, diagnostic: GateDiagnostic): GateFindin
  * `Record<ObservationCheckName, …>` on purpose: the six checks Story 3.4 and 3.6 record are
  * a closed union, so a check added there without a §H diagnostic here does not compile, and
  * a row of §H whose evidence is decided per Observation can never be left un-rolled-up.
+ *
+ * Exported so the golden reconciliation rolls the checks up through the SAME table this
+ * command does. A test that retyped it would be a second copy of a routing table, and the
+ * first value the two disagreed about would be a §H row nobody noticed had moved.
  */
-const OBSERVATION_CHECK_DIAGNOSTIC: Readonly<Record<ObservationCheckName, GateDiagnostic>> = {
+export const OBSERVATION_CHECK_DIAGNOSTIC: Readonly<Record<ObservationCheckName, GateDiagnostic>> = {
   'identity-corroboration': 'identity-uncorroborated',
   'search-completeness': 'absence-unproven',
   'ambiguous-match': 'ambiguous-match',
@@ -144,13 +148,11 @@ export async function runRunLevelGate(
   }
 
   const plan = input.plan;
-  const classification = plan === null ? null : classifyPlanTargets(plan);
   const templateId = plan?.inputs.templateId ?? '';
-  const lookupColumn = plan === null ? null : adapterLookupColumn(templateId);
-  const requiredTargetSystems =
-    classification === null || classification.unsupported !== null
-      ? []
-      : classification.adapters.map((entry) => entry.target.registrationId);
+  // The two axes of the coverage matrix, derived ONCE in the domain: the published Result
+  // (Story 3.9) reports the same matrix, and two derivations of its axes would be two
+  // answers to one question.
+  const required = requiredTargetSystems(plan);
 
   const populationFacts = await context.readPopulationFacts();
   const rows: readonly PopulationGateRow[] =
@@ -173,19 +175,13 @@ export async function runRunLevelGate(
 
   // §H per-record coverage: the matrix over (required Target System × included record).
   const observations = await context.readGateObservations();
-  const includedRecordKeys =
-    lookupColumn === null
-      ? []
-      : rows
-          .filter((row) => row.disposition === 'included')
-          .map((row) => {
-            const value = Object.hasOwn(row.values, lookupColumn) ? row.values[lookupColumn] : null;
-            return typeof value === 'string' ? value : '';
-          })
-          .filter((key) => key !== '');
   findings.push(
     ...tallyGateFindings(
-      coverageFindings({ requiredTargetSystems, includedRecordKeys, observations }),
+      coverageFindings({
+        requiredTargetSystems: required,
+        includedRecordKeys: includedRecordKeys(templateId, rows),
+        observations,
+      }),
     ),
   );
 
@@ -337,9 +333,15 @@ export async function runRunLevelGate(
     },
   });
   await context.notifyTimeline(summary.sequence);
-  // Every terminal transition seals the Evidence package, in this transaction. A branch
-  // that forgot would not ship an unsealed Run — generation 21's deferred trigger refuses
-  // the commit outright.
-  await sealIfTerminal(context, input.run, decision.state, input.decidedAt);
+  // Every terminal transition completes the Run, in this transaction: the System Outcome
+  // is computed once, the Result is sealed and the Evidence package is sealed with it. A
+  // branch that forgot would not ship an unsealed Run — generations 21 and 25 both refuse
+  // the commit outright, with a deferred constraint trigger each.
+  await completeRun(context, {
+    run: input.run,
+    state: decision.state,
+    at: input.decidedAt,
+    plan: input.plan,
+  });
   return { decision, results, recorded: true };
 }

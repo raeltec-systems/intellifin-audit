@@ -21,8 +21,14 @@ import type {
   ObservationEvaluation,
   ObservationRecord,
   ExceptionFingerprintEnvelope,
+  OutcomeRowId,
   RaisedException,
   RunRecord,
+  RunResultConditionCount,
+  RunResultExclusion,
+  RunResultFindings,
+  RunResultPublication,
+  SystemOutcome,
   PopulationResult,
   SessionStepState,
   WorkItemState,
@@ -87,7 +93,7 @@ export interface PopulationCheckpoint {
    */
   evidenceRequired: boolean;
 }
-export interface PopulationExecutionContext extends EvidencePackageContext {
+export interface PopulationExecutionContext extends RunResultContext {
   run: RunRecord | null;
   checkpoint: PopulationCheckpoint | null;
   frozenPlan(): Promise<ExecutablePlan | null>;
@@ -675,6 +681,81 @@ export interface GateCheckRow {
   readonly total: number;
 }
 
+/* ------------------------------------------------------------------ Story 3.9 --- */
+
+/**
+ * One Run's Result, as it is stored and read back.
+ *
+ * `version` starts at 1 with the row and is incremented by a later sealing — the only
+ * one there can be, because the only unsealed outcome is `PENDING_CONFIRMATION`. Nothing
+ * else about a Result ever changes: generation 25 refuses every other UPDATE below the
+ * command, in a trigger.
+ */
+export interface StoredRunResult {
+  readonly runId: string;
+  readonly version: number;
+  readonly outcome: SystemOutcome;
+  /** Which addendum §E.1 row decided, so a Result can say why it says what it says. */
+  readonly row: OutcomeRowId;
+  readonly sealed: boolean;
+  /** The Run state this outcome implies. Row 5 moves a COMPLETED Run to INCONCLUSIVE. */
+  readonly runState: RunRecord['state'];
+  /** Read from the Gate rows Story 3.8 wrote. Never inferred from the evaluations. */
+  readonly gatePassed: boolean;
+  readonly sealedAt: string;
+  /** The version's stored scope statement, verbatim; `null` for an unreadable plan. */
+  readonly scope: string | null;
+  readonly publication: RunResultPublication;
+}
+
+/**
+ * The transaction one Run's Result is computed and sealed inside (Story 3.9).
+ *
+ * Both execution contexts EXTEND it — `RunGateContext` through its own extension, and
+ * `PopulationExecutionContext` directly — so the producer taking a terminal transition
+ * already holds everything `CompleteRun` needs and there is no dependency a composition
+ * root could omit. Stories 3.6, 3.7 and 3.8 each removed or refused such a seam; a Result
+ * that could be left out is a Run that concludes without saying what it concluded.
+ *
+ * Every method is bound to ONE PostgreSQL transaction. The Evidence package seal, the
+ * Result row, the terminal Run state and the audit event commit together or not at all.
+ */
+export interface RunResultContext extends EvidencePackageContext {
+  /** Already-recorded Gate rows. The first Gate wins; a redelivery re-reads and writes nothing. */
+  readGateChecks(): Promise<readonly GateCheckRow[]>;
+  /** The terminal transition being committed. Sealed in the same transaction. */
+  saveRunState(state: RunRecord['state']): Promise<void>;
+  readPopulationFacts(): Promise<RunGatePopulationFacts | null>;
+  /** Every parsed population row, in source order. Bounded by `POPULATION_LIMITS.rows`. */
+  readPopulationRows(): Promise<readonly PopulationGateRow[]>;
+  /** Every Observation, as the per-record coverage matrix reads it. */
+  readGateObservations(): Promise<readonly CoverageObservation[]>;
+  /** The Result already computed for this Run, or `null`. The FIRST one wins. */
+  readResult(): Promise<StoredRunResult | null>;
+  /** Write the Result. A sealed outcome is immutable; the database says so as well. */
+  writeResult(result: StoredRunResult): Promise<void>;
+  /** Every exclusion reason, with an exact total and a bounded sample of its rows. */
+  readResultExclusions(): Promise<readonly RunResultExclusion[]>;
+  /**
+   * Per-condition evaluation counts by origin, confirmation state and value (§B.1).
+   *
+   * The §E.1 decision reads its three evaluation facts from HERE — `pending`,
+   * `unevaluated` and the Exceptions — rather than from the Gate or from each other,
+   * because a passed Gate is necessary and never sufficient for a Pass.
+   */
+  readConditionCounts(): Promise<readonly RunResultConditionCount[]>;
+  /**
+   * The records the Result names: every Exception and every record left Unevaluated.
+   *
+   * Exact totals beside bounded samples, and the samples carry the Template's declared
+   * attribute values so the §C control-specific fields can be published from them.
+   */
+  readResultFindings(): Promise<{
+    readonly exceptions: RunResultFindings;
+    readonly unevaluated: RunResultFindings;
+  }>;
+}
+
 /**
  * The transaction the Run-level Gate is decided and recorded inside (Story 3.8).
  *
@@ -688,17 +769,8 @@ export interface GateCheckRow {
  * Every method is bound to ONE PostgreSQL transaction. The Gate rows, the Timeline events,
  * the terminal Run state and the Evidence package seal commit together or not at all.
  */
-export interface RunGateContext extends EvidencePackageContext {
-  /** Already-recorded Gate rows. The first Gate wins; a redelivery re-reads and writes nothing. */
-  readGateChecks(): Promise<readonly GateCheckRow[]>;
+export interface RunGateContext extends RunResultContext {
   saveGateChecks(rows: readonly GateCheckRow[]): Promise<void>;
-  /** The terminal transition this Gate decided. Sealed in the same transaction. */
-  saveRunState(state: RunRecord['state']): Promise<void>;
-  readPopulationFacts(): Promise<RunGatePopulationFacts | null>;
-  /** Every parsed population row, in source order. Bounded by `POPULATION_LIMITS.rows`. */
-  readPopulationRows(): Promise<readonly PopulationGateRow[]>;
-  /** Every Observation, as the per-record coverage matrix reads it. */
-  readGateObservations(): Promise<readonly CoverageObservation[]>;
   /** Failing per-Observation check outcomes, tallied by check name (Stories 3.4 and 3.6). */
   readFailedObservationChecks(): Promise<
     Readonly<Partial<Record<ObservationCheckName, GateFactTally>>>

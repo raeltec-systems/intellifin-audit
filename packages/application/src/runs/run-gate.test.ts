@@ -7,6 +7,7 @@ import type {
   PackageSeal,
   RunGateContext,
   RunGatePopulationFacts,
+  StoredRunResult,
 } from './execution-ports.js';
 
 /**
@@ -112,6 +113,19 @@ class FakeGate implements RunGateContext {
   readIncompleteExtractions = async () => [];
   readAccessFailures = async () => ({ failedSessionSteps: [], denied: [] });
   readIntegrityFindings = async () => [];
+
+  /** Story 3.9: the Result the Gate's terminal transition completes the Run with. */
+  result: StoredRunResult | null = null;
+  readResult = async (): Promise<StoredRunResult | null> => this.result;
+  writeResult = async (result: StoredRunResult): Promise<void> => {
+    this.result = result;
+  };
+  readResultExclusions = async () => [];
+  readConditionCounts = async () => [];
+  readResultFindings = async () => ({
+    exceptions: { total: 0, records: [] },
+    unevaluated: { total: 0, records: [] },
+  });
 }
 
 function row(results: readonly GateCheckResult[], check: string): GateCheckResult {

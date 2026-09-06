@@ -14,7 +14,7 @@ import {
 } from './execution-ports.js';
 import { decodeAcquisitionEnvelope, encodeAcquisitionEnvelope } from './acquisition-envelope.js';
 import { freezeArtifact, reserveArtifact } from './evidence-package.js';
-import { sealIfTerminal } from './seal-package.js';
+import { completeRun } from './complete-run.js';
 export interface PopulationDependencies {
   repository: PopulationExecutionRepository;
   acquisition: PopulationAcquisitionPort;
@@ -143,7 +143,7 @@ export async function acquirePopulation(
           failed === 'run-time-limit' ? 'INCONCLUSIVE' : 'RUN_FAILED';
         await context.save(checkpoint, state);
         await event(context, failed, state, checkpoint.attempts, checkpoint, 'failure');
-        await sealIfTerminal(context, run, state, now.toISOString());
+        await completeRun(context, { run, state, at: now.toISOString(), plan: plan ?? null });
         return null;
       }
       await context.save(checkpoint, 'RUNNING');
@@ -196,7 +196,7 @@ export async function acquirePopulation(
         const next = { ...checkpoint, attempts, revision: checkpoint.revision + 1, status: terminal ? 'TERMINAL' as const : 'RETRY' as const, diagnostic };
         await context.save(next, state);
         await event(context, diagnostic, state, attempts, next, 'failure');
-        await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
+        await completeRun(context, { run, state, at: deps.clock.now().toISOString(), plan: plan ?? null });
         return { retry: !terminal };
       });
     }
@@ -329,12 +329,12 @@ export async function acquirePopulation(
         next,
         result.ready ? 'success' : 'failure',
       );
-      await sealIfTerminal(
-        context,
+      await completeRun(context, {
         run,
-        result.ready ? 'RUNNING' : 'INCONCLUSIVE',
-        deps.clock.now().toISOString(),
-      );
+        state: result.ready ? 'RUNNING' : 'INCONCLUSIVE',
+        at: deps.clock.now().toISOString(),
+        plan,
+      });
       remaining();
     });
     return { retry: false };
@@ -368,7 +368,7 @@ export async function acquirePopulation(
         state,
       );
       await event(context, diagnostic, state, checkpoint.attempts, checkpoint, 'failure');
-      await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
+      await completeRun(context, { run, state, at: deps.clock.now().toISOString(), plan });
       return { retry: !terminal };
     });
   }

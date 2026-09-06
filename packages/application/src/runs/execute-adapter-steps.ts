@@ -61,7 +61,7 @@ import {
   readRegisteredArtifact,
   reserveArtifact,
 } from './evidence-package.js';
-import { sealIfTerminal } from './seal-package.js';
+import { completeRun } from './complete-run.js';
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 
 /**
@@ -486,7 +486,7 @@ export async function executeAdapterSteps(
       const state = failed === 'run-time-limit' ? 'INCONCLUSIVE' : 'RUN_FAILED';
       await context.saveCheckpoint(checkpoint, state);
       await event(context, failed, state, checkpoint, {}, 'failure');
-      await sealIfTerminal(context, run, state, now.toISOString());
+      await completeRun(context, { run, state, at: now.toISOString(), plan });
       return null;
     }
 
@@ -623,7 +623,7 @@ export async function executeAdapterSteps(
         });
         await context.notifyTimeline(stored.sequence);
       }
-      await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
+      await completeRun(context, { run, state, at: deps.clock.now().toISOString(), plan });
     });
   };
 
@@ -798,7 +798,7 @@ export async function executeAdapterSteps(
       const next = { ...checkpoint, status: terminal ? ('TERMINAL' as const) : ('RETRY' as const), diagnostic };
       await context.saveCheckpoint(next, state);
       await event(context, diagnostic, state, next, {}, 'failure');
-      await sealIfTerminal(context, run, state, deps.clock.now().toISOString());
+      await completeRun(context, { run, state, at: deps.clock.now().toISOString(), plan });
     });
     return { retry: !terminal };
   }

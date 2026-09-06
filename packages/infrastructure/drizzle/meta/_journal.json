@@ -176,6 +176,13 @@
       "when": 1788644966437,
       "tag": "0024_last_forgotten_one",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788671664178,
+      "tag": "0025_sparkling_rockslide",
+      "breakpoints": true
     }
   ]
 }

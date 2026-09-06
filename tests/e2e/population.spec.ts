@@ -28,6 +28,8 @@ import {
 } from './credentials';
 
 const ids = new CryptoUuidV7Generator();
+/** The auditor's own scope sentence. The sealed Result shows it VERBATIM (Story 3.9). */
+const SCOPE = 'The independently declared synthetic population for August 2026.';
 const procedures = [ids.next(), ids.next(), ids.next(), ids.next(), ids.next()];
 const files = ['accessgate-active-accounts.csv', 'accessgate-active-accounts-truncated.csv'];
 let sql: Sql;
@@ -70,7 +72,7 @@ function inputs(templateId: 'P-2' | 'P-3', index: number): FrozenPlanInputs {
   return {
     ...initialDraftPopulation(templateId), ...initialDraftCompliance(templateId), ...initialDraftEvidence(templateId),
     templateId, controlName: `Population browser ${procedures[index]}`, sections: initialDraftSections(templateId),
-    scope: 'The independently declared synthetic population for August 2026.',
+    scope: SCOPE,
     period: { from: '2026-08-01', to: '2026-08-31' },
     sourceSnapshot: { bindingId: ids.next(), displayName: 'Synthetic source', digest: bindingDigest(source), contract: bindingDigestEnvelope(source) },
     targets: [
@@ -138,6 +140,8 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_session_step WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_work_item WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_gate_check WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+      // Story 3.9: the sealed Result carries a real foreign key to its Run.
+      await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence_integrity WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
       await sql`DELETE FROM run_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
@@ -400,6 +404,34 @@ test.describe('Auditor population acquisition', () => {
     expect((await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${firstRunId}`)[0]?.run_state)
       .toBe('INCONCLUSIVE');
 
+    // Story 3.9, against the same golden Run: the Result sealed in that transaction, at the
+    // outcome the expectation file names. Three accounts really did raise an Exception, and
+    // the outcome is still Inconclusive — the §E.1 Gate row sits ABOVE Control Failure, and
+    // this is that ordering over a real Run rather than over constructed facts.
+    const [sealed] = await sql`SELECT version,outcome,outcome_row,sealed,run_state,gate_passed,scope,publication FROM run_result WHERE run_id=${firstRunId}`;
+    expect(sealed).toMatchObject({
+      version: 1, outcome: outcome.toUpperCase(), outcome_row: 'gate-failed',
+      sealed: true, run_state: 'INCONCLUSIVE', gate_passed: false,
+    });
+    const published = sealed!.publication as {
+      scope: string; population: Record<string, number>; exceptions: { total: number };
+      unevaluated: { total: number }; controlFields: string[]; statement: string;
+      gate: { passed: boolean; failed: string[] };
+    };
+    // The auditor's own sentence, verbatim, exactly as the version stored it.
+    expect(published.scope).toBe(SCOPE);
+    // Twelve rows over ELEVEN distinct accounts: the served file already carries only the
+    // active ones, so nothing is excluded, and AG-1007 is seeded twice — which is what
+    // failed the duplicate-primary-keys row. The counts are over ROWS, so
+    // `inspected + uninspected` is `included` and an auditor can check the arithmetic.
+    expect(published.population).toEqual({ rowsParsed: 12, included: 12, excluded: 0, indeterminate: 0 });
+    expect(published.exceptions.total).toBe(3);
+    expect(published.unevaluated.total).toBeGreaterThan(0);
+    expect(published.controlFields).toEqual(['roles']);
+    expect(published.gate.passed).toBe(false);
+    expect(published.statement).toBe('The Evidence does not support a conclusion.');
+    expect((await sql`SELECT count(*)::int AS total FROM audit_events WHERE aggregate_id=${firstRunId} AND event_type='lifecycle.result-sealed'`)[0]?.total).toBe(1);
+
     await page.goto(`/runs/${firstRunId}`);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     const section = page.getByRole('region', { name: 'Target System execution' });
@@ -556,6 +588,28 @@ test.describe('Auditor population acquisition', () => {
     expect(failed.find(row => row.check_name === 'mandatory-values')?.records).toEqual(['TX-500003']);
     expect((await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${p3RunId}`)[0]?.run_state)
       .toBe('INCONCLUSIVE');
+
+    // Story 3.9: the same reconciliation for P-3. Four Exceptions, and still Inconclusive.
+    const [p3Result] = await sql`SELECT outcome,outcome_row,sealed,gate_passed,publication FROM run_result WHERE run_id=${p3RunId}`;
+    expect(p3Result).toMatchObject({
+      outcome: outcome.toUpperCase(), outcome_row: 'gate-failed', sealed: true, gate_passed: false,
+    });
+    const p3Published = p3Result!.publication as {
+      exceptions: { total: number; records: { populationRecordKey: string; fields: Record<string, unknown> }[] };
+      controlFields: string[]; population: Record<string, number>;
+    };
+    expect(p3Published.exceptions.total).toBe(4);
+    // §C P-3: the Result reports the approval decision and the approver limit.
+    expect(p3Published.controlFields).toEqual(['decision', 'approver_limit']);
+    const byKey = new Map(p3Published.exceptions.records.map(record => [record.populationRecordKey, record]));
+    expect([...byKey.keys()].sort()).toEqual(['TX-500003', 'TX-500004', 'TX-500005', 'TX-500006']);
+    // TX-500006 was approved by somebody whose limit was lower than the amount, so the two
+    // §C values are exactly what an auditor needs to see beside the finding.
+    expect(byKey.get('TX-500006')!.fields).toEqual({ decision: 'APPROVED', approver_limit: '200000.00' });
+    // TX-500003 has NO approval row at all — a proven absence — so there is nothing to
+    // report for it, and the Result publishes nothing rather than inventing a value.
+    expect(byKey.get('TX-500003')!.fields).toEqual({});
+    expect(p3Published.population.indeterminate).toBe(1);
 
     await page.goto(`/runs/${p3RunId}`);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();

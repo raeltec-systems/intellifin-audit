@@ -17,6 +17,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     for (const id of procedures) {
       const runs = await sql`SELECT run_id::text FROM audit_run WHERE procedure_id=${id}`;
       for (const run of runs) { await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${run.run_id}`; await sql`DELETE FROM audit_events WHERE aggregate_id=${run.run_id}`; await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.run_id}`; }
+      await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
       await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
       await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
       await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
@@ -40,6 +41,12 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
   async function terminate(runId: string, state: 'COMPLETED' | 'CANCELED'): Promise<void> {
     await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
               VALUES(${runId},'SEALED',${state},now(),0,0,'[]'::jsonb,'[]'::jsonb) ON CONFLICT DO NOTHING`;
+    // Generation 25 refuses a terminal Run with no Result, the same way generation 21
+    // refuses one with no Evidence package. These Runs concluded nothing, so their
+    // outcome is the §E.1 row their state matches: Canceled, or a Pass over an empty
+    // population — which is the truth about them.
+    await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
+              VALUES(${runId},1,${state === 'CANCELED' ? 'CANCELED' : 'PASS'},${state === 'CANCELED' ? 'canceled' : 'pass'},true,${state},true,now(),NULL,'{}'::jsonb) ON CONFLICT DO NOTHING`;
     await sql`UPDATE audit_run SET state=${state} WHERE run_id=${runId}`;
   }
 

@@ -58,6 +58,7 @@ test.afterAll(async () => {
   if (!sql) return;
   try {
     await sql`DELETE FROM pgboss.job WHERE data->>'runId' IN (SELECT run_id::text FROM audit_run WHERE procedure_id=${procedureId})`;
+    await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;
@@ -68,15 +69,18 @@ test.afterAll(async () => {
 });
 
 /**
- * Drive a Run to COMPLETED the way production does: sealed Evidence package first.
+ * Drive a Run to COMPLETED the way production does: sealed Evidence package and Result.
  *
- * Generation 21 refuses a terminal Run with no `run_evidence_package` row, which is how
- * "run SealPackage on EVERY terminal transition" is enforced rather than remembered. These
- * Runs acquired nothing, so their package is SEALED over zero artifacts.
+ * Generation 21 refuses a terminal Run with no `run_evidence_package` row and generation 25
+ * refuses one with no `run_result` row, which is how "seal on EVERY terminal transition" is
+ * enforced rather than remembered. These Runs acquired nothing, so their package is SEALED
+ * over zero artifacts and their Result is a Pass over an empty population.
  */
 async function terminate(runId: string): Promise<void> {
   await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
             VALUES(${runId},'SEALED','COMPLETED',now(),0,0,'[]'::jsonb,'[]'::jsonb) ON CONFLICT DO NOTHING`;
+  await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
+            VALUES(${runId},1,'PASS','pass',true,'COMPLETED',true,now(),NULL,'{}'::jsonb) ON CONFLICT DO NOTHING`;
   await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
 }
 

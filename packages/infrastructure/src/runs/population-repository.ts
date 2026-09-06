@@ -14,6 +14,7 @@ import {
 } from '../db/schema.js';
 import { DrizzleRunRepository } from './run-repository.js';
 import { evidencePackageContext } from './evidence-package-repository.js';
+import { runResultContext } from './result-repository.js';
 import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
 import {
   createAuditEventWriter,
@@ -77,6 +78,8 @@ export class PostgresPopulationRepository
         run,
         checkpoint,
         ...evidencePackageContext(tx, runId),
+        // Story 3.9: this stage takes terminal transitions too, so it completes the Run.
+        ...runResultContext(tx, runId),
         auditEvents: createAuditEventWriter(
           tx,
           new SystemClock(),

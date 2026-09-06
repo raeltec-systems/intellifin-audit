@@ -1,7 +1,8 @@
 import { canonicalJson, type JsonValue } from '../canonical-json.js';
 import { COMPLIANCE_OBSERVATION_FIELDS } from '../procedures/plan-compiler.js';
 import { isTemplateId, type TemplateId } from '../procedures/templates.js';
-import { adapterLookupColumn } from './execution.js';
+import type { ExecutablePlan } from '../procedures/executable-plan.js';
+import { adapterLookupColumn, classifyPlanTargets } from './execution.js';
 import { normalizeObservedAt, type ObservationCoverage } from './observation.js';
 import { populationUtcDate, type PopulationCheck, type PopulationCheckName } from './population.js';
 
@@ -411,6 +412,45 @@ export function snapshotFreshness(input: SnapshotFreshnessInput): GateDiagnostic
   if (generated < periodEnd) return 'snapshot-stale';
   if (generated > initiated) return 'snapshot-future-dated';
   return null;
+}
+
+/**
+ * The Target Systems a Run had to cover, from the FROZEN plan's classification.
+ *
+ * Exported because the Run-level Gate's coverage row and the published Result's coverage
+ * counts are the same matrix, and a second derivation of its axes would be a second answer
+ * to one question. A plan this build cannot classify requires nothing: the stage refuses
+ * such a plan before its first Work Item, and a required system read out of a plan nobody
+ * could read would be invented.
+ */
+export function requiredTargetSystems(plan: ExecutablePlan | null): readonly string[] {
+  if (plan === null) return [];
+  const classification = classifyPlanTargets(plan);
+  if (classification.unsupported !== null) return [];
+  return classification.adapters.map((entry) => entry.target.registrationId);
+}
+
+/**
+ * The matching key of every INCLUDED population row, in source order.
+ *
+ * The other axis of that same matrix. A row whose lookup column is absent or not a
+ * non-empty string has no key an Observation could be found by, so it is left out here and
+ * counted by the §H mandatory-values row instead — inventing a key would fabricate
+ * coverage for it.
+ */
+export function includedRecordKeys(
+  templateId: string,
+  rows: readonly PopulationGateRow[],
+): readonly string[] {
+  const column = adapterLookupColumn(templateId);
+  if (column === null) return [];
+  const keys: string[] = [];
+  for (const row of rows) {
+    if (row.disposition !== 'included') continue;
+    const value = Object.hasOwn(row.values, column) ? row.values[column] : null;
+    if (typeof value === 'string' && value !== '') keys.push(value);
+  }
+  return keys;
 }
 
 /** One Observation as the coverage row reads it. */

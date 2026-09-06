@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-24 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-25 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -112,6 +112,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Observation rows they describe.
       'run_observation_check',
       'run_observation_evaluation',
+      // Story 3.9. The sealed Result: the System Outcome, the §E.1 row that decided it and
+      // the published document, written once in the transaction that completes the Run.
+      'run_result',
       'run_session_step',
       'run_step_execution',
       'run_work_item',

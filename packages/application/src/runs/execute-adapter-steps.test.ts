@@ -19,6 +19,10 @@ import {
   type ProcedureTargetSnapshot,
   type RaisedException,
   type RunRecord,
+  type RunResultConditionCount,
+  type RunResultExclusion,
+  type RunResultFinding,
+  type RunResultFindings,
   type TargetSystemKind,
 } from '@intellifin/domain';
 import { executeAdapterSteps, type AdapterExecutionDependencies } from './execute-adapter-steps.js';
@@ -42,6 +46,7 @@ import {
   type ResolvedCredential,
   type SessionStepRecord,
   type StepExecutionRecord,
+  type StoredRunResult,
   type WorkItemRecord,
 } from './execution-ports.js';
 
@@ -221,6 +226,9 @@ class FakeRepository implements AdapterExecutionRepository {
     disposition: 'included' as const,
   }));
   integrity: { evidenceId: string }[] = [];
+  /** Story 3.9. The Result this Run sealed, and the exclusions it publishes. */
+  result: StoredRunResult | null = null;
+  exclusions: RunResultExclusion[] = [];
   private sequence = 0;
 
   constructor(private currentPlan: ExecutablePlan | null) {}
@@ -450,6 +458,71 @@ class FakeRepository implements AdapterExecutionRepository {
           workItemId: null,
           record: row.evidenceId,
         })),
+
+      /* --------------------------------------------------------- Story 3.9 --- */
+
+      readResult: async () => repository.result,
+      writeResult: async (result) => {
+        repository.result = result;
+      },
+      readResultExclusions: async () => repository.exclusions,
+      // Derived from the evaluations this stage actually stored, so the outcome the
+      // Result seals is decided by what the Run produced rather than by a fixture.
+      readConditionCounts: async () => {
+        const counts = new Map<string, RunResultConditionCount>();
+        for (const row of repository.evaluations.values()) {
+          const key = `${row.evaluation.conditionId} ${row.evaluation.origin} ${String(row.evaluation.confirmation)} ${row.evaluation.value}`;
+          const existing = counts.get(key);
+          counts.set(key, {
+            conditionId: row.evaluation.conditionId,
+            origin: row.evaluation.origin,
+            confirmation: row.evaluation.confirmation,
+            value: row.evaluation.value,
+            total: (existing?.total ?? 0) + 1,
+          });
+        }
+        return [...counts.values()];
+      },
+      readResultFindings: async () => {
+        const pick = (value: 'EXCEPTION' | 'UNEVALUATED'): RunResultFindings => {
+          const byObservation = new Map<string, RunResultFinding>();
+          for (const row of repository.evaluations.values()) {
+            if (row.evaluation.value !== value) continue;
+            const observation = repository.observations.find(
+              (entry) => entry.record.observationId === row.observationId,
+            );
+            if (observation === undefined) continue;
+            const existing = byObservation.get(row.observationId);
+            byObservation.set(row.observationId, {
+              populationRecordKey: observation.record.populationRecordKey,
+              targetSystem: observation.record.targetSystem,
+              value,
+              conditionIds: [...(existing?.conditionIds ?? []), row.evaluation.conditionId],
+              diagnostics: [
+                ...(existing?.diagnostics ?? []),
+                ...(row.evaluation.diagnostic === null ? [] : [row.evaluation.diagnostic]),
+              ],
+              fields: Object.fromEntries(
+                observation.record.attributes.map((attribute) => [
+                  attribute.name,
+                  attribute.normalizedValue,
+                ]),
+              ),
+            });
+          }
+          const records = [...byObservation.values()];
+          return { total: records.length, records };
+        };
+        // An Exception outranks: a record with both is a Control Failure finding, and
+        // listing it twice would count one record as two.
+        const exceptions = pick('EXCEPTION');
+        const raised = new Set(exceptions.records.map((entry) => entry.populationRecordKey));
+        const unevaluated = pick('UNEVALUATED');
+        const remaining = unevaluated.records.filter(
+          (entry) => !raised.has(entry.populationRecordKey),
+        );
+        return { exceptions, unevaluated: { total: remaining.length, records: remaining } };
+      },
     });
   }
 

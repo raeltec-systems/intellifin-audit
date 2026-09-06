@@ -2,11 +2,19 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   COMPLIANCE_OBSERVATION_FIELDS,
+  POPULATION_CHECK_NAMES,
+  RULE_DOES_NOT_NAME_VALUE,
+  coverageFindings,
   exceptionFingerprint,
   findProcedureTemplate,
   includePopulation,
   initialDraftCompliance,
+  populationFieldFindings,
   reduceComplianceEvaluations,
+  runGateChecks,
+  runGateDecision,
+  systemOutcome,
+  tallyGateFindings,
   utf8Bytes,
   type EvaluationValue,
   type ExecutablePlan,
@@ -18,6 +26,7 @@ import {
   type TemplateId,
 } from '@intellifin/domain';
 import {
+  OBSERVATION_CHECK_DIAGNOSTIC,
   buildAdapterObservations,
   parseExtractionRows,
   registerObservations,
@@ -183,6 +192,9 @@ interface Outcome {
   /** Every population row's disposition, in source order, so an absence can be explained. */
   readonly classified: readonly PopulationRow[];
   readonly context: Context;
+  /** The declared schema of the population dataset, for the §H field rows. */
+  readonly declaredSchema: readonly string[];
+  readonly templateId: TemplateId;
 }
 
 /**
@@ -201,7 +213,9 @@ async function evaluate(input: {
   readonly references: readonly { bytes: Uint8Array; mediaType: string }[];
 }): Promise<Outcome> {
   const template = findProcedureTemplate(input.templateId);
-  const populationRows = read(input.populationFile)[input.populationKey] as Record<string, JsonValue>[];
+  const dataset = read(input.populationFile);
+  const declaredSchema = dataset['declared_schema'] as string[];
+  const populationRows = dataset[input.populationKey] as Record<string, JsonValue>[];
   const classified = includePopulation(populationRows, template.inclusionRule, PERIOD);
   const records: PopulationRecord[] = classified
     .filter((row) => row.disposition === 'included')
@@ -263,8 +277,93 @@ async function evaluate(input: {
     diagnostics: new Map([...reasons].map(([key, list]) => [key, list.join(' | ')])),
     classified,
     context,
+    declaredSchema,
+    templateId: input.templateId,
   };
 }
+
+/**
+ * The terminal outcome one golden population reaches, through the real Gate and the real
+ * §E.1 table.
+ *
+ * The Gate is run over what THIS pipeline produced — the coverage matrix from its own
+ * Observations, and §H's population-field rows over its own classified rows — rather than
+ * over a verdict typed beside it. The population reconciliation's own checks are supplied
+ * as passing, because the datasets reconcile exactly: what makes these Runs Inconclusive
+ * is what the golden data seeds, and a check failed by hand here would prove nothing.
+ */
+function terminalOutcome(outcome: Outcome): { readonly outcome: string; readonly failed: readonly string[] } {
+  const included = outcome.classified.filter((row) => row.disposition === 'included');
+  const unnamed = [...outcome.context.evaluations].filter((row) =>
+    row.evaluation.diagnostic?.includes(RULE_DOES_NOT_NAME_VALUE) === true,
+  );
+  const results = runGateChecks({
+    populationChecks: POPULATION_CHECK_NAMES.map((name) => ({ name, passed: true })),
+    population: {
+      rowsParsed: outcome.classified.length,
+      included: included.length,
+      excluded: outcome.classified.filter((row) => row.disposition === 'excluded').length,
+      indeterminate: outcome.classified.filter((row) => row.disposition === 'indeterminate').length,
+      unexplained: [],
+    },
+    snapshot: null,
+    findings: [
+      ...populationFieldFindings({
+        templateId: outcome.templateId,
+        declaredSchema: outcome.declaredSchema,
+        allowVersionedDuplicates: false,
+        rows: outcome.classified,
+      }),
+      ...tallyGateFindings(
+        coverageFindings({
+          requiredTargetSystems: [TARGET.registrationId],
+          includedRecordKeys: outcome.context.observations.map(
+            (row) => row.record.populationRecordKey,
+          ),
+          observations: outcome.context.observations.map((row) => ({
+            targetSystem: row.record.targetSystem,
+            populationRecordKey: row.record.populationRecordKey,
+            coverage: row.coverage,
+            workItemId: row.record.workItemId,
+          })),
+        }),
+      ),
+      // The six per-Observation rows, rolled up through the SAME table the command uses.
+      ...tallyGateFindings(
+        outcome.context.checks
+          .filter((row) => row.outcome === 'FAIL')
+          .map((row) => ({
+            diagnostic: OBSERVATION_CHECK_DIAGNOSTIC[row.check],
+            targetSystem: null,
+            workItemId: null,
+            record: row.observationId,
+          })),
+      ),
+      ...(unnamed.length === 0
+        ? []
+        : [{ diagnostic: 'unnamed-value' as const, total: unnamed.length, targetSystems: [], workItems: [], records: [] }]),
+    ],
+  });
+  const gate = runGateDecision(results);
+  const values = [...outcome.context.evaluations].map((row) => row.evaluation.value);
+  const decided = systemOutcome({
+    runState: gate.state,
+    gatePassed: gate.passed,
+    // Epic 3 produces evaluations of origin RULE only: nothing is ever pending.
+    pending: 0,
+    unevaluated: values.filter((value) => value === 'UNEVALUATED').length,
+    exceptions: outcome.context.exceptions.length,
+  });
+  return { outcome: decided.outcome, failed: gate.failed };
+}
+
+/** The addendum §E.1 outcome name each expectation file uses. */
+const EXPECTED_OUTCOMES: Readonly<Record<string, string>> = {
+  Pass: 'PASS',
+  'Control Failure': 'CONTROL_FAILURE',
+  Inconclusive: 'INCONCLUSIVE',
+  'Run Failed': 'RUN_FAILED',
+};
 
 interface ExpectationCase {
   readonly case_id: string;
@@ -281,6 +380,13 @@ function expectations(file: string): readonly ExpectationCase[] {
   // A directory or key read that silently returned nothing would make every case vacuous.
   expect(cases.length).toBeGreaterThan(10);
   return cases;
+}
+
+/** The whole-population terminal outcome the expectation file names, read off disk. */
+function expectedTerminalOutcome(file: string): string {
+  const declared = (read(file)['run_expectation'] as { terminal_outcome: string }).terminal_outcome;
+  expect(Object.hasOwn(EXPECTED_OUTCOMES, declared)).toBe(true);
+  return EXPECTED_OUTCOMES[declared]!;
 }
 
 /** Cases that name a record. The rest describe configuration states, not rows. */
@@ -333,6 +439,21 @@ describe('golden populations, evaluated', () => {
     expect(outcome.context.exceptions.map((raised) => raised.populationRecordKey).sort()).toEqual([
       'AG-1003', 'AG-1004', 'AG-1005',
     ]);
+
+    // Story 3.9: the whole population, through the real Gate and the real §E.1 table, seals
+    // at the terminal outcome the EXPECTATION FILE names. Three Exceptions are present and
+    // the outcome is NOT Control Failure, because the Gate row sits above it: AG-1007 is
+    // duplicated in the Source and its match is ambiguous, and AG-1006 carries a role the
+    // RoleMatrix does not declare. A Pass reached by counting Exceptions alone is exactly
+    // what the order of the table prevents.
+    const sealed = terminalOutcome(outcome);
+    expect(sealed.outcome).toBe(
+      expectedTerminalOutcome('fixtures/northstar/expectations/p-2-sod-conflicts.json'),
+    );
+    expect(sealed.outcome).toBe('INCONCLUSIVE');
+    expect([...sealed.failed].sort()).toEqual([
+      'ambiguous-match', 'duplicate-primary-keys', 'per-record-coverage', 'unnamed-value',
+    ]);
   });
 
   it('P-3 High-Value Transactions matches every per-record expectation', async () => {
@@ -381,6 +502,17 @@ describe('golden populations, evaluated', () => {
     expect(outcome.context.exceptions.map((raised) => raised.populationRecordKey).sort()).toEqual([
       'TX-500003', 'TX-500004', 'TX-500005', 'TX-500006',
     ]);
+
+    // Story 3.9: four Exceptions, and still Inconclusive — TX-500007 carries no processed
+    // time, TX-500008 is duplicated in the Source, and TX-500009's approval decisions
+    // contradict each other. The expectation file names the outcome; the §E.1 order is
+    // what makes the Gate row win over the four Control Failures underneath it.
+    const sealed = terminalOutcome(outcome);
+    expect(sealed.outcome).toBe(
+      expectedTerminalOutcome('fixtures/northstar/expectations/p-3-high-value-approvals.json'),
+    );
+    expect(sealed.outcome).toBe('INCONCLUSIVE');
+    expect(sealed.failed.length).toBeGreaterThan(0);
   });
 
   it('is checked against the real datasets, not a copy of them', () => {

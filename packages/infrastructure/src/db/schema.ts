@@ -1186,3 +1186,58 @@ export const runGateCheck = pgTable('run_gate_check', {
   // a Work Item on the Result under a check it passed.
   check('run_gate_check_pass_names_nothing',sql`${t.outcome}<>'PASS' OR (jsonb_array_length(${t.targetSystems})=0 AND jsonb_array_length(${t.workItems})=0 AND jsonb_array_length(${t.records})=0 AND ${t.total}=0)`),
 ]);
+
+/**
+ * Generation 25 — the sealed Result (Story 3.9).
+ *
+ * One row per Run, written by `CompleteRun` at the terminal transition, in the SAME
+ * transaction as the terminal Run state and the Evidence package seal. It carries the
+ * System Outcome, the addendum §E.1 row that decided it, the Gate verdict that row read,
+ * the version's own scope statement verbatim, and the published document an auditor reads.
+ *
+ * The CHECKs pin the outcome vocabulary, the §E.1 row-to-outcome mapping, the
+ * outcome-to-Run-state agreement and — the one that matters most — that a `PASS` is
+ * impossible while the Gate did not pass. That last one is the story's central rule stated
+ * where no command, migration or psql session can route around it: a passed Gate is
+ * NECESSARY for a Pass, and this is the half of "necessary but never sufficient" a
+ * database can express.
+ *
+ * Two things the COMMAND cannot route around either, because `0025_*.sql` says them in
+ * triggers: a Run may not reach a terminal state without one of these rows, and a SEALED
+ * Result can never be UPDATEd. The only permitted update is the sealing of the one unsealed
+ * outcome there is (`PENDING_CONFIRMATION`), which must raise the version by exactly one.
+ */
+export const runResult = pgTable('run_result', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
+  /** 1 when the Result is written; raised by one on the sealing of a pending Result. */
+  version: integer('version').notNull(),
+  outcome: text('outcome').$type<import('@intellifin/domain').SystemOutcome>().notNull(),
+  /** Which §E.1 row decided, so a Result can say why it says what it says. */
+  outcomeRow: text('outcome_row').$type<import('@intellifin/domain').OutcomeRowId>().notNull(),
+  sealed: boolean('sealed').notNull(),
+  runState: text('run_state').notNull(),
+  /** Read from `run_gate_check`, never inferred from the evaluations. */
+  gatePassed: boolean('gate_passed').notNull(),
+  sealedAt: timestamp('sealed_at',{withTimezone:true}).notNull(),
+  /** The version's stored scope statement, VERBATIM. NULL for an unreadable frozen plan. */
+  scope: text('scope'),
+  publication: jsonb('publication').$type<import('@intellifin/domain').RunResultPublication>().notNull(),
+}, t=>[
+  check('run_result_outcome',sql`${t.outcome} IN ('CANCELED','RUN_FAILED','INCONCLUSIVE','PENDING_CONFIRMATION','CONTROL_FAILURE','PASS')`),
+  // The §E.1 rows, and the outcome each of them produces. A row that produced a different
+  // outcome would be a transcription nobody could check from the data.
+  check('run_result_row',sql`${t.outcomeRow} = CASE ${t.outcome} WHEN 'CANCELED' THEN 'canceled' WHEN 'RUN_FAILED' THEN 'run-failed' WHEN 'PENDING_CONFIRMATION' THEN 'pending-confirmation' WHEN 'CONTROL_FAILURE' THEN 'control-failure' WHEN 'PASS' THEN 'pass' ELSE ${t.outcomeRow} END AND ${t.outcomeRow} IN ('canceled','run-failed','gate-failed','pending-confirmation','unevaluated','control-failure','pass') AND (${t.outcome} <> 'INCONCLUSIVE' OR ${t.outcomeRow} IN ('gate-failed','unevaluated'))`),
+  // Pending Confirmation is the one outcome §E.1 marks "(unsealed)", and the only Result
+  // that is waiting for anything. Everything else is final the moment it is written.
+  check('run_result_sealed',sql`${t.sealed} = (${t.outcome} <> 'PENDING_CONFIRMATION')`),
+  check('run_result_version',sql`${t.version} >= 1`),
+  check('run_result_run_state',sql`${t.runState} IN ('COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`),
+  // Three outcomes ARE Run states ("(Run state)" in §E.1's own cells) and must equal one;
+  // the other three are conclusions only a COMPLETED Run reaches.
+  check('run_result_state_agrees',sql`CASE WHEN ${t.outcome} IN ('CANCELED','RUN_FAILED','INCONCLUSIVE') THEN ${t.runState} = ${t.outcome} ELSE ${t.runState} = 'COMPLETED' END`),
+  // A passed Gate is NECESSARY for a Pass. It is never sufficient, which is a rule about
+  // the evaluations and lives in the command; this is the half a CHECK can hold.
+  check('run_result_pass_requires_gate',sql`${t.outcome} <> 'PASS' OR ${t.gatePassed}`),
+  check('run_result_scope',sql`${t.scope} IS NULL OR length(${t.scope}) <= 10000`),
+  check('run_result_publication',sql`coalesce(jsonb_typeof(${t.publication})='object',false)`),
+]);

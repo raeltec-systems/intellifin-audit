@@ -216,6 +216,10 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
           // `audit_run`, so they go before it or the whole cleanup fails and every later
           // run of this file inherits the rows this one left.
           await sql`DELETE FROM run_gate_check WHERE run_id=${run.id}`;
+          // Story 3.9: the sealed Result names its Run with a real foreign key, so it
+          // goes before the Run — a teardown that does not know about a new table
+          // takes the whole file's cleanup with it.
+          await sql`DELETE FROM run_result WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence_integrity WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence_package WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence WHERE run_id=${run.id}`;

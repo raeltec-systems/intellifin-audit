@@ -159,6 +159,10 @@ describe.skipIf(!url)('the Run-level Evidence Quality Gate against PostgreSQL', 
           await sql`DELETE FROM run_session_step WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_work_item WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_gate_check WHERE run_id=${run.id}`;
+          // Story 3.9: the sealed Result names its Run with a real foreign key, so it
+          // goes before the Run — a teardown that does not know about a new table
+          // takes the whole file's cleanup with it.
+          await sql`DELETE FROM run_result WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence_integrity WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence_package WHERE run_id=${run.id}`;
           await sql`DELETE FROM run_evidence WHERE run_id=${run.id}`;

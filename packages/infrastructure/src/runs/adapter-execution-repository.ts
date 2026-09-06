@@ -50,6 +50,7 @@ import {
 } from '../db/schema.js';
 import { DrizzleRunRepository } from './run-repository.js';
 import { evidencePackageContext } from './evidence-package-repository.js';
+import { runResultContext } from './result-repository.js';
 import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
@@ -127,6 +128,8 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
         run,
         population,
         ...evidencePackageContext(tx, runId),
+        // The Gate's and the Result's shared reads: one implementation, both stages.
+        ...runResultContext(tx, runId),
         checkpoint: stage
           ? {
               revision: stage.revision,
@@ -471,25 +474,6 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
           return rows[0]?.total ?? 0;
         },
 
-        async readGateChecks(): Promise<readonly GateCheckRow[]> {
-          const rows = await tx
-            .select()
-            .from(runGateCheck)
-            .where(eq(runGateCheck.runId, runId))
-            .orderBy(asc(runGateCheck.checkName));
-          return rows.map(
-            (row): GateCheckRow => ({
-              check: row.checkName as GateCheckResult['check'],
-              outcome: row.outcome as GateCheckResult['outcome'],
-              diagnostics: row.diagnostics,
-              targetSystems: row.targetSystems,
-              workItems: row.workItems,
-              records: row.records,
-              total: row.total,
-            }),
-          );
-        },
-
         async saveGateChecks(rows: readonly GateCheckRow[]) {
           if (rows.length === 0) return;
           const decidedAt = new Date();
@@ -511,68 +495,6 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
               })),
             )
             .onConflictDoNothing({ target: [runGateCheck.runId, runGateCheck.checkName] });
-        },
-
-        async saveRunState(state) {
-          await tx.update(auditRun).set({ state }).where(eq(auditRun.runId, runId));
-        },
-
-        async readPopulationFacts(): Promise<RunGatePopulationFacts | null> {
-          const snapshot = (
-            await tx.select().from(populationSnapshot).where(eq(populationSnapshot.runId, runId))
-          )[0];
-          if (!snapshot) return null;
-          // Counted, never derived from the three stored counts: the arithmetic §H's
-          // inclusion row performs is exactly the thing a defect in them would have broken.
-          const counted = await tx
-            .select({ total: sql<number>`count(*)::int` })
-            .from(populationRow)
-            .where(eq(populationRow.runId, runId));
-          const unexplained = await tx
-            .select({ ordinal: populationRow.ordinal })
-            .from(populationRow)
-            .where(
-              sql`${populationRow.runId}=${runId} AND ${populationRow.disposition} <> 'included' AND coalesce(jsonb_array_length(${populationRow.reasons}),0)=0`,
-            )
-            .orderBy(asc(populationRow.ordinal))
-            .limit(GATE_AFFECTED_LIMIT);
-          return {
-            checks: snapshot.checks as readonly PopulationCheck[],
-            included: snapshot.included,
-            excluded: snapshot.excluded,
-            indeterminate: snapshot.indeterminate,
-            rowsParsed: counted[0]?.total ?? 0,
-            unexplained: unexplained.map((row) => row.ordinal),
-            generatedAt: snapshot.generatedAt?.toISOString() ?? null,
-          };
-        },
-
-        async readPopulationRows(): Promise<readonly PopulationGateRow[]> {
-          const rows = await tx
-            .select({
-              ordinal: populationRow.ordinal,
-              values: populationRow.values,
-              disposition: populationRow.disposition,
-            })
-            .from(populationRow)
-            .where(eq(populationRow.runId, runId))
-            .orderBy(asc(populationRow.ordinal))
-            .limit(POPULATION_LIMITS.rows);
-          return rows;
-        },
-
-        async readGateObservations(): Promise<readonly CoverageObservation[]> {
-          const rows = await tx
-            .select({
-              targetSystem: runObservation.targetSystem,
-              populationRecordKey: runObservation.populationRecordKey,
-              coverage: runObservation.coverage,
-              workItemId: runObservation.workItemId,
-            })
-            .from(runObservation)
-            .where(eq(runObservation.runId, runId))
-            .limit(POPULATION_LIMITS.rows);
-          return rows.map((row) => ({ ...row, coverage: row.coverage as CoverageObservation['coverage'] }));
         },
 
         async readFailedObservationChecks() {

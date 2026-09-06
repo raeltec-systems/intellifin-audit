@@ -85,6 +85,8 @@ describe.skipIf(!url)('durable population execution', () => {
           await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${r.id}`;
           await sql`DELETE FROM population_row WHERE run_id=${r.id}`;
           await sql`DELETE FROM population_snapshot WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_gate_check WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_result WHERE run_id=${r.id}`;
           await sql`DELETE FROM run_evidence_integrity WHERE run_id=${r.id}`;
           await sql`DELETE FROM run_evidence_package WHERE run_id=${r.id}`;
           await sql`DELETE FROM population_evidence WHERE run_id=${r.id}`;
