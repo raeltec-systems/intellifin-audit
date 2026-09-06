@@ -1,84 +1,87 @@
 ---
-title: 'Epic 4 decision: how the agent signs in to a system that refuses POST'
+title: 'Epic 4 decision: read-only means no mutation of business data'
 type: 'decision'
 created: '2026-09-06'
+revised: '2026-09-06'
 status: 'final'
+supersedes: 'the first version of this document, which defended a GET-only sign-in'
 ---
 
-# How the agent signs in to a system that refuses POST
+# Read-only means no mutation of audited business data
 
-**Taken in the main thread rather than left to an implementer, because it changes a decision
-Story 1.8 recorded and touches an invariant that has its own test.** Flagged for the owner in the
-Epic 4 report.
+> **Revised after owner review, and the first version was wrong.** It argued that because
+> `enforceReadOnly` refuses every method but GET and HEAD, a sign-in had to be redesigned as an
+> `Authorization` header on a GET. The owner's correction: *read-only means no mutation of
+> audited business data; it should not force a specially invented GET-only sign-in solely to
+> satisfy an earlier fixture rule.* That is right, and the error is recorded rather than
+> deleted.
 
-## The conflict
+## What FR-3 actually requires
 
-Story 4.2 is "Sign in to LoanCore". Story 4.3 supplies the credential just in time and suppresses
-capture during entry. Both need a synthetic system that actually requires a credential.
+> Adapters and the Audit Agent can invoke only **allowlisted read operations** within the
+> Procedure Version's Population Source and Target System scope.
+>
+> Consequences: **Write operations**, arbitrary code or shell execution outside the Agent
+> Workspace sandbox, out-of-scope systems or origins, and out-of-scope parameters are denied
+> and logged.
 
-LoanCore does not. Story 1.8 recorded why, and it was right at the time:
+FR-3 constrains **what the platform may invoke**, and that is enforced by `authorizeToolAction`
+against the registration's frozen `permitted_actions` — which for LoanCore are `navigate`,
+`search`, `open-record`, `read-attribute` and `capture-screenshot`. None of them is a write, and
+none can be added at execution time.
 
-> **LoanCore has no sign-in form, deliberately.** A sign-in is a POST, and every Northstar system
-> refuses a POST at the system level. The audit account is already signed in and the page says
-> so. Registering the account, or a real credential, would be the one thing this environment
-> must not have.
+**Nothing in FR-3 says a Target System must refuse every non-GET.** Story 1.8 added that as a
+second, independent guard — "so that FR-3 is enforced by the system as well as by the
+registration's permitted-action allowlist" — which was a good instinct. My error was promoting
+it from a helpful redundancy to the requirement itself, and then contorting a real capability
+around it.
 
-`enforceReadOnly` runs BEFORE routing in `apps/northstar/src/read-only.ts`, refuses any method
-but `GET`/`HEAD` with a verbatim rule sentence, and `read-only.test.ts` walks the exported route
-table so a route added later is covered the moment it exists. That is a system-level invariant
-and it is not up for negotiation for one story's convenience.
+## The mistake in one line
 
-## What was decided
+**I used the HTTP method as a proxy for mutation.** They are not the same thing. A sign-in POST
+creates a session; it mutates no audited business data. Refusing it protects nothing, and the
+GET-with-header design I invented to get around my own rule made the fixture *less* like a real
+Target System — which is the one thing a synthetic fixture must not be.
 
-**LoanCore gains authentication on GET, through an `Authorization` header. No form, no POST, no
-relaxation of the read-only rule.**
+## What is decided now
 
-- An unauthenticated `GET` to any `/loancore` path answers **401** with `WWW-Authenticate` and a
-  JSON body, in the shape the 405 denial already uses — a refusal a Run must record should not
-  need parsing out of a page.
-- The agent's sign-in Session Step is a `GET` to LoanCore's session endpoint carrying the
-  credential in the header. LoanCore answers with a session cookie. Every later `GET` carries the
-  cookie, and the workspace holds it.
-- The credential is a SYNTHETIC one, declared in the fixtures like every other synthetic value,
-  and resolved through the Story 3.3 `CredentialResolver` port whose result has no field holding
-  a value.
+**The system-level guard refuses MUTATION, not methods.** It keeps every property that made the
+original rule good and drops the false equivalence:
 
-## Why not the alternatives
+- **Still one rule, applied ONCE, ABOVE routing**, so a route added by a later story cannot
+  forget it.
+- **Still fail-closed**: every `Route` declares itself, and the default is mutating. A new route
+  is refused until it says otherwise, which is the same forcing function the method rule had.
+- **Still refuses a write to a path no route serves**, because the rule runs before routing —
+  "there is nothing here" and "this system does not accept that" stay different statements to a
+  Run.
+- **The denial still names FR-3 and is still JSON on every surface**, so a Run can record it
+  without parsing a page.
 
-**Relax the read-only rule for one path.** Rejected. It breaks a system-level invariant with its
-own test, for one route, and the invariant's whole point is that no route can forget it.
+What changes is the predicate: from *"is the method GET or HEAD?"* to *"is this a declared
+non-mutating operation?"*. `POST /loancore/sign-in` is declared non-mutating and permitted.
+Everything that would touch business data is refused exactly as before, and now for the reason
+that is actually true.
 
-**A `method="get"` sign-in form.** Rejected categorically. A form with no method, or with `get`,
-puts the credential in the URL, in browser history, in the Referer header and in every access
-log. This repository has shipped that defect three times and now has `form-method.test.ts` to
-stop it; adding it deliberately to a fixture is not a test, it is the defect.
+## Consequences
 
-**Leave LoanCore unauthenticated and prove the sign-in step some other way.** Rejected. The
-credential path would then ship exercised only against a stub, and this project's own rule is
-that a guard proven only against a stub is proven against the stub. Story 4.11 has to assert
-that no credential reaches any artifact; with no credential in play, that assertion passes
-against a system that has no protection at all.
+- **LoanCore gets a real sign-in form.** A POST, with a body, like a real application. The
+  `Authorization`-header-on-GET design is dropped.
+- **Story 4.3's capture suppression recovers its original meaning AND keeps the wider one.**
+  "Suppress capture during credential entry" now covers a real typed form again, while the
+  byte-level scanner Story 4.3 built still covers headers, snapshots, screenshots and frames.
+  Both cases now exist in the fixtures, which is what the spec anticipated before I narrowed it.
+- **The read-only guarantee is not weakened.** It is enforced in two independent places, as it
+  always was: the platform's own gate (`authorizeToolAction`, over frozen `permitted_actions`)
+  and the system's guard. Only the second one's predicate becomes honest.
+- **Story 1.8's real rule is untouched and is why the credential stays synthetic**: registering
+  a REAL credential is the one thing this environment must not have.
 
-## What this changes downstream
+## What I am NOT doing
 
-- **Story 4.2's sign-in Session Step is proved by the session being ESTABLISHED**: the credential
-  resolved through the port, the retrieval audited by Target System and never by reference, a
-  401 before it and a 200 after it, and the session held in the workspace. Not by "a form
-  submitted", which there still is not.
-- **Story 4.3's "capture during entry" becomes "capture during credential USE".** There is no
-  typing, so the target of the suppression is the request header and any network artifact,
-  Structural Snapshot, screenshot or frame that could carry it. That is a stronger guarantee
-  than "do not screenshot while typing", not a weaker one, and it is the guarantee that matters:
-  the credential must have nowhere to land, whatever the capture mechanism.
-- **`apps/northstar` gains one middleware above routing, beside `enforceReadOnly`**, so
-  authentication is a system-level property for the same reason read-only is. A route added
-  later is authenticated before it is written.
-- **The other synthetic systems stay unauthenticated.** Only LoanCore needs this, because only
-  LoanCore is the browser-driven Target System of P-1. Adding it everywhere would make every
-  Epic 3 adapter test carry a credential for no reason, and Epic 3's adapter path deliberately
-  resolves its credential from the frozen registration rather than from a header this fixture
-  invented.
-- **Story 1.8's note in CLAUDE.md is superseded on this one point and must be updated in the
-  same commit** as the change, with the reason. Its second sentence — that registering a REAL
-  credential is the one thing this environment must not have — stands unchanged and is exactly
-  why the credential here is synthetic and lives in the fixtures.
+**Not removing the system-level guard.** The owner corrected its predicate, not its existence,
+and a fixture that enforces nothing would make Story 4.11's abuse tests prove less.
+
+**Not permitting a non-mutating POST anywhere it is not declared.** The allowlist is per route
+and explicit; there is no "POST is fine if it looks like a read" heuristic, because that is the
+same category error one level down.
