@@ -53,6 +53,14 @@ export const PROCEDURE_NAMED_ROUTES: Readonly<Record<string, true>> = {
 export function rendersOwnTrail(pathname: string): boolean {
   const segments = pathname.split('/').filter((segment) => segment !== '');
   if (segments.length < 2) return false;
+  // Run Detail and its five tabs trail themselves too, for the same reason: the shell
+  // can say `Runs / <uuid>` and nothing more, while the page knows the Control name and
+  // which tab is open. Story 3.10 shipped a page trail beside the shell's, which gave
+  // Run Detail two `<nav aria-label="Breadcrumb">` landmarks nobody could tell apart —
+  // and the accessibility gate could not see it, because `landmark-unique` is a
+  // best-practice rule rather than a WCAG-tagged one and never reaches
+  // `results.violations`.
+  if (segments[0] === 'runs') return true;
   if (segments[0] !== 'procedures') return false;
   return !Object.hasOwn(PROCEDURE_NAMED_ROUTES, segments[1] as string);
 }

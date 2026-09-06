@@ -107,7 +107,9 @@ test.describe('Run initiation as an Auditor', () => {
     expect(stored).toMatchObject({ procedure_id: procedureId, version_id: versionId, initiator_id: auditorId, state: 'QUEUED', kind: 'STANDARD' });
     expect(stored!.correlation_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     await page.reload();
-    await expect(page.getByText('Queued', { exact: true })).toBeVisible();
+    // Twice on the Result tab, and both are the contract's: the record header badge and
+    // the conclusion triptych's own Run lifecycle cell (Story 3.11).
+    await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(controlName, { exact: true }).first()).toBeVisible();
     await expect(page.getByText(/2026-08-01/).first()).toBeVisible();
     await expect(page.getByText(/2026-08-31/).first()).toBeVisible();
@@ -117,7 +119,10 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(details.getByText(stored!.correlation_id as string, { exact: true })).toBeVisible();
     await expect(details.getByText('Standard', { exact: true })).toBeVisible();
     await expect(details.getByRole('link', { name: 'v1', exact: true })).toHaveAttribute('href', `/procedures/${procedureId}/versions/${versionId}`);
-    await expect(details.getByText(new Date(stored!.initiated_at as string).toISOString().replace('T', ' ').replace('Z', ' UTC'), { exact: true })).toBeVisible();
+    // ISO 8601 UTC with `Z`, which is the format EXPERIENCE.md fixes; Story 3.10 rendered
+    // `2026-09-06 09:00:00 UTC`, which is not ISO 8601, and Story 3.11 adopted the
+    // contract's own spelling on every Run surface.
+    await expect(details.getByText(new Date(stored!.initiated_at as string).toISOString(), { exact: true })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
     const screenshot = test.info().outputPath('queued-run.png');
@@ -192,7 +197,12 @@ test.describe('Run initiation as an Auditor', () => {
     await page.getByRole('button', { name: 'Retry same period', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Initiate Run', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${persisted[0]!.run_id}$`));
-    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(page.getByText('Completed', { exact: true }).first()).toBeVisible();
+    // This fixture writes an EMPTY publication document, which is storable — the column's
+    // CHECK says only that it is an object. The surface must say so and still show the
+    // outcome, the seal and the version, rather than answering a framework 500.
+    await expect(page.getByText('The published Result document could not be read.')).toHaveCount(1);
+    await expect(page.getByText('Pass', { exact: true }).first()).toBeVisible();
     expect(await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId} AND period_from='2026-07-01' AND period_to='2026-07-31'`).toHaveLength(1);
     expect(await sql`SELECT id FROM pgboss.job WHERE data->>'runId'=${persisted[0]!.run_id}`).toHaveLength(1);
   });
@@ -219,7 +229,7 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(page.getByText('Run canceled.', { exact: true })).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText('Canceled', { exact: true })).toBeVisible();
+    await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(new RegExp(`Canceled by ${auditorId} at `))).toBeVisible();
     // A queued Run has no process holding it, so the web finished the job: the dispatch
     // job is gone in the same transaction that wrote CANCELED.
@@ -244,7 +254,7 @@ test.describe('Run initiation as an Auditor', () => {
 
     await page.getByRole('link', { name: 'Open the linked Run', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${successor!.id as string}$`));
-    await expect(page.getByText('Queued', { exact: true })).toBeVisible();
+    await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: runId, exact: true })).toBeVisible();
     // Cancel the successor so the Procedure has no active Run left behind. This click is
     // the one that races hydration: the anchor above did a full document navigation.
@@ -287,7 +297,7 @@ test.describe('Native Run initiation', () => {
     await page.goto(`/procedures/${procedureId}?requestToken=${token}&from=2026-05-01&to=2026-05-31`);
     await page.getByRole('button', { name: 'Retry same period', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${runId}$`));
-    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(page.getByText('Completed', { exact: true }).first()).toBeVisible();
     expect(await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId} AND period_from='2026-05-01' AND period_to='2026-05-31'`).toHaveLength(1);
     expect(await sql`SELECT id FROM pgboss.job WHERE data->>'runId'=${runId}`).toHaveLength(1);
   });

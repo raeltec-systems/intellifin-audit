@@ -312,3 +312,55 @@ export function publishRunResult(input: RunResultInput): RunResultPublication {
 export function declaredObservationFields(templateId: string): readonly string[] {
   return isTemplateId(templateId) ? Object.keys(COMPLIANCE_OBSERVATION_FIELDS[templateId]) : [];
 }
+
+/**
+ * Whether a stored `publication` document is one this build can read.
+ *
+ * `run_result.publication` is `jsonb` and its CHECK says only that it is an object, so a
+ * row written by an older build, by a fixture or by a psql session can hold a shape this
+ * build's fields do not exist in — and a surface that reached into it would answer a
+ * framework 500 for the whole Run. It is request-shaped input, exactly as the Evidence
+ * seal's lists are.
+ *
+ * STRUCTURAL, not a re-derivation: it checks that the document has the members a reader
+ * projects, never that the counts agree with anything. "The Result is internally
+ * consistent" is a claim about what PUBLISHED it, and `publishRunResult` is where that
+ * lives.
+ */
+export function isRunResultPublication(value: unknown): value is RunResultPublication {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const document = value as Record<string, unknown>;
+  const population = document['population'];
+  const period = document['period'];
+  const gate = document['gate'];
+  const evidence = document['evidence'];
+  const counts = (entry: unknown, keys: readonly string[]): boolean =>
+    typeof entry === 'object' &&
+    entry !== null &&
+    keys.every((key) => typeof (entry as Record<string, unknown>)[key] === 'number');
+  const findings = (entry: unknown): boolean =>
+    typeof entry === 'object' &&
+    entry !== null &&
+    typeof (entry as { total?: unknown }).total === 'number' &&
+    Array.isArray((entry as { records?: unknown }).records);
+  return (
+    typeof document['statement'] === 'string' &&
+    counts(population, ['rowsParsed', 'included', 'excluded', 'indeterminate']) &&
+    typeof period === 'object' &&
+    period !== null &&
+    typeof (period as { from?: unknown }).from === 'string' &&
+    typeof (period as { to?: unknown }).to === 'string' &&
+    Array.isArray(document['exclusions']) &&
+    Array.isArray(document['coverage']) &&
+    Array.isArray(document['conditions']) &&
+    Array.isArray(document['controlFields']) &&
+    findings(document['exceptions']) &&
+    findings(document['unevaluated']) &&
+    typeof gate === 'object' &&
+    gate !== null &&
+    typeof (gate as { passed?: unknown }).passed === 'boolean' &&
+    typeof evidence === 'object' &&
+    evidence !== null &&
+    typeof (evidence as { state?: unknown }).state === 'string'
+  );
+}

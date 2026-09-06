@@ -1081,13 +1081,15 @@ a {
   .ls-main {
     padding: var(--spacing-4);
   }
-}
 
-/* Below 900px, reading mode proper: EXPERIENCE.md says tables become label/value
- * stacks rather than scrolling. Every cell carries its column name as `data-label`,
- * and `DataTable` states each element's role explicitly, so `display: block` here
- * restyles the table without stripping its semantics. */
-@media (max-width: 899px) {
+  /* EXPERIENCE.md → Responsive & Platform: at 900-1023px "tables become label/value
+   * stacks". They were stacked below 900px instead, which left that whole band
+   * scrolling a table the contract says should be stacked there; Story 3.11 owns the
+   * Runs table's responsive behaviour and moves the breakpoint to the contract's. Every
+   * cell carries its column name as `data-label`, and `DataTable` states each element's
+   * role explicitly, so `display: block` restyles the table without stripping the
+   * semantics `<th scope>` depends on. The < 900px row adds only the Builder's
+   * desktop-only note, which stays below. */
   .ls-table {
     min-width: 0;
   }
@@ -1124,7 +1126,12 @@ a {
     line-height: var(--type-caption-line-height);
     font-weight: var(--type-caption-font-weight);
   }
+}
 
+/* Below 900px: EXPERIENCE.md's last row adds only the Builder and Version review
+ * desktop-only note. The table stacking is one band up, at 1023px, where the contract
+ * puts it. */
+@media (max-width: 899px) {
   .ls-topbar {
     padding: 0 var(--spacing-4);
   }
@@ -1141,4 +1148,499 @@ a {
   .ls-builder-authoring {
     display: none;
   }
+}
+
+/* The action bar (DESIGN.md → Action bar and unavailable actions): actions sit in the
+ * record header at `{spacing.control-sm}`, and a disabled one keeps its position. It
+ * shipped in Story 2.7 with no rule at all, so every version action rendered as a bare
+ * stack; the scan added in Story 3.11 is what found it. */
+.ls-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+/* ------------------------------------------------------------------ Story 3.11 ---
+ * The Runs list and the five Run Detail tabs.
+ *
+ * Every class a component can name needs a rule that paints it: `stylesheet.test.ts`
+ * requires one for each, because a class that exists only in the TSX renders as
+ * unstyled text with the whole suite green. Every value here reads a token from
+ * `tokens.css`; a `var(--x)` naming nothing falls back silently, and that test now
+ * catches that too. */
+
+/* The contract's absent marker. The em dash is decorative — the sentence beside it is
+ * what a screen reader hears — so it is spaced to read as a value, not as punctuation. */
+.ls-absent {
+  color: var(--color-text-secondary);
+}
+
+/* An overline header. DESIGN.md uses it for the Gate's two group headers and every
+ * label column on the detail surfaces. */
+.ls-overline {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  text-transform: uppercase;
+}
+
+/* The two badge kinds outside the nine families. Neutral by construction: a kind is not
+ * a status, and an Adapter extract wearing the success green would read as a passed
+ * check. Only a contradiction earns a colour, because only it is a finding. */
+.ls-kind-badge,
+.ls-corroboration-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  height: var(--spacing-badge-sm);
+  padding: 0 var(--spacing-2);
+  border-radius: var(--rounded-full);
+  border: 1px solid var(--color-neutral-border);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  white-space: nowrap;
+}
+
+.ls-corroboration-badge--neutral {
+  border-color: var(--color-neutral-border);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.ls-corroboration-badge--contradictory {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+/* Untrusted source content: a warning-bordered block of `<pre>` plain text, labelled
+ * with the field it came from. Never rendered as markup, never styled to look like the
+ * platform's own prose. */
+.ls-untrusted {
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--rounded-md);
+  background: var(--color-warning-bg);
+  padding: var(--spacing-2);
+}
+
+.ls-untrusted__label {
+  margin: 0 0 var(--spacing-1);
+  color: var(--color-warning-text);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: var(--type-caption-font-weight);
+}
+
+.ls-untrusted__body {
+  margin: 0;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--color-text-primary);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+/* Cold load: skeleton rows in the shape of the layout, hidden from assistive
+ * technology, with the live region beside them saying what is happening in words. */
+.ls-skeleton {
+  display: block;
+}
+
+.ls-skeleton__rows {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.ls-skeleton__row {
+  height: var(--spacing-6);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-sunken);
+}
+
+/* Pagination, never infinite scroll. Plain links, so a keyboard and a browser with no
+ * JavaScript reach both of them. */
+.ls-pagination {
+  display: flex;
+  gap: var(--spacing-4);
+}
+
+/* The conclusion triptych: three equal cells divided by hairlines. */
+.ls-triptych {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  overflow: hidden;
+}
+
+.ls-triptych__cell {
+  display: grid;
+  gap: var(--spacing-2);
+  align-content: start;
+  padding: var(--spacing-4);
+  border-left: 1px solid var(--color-border-default);
+}
+
+.ls-triptych__cell:first-child {
+  border-left: none;
+}
+
+.ls-triptych__marker {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-triptych__version {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-triptych__statement {
+  margin: 0;
+  font-size: var(--type-body-font-size);
+  line-height: var(--type-body-line-height);
+}
+
+/* The Evidence Quality Gate checklist. It reads as a trust checkpoint, not an alert
+ * banner: a failed row is marked by an edge and a word, never by a filled red ground. */
+.ls-gate {
+  display: grid;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-gate__count {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-gate__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--spacing-3);
+  align-items: start;
+  padding: var(--spacing-2) var(--spacing-3);
+  border-left: 3px solid var(--color-border-default);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-sm);
+}
+
+.ls-gate__row--pass {
+  border-left-color: var(--color-success-border);
+}
+
+.ls-gate__row--fail {
+  border-left-color: var(--color-warning-border);
+}
+
+.ls-gate__name {
+  margin: 0;
+  font-size: var(--type-row-title-font-size);
+  line-height: var(--type-row-title-line-height);
+  font-weight: var(--type-row-title-font-weight);
+}
+
+.ls-gate__diagnostic {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  align-items: baseline;
+  color: var(--color-warning-text);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-gate__rule {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+}
+
+.ls-gate__affected {
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  overflow-wrap: anywhere;
+}
+
+/* Population reconciliation: labels left, values right-aligned in monospace, and a
+ * difference in the warning text colour so an unaccounted row cannot read as normal. */
+.ls-reconciliation > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-4);
+  align-items: baseline;
+}
+
+.ls-difference {
+  color: var(--color-warning-text);
+}
+
+/* An expansion. `<details>` needs no script and is keyboard-reachable, which a click
+ * handler on a row would not be. */
+.ls-expand > summary {
+  cursor: pointer;
+  color: var(--color-text-link);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-expand > summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* The evaluation card: origin badge, value badge, condition text, no controls. */
+.ls-evaluation {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2) 0;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-evaluation__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+}
+
+.ls-evaluation__condition {
+  margin: 0;
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+  overflow-wrap: anywhere;
+}
+
+.ls-finding {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0;
+  border-top: 1px solid var(--color-border-default);
+}
+
+/* The Safe next action and execution failure panels. */
+.ls-safe-next,
+.ls-execution-failure {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-4);
+  background: var(--color-surface-card);
+}
+
+.ls-safe-next {
+  border-color: var(--color-info-border);
+  background: var(--color-info-bg);
+}
+
+.ls-execution-failure {
+  border-color: var(--color-danger-border);
+  background: var(--color-surface-card);
+}
+
+.ls-panel__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+/* The Evidence item card: a header with the source and a kind badge, over the FR-31
+ * fields as caption labels above monospace values. */
+.ls-evidence-item,
+.ls-observation,
+.ls-exception {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) 0;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-evidence-item__header,
+.ls-observation__header,
+.ls-exception__header,
+.ls-grounding__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ls-evidence-item__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+.ls-note {
+  margin: 0;
+  border-left: 3px solid var(--color-warning-border);
+  padding-left: var(--spacing-2);
+  color: var(--color-warning-text);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.ls-grounding {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0;
+  border-top: 1px solid var(--color-border-default);
+}
+
+/* The Execution Timeline's four-column grid. Rows nest by 20px per level; the level is
+ * a custom property so a fourth level (Tool Action, Epic 4) needs no new rule. */
+.ls-timeline {
+  /* The nesting depth, declared here with its default so the property this stylesheet
+   * reads is defined by it. Each row sets its own; a fourth level (Tool Action, Epic 4)
+   * needs no new rule. */
+  --ls-timeline-level: 0;
+  display: grid;
+  gap: var(--spacing-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-timeline__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: var(--spacing-3);
+  align-items: baseline;
+  padding: var(--spacing-2) var(--spacing-3);
+  padding-left: calc(var(--spacing-3) + (var(--ls-timeline-level, 0) * 20px));
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-timeline__nest {
+  padding-left: calc(var(--ls-timeline-level, 0) * 20px);
+}
+
+.ls-timeline__marker {
+  color: var(--color-text-secondary);
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ls-timeline__name {
+  display: grid;
+  gap: var(--spacing-1);
+  overflow-wrap: anywhere;
+}
+
+.ls-timeline__detail {
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-timeline__call {
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-timeline__status {
+  justify-self: end;
+  white-space: nowrap;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+/* 1024–1239px: the Runs table scrolls horizontally with the identifier column fixed.
+ * `position: sticky` on the row header keeps the Run identifier in view while the other
+ * nine columns scroll under it, which is what makes a scrolled row still readable. */
+@media (min-width: 1024px) and (max-width: 1239px) {
+  .ls-table thead th:first-child,
+  .ls-table tbody th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--color-surface-card);
+  }
+
+  .ls-table thead th:first-child {
+    background: var(--color-surface-sunken);
+  }
+
+  .ls-triptych,
+  .ls-evidence-item__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Below 1024px: reading mode. The triptych, the Evidence fields, the Gate rows and the
+ * Timeline all become single-column label/value stacks, exactly as the tables do. */
+@media (max-width: 1023px) {
+  .ls-triptych,
+  .ls-evidence-item__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-triptych__cell {
+    border-left: none;
+    border-top: 1px solid var(--color-border-default);
+  }
+
+  .ls-triptych__cell:first-child {
+    border-top: none;
+  }
+
+  .ls-gate__row,
+  .ls-timeline__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-timeline__row {
+    padding-left: var(--spacing-3);
+  }
+
+  .ls-timeline__status {
+    justify-self: start;
+  }
+
+  .ls-reconciliation > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-1);
+  }
+}
+
+/* The Timeline row's name, apart from its detail: two nodes, so a row can be addressed
+ * and read by its name alone. */
+.ls-timeline__title {
+  font-weight: var(--type-row-title-font-weight);
 }

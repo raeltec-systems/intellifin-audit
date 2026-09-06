@@ -173,6 +173,18 @@ async function start(page: Page, index: number, waitForPopulation = true): Promi
   return runId;
 }
 
+/**
+ * One acquisition count, on the Evidence tab.
+ *
+ * Story 3.11 split Run Detail into five tab ROUTES: the acquisition and its artifact live
+ * under Evidence, and the Result tab carries the sealed Result's own reconciliation. The
+ * journey is unchanged; only the address is.
+ */
+async function openEvidence(page: Page, runId: string): Promise<void> {
+  await page.goto(`/runs/${runId}/evidence`);
+  await expect(page.getByRole('region', { name: 'Population acquisition' })).toBeVisible();
+}
+
 async function displayedCount(page: Page, label: string, value: number): Promise<void> {
   const section = page.getByRole('region', { name: 'Population acquisition' });
   await expect(section.getByText(label, { exact: true }).locator('xpath=following-sibling::dd[1]')).toHaveText(String(value));
@@ -187,6 +199,7 @@ test.describe('Auditor population acquisition', () => {
     // and NOT asserted here: Story 3.8 made the adapter stage run the Run-level Gate when
     // its last Work Item completes, so this Run goes on to conclude on its own — the
     // journey below waits for that deliberately rather than racing it.
+    await openEvidence(page, firstRunId);
     await displayedCount(page, 'Rows acquired', 12);
     await displayedCount(page, 'Included', 12);
     await displayedCount(page, 'Excluded', 0);
@@ -434,10 +447,14 @@ test.describe('Auditor population acquisition', () => {
 
     await page.goto(`/runs/${firstRunId}`);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
-    const section = page.getByRole('region', { name: 'Target System execution' });
-    await expect(section.getByRole('cell', { name: 'RoleMatrix', exact: true })).toBeVisible();
-    await expect(section.getByRole('cell', { name: 'Acquired', exact: true })).toBeVisible();
-    await expect(section.getByRole('cell', { name: 'AccessGate', exact: true })).toBeVisible();
+    // Story 3.11: the Reference Sources and the Work Items are the Execution Timeline's
+    // own nested rows, not a table on the Result tab. The journey is the same — what ran,
+    // in what order, with what state — and the address and the shape are the contract's.
+    await page.goto(`/runs/${firstRunId}/timeline`);
+    const section = page.getByRole('region', { name: 'Execution Timeline' });
+    await expect(section.getByText('RoleMatrix', { exact: true })).toBeVisible();
+    await expect(section.getByText('Acquired', { exact: true })).toBeVisible();
+    await expect(section.getByText('AccessGate', { exact: true })).toBeVisible();
     await expect(section.getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
@@ -445,7 +462,8 @@ test.describe('Auditor population acquisition', () => {
   test('truncated file retains Evidence and reports failed independent count and digest', async ({ page }) => {
     test.setTimeout(90_000);
     const runId = await start(page, 1);
-    await expect(page.getByText('Inconclusive', { exact: true })).toBeVisible();
+    await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
+    await openEvidence(page, runId);
     await expect(page.getByText('declared-count: Failed', { exact: true })).toBeVisible();
     await expect(page.getByText('declared-digest: Failed', { exact: true })).toBeVisible();
     const [evidence] = await sql`SELECT object_key FROM population_evidence WHERE run_id=${runId}`;
@@ -460,6 +478,7 @@ test.describe('Auditor population acquisition', () => {
     // acquisition FAILING, and §E decides the Gate rows after the last Work Item. The Run
     // carries on into its adapter stage and the journey below waits for it deliberately
     // rather than racing it.
+    await openEvidence(page, p3RunId);
     await displayedCount(page, 'Rows acquired', 13);
     await displayedCount(page, 'Included', 10);
     await displayedCount(page, 'Excluded', 2);
@@ -469,9 +488,8 @@ test.describe('Auditor population acquisition', () => {
     expect(rows.find(row => row.key === 'TX-500010')?.disposition).toBe('excluded');
     expect(rows.find(row => row.key === 'TX-500011')?.disposition).toBe('excluded');
     expect(rows.find(row => row.key === 'TX-500007')?.disposition).toBe('indeterminate');
-    // Scoped to the population region: the Run now reaches its adapter stage, so the page
-    // also carries the Target System execution table and a bare `getByRole('table')` is
-    // ambiguous.
+    // Scoped to the population region: the Evidence tab also carries the integrity table
+    // when a sweep has run, so a bare `getByRole('table')` is ambiguous.
     await expect(
       page.getByRole('region', { name: 'Population acquisition' }).getByRole('table'),
     ).toContainText('Invalid date: processed_time');
@@ -613,8 +631,9 @@ test.describe('Auditor population acquisition', () => {
 
     await page.goto(`/runs/${p3RunId}`);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
-    const section = page.getByRole('region', { name: 'Target System execution' });
-    await expect(section.getByRole('cell', { name: 'ApproveNow', exact: true })).toBeVisible();
+    await page.goto(`/runs/${p3RunId}/timeline`);
+    const section = page.getByRole('region', { name: 'Execution Timeline' });
+    await expect(section.getByText('ApproveNow', { exact: true })).toBeVisible();
     await expect(section.getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
@@ -649,7 +668,7 @@ test.describe('Auditor population acquisition', () => {
       expect(Buffer.from(storage.objects.get(String(registered!.object_key))!)).toEqual(await readFile(join(process.cwd(), 'fixtures/northstar/generated', files[0]!)));
       expect(storage.requests.filter(request => request.key === registered!.object_key && request.method === 'PUT')).toHaveLength(1);
       expect((await sql`SELECT count(*)::int AS count FROM population_row WHERE run_id=${runId}`)[0]?.count).toBe(12);
-      await page.reload();
+      await openEvidence(page, runId);
       // The lifecycle label is not asserted here: the resumed worker carries this Run on
       // into its adapter stage and the Run-level Gate concludes it (Story 3.8), so
       // "Running" is a race against the very stage this test just restarted. What the test
@@ -665,7 +684,8 @@ test.describe('Auditor population acquisition', () => {
   test('an unsupported source displays abandoned Evidence without pending verification', async ({ page }) => {
     test.setTimeout(90_000);
     const runId = await start(page, 4);
-    await expect(page.getByText('Run Failed', { exact: true })).toBeVisible();
+    await expect(page.getByText('Run Failed', { exact: true }).first()).toBeVisible();
+    await openEvidence(page, runId);
     const population = page.getByRole('region', { name: 'Population acquisition' });
     await expect(population.getByText('Abandoned', { exact: true })).toBeVisible();
     await expect(population.getByText('Not registered; acquisition stopped.', { exact: true })).toBeVisible();

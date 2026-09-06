@@ -2,7 +2,7 @@
 title: "Story 3.11: See Runs and inspect an adapter Run's Result, Evidence, Exceptions and Timeline"
 type: 'feature'
 created: '2026-09-05'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:

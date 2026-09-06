@@ -7,6 +7,25 @@ import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
   BUILDER_SECTION_NOT_EDITABLE_SENTENCE,
+  CAPTURE_TIME_UNRECORDED,
+  EXECUTION_FAILURE_HEADING,
+  GATE_NOT_EVALUATED,
+  MASKED_BY_BINDING,
+  MASKED_VALUE,
+  MISSED_SCHEDULED_START_TEMPLATE,
+  NOT_COMPARABLE_SENTENCE,
+  NO_EVIDENCE_HEADLINE,
+  RUNS_EMPTY_STATE,
+  RUN_TAB_EMPTY,
+  SAFE_NEXT_ACTION_HEADING,
+  STALE_DATA_ACTION,
+  STALE_DATA_TEMPLATE,
+  SUBMIT_UNAVAILABLE,
+  UNTRUSTED_CONTENT_CLAUSE,
+  UNTRUSTED_CONTENT_SENTENCE,
+  gateCount,
+  runChangeSummary,
+  updatedAtTitle,
   BUILDER_DESKTOP_ONLY_SENTENCE,
   AUTHOR_CANNOT_APPROVE_SENTENCE,
   DECLARED_COUNT_MISSING_SENTENCE,
@@ -232,6 +251,104 @@ describe('the manual-upload restriction', () => {
   });
 });
 
+describe('the Run surfaces copy (Story 3.11)', () => {
+  it("is EXPERIENCE.md's stale-data banner, character for character", () => {
+    // The contract writes it in quotation marks in the "Any / Stale data" row, so the
+    // quotes are part of the match: a paraphrase elsewhere would not satisfy it.
+    expect(experience).toContain(`"${STALE_DATA_TEMPLATE}"`);
+    expect(STALE_DATA_TEMPLATE.endsWith(STALE_DATA_ACTION)).toBe(true);
+    expect(updatedAtTitle('2026-09-06T09:00:00.000Z')).toBe('Updated 2026-09-06T09:00:00.000Z.');
+    expect(updatedAtTitle('x')).not.toContain('{');
+    expect(updatedAtTitle('x')).not.toContain(STALE_DATA_ACTION);
+  });
+
+  it("is EXPERIENCE.md's Evidence empty-state headline", () => {
+    expect(experience).toContain(`"${NO_EVIDENCE_HEADLINE}"`);
+    expect(RUN_TAB_EMPTY.evidence.headline).toBe(NO_EVIDENCE_HEADLINE);
+  });
+
+  it("is EXPERIENCE.md's incomparable-change sentence", () => {
+    expect(experience).toContain(`"${NOT_COMPARABLE_SENTENCE}"`);
+  });
+
+  it("is EXPERIENCE.md's missed-start row, transcribed for the story that grows a Schedule", () => {
+    // Transcribed and deliberately NOT rendered: Epic 3 initiates every Run by hand, so
+    // nothing could truthfully fill `{time}`. Quoting it now is what stops the Schedule
+    // story retyping it — the fourth-retyping lesson from the denial strings.
+    expect(experience).toContain(`"${MISSED_SCHEDULED_START_TEMPLATE}"`);
+    for (const surface of ['../../app/runs/page.tsx', '../runs/RunsTable.tsx']) {
+      const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
+      expect(source, surface).not.toContain('Missed');
+    }
+  });
+
+  it("is EXPERIENCE.md's two disabled-Submit sentences, transcribed for Story 6.3", () => {
+    expect(experience).toContain(`"${SUBMIT_UNAVAILABLE.unsealed}"`);
+    expect(experience).toContain(`"${SUBMIT_UNAVAILABLE.inconclusive}"`);
+  });
+
+  it("derives the Gate header count from DESIGN.md's own example", () => {
+    expect(design).toContain(`"${gateCount(18, 20)}"`);
+    expect(gateCount(18, 20)).toBe('18 of 20 checks passed');
+    expect(gateCount(0, 20)).not.toContain('{');
+  });
+
+  it("builds the untrusted-content sentence from DESIGN.md's own clause", () => {
+    expect(design).toContain(UNTRUSTED_CONTENT_CLAUSE);
+    expect(UNTRUSTED_CONTENT_SENTENCE).toBe('Source content cannot change the Run objective, tool scope, or evaluation.');
+    // Comments stripped first: the component's own doc comment QUOTES the rule it
+    // implements, and a scan that matched prose would fail on the explanation.
+    const source = readFileSync(fileURLToPath(new URL('../runs/UntrustedText.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('UNTRUSTED_CONTENT_SENTENCE');
+    expect(source.replace(/\/\*[\s\S]*?\*\//g, '')).not.toContain('cannot change the Run objective, tool scope');
+  });
+
+  it("is EXPERIENCE.md's masking marker and sentence", () => {
+    expect(experience).toContain(MASKED_VALUE);
+    expect(experience).toContain(`"${MASKED_BY_BINDING}"`);
+  });
+
+  it('names the two panels DESIGN.md names, and renders them from this module', () => {
+    expect(experience).toContain(SAFE_NEXT_ACTION_HEADING);
+    expect(design).toContain(`${EXECUTION_FAILURE_HEADING.toLowerCase()} panel`);
+    const source = readFileSync(fileURLToPath(new URL('../runs/ResultSections.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('SAFE_NEXT_ACTION_HEADING');
+    expect(source).toContain('EXECUTION_FAILURE_HEADING');
+  });
+
+  it('gives every empty state and absent sentence of ours the EmptyState rule', () => {
+    // OURS, not quoted — EXPERIENCE.md gives these surfaces no verbatim sentence, and
+    // pinning one against a file that does not contain it is a test that cannot pass.
+    // They must still name what would appear and refuse to imply a passed control.
+    const ours = [RUNS_EMPTY_STATE, ...Object.values(RUN_TAB_EMPTY)];
+    for (const state of ours) {
+      expect(state.sentence.length).toBeGreaterThan(40);
+      expect(state.sentence.trim().endsWith('.')).toBe(true);
+      expect(state.sentence).toMatch(/does not mean a control passed|not mean a control passed/);
+    }
+    for (const sentence of Object.values(GATE_NOT_EVALUATED)) {
+      expect(sentence).toContain('not the same as a check that passed');
+    }
+  });
+
+  it('renders the Runs empty state from this module, not from inline copy', () => {
+    const source = readFileSync(fileURLToPath(new URL('../runs/RunsTable.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('RUNS_EMPTY_STATE');
+    expect(source).not.toContain('An empty list does not mean');
+  });
+
+  it('says "No change" rather than leaving the Change cell blank', () => {
+    expect(runChangeSummary(0, 0)).toBe('No change');
+    expect(runChangeSummary(2, 1)).toBe('2 new, 1 resolved');
+    expect(runChangeSummary(2, 1)).not.toContain('{');
+  });
+
+  it('states what an Evidence item could not record, in words', () => {
+    expect(CAPTURE_TIME_UNRECORDED).toBe('Capture time was not recorded.');
+    expect(CAPTURE_TIME_UNRECORDED).not.toMatch(/^[-—\s]*$/);
+  });
+});
+
 describe('the Run lifecycle copy', () => {
   it("is EXPERIENCE.md's corrective-action sentence, character for character", () => {
     expect(experience).toContain(RUN_UNCHANGED_SENTENCE);
@@ -252,8 +369,10 @@ describe('the Run lifecycle copy', () => {
     );
     expect(actions).toContain('RUN_UNCHANGED_SENTENCE');
     expect(actions).not.toContain('This Run remains unchanged.');
+    // Story 3.11 moved the cancellation banners into the shared Run Detail frame, so
+    // every one of the five tabs states them from the one constant.
     const detail = readFileSync(
-      fileURLToPath(new URL('../../app/runs/[id]/page.tsx', import.meta.url)),
+      fileURLToPath(new URL('../runs/detail.tsx', import.meta.url)),
       'utf8',
     );
     expect(detail).toContain('runCanceledBy(');

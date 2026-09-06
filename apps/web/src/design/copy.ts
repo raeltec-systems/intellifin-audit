@@ -169,3 +169,221 @@ export const RUN_CANCELED_BY_TEMPLATE = 'Canceled by {actor} at {elapsed}';
 export function runCanceledBy(actor: string, at: string): string {
   return RUN_CANCELED_BY_TEMPLATE.replace('{actor}', actor).replace('{elapsed}', at);
 }
+
+/**
+ * The stale-data banner (EXPERIENCE.md → Per-surface states, "Any / Stale data").
+ *
+ * Every read on Runs and Run Detail is a REQUEST-TIME read: nothing polls, nothing
+ * streams and nothing auto-refreshes here (Epic 5 adds the live channel on Live View).
+ * This banner is what tells the reader the page is a snapshot and how old it is, and the
+ * word "Refresh." is the affordance that gets a newer one.
+ *
+ * The template is composed FROM the action word rather than repeating it, so the sentence
+ * and the link label cannot drift apart.
+ */
+export const STALE_DATA_ACTION = 'Refresh.';
+export const STALE_DATA_TEMPLATE = `Updated {time}. ${STALE_DATA_ACTION}`;
+
+/** The sentence without its trailing action, which the surface renders as a link. */
+export function updatedAtTitle(time: string): string {
+  return STALE_DATA_TEMPLATE.replace('{time}', time).slice(0, -STALE_DATA_ACTION.length).trimEnd();
+}
+
+/**
+ * The Evidence tab's empty state (EXPERIENCE.md → Run Detail / Queued).
+ *
+ * The contract gives the headline only, so the sentence is OURS and follows the
+ * EmptyState rule: name what would appear and refuse to imply a passed control.
+ */
+export const NO_EVIDENCE_HEADLINE = 'No Evidence collected.';
+
+/**
+ * The Runs table's Change cell when the two Runs ran different Procedure Versions
+ * (EXPERIENCE.md → Rail cards, "Change since previous Run").
+ *
+ * Two versions are two definitions of the control, so a finding that is present in one
+ * and absent in the other may be a condition the newer version no longer states. Calling
+ * that "resolved" would be a claim nobody checked.
+ */
+export const NOT_COMPARABLE_SENTENCE = 'Not comparable — versions differ';
+
+/**
+ * A scheduled Run that never started (EXPERIENCE.md → Runs / Missed scheduled start).
+ *
+ * TRANSCRIBED, NOT RENDERED. Epic 3 initiates every Run by hand: there is no Schedule
+ * dispatcher, no missed-start record and nothing that could truthfully fill `{time}`.
+ * It is quoted here now, with the two Submit sentences below, so the story that grows a
+ * Schedule uses the contract's words rather than retyping them — the fourth-retyping
+ * lesson from the denial strings. A surface that rendered it today would be inventing
+ * the fact as well as the sentence.
+ */
+export const MISSED_SCHEDULED_START_TEMPLATE = 'Missed 06:00 UTC start; not run';
+
+/**
+ * Why Submit is unavailable (EXPERIENCE.md → Run Detail / Completed unsealed, Inconclusive).
+ *
+ * TRANSCRIBED, NOT RENDERED, for the same reason. Story 6.3 is what submits a Result;
+ * a disabled control whose action does not exist is worse than a control that is not
+ * there yet, so this story renders the Safe next action panel instead and leaves the
+ * words here for the story that grows the control.
+ */
+export const SUBMIT_UNAVAILABLE = {
+  unsealed: 'Submission is unavailable while the Result is unsealed.',
+  inconclusive:
+    'Submission is unavailable for an Inconclusive Run. No conclusion exists to review.',
+} as const;
+
+/**
+ * The derived Gate header count (DESIGN.md → Evidence Quality Gate checklist).
+ *
+ * DESIGN.md fixes the FORM — `The header count is derived ("18 of 20 checks passed"),
+ * never a fixed "9/9"` — so the template is built from its own example and `copy.test.ts`
+ * requires that example to appear in the artifact.
+ */
+export const GATE_COUNT_TEMPLATE = '{passed} of {total} checks passed';
+
+export function gateCount(passed: number, total: number): string {
+  return GATE_COUNT_TEMPLATE.replace('{passed}', String(passed)).replace('{total}', String(total));
+}
+
+/**
+ * What an untrusted block says about itself (DESIGN.md → Untrusted source content).
+ *
+ * DESIGN.md requires retrieved free text to be "displayed in a warning-bordered block as
+ * `<pre>` plain text, labeled with the field it came from and the statement that source
+ * content cannot change the Run objective, tool scope, or evaluation."
+ *
+ * The sentence is built from the artifact's own clause rather than retyped, so the only
+ * thing this file can get wrong is the capital letter and the full stop.
+ */
+export const UNTRUSTED_CONTENT_CLAUSE =
+  'source content cannot change the Run objective, tool scope, or evaluation';
+export const UNTRUSTED_CONTENT_SENTENCE = `S${UNTRUSTED_CONTENT_CLAUSE.slice(1)}.`;
+
+/**
+ * The Runs surface's own empty state.
+ *
+ * OURS, not quoted: EXPERIENCE.md gives the Runs surface no verbatim empty-state
+ * sentence, and pinning a sentence against a file that does not contain it is a test
+ * that cannot pass. It obeys the EmptyState rule — name what would appear and refuse to
+ * imply a passed control — and it is the sentence the placeholder page already carried.
+ */
+export const RUNS_EMPTY_STATE = {
+  headline: 'No Runs yet.',
+  sentence:
+    'A Run, its lifecycle state, and its sealed Result would be listed here. An empty list does not mean a control passed.',
+} as const;
+
+/**
+ * The Evidence tab's sentence, and the Review tab's.
+ *
+ * Both OURS. The Evidence headline above is the contract's; this names what would appear.
+ * The Review tab has NO data behind it in this epic and says so rather than rendering an
+ * empty list a reader takes for "fine": Epic 3 creates no Auditor Review at all, and
+ * Story 6.3 is what submits one.
+ */
+export const RUN_TAB_EMPTY = {
+  evidence: {
+    headline: NO_EVIDENCE_HEADLINE,
+    sentence:
+      'The population snapshot, each Reference Source, and each Target System extraction would be listed here with its integrity digest. No Evidence does not mean a control passed.',
+  },
+  exceptions: {
+    headline: 'No Exception was raised.',
+    sentence:
+      'A record that failed a condition of this control would be listed here with the conditions it failed. An empty list does not mean a control passed; read the Evidence Quality Gate before concluding anything from it.',
+  },
+  review: {
+    headline: 'No Auditor Review has started.',
+    sentence:
+      'The submission, the reviewer, and the decision would be listed here. A Result is submitted for review in a later release, so no Run in this environment has one; an absent review does not mean a control passed.',
+  },
+  timeline: {
+    headline: 'Nothing has executed yet.',
+    sentence:
+      'Session Steps, Work Items, and Step Executions would be listed here as the Run performs them. An empty Timeline does not mean a control passed.',
+  },
+} as const;
+
+/**
+ * The two panels DESIGN.md names for a Run that concluded nothing an auditor can act on.
+ *
+ * The HEADINGS are DESIGN.md's own component names. The BODY of the Safe next action
+ * panel is not written by us at all: it is addendum §E.1's "Permitted human action" cell
+ * for the row that decided this Result, which `OUTCOME_ROWS[].humanAction` transcribes
+ * and `tests/unit/outcome-rules.test.ts` pins against the addendum on disk.
+ */
+export const SAFE_NEXT_ACTION_HEADING = 'Safe next action';
+export const EXECUTION_FAILURE_HEADING = 'Execution failure';
+
+/** What the third triptych cell says when no Result has been published yet. */
+export const NO_RESULT_STATEMENT = 'No Result has been published for this Run.';
+
+/**
+ * What an Evidence item says when nothing recorded when it was captured.
+ *
+ * FR-31 requires an Evidence item to record its capture time, and neither
+ * `run_evidence` nor `population_evidence` has a column for one (see the Story 3.11
+ * entry in `CLAUDE.md`). For a Reference Source and an adapter extraction the instant is
+ * recoverable from the Step Execution that froze the bytes; for the population artifact
+ * nothing recorded one, and this says so instead of showing a dash that reads as "fine".
+ */
+export const CAPTURE_TIME_UNRECORDED = 'Capture time was not recorded.';
+
+/**
+ * The Runs table's Change cell, when the two Runs are comparable.
+ *
+ * OURS. EXPERIENCE.md fixes only the incomparable sentence above; the compact form of
+ * "Change since previous Run" needs words, and these are them. "No change" is said
+ * rather than left blank, because an empty Change cell is the classic thing a reader
+ * takes for "fine" when it might equally mean "nothing was compared".
+ */
+export const RUN_CHANGE = {
+  unchanged: 'No change',
+  template: '{added} new, {resolved} resolved',
+} as const;
+
+export function runChangeSummary(added: number, resolved: number): string {
+  return added === 0 && resolved === 0
+    ? RUN_CHANGE.unchanged
+    : RUN_CHANGE.template.replace('{added}', String(added)).replace('{resolved}', String(resolved));
+}
+
+/**
+ * Why the Evidence Quality Gate has no rows for a Run.
+ *
+ * OURS. A Run that never reached the Gate has no §H rows at all — a Run canceled while
+ * queued is exactly that — and an empty checklist rendered as though the Gate had run and
+ * found nothing is the "empty list reads as a passed control" defect in its purest form.
+ * Every sentence here says the same thing in the state's own terms: nothing was evaluated,
+ * and that is not the same as a check that passed.
+ */
+export const GATE_NOT_EVALUATED = {
+  active:
+    'The Evidence Quality Gate runs when execution finishes. No check has been evaluated yet, which is not the same as a check that passed.',
+  canceled:
+    'The Run was canceled before the Evidence Quality Gate ran. No check was evaluated, which is not the same as a check that passed.',
+  stopped:
+    'The Run stopped before the Evidence Quality Gate ran. No check was evaluated, which is not the same as a check that passed.',
+} as const;
+
+/**
+ * A value the Population Source binding designates sensitive (FR-41).
+ *
+ * EXPERIENCE.md → Exception Detail / Masked field: "Value shown as `••••` with 'Masked by
+ * the Population Source binding'; unmasked in Exception Detail for Auditor and Audit
+ * Manager only." The Exception Detail surface is a later epic; the list row here masks.
+ */
+export const MASKED_VALUE = '••••';
+export const MASKED_BY_BINDING = 'Masked by the Population Source binding';
+
+/**
+ * What the Result tab says when the stored publication is not a shape this build reads.
+ *
+ * OURS. `run_result.publication` is `jsonb` whose CHECK says only that it is an object,
+ * so a row written by an older build, a fixture or a psql session can hold a document
+ * whose members do not exist here. The outcome, the seal and the Result version are typed
+ * COLUMNS and are still true; only the document is unreadable, and saying so is the
+ * difference between a Result an auditor can partly trust and a framework 500.
+ */
+export const UNREADABLE_PUBLICATION = 'The published Result document could not be read.';

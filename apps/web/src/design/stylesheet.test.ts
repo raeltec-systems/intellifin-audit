@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -94,20 +95,91 @@ describe('the stylesheet paints every variant a component can name', () => {
   });
 });
 
+/**
+ * Every `ls-` class a component names in a string literal must have a rule.
+ *
+ * The list above is kept by hand and only covers the classes somebody remembered to add
+ * to it; this reads the components instead. `.ls-actions` shipped in Story 2.7 with no
+ * rule at all — every Procedure Version action bar rendered as a bare stack — and nothing
+ * noticed, because a class that exists only in the TSX is invisible to every other test.
+ *
+ * Only fully static tokens are checked. A class assembled from a template
+ * (`ls-badge--${treatment}`) does not survive the pattern, which is why the treatments,
+ * tones, variants and sizes have their own explicit assertions above, and why the two
+ * `--pass`/`--fail` and `--contradictory`/`--neutral` modifiers are listed here.
+ */
+const DYNAMIC_CLASSES = [
+  '.ls-gate__row--pass',
+  '.ls-gate__row--fail',
+  '.ls-corroboration-badge--contradictory',
+  '.ls-corroboration-badge--neutral',
+];
+
+function tsxSources(dir: string): { path: string; source: string }[] {
+  const found: { path: string; source: string }[] = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules' || entry === '.next') continue;
+    const full = join(dir, entry);
+    let info;
+    try {
+      info = statSync(full);
+    } catch {
+      continue; // a broken symlink must not fail the suite
+    }
+    if (info.isDirectory()) found.push(...tsxSources(full));
+    else if (entry.endsWith('.tsx')) {
+      found.push({
+        path: full,
+        source: readFileSync(full, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^[ \t]*\/\/.*$/gm, ''),
+      });
+    }
+  }
+  return found;
+}
+
+describe('every class a component names has a rule that paints it', () => {
+  it.each(DYNAMIC_CLASSES)('%s has a rule', (selector) => {
+    expect(declares(selector)).toBe(true);
+  });
+
+  it('finds no static ls- class under apps/web that globals.css does not define', () => {
+    const root = fileURLToPath(new URL('../../', import.meta.url));
+    const offenders: string[] = [];
+    for (const { path, source } of tsxSources(root)) {
+      for (const match of source.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`]*)`/g)) {
+        const value = match[1] ?? match[2] ?? match[3] ?? '';
+        for (const token of value.split(/\s+/)) {
+          if (/^ls-[a-z0-9_-]+$/.test(token) && !declares(`.${token}`)) {
+            offenders.push(`${path.slice(root.length)}: .${token}`);
+          }
+        }
+      }
+    }
+    expect(
+      [...new Set(offenders)],
+      'these classes render as unstyled text because nothing paints them',
+    ).toEqual([]);
+  });
+});
+
 describe('every custom property the stylesheet reads is defined', () => {
   it('names no token that does not exist', () => {
     // `.ls-definition dt` read `var(--font-size-sm, 0.875rem)`, a token defined
     // nowhere, and lived on its fallback: the rule looked token-driven, was not, and
     // nothing said so. A typo in a token name fails silently in CSS, which is exactly
     // the class of defect a stylesheet test exists to catch.
+    // Comments stripped on BOTH sides: a token named only in a comment is neither read
+    // nor defined, and this file's own prose quotes the defect it exists to catch.
     const raw = readFileSync(
       fileURLToPath(new URL('../../app/globals.css', import.meta.url)),
       'utf8',
-    );
+    ).replace(/\/\*[\s\S]*?\*\//g, '');
     const tokens = readFileSync(
       fileURLToPath(new URL('../../app/tokens.css', import.meta.url)),
       'utf8',
-    );
+    ).replace(/\/\*[\s\S]*?\*\//g, '');
     const defined = new Set([
       ...[...tokens.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]),
       // A rule may define a property for its own subtree; that counts as defined.

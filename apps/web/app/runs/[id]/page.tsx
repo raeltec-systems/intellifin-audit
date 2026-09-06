@@ -1,146 +1,194 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { CryptoUuidV7Generator, DrizzleRunRepository, PostgresAdapterExecutionRepository, PostgresPopulationRepository, PostgresSealedPackageRepository } from '@intellifin/infrastructure';
-import { Digest } from '../../../src/design/Digest';
-import { isActiveRunState, type RunState } from '@intellifin/domain';
+
+import { isActiveRunState } from '@intellifin/domain';
+import {
+  DrizzleProcedureRepository,
+  DrizzleRunDetailRepository,
+  PostgresAdapterExecutionRepository,
+  PostgresPopulationRepository,
+} from '@intellifin/infrastructure';
+
 import { getRuntime } from '../../../src/bootstrap';
-import { requireServerAction } from '../../../src/server-session';
-import { Banner } from '../../../src/design/Banner';
-import { StatusBadge } from '../../../src/design/StatusBadge';
-import type { StatusState } from '../../../src/design/status';
-import { runCanceledBy } from '../../../src/design/copy';
-import { RunLifecycleActions } from '../../../src/runs/RunLifecycleActions';
+import { GATE_NOT_EVALUATED } from '../../../src/design/copy';
+import { GateChecklist } from '../../../src/runs/GateChecklist';
+import {
+  ConditionCards,
+  CoverageSection,
+  ExecutionFailurePanel,
+  FindingsSection,
+  PopulationReconciliation,
+  SafeNextActionPanel,
+  type FailedStep,
+} from '../../../src/runs/ResultSections';
+import { ConclusionTriptych } from '../../../src/runs/Triptych';
+import { RunDenied, RunDetailFrame, openRun } from '../../../src/runs/detail';
+import { utcStamp } from '../../../src/runs/labels';
 
-export const metadata: Metadata = { title: 'Run · IntelliFin Audit' };
+export const metadata: Metadata = { title: 'Run · Result · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
-const labels: Record<RunState, StatusState<'run-lifecycle'>> = { QUEUED: 'Queued', RUNNING: 'Running', PAUSED: 'Paused', AWAITING_AUDITOR: 'Awaiting Auditor', COMPLETED: 'Completed', INCONCLUSIVE: 'Inconclusive', RUN_FAILED: 'Run Failed', CANCELED: 'Canceled' };
-/** The §E Work Item vocabulary, in the design system's words. `Object.hasOwn` guards the
- * lookup: a state read from a row is request-shaped input like any other. */
-const workItemLabels: Record<string, StatusState<'work-item'>> = { PENDING: 'Pending', IN_PROGRESS: 'In progress', AWAITING: 'Awaiting', OBSERVED: 'Observed', UNINSPECTED: 'Uninspected', AMBIGUOUS: 'Ambiguous', FAILED: 'Failed' };
-/** A Session Step has no badge family in DESIGN.md, so it is written in words. */
-const sessionStepLabels: Record<string, string> = { PENDING: 'Pending', IN_PROGRESS: 'In progress', ACQUIRED: 'Acquired', FAILED: 'Failed' };
-/** The three post-Run integrity findings, in words. A closed vocabulary, like the row. */
-const findingLabels: Record<string, string> = { 'object-missing': 'The artifact is not in storage.', 'size-mismatch': 'The stored size is not the registered size.', 'digest-mismatch': 'The stored bytes are not the registered bytes.' };
-const artifactLabels: Record<string, string> = { population: 'Population', 'reference-source': 'Reference Source', 'adapter-extraction': 'Adapter extraction' };
-function artifactLabel(kind: string): string {
-  return labelOf(artifactLabels, kind);
-}
-/** The seal's lists are `jsonb`, so they are read as request-shaped input, not trusted. */
-function artifactRefs(value: unknown): { kind: string; objectKey: string }[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap(entry =>
-    typeof entry === 'object' && entry !== null && typeof (entry as { objectKey?: unknown }).objectKey === 'string'
-      ? [{ kind: String((entry as { kind?: unknown }).kind ?? ''), objectKey: (entry as { objectKey: string }).objectKey }]
-      : []);
-}
-/** One UTC timestamp, written the way every other stamp on this surface is. */
-function stamp(value: string): string {
-  return value.replace('T', ' ').replace('Z', ' UTC');
-}
-function labelOf(table: Record<string, string>, state: string): string {
-  return Object.hasOwn(table, state) ? table[state]! : state;
-}
-/** A state the vocabulary does not hold is written in words, never guessed into a badge:
- * `StatusBadge` throws on an unknown state, and that would be a 500 on a whole page. */
-function workItemState(state: string): React.JSX.Element {
-  return Object.hasOwn(workItemLabels, state)
-    ? <StatusBadge family="work-item" state={workItemLabels[state]!} size="sm" />
-    : <>{state}</>;
-}
 
-export default async function RunPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ after?: string }> }): Promise<React.JSX.Element> {
-  const decision = await requireServerAction('run.initiate');
-  if (!decision.allowed) return <div className="ls-stack"><h1>Run</h1><Banner tone="danger" title={decision.reason} /></div>;
+/**
+ * Run Detail → Result.
+ *
+ * The conclusion triptych, the Gate checklist, the population reconciliation, the
+ * per-Target-System coverage, the evaluation counts by condition, the records the Result
+ * names, and — for a Run that concluded nothing an auditor can act on — the Safe next
+ * action and execution failure panels.
+ *
+ * Every number here is read from the SEALED Result that Story 3.9 published inside the
+ * transaction that concluded the Run. None of it is recomputed on the page.
+ */
+export default async function RunResultPage({
+  params,
+}: {
+  readonly params: Promise<{ id: string }>;
+}): Promise<React.JSX.Element> {
   const { id } = await params;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) notFound();
+  const access = await openRun(id);
+  if (!access.allowed) return <RunDenied reason={access.reason} />;
+  const { run, readAt } = access;
+
   const runtime = await getRuntime();
-  const run = await new DrizzleRunRepository(runtime.db).findRun(id);
-  if (run === null) notFound();
-  const after = Number((await searchParams).after ?? 0);
-  const population = await new PostgresPopulationRepository(runtime.db).readPopulation(id,after);
-  const execution = await new PostgresAdapterExecutionRepository(runtime.db).readExecution(id);
-  const evidencePackage = await new PostgresSealedPackageRepository(runtime.db).readSealedPackage(id);
-  const missing = artifactRefs(evidencePackage?.seal.missingRequired);
-  const abandoned = artifactRefs(evidencePackage?.seal.abandoned);
-  return <div className="ls-stack">
-    <nav aria-label="Breadcrumb"><Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> / Run</nav>
-    <header className="ls-page-header"><h1>Run · {run.procedureName}</h1><StatusBadge family="run-lifecycle" state={labels[run.state]} size="md" /></header>
-    {run.state === 'QUEUED' && <Banner tone="info" title="Run queued">The Run is saved and waiting for execution. No conclusion has been issued.</Banner>}
-    {/* EXPERIENCE.md → Run Detail, Canceled: "Canceled by {actor} at {elapsed}"; Evidence
-        preserved. The actor and the time come from the durable marker, never from a
-        guess: `CANCELED` is reserved for a person and the row says which one. */}
-    {run.state === 'CANCELED' && run.cancellation !== null && <Banner tone="warning" title={runCanceledBy(run.cancellation.requestedBy, stamp(run.cancellation.requestedAt))}>
-      <p>{run.cancellation.reason}</p>
-      <p>Evidence already collected is preserved. No conclusion was issued.</p>
-    </Banner>}
-    {run.cancellation !== null && run.state !== 'CANCELED' && <Banner tone="warning" title={`Cancellation requested by ${run.cancellation.requestedBy} at ${stamp(run.cancellation.requestedAt)}`}>
-      {isActiveRunState(run.state)
-        ? <p>The Run stops at its next checkpoint, before any further Target System work.</p>
-        : <p>The Run ended before the cancellation was performed, so its own outcome stands.</p>}
-    </Banner>}
-    <section className="ls-card ls-stack" aria-labelledby="run-details"><h2 id="run-details">Run details</h2>
-      <dl className="ls-card__cells ls-run-details">
-        <div><dt>Run ID</dt><dd>{run.runId}</dd></div>
-        <div><dt>Procedure Version</dt><dd><Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>v{run.versionNumber}</Link></dd></div>
-        <div><dt>Period</dt><dd>{run.period.from} to {run.period.to} (inclusive)</dd></div>
-        <div><dt>Initiator</dt><dd>{run.initiatorId}</dd></div>
-        <div><dt>Initiated at</dt><dd>{stamp(run.initiatedAt)}</dd></div>
-        <div><dt>Run kind</dt><dd>{run.kind === 'STANDARD' ? 'Standard' : 'Regression'}</dd></div>
-        <div><dt>Correlation ID</dt><dd>{run.correlationId}</dd></div>
-        {/* A rerun says which Run it follows and why it exists. The predecessor itself is
-            never changed by the link — only this row and this Run's own chain carry it. */}
-        {run.predecessorRunId !== null && <div><dt>Rerun of</dt><dd><Link href={`/runs/${run.predecessorRunId}`}>{run.predecessorRunId}</Link></dd></div>}
-        {run.rerunReason !== null && <div><dt>Reason for this Run</dt><dd>{run.rerunReason}</dd></div>}
-      </dl>
-    </section>
-    <RunLifecycleActions runId={run.runId} active={isActiveRunState(run.state)} cancelPending={run.cancellation !== null} requestToken={new CryptoUuidV7Generator().next()} procedureName={run.procedureName} />
-    {population && <section className="ls-card ls-stack" aria-labelledby="population-heading">
-      <h2 id="population-heading">Population acquisition</h2>
-      <p>{population.status === 'POPULATION_READY' ? 'Population verified. Target checks are pending.' : population.status === 'TERMINAL' ? 'Population acquisition stopped.' : 'Population acquisition is in progress.'} Attempts: {population.attempts}.</p>
-      {population.diagnostic && <Banner tone="warning" title="Population diagnostic">{population.diagnostic}</Banner>}
-      {population.summary && <><dl><dt>Rows acquired</dt><dd>{population.summary.included + population.summary.excluded + population.summary.indeterminate}</dd><dt>Included</dt><dd>{population.summary.included}</dd><dt>Excluded</dt><dd>{population.summary.excluded}</dd><dt>Indeterminate</dt><dd>{population.summary.indeterminate}</dd></dl>
-        <ul>{population.summary.checks.map(check => <li key={check.name}>{check.name}: {check.passed ? 'Passed' : 'Failed'}</li>)}</ul></>}
-      {population.evidence && <dl><dt>Evidence ID</dt><dd>{population.evidence.evidenceId}</dd><dt>Evidence state</dt><dd>{population.evidence.state === 'REGISTERED' ? 'Registered' : population.evidence.state === 'ABANDONED' ? 'Abandoned' : 'Reserved'}</dd><dt>SHA-256 of original bytes</dt><dd>{population.evidence.rawDigest ? <Digest label="Population Evidence" value={population.evidence.rawDigest} /> : population.evidence.state === 'ABANDONED' ? 'Not registered; acquisition stopped.' : 'Reserved; verification pending'}</dd><dt>Bytes</dt><dd>{population.evidence.size ?? 'Not yet registered'}</dd></dl>}
-      {population.rows.length > 0 && <><h3>Excluded and indeterminate rows</h3><table><thead><tr><th scope="col">Source row</th><th scope="col">Disposition</th><th scope="col">Reasons</th></tr></thead><tbody>{population.rows.map(row=><tr key={row.ordinal}><td>{row.ordinal}</td><td>{row.disposition}</td><td>{row.reasons.join('; ')}</td></tr>)}</tbody></table></>}
-      {after > 0 && <Link href={`/runs/${id}`}>First reasons</Link>}{population.next !== null && <Link href={`/runs/${id}?after=${population.next}`}>Next reasons</Link>}
-    </section>}
-    {execution && <section className="ls-card ls-stack" aria-labelledby="execution-heading">
-      <h2 id="execution-heading">Target System execution</h2>
-      <p>{execution.status === 'EXTRACTION_COMPLETE' ? 'Every Reference Source is frozen and every Work Item has run.' : execution.status === 'TERMINAL' ? 'Target System execution stopped.' : 'Target System execution is in progress.'} Attempts: {execution.attempts}.</p>
-      {execution.diagnostic && <Banner tone="warning" title="Execution diagnostic">{execution.diagnostic}</Banner>}
-      {execution.sessionSteps.length > 0 && <><h3>Reference Sources</h3>
-        <table><caption>Session Steps, acquired before any Work Item</caption><thead><tr><th scope="col">Reference Source</th><th scope="col">State</th><th scope="col">Attempts</th><th scope="col">Diagnostic</th><th scope="col">SHA-256 of frozen bytes</th></tr></thead>
-        <tbody>{execution.sessionSteps.map(step => <tr key={step.stepId}><td>{step.displayName}</td><td>{labelOf(sessionStepLabels, step.state)}</td><td>{step.attempts}</td><td>{step.diagnostic ?? 'None'}</td><td>{step.evidence?.digest ? <Digest label="Reference Source Evidence" value={step.evidence.digest} /> : step.evidence?.state === 'ABANDONED' ? 'Not registered; acquisition stopped.' : 'Not yet frozen'}</td></tr>)}</tbody></table></>}
-      {execution.workItems.length > 0 && <><h3>Work Items</h3>
-        <table><caption>One Work Item per adapter-acquired Target System, executed in order</caption><thead><tr><th scope="col">Target System</th><th scope="col">State</th><th scope="col">Observations</th><th scope="col">Attempts</th><th scope="col">Diagnostic</th><th scope="col">SHA-256 of frozen bytes</th></tr></thead>
-        <tbody>{execution.workItems.map(item => <tr key={item.workItemId}><td>{item.displayName}</td><td>{workItemState(item.state)}</td><td>{item.observations}</td><td>{item.attempts}</td><td>{item.diagnostic ?? 'None'}</td><td>{item.evidence?.digest ? <Digest label="Adapter extraction Evidence" value={item.evidence.digest} /> : item.evidence?.state === 'ABANDONED' ? 'Not registered; extraction stopped.' : 'Not yet frozen'}</td></tr>)}</tbody></table></>}
-    </section>}
-    {evidencePackage && <section className="ls-card ls-stack" aria-labelledby="evidence-package-heading">
-      <h2 id="evidence-package-heading">Evidence package</h2>
-      {/* Sealing runs on EVERY terminal transition. An incomplete package is a truthful
-          record of an incomplete Run, so it is stated in words rather than left as an
-          absence a reader takes for "fine". */}
-      <p>{evidencePackage.seal.state === 'SEALED'
-        ? 'Sealed. Every artifact this Run required is registered and verified.'
-        : 'Sealed as incomplete. An artifact this Run required was never registered.'} Registered artifacts: {evidencePackage.seal.registered}. Required: {evidencePackage.seal.requiredTotal}.</p>
-      {missing.length > 0 && <><h3>Required artifacts that were never registered</h3>
-        <ul>{missing.map(entry => <li key={entry.objectKey}>{artifactLabel(entry.kind)}: {entry.objectKey}</li>)}</ul></>}
-      {abandoned.length > 0 && <><h3>Abandoned reservations</h3>
-        {/* Never silently dropped: an upload that never completed is named here. */}
-        <ul>{abandoned.map(entry => <li key={entry.objectKey}>{artifactLabel(entry.kind)}: {entry.objectKey}</li>)}</ul></>}
-      {evidencePackage.findings.length > 0 && <>
-        <Banner tone="danger" title="Audit Trail integrity">Stored Evidence no longer matches what this Run registered. The sealed outcome is unchanged; a mismatch found after a Run is corrected only by a new Run.</Banner>
-        <table><caption>Integrity findings, discovered after the Run</caption>
-          <thead><tr><th scope="col">Artifact</th><th scope="col">Finding</th><th scope="col">Registered SHA-256</th><th scope="col">SHA-256 now</th><th scope="col">Detected</th></tr></thead>
-          <tbody>{evidencePackage.findings.map(finding => <tr key={finding.findingId}>
-            <td>{finding.objectKey}</td>
-            <td>{labelOf(findingLabels, finding.finding)}</td>
-            <td><Digest label="Registered Evidence" value={finding.expectedDigest} /></td>
-            <td>{finding.observedDigest === null ? 'The artifact is not there.' : <Digest label="Stored Evidence" value={finding.observedDigest} />}</td>
-            <td>{finding.detectedAt.toISOString().replace('T', ' ').replace(/\..*/, ' UTC')}</td>
-          </tr>)}</tbody></table></>}
-    </section>}
-    <p><Link href={`/runs/${run.runId}`}>Refresh Run</Link></p>
-  </div>;
+  const detail = new DrizzleRunDetailRepository(runtime.db);
+  const [result, gate, population, execution, version] = await Promise.all([
+    detail.readResult(run.runId),
+    detail.readGateChecks(run.runId),
+    new PostgresPopulationRepository(runtime.db).readPopulation(run.runId),
+    new PostgresAdapterExecutionRepository(runtime.db).readExecution(run.runId),
+    new DrizzleProcedureRepository(runtime.db).findVersion(run.versionId),
+  ]);
+
+  const failedGate = gate.filter((row) => row.outcome === 'FAIL').length;
+  const terminalStop = run.state === 'INCONCLUSIVE' || run.state === 'RUN_FAILED';
+  // Every Session Step and stage whose failure ends the RUN. A Work Item failure is
+  // deliberately not here: §E lets the Run continue past one, and naming it in the
+  // execution-failure panel would report a Run failure that did not happen.
+  const failedSteps: FailedStep[] = [
+    ...(population !== null && population.status === 'TERMINAL'
+      ? [{ name: 'Population Source acquisition', attempts: population.attempts, diagnostic: population.diagnostic }]
+      : []),
+    ...(execution?.sessionSteps ?? [])
+      .filter((step) => step.state === 'FAILED')
+      .map((step) => ({ name: `Reference Source · ${step.displayName}`, attempts: step.attempts, diagnostic: step.diagnostic })),
+    ...(execution !== null && execution.status === 'TERMINAL'
+      ? [{ name: 'Adapter extraction', attempts: execution.attempts, diagnostic: execution.diagnostic }]
+      : []),
+  ];
+
+  /** The frozen condition's authored text — a human's words, not a Target System's. */
+  const conditions = version?.compiledPlan?.inputs.complianceConditions ?? [];
+  const conditionText = (conditionId: string): string | null =>
+    conditions.find((condition) => condition.conditionId === conditionId)?.text ?? null;
+
+  const declaredCountPassed =
+    population?.summary?.checks.find((check) => check.name === 'declared-count')?.passed ?? null;
+  const publication = result?.publication ?? null;
+  const uninspected = (publication?.coverage ?? []).reduce((total, entry) => total + entry.uninspected, 0);
+
+  return (
+    <RunDetailFrame run={run} tab="" readAt={readAt}>
+      <ConclusionTriptych
+        state={run.state}
+        result={result}
+        gateChecks={gate.length}
+        gateFailed={failedGate}
+      />
+      {run.state === 'RUN_FAILED' ? (
+        <ExecutionFailurePanel steps={failedSteps} sealedAt={result?.sealedAt ?? null} />
+      ) : null}
+      {terminalStop && result !== null ? <SafeNextActionPanel result={result} /> : null}
+      <GateChecklist
+        rows={gate}
+        runId={run.runId}
+        failedFirst={terminalStop}
+        notEvaluatedReason={
+          isActiveRunState(run.state)
+            ? GATE_NOT_EVALUATED.active
+            : run.state === 'CANCELED'
+              ? GATE_NOT_EVALUATED.canceled
+              : GATE_NOT_EVALUATED.stopped
+        }
+      />
+      {/* One sentence, not two: the triptych's statement line already says it. This
+          explains what is still true, which is what a reader needs next. */}
+      {result !== null && publication === null ? (
+        <p>
+          The outcome, the seal and the Result version above are stored columns and are what
+          this Run concluded. The published document beside them was written in a shape this
+          build does not read, so its counts are not shown rather than shown wrongly.
+        </p>
+      ) : null}
+      {publication === null ? null : (
+        <>
+          <PopulationReconciliation
+            publication={publication}
+            rowsDigest={population?.summary?.rowsDigest ?? null}
+            declaredCountPassed={declaredCountPassed}
+            uninspected={uninspected}
+          />
+          <CoverageSection publication={publication} />
+          <ConditionCards publication={publication} conditionText={conditionText} />
+          <FindingsSection publication={publication} />
+        </>
+      )}
+      <section className="ls-card ls-stack" aria-labelledby="run-details">
+        <h2 id="run-details">Run details</h2>
+        <dl className="ls-card__cells ls-run-details">
+          <div>
+            <dt>Run ID</dt>
+            <dd className="ls-mono">{run.runId}</dd>
+          </div>
+          <div>
+            <dt>Procedure Version</dt>
+            <dd>
+              <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>
+                v{run.versionNumber}
+              </Link>
+            </dd>
+          </div>
+          <div>
+            <dt>Period</dt>
+            <dd className="ls-mono">
+              {run.period.from} to {run.period.to} (inclusive)
+            </dd>
+          </div>
+          <div>
+            <dt>Initiator</dt>
+            <dd>{run.initiatorId}</dd>
+          </div>
+          <div>
+            <dt>Initiated at</dt>
+            <dd className="ls-mono">{utcStamp(run.initiatedAt)}</dd>
+          </div>
+          <div>
+            <dt>Run kind</dt>
+            <dd>{run.kind === 'STANDARD' ? 'Standard' : 'Regression'}</dd>
+          </div>
+          <div>
+            <dt>Correlation ID</dt>
+            <dd className="ls-mono">{run.correlationId}</dd>
+          </div>
+          {/* A rerun says which Run it follows and why it exists. The predecessor itself
+              is never changed by the link — only this row and this Run's own chain. */}
+          {run.predecessorRunId === null ? null : (
+            <div>
+              <dt>Rerun of</dt>
+              <dd>
+                <Link className="ls-mono" href={`/runs/${run.predecessorRunId}`}>
+                  {run.predecessorRunId}
+                </Link>
+              </dd>
+            </div>
+          )}
+          {run.rerunReason === null ? null : (
+            <div>
+              <dt>Reason for this Run</dt>
+              <dd>{run.rerunReason}</dd>
+            </div>
+          )}
+        </dl>
+      </section>
+    </RunDetailFrame>
+  );
 }

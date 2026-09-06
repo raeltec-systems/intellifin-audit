@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isRunResultPublication,
   NO_RECORD_INSPECTED,
   RESULT_SAMPLE_LIMIT,
   publishRunResult,
@@ -191,5 +192,47 @@ describe('the published Result', () => {
   it('names no control-specific field for a Template nobody declared', () => {
     expect(templateResultFields('P-9')).toEqual([]);
     expect(templateResultFields('constructor')).toEqual([]);
+  });
+});
+
+describe('reading a stored publication back', () => {
+  it('accepts the document `publishRunResult` writes', () => {
+    const published = publishRunResult({
+      outcome: 'PASS',
+      templateId: 'P-1',
+      controlName: 'Terminated Users',
+      scope: null,
+      period: { from: '2026-08-01', to: '2026-08-31' },
+      population: { rowsParsed: 2, included: 2, excluded: 0, indeterminate: 0 },
+      exclusions: [],
+      requiredTargetSystems: [],
+      includedRecordKeys: [],
+      observations: [],
+      conditions: [],
+      exceptions: { total: 0, records: [] },
+      unevaluated: { total: 0, records: [] },
+      gate: { passed: true, checks: 20, failed: [] },
+      evidence: { state: 'SEALED', requiredTotal: 0, registered: 0, missingRequired: 0, abandoned: 0 },
+    });
+    expect(isRunResultPublication(published)).toBe(true);
+    // A round trip through jsonb is a round trip through JSON.
+    expect(isRunResultPublication(JSON.parse(JSON.stringify(published)))).toBe(true);
+  });
+
+  it('refuses a shape whose members a reader would reach into and find nothing', () => {
+    // `run_result.publication` is jsonb whose CHECK says only that it is an object, so an
+    // empty document is storable — and a surface that reached into one answered a
+    // framework 500 for the whole Run. It is request-shaped input, exactly as the
+    // Evidence seal's lists are.
+    for (const value of [
+      {},
+      null,
+      [],
+      'a string',
+      { statement: 'x' },
+      { statement: 'x', population: { rowsParsed: 1 } },
+    ]) {
+      expect(isRunResultPublication(value), JSON.stringify(value)).toBe(false);
+    }
   });
 });
