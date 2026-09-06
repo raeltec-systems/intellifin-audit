@@ -145,6 +145,7 @@ export interface PlanClassification {
 }
 
 const EMPTY: readonly ClassifiedTarget[] = [];
+const EMPTY_ORIGINS: readonly string[] = [];
 
 /**
  * Split the frozen Targets into Reference Sources and adapter-acquired Target Systems.
@@ -232,4 +233,85 @@ export function adapterLookupColumn(templateId: string): string | null {
 export function adapterSearchKeys(templateId: string): readonly string[] | null {
   if (!Object.hasOwn(PLAN_LOOKUP_COLUMNS, templateId)) return null;
   return (PLAN_LOOKUP_COLUMNS as Record<string, readonly string[]>)[templateId]!;
+}
+
+/* ------------------------------------------------------------------ Story 4.1 --- */
+
+/**
+ * What one Run needs from an isolated Agent Workspace, read from bytes already frozen.
+ *
+ * `makePlan` emits a `create-workspace` Session Step, FIRST, exactly when a selected
+ * Target is web or desktop, and freezes each Target's `allowed_origins` beside it. So
+ * "this Run needs a workspace" is a pure function of the plan, not a stored flag: a flag
+ * could disagree with the plan a Run is executing, and the plan is what an auditor reads.
+ *
+ * `allowedOrigins` is the EGRESS ALLOWLIST and comes from the `web` Targets alone. A
+ * `desktop` registration's application identity (`com.northstar.ledgerdesk`) occupies the
+ * `allowed_origins` slot of the six-key envelope and is NOT a URL; putting it into a
+ * browser's allowlist would either be inert or, worse, parse as something. A desktop-only
+ * plan therefore yields an EMPTY allowlist, under which every destination is denied —
+ * which is the truth about a browser workspace that has no web system to visit, and is
+ * fail-closed. Driving a desktop system needs a computer-use sandbox and is a later story.
+ *
+ * Nothing here widens the list: not an authored instruction, not a redirect a site chose,
+ * not a provider feature.
+ */
+export interface WorkspaceRequirement {
+  /** The FROZEN `create-workspace` Session Step id. Step Execution provenance keeps it. */
+  readonly stepId: string;
+  /** The frozen `web` Targets' allowed origins, deduplicated, in frozen order. */
+  readonly allowedOrigins: readonly string[];
+  /** Every agent-driven Target and its frozen `sign-in` Session Step (Story 4.2). */
+  readonly agentTargets: readonly ClassifiedTarget[];
+  /** Why this plan cannot be given a workspace, or `null`. */
+  readonly unsupported: string | null;
+}
+
+/**
+ * The workspace this plan requires, or `null` when it requires none.
+ *
+ * `null` means an adapter-only Run: no agent-driven Target, therefore no
+ * `create-workspace` step and nothing to provision. A plan this build cannot read is also
+ * `null` — the population stage already refuses such a plan by name, and provisioning a
+ * browser for a plan nobody can interpret would be a workspace with an allowlist nobody
+ * derived.
+ */
+export function workspaceRequirement(plan: ExecutablePlan): WorkspaceRequirement | null {
+  if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return null;
+  const agents = plan.inputs.targets
+    .map((target, index) => ({ target, ordinal: index + 1 }))
+    .filter((entry) => isAgentDrivenKind(entry.target.contract.kind));
+  if (agents.length === 0) return null;
+
+  const unsupported = (reason: string): WorkspaceRequirement => ({
+    stepId: '',
+    allowedOrigins: EMPTY_ORIGINS,
+    agentTargets: EMPTY,
+    unsupported: reason,
+  });
+  const step = plan.sessionSteps[0];
+  // The compiler emits `create-workspace` first, with no Target System, whenever any
+  // Target is agent-driven. A plan that names an agent-driven Target without one is a
+  // plan this build did not compile, and a workspace provisioned against a step nobody
+  // froze would have no Step Execution provenance to record.
+  if (step === undefined || step.action !== 'create-workspace' || step.targetSystemId !== null) {
+    return unsupported('unsupported-frozen-plan');
+  }
+  const agentTargets: ClassifiedTarget[] = [];
+  for (const entry of agents) {
+    const signIn = plan.sessionSteps.find(
+      (candidate) =>
+        candidate.action === 'sign-in' && candidate.targetSystemId === entry.target.registrationId,
+    );
+    if (signIn === undefined) return unsupported('unsupported-frozen-plan');
+    agentTargets.push({ stepId: signIn.id, ordinal: entry.ordinal, target: entry.target });
+  }
+  const origins: string[] = [];
+  for (const entry of agentTargets) {
+    if (entry.target.contract.kind !== 'web') continue;
+    for (const origin of entry.target.contract.allowed_origins) {
+      if (!origins.includes(origin)) origins.push(origin);
+    }
+  }
+  return { stepId: step.id, allowedOrigins: origins, agentTargets, unsupported: null };
 }

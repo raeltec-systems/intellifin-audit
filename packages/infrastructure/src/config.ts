@@ -246,6 +246,42 @@ export const configSchema = z
     MODEL_PROMPT_VERSION: z.preprocess((value) => value === '' ? undefined : value, z.literal(SUPPORTED_MODEL_PROMPT_VERSION).default(SUPPORTED_MODEL_PROMPT_VERSION)),
     MODEL_MAX_OUTPUT_TOKENS: z.preprocess((value) => value === '' || value === undefined ? String(DEFAULT_MODEL_OUTPUT_TOKENS) : value, z.string().regex(/^[0-9]+$/).transform(Number).pipe(z.number().int().min(1024).max(MAX_CONFIGURED_MODEL_OUTPUT_TOKENS))),
     MODEL_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    /**
+     * The managed browser provider for the Agent Workspace (Story 4.1, AD-4).
+     *
+     * `SOLARI_API_KEY` is a SECRET and the worker's alone: the worker is the only process
+     * that provisions a workspace, and `no-browser-execution-in-web` fails the build on any
+     * import of that module from the web. In production a value on any other service is
+     * refused outright below, so the guarantee does not rest on a deployment remembering.
+     *
+     * Absent, the LOCAL Chromium mode is used and the composition root says so once, by
+     * name. The two modes are the same code path — Solari is driven WITH the Playwright
+     * client API — but they are NOT the same guarantee: local isolates browser state per
+     * Run and does not isolate the worker process at all. `run_workspace.mode` records
+     * which one a Run actually had.
+     *
+     * `SOLARI_REGION` and `SOLARI_BASE_URL` are the SDK's own two ways of naming a
+     * gateway; `baseUrl` replaces `region` when both are set. Neither is hard-coded (AD-11).
+     *
+     * `SOLARI_RECORDING` decides session replay, which CANNOT be enabled afterwards: the
+     * replay endpoint 404s forever for a session created without it. Epic 5 is what reads a
+     * replay and Story 4.1 is where the decision is taken, so the flag is threaded through
+     * now even though nothing reads one yet. It is OFF by default, matching the provider's
+     * own default: recording is a metered feature and turning one on is a cost decision
+     * this build must not take for a deployment. **The consequence is that a Run made
+     * before it is switched on has no replay, permanently** — so Epic 5 turns it on before
+     * the Runs whose replay it wants, and cannot recover the ones behind it.
+     */
+    SOLARI_API_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(8).max(512).optional(),
+    ),
+    SOLARI_REGION: optionalNonEmpty(64),
+    SOLARI_BASE_URL: optionalHttpUrl,
+    SOLARI_RECORDING: z.preprocess(
+      (value) => (value === '' || value === undefined ? 'false' : value),
+      z.enum(['true', 'false']).transform((value) => value === 'true'),
+    ),
     /** Private S3-compatible Evidence storage. All five values are required together. */
     EVIDENCE_S3_ENDPOINT: optionalHttpUrl,
     EVIDENCE_S3_REGION: optionalNonEmpty(128),
@@ -309,6 +345,22 @@ export const configSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['EXCEPTION_FINGERPRINT_KEY'],
+        message: 'must not be set on any process other than the worker',
+      });
+    }
+
+    // The provider key is the worker's alone, for the same reason and with the same
+    // outside-production allowance as the credential manifest: only the worker provisions a
+    // workspace, and a production web container holding the key would hold a capability it
+    // has no code path to use.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.SERVICE_NAME !== 'worker' &&
+      config.SOLARI_API_KEY !== undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SOLARI_API_KEY'],
         message: 'must not be set on any process other than the worker',
       });
     }
@@ -390,6 +442,10 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     MODEL_PROMPT_VERSION: env['MODEL_PROMPT_VERSION'],
     MODEL_API_KEY: env['MODEL_API_KEY'],
     MODEL_MAX_OUTPUT_TOKENS: env['MODEL_MAX_OUTPUT_TOKENS'],
+    SOLARI_API_KEY: env['SOLARI_API_KEY'],
+    SOLARI_REGION: env['SOLARI_REGION'],
+    SOLARI_BASE_URL: env['SOLARI_BASE_URL'],
+    SOLARI_RECORDING: env['SOLARI_RECORDING'],
     EVIDENCE_S3_ENDPOINT: env['EVIDENCE_S3_ENDPOINT'],
     EVIDENCE_S3_REGION: env['EVIDENCE_S3_REGION'],
     EVIDENCE_S3_BUCKET: env['EVIDENCE_S3_BUCKET'],

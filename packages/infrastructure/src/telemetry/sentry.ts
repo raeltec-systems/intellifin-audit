@@ -19,6 +19,11 @@ export const TELEMETRY_MESSAGES = [
   // deployment: every adapter Work Item would then fail closed with `credential-unresolved`,
   // which reads as a Target System problem and is not one.
   'Adapter extraction disabled',
+  // Story 4.1. Said once at boot: which browser this worker provisions an Agent Workspace
+  // with, and why. The two modes are the same code path and NOT the same guarantee —
+  // `local` isolates browser state per Run and does not isolate the worker process at all —
+  // so an operator must be able to read which one a deployment is actually running.
+  'Agent Workspace mode selected',
   'Fatal worker error',
   'Plan derivation queue failed',
   'Retry Plan Derivation failed',

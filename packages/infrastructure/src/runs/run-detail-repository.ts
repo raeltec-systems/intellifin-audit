@@ -29,6 +29,7 @@ import {
   runSessionStep,
   runStepExecution,
   runWorkItem,
+  runWorkspace,
 } from '../db/schema.js';
 
 /**
@@ -188,6 +189,16 @@ export interface RunTimelineWorkItem extends Omit<RunTimelineSessionStep, 'ordin
 }
 
 export interface RunTimelineRead {
+  /**
+   * The Agent Workspace, when this Run's frozen plan required one (Story 4.1).
+   *
+   * `null` for every adapter-only Run, which is most of them. `mode` is on the row because
+   * the two modes are not the same guarantee, and a Run that ran under the weaker one has
+   * to say so on the surface rather than inherit the stronger sentence.
+   */
+  readonly workspace:
+    | (RunTimelineStage & { readonly stepId: string; readonly mode: string; readonly releasedAt: string | null })
+    | null;
   readonly population: (RunTimelineStage & { readonly stepId: string; readonly attemptStartedAt: string }) | null;
   readonly execution: (RunTimelineStage & { readonly runStartedAt: string }) | null;
   readonly sessionSteps: readonly RunTimelineSessionStep[];
@@ -422,8 +433,9 @@ export class DrizzleRunDetailRepository {
    * with their clocks and nothing else.
    */
   async readTimeline(runId: string): Promise<RunTimelineRead> {
-    const empty: RunTimelineRead = { population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 } };
+    const empty: RunTimelineRead = { workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 } };
     if (!isUuidText(runId)) return empty;
+    const [workspace] = await this.db.select().from(runWorkspace).where(eq(runWorkspace.runId, runId));
     const [population] = await this.db.select().from(populationExecution).where(eq(populationExecution.runId, runId));
     const [execution] = await this.db.select().from(runExecution).where(eq(runExecution.runId, runId));
     const sessionSteps = await this.db
@@ -438,6 +450,17 @@ export class DrizzleRunDetailRepository {
       .orderBy(asc(runWorkItem.ordinal));
     const stepExecutions = await this.readStepExecutions(runId);
     return {
+      workspace: workspace
+        ? {
+            status: workspace.status,
+            attempts: workspace.attempts,
+            diagnostic: workspace.diagnostic,
+            stepId: workspace.stepId,
+            mode: workspace.mode,
+            startedAt: workspace.startedAt.toISOString(),
+            releasedAt: workspace.releasedAt === null ? null : workspace.releasedAt.toISOString(),
+          }
+        : null,
       population: population
         ? {
             status: population.status,

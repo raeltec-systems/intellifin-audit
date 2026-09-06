@@ -134,6 +134,31 @@ const CASES: readonly Case[] = [
     requires: 'packages/infrastructure/dist/runs/credential-resolver.js',
   },
   {
+    // Story 4.1: the Agent Workspace implementation drives a real browser and holds the
+    // provider API key. The web makes no outbound call to a Target System at all.
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/browser-execution.js',
+    rule: 'no-browser-execution-in-web',
+  },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/browser-execution.js',
+    rule: 'no-browser-execution-in-web',
+    requires: 'packages/infrastructure/dist/runs/browser-execution.js',
+  },
+  {
+    // The Playwright client is a vendor exactly as the provider SDK is: the port is
+    // structural, so no `Page`, `Browser` or `Route` type may reach business code.
+    plantIn: 'packages/application/src',
+    imports: 'playwright-core',
+    rule: 'no-vendor-sdk-in-business-code',
+  },
+  {
+    plantIn: 'packages/domain/src',
+    imports: '@solarisdk/browser',
+    rule: 'no-vendor-sdk-in-business-code',
+  },
+  {
     // The evidence store holds the object credentials, so the web has no business
     // reaching it either.
     plantIn: 'apps/web/src',

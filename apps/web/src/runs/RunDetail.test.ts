@@ -403,6 +403,7 @@ describe('the Exception list row', () => {
 });
 
 const timeline = (overrides: Partial<RunTimelineRead> = {}): RunTimelineRead => ({
+  workspace: null,
   population: {
     status: 'POPULATION_READY',
     attempts: 1,
@@ -479,6 +480,51 @@ const renderTimeline = (read: RunTimelineRead): string =>
   renderToStaticMarkup(React.createElement(ExecutionTimeline, { timeline: read, runId: RUN_ID }));
 
 describe('the Execution Timeline', () => {
+  it('shows no Agent Workspace row for a Run whose plan required none', () => {
+    // Most Runs are adapter-only. A workspace row on one of those would say a browser was
+    // provisioned for a Run that never had one.
+    expect(renderTimeline(timeline())).not.toContain('Create the Agent Workspace');
+  });
+
+  it('names the Agent Workspace, the guarantee its mode had, and nests its attempt', () => {
+    const html = renderTimeline(
+      timeline({
+        workspace: {
+          status: 'OPEN',
+          attempts: 1,
+          diagnostic: null,
+          stepId: 'session-1',
+          mode: 'local',
+          startedAt: '2026-09-06T09:00:00.000Z',
+          releasedAt: null,
+        },
+        stepExecutions: {
+          total: 1,
+          rows: [
+            {
+              stepExecutionId: '019823ab-0000-7000-8000-0000000000d9',
+              planStepId: 'session-1',
+              workItemId: null,
+              action: 'create-workspace',
+              state: 'SUCCEEDED',
+              attempt: 1,
+              startedAt: '2026-09-06T09:00:00.000Z',
+              completedAt: '2026-09-06T09:00:02.000Z',
+              diagnostic: null,
+            },
+          ],
+        },
+      }),
+    );
+    expect(html).toContain('Create the Agent Workspace');
+    // The two modes are not the same guarantee, so the surface says which one this Run had
+    // rather than printing a value nobody can interpret.
+    expect(html).toContain('Local browser, shared process');
+    // Without this the attempt would be a `run_step_execution` row nothing on the page
+    // renders — an invisible Step Execution is the defect this row exists to prevent.
+    expect(html).toContain('--ls-timeline-level:1');
+  });
+
   it('nests the Step Executions under the unit that started them, at 20px per level', () => {
     const html = renderTimeline(timeline());
     expect(html).toContain('--ls-timeline-level:0');

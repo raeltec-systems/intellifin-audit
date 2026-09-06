@@ -229,6 +229,19 @@ const PLAN_ACTION_WORDS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Where the Agent Workspace ran, in words (Story 4.1).
+ *
+ * The two are NOT the same guarantee, so the surface says which one this Run had rather
+ * than printing a mode nobody can interpret: `solari` is a separate managed browser with
+ * provider-side egress, `local` isolates browser state per Run and does not isolate the
+ * worker process at all.
+ */
+const WORKSPACE_MODE_WORDS: Readonly<Record<string, string>> = {
+  solari: 'Managed remote browser',
+  local: 'Local browser, shared process',
+};
+
+/**
  * A closed table lookup that falls back to the stored value ITSELF.
  *
  * Never to a guess and never to an empty cell: a value this build does not recognise is
@@ -247,6 +260,7 @@ export const foundWord = (found: string): string => wordFor(OBSERVATION_FOUND_WO
 export const captureMethodWord = (method: string): string => wordFor(CAPTURE_METHOD_WORDS, method);
 export const matchOriginWord = (origin: string): string => wordFor(MATCH_ORIGIN_WORDS, origin);
 export const planActionWord = (action: string): string => wordFor(PLAN_ACTION_WORDS, action);
+export const workspaceModeWord = (mode: string): string => wordFor(WORKSPACE_MODE_WORDS, mode);
 
 /**
  * The Evidence item KIND, as DESIGN.md's Evidence item card names them.

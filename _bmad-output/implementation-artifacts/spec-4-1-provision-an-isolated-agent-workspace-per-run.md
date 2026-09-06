@@ -192,3 +192,106 @@ already cost a probe sweep that probed nothing while exiting successfully.
   accessibility violations.
 
 ## Auto Run Result
+
+**Delivered 2026-09-06, on `codex/epic-4-agent-runs`. Not committed.**
+
+### What was built
+
+- `workspaceRequirement(plan)` in `packages/domain/src/runs/execution.ts` — a pure function
+  of the frozen plan, beside `classifyPlanTargets`. No stored flag.
+- `BrowserExecution`, `WorkspaceRef`, `WorkspaceEgressPolicy`, `WorkspaceDenial`,
+  `WorkspaceHandle`, `WorkspaceCheckpoint` and the repository port in
+  `packages/application/src/runs/execution-ports.ts`. Structural types only.
+- `provisionWorkspace` and `releaseWorkspace` in
+  `packages/application/src/runs/provision-workspace.ts`.
+- `PlaywrightBrowserExecution` in `packages/infrastructure/src/runs/browser-execution.ts`
+  (subpath `./browser`, outside every barrel), plus `origin-policy.ts` — the one home of
+  `withinOrigin`, which `adapter-extraction-http.ts` now re-exports.
+- `PostgresWorkspaceRepository` and `startWorkspaceReaper`.
+- Generation 27: `run_workspace`, `SUPPORTED_SCHEMA_MIN`/`MAX` = 27, listed in
+  `schema-compat.test.ts`.
+- `agentWorkspace(config)` in the worker's `startup.ts`; composed in `main.ts` with the
+  reaper outside the storage branch and `closeBrowsers` in the shutdown path.
+- `no-browser-execution-in-web` in `.dependency-cruiser.cjs`, both spellings planted;
+  `playwright`, `playwright-core`, `@playwright/test` and `patchright-core` added to the
+  forbidden vendor list, with a planted case each for application and domain.
+- `docs/contracts/agent-workspace-v1.md`, and a Story 4.1 section in `CLAUDE.md`.
+- The Run Detail Timeline renders the workspace row and its Step Execution. Without it the
+  `create-workspace` attempt would be a `run_step_execution` row nothing on the page shows.
+
+### Decisions taken here
+
+- **`run_workspace` cascades from `audit_run`.** Ten existing teardowns delete `audit_run`
+  without knowing the table exists; a foreign key nobody knew about does not fail its own
+  suite, it leaves rows behind and fails an unrelated one later on a count. The four tables
+  that require an explicit delete record an OUTCOME; a workspace row is operational state,
+  and removing a whole Run takes it along — the reading that already makes `run_exception`
+  cascade from `run_observation`. Nothing requires a workspace row the way generations 21
+  and 25 require a package and a Result, so the cascade breaks no invariant.
+- **The Solari path uses `sessions.create()` + `chromium.connect()`, not `solari.launch()`.**
+  `launch()` returns a `BrowserSession` typed against the SDK's bundled `patchright-core`,
+  which does not assign to `playwright-core`'s types; the two modes would then hold two
+  `Browser` types and need either a second code path or an `as`. `Session` is four strings,
+  so nothing typed against the fork crosses the module. `launch()`'s health probe is not
+  lost: `newContext` plus two route installations are three protocol round trips.
+- **An unrecognised `SolariErrorCode` is TERMINAL (`refused`).** The type is widened with
+  `| string`; calling an unknown reason transient would retry it four times on the strength
+  of not knowing what it is.
+- **The egress allowlist is the `web` Targets' origins only.** A `desktop` registration's
+  application identity occupies the same envelope slot and is not a URL. A desktop-only
+  plan gets an empty allowlist, under which everything is denied.
+
+### Verification, all run here
+
+| Command | Result |
+|---|---|
+| `pnpm typecheck` | pass (7 projects + `tsconfig.root-tests.json`) |
+| `pnpm boundaries` | pass, 414 modules cruised, no violations |
+| `pnpm test` (alone) | **2784 passed**, 120 files (baseline 2730) |
+| `pnpm db:migrate` | generation 27 applied to PostgreSQL 18 |
+| `pnpm test:integration` | **350 passed**, 22 files (baseline 338) |
+| `pnpm db:generate` | "No schema changes, nothing to migrate" |
+| `pnpm build` | pass |
+| `pnpm --filter @intellifin/web build` | pass |
+| `pnpm test:e2e` | **124 passed**, 0 failed, no accessibility violations |
+
+Every new test was watched FAIL against a planted mutation before it was kept: 13 on the
+command, 5 on the implementation, 5 on the reaper, 4 on the composition root, 3 on the
+Timeline, 5 on the domain function, and 2 on the integration proofs (removing the
+interception, and sharing one browser context between Runs).
+
+### Three defects found by re-reading, after the first green run
+
+- **A retry counter that counted a success.** `attempts` bounded provisioning failures but
+  was incremented on every delivery, including one that only REATTACHED to a healthy
+  workspace. `acquirePopulation` asks for a redelivery on any transient transport failure
+  and has four attempts of its own, so the fifth delivery would have failed a Run whose
+  workspace had been fine every time. An `OPEN` row now carries its count forward and is
+  exempt from the limit; a failure moves it to `RETRY` and the next claim counts.
+- **`administration.spec.ts` located the signed-in administrator's own row by a hard-coded
+  address** while `ACCOUNTS.administrator.email` reads `E2E_ADMIN_EMAIL`. Pointed at a
+  differently-named administrator it resolved to somebody else's row — correctly enabled —
+  so the failure read as a broken self-demotion guard rather than a wrong locator. It reads
+  the configured value now. This was the only browser failure of the first full run, and it
+  is unrelated to this story's code.
+- **A count that read as a delta and was a total.** The lifecycle event's `denials` carried
+  `denied()`, which never resets, so a second boundary reported every refusal the workspace
+  had ever had. Renamed `deniedTotal`, and documented as a running total — the record of
+  WHICH destinations were refused is the `security.action-denied` events, each appended
+  exactly once from a drained log.
+
+### What could NOT be proved here, and why
+
+- **The Solari path end to end.** There is no `SOLARI_API_KEY` in this environment. The
+  path is written against the SDK's real types and its error mapping is unit-tested against
+  real `SolariError` values, but no session was ever created. Everything verified end to
+  end used the LOCAL mode, which is the same code path and the weaker guarantee.
+- **Reattach across a worker RESTART.** It is not possible with `@solarisdk/browser@0.1.3`
+  and is not possible locally either: the `wsEndpoint` the SDK returns is loopback-wrapped
+  by an in-process proxy, there is no `sessions.get`, and a locally launched browser dies
+  with its process. So the acceptance criterion's "reattaches by the stored identity" holds
+  WITHIN a process (a lost claim, a lease that expired) and the matrix's "reattach
+  impossible" row is what a restart takes — release the stale identity, make one
+  replacement, record `workspace-reattach-failed`. Both are proved.
+- **Process isolation.** The local mode does not have it and this does not claim it. What
+  is proved is that two concurrent Runs share no cookie, no `localStorage` and no session.

@@ -7,6 +7,7 @@ import {
 } from '@intellifin/application';
 import { isReferenceSourceMediaType, type ProcedureTargetSnapshot } from '@intellifin/domain';
 
+import { withinOrigin as withinOriginRule } from './origin-policy.js';
 import { isRefusedSourceHost, POPULATION_ACQUISITION_MAX_BYTES } from './population-acquisition-http.js';
 
 /**
@@ -108,14 +109,14 @@ export function targetOrigin(target: ProcedureTargetSnapshot): URL {
   return parsed;
 }
 
-/** `true` when `candidate` is the frozen origin or sits underneath it on a path boundary. */
-export function withinOrigin(origin: URL, candidate: URL): boolean {
-  if (candidate.origin !== origin.origin || candidate.protocol !== origin.protocol) return false;
-  if (candidate.username !== '' || candidate.password !== '' || candidate.hash !== '') return false;
-  const base = origin.pathname.replace(/\/$/, '');
-  if (base === '') return true;
-  return candidate.pathname === base || candidate.pathname.startsWith(`${base}/`);
-}
+/**
+ * `true` when `candidate` is the frozen origin or sits underneath it on a path boundary.
+ *
+ * Re-exported from `origin-policy.ts`, which is where the rule now lives: Story 4.1's
+ * workspace egress interception applies the SAME judgement to a browser request, and two
+ * copies of it would diverge on the first case nobody tried.
+ */
+export { withinOrigin } from './origin-policy.js';
 
 function mediaTypeFrom(response: Response): string {
   const raw = response.headers.get('content-type');
@@ -251,7 +252,7 @@ export class HttpAdapterExtraction implements AdapterExtractionPort, ReferenceAc
         } catch {
           continue;
         }
-        if (!withinOrigin(origin, candidate) || candidate.href === origin.href) continue;
+        if (!withinOriginRule(origin, candidate) || candidate.href === origin.href) continue;
         const followed = await this.read(candidate, deadline.signal, credential);
         if (serviceIndexEndpoints(followed.bytes, followed.mediaType) !== null) throw contractFailure();
         return followed;

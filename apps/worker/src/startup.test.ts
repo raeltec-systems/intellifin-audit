@@ -9,7 +9,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 
-import { adapterExtraction, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
+import { adapterExtraction, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
 import { readFileSync } from 'node:fs';
 import type { AppConfig } from '@intellifin/infrastructure';
 
@@ -308,5 +308,63 @@ describe('adapterExtraction', () => {
     expect(main).toContain('exceptions:credentials.exceptions');
     expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*CREDENTIAL_TOKENS/);
     expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
+  });
+});
+
+describe('agentWorkspace', () => {
+  it('falls back to a local browser, and names the weaker guarantee', () => {
+    // A workspace is never disabled the way population execution and adapter extraction
+    // are: the local mode is the SAME code path against a locally launched Chromium, so
+    // the question is never whether this worker can provision one, only which guarantee it
+    // provides — and the weaker one has to be said rather than assumed.
+    const decision = agentWorkspace({} as AppConfig);
+    expect(decision.connection).toEqual({ mode: 'local' });
+    expect(decision.reason).toContain('SOLARI_API_KEY is not configured');
+    expect(decision.reason).toContain('not the worker process');
+  });
+
+  it('uses the provider when a key is configured, with every escalation feature off', () => {
+    const decision = agentWorkspace({
+      SOLARI_API_KEY: 'slr_live_example',
+      SOLARI_REGION: 'us-west',
+      SOLARI_RECORDING: true,
+    } as unknown as AppConfig);
+    // `recording` cannot be turned on after a session exists — the replay endpoint 404s
+    // forever — so the decision is taken here, in Epic 4, for Epic 5 to read.
+    expect(decision.connection).toEqual({
+      mode: 'solari',
+      apiKey: 'slr_live_example',
+      region: 'us-west',
+      baseUrl: undefined,
+      recording: true,
+    });
+    // Nothing here can turn on `proxy`, `stealth` or `captcha`: an escalation ladder that
+    // swaps egress mid-session is the opposite of confining a Run to its frozen origins.
+    expect(Object.keys(decision.connection)).not.toContain('proxy');
+    expect(Object.keys(decision.connection)).not.toContain('stealth');
+  });
+
+  it('is composed by the worker, reaped on a sweep, and closed on shutdown', () => {
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const provider = agentWorkspace(config);');
+    expect(main).toContain('new PlaywrightBrowserExecution(provider.connection)');
+    expect(main).toContain('startWorkspaceReaper(');
+    // Provisioning runs BEFORE population acquisition: `create-workspace` is the frozen
+    // plan's first Session Step for an agent Run.
+    const handler = main.slice(main.indexOf('const handle = async (job'));
+    expect(handler.indexOf('provisionWorkspace(workspace, job)')).toBeLessThan(
+      handler.indexOf('acquirePopulation(population, job)'),
+    );
+    // Released at the Run's end, in a `finally`, so a stage that threw still gives it back.
+    expect(main).toContain('await releaseWorkspace(workspace, job.runId)');
+    // `solari.close()` is REQUIRED in Node: the client keeps a loopback proxy server open
+    // for its connection-retry path and that handle keeps the event loop alive, so a worker
+    // that closes only its browsers never exits.
+    expect(main).toContain('await closeBrowsers?.()');
+    // Outside the storage branch: a workspace needs no bucket, and a deployment with no
+    // object storage still has workspaces to reap from before it lost one.
+    expect(main.indexOf('startWorkspaceReaper(')).toBeLessThan(
+      main.indexOf('const evidence = populationExecution(config);'),
+    );
   });
 });

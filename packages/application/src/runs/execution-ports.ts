@@ -803,3 +803,223 @@ export interface RunGateContext extends RunResultContext {
   /** Integrity findings recorded against this Run. */
   readIntegrityFindings(): Promise<readonly GateFactSample[]>;
 }
+
+/* ------------------------------------------------------------------ Story 4.1 --- */
+
+/**
+ * Where an Agent Workspace actually runs, and therefore what its isolation is worth.
+ *
+ * This is recorded on the checkpoint rather than assumed, because the two modes do NOT
+ * deliver the same guarantee and the weaker one must be written down wherever the
+ * guarantee is claimed (`epic-4-browser-provider-decision.md`):
+ *
+ * - `solari` — a managed remote browser per Run, isolated by the provider, with its own
+ *   provider-side egress. Browser state AND the sandbox.
+ * - `local` — the same code path against a locally launched Chromium. Browser state is
+ *   isolated per Run; **the worker process is NOT isolated at all**, and egress is
+ *   policed inside the browser by request interception rather than at the network.
+ *
+ * There is ONE implementation of `BrowserExecution`, written against the Playwright client
+ * API. A Solari session hands back a wire-protocol endpoint and the client connects to it,
+ * so the driving code is identical either way; which browser a deployment gets is a
+ * composition-root choice and never a second implementation of this port.
+ */
+export const WORKSPACE_MODES = ['solari', 'local'] as const;
+export type WorkspaceMode = (typeof WORKSPACE_MODES)[number];
+
+/**
+ * The durable identity of one provisioned workspace.
+ *
+ * `workspaceId` is the PROVIDER session identifier — `browser.id` under Solari — which is
+ * what lets a later claim, or the reaper, act on a workspace this process did not create,
+ * and what makes a provider-side session correlatable with a Run. It is an opaque
+ * identifier and NOT a capability: releasing a Solari session still needs the deployment's
+ * API key. It is therefore recorded on the checkpoint and in the Timeline event, and the
+ * things that must never be: the API key, any session token, and the wire-protocol
+ * endpoint — which under Solari is loopback-wrapped by the client and means nothing
+ * outside the process that created it anyway.
+ */
+export interface WorkspaceRef {
+  readonly runId: string;
+  readonly workspaceId: string;
+  readonly mode: WorkspaceMode;
+}
+
+/**
+ * The egress allowlist, as an INPUT rather than a setting the implementation chooses.
+ *
+ * It is the Procedure Version's frozen `web` Target System origins and nothing else.
+ * Nothing widens it: not an authored instruction, not a redirect a site chose, not a
+ * provider feature. An empty list denies every destination, which is the correct reading
+ * of a workspace whose plan names no web system.
+ */
+export interface WorkspaceEgressPolicy {
+  readonly allowedOrigins: readonly string[];
+}
+
+/**
+ * One destination the workspace was refused, reported by the implementation.
+ *
+ * `destination` is the scheme, authority and path only — never a query string, never
+ * credentials in a URL, never a request body — because this is written into the immutable
+ * audit chain as a security event and anything that enters it can never be taken out.
+ */
+export interface WorkspaceDenial {
+  readonly destination: string;
+  readonly method: string;
+  readonly resourceType: string;
+}
+
+/** A live workspace, as application code sees it. No `Page`, no `Browser`, no SDK type. */
+export interface WorkspaceHandle {
+  readonly ref: WorkspaceRef;
+  /**
+   * The provider's own hard deadline for this session, or `null` when it has none.
+   *
+   * Solari's `Session.expiresAt` is a plan-tier deadline at which the session
+   * AUTO-RELEASES. It is not an idle window and nothing a Run does resets it, so a Run must
+   * not assume its workspace outlives it: a resumed claim checks the stored value and
+   * treats an expired identity as GONE rather than as an outage. The frozen Run limits stay
+   * the authority for ending the RUN; this is a fact about the workspace that the Run has to
+   * respect and record.
+   */
+  readonly expiresAt: string | null;
+  /**
+   * Every destination denied since the last call, in order, and clear the log.
+   *
+   * Draining rather than reading: a denial recorded twice would be two security events
+   * for one refusal. Interception happens inside the browser at a moment no caller is
+   * waiting on, so the stage collects denials at its own transaction boundaries — which
+   * is also the only place an audit event can be appended.
+   */
+  takeDenials(): readonly WorkspaceDenial[];
+  /**
+   * How many destinations this workspace has been refused in total, ever.
+   *
+   * Exact, and never reset, beside the bounded sample `takeDenials` returns — the same
+   * shape `run_gate_check` uses, and for the same reason: a Run that was refused ten
+   * thousand times must still be able to commit its own record of it, and a count that
+   * silently stopped at the sample size would understate exactly the case that matters.
+   */
+  denied(): number;
+}
+
+/**
+ * Why a workspace could not be provisioned, as a closed vocabulary.
+ *
+ * The I/O matrix asks for one distinction in particular — "distinguish a plan refusal from
+ * an outage" — and the vocabulary is wider than two because each row is a different thing
+ * for an operator to do about it. A provider refusal folded into `unavailable` would be
+ * indistinguishable from a network fault in the only durable record of it.
+ *
+ * - `unavailable` — an outage. RETRIED under the Session Step budget.
+ * - `capacity` — the provider has no slot free right now (`ConcurrencyLimitExceeded`).
+ *   RETRIED. Its own word because "buy more concurrency" and "the network broke" are
+ *   different sentences to the person reading the row.
+ * - `entitlement` — the deployment's plan does not permit it (`FeatureRequiresPlan`,
+ *   `PlanLimitExceeded`). TERMINAL: it will refuse identically on every attempt, and
+ *   retrying it four times spends the budget to learn nothing (the `credential-unresolved`
+ *   rule, one stage along).
+ * - `refused` — the provider said no for a reason this build does not recognise.
+ *   TERMINAL, which is the fail-closed direction: `SolariErrorCode` is widened with
+ *   `| string`, so a code added by a later provider release must not be assumed transient.
+ * - `policy` — the Version's frozen allowlist cannot be parsed by this build. TERMINAL:
+ *   the same frozen bytes make the same policy every time.
+ */
+export type WorkspaceFailureCode =
+  | 'unavailable'
+  | 'capacity'
+  | 'entitlement'
+  | 'refused'
+  | 'policy';
+
+export class WorkspaceProvisionError extends Error {
+  override readonly name = 'WorkspaceProvisionError';
+  constructor(readonly code: WorkspaceFailureCode) {
+    super(`Agent Workspace ${code} failure`);
+  }
+}
+
+/**
+ * AD-4: the port behind which an isolated Agent Workspace is provisioned.
+ *
+ * `attach` and `release` are conformance requirements (AD-16), not conveniences: a Run
+ * that resumes after a wait must reattach to the workspace it left rather than sign in
+ * again, and a workspace nothing releases outlives the Run that justified it.
+ *
+ * Structural types only. `packages/application` compiles with `lib: ["ES2024"]` and no
+ * host types at all — that absence is the compiler-enforced half of AD-11 — so no `Page`,
+ * `Browser`, `URL` or provider type may cross this boundary.
+ */
+export interface BrowserExecution {
+  /** Which mode this composition root actually provides. Recorded on the checkpoint. */
+  readonly mode: WorkspaceMode;
+  /** Provision one workspace for one Run, confined to `policy`. */
+  create(input: {
+    readonly runId: string;
+    readonly policy: WorkspaceEgressPolicy;
+    readonly timeoutMs: number;
+  }): Promise<WorkspaceHandle>;
+  /**
+   * Reattach to a workspace this deployment already provisioned, or `null`.
+   *
+   * `null` is a real and expected answer, not an error: a browser does not survive the
+   * process that connected to it, so a worker that died holding a workspace cannot
+   * reattach to it and must release the stale identity before provisioning another.
+   */
+  attach(ref: WorkspaceRef): Promise<WorkspaceHandle | null>;
+  /** Release a workspace and revoke its credentials. Idempotent, by identity. */
+  release(ref: WorkspaceRef, timeoutMs: number): Promise<void>;
+}
+
+/**
+ * The Agent Workspace's durable claim, one row per Run.
+ *
+ * It is its own row rather than a field on another stage's checkpoint because the
+ * workspace outlives every one of them: it is created at the frozen `create-workspace`
+ * Session Step, which the compiler emits FIRST, and released at the Run's terminal
+ * transition. There is nowhere here for a credential or a provider endpoint, by
+ * construction.
+ */
+export interface WorkspaceCheckpoint {
+  revision: number;
+  /** `PROVISIONING` is leased; `RETRY` is a failed attempt waiting to be resumed. */
+  status: 'PROVISIONING' | 'OPEN' | 'RETRY' | 'RELEASED' | 'FAILED';
+  attempts: number;
+  /** The FROZEN `create-workspace` Session Step id, verbatim. */
+  stepId: string;
+  /** The provider session identifier, or `null` before one exists. */
+  workspaceId: string | null;
+  mode: WorkspaceMode;
+  /** The provider's hard deadline for this session, or `null` when it has none. */
+  expiresAt: string | null;
+  startedAt: string;
+  attemptStartedAt: string;
+  leaseUntil: string;
+  releasedAt: string | null;
+  diagnostic: string | null;
+}
+
+export interface WorkspaceExecutionContext extends RunResultContext {
+  run: RunRecord | null;
+  checkpoint: WorkspaceCheckpoint | null;
+  frozenPlan(): Promise<ExecutablePlan | null>;
+  save(checkpoint: WorkspaceCheckpoint, state: RunRecord['state']): Promise<void>;
+  /** One attempt at the frozen `create-workspace` step, as Step Execution provenance. */
+  saveStepExecution(execution: StepExecutionRecord): Promise<void>;
+}
+
+export interface WorkspaceExecutionRepository {
+  transaction<T>(
+    runId: string,
+    work: (context: WorkspaceExecutionContext) => Promise<T>,
+  ): Promise<T>;
+  /**
+   * The reaper's OWN read: workspaces still held whose Run has already ended.
+   *
+   * A keyset page ordered by Run id, `after` being the last id of the previous page. A
+   * background job must not borrow a surface's read or another stage's — the probe sweep
+   * that borrowed `listRegistrations` probed nothing while exiting 0.
+   */
+  reapableRunIds(after: string | null, limit: number): Promise<string[]>;
+}

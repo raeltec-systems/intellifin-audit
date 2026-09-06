@@ -1,10 +1,11 @@
-import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, deliverNotifications, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
   PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresSealedPackageRepository,
-  startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, SystemClock,
+  startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
+  PostgresWorkspaceRepository, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender,
   createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
@@ -19,8 +20,9 @@ import { HttpPopulationAcquisition } from '@intellifin/infrastructure/acquisitio
 import { createS3EvidenceStore } from '@intellifin/infrastructure/evidence';
 import { HttpAdapterExtraction } from '@intellifin/infrastructure/extraction';
 import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentials';
+import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
 
-import { adapterExtraction, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
+import { adapterExtraction, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -67,6 +69,8 @@ async function main(): Promise<void> {
   let stopRecovery: (() => void) | undefined;
   let stopPopulationRecovery: (() => Promise<void>) | undefined;
   let stopIntegritySweep: (() => Promise<void>) | undefined;
+  let stopWorkspaceReaper: (() => Promise<void>) | undefined;
+  let closeBrowsers: (() => Promise<void>) | undefined;
   let shuttingDown = false;
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -79,6 +83,11 @@ async function main(): Promise<void> {
     stopRecovery?.();
     await stopPopulationRecovery?.();
     await stopIntegritySweep?.();
+    await stopWorkspaceReaper?.();
+    // `solari.close()` is REQUIRED in Node and `browser.close()` is not enough: the client
+    // keeps a loopback proxy server open for its connection-retry path, and that handle
+    // keeps the event loop alive. A worker that closes only its browsers never exits.
+    await closeBrowsers?.().catch(() => undefined);
     await queue.stop().catch(() => undefined);
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(0);
@@ -102,6 +111,36 @@ async function main(): Promise<void> {
   await startProceduresWorker(queue, (job, delivery) => derivePlan(derivation, job, delivery));
   stopRecovery = await startProceduresRecovery(db, (job) => reconcilePlanDerivation(derivation, job),
     () => telemetry.captureError('Plan derivation queue failed', new Error('Plan recovery failed'), {}));
+
+  // The Agent Workspace (Story 4.1, AD-4). Composed HERE and nowhere else: the worker is
+  // the only process that may drive a browser against a registered Target System, and the
+  // only one that may hold the provider's API key at all — `no-browser-execution-in-web`
+  // fails the build on any import of this module from the web.
+  //
+  // It is never disabled. Unlike population execution and adapter extraction, a workspace
+  // does not need anything a deployment might not have provisioned: the local mode is the
+  // same code path against a locally launched Chromium. What differs is the GUARANTEE, and
+  // that is said once here and recorded on every workspace row.
+  const provider = agentWorkspace(config);
+  const browser = new PlaywrightBrowserExecution(provider.connection);
+  closeBrowsers = () => browser.close();
+  const workspace = {
+    repository: new PostgresWorkspaceRepository(db),
+    browser,
+    clock: new SystemClock(),
+    ids: new CryptoUuidV7Generator(),
+  };
+  telemetry.info('Agent Workspace mode selected', { mode: provider.connection.mode, reason: provider.reason });
+  // NFR-5: a workspace whose Run has already ended and which nothing gave back. A release
+  // is network I/O, so it cannot happen inside the transaction that ends the Run; a worker
+  // that dies between the two leaves a browser held by nobody and, under Solari, a pool
+  // slot held until the provider's own grace timer reaps it. Its own bounded read, one Run
+  // at a time, stopping cleanly — the third sweep of that shape.
+  stopWorkspaceReaper = startWorkspaceReaper(
+    workspace.repository,
+    (runId) => releaseWorkspace(workspace, runId),
+    () => telemetry.captureError('Fatal worker error', new Error('Workspace reaper failed'), {}),
+  );
 
   const evidence = populationExecution(config);
   const credentials = adapterExtraction(config);
@@ -133,10 +172,28 @@ async function main(): Promise<void> {
     // spend the population's budget. It becomes a RETRY checkpoint instead, which the
     // extraction recovery sweep picks up.
     const handle = async (job: PopulationJob): Promise<{ retry: boolean }> => {
-      const acquired = await acquirePopulation(population, job);
-      if (acquired.retry || adapter === null) return acquired;
-      await executeAdapterSteps(adapter, job);
-      return { retry: false };
+      // The FROZEN plan decides whether this Run gets a workspace at all: `create-workspace`
+      // is emitted first exactly when a selected Target System is web or desktop, so an
+      // adapter-only Run reaches nothing and is unchanged by Story 4.1.
+      const provisioned = await provisionWorkspace(workspace, job);
+      // A provisioning failure that has already exhausted the Session Step budget left the
+      // Run `RUN_FAILED`, and `acquirePopulation` declines a Run in that state, so this
+      // returns without a second branch saying the same thing.
+      if (provisioned.retry) return { retry: true };
+      try {
+        const acquired = await acquirePopulation(population, job);
+        if (acquired.retry || adapter === null) return acquired;
+        await executeAdapterSteps(adapter, job);
+        return { retry: false };
+      } finally {
+        // Released at the Run's end. `releaseWorkspace` takes the whole decision from the
+        // durable row inside a transaction, so this is a no-op for a Run still in flight and
+        // for every Run that never had a workspace. The reaper is the backstop for a worker
+        // that dies before reaching here.
+        await releaseWorkspace(workspace, job.runId).catch(() =>
+          telemetry.captureError('Fatal worker error', new Error('Workspace release failed'), {}),
+        );
+      }
     };
     await startPopulationWorker(queue,handle);
     stopPopulationRecovery=startPopulationRecovery(db,populationRepository,handle,()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));

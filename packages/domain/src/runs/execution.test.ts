@@ -15,6 +15,7 @@ import {
   isTerminalWorkItemState,
   isWorkItemState,
   referenceTargets,
+  workspaceRequirement,
 } from './execution.js';
 import type { ExecutablePlan } from '../procedures/executable-plan.js';
 import { registrationDigest, registrationDigestEnvelope, type TargetSystemKind } from '../registrations/target-system.js';
@@ -188,5 +189,90 @@ describe('the Template lookup binding', () => {
   it('answers nothing for an unknown or inherited key', () => {
     expect(adapterLookupColumn('P-9')).toBeNull();
     expect(adapterLookupColumn('constructor')).toBeNull();
+  });
+});
+
+/** An agent plan, shaped as the compiler emits one: create-workspace, population, sign-ins. */
+function agentPlan(kinds: readonly TargetSystemKind[], overrides: Partial<ExecutablePlan> = {}): ExecutablePlan {
+  const targets = kinds.map((kind, index) => target(`reg-${String(index + 1)}`, kind));
+  return {
+    schemaVersion: 1,
+    compilerVersion: '1',
+    inputs: { templateId: 'P-1', targets } as unknown as ExecutablePlan['inputs'],
+    sessionSteps: [
+      { id: 'session-1', action: 'create-workspace', targetSystemId: null, text: 'x' },
+      { id: 'session-2', action: 'acquire-population', targetSystemId: null, text: 'x' },
+      ...targets.map((entry, index) => ({
+        id: `session-${String(index + 3)}`,
+        action: (entry.contract.kind === 'web' || entry.contract.kind === 'desktop'
+          ? 'sign-in'
+          : 'extract-adapter') as 'sign-in' | 'extract-adapter',
+        targetSystemId: entry.registrationId,
+        text: 'x',
+      })),
+    ],
+    targetSystems: [],
+    observations: [],
+    credentialReferences: [],
+    limits: {} as ExecutablePlan['limits'],
+    ...overrides,
+  } as ExecutablePlan;
+}
+
+describe('the workspace a frozen plan requires', () => {
+  it('requires none at all for an adapter-only plan', () => {
+    expect(workspaceRequirement(plan(['api']))).toBeNull();
+    expect(workspaceRequirement(plan(['versioned-file', 'api']))).toBeNull();
+  });
+
+  it('names the frozen create-workspace step and the web origins for an agent plan', () => {
+    const requirement = workspaceRequirement(agentPlan(['web']));
+    expect(requirement).not.toBeNull();
+    expect(requirement!.unsupported).toBeNull();
+    expect(requirement!.stepId).toBe('session-1');
+    expect(requirement!.allowedOrigins).toEqual(['https://synthetic.invalid/system']);
+    expect(requirement!.agentTargets.map((entry) => entry.stepId)).toEqual(['session-3']);
+  });
+
+  it('deduplicates repeated origins and keeps the frozen order', () => {
+    const value = agentPlan(['web', 'web']);
+    expect(workspaceRequirement(value)!.allowedOrigins).toEqual(['https://synthetic.invalid/system']);
+  });
+
+  it('takes no origin from a desktop registration, whose slot holds an application identity', () => {
+    const requirement = workspaceRequirement(agentPlan(['desktop']));
+    expect(requirement!.unsupported).toBeNull();
+    // Empty, so every destination is denied. `com.synthetic.app` is not a URL and a
+    // browser allowlist that carried it would be claiming an authority nobody granted.
+    expect(requirement!.allowedOrigins).toEqual([]);
+    expect(requirement!.agentTargets).toHaveLength(1);
+  });
+
+  it('takes only the web half of a mixed plan', () => {
+    const requirement = workspaceRequirement(agentPlan(['web', 'desktop', 'api']));
+    expect(requirement!.allowedOrigins).toEqual(['https://synthetic.invalid/system']);
+    expect(requirement!.agentTargets.map((entry) => entry.target.contract.kind)).toEqual(['web', 'desktop']);
+  });
+
+  it('refuses a plan whose first Session Step is not the frozen create-workspace', () => {
+    const value = agentPlan(['web']);
+    const shifted = { ...value, sessionSteps: value.sessionSteps.slice(1) } as ExecutablePlan;
+    expect(workspaceRequirement(shifted)!.unsupported).toBe('unsupported-frozen-plan');
+    const named = {
+      ...value,
+      sessionSteps: [{ ...value.sessionSteps[0]!, targetSystemId: 'reg-1' }, ...value.sessionSteps.slice(1)],
+    } as ExecutablePlan;
+    expect(workspaceRequirement(named)!.unsupported).toBe('unsupported-frozen-plan');
+  });
+
+  it('refuses an agent target with no frozen sign-in step', () => {
+    const value = agentPlan(['web']);
+    const missing = { ...value, sessionSteps: value.sessionSteps.slice(0, 2) } as ExecutablePlan;
+    expect(workspaceRequirement(missing)!.unsupported).toBe('unsupported-frozen-plan');
+  });
+
+  it('provisions nothing for a plan version it was not written for', () => {
+    expect(workspaceRequirement({ ...agentPlan(['web']), schemaVersion: 2 } as unknown as ExecutablePlan)).toBeNull();
+    expect(workspaceRequirement({ ...agentPlan(['web']), compilerVersion: '2' } as unknown as ExecutablePlan)).toBeNull();
   });
 });

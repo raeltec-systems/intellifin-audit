@@ -46,6 +46,13 @@ evaluator, acquired as a Session Step before any Work Item and owning **no** Wor
 **adapter-acquired** and owns exactly one Work Item. A `web` or `desktop` Target System is
 agent-driven and is not executed by the adapter interpreter at all.
 
+A `create-workspace` step is read from the same frozen bytes: the compiler emits it FIRST
+exactly when a selected Target is web or desktop, and `workspaceRequirement` reads it and
+the `web` Targets' frozen `allowed_origins` to decide that a Run gets an isolated workspace
+and what its egress allowlist is. That is [agent workspace v1](agent-workspace-v1.md),
+which also fixes the provider identity carried on the checkpoint, the request interception
+that denies every other destination, the release at the Run's end and the reaper behind it.
+
 Both readings come from bytes that are already frozen, so no canonical plan byte moves and
 every ACTIVE version stays executable. The adapter interpreter implements
 [adapter extraction v1](adapter-extraction-v1.md), which also fixes the extraction

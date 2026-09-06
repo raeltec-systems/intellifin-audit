@@ -875,6 +875,68 @@ export const runExecution = pgTable('run_execution', {
   check('run_execution_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`),
 ]);
 
+/**
+ * Generation 27 — the isolated Agent Workspace (Story 4.1).
+ *
+ * One row per Run, and its own table rather than a field on another stage's checkpoint,
+ * because the workspace outlives every one of them: it is created at the frozen
+ * `create-workspace` Session Step — which the compiler emits FIRST whenever a selected
+ * Target is web or desktop — and released at the Run's terminal transition. The reaper
+ * also needs its OWN read, and a background job must not borrow another stage's.
+ *
+ * `workspace_id` is the PROVIDER session identifier (`browser.id` under Solari). It is an
+ * opaque identifier and not a capability — releasing a Solari session still needs the
+ * deployment's API key — which is why it may be stored and recorded in the Timeline while
+ * the API key, any session token and the wire-protocol endpoint may not. There is nowhere
+ * in this row for any of those three.
+ *
+ * `mode` says which guarantee this Run's workspace actually had. The two are not equal:
+ * `solari` is a separate managed browser with provider-side egress, `local` isolates
+ * browser state per Run and does NOT isolate the worker process at all. A Run that ran
+ * under the weaker one must say so rather than inherit the stronger sentence.
+ */
+export const runWorkspace = pgTable('run_workspace', {
+  // ON DELETE CASCADE, unlike `run_gate_check`, `run_result`, `run_evidence_package` and
+  // `run_evidence_integrity`, which every test teardown has to delete by name. Those four
+  // record an OUTCOME and should not be silently removable; a workspace row is operational
+  // state, and removing a whole Run is a different act that takes it along — exactly the
+  // reason `run_exception` cascades from `run_observation`. Nothing requires a workspace
+  // row the way generations 21 and 25 require a package and a Result, so there is no
+  // invariant for the cascade to break. It also means the ten existing teardowns that
+  // delete `audit_run` keep working: a foreign key nobody knew about does not fail its own
+  // suite, it leaves rows behind and fails an unrelated one later on a count.
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull(), status: text('status').notNull(), attempts: integer('attempts').notNull(),
+  stepId: text('step_id').notNull(),
+  workspaceId: text('workspace_id'), mode: text('mode').notNull(),
+  // The PROVIDER's hard deadline, at which a Solari session auto-releases. Nullable, and
+  // null for a locally launched browser, which has no plan-tier deadline at all: it lives
+  // exactly as long as the worker process does, and a far-future timestamp invented to
+  // fill the column would be a fact nobody measured.
+  expiresAt: timestamp('expires_at',{withTimezone:true}),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  attemptStartedAt: timestamp('attempt_started_at',{withTimezone:true}).notNull(),
+  leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  releasedAt: timestamp('released_at',{withTimezone:true}), diagnostic: text('diagnostic'),
+}, t=>[
+  check('run_workspace_status',sql`${t.status} IN ('PROVISIONING','OPEN','RETRY','RELEASED','FAILED')`),
+  check('run_workspace_mode',sql`${t.mode} IN ('solari','local')`),
+  // Four is `sessionStepAttemptBudget` for compiler 1 — `retriesPerStep` 3 plus the first
+  // attempt, times the one cycle §E gives a Run-level Session Step. Restated here as a
+  // constant exactly as `population_execution_counts` restates it: a CHECK cannot read the
+  // frozen plan, and the bound this row must never exceed is a property of the schema.
+  check('run_workspace_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`),
+  // An OPEN workspace nobody can name is a workspace nobody can release. The reaper acts
+  // on `workspace_id`, so a row claiming to hold one without saying which is a leak with
+  // a record of itself and no way to act on it.
+  check('run_workspace_open_identity',sql`${t.status}<>'OPEN' OR ${t.workspaceId} IS NOT NULL`),
+  // `boolean = boolean` is never NULL, unlike a comparison of the values themselves, so
+  // this CHECK cannot pass by evaluating to NULL -- the trap `array_length` set in
+  // generation 5 and `<> ALL` set in generation 7.
+  check('run_workspace_released_at',sql`(${t.releasedAt} IS NULL) = (${t.status} <> 'RELEASED')`),
+  check('run_workspace_identity_shape',sql`${t.workspaceId} IS NULL OR (length(${t.workspaceId}) BETWEEN 1 AND 200)`),
+]);
+
 export const runEvidence = pgTable('run_evidence', {
   evidenceId: uuid('evidence_id').primaryKey(),
   runId: uuid('run_id').notNull().references(() => auditRun.runId),

@@ -90,6 +90,21 @@ export default defineRailway(() => {
       // signed which row. It carries no secret, so it is declared here rather than
       // preserved. Change it in the SAME apply that rotates the key.
       EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+      // Story 4.1. The managed remote browser the Agent Workspace runs in. A SECRET, set
+      // once in the Railway dashboard and preserved here rather than written from code --
+      // the BETTER_AUTH_SECRET rule again. The WORKER'S alone: only the worker provisions a
+      // workspace, and `loadConfig` refuses a production web container that carries it.
+      //
+      // Absent, the workspace falls back to a LOCAL Chromium rather than refusing to boot.
+      // That is not an equivalent: local isolates browser state per Run and does NOT
+      // isolate the worker process, and egress is policed inside the browser rather than at
+      // the network. Every workspace row records which mode it actually had.
+      SOLARI_API_KEY: preserve(),
+      // Session recording, which Epic 5's replay reads. It carries no secret, so it is
+      // declared here rather than preserved. It can ONLY be set at session creation -- the
+      // replay endpoint 404s forever for a session created without it -- so turning it on
+      // applies to Runs made after the change and never to Runs already recorded.
+      SOLARI_RECORDING: 'false',
     },
   });
 

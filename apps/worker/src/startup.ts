@@ -10,6 +10,9 @@ import {
 } from '@intellifin/infrastructure';
 import { createExceptionFingerprinter, credentialTokenManifest, evidenceS3Config, type AppConfig, type EvidenceS3Config } from '@intellifin/infrastructure';
 import type { ExceptionFingerprinter } from '@intellifin/application';
+// Not from the barrel: the Agent Workspace implementation drives a real browser and holds
+// the provider API key. See packages/infrastructure/src/index.ts.
+import type { BrowserConnection } from '@intellifin/infrastructure/browser';
 
 /**
  * The worker's startup and loop mechanics, separated from `main.ts` so both can be
@@ -108,6 +111,42 @@ export function adapterExtraction(
       key: config.EXCEPTION_FINGERPRINT_KEY,
     }),
   };
+}
+
+/**
+ * Which browser this worker provisions an Agent Workspace with, and why.
+ *
+ * Never disabled. A workspace is not an optional duty the way population execution and
+ * adapter extraction are: without object storage there is nothing to write Evidence to,
+ * and without a credential manifest every Work Item fails closed — but a browser is always
+ * available, because the local mode is the same code path against a locally launched
+ * Chromium. So the question is never "can this worker provision one", only WHICH
+ * guarantee it provides, and that is recorded on every workspace row it writes.
+ *
+ * The two are NOT equivalent and the weaker one is named at boot rather than assumed:
+ * `local` isolates browser state per Run and does not isolate the worker process at all.
+ */
+export function agentWorkspace(config: AppConfig): {
+  readonly connection: BrowserConnection;
+  readonly reason: string;
+} {
+  return config.SOLARI_API_KEY === undefined
+    ? {
+        connection: { mode: 'local' },
+        reason:
+          'SOLARI_API_KEY is not configured; a local browser isolates state per Run but not the worker process',
+      }
+    : {
+        connection: {
+          mode: 'solari',
+          apiKey: config.SOLARI_API_KEY,
+          region: config.SOLARI_REGION,
+          baseUrl: config.SOLARI_BASE_URL,
+          // Cannot be enabled after the session exists (Epic 5 constraint, honoured here).
+          recording: config.SOLARI_RECORDING,
+        },
+        reason: 'SOLARI_API_KEY is configured',
+      };
 }
 
 export interface HeartbeatLoop {

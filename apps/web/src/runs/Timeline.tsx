@@ -14,6 +14,7 @@ import {
   stepExecutionWord,
   utcStamp,
   workItemWord,
+  workspaceModeWord,
 } from './labels';
 
 /**
@@ -58,6 +59,22 @@ export function ExecutionTimeline({
   }
   return (
     <ol className="ls-timeline">
+      {timeline.workspace === null ? null : (
+        <>
+          <TimelineRow
+            level={0}
+            marker="Session Step"
+            name="Create the Agent Workspace"
+            detail={`${workspaceModeWord(timeline.workspace.mode)} · ${countText(timeline.workspace.attempts)} attempts`}
+            call={timeline.workspace.stepId}
+            status={timeline.workspace.status}
+            duration={null}
+            startedAt={timeline.workspace.startedAt}
+            diagnostic={timeline.workspace.diagnostic}
+          />
+          <StepExecutions executions={byPlanStep.get(timeline.workspace.stepId) ?? []} level={1} />
+        </>
+      )}
       {timeline.population === null ? null : (
         <TimelineRow
           level={0}
