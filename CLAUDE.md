@@ -843,3 +843,37 @@ Both are stated on the surface in words rather than shown as a dash, and both ar
 - **A browser spec that hard-codes an address the suite parameterises asserts the wrong row.** `administration.spec.ts` located the signed-in administrator's own row by the literal `administrator@example.test` while `ACCOUNTS.administrator.email` reads `E2E_ADMIN_EMAIL`. Pointed at a differently-named administrator the locator resolved to somebody ELSE's row, whose select is correctly enabled — so the failure read as a broken self-demotion guard rather than as a wrong locator. Locate by the configured value, never by a copy of its default.
 - **`pkill -f <pattern>` matches your own shell.** `pkill -f northstar` inside a command line containing the word `northstar` killed the shell running it (exit 144). The environment's own rule, met in practice.
 - **`git checkout -- <file>` reverting an uncommitted fix, a second time.** Restoring `labels.ts` after a mutation test silently deleted the `workspaceModeWord` the story had just added, and the suite went green because the test file had been reverted with it. Copy the file aside and restore from the copy — the rule Story 2.1 recorded, learned again.
+
+### The verification harness is not exempt (2026-09-06)
+
+Four failures in one session were in the HARNESS rather than in the code under test, and every
+one of them looked like a result. An absent or miscounted signal that reads as success is the
+same defect class this project keeps finding in the product; the thing that checks the work has
+to be held to the rule the work is.
+
+- **A status check that greps a nested JSON body counts the wrong things.** A monitor on the
+  GitHub jobs API grepped `"status": *"completed"` and reported ALL FOUR GREEN while two of the
+  four jobs were still running: each job embeds a `steps[]` array whose entries carry their own
+  `status`, so completed STEPS were counted as completed JOBS. Parse the job-level fields, treat
+  any non-`success` conclusion as a failure, and require every job `completed` before reporting
+  green. It was caught only because the answer was checked against the authoritative API before
+  being acted on — the same "verify the reported figure" that catches an agent's numbers.
+- **A verification script must exit non-zero when a step fails.** `gates.sh` echoed `FAIL` per
+  step and then exited 0 regardless, so a background completion notice read as an all-clear over
+  a failing gate. It tracks a flag now and ends `GATE PASSED` or `GATE FAILED`.
+- **`pgrep -f <pattern>` matches your own shell**, so `until ! pgrep -f ...` can never exit. It
+  deadlocked one agent for hours. Check once, wait a bounded time, check again, and proceed
+  saying so — never an unbounded loop. Same root as the `pkill -f northstar` that killed its own
+  shell.
+- **A gate script needs every environment variable the app validates at STARTUP, not only the
+  ones its tests read.** A browser gate that set `DATABASE_URL` but neither `SERVICE_NAME` nor
+  `BETTER_AUTH_SECRET` failed with the web process printing `"Refusing to start"` and naming the
+  missing key — the AD-15 startup guard working exactly as designed, read at first glance as a
+  defect in the story under test.
+- **`pnpm seed:identity` takes ONE account per invocation**, `--email` and `--role`, and only
+  re-assigns a role for an address that already exists; it never resets a password. There is no
+  bulk seed, and `SEED_PASSWORD` alone does nothing.
+- **Two branches at the same schema generation are two different schemas.** While Epic 3's repair
+  and Epic 4's Story 4.1 both sat at generation 27, running one branch's suite against the
+  other's database would have migrated nothing and tested the wrong shape while looking fine.
+  A worktree gating a different branch needs its OWN database, not just its own checkout.

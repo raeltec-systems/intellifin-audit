@@ -73,7 +73,7 @@ development_status:
 
   epic-4: in-progress
   4-1-provision-an-isolated-agent-workspace-per-run: done
-  4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: ready-for-dev
+  4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: done
   4-3-supply-credentials-just-in-time-and-suppress-capture-during: ready-for-dev
   4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: ready-for-dev
   4-5-prove-absence-for-an-employee-with-no-account: ready-for-dev
