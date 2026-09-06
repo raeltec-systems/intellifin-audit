@@ -53,6 +53,19 @@ and what its egress allowlist is. That is [agent workspace v1](agent-workspace-v
 which also fixes the provider identity carried on the checkpoint, the request interception
 that denies every other destination, the release at the Run's end and the reaper behind it.
 
+**Because the workspace step is emitted first, the population step is at index 1 in an
+agent plan and at index 0 in an adapter-only one.** `populationSessionStep` is the one
+reader of that ordering, and it is a POSITION check rather than a search: a plan that puts
+`acquire-population` anywhere else, or carries a `create-workspace` step with no
+agent-driven Target, is a plan this build did not compile. It read `sessionSteps[0]`
+literally until Story 4.2, which refused every agent Run before anything could sign in.
+
+Each `sign-in` step is executed by [tool action v1](tool-action-v1.md), which fixes the
+gate every action against a registered Target System passes — the frozen permitted actions,
+the frozen origins, the frozen population behind a parameter — the sanitized action log
+both surfaces share, and the credential boundary that presents a resolved credential to one
+navigation and to nothing else.
+
 Both readings come from bytes that are already frozen, so no canonical plan byte moves and
 every ACTIVE version stays executable. The adapter interpreter implements
 [adapter extraction v1](adapter-extraction-v1.md), which also fixes the extraction

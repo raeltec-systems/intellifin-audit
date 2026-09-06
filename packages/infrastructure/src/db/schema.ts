@@ -1018,14 +1018,21 @@ export const runSessionStep = pgTable('run_session_step', {
   runId: uuid('run_id').notNull().references(() => auditRun.runId),
   stepId: text('step_id').notNull(), ordinal: integer('ordinal').notNull(),
   registrationId: text('registration_id').notNull(), displayName: text('display_name').notNull(),
+  // Generation 28. The FROZEN action of the step, so the ACQUIRED rule below can say what
+  // it actually means: an ACQUIRED ACQUISITION has Evidence. A sign-in Session Step
+  // establishes a session and freezes nothing, and a constraint that could not tell the
+  // two apart would have refused exactly the row Story 4.2 exists to write.
+  action: text('action').notNull(),
   state: text('state').notNull(), attempts: integer('attempts').notNull(), diagnostic: text('diagnostic'),
   evidenceId: uuid('evidence_id').references(() => runEvidence.evidenceId),
 }, t=>[
   primaryKey({columns:[t.runId,t.stepId]}),
   check('run_session_step_state',sql`${t.state} IN ('PENDING','IN_PROGRESS','ACQUIRED','FAILED')`),
+  check('run_session_step_action',sql`${t.action} IN ('sign-in','extract-adapter')`),
   check('run_session_step_counts',sql`${t.ordinal}>0 AND ${t.attempts}>=0`),
-  check('run_session_step_acquired',sql`${t.state}<>'ACQUIRED' OR ${t.evidenceId} IS NOT NULL`),
+  check('run_session_step_acquired',sql`${t.state}<>'ACQUIRED' OR ${t.action}<>'extract-adapter' OR ${t.evidenceId} IS NOT NULL`),
 ]);
+
 
 export const runWorkItem = pgTable('run_work_item', {
   workItemId: uuid('work_item_id').primaryKey(),
@@ -1054,6 +1061,74 @@ export const runStepExecution = pgTable('run_step_execution', {
   check('run_step_execution_state',sql`${t.state} IN ('RUNNING','SUCCEEDED','FAILED')`),
   check('run_step_execution_action',sql`${t.action} IN ('create-workspace','acquire-population','sign-in','extract-adapter','inspect-record','capture-observation','evaluate-conditions')`),
   check('run_step_execution_attempt',sql`${t.attempt}>0`),
+]);
+
+/**
+ * The agent execution phase's durable claim, one row per Run (generation 28).
+ *
+ * Its own row rather than a field on `run_execution`: the agent phase and the adapter
+ * phase are different phases with different vocabularies, and a stage that borrowed
+ * another's checkpoint would have to answer for a status it does not produce. It cascades
+ * with its Run for the reason `run_workspace` does — it is operational state, not an
+ * outcome — so the existing teardowns keep working.
+ */
+export const runAgentExecution = pgTable('run_agent_execution', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull(), status: text('status').notNull(), attempts: integer('attempts').notNull(),
+  runStartedAt: timestamp('run_started_at',{withTimezone:true}).notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  attemptStartedAt: timestamp('attempt_started_at',{withTimezone:true}).notNull(),
+  leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  attemptId: uuid('attempt_id').notNull(), diagnostic: text('diagnostic'),
+}, t=>[
+  check('run_agent_execution_status',sql`${t.status} IN ('EXECUTING','SIGNED_IN','RETRY','TERMINAL')`),
+  // Four is `sessionStepAttemptBudget` for compiler 1 — `retriesPerStep` 3 plus the first
+  // attempt, times the one cycle §E gives a Run-level Session Step. Restated as a constant
+  // exactly as `run_workspace_counts` restates it: a CHECK cannot read the frozen plan.
+  check('run_agent_execution_counts',sql`${t.revision}>0 AND ${t.attempts}>0 AND ${t.attempts}<=4`),
+]);
+
+/**
+ * The sanitized action log: one row per Tool Action and per Adapter Action (generation 28).
+ *
+ * ONE table and ONE shape for both surfaces, so a reader compares them rather than
+ * translating — AD-6 says it in as many words ("every lookup or extraction is an Adapter
+ * Action on the Timeline with the same sanitized-action schema"). `surface` is the only
+ * field that differs between the two producers.
+ *
+ * There is nowhere here for a credential, a request body, a response body or a header.
+ * `destination` is scheme, authority and path — never a query string, which is where a
+ * token or a signed URL lives — and the parameters are the PLATFORM's own, which is what
+ * lets addendum §B.1 derive an absence proof's query string from this log rather than from
+ * anything the agent reported about itself.
+ *
+ * Ordering is `(started_at, tool_action_id)`: the id is a UUIDv7, so it is a deterministic
+ * tiebreak rather than an arbitrary one, exactly as the Runs list keyset uses `run_id`.
+ */
+export const runToolAction = pgTable('run_tool_action', {
+  toolActionId: uuid('tool_action_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  stepExecutionId: uuid('step_execution_id').notNull().references(() => runStepExecution.stepExecutionId),
+  workItemId: uuid('work_item_id').references(() => runWorkItem.workItemId),
+  surface: text('surface').notNull(), targetSystem: text('target_system').notNull(),
+  action: text('action').notNull(), method: text('method').notNull(), destination: text('destination').notNull(),
+  parameters: jsonb('parameters').$type<import('@intellifin/domain').ToolActionParameter[]>().notNull(),
+  outcome: text('outcome').notNull(), denial: text('denial'), offending: text('offending'),
+  status: integer('status'), redirected: boolean('redirected').notNull(), downloads: integer('downloads').notNull(),
+  startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
+  completedAt: timestamp('completed_at',{withTimezone:true}), diagnostic: text('diagnostic'),
+}, t=>[
+  index('run_tool_action_run_idx').on(t.runId,t.startedAt),
+  check('run_tool_action_surface',sql`${t.surface} IN ('agent','adapter')`),
+  check('run_tool_action_outcome',sql`${t.outcome} IN ('performed','denied','failed')`),
+  // A read-only execution takes exactly two methods, and the system it reads refuses every
+  // other at its own level (FR-3). A row claiming otherwise is a row nothing wrote.
+  check('run_tool_action_method',sql`${t.method} IN ('GET','HEAD')`),
+  check('run_tool_action_denial',sql`${t.denial} IS NULL OR ${t.denial} IN ('action-not-permitted','destination-refused','origin-not-allowed','parameter-out-of-scope')`),
+  // A denial ALWAYS names its rule and a performed action never carries one. The two halves
+  // are one CHECK because either alone permits a row that reads as the other.
+  check('run_tool_action_denied',sql`(${t.outcome}='denied') = (${t.denial} IS NOT NULL)`),
+  check('run_tool_action_counts',sql`${t.downloads}>=0 AND (${t.status} IS NULL OR (${t.status}>=100 AND ${t.status}<=599))`),
 ]);
 
 export const runObservation = pgTable('run_observation', {

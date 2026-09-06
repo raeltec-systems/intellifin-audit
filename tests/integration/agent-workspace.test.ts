@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   provisionWorkspace,
   releaseWorkspace,
+  BrowserActionError,
   WorkspaceProvisionError,
   type BrowserExecution,
   type WorkspaceHandle,
@@ -425,6 +426,8 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
       create: () => Promise.reject(new WorkspaceProvisionError('unavailable')),
       attach: (): Promise<WorkspaceHandle | null> => Promise.resolve(null),
       release: (_ref: WorkspaceRef) => Promise.resolve(),
+      // Story 4.2's port member. A workspace that never provisioned cannot act in one.
+      perform: () => Promise.reject(new BrowserActionError('unavailable')),
     };
     for (const attempt of [1, 2, 3]) {
       expect(await provisionWorkspace(deps(failing), job)).toEqual({ retry: true, provisioned: false });

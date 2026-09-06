@@ -313,7 +313,51 @@ export interface ApiPopulationDeclaration extends CountDeclaration {
   readonly complete: true;
 }
 
+/**
+ * The synthetic Target System catalogue, as `scripts/seed-northstar.mts` reads it.
+ *
+ * The catalogue is the ONE place a system's identity, its origin prefix and — since Story
+ * 4.2 — LoanCore's credential are declared. The seed script registers from it, the worker's
+ * `CREDENTIAL_TOKENS` is built from it, and this process checks the credential against it,
+ * so there is no second copy of the value to drift.
+ */
+export interface TargetSystemDeclaration {
+  readonly id: string;
+  readonly display_name: string;
+  readonly kind: string;
+  readonly origin_path: string;
+  /** LoanCore's opaque reference. Absent for the systems that need no credential. */
+  readonly credential_ref?: string;
+  /** LoanCore's INVENTED credential value. Synthetic; it authenticates nothing real. */
+  readonly credential_token?: string;
+}
+
+export interface SystemsCatalogue {
+  readonly synthetic: SyntheticBlock;
+  readonly title: string;
+  readonly target_systems: readonly TargetSystemDeclaration[];
+}
+
+/**
+ * LoanCore's synthetic credential, read from the catalogue.
+ *
+ * Refused rather than defaulted when the catalogue does not declare it: a synthetic system
+ * whose credential silently became the empty string would authenticate every request, which
+ * is the one failure this whole mechanism exists to prevent.
+ */
+export function loanCoreCredential(): { readonly reference: string; readonly token: string } {
+  const catalogue = readJson('datasets/systems.json') as SystemsCatalogue;
+  const system = catalogue.target_systems.find((entry) => entry.id === 'loancore');
+  const reference = system?.credential_ref ?? '';
+  const token = system?.credential_token ?? '';
+  if (reference === '' || token === '') {
+    throw new Error('datasets/systems.json declares no LoanCore credential; refusing to serve it');
+  }
+  return { reference, token };
+}
+
 export const datasets = {
+  systems: (): SystemsCatalogue => readJson('datasets/systems.json') as SystemsCatalogue,
   leavers: (): LeaversExport => readJson('datasets/leavers-export.json') as LeaversExport,
   loancore: (): LoanCoreDataset => readJson('datasets/loancore-accounts.json') as LoanCoreDataset,
   accessgate: (): AccessGateDataset =>

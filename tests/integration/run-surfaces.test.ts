@@ -305,8 +305,8 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
   it('reads the Timeline levels with their clocks', async () => {
     await sql`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,diagnostic,step_id,attempt_id)
               VALUES(${runs.first},1,'POPULATION_READY',1,'2026-09-01T09:00:10Z','2026-09-01T09:00:10Z','2026-09-01T09:10:00Z',NULL,'population',${ids.next()})`;
-    await sql`INSERT INTO run_session_step(run_id,step_id,ordinal,registration_id,display_name,state,attempts,diagnostic,evidence_id)
-              VALUES(${runs.first},'step-ref',1,'rolematrix','RoleMatrix','FAILED',2,'extraction-incomplete',NULL)`;
+    await sql`INSERT INTO run_session_step(run_id,step_id,ordinal,registration_id,display_name,action,state,attempts,diagnostic,evidence_id)
+              VALUES(${runs.first},'step-ref',1,'rolematrix','RoleMatrix','extract-adapter','FAILED',2,'extraction-incomplete',NULL)`;
     const timeline = await detail().readTimeline(runs.first);
     expect(timeline.population).toMatchObject({ status: 'POPULATION_READY', attempts: 1, startedAt: '2026-09-01T09:00:10.000Z' });
     expect(timeline.sessionSteps).toMatchObject([{ stepId: 'step-ref', state: 'FAILED', attempts: 2, diagnostic: 'extraction-incomplete' }]);

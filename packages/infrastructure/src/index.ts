@@ -18,6 +18,7 @@ export * from './runs/runs-unit-of-work.js';
 export * from './runs/population-repository.js';
 export * from './runs/population-queue.js';
 export * from './runs/adapter-execution-repository.js';
+export * from './runs/agent-execution-repository.js';
 export * from './runs/evidence-package-repository.js';
 export * from './runs/evidence-integrity-sweep.js';
 export * from './runs/exception-fingerprinter.js';

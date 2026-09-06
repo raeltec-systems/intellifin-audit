@@ -15,6 +15,31 @@ export interface NorthstarRequest {
   /** The raw path, before decoding. */
   readonly rawPath: string;
   readonly query: URLSearchParams;
+  /**
+   * The request headers, names lower-cased, one value each (Story 4.2).
+   *
+   * LoanCore authenticates a GET, so the credential arrives in a header rather than in a
+   * form — a form is a POST, and every Northstar system refuses one at the system level.
+   * A repeated header keeps its FIRST value: a second `Authorization` is not a second
+   * chance at the credential.
+   */
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+/** Node's raw header bag, normalized to what a request may be judged against. */
+export function normalizeHeaders(
+  raw: Readonly<Record<string, string | readonly string[] | undefined>> = {},
+): Readonly<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (value === undefined) continue;
+    const key = name.toLowerCase();
+    if (Object.hasOwn(headers, key)) continue;
+    // `cookie` is the one header Node joins with `; ` rather than `, `, and it is the one
+    // this system reads a session out of, so the join has to be the cookie one.
+    headers[key] = Array.isArray(value) ? value.join(key === 'cookie' ? '; ' : ', ') : String(value);
+  }
+  return headers;
 }
 
 export interface NorthstarResponse {

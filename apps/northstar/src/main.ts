@@ -34,7 +34,7 @@ function port(): number {
 }
 
 function respond(request: IncomingMessage, response: ServerResponse): void {
-  const answer = handleRequest(request.method ?? 'GET', request.url ?? '/');
+  const answer = handleRequest(request.method ?? 'GET', request.url ?? '/', request.headers);
   const body = typeof answer.body === 'string' ? Buffer.from(answer.body, 'utf8') : Buffer.from(answer.body);
   response.writeHead(answer.status, { ...answer.headers, 'content-length': String(body.byteLength) });
   // HEAD carries the headers of the GET and none of the body (RFC 9110). Writing one

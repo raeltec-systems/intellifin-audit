@@ -160,7 +160,11 @@ export function classifyPlanTargets(plan: ExecutablePlan): PlanClassification {
     unsupported: reason,
   });
   if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return unsupported('unsupported-plan-version');
-  if (plan.sessionSteps[0]?.action !== 'acquire-population') return unsupported('unsupported-frozen-plan');
+  // Where the compiler PUTS the population step. It read `sessionSteps[0]` literally,
+  // which made every agent plan `unsupported-frozen-plan` before the loop below could say
+  // `agent-driven-target` — the refusal BY NAME the workspace contract promises.
+  const population = populationSessionStep(plan);
+  if (population === null) return unsupported('unsupported-frozen-plan');
   if (!Object.hasOwn(PLAN_LOOKUP_COLUMNS, plan.inputs.templateId)) return unsupported('unsupported-frozen-plan');
 
   const references: ClassifiedTarget[] = [];
@@ -179,7 +183,8 @@ export function classifyPlanTargets(plan: ExecutablePlan): PlanClassification {
   // Every non-population Session Step must be one of the steps just classified. A step
   // this stage cannot account for is a plan it must not claim to have executed.
   const classifiedIds = new Set([...references, ...adapters].map((entry) => entry.stepId));
-  for (const step of plan.sessionSteps.slice(1)) {
+  for (const step of plan.sessionSteps) {
+    if (step.action === 'create-workspace' || step.id === population.stepId) continue;
     if (!classifiedIds.has(step.id)) return unsupported('unsupported-frozen-plan');
   }
   return { references, adapters, unsupported: null };
@@ -265,6 +270,39 @@ export interface WorkspaceRequirement {
   readonly agentTargets: readonly ClassifiedTarget[];
   /** Why this plan cannot be given a workspace, or `null`. */
   readonly unsupported: string | null;
+}
+
+/**
+ * The frozen `acquire-population` Session Step, or `null` when the plan does not carry one
+ * where the compiler puts it.
+ *
+ * The compiler emits `create-workspace` FIRST when any selected Target is agent-driven and
+ * `acquire-population` immediately after it, so "the population step is step 0" is true of
+ * an adapter-only plan and false of every agent plan. `acquirePopulation` asserted the
+ * former literally, which meant an agent Run was refused `unsupported-frozen-plan` before
+ * anything could sign in — the refusal Story 4.2 takes over from.
+ *
+ * Its position is checked rather than searched for: a plan that puts the population step
+ * somewhere else is a plan this build did not compile, and executing it would be executing
+ * an order nobody froze.
+ */
+export function populationSessionStep(plan: ExecutablePlan): { readonly stepId: string } | null {
+  if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return null;
+  const first = plan.sessionSteps[0];
+  if (first === undefined) return null;
+  if (first.action === 'acquire-population') {
+    return first.targetSystemId === null ? { stepId: first.id } : null;
+  }
+  // A `create-workspace` step is emitted EXACTLY when a selected Target is agent-driven, so
+  // one on a plan with no agent-driven Target is a plan this build did not compile — and
+  // executing it would mean executing a step nobody provisions.
+  if (first.action !== 'create-workspace' || first.targetSystemId !== null) return null;
+  if (!plan.inputs.targets.some((target) => isAgentDrivenKind(target.contract.kind))) return null;
+  const second = plan.sessionSteps[1];
+  if (second === undefined || second.action !== 'acquire-population' || second.targetSystemId !== null) {
+    return null;
+  }
+  return { stepId: second.id };
 }
 
 /**

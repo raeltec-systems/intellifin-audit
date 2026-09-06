@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { createSqlClient } from '@intellifin/infrastructure';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
-import { READ_ONLY_CREDENTIAL } from './credentials';
+import { LOANCORE_TOKEN, READ_ONLY_CREDENTIAL } from './credentials';
 import { NORTHSTAR_BASE_URL, READ_ONLY_RULE, UNREACHABLE_BASE_URL } from './northstar';
 
 /**
@@ -29,6 +29,18 @@ import { NORTHSTAR_BASE_URL, READ_ONLY_RULE, UNREACHABLE_BASE_URL } from './nort
 const stamp = `${Date.now()}`;
 const reachableName = `E2E Northstar LoanCore ${stamp}`;
 const unreachableName = `E2E Northstar Offline ${stamp}`;
+
+/**
+ * The audit account's credential, on every LoanCore read (Story 4.2).
+ *
+ * LoanCore is the one synthetic system that requires one: an unauthenticated GET under
+ * `/loancore` answers 401 with a challenge, and a GET carrying this header is answered and
+ * granted a session cookie. Every other Northstar system ignores it. The refusal itself is
+ * asserted in `agent-sign-in.spec.ts`, where a 401 before and a 200 after is the whole
+ * point; here the header is present so these assertions stay about what the system SERVES
+ * rather than about who is asking.
+ */
+const AUDIT_HEADERS = { authorization: `Bearer ${LOANCORE_TOKEN}` } as const;
 
 const PROBE_ENTRY_POINT = fileURLToPath(
   new URL('../../packages/infrastructure/dist/registrations/probe-runner.js', import.meta.url),
@@ -84,12 +96,15 @@ test.describe('the synthetic Northstar systems', () => {
       '/files/config-registry.csv',
     ];
     for (const surface of surfaces) {
-      const response = await request.get(`${NORTHSTAR_BASE_URL}${surface}`);
+      const response = await request.get(`${NORTHSTAR_BASE_URL}${surface}`, {
+        headers: AUDIT_HEADERS,
+      });
       expect(response.status(), surface).toBe(200);
     }
   });
 
   test('render a LoanCore account page with the declared attribute labels', async ({ page }) => {
+    await page.setExtraHTTPHeaders(AUDIT_HEADERS);
     await page.goto(`${NORTHSTAR_BASE_URL}/loancore/users/E-000103`);
     for (const label of ['Employee ID', 'Username', 'Status', 'Roles']) {
       await expect(page.getByText(label, { exact: true })).toBeVisible();
@@ -98,8 +113,13 @@ test.describe('the synthetic Northstar systems', () => {
   });
 
   test('render a not-found page for a missing employee, never a 500', async ({ page, request }) => {
-    const response = await request.get(`${NORTHSTAR_BASE_URL}/loancore/users/E-999999`);
+    const response = await request.get(`${NORTHSTAR_BASE_URL}/loancore/users/E-999999`, {
+      headers: AUDIT_HEADERS,
+    });
+    // 404 and not 401: authentication runs above routing, so the credential is what turns
+    // "you are not authenticated to this system" into a statement about its contents.
     expect(response.status()).toBe(404);
+    await page.setExtraHTTPHeaders(AUDIT_HEADERS);
     await page.goto(`${NORTHSTAR_BASE_URL}/loancore/users/E-999999`);
     await expect(page.getByRole('heading', { name: 'Account not found' })).toBeVisible();
   });

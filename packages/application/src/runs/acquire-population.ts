@@ -1,4 +1,5 @@
 import {
+  populationSessionStep,
   reconcilePopulation,
   sha256HexOfBytes,
   type RunRecord,
@@ -136,16 +137,19 @@ export async function acquirePopulation(
         evidenceRequired: reserved.required,
         rawDigest: prior?.rawDigest ?? null,
         envelopeDigest: prior?.envelopeDigest ?? null,
-        stepId:
-          plan?.sessionSteps.find((s) => s.action === 'acquire-population')
-            ?.id ?? 'unsupported',
+        stepId: (plan === null ? null : populationSessionStep(plan))?.stepId ?? 'unsupported',
         attemptId: deps.ids.next(),
         size: prior?.size ?? null,
         diagnostic: null,
       };
       const failed =
         !plan ||
-        plan.sessionSteps[0]?.action !== 'acquire-population' ||
+        // Where the compiler PUTS the population step, which is first in an adapter-only
+        // plan and second in an agent plan — `create-workspace` is emitted before it
+        // whenever a selected Target is agent-driven. This read `sessionSteps[0]`
+        // literally, so every agent Run was refused `unsupported-frozen-plan` before
+        // anything could sign in. Story 4.2 is what takes over from that refusal.
+        populationSessionStep(plan) === null ||
         !plan.inputs.sourceSnapshot ||
         !['versioned-file', 'read-only-api'].includes(
           plan.inputs.sourceSnapshot.contract.kind,

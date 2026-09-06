@@ -179,3 +179,157 @@ LoanCore has no sign-in form because a sign-in is a POST; that is superseded on 
   accessibility violations.
 
 ## Auto Run Result
+
+**Status: implemented and verified against a real PostgreSQL 18, a real Chromium and the
+real synthetic Northstar process.** Figures below are runs I executed; nothing is reported
+that I did not see.
+
+### What was built
+
+**The gate — `packages/domain/src/runs/tool-action.ts`.** `authorizeToolAction(scope,
+request)` reads the version's FROZEN snapshot and nothing else, in a fixed order: the
+action against `permitted_actions`, the destination against `allowed_origins`, then every
+parameter VALUE against the Run's frozen population. First refusal wins. The closed denial
+vocabulary is `action-not-permitted`, `destination-refused`, `origin-not-allowed`,
+`parameter-out-of-scope`, and `stopCauseForDenial` maps it onto §E.1's `action-denied` /
+`scope-violation` — both terminal, both with a security event.
+
+**It is invoked at the port's CALL SITE, not in the adapter.** `performToolAction` in
+`packages/application/src/runs/execute-agent-steps.ts` is the only path from a stage to
+`BrowserExecution.perform`; it gates first and records the sanitized action either way. The
+workspace's request interception (Story 4.1) is the second boundary, and
+`tests/integration/agent-execution.test.ts` calls the port DIRECTLY with the gate bypassed
+to prove the second one exists.
+
+**The origin rule now has one home.** `withinFrozenOrigin` is in the domain, over STRINGS,
+because `packages/domain` and `packages/application` have no `URL` (AD-11);
+`packages/infrastructure/src/runs/origin-policy.ts` became a `URL`-shaped delegation to it,
+so the adapter path, the browser egress interception and the gate all ask one function.
+`safeDestination` is now a rendering of the domain's `sanitizeDestination`.
+
+**The sign-in Session Step — `executeAgentSteps`.** One `sign-in` step per agent-driven
+Target, in frozen order, after population acquisition and before any Work Item. The
+credential reference comes from the frozen plan, is resolved through `CredentialResolver`,
+is compared against the reference the resolver echoes, is presented on that ONE navigation
+and withdrawn immediately. The destination is the frozen origin itself — no path is
+guessed. Budget is `sessionStepAttemptBudget`, one cycle; a denial and an unresolvable
+credential are terminal on the first attempt.
+
+**`BrowserExecution.perform`** in `packages/infrastructure/src/runs/browser-execution.ts`:
+one page per workspace, `acceptDownloads: false` with a counter, the credential set through
+`page.setExtraHTTPHeaders` and cleared in the `finally`, and the workspace's own denial
+COUNT read before and after so a refusal by the allowlist is reported as `scope` and never
+as an outage.
+
+**Generation 28**: `run_tool_action` (the shared sanitized log, one shape for both
+surfaces), `run_agent_execution` (the phase's own checkpoint and recovery read), and
+`run_session_step.action` — the ACQUIRED constraint required Evidence on every ACQUIRED
+step, which is right for a Reference Source acquisition and refuses exactly the row a
+successful sign-in writes.
+
+**LoanCore gained authentication on GET**, above routing beside `enforceReadOnly`
+(`apps/northstar/src/authentication.ts`). 401 with `WWW-Authenticate` and a JSON body in
+the 405 denial's shape; a credentialed GET is answered and granted a session cookie. The
+read-only rule is untouched: read-only runs FIRST, so a write is refused as a write with or
+without the credential. The credential is invented and declared in
+`fixtures/northstar/datasets/systems.json` beside its reference; the seed script, the
+worker manifest and the synthetic server all read that one place.
+
+### Decisions taken
+
+1. **`acquirePopulation` had to change, or nothing could sign in.** It asserted
+   `sessionSteps[0].action === 'acquire-population'` literally, and the compiler emits
+   `create-workspace` FIRST for any agent plan — so every agent Run was `RUN_FAILED` before
+   the workspace was even used. `populationSessionStep(plan)` in the domain is now where the
+   compiler's ordering lives, as a POSITION check rather than a search, and it also refuses
+   a `create-workspace` step on a plan with no agent-driven Target.
+2. **A separate phase with its own checkpoint**, rather than extending the adapter stage or
+   the workspace stage. The workspace stage runs BEFORE population acquisition and the
+   adapter stage refuses an agent plan by name; a phase sharing either checkpoint would have
+   to answer for a status it does not produce. Its retry is NOT propagated to the queue (the
+   Story 3.3 rule) and it has its own recovery sweep; the adapter sweep now excludes a Run
+   whose agent phase is unfinished.
+3. **"Out-of-scope parameter" is judged against the Run's frozen POPULATION**, which is
+   FR-3's own example ("a search outside the declared population"), not against a list of
+   allowed parameter NAMES. A name allowlist would have had to guess how `Full name` relates
+   to the `name` query key LoanCore actually serves, and would have been wrong about the real
+   fixture. An empty scope denies every parameter, which is fail-closed.
+4. **Story 4.2's sign-in carries no parameters**, so the first PRODUCTION caller of rule 3
+   is Story 4.5. It is exercised by unit, application and integration tests today rather
+   than left as a branch nothing runs; `performToolAction` is exported for exactly that.
+5. **A successful sign-in still ends in `RUN_FAILED`**, because the record-level steps are
+   Story 4.4 and `classifyPlanTargets` still refuses an agent plan BY NAME. That is asserted
+   with its diagnostic (`agent-driven-target`) rather than hidden, and the sign-in survives
+   it. Honest, and exactly where Story 4.4 takes over.
+6. **A 401 from a Target System is recorded `performed` with `status: 401`**, not `denied`.
+   The action happened and the system said no, which is a different fact from a gate refusal
+   that never left. Both are terminal and both carry `security.action-denied`.
+
+### Verified
+
+| Gate | Result |
+|---|---|
+| `pnpm typecheck` (7 projects + root tests) | pass |
+| `pnpm boundaries` | pass, 421 modules cruised (was 414) |
+| `pnpm test` (alone) | **123 files, 2879 tests, all passed** |
+| `pnpm db:migrate` | applied, `schemaVersion: 28` |
+| `pnpm db:generate` | "No schema changes, nothing to migrate" — no drift |
+| `pnpm test:integration` | **23 files, 359 tests, all passed** against PostgreSQL 18 at generation 28 |
+| `pnpm build`, `pnpm --filter @intellifin/web build` | both pass |
+| `pnpm test:e2e` | **128 passed (5.6m), zero accessibility violations** |
+
+**Mutation-tested, not assumed.** Removing the gate from `performToolAction` fails 3
+application tests; weakening the path-boundary rule to `startsWith` fails 3 domain and
+scope-widening tests.
+
+### Failures I hit and fixed
+
+- The first full integration run had **3 failures**, all mine: `schema-compat` (its exact
+  table list), `run-surfaces` (a raw `run_session_step` insert with no `action`), and
+  `population` (the test that asserted an agent plan is REFUSED at acquisition — the
+  behaviour this story deliberately changes).
+- The first full browser run had **3 failures**, all in `northstar.spec.ts`: LoanCore
+  surfaces that now require the credential. Fixed by presenting it, with the refusal itself
+  asserted in the new spec rather than deleted.
+- My own integration teardown missed `population_execution`, which left 14 Procedures and
+  12 Runs behind across the failed runs. Fixed, and the leftovers removed by hand.
+- `agent-sign-in.spec.ts` first asserted `run_workspace.status = 'OPEN'` after the Run had
+  ended; the worker releases the workspace in its `finally`, so that was a race. It now
+  asserts the Run HAD a workspace and which guarantee it was.
+
+### Two defects my own review found after the suites were green
+
+- **The credential rode `setExtraHTTPHeaders`**, which puts a header on every request the
+  page makes until it is cleared — and the workspace's egress allowlist is the UNION of
+  every web Target's frozen origins, so the moment a plan names two web systems the first
+  one's credential would have reached the second. It is attached by the INTERCEPTION now,
+  to the destination's own frozen origin only. Proven by mutation: removing the origin check
+  makes the cross-origin sub-resource arrive with the header.
+- **`perform` failed a Tool Action when any SUB-RESOURCE was denied.** It compared the
+  workspace's denial count before and after a successful navigation — right for a navigation
+  that was aborted, wrong for a page that merely referenced a font, a beacon or an image
+  off-origin, and it reported `scope` for something the platform never attempted. Adding one
+  `<img>` to the test server turned three passing tests red, which is how it was found. What
+  is checked after a SUCCESSFUL navigation is now where the main document ended, against the
+  workspace's own allowlist; the count still separates a refusal from an outage on the
+  failure path, because Chromium reports both as an aborted navigation.
+- One more, from the same pass: `allowed_origins` is a normalized SET and is SORTED, so a
+  registration with two origins signs in at whichever sorts first. A test that added
+  `/elsewhere` beside `/loancore` therefore signed in at `/elsewhere`, silently and
+  correctly. Named in `CLAUDE.md` and in the contract.
+
+### Not delivered, named
+
+- **The Timeline does not render Tool Actions.** Story 3.11 anticipated the fourth level;
+  this story writes the rows without rendering them, because a surface showing agent Tool
+  Actions beside no Adapter Actions would be worse than none. The data is complete.
+- **The adapter path writes no `run_tool_action` rows yet.** The spec's "the SAME sanitized
+  action schema Adapter Actions already use" was not true of the codebase — no Adapter
+  Action log existed. The shared shape is built and the `adapter` surface is in the CHECK;
+  retrofitting Epic 3's stage was out of this story's scope and is named here instead of
+  claimed.
+- **Solari is still unexercised.** There is no `SOLARI_API_KEY` in this environment, so
+  everything ran in the `local` mode — browser state isolated per Run, the worker process
+  not isolated at all. Unchanged from Story 4.1 and recorded on every workspace row.
+- **A desktop Target System fails its sign-in by name** (`desktop-unsupported`). LedgerDesk
+  stays deferred.

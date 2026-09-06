@@ -1,9 +1,9 @@
-import { acquirePopulation, executeAdapterSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, deliverNotifications, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, deliverNotifications, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
-  PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresSealedPackageRepository,
+  PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
   PostgresWorkspaceRepository, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender,
@@ -171,6 +171,22 @@ async function main(): Promise<void> {
     // of that stage's four durable attempts, so a transient extraction failure would
     // spend the population's budget. It becomes a RETRY checkpoint instead, which the
     // extraction recovery sweep picks up.
+    // The agent execution phase (Story 4.2). Composed beside the adapter one and gated on
+    // the SAME credential manifest: a sign-in presents an audit credential, so a worker
+    // with no manifest cannot perform one and the phase is off by name rather than failing
+    // every Run closed with a diagnostic that reads like a Target System problem.
+    const agentRepository = new PostgresAgentExecutionRepository(db);
+    const agent = credentials.enabled
+      ? {
+          repository: agentRepository,
+          browser,
+          credentials: new ManifestCredentialResolver(credentials.credentials),
+          clock,
+          ids,
+        }
+      : null;
+    const signIn = async (job: PopulationJob): Promise<{ proceed: boolean }> =>
+      agent === null ? { proceed: true } : await executeAgentSteps(agent, job);
     const handle = async (job: PopulationJob): Promise<{ retry: boolean }> => {
       // The FROZEN plan decides whether this Run gets a workspace at all: `create-workspace`
       // is emitted first exactly when a selected Target System is web or desktop, so an
@@ -183,6 +199,11 @@ async function main(): Promise<void> {
       try {
         const acquired = await acquirePopulation(population, job);
         if (acquired.retry || adapter === null) return acquired;
+        // Sign-in comes AFTER the population and BEFORE any Work Item, which is the order
+        // the compiler froze. `proceed` is false while the agent phase is still working:
+        // going on would hand the Run to a stage that refuses an agent plan by name and
+        // would end a Run whose workspace and Target System were both healthy.
+        if (!(await signIn(job)).proceed) return { retry: false };
         await executeAdapterSteps(adapter, job);
         return { retry: false };
       } finally {
@@ -201,8 +222,12 @@ async function main(): Promise<void> {
       // Its own sweep, on its own read: after POPULATION_READY the population sweep no
       // longer selects the Run, so a stalled extraction would be recovered by nothing.
       const stopAdapterRecovery = startPopulationRecovery(db,adapterRepository,job=>executeAdapterSteps(adapter,job),()=>telemetry.captureError('Fatal worker error',new Error('Adapter recovery failed'),{}));
+      // And the agent phase's own, for the same reason one layer earlier: a sign-in that
+      // wrote a RETRY checkpoint is deliberately not asking the queue for a redelivery,
+      // because that would spend one of the population stage's four durable attempts.
+      const stopAgentRecovery = startPopulationRecovery(db,agentRepository,job=>signIn(job),()=>telemetry.captureError('Fatal worker error',new Error('Agent recovery failed'),{}));
       const stopPopulation = stopPopulationRecovery;
-      stopPopulationRecovery = async () => { await stopAdapterRecovery(); await stopPopulation(); };
+      stopPopulationRecovery = async () => { await stopAgentRecovery(); await stopAdapterRecovery(); await stopPopulation(); };
     }
     // The post-Run integrity check, given a caller at last (Story 3.5). `verifySealedPackage`
     // shipped with tests and nothing in the product calling it, so an object deleted or

@@ -37,6 +37,7 @@ import {
   populationRow,
   populationSnapshot,
   runEvidence,
+  runAgentExecution,
   runEvidenceIntegrity,
   runGateCheck,
   runException,
@@ -149,6 +150,7 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
             ordinal: row.ordinal,
             registrationId: row.registrationId,
             displayName: row.displayName,
+            action: row.action as SessionStepRecord['action'],
             state: row.state as SessionStepRecord['state'],
             attempts: row.attempts,
             diagnostic: row.diagnostic,
@@ -679,8 +681,13 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
       .from(auditRun)
       .innerJoin(populationExecution, eq(populationExecution.runId, auditRun.runId))
       .leftJoin(runExecution, eq(runExecution.runId, auditRun.runId))
+      .leftJoin(runAgentExecution, eq(runAgentExecution.runId, auditRun.runId))
       .where(
-        sql`${auditRun.state}='RUNNING' AND ${populationExecution.status}='POPULATION_READY' AND (${runExecution.runId} IS NULL OR ${runExecution.status}='RETRY' OR (${runExecution.status}='EXECUTING' AND ${runExecution.leaseUntil}<=now()))`,
+        // The AGENT phase runs before any Work Item (Story 4.2), and this stage refuses a
+        // plan naming an agent-driven Target by name — so a Run whose sign-in is still
+        // being retried must not be selected here, or the sweep would end a Run whose
+        // workspace and Target System were both perfectly healthy.
+        sql`${auditRun.state}='RUNNING' AND ${populationExecution.status}='POPULATION_READY' AND (${runAgentExecution.runId} IS NULL OR ${runAgentExecution.status} IN ('SIGNED_IN','TERMINAL')) AND (${runExecution.runId} IS NULL OR ${runExecution.status}='RETRY' OR (${runExecution.status}='EXECUTING' AND ${runExecution.leaseUntil}<=now()))`,
       )
       .orderBy(asc(auditRun.initiatedAt))
       .limit(Math.max(1, Math.min(100, limit)));

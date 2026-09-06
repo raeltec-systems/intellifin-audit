@@ -24,7 +24,10 @@
       "permitted_actions": ["navigate", "search", "open-record", "read-attribute", "capture-screenshot"],
       "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name"],
       "secondary_key": "Full name",
-      "note": "Synthetic loan origination and servicing web application. Agent-driven (P-1). The audit account is signed in already and holds read access only."
+      "credential_ref": "cred://synthetic/loancore-readonly",
+      "credential_token": "synthetic-loancore-audit-token-not-a-real-credential",
+      "credential_note": "LoanCore is the one authenticated synthetic system (Story 4.2). credential_ref is the opaque reference a registration freezes and a Procedure Version carries; credential_token is the INVENTED value this fixture's own server checks, declared here so the agent, the worker manifest and the system all read one place. It is synthetic and it authenticates nothing outside this repository: registering a real credential is the one thing this environment must not have.",
+      "note": "Synthetic loan origination and servicing web application. Agent-driven (P-1). The audit account holds read access only and must present its credential: an unauthenticated GET under /loancore answers 401 with a WWW-Authenticate challenge, and a GET carrying the credential is granted a session cookie. There is no sign-in form, because a sign-in is a POST and this system refuses every method but GET and HEAD."
     },
     {
       "id": "prodconsole",

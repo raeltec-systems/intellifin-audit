@@ -1,17 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
 import { Solari, SolariError } from '@solarisdk/browser';
-import { chromium, type Browser, type BrowserContext, type Route } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright-core';
 
 import {
+  BrowserActionError,
   WorkspaceProvisionError,
+  type BrowserActionFailureCode,
+  type BrowserActionResult,
   type BrowserExecution,
+  type BrowserToolAction,
   type WorkspaceDenial,
   type WorkspaceEgressPolicy,
   type WorkspaceHandle,
   type WorkspaceMode,
   type WorkspaceRef,
 } from '@intellifin/application';
+import { sanitizeDestination, withinFrozenOrigin } from '@intellifin/domain';
 
 import { withinOrigin } from './origin-policy.js';
 
@@ -123,14 +128,7 @@ function sessionOptions(connection: SolariConnection): { recording?: boolean } {
  * be absent.
  */
 export function safeDestination(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return '(unparseable destination)';
-  }
-  const authority = parsed.host === '' ? '' : `//${parsed.host}`;
-  return `${parsed.protocol}${authority}${parsed.pathname}`.slice(0, 500);
+  return sanitizeDestination(url);
 }
 
 /**
@@ -199,6 +197,23 @@ interface LiveWorkspace {
   readonly browser: Browser;
   readonly context: BrowserContext;
   readonly handle: PlaywrightWorkspace;
+  /** The ONE page this workspace drives, made on the first Tool Action. */
+  page: Page | null;
+  /** Downloads this workspace was offered. Offered, and never executed. */
+  downloads: number;
+  /**
+   * The credential a Tool Action is presenting RIGHT NOW, and the origin it may reach.
+   *
+   * `setExtraHTTPHeaders` would put the header on every request the page makes until it is
+   * cleared — including, once a plan names two web Target Systems, requests to the OTHER
+   * one, because the egress allowlist is the union of their frozen origins. So the header
+   * is attached in the interception instead, to requests inside the destination's OWN
+   * frozen origin only, and dropped the moment the action finishes. Story 4.3 owns the full
+   * just-in-time guarantee; this is the narrowest surface it can have meanwhile.
+   */
+  credential: { origin: string; headers: Record<string, string> } | null;
+  /** The workspace's compiled egress allowlist, so an action can ask it too. */
+  readonly allowed: (destination: string) => boolean;
 }
 
 export class PlaywrightBrowserExecution implements BrowserExecution {
@@ -278,7 +293,14 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       // worker's own fetches are NOT seen by `context.route`, so a page that registered one
       // would have an unpoliced path to the network — the interception has to be the only
       // way out, not the usual way out.
-      const context = await browser.newContext({ serviceWorkers: 'block' });
+      // `acceptDownloads: false` so a file the site offers is CANCELLED rather than
+      // written: an audit Run reads, and a download is neither read nor executed. The
+      // `download` event still fires, which is what lets a Tool Action record that one was
+      // offered — "handled per the conformance contract, never executed".
+      const context = await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });
+      // Filled in below, once the handle exists. The route handler closes over it so a
+      // credential can be attached to one action's own requests and to nothing else.
+      let live: LiveWorkspace | null = null;
       const denials: WorkspaceDenial[] = [];
       let deniedTotal = 0;
       const deny = (destination: string, method: string, resourceType: string): void => {
@@ -295,6 +317,14 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
           const request = route.request();
           const url = request.url();
           if (allowed(url)) {
+            const presenting = live?.credential ?? null;
+            // Only inside the destination's OWN frozen origin. A second web Target System
+            // is inside the workspace's allowlist and must never receive the first one's
+            // credential.
+            if (presenting !== null && withinFrozenOrigin(presenting.origin, url)) {
+              await route.continue({ headers: { ...request.headers(), ...presenting.headers } });
+              return;
+            }
             await route.continue();
             return;
           }
@@ -323,7 +353,8 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         takeDenials: () => denials.splice(0, denials.length),
         denied: () => deniedTotal,
       };
-      this.live.set(workspaceId, { ref, browser, context, handle });
+      live = { ref, browser, context, handle, page: null, downloads: 0, credential: null, allowed };
+      this.live.set(workspaceId, live);
       return handle;
     } catch (error) {
       await this.teardown(workspaceId, browser, null);
@@ -375,6 +406,119 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
   }
 
   /**
+   * Perform ONE Tool Action the gate has already authorized (Story 4.2).
+   *
+   * The GATE is not here. `authorizeToolAction` runs at the port's call site in
+   * `packages/application`, so this implementation cannot skip it and a second provider
+   * would inherit the decision rather than reimplement it. What lives here is the
+   * MECHANISM: the credential presented just in time and withdrawn immediately, the
+   * request interception that is already installed, and the reading of what the browser
+   * actually did.
+   *
+   * A destination the frozen allowlist does not cover is aborted inside the browser and
+   * never put on the wire — including a destination a server-chosen redirect points at,
+   * which is what makes "a 3xx to another origin is not followed" a property of the
+   * mechanism rather than a check somebody remembered. The workspace's exact denial COUNT
+   * is what distinguishes that from a network fault: it is read before and after, so a
+   * refusal is reported as `scope` and never as an outage.
+   */
+  async perform(
+    ref: WorkspaceRef,
+    action: BrowserToolAction,
+    timeoutMs: number,
+  ): Promise<BrowserActionResult> {
+    const live = this.live.get(ref.workspaceId);
+    // A workspace belongs to ONE Run and to one mode, exactly as `attach` requires.
+    if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode) {
+      throw new BrowserActionError('unavailable');
+    }
+    if (!live.browser.isConnected()) {
+      this.live.delete(ref.workspaceId);
+      throw new BrowserActionError('unavailable');
+    }
+    const timeout = Math.max(1, Math.min(timeoutMs, 600_000));
+    const before = live.handle.denied();
+
+    let page: Page;
+    try {
+      page = await this.pageFor(live);
+    } catch {
+      throw new BrowserActionError('unavailable');
+    }
+
+    // The credential exists here for the length of ONE navigation. `authorize` is the only
+    // way it can be read, it writes into a record this method owns, and it is dropped in
+    // the `finally` — a workspace that kept it would present the credential on every later
+    // request of the Run, which is the opposite of just in time. The interception attaches
+    // it, not `setExtraHTTPHeaders`, so it reaches the destination's own frozen origin and
+    // nothing else the allowlist happens to cover.
+    const headers: Record<string, string> = {};
+    action.credential?.authorize({
+      set: (name: string, value: string) => {
+        headers[name] = value;
+      },
+    });
+    live.credential =
+      Object.keys(headers).length > 0 ? { origin: action.destination, headers } : null;
+
+    let response: Awaited<ReturnType<Page['goto']>>;
+    try {
+      response = await page.goto(action.destination, {
+        waitUntil: 'domcontentloaded',
+        timeout,
+      });
+    } catch (error) {
+      throw actionFailure(error, live.handle.denied() > before);
+    } finally {
+      live.credential = null;
+    }
+    // `null` is a same-document navigation, which is not something this platform asked
+    // for and not something it can record a status for.
+    if (response === null) throw new BrowserActionError('contract');
+    // Where the navigation ENDED, against the frozen allowlist rather than against the
+    // destination: a same-origin redirect is legitimate and lands somewhere the action did
+    // not name. The interception should already have aborted anything else; this is the
+    // second lock on that door.
+    //
+    // Deliberately NOT `denied() > before`. That counts every request the workspace
+    // refused during the navigation, and a page referencing a font, a beacon or an image
+    // off-origin is ordinary — failing the Tool Action for it would report `scope` for
+    // something the PLATFORM never attempted. Those denials are still recorded, as the
+    // security events the workspace drains at its own transaction boundaries.
+    if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+
+    const location = safeDestination(page.url());
+    return {
+      status: response.status(),
+      location,
+      redirected: response.request().redirectedFrom() !== null,
+      downloads: live.downloads,
+      // "The session held in the workspace", read from the workspace rather than believed:
+      // a cookie for the destination's own origin is what a later request will carry.
+      session: (await live.context.cookies(action.destination)).length > 0,
+    };
+  }
+
+  /**
+   * The ONE page a workspace drives, made on its first Tool Action.
+   *
+   * One page, because the session lives in the CONTEXT's cookie jar and a page per action
+   * would lose nothing but would make "what the workspace is looking at" a question with
+   * several answers.
+   */
+  private async pageFor(live: LiveWorkspace): Promise<Page> {
+    if (live.page !== null && !live.page.isClosed()) return live.page;
+    const page = await live.context.newPage();
+    // Counted, never accepted: `acceptDownloads: false` cancels it and this records that
+    // the Target System offered one.
+    page.on('download', () => {
+      live.downloads += 1;
+    });
+    live.page = page;
+    return page;
+  }
+
+  /**
    * Release this process's own provider resources. Called by the composition root only.
    *
    * `solari.close()` is REQUIRED in Node and `browser.close()` is not enough: the client
@@ -417,6 +561,27 @@ async function withTimeout(work: Promise<unknown>, ms: number): Promise<void> {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * Why a Tool Action failed, as the closed vocabulary the stage acts on.
+ *
+ * `blocked` is the workspace's own denial counter having moved, which is the only
+ * trustworthy way to tell "the allowlist aborted this" from "the network broke": Chromium
+ * reports both as an aborted navigation, and calling a refusal an outage is the mistake
+ * Epic 3 already paid for.
+ */
+export function actionFailure(error: unknown, blocked: boolean): BrowserActionError {
+  if (error instanceof BrowserActionError) return error;
+  if (blocked) return new BrowserActionError('scope');
+  const message = error instanceof Error ? error.message : '';
+  // A navigation the browser refused for a reason that is not this platform's allowlist —
+  // a bad scheme, a certificate, a protocol error. Not an outage to chase and not
+  // something a retry against the same frozen bytes would answer differently.
+  const code: BrowserActionFailureCode = /ERR_UNKNOWN_URL_SCHEME|ERR_INVALID_URL/.test(message)
+    ? 'contract'
+    : 'unavailable';
+  return new BrowserActionError(code);
 }
 
 /**

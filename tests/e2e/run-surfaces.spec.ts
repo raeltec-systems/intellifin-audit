@@ -69,8 +69,8 @@ test.beforeAll(async () => {
   await terminate(runs.completed, 'COMPLETED', '2026-09-01T09:03:41Z');
 
   await seedRun(runs.inconclusive, '2026-07-01', '2026-07-31', '2026-09-02T09:00:00Z');
-  await sql`INSERT INTO run_session_step(run_id,step_id,ordinal,registration_id,display_name,state,attempts,diagnostic,evidence_id)
-            VALUES(${runs.inconclusive},'step-ref',1,'rolematrix','RoleMatrix','FAILED',2,'extraction-incomplete',NULL)`;
+  await sql`INSERT INTO run_session_step(run_id,step_id,ordinal,registration_id,display_name,action,state,attempts,diagnostic,evidence_id)
+            VALUES(${runs.inconclusive},'step-ref',1,'rolematrix','RoleMatrix','extract-adapter','FAILED',2,'extraction-incomplete',NULL)`;
   await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at,diagnostic)
             VALUES(${ids.next()},${runs.inconclusive},'step-ref',NULL,'extract-adapter','FAILED',1,'2026-09-02T09:01:00Z','2026-09-02T09:01:05Z','extraction-incomplete')`;
   for (const [index, check] of GATE_CHECKS.entries()) {

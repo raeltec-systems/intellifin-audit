@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { apiDeclaration, countDeclaration, datasets } from './fixtures.js';
+import { loanCoreCredential, apiDeclaration, countDeclaration, datasets } from './fixtures.js';
 import { ARTIFACTS } from './files.js';
 import { handleRequest } from './server.js';
 
@@ -14,15 +14,24 @@ import { handleRequest } from './server.js';
  * agree about nothing.
  */
 
+/**
+ * The audit account's credential, on every request (Story 4.2).
+ *
+ * LoanCore requires it and every other synthetic system ignores it, so presenting it
+ * everywhere keeps these assertions about what each system SERVES rather than about who is
+ * asking. `authentication.test.ts` is where the refusal itself is asserted.
+ */
+const AUDIT_HEADERS = { authorization: `Bearer ${loanCoreCredential().token}` } as const;
+
 function text(url: string, method = 'GET'): string {
-  const response = handleRequest(method, url);
+  const response = handleRequest(method, url, AUDIT_HEADERS);
   return typeof response.body === 'string'
     ? response.body
     : Buffer.from(response.body).toString('utf8');
 }
 
 function statusOf(url: string): number {
-  return handleRequest('GET', url).status;
+  return handleRequest('GET', url, AUDIT_HEADERS).status;
 }
 
 function payload(url: string): Record<string, unknown> {
@@ -71,7 +80,7 @@ describe('LoanCore', () => {
   });
 
   it('renders a not-found page for a missing employee, never a 500', () => {
-    const response = handleRequest('GET', '/loancore/users/E-999999');
+    const response = handleRequest('GET', '/loancore/users/E-999999', AUDIT_HEADERS);
     expect(response.status).toBe(404);
     expect(text('/loancore/users/E-999999')).toContain('No account exists for employee ID E-999999');
   });

@@ -316,14 +316,19 @@ describe.skipIf(!url)('durable population execution', () => {
       diagnostic: 'run-time-limit',
     });
   });
-  it('refuses a valid frozen plan whose first action requires an unsupported workspace', async () => {
+  it('ACQUIRES the population of an agent plan, whose workspace step precedes it', async () => {
+    // This asserted a REFUSAL until Story 4.2. `acquirePopulation` read `sessionSteps[0]`
+    // literally, and the compiler emits `create-workspace` FIRST whenever a Target is
+    // agent-driven — so every agent Run was refused `unsupported-frozen-plan` before
+    // anything could sign in. `populationSessionStep` is where the compiler's own ordering
+    // now lives, and the refusal moved to the phase that actually cannot proceed.
     const job = await seed({ agentDriven: true }),
       deps = dependencies();
     let calls = 0;
     await deps.repository.transaction(job.runId, async (context) => {
-      expect((await context.frozenPlan())?.sessionSteps[0]?.action).toBe(
-        'create-workspace',
-      );
+      const plan = await context.frozenPlan();
+      expect(plan?.sessionSteps[0]?.action).toBe('create-workspace');
+      expect(plan?.sessionSteps[1]?.action).toBe('acquire-population');
     });
     deps.acquisition = {
       acquire: async () => {
@@ -332,14 +337,14 @@ describe.skipIf(!url)('durable population execution', () => {
       },
     };
     expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
-    expect(calls).toBe(0);
-    expect(deps.objects.size).toBe(0);
-    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(
-      'RUN_FAILED',
-    );
-    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({
-      status: 'TERMINAL',
-      diagnostic: 'unsupported-frozen-plan',
+    expect(calls).toBe(1);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUNNING');
+    const view = await deps.repository.readPopulation(job.runId);
+    expect(view).toMatchObject({ status: 'POPULATION_READY', diagnostic: null });
+    // The step id is the FROZEN one, taken from where the compiler PUT it rather than from
+    // position 0: `create-workspace` occupies `session-1` in an agent plan.
+    await deps.repository.transaction(job.runId, async (context) => {
+      expect(context.checkpoint?.stepId).toBe('session-2');
     });
   });
   it('registers exact bytes, duplicate rows, counts and each check in one durable checkpoint', async () => {

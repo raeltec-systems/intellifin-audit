@@ -19,9 +19,14 @@
  *
  *   pnpm build
  *   DATABASE_URL=postgres://... \
- *   CREDENTIAL_CAPABILITIES='{"cred://synthetic/northstar-readonly":"read-only"}' \
+ *   CREDENTIAL_CAPABILITIES='{"cred://synthetic/northstar-readonly":"read-only",
+ *                             "cred://synthetic/loancore-readonly":"read-only"}' \
  *   NORTHSTAR_BASE_URL=http://localhost:4300 \
  *   pnpm seed:northstar --admin-email administrator@example.test
+ *
+ * Every reference the catalogue names has to be declared, LoanCore's own included: it is
+ * the one authenticated synthetic system (Story 4.2) and declares its reference in
+ * `fixtures/northstar/datasets/systems.json` rather than sharing the shared one.
  *
  * `CREDENTIAL_CAPABILITIES` is a DECLARATION and holds no secret — a reference and a
  * verdict. Without it every registration is refused, which is the fail-closed direction:
@@ -74,6 +79,16 @@ interface TargetSystemDeclaration {
   readonly permitted_actions: readonly string[];
   readonly attribute_label_patterns: readonly string[];
   readonly secondary_key: string;
+  /**
+   * The system's OWN credential reference, when it declares one (Story 4.2).
+   *
+   * LoanCore is the one authenticated synthetic system, so it names its own reference in
+   * the catalogue rather than sharing the one `NORTHSTAR_CREDENTIAL_REF` supplies. Every
+   * reference a registration uses still has to be declared read-only in
+   * `CREDENTIAL_CAPABILITIES`, or the command refuses the registration verbatim — which
+   * is the fail-closed direction and is checked below before any row is written.
+   */
+  readonly credential_ref?: string;
   readonly note: string;
 }
 
@@ -160,6 +175,19 @@ async function main(): Promise<void> {
   }
 
   const catalogue = readCatalogue();
+  // Every reference the catalogue names, checked BEFORE any row is written. A system that
+  // declares its own reference — LoanCore does, because it is the one authenticated
+  // synthetic system — is refused by the command if the deployment has not vouched for it,
+  // and nine audited denials say less than one sentence naming the variable to set.
+  for (const system of catalogue.target_systems) {
+    const reference = system.credential_ref ?? credentialRef;
+    if (declared.get(reference) !== 'read-only') {
+      fail(
+        `${system.id}: the credential reference "${reference}" is not declared read-only. ` +
+          `Add it to CREDENTIAL_CAPABILITIES as '{"${reference}":"read-only"}'.`,
+      );
+    }
+  }
   const sql = createSqlClient(databaseUrl, { max: 2 });
   const db = createDb(sql);
 
@@ -237,7 +265,7 @@ async function main(): Promise<void> {
         kind: system.kind,
         allowedOrigins: [origin(base, system.origin_path)],
         applicationIdentity: '',
-        credentialRef,
+        credentialRef: system.credential_ref ?? credentialRef,
         permittedActions: actions,
         attributeLabelPatterns: [...system.attribute_label_patterns],
         secondaryKey: system.secondary_key,

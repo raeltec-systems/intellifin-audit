@@ -536,6 +536,7 @@ export async function executeAdapterSteps(
           ordinal: entry.ordinal,
           registrationId: entry.target.registrationId,
           displayName: entry.target.displayName,
+          action: 'extract-adapter' as const,
           state: 'PENDING' as const,
           attempts: 0,
           diagnostic: null,

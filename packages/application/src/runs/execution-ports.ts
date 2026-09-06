@@ -28,6 +28,7 @@ import type {
   RunResultExclusion,
   RunResultFindings,
   RunResultPublication,
+  SanitizedToolAction,
   SystemOutcome,
   PopulationResult,
   SessionStepState,
@@ -209,6 +210,15 @@ export interface SessionStepRecord {
   ordinal: number;
   registrationId: string;
   displayName: string;
+  /**
+   * The step's FROZEN action (Story 4.2).
+   *
+   * A Reference Source acquisition freezes bytes and a sign-in establishes a session, and
+   * `run_session_step_acquired` has to be able to tell them apart — otherwise the
+   * constraint that requires ACQUIRED Evidence refuses exactly the row a successful
+   * sign-in writes.
+   */
+  action: 'sign-in' | 'extract-adapter';
   state: SessionStepState;
   attempts: number;
   diagnostic: string | null;
@@ -970,6 +980,25 @@ export interface BrowserExecution {
   attach(ref: WorkspaceRef): Promise<WorkspaceHandle | null>;
   /** Release a workspace and revoke its credentials. Idempotent, by identity. */
   release(ref: WorkspaceRef, timeoutMs: number): Promise<void>;
+  /**
+   * Perform ONE Tool Action the gate has already authorized (Story 4.2).
+   *
+   * The gate is NOT here and must not be: `authorizeToolAction` runs at this port's call
+   * site in `packages/application`, so an implementation cannot skip it and a second
+   * provider inherits the guarantee rather than reimplementing it. What the implementation
+   * owns is the mechanism — the egress interception that aborts a destination the frozen
+   * allowlist does not cover, refusing to follow a redirect out of it, declining a
+   * download, and presenting the credential on this one request and no other.
+   *
+   * A refusal by the Target System throws `BrowserActionError('denied')`, never
+   * `'unavailable'`: they are different consequences under §E.1 and the difference is the
+   * one Epic 3 paid for losing.
+   */
+  perform(
+    ref: WorkspaceRef,
+    action: BrowserToolAction,
+    timeoutMs: number,
+  ): Promise<BrowserActionResult>;
 }
 
 /**
@@ -1022,4 +1051,126 @@ export interface WorkspaceExecutionRepository {
    * that borrowed `listRegistrations` probed nothing while exiting 0.
    */
   reapableRunIds(after: string | null, limit: number): Promise<string[]>;
+}
+
+/* ------------------------------------------------------------------ Story 4.2 --- */
+
+/**
+ * One authorized Tool Action, as the port receives it.
+ *
+ * Structural, like everything else that crosses this boundary: no `URL`, no `Page`, no
+ * provider type. `credential` is a `ResolvedCredential` — a reference and a method that
+ * writes a header — so this object has no field holding a secret and `JSON.stringify` of
+ * it yields the reference alone.
+ *
+ * **The gate has already run by the time this exists.** `authorizeToolAction` is applied
+ * at the CALL SITE in `packages/application`, never inside a provider adapter: an adapter
+ * that enforced its own allowlist would make the guarantee a property of that adapter, and
+ * the whole point of the port is that the provider can be replaced.
+ */
+export interface BrowserToolAction {
+  /** The action the frozen registration permits. `navigate` is the only one Story 4.2 takes. */
+  readonly action: string;
+  /** An absolute destination the gate has already proved is inside the frozen origins. */
+  readonly destination: string;
+  /**
+   * The credential to present on THIS request and no other, or `null`.
+   *
+   * Presented just in time and withdrawn immediately after: an implementation that left it
+   * on the workspace would put it on every later request of the Run, which is the opposite
+   * of what Story 4.3 owns.
+   */
+  readonly credential: ResolvedCredential | null;
+}
+
+/** What one Tool Action produced, with nothing in it that came out of the page. */
+export interface BrowserActionResult {
+  /** The main document's response status, or `null` when nothing answered. */
+  readonly status: number | null;
+  /**
+   * The location the workspace actually ended on, scheme+authority+path only.
+   *
+   * Sanitized by the implementation before it crosses this boundary, because it is
+   * recorded in the immutable action log and a query string is where a session token or a
+   * signed URL lives.
+   */
+  readonly location: string;
+  /** Whether the Target System redirected the action somewhere else. */
+  readonly redirected: boolean;
+  /** How many downloads the destination offered. Offered, and never executed. */
+  readonly downloads: number;
+  /** Whether the workspace now holds a session cookie for this destination's origin. */
+  readonly session: boolean;
+}
+
+/**
+ * Why a Tool Action could not be performed, as a closed vocabulary.
+ *
+ * A refusal by the Target System is NEVER `unavailable`: §E.1 gives a denial and a scope
+ * violation a different terminal state and a security event, and Epic 3 already paid for
+ * folding them into a transport count — a Work Item retried three times against a system
+ * that would go on refusing, with nothing durable saying the platform had been told no.
+ *
+ * - `unavailable` — the workspace or the system did not answer. RETRIED.
+ * - `denied` — the Target System refused the action (401, 403). TERMINAL.
+ * - `scope` — the action left, or was sent, outside the frozen origins. TERMINAL.
+ * - `contract` — the system answered something this build cannot act on. TERMINAL.
+ */
+export type BrowserActionFailureCode = 'unavailable' | 'denied' | 'scope' | 'contract';
+
+export class BrowserActionError extends Error {
+  override readonly name = 'BrowserActionError';
+  constructor(readonly code: BrowserActionFailureCode) {
+    super(`Tool Action ${code} failure`);
+  }
+}
+
+/**
+ * The agent stage's durable claim, one row per Run (`run_agent_execution`).
+ *
+ * Its own row rather than a field on the adapter stage's checkpoint: the two are different
+ * phases with different vocabularies, and a stage that borrowed another's checkpoint would
+ * have to answer for a status it does not produce. `SIGNED_IN` is the phase's completion —
+ * every agent-driven Target System of the frozen plan has an established session.
+ */
+export interface AgentExecutionCheckpoint {
+  revision: number;
+  status: 'EXECUTING' | 'SIGNED_IN' | 'RETRY' | 'TERMINAL';
+  attempts: number;
+  /** Copied from the population checkpoint's start: the Run deadline never restarts. */
+  runStartedAt: string;
+  startedAt: string;
+  attemptStartedAt: string;
+  leaseUntil: string;
+  attemptId: string;
+  diagnostic: string | null;
+}
+
+export interface AgentExecutionContext extends RunResultContext {
+  run: RunRecord | null;
+  checkpoint: AgentExecutionCheckpoint | null;
+  /** The population stage's claim, so the agent stage inherits the Run's own deadline. */
+  populationStartedAt: string | null;
+  /** Whether the population stage has finished. The agent phase follows it (FR-20). */
+  populationReady: boolean;
+  /** The Agent Workspace this Run holds, or `null` when it has none. */
+  workspace: { workspaceId: string; mode: string } | null;
+  frozenPlan(): Promise<ExecutablePlan | null>;
+  sessionSteps: readonly SessionStepRecord[];
+  saveCheckpoint(checkpoint: AgentExecutionCheckpoint, state: RunRecord['state']): Promise<void>;
+  saveSessionStep(step: SessionStepRecord): Promise<void>;
+  saveStepExecution(execution: StepExecutionRecord): Promise<void>;
+  /** Append one sanitized action to the shared log. The ONLY write path to it. */
+  saveToolAction(action: SanitizedToolAction): Promise<void>;
+  /** Every attempt this Run has already made, so the frozen limit counts them all. */
+  readStepExecutionCount(): Promise<number>;
+}
+
+export interface AgentExecutionRepository {
+  transaction<T>(
+    runId: string,
+    work: (context: AgentExecutionContext) => Promise<T>,
+  ): Promise<T>;
+  /** The agent phase's OWN read of the Runs it may resume. Never a surface's. */
+  recoverableRunIds(limit: number): Promise<string[]>;
 }

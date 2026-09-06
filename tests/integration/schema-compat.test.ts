@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-27 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-28 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -92,6 +92,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Story 3.3. The adapter execution stage: its claim, its Reference Source Session
       // Steps, its Work Items, their Step Executions, their Evidence and the §B.1
       // Observations. An unlisted table is a migration nobody reviewed.
+      'run_agent_execution',
       'run_evidence',
       // Story 3.5. The sealed Evidence package of one Run, and the Audit Trail integrity
       // findings a post-Run verification adds beside it without changing any state.
@@ -117,6 +118,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_result',
       'run_session_step',
       'run_step_execution',
+      'run_tool_action',
       'run_work_item',
       // Story 4.1. The isolated Agent Workspace one Run gets: its provider identity, the
       // guarantee its mode actually had, and the provider deadline it must respect.

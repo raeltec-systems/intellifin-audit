@@ -19,6 +19,7 @@ import {
 
 import { provisionWorkspace, releaseWorkspace } from './provision-workspace.js';
 import {
+  BrowserActionError,
   WorkspaceProvisionError,
   type BrowserExecution,
   type GateCheckRow,
@@ -253,6 +254,15 @@ class FakeBrowser implements BrowserExecution {
   release = async (ref: WorkspaceRef): Promise<void> => {
     this.released.push(ref);
   };
+
+  /**
+   * Story 4.2's Tool Action port member.
+   *
+   * This story provisions and releases a workspace and takes no action in one, so a fake
+   * that answered here would be a fake for something nothing under test calls. It refuses,
+   * which is what a workspace stage attempting a Tool Action would deserve.
+   */
+  perform = (): Promise<never> => Promise.reject(new BrowserActionError('unavailable'));
 
   private handle(ref: WorkspaceRef): WorkspaceHandle {
     let drained = false;
