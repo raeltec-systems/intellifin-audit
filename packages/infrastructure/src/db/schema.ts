@@ -774,8 +774,27 @@ export const auditRun = pgTable('audit_run', {
   initiatorId: text('initiator_id').notNull(), sessionId: text('session_id').notNull(),
   authorizationRole: text('authorization_role').notNull(),
   initiatedAt: timestamp('initiated_at', { withTimezone: true }).notNull(),
+  /** Story 3.10. The rerun link: the Run this one follows, and why it exists. */
+  predecessorRunId: uuid('predecessor_run_id').references((): import('drizzle-orm/pg-core').AnyPgColumn => auditRun.runId),
+  rerunReason: text('rerun_reason'),
+  /** Story 3.10. One person's durable cancellation request. All four, or none. */
+  cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
+  cancelRequestedBy: text('cancel_requested_by'),
+  cancelRequestedSession: text('cancel_requested_session'),
+  cancelReason: text('cancel_reason'),
 }, table => [
   uniqueIndex('audit_run_initiator_request').on(table.initiatorId, table.requestToken),
+  // A marker is written whole or not at all: a Canceled Run Detail states the actor, the
+  // time and the reason, and three of four columns is a state that can say none of them.
+  // `(a IS NULL) = (b IS NULL)` is boolean = boolean and is never NULL, so unlike a
+  // comparison of the values themselves this CHECK cannot pass by evaluating to NULL.
+  check('audit_run_cancel_request', sql`(${table.cancelRequestedAt} IS NULL) = (${table.cancelRequestedBy} IS NULL) AND (${table.cancelRequestedAt} IS NULL) = (${table.cancelRequestedSession} IS NULL) AND (${table.cancelRequestedAt} IS NULL) = (${table.cancelReason} IS NULL)`),
+  check('audit_run_cancel_reason', sql`${table.cancelReason} IS NULL OR (length(${table.cancelReason}) BETWEEN 1 AND 500)`),
+  // The predecessor and the reason are one fact. A link with no reason records that a
+  // rerun exists and not why, which is exactly what FR-26 asks for.
+  check('audit_run_rerun_link', sql`(${table.predecessorRunId} IS NULL) = (${table.rerunReason} IS NULL)`),
+  check('audit_run_rerun_reason', sql`${table.rerunReason} IS NULL OR (length(${table.rerunReason}) BETWEEN 1 AND 500)`),
+  check('audit_run_rerun_not_self', sql`${table.predecessorRunId} IS NULL OR ${table.predecessorRunId} <> ${table.runId}`),
   foreignKey({ name: 'audit_run_version_owner_fk', columns: [table.procedureId, table.versionId], foreignColumns: [procedureVersion.procedureId, procedureVersion.versionId] }),
   uniqueIndex('audit_run_active_standard_period').on(table.procedureId, table.periodFrom, table.periodTo).where(sql`${table.kind} = 'STANDARD' AND ${table.state} IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR')`),
   check('audit_run_state', sql`${table.state} IN ('QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR','COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED')`),

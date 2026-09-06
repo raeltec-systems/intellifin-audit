@@ -1,14 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { DrizzleRunRepository, PostgresAdapterExecutionRepository, PostgresPopulationRepository, PostgresSealedPackageRepository } from '@intellifin/infrastructure';
+import { CryptoUuidV7Generator, DrizzleRunRepository, PostgresAdapterExecutionRepository, PostgresPopulationRepository, PostgresSealedPackageRepository } from '@intellifin/infrastructure';
 import { Digest } from '../../../src/design/Digest';
-import type { RunState } from '@intellifin/domain';
+import { isActiveRunState, type RunState } from '@intellifin/domain';
 import { getRuntime } from '../../../src/bootstrap';
 import { requireServerAction } from '../../../src/server-session';
 import { Banner } from '../../../src/design/Banner';
 import { StatusBadge } from '../../../src/design/StatusBadge';
 import type { StatusState } from '../../../src/design/status';
+import { runCanceledBy } from '../../../src/design/copy';
+import { RunLifecycleActions } from '../../../src/runs/RunLifecycleActions';
 
 export const metadata: Metadata = { title: 'Run · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -31,6 +33,10 @@ function artifactRefs(value: unknown): { kind: string; objectKey: string }[] {
     typeof entry === 'object' && entry !== null && typeof (entry as { objectKey?: unknown }).objectKey === 'string'
       ? [{ kind: String((entry as { kind?: unknown }).kind ?? ''), objectKey: (entry as { objectKey: string }).objectKey }]
       : []);
+}
+/** One UTC timestamp, written the way every other stamp on this surface is. */
+function stamp(value: string): string {
+  return value.replace('T', ' ').replace('Z', ' UTC');
 }
 function labelOf(table: Record<string, string>, state: string): string {
   return Object.hasOwn(table, state) ? table[state]! : state;
@@ -61,17 +67,34 @@ export default async function RunPage({ params, searchParams }: { params: Promis
     <nav aria-label="Breadcrumb"><Link href={`/procedures/${run.procedureId}`}>{run.procedureName}</Link> / Run</nav>
     <header className="ls-page-header"><h1>Run · {run.procedureName}</h1><StatusBadge family="run-lifecycle" state={labels[run.state]} size="md" /></header>
     {run.state === 'QUEUED' && <Banner tone="info" title="Run queued">The Run is saved and waiting for execution. No conclusion has been issued.</Banner>}
+    {/* EXPERIENCE.md → Run Detail, Canceled: "Canceled by {actor} at {elapsed}"; Evidence
+        preserved. The actor and the time come from the durable marker, never from a
+        guess: `CANCELED` is reserved for a person and the row says which one. */}
+    {run.state === 'CANCELED' && run.cancellation !== null && <Banner tone="warning" title={runCanceledBy(run.cancellation.requestedBy, stamp(run.cancellation.requestedAt))}>
+      <p>{run.cancellation.reason}</p>
+      <p>Evidence already collected is preserved. No conclusion was issued.</p>
+    </Banner>}
+    {run.cancellation !== null && run.state !== 'CANCELED' && <Banner tone="warning" title={`Cancellation requested by ${run.cancellation.requestedBy} at ${stamp(run.cancellation.requestedAt)}`}>
+      {isActiveRunState(run.state)
+        ? <p>The Run stops at its next checkpoint, before any further Target System work.</p>
+        : <p>The Run ended before the cancellation was performed, so its own outcome stands.</p>}
+    </Banner>}
     <section className="ls-card ls-stack" aria-labelledby="run-details"><h2 id="run-details">Run details</h2>
       <dl className="ls-card__cells ls-run-details">
         <div><dt>Run ID</dt><dd>{run.runId}</dd></div>
         <div><dt>Procedure Version</dt><dd><Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>v{run.versionNumber}</Link></dd></div>
         <div><dt>Period</dt><dd>{run.period.from} to {run.period.to} (inclusive)</dd></div>
         <div><dt>Initiator</dt><dd>{run.initiatorId}</dd></div>
-        <div><dt>Initiated at</dt><dd>{run.initiatedAt.replace('T', ' ').replace('Z', ' UTC')}</dd></div>
+        <div><dt>Initiated at</dt><dd>{stamp(run.initiatedAt)}</dd></div>
         <div><dt>Run kind</dt><dd>{run.kind === 'STANDARD' ? 'Standard' : 'Regression'}</dd></div>
         <div><dt>Correlation ID</dt><dd>{run.correlationId}</dd></div>
+        {/* A rerun says which Run it follows and why it exists. The predecessor itself is
+            never changed by the link — only this row and this Run's own chain carry it. */}
+        {run.predecessorRunId !== null && <div><dt>Rerun of</dt><dd><Link href={`/runs/${run.predecessorRunId}`}>{run.predecessorRunId}</Link></dd></div>}
+        {run.rerunReason !== null && <div><dt>Reason for this Run</dt><dd>{run.rerunReason}</dd></div>}
       </dl>
     </section>
+    <RunLifecycleActions runId={run.runId} active={isActiveRunState(run.state)} cancelPending={run.cancellation !== null} requestToken={new CryptoUuidV7Generator().next()} procedureName={run.procedureName} />
     {population && <section className="ls-card ls-stack" aria-labelledby="population-heading">
       <h2 id="population-heading">Population acquisition</h2>
       <p>{population.status === 'POPULATION_READY' ? 'Population verified. Target checks are pending.' : population.status === 'TERMINAL' ? 'Population acquisition stopped.' : 'Population acquisition is in progress.'} Attempts: {population.attempts}.</p>

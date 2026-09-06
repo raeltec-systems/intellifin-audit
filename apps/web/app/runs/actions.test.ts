@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), runtime: vi.fn(), initiate: vi.fn(), redirect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), runtime: vi.fn(), initiate: vi.fn(), cancel: vi.fn(), rerun: vi.fn(), redirect: vi.fn() }));
 vi.mock('../../src/server-session', () => ({ requireServerAction: mocks.authorize, currentCorrelationId: async () => 'trusted-correlation' }));
 vi.mock('../../src/bootstrap', () => ({ getRuntime: mocks.runtime }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
-vi.mock('@intellifin/application', async original => ({ ...await original<typeof import('@intellifin/application')>(), initiateRun: mocks.initiate }));
-import { initiateRunAction, initiateRunFormAction } from './actions';
+vi.mock('@intellifin/application', async original => ({ ...await original<typeof import('@intellifin/application')>(), initiateRun: mocks.initiate, cancelRun: mocks.cancel, rerunRun: mocks.rerun }));
+import { cancelRunAction, initiateRunAction, initiateRunFormAction, rerunAction } from './actions';
 
 const fields = { requestToken: '018f0000-0000-7000-8000-000000000099', procedureId: '018f0000-0000-7000-8000-000000000001', period: { from: '2026-09-01', to: '2026-09-30' } };
 const session = { userId: 'trusted-user', sessionId: 'trusted-session' };
@@ -13,6 +13,8 @@ beforeEach(() => {
   mocks.authorize.mockResolvedValue({ allowed: true, session, role: 'auditor' });
   mocks.runtime.mockResolvedValue({ db: {}, telemetry: { captureError: vi.fn() } });
   mocks.initiate.mockResolvedValue({ ok: true, runId: 'saved-run' });
+  mocks.cancel.mockResolvedValue({ ok: true, state: 'CANCELED', pending: false });
+  mocks.rerun.mockResolvedValue({ ok: true, runId: 'rerun-run' });
 });
 
 describe('Run action request boundary', () => {
@@ -81,5 +83,60 @@ describe('Run action request boundary', () => {
     mocks.authorize.mockRejectedValue(new Error('database unavailable'));
     expect(await initiateRunFormAction(null, new FormData())).toMatchObject({ ok: false, unknownOutcome: true });
     expect(mocks.initiate).not.toHaveBeenCalled(); expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});
+
+const runId = '018f0000-0000-7000-8000-0000000000a1';
+
+describe('Cancel and Rerun request boundaries', () => {
+  it('authorizes cancellation under run.cancel before inspecting hostile input', async () => {
+    mocks.authorize.mockResolvedValue({ allowed: false, reason: 'This role cannot cancel a Run.' });
+    expect(await cancelRunAction(new Proxy({}, { get: () => { throw new Error('input read'); }, ownKeys: () => { throw new Error('input read'); } })))
+      .toEqual({ ok: false, reason: 'This role cannot cancel a Run.' });
+    expect(mocks.authorize).toHaveBeenCalledWith('run.cancel');
+    expect(mocks.runtime).not.toHaveBeenCalled();
+    expect(mocks.cancel).not.toHaveBeenCalled();
+  });
+  it.each([null, [], 'run', {}, { runId: 'forged' }, { runId, extra: 'forged' }, { runId, reason: 'smuggled' }, { runId: 42 }])('refuses malformed cancellation input %#', async input => {
+    expect(await cancelRunAction(input)).toMatchObject({ ok: false });
+    expect(mocks.cancel).not.toHaveBeenCalled();
+  });
+  it('passes the trusted session and no caller-supplied reason to the command', async () => {
+    expect(await cancelRunAction({ runId })).toEqual({ ok: true, state: 'CANCELED', pending: false });
+    expect(mocks.cancel.mock.calls[0]?.[1]).toEqual({ session, request: { runId, reason: null } });
+  });
+  it('reports a pending cancellation for a Run a worker owns', async () => {
+    mocks.cancel.mockResolvedValue({ ok: true, state: 'RUNNING', pending: true });
+    expect(await cancelRunAction({ runId })).toEqual({ ok: true, state: 'RUNNING', pending: true });
+  });
+  it('never claims rollback when a cancellation outcome could not be confirmed', async () => {
+    const captureError = vi.fn(), error = new Error('response lost after commit');
+    mocks.runtime.mockResolvedValue({ db: {}, telemetry: { captureError } });
+    mocks.cancel.mockRejectedValue(error);
+    const result = await cancelRunAction({ runId });
+    expect(result).toMatchObject({ ok: false, unknownOutcome: true });
+    expect(JSON.stringify(result)).not.toContain('Nothing was changed');
+    expect(captureError).toHaveBeenCalledWith('Cancel Run failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
+  });
+  it('gates a rerun under run.initiate, because a rerun starts a Run', async () => {
+    mocks.authorize.mockResolvedValue({ allowed: false, reason: 'PoC Administrator cannot author Procedures or start Runs.' });
+    expect(await rerunAction({ predecessorRunId: runId, requestToken: fields.requestToken })).toMatchObject({ ok: false });
+    expect(mocks.authorize).toHaveBeenCalledWith('run.initiate');
+    expect(mocks.rerun).not.toHaveBeenCalled();
+  });
+  it.each([null, [], { predecessorRunId: runId }, { predecessorRunId: 'forged', requestToken: fields.requestToken }, { predecessorRunId: runId, requestToken: 'forged' }, { predecessorRunId: runId, requestToken: fields.requestToken, reason: 'smuggled' }])('refuses malformed rerun input %#', async input => {
+    expect(await rerunAction(input)).toMatchObject({ ok: false });
+    expect(mocks.rerun).not.toHaveBeenCalled();
+  });
+  it('passes the predecessor and the token, and never a Procedure or a period', async () => {
+    expect(await rerunAction({ predecessorRunId: runId, requestToken: fields.requestToken })).toEqual({ ok: true, runId: 'rerun-run' });
+    expect(mocks.rerun.mock.calls[0]?.[1]).toEqual({ session, request: { predecessorRunId: runId, requestToken: fields.requestToken, reason: null } });
+  });
+  it('never claims rollback when a rerun outcome could not be confirmed', async () => {
+    const captureError = vi.fn(), error = new Error('response lost after commit');
+    mocks.runtime.mockResolvedValue({ db: {}, telemetry: { captureError } });
+    mocks.rerun.mockRejectedValue(error);
+    expect(await rerunAction({ predecessorRunId: runId, requestToken: fields.requestToken })).toMatchObject({ ok: false, unknownOutcome: true });
+    expect(captureError).toHaveBeenCalledWith('Rerun failed', error, { correlationId: 'trusted-correlation', outcome: 'failure' });
   });
 });

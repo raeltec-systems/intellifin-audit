@@ -120,6 +120,9 @@ const RUN: RunRecord = {
   sessionId: 'session',
   initiatedAt: '2026-09-01T00:00:00.000Z',
   authorizationRole: 'auditor',
+  predecessorRunId: null,
+  rerunReason: null,
+  cancellation: null,
   requestToken: '01920000-0000-7000-8000-000000000005',
 };
 
@@ -1213,5 +1216,72 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.executions.every((row) => row.state === 'SUCCEEDED')).toBe(true);
     const observation = test.repository.observations[0]!.record;
     expect(test.repository.executions.some((row) => row.stepExecutionId === observation.stepExecutionId)).toBe(true);
+  });
+
+  /**
+   * Story 3.10. A cancellation is honoured at a boundary and never inside a unit.
+   *
+   * The claim case proves the Run stops before ANY Target System work, and the
+   * between-units case proves the unit that had already started finished and committed —
+   * its Evidence, its Step Execution and its Observations are all still there — while the
+   * next Work Item never ran.
+   */
+  const CANCELLATION = {
+    requestedBy: 'auditor', sessionId: 'browser-session',
+    requestedAt: '2026-09-05T00:00:00.000Z', reason: 'Wrong period.',
+  } as const;
+
+  it('honours a cancellation at the claim, before any Target System work', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    test.repository.run = { ...test.repository.run, cancellation: CANCELLATION };
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.run.state).toBe('CANCELED');
+    expect(test.repository.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'canceled' });
+    // Nothing was reached: no Session Step, no Work Item, no Evidence, no wire call.
+    expect([test.repository.steps.size, test.repository.items.size, test.repository.evidence.size, test.wire.length]).toEqual([0, 0, 0, 0]);
+    // The Gate never ran, and the Result says so rather than pretending it passed.
+    expect(test.repository.gate).toEqual([]);
+    expect(test.repository.result).toMatchObject({ outcome: 'CANCELED', row: 'canceled', runState: 'CANCELED', gatePassed: false });
+    const canceled = test.repository.events.find((entry) => entry.eventType === 'lifecycle.run-canceled')!;
+    expect(canceled.payload).toMatchObject({ priorState: 'RUNNING', state: 'CANCELED', reason: 'Wrong period.', performedBy: 'worker' });
+  });
+
+  it('lets the unit already running finish, and starts no further Target System work', async () => {
+    const second = target('reg-api-2', 'api', 'https://synthetic.invalid/accessgate2/accounts');
+    const test = harness({
+      plan: plan([adapter, second]),
+      extract: async (entry) => {
+        test.wire.push({ location: entry.contract.allowed_origins[0]!, authorization: null });
+        // The request lands while the FIRST Work Item is mid-flight.
+        test.repository.run = { ...test.repository.run, cancellation: CANCELLATION };
+        return { bytes: utf8Bytes(ACCOUNTS), mediaType: 'application/json', location: entry.contract.allowed_origins[0]! };
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    // Exactly one Target System was read: the second Work Item never started.
+    expect(test.wire).toHaveLength(1);
+    const items = [...test.repository.items.values()];
+    expect(items.map((item) => item.state)).toEqual(['OBSERVED', 'PENDING']);
+    // The unit that was mid-flight committed everything it produced. Evidence is never
+    // removed on cancellation, and its Observations are still registered.
+    expect(test.repository.evidence.size).toBe(1);
+    expect([...test.repository.evidence.values()][0]).toMatchObject({ state: 'REGISTERED' });
+    expect(test.repository.observations.length).toBeGreaterThan(0);
+    expect(test.repository.executions).toHaveLength(1);
+    expect(test.repository.run.state).toBe('CANCELED');
+    expect(test.repository.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'canceled' });
+    expect(test.repository.result).toMatchObject({ outcome: 'CANCELED', row: 'canceled' });
+    // The Run-level Gate is decided after the LAST Work Item, and there was no last one.
+    expect(test.repository.gate).toEqual([]);
+  });
+
+  it('never produces CANCELED from a limit: the same Run without a request is Inconclusive', async () => {
+    const test = harness({ plan: plan([reference, adapter]) });
+    // The frozen Run deadline, spent. §E.1 maps it to INCONCLUSIVE and nothing else.
+    test.repository.population = { ...test.repository.population!, startedAt: '2026-09-04T00:00:00.000Z' };
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
+    expect(test.repository.checkpoint?.diagnostic).toBe('run-time-limit');
+    expect(test.repository.result).toMatchObject({ outcome: 'INCONCLUSIVE' });
   });
 });

@@ -672,6 +672,90 @@ describe.skipIf(!url)('durable population execution', () => {
     expect(event!.payload).toMatchObject({ seal: 'INCOMPLETE', runState: 'RUN_FAILED' });
   });
 
+  /**
+   * Story 3.10. The worker honours a recorded cancellation at its own claim boundary.
+   *
+   * A `RUNNING` Run is held by a worker, so `CancelRun` records the request and performs
+   * nothing. This is the other half: the next claim reads the request from the Run state
+   * its own transaction just read, stops before making any acquisition, and commits the
+   * `CANCELED` transition with the Result and the sealed package.
+   */
+  it('stops at the claim boundary when a cancellation is recorded, and acquires nothing', async () => {
+    const job = await seed();
+    let acquisitions = 0;
+    const deps = dependencies({
+      acquire: async () => {
+        acquisitions += 1;
+        return { bytes: raw, mediaType: 'text/csv', declaration };
+      },
+    });
+    // What `CancelRun` writes for a Run a worker owns: the marker and nothing else.
+    await sql`UPDATE audit_run SET state='RUNNING',cancel_requested_at=now(),cancel_requested_by=${author},cancel_requested_session='browser-session',cancel_reason='Wrong period.' WHERE run_id=${job.runId}`;
+
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+
+    expect(acquisitions).toBe(0);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('CANCELED');
+    expect(await sql`SELECT outcome,outcome_row,run_state FROM run_result WHERE run_id=${job.runId}`)
+      .toMatchObject([{ outcome: 'CANCELED', outcome_row: 'canceled', run_state: 'CANCELED' }]);
+    expect(await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${job.runId}`).toMatchObject([{ run_state: 'CANCELED' }]);
+    // Nothing was acquired, so nothing was reserved either.
+    expect(await sql`SELECT run_id FROM population_evidence WHERE run_id=${job.runId}`).toHaveLength(0);
+    const canceled = await sql`SELECT actor_id,session_id,payload FROM audit_events WHERE aggregate_id=${job.runId} AND event_type='lifecycle.run-canceled'`;
+    expect(canceled).toHaveLength(1);
+    expect(canceled[0]).toMatchObject({ actor_id: author, session_id: 'browser-session', payload: { priorState: 'RUNNING', state: 'CANCELED', reason: 'Wrong period.', performedBy: 'worker' } });
+    // A redelivery of the same job changes nothing: the Run is terminal and the claim
+    // refuses it, so the outcome stays the one that was computed exactly once.
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect(await sql`SELECT count(*)::int AS c FROM run_result WHERE run_id=${job.runId}`).toMatchObject([{ c: 1 }]);
+    expect(await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${job.runId} AND event_type='lifecycle.run-canceled'`).toMatchObject([{ c: 1 }]);
+  });
+
+  it('preserves an already frozen population and stops before the next stage', async () => {
+    const job = await seed();
+    const deps = dependencies();
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    const [before] = await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`;
+    expect(before).toMatchObject({ state: 'REGISTERED' });
+    await sql`UPDATE audit_run SET cancel_requested_at=now(),cancel_requested_by=${author},cancel_requested_session='browser-session',cancel_reason='Enough.' WHERE run_id=${job.runId}`;
+
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('CANCELED');
+    // Evidence already registered is preserved exactly as it stands.
+    expect(await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`).toEqual([before]);
+    expect(await sql`SELECT status,diagnostic FROM population_execution WHERE run_id=${job.runId}`).toMatchObject([{ status: 'TERMINAL', diagnostic: 'canceled' }]);
+    expect(await sql`SELECT state,registered FROM run_evidence_package WHERE run_id=${job.runId}`).toMatchObject([{ state: 'SEALED', registered: 1 }]);
+  });
+
+  it('preserves a partial reservation on cancellation and names it on the seal', async () => {
+    const job = await seed();
+    let attempts = 0;
+    const deps = dependencies({
+      acquire: async () => {
+        attempts += 1;
+        throw new PopulationAcquisitionError('transport');
+      },
+    });
+    // One transient failure: the reservation exists, nothing was ever registered.
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: true });
+    expect(await sql`SELECT state,raw_digest FROM population_evidence WHERE run_id=${job.runId}`).toMatchObject([{ state: 'RESERVED', raw_digest: null }]);
+    await sql`UPDATE audit_run SET cancel_requested_at=now(),cancel_requested_by=${author},cancel_requested_session='browser-session',cancel_reason='Stop.' WHERE run_id=${job.runId}`;
+
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+
+    // No further acquisition was attempted, and the reservation was NOT removed.
+    expect(attempts).toBe(1);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('CANCELED');
+    const [seal] = await sql`SELECT state,required_total,registered,missing_required,abandoned FROM run_evidence_package WHERE run_id=${job.runId}`;
+    expect(seal).toMatchObject({ state: 'INCOMPLETE', required_total: 1, registered: 0 });
+    const raw = `population/${job.runId}/raw`;
+    expect((seal!.abandoned as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    expect((seal!.missing_required as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    // The row is still there, marked as what it is: abandoned, never deleted.
+    expect(await sql`SELECT state FROM population_evidence WHERE run_id=${job.runId}`).toMatchObject([{ state: 'ABANDONED' }]);
+  });
+
   it('names the population reservation from the Run and freezes both objects it addresses', async () => {
     const job = await seed();
     const deps = dependencies();

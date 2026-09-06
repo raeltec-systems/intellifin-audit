@@ -183,6 +183,13 @@
       "when": 1788671664178,
       "tag": "0025_sparkling_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788675522923,
+      "tag": "0026_tiny_mystique",
+      "breakpoints": true
     }
   ]
 }

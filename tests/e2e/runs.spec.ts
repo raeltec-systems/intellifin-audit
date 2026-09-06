@@ -61,6 +61,8 @@ test.afterAll(async () => {
     await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
+    // A rerun link is a self-referencing foreign key, so a successor goes first.
+    await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId} AND predecessor_run_id IS NOT NULL`;
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM notification WHERE procedure_id=${procedureId}`;
     await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
@@ -194,6 +196,64 @@ test.describe('Run initiation as an Auditor', () => {
     expect(await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId} AND period_from='2026-07-01' AND period_to='2026-07-31'`).toHaveLength(1);
     expect(await sql`SELECT id FROM pgboss.job WHERE data->>'runId'=${persisted[0]!.run_id}`).toHaveLength(1);
   });
+  test('cancels a queued Run from Run Detail, and reruns the terminal Run it leaves', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto(`/procedures/${procedureId}`);
+    await page.getByLabel('Period from', { exact: true }).fill('2026-04-01');
+    await page.getByLabel('Period to', { exact: true }).fill('2026-04-30');
+    await page.getByRole('button', { name: 'Initiate Run', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Initiate Run', exact: true }).click();
+    await expect(page).toHaveURL(/\/runs\/[0-9a-f-]{36}$/, { timeout: process.env['INTELLIFIN_LOW_DISK'] === '1' ? 30_000 : 10_000 });
+    const runId = page.url().split('/').at(-1)!;
+    expect(await sql`SELECT id FROM pgboss.job WHERE data->>'runId'=${runId}`).toHaveLength(1);
+
+    // EXPERIENCE.md makes cancel a routine confirmation that restates the consequence,
+    // and a focus-trapping dialog cannot exist before React attaches its handlers. Prove
+    // hydration rather than racing it: a click that lands first does nothing at all.
+    await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');
+    await page.getByRole('button', { name: 'Cancel Run', exact: true }).click();
+    const confirm = page.getByRole('dialog');
+    await expect(confirm).toBeVisible();
+    await expect(confirm.getByText('Evidence already collected is preserved')).toBeVisible();
+    await confirm.getByRole('button', { name: 'Cancel Run', exact: true }).click();
+    await expect(page.getByText('Run canceled.', { exact: true })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByText('Canceled', { exact: true })).toBeVisible();
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorId} at `))).toBeVisible();
+    // A queued Run has no process holding it, so the web finished the job: the dispatch
+    // job is gone in the same transaction that wrote CANCELED.
+    expect(await sql`SELECT id FROM pgboss.job WHERE data->>'runId'=${runId}`).toHaveLength(0);
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'CANCELED' }]);
+    expect(await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`).toMatchObject([{ outcome: 'CANCELED' }]);
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
+
+    // A terminal Run offers a rerun instead, and the predecessor is left alone.
+    const [before] = await sql`SELECT * FROM audit_run WHERE run_id=${runId}`;
+    await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');
+    await page.getByRole('button', { name: 'Rerun', exact: true }).click();
+    const rerunDialog = page.getByRole('dialog');
+    await expect(rerunDialog.getByText('This Run remains unchanged.')).toBeVisible();
+    await rerunDialog.getByRole('button', { name: 'Start the new Run', exact: true }).click();
+    await expect(page.getByText('A new Run is queued.', { exact: true })).toBeVisible();
+    const [successor] = await sql`SELECT run_id::text AS id,period_from::text AS f,period_to::text AS t,rerun_reason FROM audit_run WHERE predecessor_run_id=${runId}`;
+    expect(successor).toMatchObject({ f: '2026-04-01', t: '2026-04-30' });
+    expect(successor!.rerun_reason).not.toBeNull();
+    expect(await sql`SELECT * FROM audit_run WHERE run_id=${runId}`).toEqual([before]);
+
+    await page.getByRole('link', { name: 'Open the linked Run', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${successor!.id as string}$`));
+    await expect(page.getByText('Queued', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: runId, exact: true })).toBeVisible();
+    // Cancel the successor so the Procedure has no active Run left behind. This click is
+    // the one that races hydration: the anchor above did a full document navigation.
+    await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');
+    await page.getByRole('button', { name: 'Cancel Run', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel Run', exact: true }).click();
+    await expect(page.getByText('Run canceled.', { exact: true })).toBeVisible();
+  });
+
   test('returns safe not-found pages for malformed and absent Run IDs', async ({ page }) => {
     for (const id of ['not-a-run-id', ids.next()]) {
       const response = await page.goto(`/runs/${id}`);

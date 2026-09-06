@@ -2,7 +2,7 @@
 title: 'Story 3.10: Cancel an active Run and start a linked rerun'
 type: 'feature'
 created: '2026-09-05'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -208,3 +208,55 @@ the refusal for a period with no `ACTIVE` owner has to be the same sentence init
   accessibility violations.
 
 ## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** An authorized person can cancel an active Run, and any terminal Run can be
+followed by a new linked Run that records why it exists. The split between who performs the
+transition is the whole design and it lives in the domain as data:
+`RUN_CANCEL_TRANSITIONS` maps each of the four ACTIVE states to `command` or `worker`, and
+no caller restates it.
+
+**A queued Run is finished by the command.** `CancelRun` transitions it to `CANCELED` and
+removes its dispatch job through pg-boss on the SAME transaction handle, so no worker can
+pick it up afterwards. A `RUNNING` Run is held under a lease, so the request is recorded as
+a durable four-column marker and the worker performs the transition at the checkpoint
+boundary it already commits at — before any further Target System work, never mid-unit. The
+unit that was already in flight finishes and commits: its Evidence, its Step Execution and
+its Observations all survive, and a reservation that never completed is left OPEN so
+`SealPackage` names it as abandoned rather than dropping it.
+
+**A cancellation IS a terminal transition, so it goes through `completeRun`.**
+`performCancellation` is the one place a Run becomes `CANCELED`; three producers reach it
+and all three write the state, the Timeline event, the Evidence package seal and the Result
+in one transaction. `CANCELED` is the one §E.1 outcome that does not require the Gate to
+have run, and the Result says so — `gatePassed: false`, `checks: 0` — rather than
+fabricating a Gate result to make a cancelled Run look like the others.
+
+**Cancel-meets-claim is decided by the Run's own row lock.** Both sides read the state
+inside the transaction that writes, so one loses and sees the committed result. The
+integration test holds a claim transaction OPEN, observes the cancellation WAITING on that
+lock in `pg_stat_activity`, and then releases it; removing the `FOR UPDATE` makes it fail.
+
+**A rerun is a new Run, not a copy, and there is ONE creation path.** `rerunRun` shares
+`createRun` with `initiateRun` and takes its Procedure and period from the PREDECESSOR, so a
+caller cannot point a "rerun" at another Procedure. The period owner is resolved afresh, so
+a rerun after a handover runs the version that now owns the period and a period with no
+`ACTIVE` owner is refused with initiation's own sentence. There is deliberately no
+`run.rerun` gated action: starting a Run is `run.initiate`. The predecessor row, its Result
+and its audit chain head are compared before and after and are byte-for-byte unchanged.
+
+**Verification against PostgreSQL 18 at schema generation 26:** typecheck PASS; boundaries
+PASS (381 modules); `pnpm test` 2560/2560 unit; `pnpm db:migrate` schemaVersion 26;
+`pnpm test:integration` 330/330; `pnpm db:generate` no drift; `pnpm build` and
+`pnpm --filter @intellifin/web build` PASS; browser + axe 111/111 with zero accessibility
+violations.
+
+**Residual risks.** `PAUSED` and `AWAITING_AUDITOR` are in the transition table as
+`command` because neither is held by a worker mid-unit, but Epic 5 is what produces them:
+if a paused Run turns out to keep a live lease, the table is the one place to change.
+Cancellation is checked BEFORE the limit computation at each boundary, so a Run whose
+deadline had already passed and whose cancellation had been requested records `CANCELED`
+rather than `INCONCLUSIVE`; that is a person cancelling a still-`RUNNING` Run, not a limit
+producing `CANCELED`, and it is recorded in `CLAUDE.md` as a deliberate ordering.

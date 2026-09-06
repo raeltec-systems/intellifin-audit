@@ -92,6 +92,9 @@ function run(procedureId: string): RunRecord {
     sessionId: 'session',
     initiatedAt: '2026-09-01T00:00:00.000Z',
     authorizationRole: 'auditor',
+    predecessorRunId: null,
+    rerunReason: null,
+    cancellation: null,
     requestToken: '01920000-0000-7000-8000-000000000005',
   };
 }

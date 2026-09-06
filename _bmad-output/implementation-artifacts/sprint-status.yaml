@@ -67,7 +67,7 @@ development_status:
   3-7-evaluate-corroborated-observations-deterministically-and-rai: done
   3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: done
   3-9-seal-the-result-and-publish-the-adapter-run-s-outputs: done
-  3-10-cancel-an-active-run-and-start-a-linked-rerun: backlog
+  3-10-cancel-an-active-run-and-start-a-linked-rerun: done
   3-11-see-runs-and-inspect-an-adapter-run-s-result-evidence-except: backlog
   epic-3-retrospective: optional
 

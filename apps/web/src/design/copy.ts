@@ -144,3 +144,28 @@ export const BUILDER_SECTION_NOT_EDITABLE_SENTENCE =
  */
 export const BUILDER_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to author or approve.';
 export const AUTHOR_CANNOT_APPROVE_SENTENCE = 'You cannot approve a version you authored.';
+
+/**
+ * What every corrective action says about the Run it was taken from.
+ *
+ * EXPERIENCE.md → Voice & Tone: `"This Run remains unchanged." after every corrective
+ * action`, against `implying a rerun edits history`. A rerun creates a NEW Run and
+ * touches nothing of its predecessor — not the row, not the Evidence, not the Result,
+ * not the audit chain — and this is the sentence that says so.
+ */
+export const RUN_UNCHANGED_SENTENCE = 'This Run remains unchanged.';
+
+/**
+ * What a Canceled Run Detail states (EXPERIENCE.md → Per-surface states, Run Detail /
+ * Canceled: `Canceled by {actor} at {elapsed}`).
+ *
+ * `CANCELED` is reserved for a person, so the surface names which one and when — read
+ * from the durable cancellation marker, never guessed. Substituted rather than
+ * interpolated into a retyped sentence, so the only things this file can get wrong are
+ * the actor and the time.
+ */
+export const RUN_CANCELED_BY_TEMPLATE = 'Canceled by {actor} at {elapsed}';
+
+export function runCanceledBy(actor: string, at: string): string {
+  return RUN_CANCELED_BY_TEMPLATE.replace('{actor}', actor).replace('{elapsed}', at);
+}

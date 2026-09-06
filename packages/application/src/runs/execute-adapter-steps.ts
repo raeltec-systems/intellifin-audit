@@ -26,6 +26,7 @@ import {
   type ProcedureTargetSnapshot,
   type ReferenceArtifact,
   type RunRecord,
+  type RunCancellationRequest,
   type RunLimitCause,
   type RunStopCause,
 } from '@intellifin/domain';
@@ -62,6 +63,7 @@ import {
   reserveArtifact,
 } from './evidence-package.js';
 import { completeRun } from './complete-run.js';
+import { performCancellation } from './cancel-run.js';
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 
 /**
@@ -131,7 +133,9 @@ export type AdapterExecutionDiagnostic =
   | 'extraction-contract-failed'
   | 'extraction-denied'
   | 'extraction-scope-violation'
-  | 'observation-registration-refused';
+  | 'observation-registration-refused'
+  /** A person cancelled the Run. Never produced by a limit, a Gate or a failure. */
+  | 'canceled';
 
 /**
  * The §E.1 cause behind a diagnostic, or `null` when it is not one this story stops for.
@@ -192,6 +196,30 @@ interface EventFields {
   readonly size?: number;
   readonly observations?: number;
   readonly attempt?: number;
+}
+
+/**
+ * Perform the `CANCELED` transition inside the caller's transaction (Story 3.10).
+ *
+ * The checkpoint goes TERMINAL in the same write, so the extraction recovery sweep never
+ * selects the Run again, and `performCancellation` — the one place a Run becomes
+ * `CANCELED` — writes the state, the Timeline event and the Result. The Evidence this Run
+ * has already registered is untouched: nothing here reads or writes an artifact, and the
+ * seal `CompleteRun` takes lists a partial reservation as abandoned rather than dropping
+ * it.
+ */
+async function cancelHere(
+  context: AdapterExecutionContext,
+  checkpoint: AdapterExecutionCheckpoint,
+  run: RunRecord,
+  request: RunCancellationRequest,
+  plan: ExecutablePlan | null,
+  at: string,
+): Promise<void> {
+  const next = { ...checkpoint, status: 'TERMINAL' as const, diagnostic: 'canceled' as const };
+  await context.saveCheckpoint(next, 'CANCELED');
+  await event(context, 'canceled', 'CANCELED', next, {}, 'failure');
+  await performCancellation(context, { run, request, at, plan, source: 'worker' });
 }
 
 async function event(
@@ -470,6 +498,14 @@ export async function executeAdapterSteps(
       attemptId: deps.ids.next(),
       diagnostic: null,
     };
+    // A person asked for this Run to stop (Story 3.10). The claim transaction is the
+    // first boundary and it is checked before anything is materialized: no lease of this
+    // attempt is live, no Session Step and no Work Item has started, and the transition
+    // commits with the checkpoint that records why the stage stopped.
+    if (run.cancellation !== null) {
+      await cancelHere(context, checkpoint, run, run.cancellation, plan, now.toISOString());
+      return null;
+    }
     const failed: AdapterExecutionDiagnostic | null =
       plan === null || classification === null
         ? 'unsupported-frozen-plan'
@@ -628,6 +664,26 @@ export async function executeAdapterSteps(
   };
 
   /**
+   * Honour a cancellation at a unit boundary, or report that there is none (Story 3.10).
+   *
+   * Called BEFORE each Session Step and each Work Item, never inside one: a unit already
+   * started is allowed to finish and commit, because the only thing worse than a Run that
+   * stops a moment late is a unit abandoned half-written. The read is inside the same
+   * guarded transaction that writes, so a cancellation committing at this instant is
+   * either fully visible here or lands before the next boundary.
+   */
+  const canceledAtBoundary = async (): Promise<boolean> => {
+    let canceled = false;
+    await guarded(async (context) => {
+      const request = context.run?.cancellation ?? null;
+      if (request === null) return;
+      canceled = true;
+      await cancelHere(context, checkpoint, run, request, plan, deps.clock.now().toISOString());
+    });
+    return canceled;
+  };
+
+  /**
    * Stop the Run for one §E.1 cause, taking the state from the domain's mapping.
    *
    * The mapping lives in `limits.ts` and is read, never restated: a limit produces
@@ -686,6 +742,7 @@ export async function executeAdapterSteps(
   try {
     // ------------------------------------------------- Reference Sources, in order
     for (const entry of classification.references) {
+      if (await canceledAtBoundary()) return { retry: false };
       const step = steps.find((row) => row.stepId === entry.stepId)!;
       if (step.state === 'FAILED') {
         // A Reference Source is a Run-level Session Step. Returning here would leave the
@@ -743,6 +800,8 @@ export async function executeAdapterSteps(
     for (const entry of classification.adapters) {
       const item = items.find((row) => row.stepId === entry.stepId)!;
       if (item.state === 'OBSERVED' || item.state === 'FAILED' || item.state === 'UNINSPECTED') continue;
+      // Before starting further Target System work, and after every unit that finished.
+      if (await canceledAtBoundary()) return { retry: false };
       const spent = limitReached();
       if (spent !== null) {
         await stopForCause(spent, { workItemId: item.workItemId });

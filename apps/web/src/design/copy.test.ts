@@ -16,7 +16,10 @@ import {
   FULLY_QUOTED_EMPTY_STATES,
   PROCEDURE_CARD_ABSENT,
   REGISTRATION_CHANGE_WARNING_TEMPLATE,
+  RUN_CANCELED_BY_TEMPLATE,
+  RUN_UNCHANGED_SENTENCE,
   registrationChangeWarning,
+  runCanceledBy,
 } from './copy';
 
 /**
@@ -226,5 +229,34 @@ describe('the manual-upload restriction', () => {
       expect(source, surface).toContain('MANUAL_UPLOAD_SENTENCE');
       expect(source, surface).not.toContain('Upload-only.');
     }
+  });
+});
+
+describe('the Run lifecycle copy', () => {
+  it("is EXPERIENCE.md's corrective-action sentence, character for character", () => {
+    expect(experience).toContain(RUN_UNCHANGED_SENTENCE);
+  });
+
+  it("is EXPERIENCE.md's Canceled Run Detail sentence, substituted rather than retyped", () => {
+    expect(experience).toContain(RUN_CANCELED_BY_TEMPLATE);
+    expect(runCanceledBy('dana', '2026-09-06 09:00:00 UTC')).toBe(
+      'Canceled by dana at 2026-09-06 09:00:00 UTC',
+    );
+    expect(runCanceledBy('dana', 'x')).not.toContain('{');
+  });
+
+  it('renders both from the constants rather than repeating them', () => {
+    const actions = readFileSync(
+      fileURLToPath(new URL('../runs/RunLifecycleActions.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(actions).toContain('RUN_UNCHANGED_SENTENCE');
+    expect(actions).not.toContain('This Run remains unchanged.');
+    const detail = readFileSync(
+      fileURLToPath(new URL('../../app/runs/[id]/page.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(detail).toContain('runCanceledBy(');
+    expect(detail).not.toContain('Canceled by ${');
   });
 });

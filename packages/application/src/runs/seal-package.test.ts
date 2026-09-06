@@ -32,6 +32,9 @@ const RUN: RunRecord = {
   sessionId: 'session',
   initiatedAt: '2026-09-01T00:00:00.000Z',
   authorizationRole: 'auditor',
+  predecessorRunId: null,
+  rerunReason: null,
+  cancellation: null,
   requestToken: '01a06fd8-0000-7000-8000-000000000005',
 };
 

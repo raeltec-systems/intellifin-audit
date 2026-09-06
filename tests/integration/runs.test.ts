@@ -67,7 +67,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     const row = await seed();
     for (const kind of ['queue','event']) {
       let attemptedRunId: string | undefined;
-      const failing: AuditUnitOfWork<RunsUnitOfWorkContext> = { execute: work => uow.execute(c => work({...c,runs:{bindRequest:(actor,token,id)=>c.runs.bindRequest(actor,token,id),findRequest:(actor,token)=>c.runs.findRequest(actor,token),insert:async run=>{attemptedRunId=run.runId;return c.runs.insert(run);},findActive:(procedureId,dates)=>c.runs.findActive(procedureId,dates)},...(kind==='queue'?{dispatch:{enqueue:async job=>{await c.dispatch.enqueue(job);throw new Error('injected queue failure');}}}:{auditEvents:{append:async event=>{await c.auditEvents.append(event);throw new Error('injected Timeline failure');}}})})) };
+      const failing: AuditUnitOfWork<RunsUnitOfWorkContext> = { execute: work => uow.execute(c => work({...c,runs:{bindRequest:(actor,token,id)=>c.runs.bindRequest(actor,token,id),findRequest:(actor,token)=>c.runs.findRequest(actor,token),insert:async run=>{attemptedRunId=run.runId;return c.runs.insert(run);},findRun:id=>c.runs.findRun(id),findActive:(procedureId,dates)=>c.runs.findActive(procedureId,dates)},...(kind==='queue'?{dispatch:{enqueue:async job=>{await c.dispatch.enqueue(job);throw new Error('injected queue failure');}}}:{auditEvents:{append:async event=>{await c.auditEvents.append(event);throw new Error('injected Timeline failure');}}})})) };
       await expect(start(row.procedureId,failing)).rejects.toThrow('injected');
       expect(await sql`SELECT * FROM audit_run WHERE procedure_id=${row.procedureId}`).toHaveLength(0);
       expect(attemptedRunId).toBeDefined();
@@ -130,7 +130,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     procedures.push(row.procedureId);
     await new PostgresProceduresUnitOfWork(db).execute(async c=>{await c.procedures.insertProcedure(row);await c.procedures.insertVersion(row);});
     let insertAttempts=0, dispatchAttempts=0;
-    const observed: AuditUnitOfWork<RunsUnitOfWorkContext>={execute:work=>uow.execute(c=>work({...c,runs:{bindRequest:(actor,token,id)=>c.runs.bindRequest(actor,token,id),findRequest:(actor,token)=>c.runs.findRequest(actor,token),insert:async run=>{insertAttempts++;return c.runs.insert(run);},findActive:(id,dates)=>c.runs.findActive(id,dates)},dispatch:{enqueue:async job=>{dispatchAttempts++;await c.dispatch.enqueue(job);}}}))};
+    const observed: AuditUnitOfWork<RunsUnitOfWorkContext>={execute:work=>uow.execute(c=>work({...c,runs:{bindRequest:(actor,token,id)=>c.runs.bindRequest(actor,token,id),findRequest:(actor,token)=>c.runs.findRequest(actor,token),insert:async run=>{insertAttempts++;return c.runs.insert(run);},findRun:id=>c.runs.findRun(id),findActive:(id,dates)=>c.runs.findActive(id,dates)},dispatch:{enqueue:async job=>{dispatchAttempts++;await c.dispatch.enqueue(job);}}}))};
     expect(await start(row.procedureId,observed)).toMatchObject({ok:false,reason:expect.stringContaining('No executable Active version')});
     expect(insertAttempts).toBe(0); expect(dispatchAttempts).toBe(0);
     expect(await sql`SELECT * FROM audit_run WHERE procedure_id=${row.procedureId}`).toHaveLength(0);
@@ -186,7 +186,7 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
         let release!:()=>void, entered!:()=>void, attemptedId='';
         const held=new Promise<void>(r=>release=r), ready=new Promise<void>(r=>entered=r);
         const gated: AuditUnitOfWork<RunsUnitOfWorkContext>={execute:work=>uow.execute(async c=>{
-          const result=await work({...c,runs:{bindRequest:(actor,token,id)=>c.runs.bindRequest(actor,token,id),findRequest:(actor,token)=>c.runs.findRequest(actor,token),findActive:(id,dates)=>c.runs.findActive(id,dates),insert:async run=>{attemptedId=run.runId;return c.runs.insert(run);}}});
+          const result=await work({...c,runs:{bindRequest:(actor,token,id)=>c.runs.bindRequest(actor,token,id),findRequest:(actor,token)=>c.runs.findRequest(actor,token),findRun:id=>c.runs.findRun(id),findActive:(id,dates)=>c.runs.findActive(id,dates),insert:async run=>{attemptedId=run.runId;return c.runs.insert(run);}}});
           entered();await held;if(rollback) throw new Error('notification rollback');return result;
         })};
         const outcome=start(row.procedureId,gated,rollback?{from:'2026-10-01',to:'2026-10-31'}:period).then(value=>({value,error:null}),error=>({value:null,error}));

@@ -56,3 +56,4 @@ export * from './runs/evidence-package.js';
 export * from './runs/seal-package.js';
 export * from './runs/run-gate.js';
 export * from './runs/complete-run.js';
+export * from './runs/cancel-run.js';

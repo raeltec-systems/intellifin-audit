@@ -15,6 +15,7 @@ import {
 import { decodeAcquisitionEnvelope, encodeAcquisitionEnvelope } from './acquisition-envelope.js';
 import { freezeArtifact, reserveArtifact } from './evidence-package.js';
 import { completeRun } from './complete-run.js';
+import { performCancellation } from './cancel-run.js';
 export interface PopulationDependencies {
   repository: PopulationExecutionRepository;
   acquisition: PopulationAcquisitionPort;
@@ -90,6 +91,26 @@ export async function acquirePopulation(
       )
         return null;
       const plan = await context.frozenPlan();
+      // A person asked for this Run to stop (Story 3.10). This claim transaction is the
+      // boundary: it has the Run state it just read under the row lock, no lease is live
+      // and no unit has started, so the transition happens HERE and the recovery sweep
+      // never resumes it. It is checked before the POPULATION_READY early return too, so a
+      // Run whose population is already frozen stops here rather than in the next stage.
+      if (run.cancellation !== null) {
+        if (prior)
+          await context.save(
+            { ...prior, revision: prior.revision + 1, status: 'TERMINAL', diagnostic: 'canceled' },
+            'CANCELED',
+          );
+        await performCancellation(context, {
+          run,
+          request: run.cancellation,
+          at: now.toISOString(),
+          plan: plan ?? null,
+          source: 'worker',
+        });
+        return null;
+      }
       if (prior?.status === 'POPULATION_READY') return { checkpoint: prior, plan, run, verificationOnly: true as const };
       // The reservation is NAMED, not minted (Story 3.5): the Evidence id, both object
       // keys and the `required` verdict are derived from `(runId, kind, scope)` and the
