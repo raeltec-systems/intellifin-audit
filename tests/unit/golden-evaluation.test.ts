@@ -214,17 +214,27 @@ async function evaluate(input: {
   readonly targetFile: string;
   readonly targetKey: string;
   readonly references: readonly { bytes: Uint8Array; mediaType: string }[];
+  /**
+   * The rows to bind, when the dataset does not publish exactly one population under
+   * `populationKey`. `coredirectory-accounts.json` publishes two, and its extraction
+   * endpoint lists both — which is the shape an identity store has and the shape P-2's
+   * `must-appear` coverage rule is written for.
+   */
+  readonly populationRows?: readonly Record<string, JsonValue>[];
+  readonly targetRows?: readonly unknown[];
 }): Promise<Outcome> {
   const template = findProcedureTemplate(input.templateId);
   const dataset = read(input.populationFile);
   const declaredSchema = dataset['declared_schema'] as string[];
-  const populationRows = dataset[input.populationKey] as Record<string, JsonValue>[];
-  const classified = includePopulation(populationRows, template.inclusionRule, PERIOD);
+  const populationRows =
+    input.populationRows ?? (dataset[input.populationKey] as Record<string, JsonValue>[]);
+  const classified = includePopulation([...populationRows], template.inclusionRule, PERIOD);
   const records: PopulationRecord[] = classified
     .filter((row) => row.disposition === 'included')
     .map((row) => ({ ordinal: row.ordinal, values: row.values }));
 
-  const extractionRows = read(input.targetFile)[input.targetKey] as unknown[];
+  const extractionRows =
+    input.targetRows ?? (read(input.targetFile)[input.targetKey] as unknown[]);
   const bytes = served(input.targetKey, extractionRows);
   const parsed = parseExtractionRows({ bytes, mediaType: 'application/json', location: 'https://synthetic.invalid' });
   const frozen = plan(input.templateId);
@@ -376,12 +386,12 @@ interface ExpectationCase {
   readonly reported_pairs?: readonly (readonly string[])[];
 }
 
-function expectations(file: string): readonly ExpectationCase[] {
+function expectations(file: string, minimum = 11): readonly ExpectationCase[] {
   const parsed = read(file);
   expect(parsed['is_data_not_code']).toContain('DATA (AD-12)');
   const cases = parsed['cases'] as ExpectationCase[];
   // A directory or key read that silently returned nothing would make every case vacuous.
-  expect(cases.length).toBeGreaterThan(10);
+  expect(cases.length).toBeGreaterThanOrEqual(minimum);
   return cases;
 }
 
@@ -540,5 +550,159 @@ describe('golden populations, evaluated', () => {
     expect(transactions.filter((row) => row.transaction_id === 'TX-500008')).toHaveLength(2);
     // The inclusive boundary the P-3 rule turns on.
     expect(transactions.find((row) => row.transaction_id === 'TX-500001')!.amount).toBe('100000.00');
+  });
+});
+
+/* ------------------------------------------------- the clean source (Pass, Failure) --- */
+
+interface CleanPopulation {
+  readonly population_id: string;
+  readonly accounts: readonly Record<string, JsonValue>[];
+}
+
+const CLEAN_DATASET = 'fixtures/northstar/datasets/coredirectory-accounts.json';
+
+/** Every account of both published populations: what `/coredirectory/accounts` serves. */
+function cleanExtraction(): readonly Record<string, JsonValue>[] {
+  return (read(CLEAN_DATASET)['populations'] as CleanPopulation[]).flatMap(
+    (group) => group.accounts,
+  );
+}
+
+function cleanPopulation(populationId: string): readonly Record<string, JsonValue>[] {
+  const group = (read(CLEAN_DATASET)['populations'] as CleanPopulation[]).find(
+    (candidate) => candidate.population_id === populationId,
+  );
+  expect(group, `${populationId} is not published by ${CLEAN_DATASET}`).toBeDefined();
+  return group!.accounts;
+}
+
+const ROLE_MATRIX = [
+  {
+    // The REAL served bytes, entry ordinals and all — the same Reference Source the
+    // golden P-2 Run freezes. A second copy would be a second source of truth for one
+    // expansion, and the two would agree on every role anybody thought to try.
+    bytes: new Uint8Array(readFileSync('fixtures/northstar/generated/role-matrix.csv')),
+    mediaType: 'text/csv',
+  },
+];
+
+/**
+ * The two outcomes no golden population can produce, and why they need their own source.
+ *
+ * `accessgate-accounts.json` lists AG-1007 twice and `ledgerflow-transactions.json`
+ * carries a transaction with no processed time. §H counts duplicate Source primary keys
+ * over EVERY parsed row and counts every row the inclusion rule could not place, so both
+ * read the SOURCE rather than the included set: no scope and no inclusion rule escapes
+ * either, and a failed §H row is Inconclusive. That is the golden datasets working as
+ * designed — a dataset that seeds every failure mode at once cannot also be the dataset
+ * that demonstrates success.
+ *
+ * `coredirectory-accounts.json` seeds exactly one thing, in one of its two populations,
+ * so the two Runs below differ by a single role on a single account. Everything else —
+ * schema, period, cover-sheet generation, extraction endpoint, Reference Source — is the
+ * same, which is what makes the difference in outcome attributable.
+ *
+ * This is the one-second half of the proof. `tests/e2e/clean-source.spec.ts` runs both
+ * Procedures through the real worker, against the real synthetic service, a real
+ * PostgreSQL and a real object store, and asserts what each Run actually STORED against
+ * these same expectation files.
+ */
+describe('the clean source, evaluated', () => {
+  it('reaches Pass when no record carries a prohibited pair', async () => {
+    const outcome = await evaluate({
+      templateId: 'P-2',
+      populationFile: CLEAN_DATASET,
+      populationKey: 'populations',
+      populationRows: cleanPopulation('coredirectory-accounts-compliant'),
+      targetFile: CLEAN_DATASET,
+      targetKey: 'accounts',
+      targetRows: cleanExtraction(),
+      references: ROLE_MATRIX,
+    });
+
+    const file = 'fixtures/northstar/expectations/clean-pass.json';
+    const cases = perRecord(expectations(file, 4));
+    expect(cases).toHaveLength(4);
+    for (const entry of cases) {
+      expect(outcome.verdicts.get(entry.record_key!), `${entry.case_id} (${entry.record_key!})`)
+        .toBe(entry.expected_record_evaluation);
+    }
+    const tally = { COMPLIANT: 0, EXCEPTION: 0, UNEVALUATED: 0 };
+    for (const value of outcome.verdicts.values()) tally[value] += 1;
+    expect(tally).toEqual({ COMPLIANT: 4, EXCEPTION: 0, UNEVALUATED: 0 });
+    expect(outcome.context.exceptions).toEqual([]);
+
+    const sealed = terminalOutcome(outcome);
+    // The failing set is asserted EMPTY, and it is asserted before the outcome: a Pass
+    // reached by weakening a §H row is not a Pass, and this is the assertion that says so.
+    expect([...sealed.failed]).toEqual([]);
+    expect(sealed.outcome).toBe(expectedTerminalOutcome(file));
+    expect(sealed.outcome).toBe('PASS');
+  });
+
+  it('reaches Control Failure on one record, with the Gate still passing', async () => {
+    const outcome = await evaluate({
+      templateId: 'P-2',
+      populationFile: CLEAN_DATASET,
+      populationKey: 'populations',
+      populationRows: cleanPopulation('coredirectory-accounts-conflict'),
+      targetFile: CLEAN_DATASET,
+      targetKey: 'accounts',
+      targetRows: cleanExtraction(),
+      references: ROLE_MATRIX,
+    });
+
+    const file = 'fixtures/northstar/expectations/clean-control-failure.json';
+    const cases = perRecord(expectations(file, 4));
+    expect(cases).toHaveLength(4);
+    for (const entry of cases) {
+      const key = entry.record_key!;
+      expect(outcome.verdicts.get(key), `${entry.case_id} (${key})`).toBe(
+        entry.expected_record_evaluation,
+      );
+      for (const pair of entry.reported_pairs ?? []) {
+        expect(outcome.diagnostics.get(key) ?? '', `${entry.case_id} pair`).toContain(
+          `prohibited permission pair ${pair[0]!} + ${pair[1]!}`,
+        );
+      }
+    }
+    const tally = { COMPLIANT: 0, EXCEPTION: 0, UNEVALUATED: 0 };
+    for (const value of outcome.verdicts.values()) tally[value] += 1;
+    expect(tally).toEqual({ COMPLIANT: 3, EXCEPTION: 1, UNEVALUATED: 0 });
+    expect(outcome.context.exceptions.map((raised) => raised.populationRecordKey)).toEqual([
+      'CD-3103',
+    ]);
+
+    const sealed = terminalOutcome(outcome);
+    // §E.1 row 3 sits ABOVE row 6, so a Control Failure is only reachable through a
+    // PASSING Gate. The golden P-2 Run proves that ordering from the Inconclusive side —
+    // three real Exceptions, still Inconclusive — and this proves it from the other.
+    expect([...sealed.failed]).toEqual([]);
+    expect(sealed.outcome).toBe(expectedTerminalOutcome(file));
+    expect(sealed.outcome).toBe('CONTROL_FAILURE');
+  });
+
+  it('differs from the Pass population by exactly one role on one account', () => {
+    // Asserted against the DATA on disk. If the two populations ever diverge in any other
+    // way, the pair of outcomes above stops being attributable to the conflict.
+    const compliant = cleanPopulation('coredirectory-accounts-compliant');
+    const conflict = cleanPopulation('coredirectory-accounts-conflict');
+    expect(compliant).toHaveLength(4);
+    expect(conflict).toHaveLength(4);
+    const shapeOf = (rows: readonly Record<string, JsonValue>[]): string[] =>
+      rows.map((row) => JSON.stringify([row['status'], row['disabled_time'], row['roles']]));
+    // Row for row, the two populations hold the same status, the same empty disabled_time
+    // and the same role lists — except the third, where VENDOR_APPROVER is added.
+    expect(shapeOf(compliant).map((entry, index) => entry === shapeOf(conflict)[index])).toEqual([
+      true, false, false, true,
+    ]);
+    expect(compliant[2]!['roles']).toEqual(['VENDOR_MAINTAINER']);
+    expect(conflict[2]!['roles']).toEqual(['VENDOR_MAINTAINER', 'VENDOR_APPROVER']);
+    // The extraction lists every account of both, which is what `must-appear` needs.
+    const extraction = new Set(cleanExtraction().map((row) => String(row['account_id'])));
+    for (const row of [...compliant, ...conflict]) {
+      expect(extraction.has(String(row['account_id'])), String(row['account_id'])).toBe(true);
+    }
   });
 });

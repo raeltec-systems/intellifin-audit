@@ -150,6 +150,15 @@ describe('API population declarations', () => {
       rows: () => datasets.accessgate().accounts.filter((row) => row.status === 'Active'),
     },
     {
+      file: 'coredirectory-accounts.count.json',
+      source: 'coredirectory-accounts',
+      key: 'account_id',
+      schema: datasets.coredirectory().declared_schema,
+      // Both published populations: the extraction endpoint is the Target System and
+      // lists every account, while each CSV publishes one population.
+      rows: () => datasets.coredirectory().populations.flatMap((group) => group.accounts),
+    },
+    {
       file: 'approvenow-approvals.count.json',
       source: 'approvenow-approvals',
       key: 'approval_id',
@@ -208,6 +217,7 @@ describe('API population declarations', () => {
 
 const apiDeclarationNames = new Set([
   'accessgate-accounts.count.json',
+  'coredirectory-accounts.count.json',
   'approvenow-approvals.count.json',
   'peoplehub-employees.count.json',
   'ledgerflow-transactions.count.json',
@@ -240,12 +250,135 @@ describe('AccessGate versioned-file equivalent', () => {
   });
 });
 
+describe('the CoreDirectory clean source', () => {
+  /**
+   * The properties that make Pass and Control Failure REACHABLE, checked against the
+   * dataset rather than assumed.
+   *
+   * Neither golden population can produce either outcome, and that is the golden datasets
+   * working as designed: AccessGate lists AG-1007 twice and LedgerFlow carries a
+   * transaction with no processed time, and both of those §H rows read the SOURCE rather
+   * than the included set. This source seeds none of that, so an edit that quietly
+   * introduces a duplicate key, an empty role list or an undeclared role would turn a
+   * Pass case into an Inconclusive one for a reason nobody would look for. Each of these
+   * is that edit failing here instead.
+   *
+   * Nothing below evaluates a Compliance Rule or validates a Result. The prohibited pairs
+   * come from `rolematrix.json`, which is the same DATA the Run's Reference Source is
+   * generated from — never from the Template or from anything a Run computes.
+   */
+  const dataset = datasets.coredirectory();
+  const matrix = JSON.parse(
+    readFileSync(join(FIXTURES_ROOT, 'datasets', 'rolematrix.json'), 'utf8'),
+  ) as {
+    prohibited_pairs: readonly (readonly string[])[];
+    entries: readonly { role: string; permissions: readonly string[] }[];
+  };
+
+  it('publishes two populations and no more', () => {
+    expect(dataset.populations.map((group) => group.population_id)).toEqual([
+      'coredirectory-accounts-compliant',
+      'coredirectory-accounts-conflict',
+    ]);
+  });
+
+  it('gives every account across both populations a distinct primary key', () => {
+    // §H counts duplicate Source primary keys over EVERY parsed row, so one repeat
+    // anywhere in a published file is Inconclusive whatever the records say.
+    const ids = dataset.populations.flatMap((group) =>
+      group.accounts.map((account) => account.account_id),
+    );
+    expect(ids).toHaveLength(8);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('leaves no mandatory evaluation value empty', () => {
+    for (const group of dataset.populations) {
+      for (const account of group.accounts) {
+        expect(account.status, account.account_id).toBe('Active');
+        expect(account.roles.length, account.account_id).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('names only roles RoleMatrix declares exactly once', () => {
+    // An unknown role is `rule does not name value <v>`, and a role declared twice with
+    // different permissions is `duplicate conflicting policy entries`. Both are
+    // Unevaluated, and either would make a clean population Inconclusive.
+    for (const group of dataset.populations) {
+      for (const account of group.accounts) {
+        for (const role of account.roles) {
+          const declared = matrix.entries.filter((entry) => entry.role === role);
+          expect(declared.length, `${account.account_id} ${role}`).toBe(1);
+        }
+      }
+    }
+  });
+
+  it('seeds exactly one prohibited pair, and it is in the conflict population', () => {
+    const expansionOf = (roles: readonly string[]): ReadonlySet<string> =>
+      new Set(
+        roles.flatMap(
+          (role) => matrix.entries.find((entry) => entry.role === role)?.permissions ?? [],
+        ),
+      );
+    const conflicting = dataset.populations.map((group) =>
+      group.accounts
+        .filter((account) => {
+          const permissions = expansionOf(account.roles);
+          return matrix.prohibited_pairs.some(([a, b]) => permissions.has(a!) && permissions.has(b!));
+        })
+        .map((account) => account.account_id),
+    );
+    expect(conflicting).toEqual([[], ['CD-3103']]);
+  });
+
+  it('keeps a near miss on each side of the boundary in the compliant population', () => {
+    // One permission short of a pair. A rule that flags any single member of the conflict
+    // vocabulary reports an Exception here, and the Pass case is what catches it.
+    const compliant = dataset.populations[0]!.accounts;
+    const rolesOf = (id: string): readonly string[] =>
+      compliant.find((account) => account.account_id === id)!.roles;
+    expect(rolesOf('CD-3001')).toEqual(['AP_CLERK']);
+    expect(rolesOf('CD-3003')).toEqual(['VENDOR_MAINTAINER']);
+    const halves = new Set(matrix.prohibited_pairs.flat());
+    expect(halves.has('CREATE_PAYMENT') && halves.has('CREATE_VENDOR')).toBe(true);
+  });
+
+  it('serves each population as its own sorted CSV with roles preserved as JSON text', () => {
+    for (const group of dataset.populations) {
+      const lines = readFileSync(join(GENERATED, group.covers), 'utf8').trimEnd().split('\n');
+      const ids = lines.slice(2).map((line) => line.split(',')[0]);
+      expect(ids, group.population_id).toEqual(
+        [...group.accounts.map((account) => account.account_id)].sort(),
+      );
+      expect(lines[1]).toBe(dataset.declared_schema.join(','));
+    }
+    expect(
+      readFileSync(join(GENERATED, 'coredirectory-accounts-conflict.csv'), 'utf8'),
+    ).toContain('"[""VENDOR_MAINTAINER"",""VENDOR_APPROVER""]"');
+  });
+
+  it('lists every published account in the one extraction endpoint', () => {
+    // P-2's coverage rule is `must-appear`: an account of the bound population that the
+    // extraction does not carry is UNINSPECTED, however honestly its absence was proven.
+    const declaration = apiDeclaration('coredirectory-accounts.count.json');
+    expect(declaration.count).toBe(8);
+    expect(declaration.schema).toEqual([...dataset.declared_schema]);
+  });
+});
+
 describe('declared counts', () => {
   /** Recomputed in TypeScript from the dataset — never read back from the declaration. */
   const cases: readonly { readonly file: string; readonly count: () => number }[] = [
     {
       file: 'accessgate-accounts.count.json',
       count: () => datasets.accessgate().accounts.filter((a) => a.status === 'Active').length,
+    },
+    {
+      file: 'coredirectory-accounts.count.json',
+      count: () =>
+        datasets.coredirectory().populations.reduce((total, group) => total + group.accounts.length, 0),
     },
     { file: 'approvenow-approvals.count.json', count: () => datasets.approvenow().approvals.length },
     { file: 'peoplehub-employees.count.json', count: () => datasets.peoplehub().employees.length },

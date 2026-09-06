@@ -1,0 +1,6 @@
+# SYNTHETIC-NORTHSTAR-FIXTURE | Northstar Financial Group | CoreDirectory accounts with no prohibited permission pair | generation 2026-09-01.1
+account_id,employee_id,username,status,roles,disabled_time
+CD-3001,E-000401,t.banda,Active,"[""AP_CLERK""]",
+CD-3002,E-000402,m.chanda,Active,"[""LOAN_VIEWER"",""REPORT_READER""]",
+CD-3003,E-000403,k.zulu,Active,"[""VENDOR_MAINTAINER""]",
+CD-3004,E-000404,p.mwale,Active,"[""REPORT_READER""]",

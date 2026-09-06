@@ -1,0 +1,44 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Cover sheet for the CoreDirectory accounts carrying exactly one prohibited permission pair",
+  "source": "coredirectory-accounts",
+  "covers": "coredirectory-accounts-conflict.csv",
+  "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "complete": true,
+  "row_count": 4,
+  "declared_schema": [
+    "account_id",
+    "employee_id",
+    "username",
+    "status",
+    "roles",
+    "disabled_time"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "2d753a96c758cb19771c547708d9550ded58172b9ad04a424bd6f9eb4eb881d5"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "d5b6dddc88cdd918c04b98fddd8fe0906a19aad4a0696d6e779a9b6598ffd910"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

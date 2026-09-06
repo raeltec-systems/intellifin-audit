@@ -403,6 +403,58 @@ def main() -> int:
         ),
     )
 
+    # ------------------------------------------------------------- CoreDirectory
+    # The clean P-2 source: two versioned-file populations with no seeded failure, and
+    # ONE extraction endpoint listing every account of both. Neither golden population
+    # can produce Pass or Control Failure — AccessGate lists AG-1007 twice and LedgerFlow
+    # carries a transaction with no processed time, and both of those Gate rows read the
+    # SOURCE rather than the included set — so the two remaining terminal outcomes need a
+    # source that seeds nothing. Its roles are expanded through the SAME RoleMatrix; a
+    # second copy would be a second source of truth for one expansion.
+    coredirectory = read_dataset("coredirectory-accounts.json")
+    coredirectory_schema = coredirectory["declared_schema"]
+
+    def coredirectory_csv_rows(accounts: list[dict]) -> list[list[str]]:
+        return [
+            [
+                json.dumps(row[field], ensure_ascii=False, separators=(",", ":"))
+                if field == "roles"
+                else row[field]
+                for field in coredirectory_schema
+            ]
+            for row in accounts
+        ]
+
+    coredirectory_accounts: list[dict] = []
+    for population in coredirectory["populations"]:
+        accounts = sorted(population["accounts"], key=lambda row: row["account_id"])
+        coredirectory_accounts.extend(accounts)
+        payload = csv_bytes(
+            coredirectory_schema,
+            coredirectory_csv_rows(accounts),
+            population["title"],
+            coredirectory["generation"],
+        )
+        write_bytes(population["covers"], payload)
+        write_json(
+            population["covers"].removesuffix(".csv") + ".cover-sheet.json",
+            cover_sheet(
+                source="coredirectory-accounts",
+                covers=population["covers"],
+                title=f"Cover sheet for the {population['title']}",
+                generation=coredirectory["generation"],
+                # The SAME producer timestamp and effective period as every other current
+                # fixture. Two generation dates in one fixture set is two answers to "when
+                # was this true", and the first Run whose period straddles them fails the
+                # freshness check for a reason nobody would look for.
+                effective_period=API_EFFECTIVE_PERIOD,
+                row_count=len(accounts),
+                payload=payload,
+                declared_schema=coredirectory_schema,
+                generated_at=CURRENT_FILE_GENERATED_AT,
+            ),
+        )
+
     # ------------------------------------------------------------------- RoleMatrix
     matrix = read_dataset("rolematrix.json")
     matrix_schema = matrix["declared_schema"]
@@ -469,6 +521,21 @@ def main() -> int:
             rows=sorted(active_accounts, key=lambda row: row["account_id"]),
             counted_from="datasets/accessgate-accounts.json",
             count_rule=accessgate["population_rule"],
+        ),
+    )
+
+    # Every account of BOTH populations, in the order the extraction endpoint serves
+    # them. The endpoint is the Target System, not the population: a Run binds one of the
+    # two published CSVs and the extraction is what it looks the accounts up in.
+    write_json(
+        "coredirectory-accounts.count.json",
+        api_count_file(
+            source="coredirectory-accounts",
+            generation=coredirectory["generation"],
+            schema=coredirectory_schema,
+            rows=sorted(coredirectory_accounts, key=lambda row: row["account_id"]),
+            counted_from="datasets/coredirectory-accounts.json",
+            count_rule=coredirectory["population_rule"],
         ),
     )
 

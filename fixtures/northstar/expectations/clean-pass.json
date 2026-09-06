@@ -1,0 +1,83 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "expectation_id": "clean-pass",
+  "procedure_template": "P-2: Segregation-of-Duties Conflicts",
+  "role": "the Pass demonstration, named case-by-case",
+  "addendum_reference": "C P-2; E.1 outcome rules row 7; H Evidence Quality Gate",
+  "is_data_not_code": "This file is DATA (AD-12). Nothing that evaluates a Compliance Rule, computes a Result or produces an outcome may import it.",
+  "written_by_hand": "Every expectation below was derived by reading datasets/coredirectory-accounts.json against datasets/rolematrix.json, before any Run was executed. Nothing here was copied out of a Result, and a disagreement between this file and a Run is a finding about the Run.",
+  "population_source": "coredirectory-accounts-compliant (versioned file, cover sheet)",
+  "target_systems": ["CoreDirectory accounts extraction (adapter-acquired)"],
+  "reference_source": "rolematrix",
+  "period": { "from": "2026-08-01", "to": "2026-08-31" },
+  "why_this_source_and_not_a_golden_one": "Neither golden population can reach Pass. accessgate-accounts.json lists AG-1007 twice and ledgerflow-transactions.json carries a transaction with no processed time; the duplicate-primary-key row counts over every parsed Source row and the inclusion reconciliation counts every row it could not place, so both read the SOURCE and no inclusion rule escapes them. That is the golden datasets working as designed. A dataset that seeds every failure mode at once cannot also be the dataset that demonstrates success.",
+  "run_expectation": {
+    "terminal_outcome": "Pass",
+    "run_state": "COMPLETED",
+    "outcome_row": "pass",
+    "why": "Four included records, four Compliant. No prohibited permission pair exists in any expansion, every role is declared exactly once in RoleMatrix, every account appears in the extraction with a grounded role list, and every primary key is distinct. Addendum E.1 row 3 does not match because the Gate passes, rows 4 and 5 do not match because nothing is pending and nothing is Unevaluated, and row 6 does not match because no Exception counts. Row 7 is what is left."
+  },
+  "gate_expectation": {
+    "checks_recorded": 20,
+    "failed_checks": [],
+    "why": "Every addendum H row passes. This is the assertion the clean source exists to make: a Pass that is produced by weakening a check is not a Pass, so the expectation names the failing set as EMPTY rather than naming the rows it hopes about."
+  },
+  "exception_expectation": {
+    "records": [],
+    "why": "No prohibited pair exists in any expansion, so no Exception is raised and no fingerprint is written."
+  },
+  "cases": [
+    {
+      "case_id": "CP-1",
+      "addendum_case": "compliant record, single role",
+      "record_key": "CD-3001",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Pass",
+      "why": "AP_CLERK expands to CREATE_PAYMENT and VIEW_PAYMENT. CREATE_PAYMENT is one half of the prohibited pair CREATE_PAYMENT + RELEASE_PAYMENT and the other half is absent, so the record is one permission short of a conflict. A rule that flags a single member of the conflict vocabulary reports an Exception here and this case is what catches it."
+    },
+    {
+      "case_id": "CP-2",
+      "addendum_case": "compliant record, two roles that expand to read-only permissions",
+      "record_key": "CD-3002",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Pass",
+      "why": "LOAN_VIEWER expands to VIEW_LOAN and REPORT_READER to VIEW_REPORT. Two roles, no prohibited pair, so an expansion that unioned two roles correctly still concludes Compliant."
+    },
+    {
+      "case_id": "CP-3",
+      "addendum_case": "the other near miss",
+      "record_key": "CD-3003",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Pass",
+      "why": "VENDOR_MAINTAINER expands to CREATE_VENDOR and VIEW_VENDOR. CREATE_VENDOR is one half of CREATE_VENDOR + APPROVE_VENDOR, and APPROVE_VENDOR is absent. This record differs from CD-3103 in the Control Failure population by exactly one role, so the two files together decide whether the rule reads a PAIR or a member."
+    },
+    {
+      "case_id": "CP-4",
+      "addendum_case": "compliant record, one read-only role",
+      "record_key": "CD-3004",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Pass",
+      "why": "REPORT_READER expands to VIEW_REPORT alone. Nothing in the conflict vocabulary is present at all."
+    },
+    {
+      "case_id": "CP-coverage",
+      "addendum_case": "per-record coverage under the P-2 must-appear rule",
+      "record_key": null,
+      "expected_record_evaluation": null,
+      "expected_terminal_outcome": "Pass",
+      "why": "NAMED, NOT SEEDED AS DATA. P-2's coverage rule is `must-appear`: an account of the bound population that the extraction does not carry is UNINSPECTED however honestly its absence was proven, and an UNINSPECTED record can never be Compliant. All four accounts appear in /coredirectory/accounts, so coverage is COVERED for each and the coverage row passes. The extraction also carries the four accounts of the conflict population, which is not a defect: the rule asks that every bound account appears, not that nothing else does."
+    },
+    {
+      "case_id": "CP-reference",
+      "addendum_case": "the Reference Source is the SAME RoleMatrix the golden P-2 Run expands through",
+      "record_key": null,
+      "expected_record_evaluation": null,
+      "expected_terminal_outcome": "Pass",
+      "why": "NAMED, NOT SEEDED AS DATA. A second copy of the role matrix would be a second source of truth for one expansion, and the two would agree on every role anybody thought to try. Exactly one artifact must be readable as a role expansion: zero is `incomplete role expansion` and so is two. This Run freezes role-matrix.csv, entry ordinals and all."
+    }
+  ]
+}

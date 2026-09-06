@@ -2,7 +2,7 @@
 title: 'Epic 3 end-to-end validation plan'
 type: 'validation'
 created: '2026-09-06'
-status: 'in-progress'
+status: 'complete'
 ---
 
 ## What this is
@@ -20,10 +20,10 @@ two are not**, and the two are named rather than quietly counted.
 |---|---|---|---|
 | 1 | Inconclusive, segregation-of-duties | The full golden population, real worker | **Proven** |
 | 2 | Inconclusive, high-value approvals | The full golden population, real worker | **Proven** |
-| 3 | Pass | A clean source with no seeded failure | Needs the clean source |
-| 4 | Control Failure | A clean source carrying one true conflict | Needs the clean source |
-| 5 | Run Failed | A Session Step failing after bounded retries | Covered in integration; wanted through the worker |
-| 6 | Canceled | Story 3.10 | Pending that story |
+| 3 | Pass | The clean source with no seeded failure, real worker | **Proven** |
+| 4 | Control Failure | The clean source carrying one true conflict, real worker | **Proven** |
+| 5 | Run Failed | A Session Step failing after bounded retries | **Proven** (integration); the worker also proves the acquisition form |
+| 6 | Canceled | Story 3.10 | **Proven** |
 | 7 | Pending Confirmation | Needs an Agent-Judged evaluation | **Not reachable in Epic 3** |
 | 8 | Completed to Inconclusive | Needs a human rejection of an evaluation | **Not reachable in Epic 3** |
 
@@ -83,3 +83,55 @@ the per-record verdicts — and compares it with the expectation file read off d
 Not a hand-built harness that calls the pipeline directly. Twelve of the high-value cases
 were reachable only that way until Story 3.9's repair, and that is precisely the gap this
 plan exists to close.
+
+## What closed it — 6 September 2026
+
+The clean source is **CoreDirectory**: `fixtures/northstar/datasets/coredirectory-accounts.json`,
+served at `/coredirectory/accounts` and published as two versioned files with signed cover
+sheets. It seeds nothing. Its roles expand through the SAME `rolematrix.json` the golden P-2
+Run freezes — a second copy would be a second source of truth for one expansion — and it
+carries the existing generation timestamp (`2026-09-01T00:00:00Z`), effective period
+(`2026-08-01`..`2026-08-31`) and generation (`2026-09-01.1`), because two generation dates in
+one fixture set is two answers to "when was this true".
+
+Two populations, differing by ONE role on ONE account:
+
+| Population | Records | The one difference | Outcome |
+|---|---|---|---|
+| `coredirectory-accounts-compliant` | CD-3001..CD-3004 | CD-3003 holds `VENDOR_MAINTAINER` | **Pass** |
+| `coredirectory-accounts-conflict` | CD-3101..CD-3104 | CD-3103 holds `VENDOR_MAINTAINER` **and** `VENDOR_APPROVER` | **Control Failure** |
+
+Everything else about the two Runs is identical, so the difference in outcome is attributable
+to the rule and to nothing else. CD-3001 and CD-3003 are deliberate near misses — one
+permission short of a prohibited pair each — so a rule that flagged a MEMBER of the conflict
+vocabulary rather than a PAIR fails the Pass case.
+
+### Where each outcome is proven
+
+| Outcome | Proof |
+|---|---|
+| Pass | `tests/e2e/clean-source.spec.ts` — real worker process, real synthetic service over the network, real PostgreSQL 18, real object store. 20 Gate rows recorded, **0 failed**; `run_result` = `PASS` / row `pass` / `gate_passed = true`; four `COMPLIANT` per-record verdicts; no Exception. |
+| Control Failure | Same file, second case. 20 Gate rows, **0 failed**; `run_result` = `CONTROL_FAILURE` / row `control-failure`; three `COMPLIANT` and one `EXCEPTION` on CD-3103 reporting `CREATE_VENDOR + APPROVE_VENDOR`. |
+| Inconclusive (P-2) | `tests/e2e/population.spec.ts` — four §H rows fail (`ambiguous-match`, `duplicate-primary-keys`, `per-record-coverage`, `unnamed-value`) with three real Exceptions present. Row 3 above row 6. |
+| Inconclusive (P-3) | Same file — five §H rows fail with four real Exceptions present. |
+| Run Failed | `tests/integration/adapter-execution.test.ts` "fails the Run when a Reference Source cannot be acquired, and runs no Work Item" (Session Step FAILED after 4 attempts, no Work Item run). The acquisition form is proven through the worker in `tests/e2e/population.spec.ts` "an unsupported source displays abandoned Evidence without pending verification". |
+| Canceled | `tests/e2e/runs.spec.ts` "cancels a queued Run from Run Detail", through the browser, with the Run row, the Result and the removal of the dispatch job asserted; `tests/e2e/run-surfaces.spec.ts` states that a Run canceled before the Gate has no §H row, which is not a pass. **Canceled with captured Evidence preserved** is `tests/integration/population.test.ts` "preserves an already frozen population and stops before the next stage": the acquisition really ran, the `population_evidence` row is `REGISTERED`, a cancellation is recorded, the worker stops at its own claim boundary and the Evidence row is asserted byte-for-byte unchanged with the package `SEALED` over one registered artifact. Cancellation racing a worker's claim is `tests/integration/cancel-run.test.ts` "waits on the claim that holds the Run". No BROWSER journey cancels a Run that has already acquired Evidence — that is the one seam of these six proven against PostgreSQL rather than through the worker process. |
+
+The two Pass/Control-Failure cases are also asserted in one second, over the same expectation
+files, in `tests/unit/golden-evaluation.test.ts` — the production pipeline with only the HTTP
+fetch, the object store and PostgreSQL stood in for. That is the second reading; the browser
+file is the proof.
+
+### The assertion that matters
+
+Both browser cases assert the failing §H set is **EMPTY**, and assert it against the
+expectation file's own `gate_expectation.failed_checks`. A Pass produced by weakening a check
+is not a Pass. Proven by mutation: adding one undeclared role to the compliant population puts
+`unnamed-value` on the Gate and the Pass case fails with `INCONCLUSIVE`; removing
+`VENDOR_APPROVER` from CD-3103 makes the Control Failure case fail with `COMPLIANT` where it
+requires `EXCEPTION`; binding each Procedure to the other population fails both.
+
+### Still not reachable, and still named
+
+Rows 7 and 8 are unchanged. Nothing here makes an Agent-Judged evaluation pending, and
+nothing here rejects one.

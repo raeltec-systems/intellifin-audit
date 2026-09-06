@@ -1,0 +1,86 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "expectation_id": "clean-control-failure",
+  "procedure_template": "P-2: Segregation-of-Duties Conflicts",
+  "role": "the Control Failure demonstration, named case-by-case",
+  "addendum_reference": "C P-2; E.1 outcome rules row 6; H Evidence Quality Gate",
+  "is_data_not_code": "This file is DATA (AD-12). Nothing that evaluates a Compliance Rule, computes a Result or produces an outcome may import it.",
+  "written_by_hand": "Every expectation below was derived by reading datasets/coredirectory-accounts.json against datasets/rolematrix.json, before any Run was executed. Nothing here was copied out of a Result, and a disagreement between this file and a Run is a finding about the Run.",
+  "population_source": "coredirectory-accounts-conflict (versioned file, cover sheet)",
+  "target_systems": ["CoreDirectory accounts extraction (adapter-acquired)"],
+  "reference_source": "rolematrix",
+  "period": { "from": "2026-08-01", "to": "2026-08-31" },
+  "why_this_source_and_not_a_golden_one": "Both golden populations raise real Exceptions and are still Inconclusive, because addendum E.1 row 3 — the Gate failing — sits ABOVE row 6. P-2 raises three Exceptions and P-3 four. So a Control Failure needs a population whose Gate passes, which means a population with no duplicate primary key, no unaccounted row, no ambiguous match and no unnamed value. Neither golden dataset is that, deliberately.",
+  "run_expectation": {
+    "terminal_outcome": "Control Failure",
+    "run_state": "COMPLETED",
+    "outcome_row": "control-failure",
+    "why": "Four included records: three Compliant and one Exception. The Gate passes on all twenty rows, so addendum E.1 row 3 does not match; nothing is pending and nothing is Unevaluated, so rows 4 and 5 do not match; one Exception counts, so row 6 does. The single failing record is what makes the outcome, and the other three are what prove the rule does not over-fire."
+  },
+  "gate_expectation": {
+    "checks_recorded": 20,
+    "failed_checks": [],
+    "why": "A Control Failure is a CONCLUSION, not a defect in the Evidence. Every addendum H row must pass, or the Run is Inconclusive instead and this case would be indistinguishable from the golden P-2 Run."
+  },
+  "exception_expectation": {
+    "records": ["CD-3103"],
+    "reported_pairs": [["CREATE_VENDOR", "APPROVE_VENDOR"]],
+    "why": "Exactly one Exception, permanent, fingerprinted with the deployment's key and created in the transaction that registered the Observation. The reported pair is the pair, not a member of it."
+  },
+  "cases": [
+    {
+      "case_id": "CF-1",
+      "addendum_case": "compliant record beside the failing one",
+      "record_key": "CD-3101",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Control Failure",
+      "why": "AP_CLERK expands to CREATE_PAYMENT and VIEW_PAYMENT. RELEASE_PAYMENT is absent, so no pair is complete. A Control Failure must not sweep the records beside it."
+    },
+    {
+      "case_id": "CF-2",
+      "addendum_case": "compliant record beside the failing one",
+      "record_key": "CD-3102",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Control Failure",
+      "why": "LOAN_VIEWER expands to VIEW_LOAN alone."
+    },
+    {
+      "case_id": "CF-3",
+      "addendum_case": "the one true Exception",
+      "record_key": "CD-3103",
+      "expected_record_evaluation": "EXCEPTION",
+      "expected_terminal_outcome": "Control Failure",
+      "reported_pairs": [["CREATE_VENDOR", "APPROVE_VENDOR"]],
+      "why": "VENDOR_MAINTAINER expands to CREATE_VENDOR and VIEW_VENDOR, VENDOR_APPROVER to APPROVE_VENDOR and VIEW_VENDOR. The union holds CREATE_VENDOR + APPROVE_VENDOR, which is the first prohibited pair. The conflict exists only AFTER expansion: the two role NAMES share nothing, so a rule that compares role names concludes Compliant and is wrong.",
+      "fails_if": "The Run reports any pair other than CREATE_VENDOR + APPROVE_VENDOR for this record, or raises an Exception for any other record."
+    },
+    {
+      "case_id": "CF-4",
+      "addendum_case": "compliant record beside the failing one",
+      "record_key": "CD-3104",
+      "expected_record_evaluation": "COMPLIANT",
+      "expected_terminal_outcome": "Control Failure",
+      "why": "REPORT_READER expands to VIEW_REPORT alone."
+    },
+    {
+      "case_id": "CF-ordering",
+      "addendum_case": "the E.1 ordering this case exists to exercise",
+      "record_key": null,
+      "expected_record_evaluation": null,
+      "expected_terminal_outcome": "Control Failure",
+      "why": "NAMED, NOT SEEDED AS DATA. Row 3 (`Gate fails`) sits above row 6 (`Any Exception counts`), and the golden P-2 Run proves that ordering from the Inconclusive side: three real Exceptions and still Inconclusive. This Run proves it from the other side — the same rule, a passing Gate, and one Exception that is therefore allowed to decide the outcome. Neither Run alone shows that the order is doing anything."
+    },
+    {
+      "case_id": "CF-difference",
+      "addendum_case": "the single difference from the Pass population",
+      "record_key": null,
+      "expected_record_evaluation": null,
+      "expected_terminal_outcome": "Control Failure",
+      "why": "NAMED, NOT SEEDED AS DATA. CD-3103 differs from CD-3003 in clean-pass.json by ONE role: VENDOR_APPROVER. Everything else about the two populations — schema, period, cover sheet generation, extraction endpoint, Reference Source — is identical, so the two outcomes differ by one role and by nothing else."
+    }
+  ]
+}

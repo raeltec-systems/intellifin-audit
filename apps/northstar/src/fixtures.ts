@@ -177,6 +177,29 @@ export interface AccessGateDataset {
   readonly accounts: readonly AccessGateAccount[];
 }
 
+/**
+ * CoreDirectory: the clean P-2 source, published as two versioned files with ONE
+ * extraction endpoint over both. Same row shape as AccessGate, deliberately — a Run that
+ * swaps one source for the other changes its binding and nothing else.
+ */
+export interface CoreDirectoryPopulation {
+  readonly population_id: string;
+  readonly title: string;
+  /** The generated CSV this population is published as. */
+  readonly covers: string;
+  readonly note: string;
+  readonly accounts: readonly AccessGateAccount[];
+}
+
+export interface CoreDirectoryDataset {
+  readonly synthetic: SyntheticBlock;
+  readonly title: string;
+  readonly generation: string;
+  readonly declared_schema: readonly string[];
+  readonly population_rule: string;
+  readonly populations: readonly CoreDirectoryPopulation[];
+}
+
 export interface ApprovalRow {
   readonly approval_id: string;
   readonly transaction_id: string;
@@ -295,6 +318,8 @@ export const datasets = {
   loancore: (): LoanCoreDataset => readJson('datasets/loancore-accounts.json') as LoanCoreDataset,
   accessgate: (): AccessGateDataset =>
     readJson('datasets/accessgate-accounts.json') as AccessGateDataset,
+  coredirectory: (): CoreDirectoryDataset =>
+    readJson('datasets/coredirectory-accounts.json') as CoreDirectoryDataset,
   approvenow: (): ApproveNowDataset =>
     readJson('datasets/approvenow-approvals.json') as ApproveNowDataset,
   peoplehub: (): PeopleHubDataset =>

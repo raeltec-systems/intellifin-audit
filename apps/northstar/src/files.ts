@@ -102,6 +102,38 @@ export const ARTIFACTS: ReadonlyMap<string, Artifact> = new Map([
     },
   ],
   [
+    'coredirectory-accounts-compliant.csv',
+    {
+      file: 'coredirectory-accounts-compliant.csv',
+      contentType: CSV,
+      description: 'CoreDirectory accounts with no prohibited permission pair. Seeds nothing.',
+    },
+  ],
+  [
+    'coredirectory-accounts-compliant.cover-sheet.json',
+    {
+      file: 'coredirectory-accounts-compliant.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Row count and digest of the compliant CoreDirectory population.',
+    },
+  ],
+  [
+    'coredirectory-accounts-conflict.csv',
+    {
+      file: 'coredirectory-accounts-conflict.csv',
+      contentType: CSV,
+      description: 'CoreDirectory accounts carrying exactly one prohibited permission pair.',
+    },
+  ],
+  [
+    'coredirectory-accounts-conflict.cover-sheet.json',
+    {
+      file: 'coredirectory-accounts-conflict.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Row count and digest of the CoreDirectory population with one conflict.',
+    },
+  ],
+  [
     'role-matrix.csv',
     {
       file: 'role-matrix.csv',

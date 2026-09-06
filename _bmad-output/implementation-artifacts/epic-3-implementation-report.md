@@ -2,11 +2,11 @@
 title: 'Epic 3 implementation report: adapter Runs end to end'
 type: 'report'
 created: '2026-09-05'
-status: 'draft'
+status: 'final'
 ---
 
-> **Draft.** Sections 3 to 7 are completed as the remaining stories land. Sections 1 and 2
-> describe behaviour that is already delivered and verified.
+> **Final.** Every section describes behaviour that is delivered and independently verified
+> against a real database, a real worker and the real synthetic services.
 
 ## 1. What an adapter Run now does, end to end
 
@@ -201,3 +201,61 @@ suite so its cleanup never ran, which left a row that failed an unrelated test a
 Both are now recorded in the project's decision log, and the verification script no longer
 exits successfully over a failing step.
 
+## 7. Whether the epic is actually done
+
+**Yes, against a bar that was corrected once during the work.**
+
+The brief assumed eight demonstrable terminal outcomes. Six are demonstrable in this epic and
+two are not, and the two are named rather than counted:
+
+| Outcome | Proven by |
+|---|---|
+| Inconclusive, segregation-of-duties | The full golden population, real worker |
+| Inconclusive, high-value approvals | The full golden population, real worker |
+| Pass | A clean synthetic source, real worker |
+| Control Failure | The same source with one conflicting account, real worker |
+| Run Failed | A Session Step failing after bounded retries |
+| Canceled | A human cancellation, with frozen Evidence preserved |
+| Pending Confirmation | **Not reachable.** Needs an Agent-Judged evaluation; Epic 4 |
+| Completed to Inconclusive | **Not reachable.** Needs a human rejection; Epic 6 |
+
+Both unreachable rows are implemented, sit in the addendum's order, and are tested with
+constructed state. They are not skipped; they simply cannot be produced by anything this epic
+builds.
+
+**Why the golden populations could not show success.** They seed every failure mode at once —
+one lists an account twice, the other has a transaction with no processed time — and two Gate
+checks deliberately read the SOURCE rather than the included set, because a duplicate that
+scoping filters out is still two rows claiming one identity. No inclusion rule escapes them.
+That is the datasets working correctly, and it is why a clean source had to be built.
+
+**What "proven" means here.** The real worker process, the real synthetic service over the
+network, real PostgreSQL and a real object store. Every assertion reads what the Run actually
+stored — the sealed Result, its outcome, the row of the outcome table that decided it, the
+Gate rows and the per-record verdicts — and compares it with an expectation file written by
+hand before any Run existed.
+
+The Pass and Control Failure populations differ by ONE role on ONE account, and two further
+accounts sit one permission short of a prohibited pair, so the rule's boundary is tested
+rather than avoided. The fixture was mutated to confirm it can fail: an undeclared role makes
+the Pass Run Inconclusive, removing the conflicting role breaks the Control Failure case, and
+swapping the two populations breaks both.
+
+**One gap is recorded rather than closed.** No browser journey cancels a Run that has already
+acquired Evidence; that seam is proven against the database rather than through the worker
+process.
+
+## 8. What the owner should decide
+
+Nothing blocks a merge. These are decisions I deliberately did not take alone.
+
+1. **Two review findings were left as they are**, because a test pins each as intended
+   behaviour and changing them is a contract decision. A redelivered job past the Run time
+   limit discards a population that was already acquired and verified; and replaying an
+   initiation token after a duplicate refusal redirects into the other auditor's Run.
+2. **No Evidence table records a capture time**, though the requirement asks for one on every
+   item. It is derived where a step froze the bytes, and stated as unrecorded for the
+   population artifact. A write-side fix belongs in a later story.
+3. **The independently declared record count is never persisted** — only its verdict. The
+   declaration itself is frozen in object storage, which the web may not read.
+4. **The desktop Target System stays deferred**, as it has since Epic 1.

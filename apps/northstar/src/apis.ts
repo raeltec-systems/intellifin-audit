@@ -102,6 +102,34 @@ export function accessgateCount(): NorthstarResponse {
   return countResponse('accessgate-accounts.count.json');
 }
 
+/**
+ * CoreDirectory accounts: every account of BOTH published populations, in one response.
+ *
+ * The extraction endpoint is the Target System, not the population. A Run binds one of
+ * the two published CSVs and looks each of its accounts up here, and P-2's coverage rule
+ * is `must-appear` — so what the Gate asks is that every bound account appears in this
+ * extraction, not that the extraction carries nothing else. One endpoint over both
+ * populations is therefore honest, and it is what an identity store looks like.
+ */
+export function coredirectoryAccounts(): NorthstarResponse {
+  const data = datasets.coredirectory();
+  const declaration = apiDeclaration('coredirectory-accounts.count.json');
+  return collection({
+    title: data.title,
+    declaration,
+    countRoute: '/coredirectory/accounts/count',
+    items: orderedBy(
+      data.populations.flatMap((population) => population.accounts),
+      (account) => account.account_id,
+    ),
+    itemsKey: 'accounts',
+  });
+}
+
+export function coredirectoryCount(): NorthstarResponse {
+  return countResponse('coredirectory-accounts.count.json');
+}
+
 export function approvenowApprovals(): NorthstarResponse {
   const data = datasets.approvenow();
   const declaration = apiDeclaration('approvenow-approvals.count.json');

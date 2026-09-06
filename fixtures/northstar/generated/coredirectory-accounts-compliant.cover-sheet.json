@@ -1,0 +1,44 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Cover sheet for the CoreDirectory accounts with no prohibited permission pair",
+  "source": "coredirectory-accounts",
+  "covers": "coredirectory-accounts-compliant.csv",
+  "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "complete": true,
+  "row_count": 4,
+  "declared_schema": [
+    "account_id",
+    "employee_id",
+    "username",
+    "status",
+    "roles",
+    "disabled_time"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "b761ae388649920e52037621ad09c68be9fe5aa34e296a83e2ef88935efcec35"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "8f15ec84dde5b0af8f9b57f1cfaeddad90dad10d87cf70aba11603e69b2886df"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

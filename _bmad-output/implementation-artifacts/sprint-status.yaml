@@ -57,7 +57,7 @@ development_status:
   2-8-immutable-versions-and-platform-authored-drafts: done
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  epic-3: done
   3-1-initiate-a-run-for-an-active-version-and-period: done
   3-2-acquire-the-population-source-deterministically: done
   3-3-extract-adapter-acquired-target-systems-and-freeze-reference: done

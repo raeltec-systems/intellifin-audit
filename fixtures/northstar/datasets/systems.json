@@ -47,6 +47,16 @@
       "note": "Application identity store. Adapter-acquired (P-2). It is both the population and the Target System."
     },
     {
+      "id": "coredirectory",
+      "display_name": "CoreDirectory",
+      "kind": "api",
+      "origin_path": "/coredirectory",
+      "permitted_actions": ["list-records", "read-attribute", "read-metadata"],
+      "attribute_label_patterns": ["account_id", "employee_id", "username", "status", "roles"],
+      "secondary_key": "employee_id",
+      "note": "Identity store for the CLEAN P-2 source. Adapter-acquired, same shape as AccessGate and expanded through the same RoleMatrix. It seeds no failure of its own, which is what lets a Run over it reach Pass or Control Failure; neither golden population can, because each carries a Source-level defect that no inclusion rule escapes."
+    },
+    {
       "id": "approvenow",
       "display_name": "ApproveNow",
       "kind": "api",
@@ -147,6 +157,26 @@
       "declared_count_mechanism": "count-endpoint",
       "sensitive_fields": ["username"],
       "note": "The P-2 population. The count endpoint declares the active population, so the bound location narrows to the same rule."
+    },
+    {
+      "id": "coredirectory-accounts-compliant",
+      "display_name": "CoreDirectory accounts, no prohibited pair (versioned file)",
+      "kind": "versioned-file",
+      "location_path": "/files/coredirectory-accounts-compliant.csv",
+      "declared_schema": ["account_id", "employee_id", "username", "status", "roles", "disabled_time"],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": ["username"],
+      "note": "The clean P-2 population. Distinct primary keys, no missing value, every role declared exactly once in RoleMatrix — so no file-level or inclusion-level Gate row fails and the per-record verdicts decide the outcome."
+    },
+    {
+      "id": "coredirectory-accounts-conflict",
+      "display_name": "CoreDirectory accounts, one prohibited pair (versioned file)",
+      "kind": "versioned-file",
+      "location_path": "/files/coredirectory-accounts-conflict.csv",
+      "declared_schema": ["account_id", "employee_id", "username", "status", "roles", "disabled_time"],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": ["username"],
+      "note": "The same clean shape carrying one true conflict: CD-3103 expands to CREATE_VENDOR + APPROVE_VENDOR. One Exception on an otherwise passing Gate."
     },
     {
       "id": "ledgerflow-transactions",
