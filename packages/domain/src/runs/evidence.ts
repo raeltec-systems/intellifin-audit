@@ -141,8 +141,9 @@ export const REQUIRED_EVIDENCE_TEMPLATE_IDS: readonly string[] = Object.keys(PLA
  * The stable identity of one reservation.
  *
  * `scope` is what distinguishes two reservations of one kind inside one Run: the FROZEN
- * Session Step id for a Reference Source or an adapter extraction, and the empty string
- * for the Run-level population, which there is exactly one of.
+ * Session Step id for a Reference Source, the frozen Session Step id AND the attempt
+ * number for an adapter extraction (`adapterExtractionScope`), and the empty string for
+ * the Run-level population, which there is exactly one of.
  */
 export interface EvidenceReservation {
   readonly runId: string;
@@ -155,6 +156,30 @@ const SCOPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export class EvidenceReservationError extends Error {
   override readonly name = 'EvidenceReservationError';
+}
+
+/**
+ * The scope of ONE adapter extraction ATTEMPT.
+ *
+ * An adapter extraction is frozen BEFORE it is parsed, and a failed attempt keeps its
+ * bytes registered — both deliberate, because a response that is not a declared collection
+ * is still what the Target System answered. What follows from those two rules is that a
+ * SECOND attempt has different bytes to freeze, and `putIfAbsent` reconciles rather than
+ * overwrites: with a key derived from the step id alone, every retry read back attempt 1's
+ * object, found a digest that did not match, and died with an integrity failure against a
+ * Target System that was answering perfectly well. A gateway answering one maintenance
+ * page therefore spent all eight attempts and cost the Run that system's coverage, and the
+ * owner's two bounded retry cycles were decorative for exactly the transient failure they
+ * exist for.
+ *
+ * So the attempt is part of the name. Each attempt freezes its own artifact, every one is
+ * preserved, and the Work Item names the one it concluded from. There is no scope here
+ * for a Reference Source: a Session Step is acquired without being parsed, so its retries
+ * only ever run when nothing was frozen at all.
+ */
+export function adapterExtractionScope(stepId: string, attempt: number): string {
+  if (!Number.isSafeInteger(attempt) || attempt < 1) throw new EvidenceReservationError('attempt');
+  return `${stepId}.a${String(attempt)}`;
 }
 
 function assertReservation(reservation: EvidenceReservation): void {

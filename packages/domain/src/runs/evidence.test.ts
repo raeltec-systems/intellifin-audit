@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EVIDENCE_ARTIFACT_KINDS,
+  adapterExtractionScope,
   EvidenceReservationError,
   REQUIRED_EVIDENCE_TEMPLATE_IDS,
   evidenceIdFor,
@@ -67,6 +68,45 @@ describe('the reservation name', () => {
     expect(evidenceObjectKey({ runId: RUN, kind: 'reference-source', scope: 'session-2' })).toBe(
       `reference/${RUN}/session-2`,
     );
+  });
+
+  it('names each adapter extraction ATTEMPT, so no retry meets its own earlier bytes', () => {
+    // A Work Item freezes a response BEFORE it parses it and keeps a failed attempt's
+    // bytes registered — both deliberate. So a second attempt has different bytes to
+    // freeze, and `putIfAbsent` reconciles rather than overwrites: one name for every
+    // attempt made every retry die with an integrity failure against the STORE.
+    const keys = [1, 2, 8].map((attempt) =>
+      evidenceObjectKey({
+        runId: RUN,
+        kind: 'adapter-extraction',
+        scope: adapterExtractionScope('session-2', attempt),
+      }),
+    );
+    expect(keys).toEqual([
+      `extraction/${RUN}/session-2.a1`,
+      `extraction/${RUN}/session-2.a2`,
+      `extraction/${RUN}/session-2.a8`,
+    ]);
+    expect(new Set(keys).size).toBe(3);
+    // Derived, never allocated: the same attempt of the same step is the same name, which
+    // is what lets a resumed attempt reach the reservation it already has.
+    expect(adapterExtractionScope('session-2', 3)).toBe(adapterExtractionScope('session-2', 3));
+    // Every attempt of the full budget still fits the object-key segment rule.
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      expect(() =>
+        evidenceIdFor({
+          runId: RUN,
+          kind: 'adapter-extraction',
+          scope: adapterExtractionScope('session-34', attempt),
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  it('refuses an attempt number that is not one', () => {
+    for (const attempt of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => adapterExtractionScope('session-2', attempt)).toThrow(EvidenceReservationError);
+    }
   });
 
   it('refuses a scope that is not usable as an object-key segment', () => {

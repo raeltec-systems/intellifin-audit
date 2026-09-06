@@ -327,6 +327,17 @@ export interface StoredObservation {
   readonly record: unknown;
   readonly digest: string;
   readonly coverage: ObservationCoverage;
+  /**
+   * §B's retained capture time, exactly as the column holds it now.
+   *
+   * It sits OUTSIDE the thirteen hashed wire keys — the envelope is addendum §B.1's and is
+   * pinned by an independently produced golden vector, so moving it is a contract change
+   * and not a repair. An edit to it therefore leaves the digest matching, and a reader that
+   * never selected it could not see one: the row reported as already registered, with its
+   * capture provenance silently rewritten. It is read back so registration can re-derive
+   * it against the `observedAt` the digest DOES cover.
+   */
+  readonly observedAtSource: string;
 }
 
 /** One Observation as it is written: the wire record, plus what registration derived. */

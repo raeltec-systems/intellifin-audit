@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { PopulationAcquisitionError, type ResolvedCredential } from '@intellifin/application';
 import {
+  REFERENCE_SOURCE_MEDIA_TYPES,
   registrationDigest,
   registrationDigestEnvelope,
+  roleExpansionFrom,
   type ProcedureTargetSnapshot,
   type TargetSystemKind,
 } from '@intellifin/domain';
@@ -224,6 +226,61 @@ describe('HttpAdapterExtraction', () => {
     await expect(
       redirecting.acquireReference(target('versioned-file', 'https://synthetic.invalid/x'), 5000),
     ).rejects.toBeInstanceOf(PopulationAcquisitionError);
+  });
+
+  it('refuses a Reference Source no reference extractor can read, and reads no body', async () => {
+    // The RoleMatrix origin sat behind a proxy that answered 200 with an error page. With
+    // no check here, that page was frozen, REGISTERED and marked `required`; the seal then
+    // found every required artifact registered and printed "Sealed. Every artifact this
+    // Run required is registered and verified" over a Run whose evaluator could read none
+    // of it. The failure was safe — every P-2 record was Unevaluated — but the SEAL was
+    // wrong about it, and the seal is the one claim Story 3.5 exists to make true.
+    const html = respond(
+      '<html>Service unavailable</html>',
+      'text/html; charset=utf-8',
+      'https://synthetic.invalid/role-matrix.csv',
+    );
+    const adapter = new HttpAdapterExtraction({
+      fetch: (async () => html) as unknown as typeof globalThis.fetch,
+    });
+    await expect(
+      adapter.acquireReference(target('versioned-file', 'https://synthetic.invalid/role-matrix.csv'), 5000),
+    ).rejects.toMatchObject({ code: 'contract' });
+    // Refused on the HEADERS, before a byte of it was pulled: there is no reason to
+    // download an artifact nothing can read, and the deadline's `dispose` aborts the
+    // unread body so it cannot hold the socket. `bodyUsed` is the stream's own answer.
+    expect(html.bodyUsed).toBe(false);
+  });
+
+  it('accepts every media type a reference extractor can actually read', async () => {
+    // The acceptance list and the reader are one list, in the domain, so a media type this
+    // adapter accepts cannot be one `roleExpansionFrom` then filters out — which is how the
+    // proxy page passed acquisition and failed evaluation with the seal saying otherwise.
+    for (const mediaType of REFERENCE_SOURCE_MEDIA_TYPES) {
+      const adapter = new HttpAdapterExtraction({
+        fetch: (async () =>
+          respond('entry,role,permission\n1,A,B\n', mediaType, 'https://synthetic.invalid/role-matrix.csv')) as unknown as typeof globalThis.fetch,
+      });
+      const artifact = await adapter.acquireReference(
+        target('versioned-file', 'https://synthetic.invalid/role-matrix.csv'),
+        5000,
+      );
+      expect(artifact.mediaType).toBe(mediaType);
+      expect(roleExpansionFrom([{ bytes: artifact.bytes, mediaType: artifact.mediaType }]).complete).toBe(true);
+    }
+  });
+
+  it('still freezes an extraction the parser cannot use: freeze first, parse second', async () => {
+    // The refusal is the REFERENCE path's alone. A Work Item deliberately freezes whatever
+    // the Target System answered before it parses it, and an Inconclusive Run keeps that
+    // partial Evidence; refusing it here would delete the record of what was said.
+    const adapter = new HttpAdapterExtraction({
+      fetch: (async () =>
+        respond('<html>nope</html>', 'text/html', 'https://synthetic.invalid/accessgate')) as unknown as typeof globalThis.fetch,
+    });
+    const artifact = await adapter.extract(target('api', 'https://synthetic.invalid/accessgate'), credential, 5000);
+    expect(artifact.mediaType).toBe('text/html');
+    expect(new TextDecoder().decode(artifact.bytes)).toBe('<html>nope</html>');
   });
 
   it('maps an unreachable target to a transport failure, not a contract failure', async () => {

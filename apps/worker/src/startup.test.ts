@@ -240,6 +240,24 @@ describe('population execution', () => {
     // The worker still beats: the heartbeat wiring is outside the branch.
     expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
   });
+
+  it('gives the post-Run Evidence integrity check a production caller', () => {
+    // `verifySealedPackage` shipped with tests and NOTHING in the product calling it, so
+    // an object deleted or altered after a Run terminated was never detected — while the
+    // Run page went on printing "Sealed. Every artifact this Run required is registered and
+    // verified" in the present tense about storage nothing re-checked. The sweep's own
+    // behaviour is proved in `evidence-integrity-sweep.test.ts`; what is proved here is
+    // that the composition root starts it, and stops it.
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('startEvidenceIntegritySweep(');
+    expect(main).toContain('verifySealedPackage({ repository: sealed, store, clock, ids }, runId)');
+    // Inside the storage branch: it reads every registered artifact out of object storage,
+    // so a deployment with no bucket has nothing for it to read.
+    const storageBranch = main.slice(main.indexOf('if (evidence.enabled) {'), main.indexOf('} else {'));
+    expect(storageBranch).toContain('startEvidenceIntegritySweep(');
+    // And stopped on shutdown, so a SIGTERM does not kill an in-flight verification.
+    expect(main).toContain('await stopIntegritySweep?.();');
+  });
 });
 
 describe('adapterExtraction', () => {

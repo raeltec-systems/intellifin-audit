@@ -171,6 +171,10 @@ class FakeContext implements ObservationRegistrationContext {
         record: row.record,
         digest: row.digest,
         coverage: row.coverage,
+        // §B's retained capture time, read back with the row: an edit to it does not touch
+        // the digest column, and it is outside the hashed envelope, so nothing else here
+        // could ever see one.
+        observedAtSource: row.observedAtSource,
       }));
 
   readEvidenceStates = async (ids: readonly string[]): Promise<readonly EvidenceState[]> =>
@@ -411,6 +415,37 @@ describe('registerObservations', () => {
       'observation-integrity',
     );
     expect(context.events).toHaveLength(1);
+  });
+
+  it('raises the integrity failure when the retained capture time was rewritten', async () => {
+    const context = new FakeContext();
+    await registerObservations(context, batch([item(found('AG-1001'), { observedAtSource: '2026-09-05T12:00:00+02:00' })]), SEAMS);
+    // §B's retained provenance sits OUTSIDE the thirteen hashed wire keys — the envelope is
+    // pinned by a Python-produced golden vector and moving it is a contract change, not a
+    // repair. So an edit to this column leaves the digest matching, and without reading it
+    // back a redelivered batch reports the row as already registered and sees nothing. What
+    // makes it tamper-evident is re-deriving it: the source must still normalize to the
+    // `observedAt` the digest DOES cover.
+    const stored = context.observations[0]!;
+    context.observations[0] = { ...stored, observedAtSource: '2026-09-05T12:00:00+05:00' };
+    expect(await refusal(() => registerObservations(context, batch([item(found('AG-1001'))]), SEAMS))).toBe(
+      'observation-integrity',
+    );
+    expect(context.events).toHaveLength(1);
+  });
+
+  it('raises the integrity failure when the retained capture time is no longer an instant', async () => {
+    const context = new FakeContext();
+    await registerObservations(context, batch([item(found('AG-1001'))]), SEAMS);
+    const stored = context.observations[0]!;
+    // Not an instant at all, and an impossible calendar date, which `Date.parse` would
+    // ROLL OVER into a real one rather than refuse.
+    for (const source of ['', 'yesterday', '2026-02-30T00:00:00Z']) {
+      context.observations[0] = { ...stored, observedAtSource: source };
+      expect(await refusal(() => registerObservations(context, batch([item(found('AG-1001'))]), SEAMS))).toBe(
+        'observation-integrity',
+      );
+    }
   });
 
   it('raises the integrity failure when a stored row is no longer in the wire schema', async () => {

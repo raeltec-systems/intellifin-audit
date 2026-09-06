@@ -80,9 +80,10 @@ Work Item with a diagnostic that reads like a Target System problem.
 
 Every acquired artifact is frozen with the Story 3.2 sequence, over the exact served bytes:
 
-1. **reserve** a stable key derived from the Run and the frozen step id
-   (`reference/<run-id>/<step-id>`, `extraction/<run-id>/<step-id>`) and write the Evidence
-   row `RESERVED`, in the same transaction as the unit's state and its audit event;
+1. **reserve** a stable key derived from the Run, the frozen step id and — for an adapter
+   extraction — the attempt (`reference/<run-id>/<step-id>`,
+   `extraction/<run-id>/<step-id>.a<attempt>`) and write the Evidence row `RESERVED`, in
+   the same transaction as the unit's state and its audit event;
 2. **upload** conditionally — an object already there is reconciled, never overwritten;
 3. **verify** the stored bytes by reading them back and comparing length and SHA-256;
 4. **register** the digest, size and media type, `REGISTERED`, in one guarded transaction
@@ -92,11 +93,38 @@ An adapter extraction is frozen BEFORE it is parsed. A response that is not a de
 collection is still what the Target System answered, and an Inconclusive Run keeps its
 partial Evidence; only a reservation nothing was ever written to is abandoned.
 
+**Each adapter extraction ATTEMPT names its own artifact.** Those two rules — freeze before
+parsing, keep a failed attempt's bytes — mean a second attempt has DIFFERENT bytes to
+freeze, and step 2 reconciles rather than overwrites. With one key per step, a gateway
+answering a single maintenance page poisoned the reservation: attempt 2 read back attempt
+1's object, found a digest that did not match, and died with an integrity failure against a
+Target System that was answering correctly, then so did attempts 3-8. The Work Item ended
+FAILED, the Run lost that system's coverage, and the only durable record was seven
+immutable events accusing the store. So the attempt is part of the name. Every attempt's
+artifact is preserved, and the Work Item's `evidence_id` names the one it concluded from.
+The attempt number is durable before anything is uploaded — it is persisted with the
+Work Item in the transaction that writes the `RESERVED` row, before the request is made —
+so a resumed claim starts the attempt after it, under a name this Run has never uploaded
+to. `adapter-extraction` is not `required`, so extra attempts cannot make a package
+incomplete.
+
 A resumed Run re-verifies every artifact it already registered, and an attempt that
 resumes inherits the digest a previous one registered, so newly fetched bytes are
 compared against what was already frozen rather than quietly accepted. Stored bytes that
 no longer match their registered digest are a terminal integrity failure; the bytes are
 never replaced.
+
+A **Reference Source** must arrive as a media type a reference extractor in this build can
+read — `text/csv` today, the list in `packages/domain/src/runs/evaluation.ts` beside the
+readers, checked on the response HEADERS before a byte of the body is pulled. It is
+REQUIRED Evidence: an artifact acquisition accepted but nothing could read would be frozen,
+REGISTERED and sealed over, and the package would then claim every required artifact was
+registered and verified about a proxy error page. Refusing it makes the Session Step fail,
+which §E maps to `RUN_FAILED`, and the abandoned reservation makes the package INCOMPLETE
+— which is true. The refusal is a `contract` failure and is not retried: the frozen origin
+is not serving what the registration says it is, and four requests back to back through the
+same gateway inside one step timeout prove nothing. **This does not apply to an adapter
+extraction**, which deliberately freezes whatever the Target System answered.
 
 The Reference Source is frozen as the bytes actually served, with no re-serialization. For
 Northstar's RoleMatrix that matters: the CSV carries a leading `entry` ordinal so two

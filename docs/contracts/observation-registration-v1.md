@@ -50,15 +50,23 @@ Both are pinned by `tests/fixtures/observation-digest-golden.json`, produced by
 envelopes written out by hand. A fixture regenerated from the code under test would prove
 only that it equals itself.
 
-### Two questions the digest answers
+### Three questions the digest answers
 
-On registration, a record key that is already stored raises two separate questions:
+On registration, a record key that is already stored raises three separate questions:
 
 1. **Does the stored row still agree with the digest stored beside it?** An edit to a row
    does not touch its digest column, so comparing a fresh batch against that column alone
    would find them in agreement and see nothing. The stored row is read back out of its
    columns and its digest recomputed. A disagreement is `observation-integrity`.
-2. **Is the row this batch describes the same Observation?** `run_observation` is unique
+2. **Does the retained capture time still agree with the instant the digest covers?**
+   `observed_at_source` is deliberately OUTSIDE the thirteen hashed keys — the envelope is
+   §B.1's and is pinned by an independently produced vector, so moving it is a contract
+   change and not a repair — which means question 1 cannot see an edit to it. It is read
+   back with the row and re-derived: the source must normalize to the record's own
+   `observedAt`. Without that, `UPDATE run_observation SET observed_at_source = …` left the
+   digest matching and a redelivered batch reported the row as already registered, with §B's
+   capture provenance silently rewritten. A disagreement is `observation-integrity`.
+3. **Is the row this batch describes the same Observation?** `run_observation` is unique
    on `(work_item_id, population_record_key)`, so a genuinely different capture for that
    pair cannot be stored at all. A disagreement is `digest-mismatch`, said rather than
    dropped silently.
@@ -183,7 +191,9 @@ on. Diagnostics are a closed vocabulary of constants.
 §B: every timestamp is normalized to UTC and the original offset is retained. The wire
 record's `observedAt` is the normalized half; `run_observation.observed_at_source` holds
 the source text verbatim. Registration refuses a source that does not normalize to the
-record's `observedAt`, so a capture time is never silently shifted.
+record's `observedAt`, so a capture time is never silently shifted — on the way IN, and
+again on every re-read of a stored row (question 2 above), which is what makes a column
+outside the hashed envelope tamper-evident.
 
 `normalizeObservedAt` does the arithmetic itself rather than trusting `Date.parse`, which
 **rolls over** an impossible calendar date instead of refusing it: `2026-02-30T00:00:00Z`

@@ -421,10 +421,20 @@ describe.skipIf(!url)('the Run-level Evidence Quality Gate against PostgreSQL', 
     expect(coverage.records).toEqual(['AG-1001', 'AG-1003']);
     expect(coverage.total).toBe(2);
     expect(await runState(seeded.run.runId)).toBe('INCONCLUSIVE');
-    // Partial Evidence is preserved: the reservation is abandoned and NAMED, never removed.
+    // Partial Evidence is preserved: every reservation is abandoned and NAMED, never
+    // removed. There are EIGHT of them, one per attempt, because an adapter extraction is
+    // named from the attempt as well as the step — without that, attempt 2 would upload
+    // different bytes to attempt 1's key, the store would reconcile them and refuse, and
+    // every retry after the first would die accusing the store of an integrity failure
+    // against a Target System that had merely been unreachable once. Each attempt here
+    // fails in transport, BEFORE anything is frozen, so all eight stay open and all eight
+    // are abandoned. They must be distinct: eight entries naming one artifact would mean
+    // the key never varied.
     const seal = await sql`SELECT state,abandoned FROM run_evidence_package WHERE run_id=${seeded.run.runId}`;
     expect(seal[0]?.state).toBe('SEALED');
-    expect((seal[0]?.abandoned as unknown[]).length).toBe(1);
+    const abandoned = seal[0]?.abandoned as { evidenceId: string }[];
+    expect(abandoned.length).toBe(8);
+    expect(new Set(abandoned.map((entry) => entry.evidenceId)).size).toBe(8);
   });
 
   it('fails the ambiguous-match and coverage rows on a Target System that resolves two candidates', async () => {

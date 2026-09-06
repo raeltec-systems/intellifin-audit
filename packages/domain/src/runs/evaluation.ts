@@ -86,6 +86,34 @@ export interface ReferenceArtifact {
   readonly mediaType: string;
 }
 
+/**
+ * Every media type a reference extractor in this build can actually read.
+ *
+ * The acquisition allowlist and the readers are ONE list, here, beside the readers. A
+ * Reference Source is `required` Evidence: it is acquired, frozen and REGISTERED, and the
+ * package then seals on it. So an artifact acquisition accepts but no extractor can read
+ * makes the seal say "Every artifact this Run required is registered and verified" about a
+ * proxy error page — safe in its outcome, because every record is then Unevaluated, and
+ * wrong in the one claim `SealPackage` exists to make true. Refusing it at acquisition
+ * makes the Session Step fail, which §E maps to `RUN_FAILED`, and the reservation is
+ * abandoned so the package seals INCOMPLETE. That is truthful.
+ *
+ * A second list in the adapter would agree with this one on every media type anybody
+ * thought to try. Adding a reference extractor means adding its media type here, and
+ * `adapter-extraction-http.test.ts` walks this list through a real acquisition and a real
+ * `roleExpansionFrom`, so an entry nothing can read fails a test.
+ */
+export const REFERENCE_SOURCE_MEDIA_TYPES = ['text/csv'] as const;
+
+const CHARSET_SUFFIX = /\s*;\s*charset=utf-8$/;
+
+/** Is this media type one a Reference Source may be frozen as? */
+export function isReferenceSourceMediaType(mediaType: string): boolean {
+  if (typeof mediaType !== 'string') return false;
+  const normalized = mediaType.trim().toLowerCase().replace(CHARSET_SUFFIX, '');
+  return (REFERENCE_SOURCE_MEDIA_TYPES as readonly string[]).includes(normalized);
+}
+
 function isRoleMatrixCsv(mediaType: string): boolean {
   return /^text\/csv(?:;\s*charset=utf-8)?$/i.test(mediaType);
 }

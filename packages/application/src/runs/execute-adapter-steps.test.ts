@@ -319,6 +319,7 @@ class FakeRepository implements AdapterExecutionRepository {
             record: row.record,
             digest: row.digest,
             coverage: row.coverage,
+            observedAtSource: row.observedAtSource,
           })),
       readEvidenceStates: async (ids) =>
         ids
@@ -692,6 +693,42 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.observations).toEqual([]);
   });
 
+  it('seals INCOMPLETE when a Reference Source answered something nothing can read', async () => {
+    // The HTTP adapter refuses a Reference Source whose media type no reference extractor
+    // can read, as a `contract` failure — a proxy error page at the RoleMatrix origin
+    // (`adapter-extraction-http.test.ts`). This is the other half of that one fix: the
+    // Session Step fails without retrying a refusal that would repeat, §E makes it
+    // RUN_FAILED, and the reservation nothing was written to is abandoned, so the package
+    // seals INCOMPLETE and NAMES the artifact. Frozen and REGISTERED instead, it would have
+    // sealed SEALED over a page the evaluator could read none of.
+    const test = harness({
+      plan: plan([reference, adapter]),
+      reference: async () => {
+        throw new PopulationAcquisitionError('contract');
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const step = test.repository.steps.get('session-2')!;
+    expect(step.state).toBe('FAILED');
+    expect(step.diagnostic).toBe('reference-contract-failed');
+    // The same refusal every time, so it is not retried against a live system.
+    expect(step.attempts).toBe(1);
+    expect(test.repository.run.state).toBe('RUN_FAILED');
+    expect(test.repository.seal?.state).toBe('INCOMPLETE');
+    expect(test.repository.seal?.missingRequired.map((entry) => entry.evidenceId)).toEqual([
+      step.evidenceId,
+    ]);
+    expect(test.repository.seal?.abandoned.map((entry) => entry.evidenceId)).toEqual([
+      step.evidenceId,
+    ]);
+    expect(test.repository.evidence.get(step.evidenceId!)).toMatchObject({
+      state: 'ABANDONED',
+      digest: null,
+    });
+    // Nothing was frozen: an artifact nobody can read is never in the store.
+    expect(test.puts).toEqual([]);
+  });
+
   it('repeats no completed unit on resume and creates no duplicate Evidence or Observation', async () => {
     const test = harness({ plan: plan([reference, adapter]) });
     await executeAdapterSteps(test.deps, JOB);
@@ -861,6 +898,54 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.observations).toEqual([]);
     // The Work Item did not stop the Run — the stage reached its own completion — and the
     // Run-level Gate then concluded it INCONCLUSIVE on the coverage the item never gave.
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
+  });
+
+  it('lets a later attempt freeze DIFFERENT bytes after a bad response was frozen', async () => {
+    // The gateway in front of the Target System answered 200 with a maintenance page.
+    // Attempt 1 freezes it — right, it is what the system answered — and the parse then
+    // fails, which is not terminal. Attempt 2 runs against a healthy system and gets
+    // correct JSON, which it can only freeze if the object key it derives is not the one
+    // attempt 1 already filled: `putIfAbsent` reconciles rather than overwrites, so a key
+    // with no attempt in it makes every retry die on the STORE with an integrity error
+    // against a Target System that is answering perfectly well. The owner's two bounded
+    // retry cycles exist for exactly this failure.
+    let call = 0;
+    const test = harness({
+      plan: plan([adapter]),
+      extract: async () => {
+        call += 1;
+        return call === 1
+          ? { bytes: utf8Bytes('<html><body>Service unavailable</body></html>'), mediaType: 'text/html', location: 'x' }
+          : { bytes: utf8Bytes(ACCOUNTS), mediaType: 'application/json', location: 'x' };
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const item = [...test.repository.items.values()][0]!;
+    expect(item.state).toBe('OBSERVED');
+    expect(item.attempts).toBe(2);
+    expect(item.diagnostic).toBeNull();
+    expect(test.repository.observations).toHaveLength(4);
+    // Both artifacts are preserved and both are REGISTERED: each attempt freezes what its
+    // own request answered, and an artifact that exists is never un-existed.
+    const registered = [...test.repository.evidence.values()].filter(
+      (row) => row.kind === 'adapter-extraction',
+    );
+    expect(registered).toHaveLength(2);
+    expect(registered.every((row) => row.state === 'REGISTERED')).toBe(true);
+    expect(new Set(registered.map((row) => row.objectKey)).size).toBe(2);
+    expect(registered.map((row) => row.mediaType).sort()).toEqual(['application/json', 'text/html']);
+    // The Work Item names the artifact it CONCLUDED from, not the one it discarded.
+    expect(test.repository.evidence.get(item.evidenceId!)?.mediaType).toBe('application/json');
+    // `adapter-extraction` is not required, so several attempts cannot make the package
+    // incomplete; nothing was left open here, so nothing is abandoned either.
+    expect(test.repository.seal?.state).toBe('SEALED');
+    expect(test.repository.seal?.abandoned).toEqual([]);
+    // The stage reached its own completion, so the Run concludes at the Gate rather than
+    // on the Work Item. INCONCLUSIVE here is P-2's coverage rule over this fixture's
+    // ambiguous and absent accounts — the same conclusion the single-attempt happy path
+    // reaches — and the point is that the retry cost the Run nothing.
     expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
     expect(test.repository.run.state).toBe('INCONCLUSIVE');
   });

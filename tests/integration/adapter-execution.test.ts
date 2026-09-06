@@ -20,6 +20,7 @@ import {
   type ResolvedCredential,
 } from '@intellifin/application';
 import {
+  adapterExtractionScope,
   bindingDigest,
   bindingDigestEnvelope,
   exceptionFingerprint,
@@ -738,8 +739,20 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     for (const row of rows) {
       const kind = String(row.kind) as 'reference-source' | 'adapter-extraction';
       const [step] =
-        await sql`SELECT step_id FROM ${sql(kind === 'reference-source' ? 'run_session_step' : 'run_work_item')} WHERE run_id=${seeded.run.runId}`;
-      const reservation = { runId: seeded.run.runId, kind, scope: String(step!.step_id) };
+        await sql`SELECT step_id,${kind === 'reference-source' ? sql`1 AS attempts` : sql`attempts`} FROM ${sql(kind === 'reference-source' ? 'run_session_step' : 'run_work_item')} WHERE run_id=${seeded.run.runId}`;
+      // An adapter extraction is named from the Run, the kind, the frozen step id AND the
+      // ATTEMPT; a Reference Source is named without one. The attempt is there because a
+      // Work Item freezes its response before it parses it and keeps failed bytes
+      // registered, so a second attempt has different bytes to freeze and the store
+      // reconciles rather than overwrites — with one key per step, every retry read back
+      // attempt 1's object and died accusing the store of an integrity failure. A Session
+      // Step is acquired without being parsed, so its retries only ever run when nothing
+      // was frozen at all.
+      const scope =
+        kind === 'adapter-extraction'
+          ? adapterExtractionScope(String(step!.step_id), Number(step!.attempts))
+          : String(step!.step_id);
+      const reservation = { runId: seeded.run.runId, kind, scope };
       // Derived, not minted: this is the arithmetic a retried production repeats.
       expect(row.id).toBe(evidenceIdFor(reservation));
       expect(row.object_key).toBe(evidenceObjectKey(reservation));
@@ -823,7 +836,9 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     await executeAdapterSteps(deps, seeded.job);
     // An upload that never completed: the row is RESERVED and its object is not there.
     const [item] = await sql`SELECT step_id FROM run_work_item WHERE run_id=${seeded.run.runId}`;
-    const key = `extraction/${seeded.run.runId}/${String(item!.step_id)}`;
+    // Attempt 1's artifact: an adapter extraction reserves per ATTEMPT, because a Work Item
+    // freezes a response before it parses it and a retry therefore has different bytes.
+    const key = `extraction/${seeded.run.runId}/${adapterExtractionScope(String(item!.step_id), 1)}`;
     await unseal(seeded);
     await sql`UPDATE run_evidence SET state='RESERVED',digest=NULL,size=NULL WHERE object_key=${key}`;
     const seal = await sealAt(seeded, 'INCONCLUSIVE');
@@ -894,6 +909,36 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(seeded.objects.get(key)).toBe(tampered);
     // Verified twice, recorded once.
     expect(await verifySealedPackage(verifyDeps, seeded.run.runId)).toMatchObject({ recorded: 0 });
+  });
+
+  it('gives the sweep its OWN bounded read of the packages to re-verify', async () => {
+    // `verifySealedPackage` had no production caller, so nothing ever re-read a sealed
+    // artifact. The caller is a bounded worker sweep, and this is the read it runs on: its
+    // own, not a surface's — the probe sweep that borrowed `listRegistrations` probed
+    // nothing while exiting 0, because that read was capped and included retired rows.
+    const first = await seed(['api']);
+    await executeAdapterSteps(dependencies(first).deps, first.job);
+    await sealAt(first, 'INCONCLUSIVE');
+    const second = await seed(['api']);
+    await executeAdapterSteps(dependencies(second).deps, second.job);
+    await sealAt(second, 'INCONCLUSIVE');
+    const repository = new PostgresSealedPackageRepository(db);
+
+    const ordered = [first.run.runId, second.run.runId].sort();
+    const page = await repository.verifiableRunIds(null, 100);
+    expect(page.filter((id) => ordered.includes(id))).toEqual(ordered);
+    // Keyset, in Run-id order, so a cursor carried between ticks reaches every package
+    // rather than re-reading the first page forever.
+    const after = await repository.verifiableRunIds(ordered[0]!, 100);
+    expect(after.filter((id) => ordered.includes(id))).toEqual([ordered[1]]);
+    expect(await repository.verifiableRunIds(null, 1)).toHaveLength(1);
+    // A cursor that is not a Run id starts the rotation over rather than making PostgreSQL
+    // refuse a `uuid` comparison against text with 22P02.
+    expect((await repository.verifiableRunIds('not-a-run', 100)).length).toBe(page.length);
+
+    // And what the sweep does with those ids is the command that changes no state.
+    const verifyDeps = { repository, store: first.store, clock: new SystemClock(), ids };
+    expect(await verifySealedPackage(verifyDeps, first.run.runId)).toMatchObject({ recorded: 0 });
   });
 
   it('refuses at the database what no seal may store', async () => {
@@ -1185,6 +1230,27 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       (await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.c,
     ).toBe(1);
     expect((await sql`SELECT target_system FROM run_observation WHERE run_id=${seeded.run.runId} AND population_record_key='AG-1001'`)[0]?.target_system).toBe('tampered');
+  });
+
+  it('raises the integrity failure when the retained capture time was rewritten', async () => {
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const batch = await registeredBatch(seeded);
+
+    // §B's retained provenance sits OUTSIDE the thirteen hashed wire keys, so the digest
+    // column still matches after this UPDATE and the check above cannot see it. It is the
+    // repository read that has to bring the column back, and registration that has to
+    // re-derive it: without both, a redelivered batch reported this row as already
+    // registered and the capture provenance was silently rewritten.
+    await sql`UPDATE run_observation SET observed_at_source='2026-01-01T00:00:00+05:00' WHERE run_id=${seeded.run.runId} AND population_record_key='AG-1001'`;
+    await expect(register(seeded.run.runId, batch)).rejects.toMatchObject({
+      name: 'ObservationRegistrationError',
+      refusal: 'observation-integrity',
+    });
+    // Thrown, so nothing was written over the row that was edited.
+    expect(
+      (await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${seeded.run.runId} AND event_type='execution.observations-registered'`)[0]?.c,
+    ).toBe(1);
   });
 
   it('leaves nothing visible when a batch is refused mid-transaction', async () => {

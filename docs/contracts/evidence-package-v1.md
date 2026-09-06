@@ -20,16 +20,24 @@ idempotency key = evidence-v1:<runId>:<kind>:<scope>
 evidenceId      = RFC 9562 §5.8 UUIDv8 over SHA-256 of the canonical JSON of that key
 objectKey       = population/<runId>/raw          (and .../acquisition-v1)
                   reference/<runId>/<frozen step id>
-                  extraction/<runId>/<frozen step id>
+                  extraction/<runId>/<frozen step id>.a<attempt>
 ```
 
-`scope` is the FROZEN Session Step id, and the empty string for the Run-level population,
-which there is exactly one of. A retried production after a crash therefore re-derives the
-same id and the same object key and reuses its reservation, instead of minting a second
-object beside the first. This is `observationIdFor`'s lesson (observation registration v1)
-applied one layer along: a minted id makes a redelivery indistinguishable from a second
-artifact, and here it would leave two objects in the store with one row describing one of
-them.
+`scope` is the FROZEN Session Step id, the empty string for the Run-level population, which
+there is exactly one of, and — for an adapter extraction — the step id and the ATTEMPT. A
+retried production after a crash therefore re-derives the same id and the same object key
+and reuses its reservation, instead of minting a second object beside the first. This is
+`observationIdFor`'s lesson (observation registration v1) applied one layer along: a minted
+id makes a redelivery indistinguishable from a second artifact, and here it would leave two
+objects in the store with one row describing one of them.
+
+The adapter extraction is the one kind whose scope carries an attempt, because it is the
+one kind that freezes a response BEFORE parsing it and keeps a failed attempt's bytes
+registered. A second attempt therefore has different bytes to freeze, and the upload below
+reconciles rather than overwrites — so one name per step made every retry die with an
+integrity failure against a store that was behaving correctly (adapter extraction v1). The
+attempt number is durable before anything is uploaded, and `adapter-extraction` is not a
+`required` kind, so extra attempts cannot make a package incomplete.
 
 Those object keys are exactly the ones Stories 3.2 and 3.3 already wrote. This document is
 where they are spelled, not a new naming scheme: an artifact frozen by an earlier build has
@@ -161,9 +169,24 @@ neither event carries a media type, a location or a credential reference.
 A store that cannot be read is **not** proof of tampering: a transport failure is reported
 to the caller rather than written into an immutable chain as an integrity event.
 
+### Who runs it
+
+The worker, in a bounded background sweep — `startEvidenceIntegritySweep`, composed inside
+the storage branch of the composition root, the same shape the population recovery sweep
+and the Target System probe runner use. A page of packages per tick through the sweep's OWN
+read (`verifiableRunIds`, a keyset page over `run_evidence_package`), one Run at a time,
+with a cursor that rotates so every package is re-checked rather than each one once, and a
+stop that lets the active verification finish and starts none of the rest. A Run it cannot
+read is reported to telemetry and the sweep carries on with the others.
+
+This matters because the claim is present tense. Without a caller, `verifySealedPackage`
+was a command with tests and nothing invoking it: an object deleted or altered after a Run
+terminated was never detected, while the Run page went on printing "Sealed. Every artifact
+this Run required is registered and verified" about storage nothing re-checked. A
+verification nothing runs is a claim, not a check.
+
 ## What this contract does not decide
 
 Which artifacts a later epic's agent captures and whether they are required; the Run-level
-Gate rows (3.8); Result sealing and the Result version (3.9); and who runs
-`verifySealedPackage`, on what schedule. Each of those extends this seam; none of them
-replaces it.
+Gate rows (3.8); and Result sealing and the Result version (3.9). Each of those extends
+this seam; none of them replaces it.

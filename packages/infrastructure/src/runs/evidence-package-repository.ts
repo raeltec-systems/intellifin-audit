@@ -19,6 +19,7 @@ import {
 import { DrizzleRunRepository } from './run-repository.js';
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
+import type { SealedPackages } from './evidence-integrity-sweep.js';
 
 /**
  * The Evidence package, as both execution stages and the post-Run verification read it.
@@ -154,8 +155,36 @@ export function evidencePackageContext(
  * for a Run state, a seal or an Evidence row, so "a mismatch found after the Run changes
  * no state" is a property of what this context can reach.
  */
-export class PostgresSealedPackageRepository implements SealedPackageRepository {
+export class PostgresSealedPackageRepository implements SealedPackageRepository, SealedPackages {
   constructor(private readonly db: Database) {}
+
+  /**
+   * The post-Run integrity sweep's OWN read: one keyset page of sealed packages.
+   *
+   * A background job must not borrow a surface's read — `listRegistrations` was capped and
+   * included retired rows, and the probe sweep that borrowed it probed nothing while
+   * exiting 0. This asks the one question the sweep has: which Runs have a package to
+   * re-verify, in a stable order, a page at a time.
+   *
+   * `run_evidence_package` exists only for a Run that reached a terminal state, and the
+   * deferred constraint trigger is what makes that true, so no state predicate is needed
+   * here. An INCOMPLETE package is swept as well as a SEALED one: it still holds registered
+   * artifacts, and an artifact that was verified is worth re-checking whatever the Run
+   * concluded.
+   */
+  async verifiableRunIds(after: string | null, limit: number): Promise<string[]> {
+    const size = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 100) : 1;
+    // A cursor that is not a Run id starts the rotation over rather than comparing a
+    // `uuid` column against text PostgreSQL would refuse with 22P02.
+    const cursor = after !== null && isUuidText(after) ? after : null;
+    const rows = await this.db
+      .select({ runId: runEvidencePackage.runId })
+      .from(runEvidencePackage)
+      .where(cursor === null ? undefined : sql`${runEvidencePackage.runId} > ${cursor}::uuid`)
+      .orderBy(runEvidencePackage.runId)
+      .limit(size);
+    return rows.map((row) => row.runId);
+  }
 
   async transaction<T>(
     runId: string,

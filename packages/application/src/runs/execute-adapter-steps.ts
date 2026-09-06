@@ -1,5 +1,6 @@
 import {
   adapterAttemptBudget,
+  adapterExtractionScope,
   adapterLookupColumn,
   adapterSearchKeys,
   classifyPlanTargets,
@@ -836,16 +837,22 @@ interface UnitContext {
  * frozen instead of quietly accepting different ones. A REGISTERED row is never
  * downgraded to RESERVED: it was registered, and saying otherwise would be a lie about
  * an artifact that exists.
+ *
+ * `scope` is the caller's, because the two units name their reservations differently: a
+ * Reference Source by its frozen Session Step id, an adapter extraction by that id AND
+ * the attempt (`adapterExtractionScope`), because a Work Item freezes a response before it
+ * parses it and a later attempt therefore has different bytes to freeze.
  */
 function evidenceFor(
   unit: UnitContext,
   priorEvidenceId: string | null,
   kind: AdapterEvidenceRecord['kind'],
+  scope: string,
 ): AdapterEvidenceRecord {
   // NAMED, not minted (Story 3.5): the id and the object key are derived from the Run,
-  // the kind and the FROZEN Session Step id, so an attempt that resumes after a crash
-  // reaches the reservation it already has. A row an earlier build wrote wins, because
-  // its object really is in the store under the id that row recorded.
+  // the kind and the scope, so an attempt that resumes after a crash reaches the
+  // reservation it already has. A row an earlier build wrote wins, because its object
+  // really is in the store under the id that row recorded.
   // A frozen step id that is not usable as an object-key segment is a CONTRACT failure,
   // not a transport one: the same bytes produce the same refusal, so retrying it against a
   // live system proves nothing. `reserveArtifact` throws its own error, which
@@ -855,7 +862,7 @@ function evidenceFor(
     reserved = reserveArtifact({
       runId: unit.run.runId,
       kind,
-      scope: unit.entry.stepId,
+      scope,
       templateId: unit.plan.inputs.templateId,
     });
   } catch {
@@ -879,7 +886,7 @@ async function runReferenceStep(
     if (unit.limitReached() !== null) return 'limit';
     step.attempts += 1;
     const execution = unit.startStepExecution(entry.stepId, null, 'extract-adapter', step.attempts);
-    const evidence = evidenceFor(unit, step.evidenceId, 'reference-source');
+    const evidence = evidenceFor(unit, step.evidenceId, 'reference-source', entry.stepId);
     step.evidenceId = evidence.evidenceId;
     step.state = 'IN_PROGRESS';
     step.diagnostic = null;
@@ -1010,7 +1017,27 @@ async function runWorkItem(
     // are not there.
     const priorObservations = item.observations;
     const execution = unit.startStepExecution(entry.stepId, item.workItemId, 'extract-adapter', item.attempts);
-    const evidence = evidenceFor(unit, item.evidenceId, 'adapter-extraction');
+    // THIS attempt's reservation, and never the previous one's.
+    //
+    // The number is durable before anything is uploaded: `item.attempts` was incremented
+    // one line above and the `reserved` commit below persists it BEFORE `extract` is even
+    // called, so a claim that resumes reads it back and starts the attempt after it — a
+    // number this Run has never uploaded under. A crash between that commit and the
+    // registration therefore leaves an object under a RESERVED row, which `SealPackage`
+    // abandons at the terminal transition and names on the Result. That is the truthful
+    // record: nothing committed ever verified those bytes. The alternative — reusing the
+    // previous attempt's key — is the defect: the store would answer with the old object
+    // and every retry would die accusing it of an integrity failure.
+    //
+    // `item.evidenceId` is deliberately NOT carried in as the prior id. It names the
+    // previous attempt's row, and adopting it here would give that row this attempt's
+    // object key: one Evidence row, silently repointed, and the earlier artifact lost.
+    const evidence = evidenceFor(
+      unit,
+      null,
+      'adapter-extraction',
+      adapterExtractionScope(entry.stepId, item.attempts),
+    );
     item.evidenceId = evidence.evidenceId;
     item.state = 'IN_PROGRESS';
     item.diagnostic = null;

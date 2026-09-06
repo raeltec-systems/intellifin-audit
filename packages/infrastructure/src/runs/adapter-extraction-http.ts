@@ -5,7 +5,7 @@ import {
   type ReferenceAcquisitionPort,
   type ResolvedCredential,
 } from '@intellifin/application';
-import type { ProcedureTargetSnapshot } from '@intellifin/domain';
+import { isReferenceSourceMediaType, type ProcedureTargetSnapshot } from '@intellifin/domain';
 
 import { isRefusedSourceHost, POPULATION_ACQUISITION_MAX_BYTES } from './population-acquisition-http.js';
 
@@ -207,14 +207,22 @@ export class HttpAdapterExtraction implements AdapterExtractionPort, ReferenceAc
     }
   }
 
-  /** A `versioned-file` Target System: its frozen origin is the artifact, read as bytes. */
+  /**
+   * A `versioned-file` Target System: its frozen origin is the artifact, read as bytes.
+   *
+   * `accept` is the domain's list of media types a reference extractor can actually read.
+   * A Reference Source is REQUIRED Evidence, so an artifact acquisition takes but nothing
+   * can read seals a package claiming every required artifact was verified over a proxy
+   * error page. Refused here instead: the Session Step fails, §E makes that `RUN_FAILED`,
+   * and the abandoned reservation makes the package INCOMPLETE, which is true.
+   */
   async acquireReference(target: ProcedureTargetSnapshot, timeoutMs: number): Promise<AcquiredArtifact> {
     if (target.contract.kind !== 'versioned-file') throw contractFailure();
     validateTimeout(timeoutMs);
     const url = targetOrigin(target);
     const deadline = withDeadline(timeoutMs);
     try {
-      return await this.read(url, deadline.signal, null);
+      return await this.read(url, deadline.signal, null, isReferenceSourceMediaType);
     } finally {
       deadline.dispose();
     }
@@ -254,10 +262,20 @@ export class HttpAdapterExtraction implements AdapterExtractionPort, ReferenceAc
     }
   }
 
+  /**
+   * One bounded read.
+   *
+   * `accept` is `null` for an adapter extraction, deliberately: a Work Item freezes what
+   * the Target System answered BEFORE it parses it, because a response that is not a
+   * declared collection is still what the system said and an Inconclusive Run keeps its
+   * partial Evidence. A Reference Source is the opposite case — nothing parses it, it is
+   * required, and the seal is made over it — so it passes the domain's acceptance list.
+   */
   private async read(
     url: URL,
     signal: AbortSignal,
     credential: ResolvedCredential | null,
+    accept: ((mediaType: string) => boolean) | null = null,
   ): Promise<AcquiredArtifact> {
     const headers = new Headers({ 'accept-encoding': 'identity' });
     // The only place the value exists in this process outside the resolver's closure,
@@ -275,7 +293,15 @@ export class HttpAdapterExtraction implements AdapterExtractionPort, ReferenceAc
     // proves nothing and spends the Run's frozen limits doing it.
     if (response.status === 401 || response.status === 403) throw deniedFailure();
     if (!response.ok) throw transportFailure();
+    const mediaType = mediaTypeFrom(response);
+    // Beside the denial and the scope refusal, and BEFORE the body: there is no reason to
+    // download an artifact nothing can read, and the deadline's `dispose` aborts the
+    // unread body so it cannot hold the socket. `contract`, because the frozen origin is
+    // not serving what the registration says it is — the code's own documented meaning,
+    // "answers something this build cannot parse" — and because retrying it back to back
+    // against the same gateway within one step timeout proves nothing.
+    if (accept !== null && !accept(mediaType)) throw contractFailure();
     const bytes = await readBody(response, this.maxBytes);
-    return { bytes, mediaType: mediaTypeFrom(response), location: url.href };
+    return { bytes, mediaType, location: url.href };
   }
 }

@@ -1,9 +1,10 @@
-import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
-  PostgresPopulationRepository, PostgresAdapterExecutionRepository, startPopulationWorker, startPopulationRecovery, SystemClock,
+  PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresSealedPackageRepository,
+  startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender,
   createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
@@ -65,6 +66,7 @@ async function main(): Promise<void> {
   let notificationDelivery: Promise<void> | undefined;
   let stopRecovery: (() => void) | undefined;
   let stopPopulationRecovery: (() => Promise<void>) | undefined;
+  let stopIntegritySweep: (() => Promise<void>) | undefined;
   let shuttingDown = false;
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -76,6 +78,7 @@ async function main(): Promise<void> {
     await notificationDelivery;
     stopRecovery?.();
     await stopPopulationRecovery?.();
+    await stopIntegritySweep?.();
     await queue.stop().catch(() => undefined);
     await sql.end({ timeout: 5 }).catch(() => undefined);
     process.exit(0);
@@ -144,6 +147,18 @@ async function main(): Promise<void> {
       const stopPopulation = stopPopulationRecovery;
       stopPopulationRecovery = async () => { await stopAdapterRecovery(); await stopPopulation(); };
     }
+    // The post-Run integrity check, given a caller at last (Story 3.5). `verifySealedPackage`
+    // shipped with tests and nothing in the product calling it, so an object deleted or
+    // altered after a Run terminated was never detected while the Run page went on saying
+    // "registered and verified" in the present tense. Its own bounded read, its own rotating
+    // cursor, and it changes no Run state, no seal and no artifact — the context it is handed
+    // has no writer for any of them.
+    const sealed = new PostgresSealedPackageRepository(db);
+    stopIntegritySweep = startEvidenceIntegritySweep(
+      sealed,
+      (runId) => verifySealedPackage({ repository: sealed, store, clock, ids }, runId),
+      () => telemetry.captureError('Fatal worker error', new Error('Evidence integrity sweep failed'), {}),
+    );
   } else {
     telemetry.info('Population execution disabled', { reason: evidence.reason });
   }

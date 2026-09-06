@@ -17,6 +17,7 @@ export * from './runs/population-repository.js';
 export * from './runs/population-queue.js';
 export * from './runs/adapter-execution-repository.js';
 export * from './runs/evidence-package-repository.js';
+export * from './runs/evidence-integrity-sweep.js';
 export * from './runs/exception-fingerprinter.js';
 // Deliberately NOT exported here. The acquisition adapter makes the outbound call to a
 // registered Target System, and the evidence store holds the object credentials; the web

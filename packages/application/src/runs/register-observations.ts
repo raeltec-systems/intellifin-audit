@@ -357,7 +357,7 @@ export async function registerObservations(
       fresh.push(entry);
       continue;
     }
-    // Two different questions, and both need asking.
+    // Three different questions, and all three need asking.
     //
     // First: does the STORED row still agree with the digest stored beside it? An edit to
     // a row does not touch its digest column, so comparing a fresh batch against that
@@ -366,7 +366,17 @@ export async function registerObservations(
     if (!isObservationRecord(existing.record) || observationDigest(existing.record) !== existing.digest) {
       refuse('observation-integrity');
     }
-    // Second: is the row this batch describes the SAME Observation? `run_observation` is
+    // Second: does §B's retained capture time still agree with the instant the digest DOES
+    // cover? `observed_at_source` is deliberately outside the hashed envelope — that
+    // envelope is addendum §B.1's thirteen keys, pinned by an independently produced
+    // vector, and moving it is a contract change rather than a repair — so nothing above
+    // can see an edit to it. Re-deriving is what makes it tamper-evident: the source has
+    // to normalize to the row's own `observedAt`. `normalizeObservedAt`, never
+    // `Date.parse`, which ROLLS OVER an impossible calendar date instead of refusing it.
+    if (normalizeObservedAt(existing.observedAtSource)?.observedAt !== existing.record.observedAt) {
+      refuse('observation-integrity');
+    }
+    // Third: is the row this batch describes the SAME Observation? `run_observation` is
     // unique on (work item, record key), so a genuinely different capture for that pair
     // cannot be stored at all; saying so is better than dropping it silently.
     if (existing.digest !== entry.digest) refuse('digest-mismatch');

@@ -306,6 +306,11 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
                 populationRecordKey: row.populationRecordKey,
                 digest: row.digest,
                 coverage: row.coverage as StoredObservation['coverage'],
+                // §B's retained capture time, as the COLUMN holds it now. It is outside
+                // the hashed envelope, so an edit to it leaves the digest matching and
+                // nothing else read here could show one; registration re-derives it
+                // against the row's own `observedAt`.
+                observedAtSource: row.observedAtSource,
                 // The wire record as the COLUMNS hold it now, so the caller can recompute
                 // its digest and see an edit the digest column cannot show on its own.
                 record: {
