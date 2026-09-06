@@ -115,21 +115,67 @@ deadline's `dispose` (PR 23) — so it is a `finally`, not a happy-path call.
 `browser.close()` also **releases the Solari session**. Leaving the browser open holds the
 session slot until the plan deadline, so an abandoned Run costs capacity until it times out.
 
-### `timeoutMs` is a rolling idle window, not a deadline
+### `expiresAt` is a hard deadline, and `timeoutMs` is not what I first wrote
 
-It resets on each use. A Run that keeps acting therefore never trips it, and a Run that stalls
-trips it at an instant nothing in this platform chose. **The frozen Run limits stay the
-authority** — `exhaustedRunLimit(usage, plan.limits)` on elapsed time and Step Executions is
-enforced independently, exactly as it is for the adapter path. Solari's window is a backstop
-against a leaked session, never the mechanism that ends a Run.
+**Corrected after reading the installed `.d.ts` rather than the prose.** `timeoutMs` sits on
+`SolariOptions` — the CLIENT constructor, beside `maxAttempts` and `backoffMs` — and bounds the
+SDK's own HTTP calls to the gateway. It says nothing about the browser.
+
+What actually ends a session is `Session.expiresAt`: *"Plan-tier deadline (ISO 8601 UTC); session
+auto-releases at this point."* A hard deadline, set by the plan tier. So a Run **must not assume
+its workspace outlives `expiresAt`**: it is stored on the workspace row beside the session id and
+checked at every reattach, because an expired session is GONE rather than unhealthy and has to
+fail cleanly and distinguishably from a provider outage.
+
+**The frozen Run limits stay the authority for ending a RUN** — `exhaustedRunLimit(usage,
+plan.limits)` on elapsed time and Step Executions, enforced independently, exactly as on the
+adapter path. `expiresAt` is a fact about the workspace that the Run respects and records; it is
+never the mechanism that decides a Run's outcome.
 
 ### `recording: true` must be passed at session creation
 
-There is no way to turn it on later, and the replay endpoint 404s forever for a session created
-without it. Upload is asynchronous — roughly 30 seconds of polling after release. **This is an
-Epic 5 constraint that has to be honoured in Epic 4**, because the decision is taken at
+`recording?: boolean` on `CreateSessionOptions`, "Off by default", with no way to turn it on
+later. `sessions.getReplayUrl(id)` is available **~1–3 seconds after `releaseAndWait`** (not the
+~30 s I first wrote), and `downloadReplay(id)` returns NDJSON bytes. **This is an Epic 5
+constraint that has to be honoured in Epic 4**, because the decision is taken at
 `sessions.create()`, which is Story 4.1's code. Story 4.1 therefore threads the flag through the
 workspace options even though nothing reads a replay yet.
+
+### Releasing: `release` is fire-and-forget, `releaseAndWait` confirms
+
+`sessions.release(id)` returns `void`. A Run's terminal transition uses `releaseAndWait`, because
+a fire-and-forget release leaves the workspace row saying released while the provider may not
+have. `BrowserSession.close()` is documented *"Close the browser and release the session.
+Idempotent."* — it does both, and is safe to call twice.
+
+### `SolariErrorCode` is five codes and they are not one class
+
+```ts
+"FeatureRequiresPlan" | "ConcurrencyLimitExceeded" | "PlanLimitExceeded"
+  | "BrowserUnhealthy" | "InvalidSessionId"
+```
+
+widened with `| string`, so an unknown code is treated as non-retryable.
+
+| Code | Meaning | Response |
+|---|---|---|
+| `ConcurrencyLimitExceeded` | Every slot busy right now | Retryable with backoff |
+| `BrowserUnhealthy` | Transient provider fault | Retryable, with a FRESH session rather than a reattach |
+| `PlanLimitExceeded` | The plan's ceiling | **Refusal.** Fail with a recorded operational reason |
+| `FeatureRequiresPlan` | The tier does not permit it | **Refusal.** Retrying spends the budget against a wall |
+| `InvalidSessionId` | The stored workspace identity is gone | Reattach fails cleanly. This is what distinguishes an expired session from a provider fault |
+
+`launch()` also takes `retries`, `probe` and `probeTimeoutMs` — a post-connect health probe that
+catches a dead browser at launch rather than at first use.
+
+### The SDK's Playwright is `patchright-core`, not `playwright-core`
+
+`@solarisdk/browser` depends on `patchright-core@1.62.2`, and `BrowserSession.raw`, `contexts()`,
+`newContext()` and `newPage()` are typed against ITS `Browser`, `BrowserContext` and `Page`.
+Those are separately declared types from `playwright-core`'s. The port in
+`packages/application` has no host types at all (AD-11) and so must be structural regardless;
+the infrastructure adapter is where the two meet, and the meeting is deliberate rather than
+papered over with a cast.
 
 ### Profiles are opt-in and explicit
 
