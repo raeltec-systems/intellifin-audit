@@ -3,6 +3,7 @@ import {
   GATE_CHECKS,
   type ExecutablePlan,
   type PackageArtifact,
+  type RunCancellationRequest,
   type RunRecord,
   type RunResultConditionCount,
   type RunResultExclusion,
@@ -139,6 +140,8 @@ class FakeContext implements RunResultContext {
   };
   result: StoredRunResult | null = null;
   seal: PackageSeal | null = null;
+  /** The marker as the terminal TRANSACTION sees it, which is not the claim's copy. */
+  cancellation: RunCancellationRequest | null = null;
   states: RunRecord['state'][] = [];
   events: { eventType: string; outcome: string; payload: Record<string, unknown> }[] = [];
   writes = 0;
@@ -169,6 +172,7 @@ class FakeContext implements RunResultContext {
   notifyTimeline = async (): Promise<void> => undefined;
 
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.gate;
+  readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
   };
@@ -399,5 +403,91 @@ describe('completeRun', () => {
     expect(context.writes).toBe(0);
     expect(context.seal).toBeNull();
     expect(context.events).toHaveLength(0);
+  });
+});
+
+/**
+ * A cancellation the Run outran.
+ *
+ * The outcome the Run EARNED wins in both places a person can lose the race — a Run one
+ * transaction from a sealed conclusion, and a Run already failing a check — and the request
+ * is answered rather than left silent. Before this, a Run sealed carrying a committed
+ * requester, time and reason with nothing at all saying what became of them.
+ */
+const REQUEST: RunCancellationRequest = {
+  requestedBy: 'auditor',
+  sessionId: 'browser-session',
+  requestedAt: '2026-09-06T08:59:59.000Z',
+  reason: 'Wrong period.',
+};
+
+describe('a cancellation the Run outran', () => {
+  it('keeps the earned outcome and records the request as superseded', async () => {
+    const context = new FakeContext();
+    context.cancellation = REQUEST;
+    const result = await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    // The outcome, the Gate rows and the state are untouched: cancelling here would throw a
+    // complete, sealed, defensible conclusion away for nothing.
+    expect(result).toMatchObject({ outcome: 'PASS', runState: 'COMPLETED', gatePassed: true });
+    expect(context.states).toEqual([]);
+    const superseded = context.events.filter(
+      (entry) => entry.eventType === 'lifecycle.cancellation-superseded',
+    );
+    expect(superseded).toHaveLength(1);
+    expect(superseded[0]?.outcome).toBe('failure');
+    // The requester, when they asked and why — and what happened instead.
+    expect(superseded[0]?.payload).toMatchObject({
+      requestedBy: 'auditor',
+      requestedAt: '2026-09-06T08:59:59.000Z',
+      reason: 'Wrong period.',
+      state: 'COMPLETED',
+      outcome: 'PASS',
+    });
+  });
+
+  it('records it on a Run that was already failing, keeping the reason it failed', async () => {
+    // The population stage's case: the Run is INCONCLUSIVE with a failing check. Sealing
+    // CANCELED here would hide WHY it could not conclude behind "somebody asked".
+    const context = new FakeContext();
+    context.cancellation = REQUEST;
+    context.gate = [];
+    const result = await completeRun(context, { run: RUN, state: 'INCONCLUSIVE', at: AT, plan: plan() });
+    expect(result).toMatchObject({ outcome: 'INCONCLUSIVE', runState: 'INCONCLUSIVE' });
+    expect(
+      context.events.filter((entry) => entry.eventType === 'lifecycle.cancellation-superseded'),
+    ).toHaveLength(1);
+  });
+
+  it('says nothing on the path where the cancellation DID take effect', async () => {
+    // `performCancellation` writes `CANCELED` and its own event; a second one here would
+    // claim a request was outrun by the very transition that honoured it.
+    const context = new FakeContext();
+    context.cancellation = REQUEST;
+    context.gate = [];
+    await completeRun(context, { run: RUN, state: 'CANCELED', at: AT, plan: plan() });
+    expect(context.events.map((entry) => entry.eventType)).not.toContain(
+      'lifecycle.cancellation-superseded',
+    );
+    expect(context.events.map((entry) => entry.eventType)).toContain('lifecycle.result-sealed');
+  });
+
+  it('says nothing when nobody asked', async () => {
+    const context = new FakeContext();
+    await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    expect(context.events.map((entry) => entry.eventType)).not.toContain(
+      'lifecycle.cancellation-superseded',
+    );
+    expect(context.events.map((entry) => entry.eventType)).toContain('lifecycle.result-sealed');
+  });
+
+  it('is appended once, not again on a redelivery that finds the Result already there', async () => {
+    const context = new FakeContext();
+    context.cancellation = REQUEST;
+    await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    expect(
+      context.events.filter((entry) => entry.eventType === 'lifecycle.cancellation-superseded'),
+    ).toHaveLength(1);
+    expect(context.writes).toBe(1);
   });
 });

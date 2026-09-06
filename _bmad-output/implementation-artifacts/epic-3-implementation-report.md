@@ -117,6 +117,44 @@ and the golden fixtures. The golden reconciliation agreed on all twelve named pe
 cases. Seven defects were found around the evaluator rather than in it, and are repaired in
 their own commits; section 4 records the decisions those repairs settled.
 
+### Ten more, found after I called it done
+
+Marking the pull request ready for review triggered an automated review, which posted ten
+findings. **All ten were real.** Four contradicted an invariant `CLAUDE.md` already states in
+words — the strongest signal a finding is genuine, because the rule was written down correctly
+and implemented incompletely.
+
+| | What actually happened |
+|---|---|
+| **A bucket outage recorded as tampering** | The missing-object check counted `NoSuchBucket`, so a deleted or misconfigured bucket made every read return nothing — which `verifySealedPackage` reads as a genuinely absent artifact. One outage would have written a permanent `object-missing` finding and its `failure.evidence-integrity` event against every artifact of every terminal Run the sweep reached. S3 answers `NoSuchBucket` with **HTTP 404**, so deleting the name alone would not have fixed it; the name is now tested first |
+| **A fully covered Run sealing Inconclusive** | `readGateObservations` capped at `POPULATION_LIMITS.rows`, but the matrix is records × required systems. Every dropped **covered** cell read as missing coverage |
+| **Runs queued with no consumer** | The whole population block sat inside `if (evidence.enabled)`, so with no `EVIDENCE_S3_*` no `runs` consumer was registered while Initiate Run stayed enabled |
+| **Runs stranded mid-flight** | With storage but no credential manifest, the job was acknowledged after acquisition and the Run stayed `RUNNING` at `POPULATION_READY` with Evidence already frozen, selected by neither sweep |
+| **An "exact" Gate total that was not** | `rows.length` of a read limited to 100,000, written into an immutable Gate row and a published Result |
+| **A bad cursor rendering an empty page** | The comparison against a scalar subquery goes NULL for every row. Its test **asserted the defect**, three lines under a comment saying the opposite |
+
+The last two are the direct cost of an earlier repair on this same pull request: letting the
+worker start without a bucket rather than crashing was right; leaving the work that depends on
+it startable was not. `stopUnexecutableRun` now ends such a Run `RUN_FAILED` through
+`completeRun`, so the Result and package seal satisfy the deferred triggers rather than dodging
+them, and it fabricates no checkpoint and no reservation.
+
+Two findings touched decisions recorded as deliberate. Both decisions survive and the narrower
+defect underneath each is fixed:
+
+- **Cancellation at the final boundary.** The outcome a Run *earned* still wins — at the adapter
+  stage that is a sealed conclusion one transaction away, and §E.1's `canceled` row matches on
+  the state alone, so honouring it would record `gatePassed: false, checks: 0` over twenty Gate
+  rows. What was missing is that the marker was answered by **nothing**. `completeRun` now
+  appends `lifecycle.cancellation-superseded`, with the **system** as actor rather than the
+  requester — naming them would say they caused an outcome they did not.
+- **`DELETE` after sealing** stays permitted, because removing a whole Run is what teardown
+  does. Refused now is deleting an Evidence row while its sealed package survives.
+
+I swept for further instances of both patterns and found none; two nearby sites are correctly
+written, and one is the working model the Gate total fix copies. Schema advances to **27**;
+unit **2,749**, integration **340**, browser **124** with zero accessibility violations.
+
 ## 4. Decisions taken, and why
 
 These are the decisions a reader would otherwise have to reconstruct from the diff. Every one

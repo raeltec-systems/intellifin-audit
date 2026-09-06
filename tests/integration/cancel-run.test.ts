@@ -268,6 +268,19 @@ describe.skipIf(!url)('cancelling a Run and starting a linked rerun', () => {
     expect(await rerunRun(runDependencies(), { session, request: { predecessorRunId: predecessorId, requestToken: ids.next(), reason: null } }))
       .toEqual({ ok: false, reason: RUN_ALREADY_ACTIVE, existingRunId: rerun.runId });
     expect(await sql`SELECT count(*)::int AS c FROM audit_run WHERE procedure_id=${procedureId}`).toMatchObject([{ c: 2 }]);
+
+    // The predecessor can SAY it has been rerun. `RunLifecycleActions` tells somebody whose
+    // rerun response was lost to "Reload the Run to see whether a new Run was queued", and
+    // the link is deliberately on the successor's row alone — so until this read existed
+    // the page they reloaded could not answer the question it had just asked them. They saw
+    // no change and clicked Rerun again, and once the first successor had itself concluded
+    // the active-period check no longer refused them: two Runs from one intent.
+    const successors = await new DrizzleRunRepository(db).findSuccessors(predecessorId);
+    expect(successors.map((run) => run.runId)).toEqual([rerun.runId]);
+    // And the successor itself has none, so this is a real read and not a constant.
+    expect(await new DrizzleRunRepository(db).findSuccessors(rerun.runId)).toEqual([]);
+    // A malformed id is absence, never a `22P02` from the `uuid` comparison.
+    expect(await new DrizzleRunRepository(db).findSuccessors('not-a-uuid')).toEqual([]);
   });
 
   it('resolves the period owner afresh and refuses a period no ACTIVE version owns', async () => {

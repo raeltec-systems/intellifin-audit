@@ -83,9 +83,24 @@ function errorName(error: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/**
+ * Bucket-level failures, which are never one object's absence.
+ *
+ * S3 answers `NoSuchBucket` with HTTP **404**, so the status test below would otherwise
+ * swallow a deleted, renamed or misconfigured bucket as "this object is not there". That
+ * matters far past a bad read: `read` answering `null` is what `verifySealedPackage` reads
+ * as a genuinely absent object, so one bucket outage would write a PERMANENT
+ * `object-missing` integrity finding — and its `failure.evidence-integrity` event — against
+ * every registered artifact of every terminal Run the sweep reaches. The rule this module
+ * already states is that a store which cannot be READ is not proof of tampering; the name is
+ * therefore tested FIRST, so the 404 cannot let it back in.
+ */
+const BUCKET_FAILURE_NAMES = new Set(['NoSuchBucket']);
+
 function isMissing(error: unknown): boolean {
   const name = errorName(error);
-  return statusCode(error) === 404 || name === 'NoSuchKey' || name === 'NotFound' || name === 'NoSuchBucket';
+  if (name !== undefined && BUCKET_FAILURE_NAMES.has(name)) return false;
+  return statusCode(error) === 404 || name === 'NoSuchKey' || name === 'NotFound';
 }
 
 function isConditionalConflict(error: unknown): boolean {

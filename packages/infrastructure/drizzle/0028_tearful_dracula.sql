@@ -69,4 +69,4 @@ CREATE TABLE "run_workspace" (
 --> statement-breakpoint
 ALTER TABLE "run_workspace" ADD CONSTRAINT "run_workspace_run_id_audit_run_run_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."audit_run"("run_id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-INSERT INTO "schema_meta" ("version") VALUES (27);
+INSERT INTO "schema_meta" ("version") VALUES (28);

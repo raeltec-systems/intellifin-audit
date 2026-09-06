@@ -11,6 +11,7 @@ import {
   snapshotFromRegistration,
   type ExecutablePlan,
   type PackageArtifact,
+  type RunCancellationRequest,
   type RunRecord,
   type RunResultConditionCount,
   type RunResultExclusion,
@@ -135,7 +136,17 @@ class FakeContext implements WorkspaceExecutionContext {
   events: { eventType: string; outcome: string; payload: Record<string, unknown> }[] = [];
   seal: PackageSeal | null = null;
   result: StoredRunResult | null = null;
+  /**
+   * The cancellation marker `completeRun` reads on the transaction's connection.
+   *
+   * Added by the Epic 3 merge: a Run that outruns a cancellation still concludes on its own
+   * outcome, and `completeRun` appends `lifecycle.cancellation-superseded` so the request is
+   * not answered by silence. `null` here is "nobody asked", which is every workspace test.
+   */
+  cancellation: RunCancellationRequest | null = null;
   private sequence = 0;
+
+  readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
 
   constructor(private readonly store: Store) {
     this.run = store.run;

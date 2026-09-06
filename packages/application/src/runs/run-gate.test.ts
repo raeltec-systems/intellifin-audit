@@ -95,6 +95,7 @@ class FakeGate implements RunGateContext {
   notifyTimeline = async (): Promise<void> => undefined;
 
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.rows;
+  readCancellation = async (): Promise<null> => null;
   saveGateChecks = async (rows: readonly GateCheckRow[]): Promise<void> => {
     this.rows = [...rows];
   };

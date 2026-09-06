@@ -57,4 +57,4 @@ CREATE INDEX "run_tool_action_run_idx" ON "run_tool_action" USING btree ("run_id
 ALTER TABLE "run_session_step" ADD CONSTRAINT "run_session_step_action" CHECK ("run_session_step"."action" IN ('sign-in','extract-adapter'));--> statement-breakpoint
 ALTER TABLE "run_session_step" ADD CONSTRAINT "run_session_step_acquired" CHECK ("run_session_step"."state"<>'ACQUIRED' OR "run_session_step"."action"<>'extract-adapter' OR "run_session_step"."evidence_id" IS NOT NULL);
 --> statement-breakpoint
-INSERT INTO "schema_meta" ("version") VALUES (28);
+INSERT INTO "schema_meta" ("version") VALUES (29);

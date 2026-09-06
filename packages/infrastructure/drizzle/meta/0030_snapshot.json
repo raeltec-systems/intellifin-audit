@@ -1,6 +1,6 @@
 {
-  "id": "aa88f361-71bd-40fe-ae7b-e2ee7a43cf70",
-  "prevId": "375cbb1e-d739-4b29-8bd0-adf362cc94ff",
+  "id": "04d7661a-30a7-45bf-9554-f42040651bc0",
+  "prevId": "aa88f361-71bd-40fe-ae7b-e2ee7a43cf70",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4175,6 +4175,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "capture": {
+          "name": "capture",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capture_suppression": {
+          "name": "capture_suppression",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -4268,6 +4280,18 @@
         "run_tool_action_counts": {
           "name": "run_tool_action_counts",
           "value": "\"run_tool_action\".\"downloads\">=0 AND (\"run_tool_action\".\"status\" IS NULL OR (\"run_tool_action\".\"status\">=100 AND \"run_tool_action\".\"status\"<=599))"
+        },
+        "run_tool_action_capture": {
+          "name": "run_tool_action_capture",
+          "value": "\"run_tool_action\".\"capture\" IN ('PERMITTED','SUPPRESSED')"
+        },
+        "run_tool_action_capture_reason": {
+          "name": "run_tool_action_capture_reason",
+          "value": "\"run_tool_action\".\"capture_suppression\" IS NULL OR \"run_tool_action\".\"capture_suppression\" IN ('credential-entry')"
+        },
+        "run_tool_action_capture_suppressed": {
+          "name": "run_tool_action_capture_suppressed",
+          "value": "(\"run_tool_action\".\"capture\"='SUPPRESSED') = (\"run_tool_action\".\"capture_suppression\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false

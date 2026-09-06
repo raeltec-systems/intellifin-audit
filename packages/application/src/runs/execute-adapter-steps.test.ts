@@ -393,6 +393,9 @@ class FakeRepository implements AdapterExecutionRepository {
       // ---------------------------------------------------------------- Story 3.8
       readStepExecutionCount: async () => repository.executions.length,
       readGateChecks: async () => repository.gate,
+      // The marker as the terminal transaction sees it, which is why a cancellation
+      // committed AFTER the claim is visible here and not on the claim-time `RunRecord`.
+      readCancellation: async () => repository.run.cancellation,
       saveGateChecks: async (rows) => {
         if (repository.gate.length === 0) repository.gate = [...rows];
       },
@@ -1337,6 +1340,42 @@ describe('executeAdapterSteps', () => {
     expect(test.repository.result).toMatchObject({ outcome: 'CANCELED', row: 'canceled' });
     // The Run-level Gate is decided after the LAST Work Item, and there was no last one.
     expect(test.repository.gate).toEqual([]);
+  });
+
+  it('keeps the conclusion when the request lands during the LAST Work Item, and says the request was superseded', async () => {
+    // The boundary the Story 3.10 checks cannot cover: the last Work Item has finished, so
+    // the next thing is the Run-level Gate and a sealed Result one transaction away.
+    // Honouring the cancellation there would throw a complete, defensible conclusion away
+    // for nothing — the Evidence is frozen either way, and §E.1's `canceled` row matches on
+    // the STATE alone, so twenty Gate rows would become `gatePassed: false, checks: 0`.
+    // What must NOT happen is what used to: the Run seals carrying a committed requester,
+    // time and reason, with nothing at all saying what became of them.
+    const test = harness({
+      plan: plan([adapter]),
+      extract: async (entry) => {
+        test.wire.push({ location: entry.contract.allowed_origins[0]!, authorization: null });
+        test.repository.run = { ...test.repository.run, cancellation: CANCELLATION };
+        return { bytes: utf8Bytes(ACCOUNTS), mediaType: 'application/json', location: entry.contract.allowed_origins[0]! };
+      },
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    // The Gate ran and the Run concluded on its own terms.
+    expect(test.repository.run.state).not.toBe('CANCELED');
+    expect(test.repository.gate.length).toBeGreaterThan(0);
+    expect(test.repository.result?.outcome).not.toBe('CANCELED');
+    // And the request is answered in the chain, naming who asked and when.
+    const superseded = test.repository.events.filter(
+      (entry) => entry.eventType === 'lifecycle.cancellation-superseded',
+    );
+    expect(superseded).toHaveLength(1);
+    expect(superseded[0]!.payload).toMatchObject({
+      requestedBy: 'auditor',
+      requestedAt: '2026-09-05T00:00:00.000Z',
+      reason: 'Wrong period.',
+      state: test.repository.run.state,
+    });
+    // `performCancellation` is still the only writer of CANCELED, so it never ran.
+    expect(test.repository.events.map((entry) => entry.eventType)).not.toContain('lifecycle.run-canceled');
   });
 
   it('never produces CANCELED from a limit: the same Run without a request is Inconclusive', async () => {

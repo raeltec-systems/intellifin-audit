@@ -190,10 +190,14 @@ test.afterAll(async () => {
       // foreign key to the Run. Without this the teardown fails and leaves rows
       // that make an unrelated suite's empty-list assertion fail.
       await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
-      await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
       await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
       await sql`DELETE FROM run_result WHERE run_id=${runId}`;
+      // The SEAL goes before what it sealed. Generation 27 refuses to delete an Evidence
+      // row while its package row survives, because that leaves a package claiming
+      // artifacts whose metadata is gone and an integrity sweep that cannot see it.
+      // Removing a whole Run is still allowed and this is what "whole" means.
       await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
       await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
     }
     await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;

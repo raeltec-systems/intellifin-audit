@@ -55,6 +55,32 @@ import { sealPackage } from './seal-package.js';
 /** The audit event a sealed Result appends. Its payload names counts, never values. */
 const RESULT_EVENT = 'lifecycle.result-sealed';
 
+/**
+ * The audit event a cancellation the Run outran appends.
+ *
+ * **The outcome the Run EARNED wins, and the request is never silent.** A person can ask
+ * for a Run to stop while its last Work Item is running or while its acquisition is
+ * already failing, and by the time the worker reaches the boundary it commits at, the Run
+ * has an outcome: at the adapter stage a complete, sealed, defensible conclusion one
+ * transaction away, and at the population stage a failing check that says WHY it could not
+ * conclude. Honouring the cancellation there would throw the first away for nothing — the
+ * Evidence is frozen either way, and §E.1's `canceled` row matches on the STATE alone, so
+ * the Run would record `gatePassed: false, checks: 0` over twenty Gate rows it was about to
+ * write — and would hide the second behind a state that says only "somebody asked".
+ *
+ * What was missing is that the marker was then answered by NOTHING. A Run sealed carrying a
+ * committed requester, time and reason, and no event, no Result field and no sentence said
+ * what became of the request: the person clicked Cancel, got a confirmation, and the Run
+ * said Completed. That is the defect, and this event is the whole of it. The Run state, the
+ * Gate rows and the Result are unchanged.
+ *
+ * It lives HERE and not at the two call sites because every terminal transition already
+ * goes through this command — which is why Story 3.10 put `performCancellation` here as the
+ * one place a Run becomes `CANCELED` — so one check covers both worker stages, the web
+ * command, and every path Epic 4 adds, and cannot be forgotten by a branch written later.
+ */
+const CANCELLATION_SUPERSEDED_EVENT = 'lifecycle.cancellation-superseded';
+
 export interface CompleteRunInput {
   readonly run: RunRecord;
   /** The terminal state this transition is committing. A non-terminal one does nothing. */
@@ -228,5 +254,37 @@ export async function completeRun(
     },
   });
   await context.notifyTimeline(stored.sequence);
+
+  // The Run outran a cancellation somebody asked for. Read HERE, on this transaction's
+  // connection, because the request may have committed after the worker's claim; and only
+  // when the state being committed is not `CANCELED`, which is the path where the request
+  // DID take effect and `performCancellation` has already recorded it.
+  if (input.state !== 'CANCELED') {
+    const request = await context.readCancellation();
+    if (request !== null) {
+      const superseded = await context.auditEvents.append({
+        // The system, not the requester: they asked, and the platform did not do it. An
+        // event naming them as its actor would say they caused an outcome they did not.
+        actor: { type: 'system', id: 'result-sealer' },
+        eventType: CANCELLATION_SUPERSEDED_EVENT,
+        source: 'worker',
+        // Not a success: a person asked for something and did not get it.
+        outcome: 'failure',
+        aggregateId: input.run.runId,
+        correlationId: input.run.correlationId,
+        sessionId: input.run.sessionId,
+        payload: {
+          requestedBy: request.requestedBy,
+          requestedAt: request.requestedAt,
+          reason: request.reason,
+          // What happened instead, so the chain says why the request was outrun.
+          state: decision.runState,
+          outcome: decision.outcome,
+          occurredAt: input.at,
+        },
+      });
+      await context.notifyTimeline(superseded.sequence);
+    }
+  }
   return result;
 }

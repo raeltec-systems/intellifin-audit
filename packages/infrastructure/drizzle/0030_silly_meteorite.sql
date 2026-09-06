@@ -16,4 +16,4 @@ ALTER TABLE "run_tool_action" ADD CONSTRAINT "run_tool_action_capture" CHECK ("r
 ALTER TABLE "run_tool_action" ADD CONSTRAINT "run_tool_action_capture_reason" CHECK ("run_tool_action"."capture_suppression" IS NULL OR "run_tool_action"."capture_suppression" IN ('credential-entry'));--> statement-breakpoint
 ALTER TABLE "run_tool_action" ADD CONSTRAINT "run_tool_action_capture_suppressed" CHECK (("run_tool_action"."capture"='SUPPRESSED') = ("run_tool_action"."capture_suppression" IS NOT NULL));
 --> statement-breakpoint
-INSERT INTO "schema_meta" ("version") VALUES (29);
+INSERT INTO "schema_meta" ("version") VALUES (30);

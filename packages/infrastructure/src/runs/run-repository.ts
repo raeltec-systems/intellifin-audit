@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { RunReader, RunWriter } from '@intellifin/application';
 import { ACTIVE_RUN_STATES, type ExplicitPeriod, type RunCancellationRequest, type RunRecord } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
@@ -27,6 +27,29 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
     if (!isUuidText(runId)) return null;
     const row = (await this.db.select().from(auditRun).where(eq(auditRun.runId, runId)).limit(1))[0];
     return row ? record(row) : null;
+  }
+  /**
+   * The Runs that name this one as their predecessor (PR 23 review, P2-1).
+   *
+   * `RunLifecycleActions` tells a person whose rerun response was LOST to "Reload the Run
+   * to see whether a new Run was queued" — and the Run they reload could not answer that,
+   * because the link is deliberately on the SUCCESSOR's row and its own chain and nowhere
+   * else. So they saw nothing, clicked Rerun again, and once the first successor had itself
+   * concluded the active-period check no longer refused them: two Runs from one intent,
+   * with the person believing there was one. This is the read that answers the sentence.
+   *
+   * Bounded and ordered, like every other read on these surfaces. `predecessor_run_id` is
+   * not indexed, and does not need to be for a PoC: this is one Run's own detail page.
+   */
+  async findSuccessors(runId: string, limit = 10): Promise<readonly RunRecord[]> {
+    if (!isUuidText(runId)) return [];
+    const rows = await this.db
+      .select()
+      .from(auditRun)
+      .where(eq(auditRun.predecessorRunId, runId))
+      .orderBy(asc(auditRun.initiatedAt), asc(auditRun.runId))
+      .limit(Math.max(1, Math.min(limit, 25)));
+    return rows.map(record);
   }
   async bindRequest(initiatorId: string, requestToken: string, runId: string): Promise<void> {
     await this.db.insert(runInitiationRequest).values({ initiatorId, requestToken, runId });

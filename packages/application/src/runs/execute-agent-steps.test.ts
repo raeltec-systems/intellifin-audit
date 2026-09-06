@@ -20,6 +20,7 @@ import {
   type RunResultExclusion,
   type RunResultFindings,
   type SanitizedToolAction,
+  type RunCancellationRequest,
 } from '@intellifin/domain';
 
 import { executeAgentSteps, performToolAction } from './execute-agent-steps.js';
@@ -161,6 +162,10 @@ function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Sto
 
 class FakeContext implements AgentExecutionContext {
   run: RunRecord | null;
+  /** The cancellation marker `completeRun` reads on the transaction's own connection
+   * (Epic 3). `null` is "nobody asked", which is every agent-execution test here. */
+  cancellation: RunCancellationRequest | null = null;
+  readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
   checkpoint: AgentExecutionCheckpoint | null;
   populationStartedAt: string | null;
   populationReady: boolean;

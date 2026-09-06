@@ -868,6 +868,50 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(events.at(-1)!.payload).toMatchObject({ seal: 'SEALED', runState: 'COMPLETED' });
   });
 
+  it('refuses to DELETE an Evidence row while its package still claims it, and still lets a whole Run go', async () => {
+    // Generation 21 froze a sealed Run's Evidence against INSERT and UPDATE and left DELETE
+    // alone so that a whole Run could be removed. Deleting ONE artifact row while the
+    // package survives is not that: the package goes on naming an artifact whose metadata
+    // is gone, and the post-Run sweep cannot see it — `readRegisteredArtifacts` no longer
+    // returns it, so nothing is read, nothing fails and no finding is recorded, while the
+    // Run page keeps printing "registered and verified".
+    const seeded = await seed(['versioned-file', 'api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const runId = seeded.run.runId;
+    expect((await sql`SELECT state FROM run_evidence_package WHERE run_id=${runId}`)[0]).toBeDefined();
+    // Clear only what NAMES the Evidence with a foreign key, exactly as this file's own
+    // teardown does, so what follows is the trigger's answer and not a foreign key's.
+    await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
+
+    await expect(sql`DELETE FROM run_evidence WHERE run_id=${runId}`)
+      .rejects.toThrow(/Evidence for Run .* is frozen: its package is sealed/);
+    await expect(sql`DELETE FROM population_evidence WHERE run_id=${runId}`)
+      .rejects.toThrow(/Evidence for Run .* is frozen: its package is sealed/);
+    // Nothing was removed by either refusal.
+    expect(
+      Number((await sql`SELECT count(*)::int AS c FROM run_evidence WHERE run_id=${runId}`)[0]!['c']),
+    ).toBeGreaterThan(0);
+    expect(
+      Number((await sql`SELECT count(*)::int AS c FROM population_evidence WHERE run_id=${runId}`)[0]!['c']),
+    ).toBe(1);
+
+    // And removing the WHOLE Run still works: the seal goes first, and then everything it
+    // sealed. That is what "removing a whole Run" means, and it is what every teardown in
+    // this suite performs.
+    await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
+    await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
+    expect(
+      Number((await sql`SELECT count(*)::int AS c FROM run_evidence WHERE run_id=${runId}`)[0]!['c']),
+    ).toBe(0);
+  });
+
   it('does not seal as complete when a required artifact never registered, and names the gap', async () => {
     const seeded = await seed(['versioned-file', 'api']);
     const { deps } = dependencies(seeded, {
@@ -1769,6 +1813,36 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect((row!.identity as { corroboration: unknown }).corroboration).toBeNull();
     const [check] = await sql`SELECT outcome,diagnostic FROM run_observation_check WHERE run_id=${seeded.run.runId} AND check_name='observation-corroboration' AND observation_id=${observationIdFor(context.workItemId, 'AG-2002')}`;
     expect(check).toEqual({ outcome: 'FAIL', diagnostic: 'corroboration-unsupported' });
+  });
+
+  it('reports an EXACT condition-gap total beside a sample of at most 32', async () => {
+    // `run_gate_check` keeps an exact `total` beside a bounded sample of at most 32
+    // identities, and this read used to take `rows.length` AFTER a `LIMIT` — one query
+    // answering two different questions, of which `LIMIT` answers only the second. The
+    // total is now its own `count(*)`; the sample alone is bounded, exactly as
+    // `readFailedObservationChecks` and `readUnnamedValues` in the same file already do it.
+    const seeded = await seed(['api']);
+    await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
+    const [item] = await sql`SELECT work_item_id FROM run_work_item WHERE run_id=${seeded.run.runId}`;
+    const [step] = await sql`SELECT step_execution_id FROM run_step_execution WHERE run_id=${seeded.run.runId}`;
+    // Thirty-three Observations with NO evaluation at all: every one is a condition gap,
+    // and thirty-three is one more than the sample may ever name.
+    const gaps = 33;
+    await sql.unsafe(
+      `INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration)
+       SELECT gen_random_uuid(),$1,$2,1,'GAP-'||lpad(g::text,4,'0'),'t','false',now(),$3,'adapter','platform',NULL,'[]'::jsonb,'["e"]'::jsonb,repeat('a',64),'UNINSPECTED','2026-09-05T00:00:00.000Z','UNJUDGED'
+       FROM generate_series(1,${gaps}) AS g`,
+      [seeded.run.runId, String(item!.work_item_id), String(step!.step_execution_id)],
+    );
+    const tally = await new PostgresAdapterExecutionRepository(db).transaction(
+      seeded.run.runId,
+      (context) => context.readConditionGaps(1),
+    );
+    // Every real Observation of this Run carries at least one evaluation, so the gaps are
+    // exactly the rows just inserted — counted, not measured.
+    expect(tally.total).toBe(gaps);
+    expect(tally.sample).toHaveLength(32);
+    expect(new Set(tally.sample.map((entry) => entry.record)).size).toBe(32);
   });
 
   it('refuses at the database what no registration may store', async () => {

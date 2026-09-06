@@ -120,8 +120,28 @@ export class DrizzleRunListRepository {
    * against text that is not one (`22P02`).
    */
   async listRuns(after?: string | null, limit = RUN_LIST_PAGE_SIZE): Promise<RunListPage> {
-    const cursor = typeof after === 'string' && isUuidText(after) ? after : null;
+    const requested = typeof after === 'string' && isUuidText(after) ? after : null;
     const size = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, RUN_LIST_PAGE_SIZE) : RUN_LIST_PAGE_SIZE;
+    // The cursor is RESOLVED to the pair it names, and a cursor naming no Run is treated as
+    // no cursor at all. It used to be compared against a scalar subquery inline, so a
+    // syntactically valid UUID that names nothing made `(initiated_at, run_id) < NULL` — NULL
+    // for every row — and the page came back EMPTY. An empty page is neither the first page
+    // nor an error: it says this deployment has no Runs, to somebody who edited a URL.
+    //
+    // `initiated_at` comes back as TEXT and goes back as `::timestamptz`, so the pair is
+    // exact: `timestamptz` keeps microseconds and a JavaScript `Date` keeps milliseconds, so
+    // a round trip through one would truncate the cursor DOWNWARD and silently skip every
+    // Run sharing that millisecond — a row on no page at all, which is the failure the total
+    // order above exists to prevent.
+    const cursor =
+      requested === null
+        ? null
+        : ((
+            await this.db.execute<{ initiated_at: string; run_id: string }>(
+              sql`SELECT c.initiated_at::text AS initiated_at, c.run_id::text AS run_id
+                  FROM audit_run c WHERE c.run_id = ${requested}::uuid`,
+            )
+          )[0] ?? null);
     const rows = await this.db.execute<RawRow>(sql`
       SELECT r.run_id::text AS run_id, r.procedure_id::text AS procedure_id, r.procedure_name,
              r.version_id::text AS version_id, r.version_number,
@@ -148,7 +168,7 @@ export class DrizzleRunListRepository {
       ${cursor === null
         ? sql``
         : sql`WHERE (r.initiated_at, r.run_id) <
-                (SELECT c.initiated_at, c.run_id FROM audit_run c WHERE c.run_id = ${cursor}::uuid)`}
+                (${cursor.initiated_at}::timestamptz, ${cursor.run_id}::uuid)`}
       ORDER BY r.initiated_at DESC, r.run_id DESC
       LIMIT ${size + 1}`);
 

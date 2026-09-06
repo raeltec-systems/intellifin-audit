@@ -89,6 +89,8 @@ class FakeContext implements RunCancellationContext {
   };
   notifyTimeline = async (): Promise<void> => undefined;
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
+  // What the terminal transaction sees, which `requestCancellation` has already written.
+  readCancellation = async (): Promise<RunCancellationRequest | null> => this.marker;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
   };

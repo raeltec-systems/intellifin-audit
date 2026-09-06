@@ -1,6 +1,6 @@
 {
-  "id": "aa88f361-71bd-40fe-ae7b-e2ee7a43cf70",
-  "prevId": "375cbb1e-d739-4b29-8bd0-adf362cc94ff",
+  "id": "375cbb1e-d739-4b29-8bd0-adf362cc94ff",
+  "prevId": "9a3f1c7e-4d21-4b08-9c5a-27f6b1e0d543",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2231,102 +2231,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.run_agent_execution": {
-      "name": "run_agent_execution",
-      "schema": "",
-      "columns": {
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_started_at": {
-          "name": "run_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempt_started_at": {
-          "name": "attempt_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lease_until": {
-          "name": "lease_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempt_id": {
-          "name": "attempt_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "diagnostic": {
-          "name": "diagnostic",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "run_agent_execution_run_id_audit_run_run_id_fk": {
-          "name": "run_agent_execution_run_id_audit_run_run_id_fk",
-          "tableFrom": "run_agent_execution",
-          "tableTo": "audit_run",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "run_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "run_agent_execution_status": {
-          "name": "run_agent_execution_status",
-          "value": "\"run_agent_execution\".\"status\" IN ('EXECUTING','SIGNED_IN','RETRY','TERMINAL')"
-        },
-        "run_agent_execution_counts": {
-          "name": "run_agent_execution_counts",
-          "value": "\"run_agent_execution\".\"revision\">0 AND \"run_agent_execution\".\"attempts\">0 AND \"run_agent_execution\".\"attempts\"<=4"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.run_evidence": {
       "name": "run_evidence",
       "schema": "",
@@ -3832,12 +3736,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "state": {
           "name": "state",
           "type": "text",
@@ -3908,17 +3806,13 @@
           "name": "run_session_step_state",
           "value": "\"run_session_step\".\"state\" IN ('PENDING','IN_PROGRESS','ACQUIRED','FAILED')"
         },
-        "run_session_step_action": {
-          "name": "run_session_step_action",
-          "value": "\"run_session_step\".\"action\" IN ('sign-in','extract-adapter')"
-        },
         "run_session_step_counts": {
           "name": "run_session_step_counts",
           "value": "\"run_session_step\".\"ordinal\">0 AND \"run_session_step\".\"attempts\">=0"
         },
         "run_session_step_acquired": {
           "name": "run_session_step_acquired",
-          "value": "\"run_session_step\".\"state\"<>'ACQUIRED' OR \"run_session_step\".\"action\"<>'extract-adapter' OR \"run_session_step\".\"evidence_id\" IS NOT NULL"
+          "value": "\"run_session_step\".\"state\"<>'ACQUIRED' OR \"run_session_step\".\"evidence_id\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false
@@ -4054,220 +3948,6 @@
         "run_step_execution_attempt": {
           "name": "run_step_execution_attempt",
           "value": "\"run_step_execution\".\"attempt\">0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.run_tool_action": {
-      "name": "run_tool_action",
-      "schema": "",
-      "columns": {
-        "tool_action_id": {
-          "name": "tool_action_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "step_execution_id": {
-          "name": "step_execution_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "work_item_id": {
-          "name": "work_item_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "surface": {
-          "name": "surface",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_system": {
-          "name": "target_system",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "method": {
-          "name": "method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "destination": {
-          "name": "destination",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "parameters": {
-          "name": "parameters",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "denial": {
-          "name": "denial",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "offending": {
-          "name": "offending",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "redirected": {
-          "name": "redirected",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "downloads": {
-          "name": "downloads",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "diagnostic": {
-          "name": "diagnostic",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "run_tool_action_run_idx": {
-          "name": "run_tool_action_run_idx",
-          "columns": [
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "run_tool_action_run_id_audit_run_run_id_fk": {
-          "name": "run_tool_action_run_id_audit_run_run_id_fk",
-          "tableFrom": "run_tool_action",
-          "tableTo": "audit_run",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "run_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "run_tool_action_step_execution_id_run_step_execution_step_execution_id_fk": {
-          "name": "run_tool_action_step_execution_id_run_step_execution_step_execution_id_fk",
-          "tableFrom": "run_tool_action",
-          "tableTo": "run_step_execution",
-          "columnsFrom": [
-            "step_execution_id"
-          ],
-          "columnsTo": [
-            "step_execution_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "run_tool_action_work_item_id_run_work_item_work_item_id_fk": {
-          "name": "run_tool_action_work_item_id_run_work_item_work_item_id_fk",
-          "tableFrom": "run_tool_action",
-          "tableTo": "run_work_item",
-          "columnsFrom": [
-            "work_item_id"
-          ],
-          "columnsTo": [
-            "work_item_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "run_tool_action_surface": {
-          "name": "run_tool_action_surface",
-          "value": "\"run_tool_action\".\"surface\" IN ('agent','adapter')"
-        },
-        "run_tool_action_outcome": {
-          "name": "run_tool_action_outcome",
-          "value": "\"run_tool_action\".\"outcome\" IN ('performed','denied','failed')"
-        },
-        "run_tool_action_method": {
-          "name": "run_tool_action_method",
-          "value": "\"run_tool_action\".\"method\" IN ('GET','HEAD')"
-        },
-        "run_tool_action_denial": {
-          "name": "run_tool_action_denial",
-          "value": "\"run_tool_action\".\"denial\" IS NULL OR \"run_tool_action\".\"denial\" IN ('action-not-permitted','destination-refused','origin-not-allowed','parameter-out-of-scope')"
-        },
-        "run_tool_action_denied": {
-          "name": "run_tool_action_denied",
-          "value": "(\"run_tool_action\".\"outcome\"='denied') = (\"run_tool_action\".\"denial\" IS NOT NULL)"
-        },
-        "run_tool_action_counts": {
-          "name": "run_tool_action_counts",
-          "value": "\"run_tool_action\".\"downloads\">=0 AND (\"run_tool_action\".\"status\" IS NULL OR (\"run_tool_action\".\"status\">=100 AND \"run_tool_action\".\"status\"<=599))"
         }
       },
       "isRLSEnabled": false

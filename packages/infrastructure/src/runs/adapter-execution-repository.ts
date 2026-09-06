@@ -545,15 +545,33 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
           // An Observation with fewer evaluations than the version froze conditions has a
           // condition nobody decided. Counted in SQL rather than by loading every
           // evaluation: a Run can hold a hundred thousand Observations.
-          const gaps = tx
-            .select({
-              observationId: runObservationEvaluation.observationId,
-              total: sql<number>`count(*)::int`.as('evaluated'),
-            })
-            .from(runObservationEvaluation)
-            .where(eq(runObservationEvaluation.runId, runId))
-            .groupBy(runObservationEvaluation.observationId)
-            .as('gaps');
+          //
+          // TWO statements, exactly as `readFailedObservationChecks` and `readUnnamedValues`
+          // do it, because an EXACT total and a bounded sample are two different questions
+          // and `LIMIT` answers only the second. This read used to take `rows.length` after
+          // a `LIMIT`, so a Run with more gaps than the cap reported the cap as its total —
+          // a §H row whose count is not a count, on a Result and inside an immutable event.
+          // Built per statement rather than shared: one aliased subquery object bound into
+          // two different queries is a drizzle detail, and this costs nothing.
+          const evaluated = () =>
+            tx
+              .select({
+                observationId: runObservationEvaluation.observationId,
+                total: sql<number>`count(*)::int`.as('evaluated'),
+              })
+              .from(runObservationEvaluation)
+              .where(eq(runObservationEvaluation.runId, runId))
+              .groupBy(runObservationEvaluation.observationId)
+              .as('gaps');
+          const counting = evaluated();
+          const totals = await tx
+            .select({ total: sql<number>`count(*)::int` })
+            .from(runObservation)
+            .leftJoin(counting, eq(counting.observationId, runObservation.observationId))
+            .where(sql`${runObservation.runId}=${runId} AND coalesce(${counting.total},0) < ${expected}`);
+          const total = totals[0]?.total ?? 0;
+          if (total === 0) return { total: 0, sample: [] };
+          const sampling = evaluated();
           const rows = await tx
             .select({
               targetSystem: runObservation.targetSystem,
@@ -561,14 +579,11 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
               record: runObservation.populationRecordKey,
             })
             .from(runObservation)
-            .leftJoin(gaps, eq(gaps.observationId, runObservation.observationId))
-            .where(sql`${runObservation.runId}=${runId} AND coalesce(${gaps.total},0) < ${expected}`)
+            .leftJoin(sampling, eq(sampling.observationId, runObservation.observationId))
+            .where(sql`${runObservation.runId}=${runId} AND coalesce(${sampling.total},0) < ${expected}`)
             .orderBy(asc(runObservation.populationRecordKey))
-            .limit(POPULATION_LIMITS.rows);
-          return {
-            total: rows.length,
-            sample: rows.slice(0, GATE_AFFECTED_LIMIT),
-          };
+            .limit(GATE_AFFECTED_LIMIT);
+          return { total, sample: rows };
         },
 
         async readUnnamedValues(): Promise<GateFactTally> {

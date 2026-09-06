@@ -148,6 +148,7 @@ export function RunDetailFrame({
       <RefreshBanner readAt={readAt} href={here} />
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       <CancellationBanners run={run} />
+      <RerunLinks runId={run.runId} />
       <RunLifecycleActions
         runId={run.runId}
         active={isActiveRunState(run.state)}
@@ -157,6 +158,41 @@ export function RunDetailFrame({
       />
       {children}
     </div>
+  );
+}
+
+/**
+ * The Runs this one has already been rerun as, on whichever tab the reader is on.
+ *
+ * `RunLifecycleActions` tells somebody whose rerun response was LOST to "Reload the Run to
+ * see whether a new Run was queued", and until now the Run they reloaded could not answer
+ * that: the link is deliberately on the SUCCESSOR's row and its own chain and NOWHERE else,
+ * so the predecessor's page showed nothing at all. They reloaded, saw no change, and clicked
+ * Rerun again — and once the first successor had itself concluded, the active-period check
+ * no longer refused the second, so one intent became two Runs and the person believed one.
+ *
+ * This does not stop a DELIBERATE second rerun, and it must not: nothing in the contract
+ * says a terminal Run has at most one successor, and inventing that rule here would be a
+ * product decision taken by a bug fix. What it does is make the answer visible where the
+ * recovery sentence sends the reader.
+ */
+export async function RerunLinks({ runId }: { readonly runId: string }): Promise<React.JSX.Element> {
+  const runtime = await getRuntime();
+  const successors = await new DrizzleRunRepository(runtime.db).findSuccessors(runId);
+  if (successors.length === 0) return <></>;
+  return (
+    <Banner tone="info" title={successors.length === 1 ? 'This Run has been rerun.' : 'This Run has been rerun more than once.'}>
+      <ul>
+        {successors.map((successor) => (
+          <li key={successor.runId}>
+            <Link className="ls-mono" href={runTabHref(successor.runId, '')}>
+              {successor.runId}
+            </Link>{' '}
+            · started {utcStamp(successor.initiatedAt)} by {successor.initiatorId}
+          </li>
+        ))}
+      </ul>
+    </Banner>
   );
 }
 
