@@ -117,6 +117,45 @@ export const RUN_RERUN_REFUSALS = {
   UNKNOWN: 'That Run does not exist.',
   STILL_ACTIVE: 'That Run has not ended yet. Cancel it or wait for it to end before starting a rerun.',
 } as const;
+
+/**
+ * What one initiation request token was DECIDED to mean (owner decision, 2026-09-06).
+ *
+ * A request token is the caller's own idempotency key, and until now only ONE outcome was
+ * durable: the Run a request created. A request refused because another Run already held
+ * the Procedure and period was recorded by BINDING the caller's token to that other Run —
+ * so replaying the token answered `ok: true` and walked the caller into a Run somebody
+ * else had initiated, as though it were their own audit work. The same replay before the
+ * other Run ended answered a refusal and after it ended answered success, so the token had
+ * no stable meaning either.
+ *
+ * A token now records the DECISION rather than a Run: either the Run this caller's own
+ * request created, or the refusal it received, and every later use of that token returns
+ * exactly that. These are the refusal codes — codes and not sentences, because a stored
+ * sentence is a copy of the wording that drifts the first time somebody edits the original.
+ *
+ * `docs/contracts/run-request-token-v1.md` states the whole rule.
+ */
+export const RUN_REQUEST_REFUSAL_CODES = ['already-active', 'no-owner', 'predecessor-active'] as const;
+export type RunRequestRefusalCode = (typeof RUN_REQUEST_REFUSAL_CODES)[number];
+
+export function isRunRequestRefusalCode(value: unknown): value is RunRequestRefusalCode {
+  return typeof value === 'string' && (RUN_REQUEST_REFUSAL_CODES as readonly string[]).includes(value);
+}
+
+/**
+ * The one sentence each refusal code states, wherever it is stated.
+ *
+ * `already-active` and `no-owner` are the two refusals `createRun` can reach once a token
+ * is in hand; `predecessor-active` is the rerun's, and is `RUN_RERUN_REFUSALS.STILL_ACTIVE`
+ * by reference rather than by retyping — a fourth copy of a refusal string is a fourth
+ * chance to get it wrong, which this repository has already paid for once.
+ */
+export const RUN_REQUEST_REFUSALS: Readonly<Record<RunRequestRefusalCode, string>> = {
+  'already-active': 'An active Run already exists for this Procedure and period.',
+  'no-owner': 'No executable Active version owns that period. Check the approved version and handover dates.',
+  'predecessor-active': RUN_RERUN_REFUSALS.STILL_ACTIVE,
+};
 export interface ActivatedVersion { readonly versionId: string; readonly state: string }
 export interface SuccessionEdge { readonly predecessorId: string; readonly successorId: string; readonly activatedAt: string | null; readonly handoverAt: string | null }
 /** Walk the stored chain. Neither approval time nor version number expresses succession. */

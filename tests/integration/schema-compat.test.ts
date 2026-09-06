@@ -130,4 +130,57 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'worker_heartbeat',
     ]);
   });
+
+  /**
+   * The columns generation 32 added, asserted EXACTLY on the four tables it changed.
+   *
+   * The table list above is exact so that a migration nobody reviewed fails; a column
+   * added to an existing table slipped past it entirely. These four tables now carry
+   * facts an auditor reads off a Result — FR-31's capture provenance and the two
+   * record-count numbers — so the same rule applies to their shape.
+   */
+  it.each([
+    [
+      'run_evidence',
+      ['capture_method', 'capture_time_source', 'captured_at', 'digest', 'evidence_id', 'kind', 'media_type', 'object_key', 'registration_id', 'required', 'run_id', 'size', 'state'],
+    ],
+    [
+      'population_evidence',
+      ['capture_method', 'capture_time_source', 'captured_at', 'envelope_digest', 'envelope_key', 'evidence_id', 'object_key', 'raw_digest', 'required', 'run_id', 'size', 'state'],
+    ],
+    [
+      'population_snapshot',
+      ['checks', 'declared_count', 'excluded', 'generated_at', 'included', 'indeterminate', 'retrieved_count', 'rows_digest', 'run_id'],
+    ],
+    [
+      'run_initiation_request',
+      ['initiator_id', 'period_from', 'period_to', 'procedure_id', 'refusal', 'refused_run_id', 'request_token', 'run_id'],
+    ],
+  ])('has exactly the generation-32 columns on %s', async (table, columns) => {
+    const rows = await sql<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ${table}
+      ORDER BY column_name
+    `;
+    expect(rows.map((row) => row.column_name)).toEqual(columns);
+  });
+
+  /**
+   * `run_initiation_request.procedure_id` carries NO foreign key, deliberately.
+   *
+   * A request that names a Procedure which does not exist is exactly the `no-owner`
+   * refusal this table has to record; a foreign key there refuses the row and answers the
+   * caller a framework 500 instead of the refusal sentence. This asserts the absence,
+   * because an absence nothing checks is one the next `db:generate` quietly restores.
+   */
+  it('does not key the request subject to a Procedure that has to be allowed not to exist', async () => {
+    const rows = await sql<{ constraint_name: string; column_name: string }[]>`
+      SELECT c.constraint_name, k.column_name
+      FROM information_schema.table_constraints c
+      JOIN information_schema.key_column_usage k ON k.constraint_name = c.constraint_name
+      WHERE c.table_schema = 'public' AND c.table_name = 'run_initiation_request' AND c.constraint_type = 'FOREIGN KEY'
+      ORDER BY k.column_name
+    `;
+    expect(rows.map((row) => row.column_name)).toEqual(['refused_run_id', 'run_id']);
+  });
 });

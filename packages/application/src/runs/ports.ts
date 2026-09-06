@@ -1,11 +1,38 @@
-import type { ExecutablePlan, ExplicitPeriod, RunCancellationRequest, RunRecord } from '@intellifin/domain';
+import type { ExecutablePlan, ExplicitPeriod, RunCancellationRequest, RunRecord, RunRequestRefusalCode } from '@intellifin/domain';
 import type { AuditUnitOfWorkContext } from '../audit/ports.js';
 import type { RoleRepository } from '../identity/ports.js';
 import type { ProcedurePeriodOwnerReader } from '../procedures/ports.js';
 import type { RunResultContext } from './execution-ports.js';
+
+/**
+ * What one initiation request token was decided to mean, durably.
+ *
+ * The SUBJECT — the Procedure and the inclusive period the request named — is stored on the
+ * record itself rather than read off a bound Run, because a refused request has no Run to
+ * read it from. It is what `RUN_TOKEN_REUSED` compares against, so the same token used for
+ * a different Procedure or period is refused whether the first use created a Run or not.
+ *
+ * Exactly one of `runId` and `refusal` is set. `refusedRunId` names the active Run that
+ * blocked the request, when there was one, so a replay reproduces the same answer down to
+ * the link the surface offers — the "stable" half of the owner's decision.
+ */
+export interface RunRequestDecision {
+  readonly procedureId: string;
+  readonly period: ExplicitPeriod;
+  /** The Run THIS caller's request created, or `null` when the request was refused. */
+  readonly runId: string | null;
+  readonly refusal: RunRequestRefusalCode | null;
+  /** The Run named in the refusal, when one was. Never a Run this caller initiated. */
+  readonly refusedRunId: string | null;
+}
+
 export interface RunWriter {
-  bindRequest(initiatorId: string, requestToken: string, runId: string): Promise<void>;
-  findRequest(initiatorId: string, requestToken: string): Promise<RunRecord | null>;
+  /**
+   * Record a token's decision. The FIRST decision wins and a second call changes nothing:
+   * a token means one thing forever, which is the whole of the replay contract.
+   */
+  bindRequest(initiatorId: string, requestToken: string, decision: RunRequestDecision): Promise<void>;
+  findRequest(initiatorId: string, requestToken: string): Promise<RunRequestDecision | null>;
   insert(run: RunRecord): Promise<boolean>;
   findActive(procedureId: string, period: ExplicitPeriod): Promise<RunRecord | null>;
   /** The predecessor a rerun links to, read inside the transaction that writes. */

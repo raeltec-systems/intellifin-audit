@@ -241,7 +241,7 @@ test.afterAll(async () => {
     await sql`DELETE FROM population_snapshot WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
     await sql`DELETE FROM population_evidence WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
     await sql`DELETE FROM population_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
-    await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[]))`;
+    await sql`DELETE FROM run_initiation_request WHERE procedure_id=ANY(${procedures}::uuid[])`;
     await sql`DELETE FROM audit_run WHERE procedure_id=ANY(${procedures}::uuid[])`;
     await sql`DELETE FROM procedure WHERE procedure_id=ANY(${procedures}::uuid[])`;
   } finally {

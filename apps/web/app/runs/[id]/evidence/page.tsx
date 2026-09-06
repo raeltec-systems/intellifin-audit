@@ -121,9 +121,10 @@ export default async function RunEvidencePage({
               <dl className="ls-definition">
                 <div>
                   <dt>Rows acquired</dt>
-                  <dd className="ls-mono">
-                    {countText(summary.included + summary.excluded + summary.indeterminate)}
-                  </dd>
+                  {/* The stored retrieved count (generation 32), not a sum recomputed on
+                      the way to the screen. The database CHECK pins the two together, so
+                      this is the same number said once. */}
+                  <dd className="ls-mono">{countText(summary.retrievedCount)}</dd>
                 </div>
                 <div>
                   <dt>Included</dt>
@@ -173,13 +174,17 @@ export default async function RunEvidencePage({
                 source="Population Source snapshot"
                 workItemId={null}
                 stepId={null}
-                /* Nothing recorded when the population artifact was captured, so the card
+                /* Stored from generation 32, measured at the registration that verified the
+                   raw bytes. A row an earlier build wrote still carries none, and the card
                    says so rather than borrowing an instant from somewhere else. */
-                capturedAt={null}
+                capturedAt={populationEvidence.capturedAt}
+                captureMethod={populationEvidence.captureMethod}
+                captureTimeSource={populationEvidence.captureTimeSource}
                 digest={populationEvidence.rawDigest}
                 size={populationEvidence.size}
                 state={populationEvidence.state}
-                objectKey={`population/${run.runId}/raw`}
+                /* The stored key, not a second spelling of `evidenceObjectKeys`. */
+                objectKey={populationEvidence.objectKey}
                 note={null}
               />
             </ul>

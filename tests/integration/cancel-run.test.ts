@@ -73,7 +73,11 @@ describe.skipIf(!url)('cancelling a Run and starting a linked rerun', () => {
         await sql`DELETE FROM run_gate_check WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_evidence_integrity WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
         await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
-        await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
+        // Generation 32: a refusal row has NO `run_id` and names the blocking Run in
+        // `refused_run_id`, so a teardown keyed on `run_id` alone leaves it behind and the
+        // `audit_run` delete below then fails on its foreign key. The row carries the
+        // subject Procedure, which is the key that covers both shapes.
+        await sql`DELETE FROM run_initiation_request WHERE procedure_id=${id}`;
         // The rerun link is a self-referencing foreign key, so a successor must go first.
         await sql`DELETE FROM audit_run WHERE procedure_id=${id} AND predecessor_run_id IS NOT NULL`;
         await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
@@ -81,6 +85,9 @@ describe.skipIf(!url)('cancelling a Run and starting a linked rerun', () => {
         await sql`DELETE FROM procedure_version WHERE procedure_id=${id}`;
         await sql`DELETE FROM procedure WHERE procedure_id=${id}`;
       }
+      // Every request row this file's author wrote, including a refusal decided against a
+      // Procedure that was never created (generation 32).
+      await sql`DELETE FROM run_initiation_request WHERE initiator_id=${author}`;
       await sql`DELETE FROM auth_user WHERE id=${author}`;
     } finally {
       await sql.end({ timeout: 5 });
@@ -260,8 +267,14 @@ describe.skipIf(!url)('cancelling a Run and starting a linked rerun', () => {
     expect(events[0]).toMatchObject({ event_type: 'lifecycle.run-queued', payload: { predecessorRunId: predecessorId, reason: RUN_RERUN_DEFAULT_REASON } });
 
     // Rerun of an ACTIVE Run: refused, and the active Run is named.
-    expect(await rerunRun(runDependencies(), { session, request: { predecessorRunId: rerun.runId, requestToken: ids.next(), reason: null } }))
+    const stillActiveToken = ids.next();
+    expect(await rerunRun(runDependencies(), { session, request: { predecessorRunId: rerun.runId, requestToken: stillActiveToken, reason: null } }))
       .toEqual({ ok: false, reason: RUN_RERUN_REFUSALS.STILL_ACTIVE, existingRunId: rerun.runId });
+    // Decided against the token (owner decision, 2026-09-06). Without that, the same click
+    // answered "that Run has not ended yet" now and STARTED a rerun an hour later, which
+    // is one token meaning two things — and the person who clicked twice got two Runs.
+    expect(await sql`SELECT refusal, refused_run_id FROM run_initiation_request WHERE request_token=${stillActiveToken}`)
+      .toEqual([{ refusal: 'predecessor-active', refused_run_id: rerun.runId }]);
     // Rerun while another Run is active for that period: initiation's own rule, and its
     // own sentence, because a rerun resolves everything a first Run does.
     await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${rerun.runId}`;

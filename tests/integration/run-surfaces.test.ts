@@ -233,9 +233,11 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     evidence: string,
     exception: string,
   ): Promise<void> {
-    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
+    // Generation 32: FR-31's capture provenance is STORED on the artifact by the stage
+    // that registered it, so the fixture writes what production writes.
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,captured_at,capture_method,capture_time_source)
               VALUES(${evidence},${runId},'adapter-extraction','accessgate',${`runs/${runId}/extract`},
-                'application/json',${'c'.repeat(64)},1024,'REGISTERED',false)`;
+                'application/json',${'c'.repeat(64)},1024,'REGISTERED',false,'2026-09-01T09:01:20Z','adapter','registration')`;
     await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
               VALUES(${item},${runId},'step-1',1,'accessgate','AccessGate','OBSERVED',1,0,NULL,${evidence},1)`;
     await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at,diagnostic)
@@ -296,10 +298,12 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     expect(row.checks).toEqual([{ check: 'identity-corroboration', outcome: 'PASS', diagnostic: null }]);
   });
 
-  it('names the Step Execution that froze each artifact, because nothing recorded a capture time', async () => {
-    // `run_evidence` has no capture-time column at all (see the Story 3.11 note in
-    // CLAUDE.md), so this is the completion of the step that uploaded, verified and
-    // registered the bytes — a recorded instant, not an invented one.
+  it('reads the STORED capture provenance of each artifact, and says so when there is none', async () => {
+    // This test used to assert a DERIVED capture time — the completion of the Step
+    // Execution that froze the bytes — and a capture method derived from the kind, because
+    // neither had a column. Generation 32 gives both a column (owner decision,
+    // 2026-09-06), so the read is a read: the row says how and when it was captured, and
+    // this asserts the row rather than a rule for reconstructing it.
     const items = await detail().readEvidenceItems(runs.first);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -308,8 +312,38 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
       stepId: 'step-1',
       workItemId,
       capturedAt: '2026-09-01T09:01:20.000Z',
+      captureMethod: 'adapter',
+      captureTimeSource: 'registration',
       mediaType: 'application/json',
     });
+    // A row with no recorded provenance reads as absent, never as a derived instant: the
+    // surface says so in words, and it can only do that if the read does not invent one.
+    // Seeded on the QUEUED Run, because generation 21 freezes a sealed Run's Evidence.
+    const bare = ids.next();
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
+              VALUES(${bare},${runs.third},'reference-source','rolematrix',${`runs/${runs.third}/reference`},'text/csv',${'d'.repeat(64)},64,'REGISTERED',false)`;
+    expect((await detail().readEvidenceItems(runs.third))[0]).toMatchObject({
+      evidenceId: bare,
+      capturedAt: null,
+      captureMethod: null,
+      captureTimeSource: null,
+    });
+    // A time and its provenance are written whole or not at all. `(a IS NULL) = (b IS
+    // NULL)` is boolean = boolean and is never NULL, so unlike a comparison of the values
+    // this CHECK cannot pass by evaluating to NULL.
+    await expect(
+      sql`UPDATE run_evidence SET captured_at='2026-09-01T09:01:20Z' WHERE evidence_id=${bare}`,
+    ).rejects.toThrow(/run_evidence_capture_time/);
+    await expect(
+      sql`UPDATE run_evidence SET capture_time_source='registration' WHERE evidence_id=${bare}`,
+    ).rejects.toThrow(/run_evidence_capture_time/);
+    // And both vocabularies are closed at the database, not only in the command.
+    await expect(
+      sql`UPDATE run_evidence SET captured_at='2026-09-01T09:01:20Z', capture_time_source='guessed' WHERE evidence_id=${bare}`,
+    ).rejects.toThrow(/run_evidence_capture_time/);
+    await expect(
+      sql`UPDATE run_evidence SET capture_method='psychic' WHERE evidence_id=${bare}`,
+    ).rejects.toThrow(/run_evidence_capture_method/);
   });
 
   it('reads the Timeline levels with their clocks', async () => {

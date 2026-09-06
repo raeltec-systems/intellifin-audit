@@ -174,7 +174,7 @@ describe.skipIf(!url)('the Run-level Evidence Quality Gate against PostgreSQL', 
           await sql`DELETE FROM population_execution WHERE run_id=${run.id}`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${run.id}`;
           await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.id}`;
-          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id} OR refused_run_id=${run.id}`;
         }
         await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
         await sql`DELETE FROM procedure_version WHERE procedure_id=${id}`;

@@ -58,6 +58,7 @@ import { snapshotCorroboration } from './snapshot-corroboration.js';
 import { ruleEvaluation } from './rule-evaluation.js';
 import {
   adapterEvidenceRecord,
+  registerEvidence,
   freezeArtifact,
   readRegisteredArtifact,
   reserveArtifact,
@@ -1010,13 +1011,14 @@ async function runReferenceStep(
       // the object store and proved identical to what was uploaded, so what the compiled
       // rules consult is what the freeze established rather than what was fetched.
       unit.references.push({ bytes: artifact.bytes, mediaType: artifact.mediaType });
-      const registered: AdapterEvidenceRecord = {
-        ...evidence,
+      // `registerEvidence` is the ONE way a record becomes REGISTERED, so FR-31's capture
+      // method and capture time are stamped by becoming registered rather than by a
+      // producer remembering to set them.
+      const registered = registerEvidence(evidence, frozen, {
         mediaType: artifact.mediaType,
-        digest: frozen.digest,
-        size: frozen.size,
-        state: 'REGISTERED',
-      };
+        capturedAt: deps.clock.now().toISOString(),
+        method: 'adapter',
+      });
       const committed = await unit.guarded(async (context) => {
         await context.saveEvidence(registered);
         await context.saveSessionStep(step);
@@ -1221,7 +1223,10 @@ async function runWorkItem(
       item.diagnostic = notes.length > 0 ? notes.join(', ') : null;
       // A `let` captured by a closure widens back to its declared type, so the digest and
       // size the event reports are read out here rather than inside the callback.
-      const registered: AdapterEvidenceRecord = { ...evidence, state: 'REGISTERED' };
+      const registered = registerEvidence(evidence, frozen, {
+        capturedAt: deps.clock.now().toISOString(),
+        method: 'adapter',
+      });
       const { digest, size } = frozen;
       // Evidence, then the Work Item, then its Step Execution, then the Observations that
       // name both: every row is written after the row it refers to.
@@ -1287,6 +1292,19 @@ async function runWorkItem(
     item.cycles = Math.min(2, Math.ceil(item.attempts / unit.attemptsPerCycle));
     item.state = terminal ? 'FAILED' : cycleExhausted ? 'AWAITING' : 'IN_PROGRESS';
     item.diagnostic = diagnostic;
+    // Verified bytes stay REGISTERED even though the Work Item failed: they are what
+    // the Target System actually answered. A reservation nothing was written to stays
+    // RESERVED — it is still open, the Run is still running, and `SealPackage` is the
+    // one thing that abandons it, at the terminal transition, where it can also be
+    // listed on the Result. A unit that abandoned its own reservation would leave the
+    // seal with nothing open to find and the Result with nothing to name.
+    //
+    // Read out here, not inside the callback: a `let` captured by a closure widens back to
+    // its declared type, so the narrowing `frozen !== null` gives is lost in there.
+    const partial =
+      frozen === null
+        ? null
+        : registerEvidence(evidence, frozen, { capturedAt: deps.clock.now().toISOString(), method: 'adapter' });
     const committed = await unit.guarded(async (context) => {
       await context.saveWorkItem(item);
       await context.saveStepExecution({
@@ -1295,13 +1313,7 @@ async function runWorkItem(
         completedAt: deps.clock.now().toISOString(),
         diagnostic,
       });
-      // Verified bytes stay REGISTERED even though the Work Item failed: they are what
-      // the Target System actually answered. A reservation nothing was written to stays
-      // RESERVED — it is still open, the Run is still running, and `SealPackage` is the
-      // one thing that abandons it, at the terminal transition, where it can also be
-      // listed on the Result. A unit that abandoned its own reservation would leave the
-      // seal with nothing open to find and the Result with nothing to name.
-      if (frozen !== null) await context.saveEvidence({ ...evidence, state: 'REGISTERED' });
+      if (partial !== null) await context.saveEvidence(partial);
       await event(context, diagnostic!, 'RUNNING', checkpoint, {
         workItemId: item.workItemId,
         stepId: item.stepId,

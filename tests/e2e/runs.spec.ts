@@ -60,7 +60,7 @@ test.afterAll(async () => {
     await sql`DELETE FROM pgboss.job WHERE data->>'runId' IN (SELECT run_id::text FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
-    await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
+    await sql`DELETE FROM run_initiation_request WHERE procedure_id=${procedureId}`;
     // A rerun link is a self-referencing foreign key, so a successor goes first.
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId} AND predecessor_run_id IS NOT NULL`;
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;

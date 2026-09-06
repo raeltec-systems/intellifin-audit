@@ -6,6 +6,7 @@ import { CAPTURE_TIME_UNRECORDED } from '../design/copy';
 import { CorroborationBadge, EvidenceKindBadge } from './MinorBadge';
 import { UntrustedText } from './UntrustedText';
 import {
+  captureTimeSourceSentence,
   countText,
   evidenceCaptureMethod,
   evidenceStateWord,
@@ -24,12 +25,12 @@ import {
  * three-column grid of the FR-31 fields — Work Item, Target System, Step, capture method,
  * capture time (UTC), integrity digest".
  *
- * FIVE of the six are stored. The sixth is not: neither `run_evidence` nor
- * `population_evidence` has a capture-time column, so for a Reference Source and an
- * adapter extraction the instant comes from the Step Execution that uploaded, verified
- * and registered the bytes, and for the population artifact nothing recorded one at all.
- * That case says so IN WORDS rather than showing a dash a reader takes for "fine". The
- * gap is named in `CLAUDE.md` and in the story's report; it is not papered over here.
+ * All six are STORED from generation 32 (owner decision, 2026-09-06). The capture method
+ * used to be derived here from the artifact's kind and the capture time from the Step
+ * Execution that froze the bytes; both are recorded by the process that captured the
+ * artifact now, and the card says which way the recorded instant came to be — measured at
+ * registration, or recovered from a Step Execution. A row that carries no instant at all
+ * still says so IN WORDS rather than showing a dash a reader takes for "fine".
  */
 export interface EvidenceCardProps {
   readonly evidenceId: string;
@@ -39,6 +40,9 @@ export interface EvidenceCardProps {
   readonly workItemId: string | null;
   readonly stepId: string | null;
   readonly capturedAt: string | null;
+  readonly captureMethod: string | null;
+  /** How the recorded instant came to be: measured, or recovered. Never invented. */
+  readonly captureTimeSource: string | null;
   readonly digest: string | null;
   readonly size: number | null;
   readonly state: string;
@@ -66,7 +70,8 @@ function notRegistered(kind: string, state: string): string {
 }
 
 export function EvidenceCard(props: EvidenceCardProps): React.JSX.Element {
-  const captureMethod = evidenceCaptureMethod(props.kind);
+  const captureMethod = evidenceCaptureMethod(props.captureMethod);
+  const captureTimeSource = captureTimeSourceSentence(props.captureTimeSource);
   return (
     <li className="ls-evidence-item" id={`evidence-${props.evidenceId}`}>
       <p className="ls-evidence-item__header">
@@ -96,9 +101,16 @@ export function EvidenceCard(props: EvidenceCardProps): React.JSX.Element {
         </div>
         <div>
           <dt>Capture time (UTC)</dt>
-          <dd className={props.capturedAt === null ? undefined : 'ls-mono'}>
-            {props.capturedAt === null ? CAPTURE_TIME_UNRECORDED : utcStamp(props.capturedAt)}
-          </dd>
+          {props.capturedAt === null ? (
+            <dd>{CAPTURE_TIME_UNRECORDED}</dd>
+          ) : (
+            <dd>
+              <span className="ls-mono">{utcStamp(props.capturedAt)}</span>
+              {/* Said beside the instant, never instead of it: a recovered time and a
+                  measured one are both real and are not the same claim. */}
+              {captureTimeSource === null ? null : <> · {captureTimeSource}</>}
+            </dd>
+          )}
         </div>
         <div>
           <dt>Integrity digest</dt>
@@ -135,6 +147,8 @@ export function evidenceCardProps(item: RunEvidenceItem): EvidenceCardProps {
     workItemId: item.workItemId,
     stepId: item.stepId,
     capturedAt: item.capturedAt,
+    captureMethod: item.captureMethod,
+    captureTimeSource: item.captureTimeSource,
     digest: item.digest,
     size: item.size,
     state: item.state,

@@ -137,6 +137,19 @@ export interface RunResultFindings {
   readonly records: readonly RunResultFinding[];
 }
 
+/**
+ * One artifact the Result names, by identity and by nothing else.
+ *
+ * There is nowhere here for bytes, a media type, a location or a credential reference: the
+ * Result document is durable and readable, and an identity plus an object key is what an
+ * auditor needs to go and look at the artifact through the Evidence tab.
+ */
+export interface RunResultEvidenceArtifact {
+  readonly evidenceId: string;
+  readonly kind: string;
+  readonly objectKey: string;
+}
+
 /** What the Evidence package sealed with, as the Result names it (Story 3.5). */
 export interface RunResultEvidence {
   readonly state: 'SEALED' | 'INCOMPLETE';
@@ -144,6 +157,21 @@ export interface RunResultEvidence {
   readonly registered: number;
   readonly missingRequired: number;
   readonly abandoned: number;
+  /**
+   * The artifacts this Run actually froze, named — a bounded sample beside the exact
+   * `registered` count above.
+   *
+   * The owner's 2026-09-06 decision: a Run that acquired, stored and VERIFIED its
+   * population and then crossed its own time limit still ends `INCONCLUSIVE`, but it must
+   * seal with that Evidence registered AND referenced here rather than discarded.
+   * "Inconclusive with Evidence" and "Inconclusive with nothing" are different findings to
+   * an auditor, and a count alone cannot tell them apart — `registered: 1` says a number,
+   * not which artifact, and a reader cannot follow a number to the bytes.
+   *
+   * An older document has no `artifacts` key at all; the surface says so rather than
+   * rendering an empty list, which a reader takes for "nothing was frozen".
+   */
+  readonly artifacts?: readonly RunResultEvidenceArtifact[];
 }
 
 /** The addendum §H verdict this Result reports, read from the Gate rows, never re-judged. */

@@ -6,6 +6,7 @@ import {
   isRequiredArtifact,
   sha256HexOfBytes,
   type EvidenceArtifactKind,
+  type EvidenceCaptureMethod,
   type EvidenceReservation,
 } from '@intellifin/domain';
 import {
@@ -100,6 +101,46 @@ export function adapterEvidenceRecord(
     // A REGISTERED row is never downgraded to RESERVED: it was registered, and saying
     // otherwise would be a lie about an artifact that exists.
     state: prior?.state === 'REGISTERED' ? 'REGISTERED' : 'RESERVED',
+    // A reservation has captured nothing, so it carries no capture provenance — and a
+    // resumed attempt inherits what the attempt that really captured the bytes recorded,
+    // never a fresh instant for a re-read.
+    capturedAt: prior?.capturedAt ?? null,
+    captureMethod: prior?.captureMethod ?? null,
+    captureTimeSource: prior?.captureTimeSource ?? null,
+  };
+}
+
+/**
+ * The ONE way an Evidence record becomes `REGISTERED` (owner decision, 2026-09-06).
+ *
+ * FR-31 requires a capture method and a capture time in UTC on every Evidence item, and
+ * neither can be a field a producer remembers to set: three call sites in
+ * `execute-adapter-steps.ts` each spread `{...evidence, state: 'REGISTERED'}` by hand, and
+ * a fourth written later would have been registered with no provenance at all and nothing
+ * to say so. Registration goes through here, so the provenance is a property of becoming
+ * registered rather than of remembering to.
+ *
+ * The capture time is MEASURED — the clock read inside the transaction that writes
+ * `REGISTERED` — and its source says exactly that. An artifact a previous attempt already
+ * registered keeps the instant IT recorded: re-verifying bytes is not re-capturing them,
+ * and moving the time forward on every redelivery would make an artifact look younger than
+ * the Run that froze it.
+ */
+export function registerEvidence(
+  evidence: AdapterEvidenceRecord,
+  frozen: { readonly digest: string; readonly size: number },
+  capture: { readonly mediaType?: string | null; readonly capturedAt: string; readonly method: EvidenceCaptureMethod },
+): AdapterEvidenceRecord {
+  const first = evidence.capturedAt === null;
+  return {
+    ...evidence,
+    ...(capture.mediaType === undefined ? {} : { mediaType: capture.mediaType }),
+    digest: frozen.digest,
+    size: frozen.size,
+    state: 'REGISTERED',
+    capturedAt: first ? capture.capturedAt : evidence.capturedAt,
+    captureMethod: first ? capture.method : evidence.captureMethod,
+    captureTimeSource: first ? 'registration' : evidence.captureTimeSource,
   };
 }
 

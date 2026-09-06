@@ -184,7 +184,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM population_snapshot WHERE run_id = ANY(${ids_}::uuid[])`;
       await sql`DELETE FROM population_evidence WHERE run_id = ANY(${ids_}::uuid[])`;
       await sql`DELETE FROM population_execution WHERE run_id = ANY(${ids_}::uuid[])`;
-      await sql`DELETE FROM run_initiation_request WHERE run_id = ANY(${ids_}::uuid[])`;
+      await sql`DELETE FROM run_initiation_request WHERE run_id = ANY(${ids_}::uuid[]) OR refused_run_id = ANY(${ids_}::uuid[])`;
     }
     // `run_workspace` and `run_agent_execution` cascade with the Run, deliberately.
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId}`;

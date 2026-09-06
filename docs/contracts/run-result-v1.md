@@ -134,7 +134,21 @@ Run over a hundred thousand records has to be able to commit its own conclusion.
 - **per-condition counts** by origin, confirmation state and value (§B.1);
 - the Template's **control-specific fields** (§C), per named finding;
 - the version's **scope statement, verbatim**;
-- the Gate verdict, the Evidence package seal, and one generated sentence.
+- the Gate verdict, the Evidence package seal, and one generated sentence;
+- the **artifacts the Run actually froze, by identity** — `evidence.artifacts`, a bounded
+  sample beside the exact `evidence.registered` count.
+
+The named artifacts are the owner's decision of 2026-09-06. A count alone cannot tell
+"Inconclusive with Evidence" from "Inconclusive with nothing": `registered: 1` says a
+number, not which artifact, and a reader cannot follow a number to the bytes. The case it
+was added for is a Run that acquired, stored and VERIFIED its population and then crossed
+its own time limit — the limit is real and unchanged, the Run still ends `INCONCLUSIVE`,
+and the population is still there. They are read from `readPackageArtifacts` AFTER the
+seal, so they are the same rows in the same transaction the seal counted; abandonment can
+only touch a `RESERVED` row, so the count and the list cannot disagree.
+
+An older published document has no `artifacts` key at all, which is a different statement
+from an empty list, and the surface says which.
 
 `null` scope means this build could not read the frozen plan — a different statement from a
 scope that is empty, and the Result says which.

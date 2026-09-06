@@ -110,7 +110,7 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
           await sql`DELETE FROM run_evidence_package WHERE run_id=${run.id}`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${run.id}`;
           await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.id}`;
-          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id} OR refused_run_id=${run.id}`;
         }
         // `run_workspace` cascades from `audit_run`, deliberately: it is operational state
         // rather than a recorded outcome, and a foreign key nobody knew about does not fail

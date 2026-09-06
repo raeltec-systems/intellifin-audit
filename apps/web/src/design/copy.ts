@@ -322,13 +322,27 @@ export const NO_RESULT_STATEMENT = 'No Result has been published for this Run.';
 /**
  * What an Evidence item says when nothing recorded when it was captured.
  *
- * FR-31 requires an Evidence item to record its capture time, and neither
- * `run_evidence` nor `population_evidence` has a column for one (see the Story 3.11
- * entry in `CLAUDE.md`). For a Reference Source and an adapter extraction the instant is
- * recoverable from the Step Execution that froze the bytes; for the population artifact
- * nothing recorded one, and this says so instead of showing a dash that reads as "fine".
+ * FR-31 requires a capture time in UTC on every Evidence item. Generation 32 gives both
+ * Evidence tables the column, so every artifact frozen from that generation onwards
+ * carries a measured instant — but a row an earlier build wrote and could not be
+ * attributed to a Step Execution has none, and there is no honest way to invent one. It
+ * says so, rather than showing a dash that reads as "fine".
  */
 export const CAPTURE_TIME_UNRECORDED = 'Capture time was not recorded.';
+
+/**
+ * How the recorded capture time came to be, said beside it.
+ *
+ * `registration` is measured — the clock inside the transaction that registered the
+ * artifact. `step-execution` is RECOVERED: generation 32 backfilled it from the Step
+ * Execution that uploaded, verified and registered the bytes, which is a real instant for
+ * that artifact but not one anybody measured as a capture. A reader comparing two Evidence
+ * items has to be able to tell those apart, and only the row can say which it is.
+ */
+export const CAPTURE_TIME_SOURCE = {
+  registration: 'Measured when the artifact was registered.',
+  'step-execution': 'Recovered from the Step Execution that froze the bytes.',
+} as const;
 
 /**
  * What a Step Execution says when its surface records no Tool Actions in this build.

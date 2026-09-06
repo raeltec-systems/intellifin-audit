@@ -15,8 +15,8 @@ import type {
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from './EvidenceCards';
 import { ExceptionCard } from './ExceptionList';
 import { GateChecklist } from './GateChecklist';
-import { SafeNextActionPanel } from './ResultSections';
-import { ADAPTER_ACTIONS_UNRECORDED } from '../design/copy';
+import { EvidencePackageSection, PopulationReconciliation, SafeNextActionPanel } from './ResultSections';
+import { ADAPTER_ACTIONS_UNRECORDED, CAPTURE_TIME_SOURCE } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
 import { ConclusionTriptych } from './Triptych';
 import { UntrustedText } from './UntrustedText';
@@ -227,6 +227,8 @@ const evidenceItem = (overrides: Partial<RunEvidenceItem> = {}): RunEvidenceItem
   displayName: 'AccessGate',
   workItemId: '019823ab-0000-7000-8000-0000000000c1',
   capturedAt: '2026-09-06T09:02:00.000Z',
+  captureMethod: 'adapter',
+  captureTimeSource: 'registration',
   ...overrides,
 });
 
@@ -247,14 +249,43 @@ describe('the Evidence item card', () => {
     expect(html).not.toContain('aria-label');
   });
 
-  it('says in words when nothing recorded a capture time', () => {
-    // FR-31 requires the field and neither Evidence table has a column for it. A dash
-    // here would read as "fine"; this states the gap.
+  it('says WHERE the recorded capture time came from, beside the instant', () => {
+    // Generation 32 stores the provenance (owner decision, 2026-09-06). A measured
+    // instant and one recovered from the Step Execution that froze the bytes are both
+    // real and are not the same claim, so the card says which — and it reads the row
+    // rather than deriving either from the artifact's kind.
+    const measured = renderToStaticMarkup(
+      React.createElement(EvidenceCard, evidenceCardProps(evidenceItem())),
+    );
+    expect(measured).toContain(CAPTURE_TIME_SOURCE.registration);
+    const recovered = renderToStaticMarkup(
+      React.createElement(
+        EvidenceCard,
+        evidenceCardProps(evidenceItem({ captureTimeSource: 'step-execution' })),
+      ),
+    );
+    expect(recovered).toContain(CAPTURE_TIME_SOURCE['step-execution']);
+    expect(recovered).not.toContain(CAPTURE_TIME_SOURCE.registration);
+  });
+
+  it('says in words when nothing recorded a capture time or method', () => {
+    // A row an older build wrote carries neither, and there is no honest way to invent
+    // one. A dash here would read as "fine"; this states the gap.
     const html = renderToStaticMarkup(
-      React.createElement(EvidenceCard, evidenceCardProps(evidenceItem({ capturedAt: null }))),
+      React.createElement(
+        EvidenceCard,
+        evidenceCardProps(
+          evidenceItem({ capturedAt: null, captureMethod: null, captureTimeSource: null }),
+        ),
+      ),
     );
     expect(html).toContain('Capture time was not recorded.');
+    expect(html).toContain('Not recorded');
     expect(html).not.toContain('>—<');
+    // And it does NOT fall back to a method derived from the kind, which is the
+    // derivation this decision removed: an adapter extraction whose row says nothing
+    // says nothing.
+    expect(html).not.toContain('>Adapter<');
   });
 
   it('names an abandoned reservation rather than dropping it', () => {
@@ -692,3 +723,144 @@ const SIGN_IN_ACTION = {
   completedAt: '2026-09-06T09:01:02.000Z',
   diagnostic: null,
 };
+
+/**
+ * The population reconciliation's two numbers, with the artifact each came from.
+ *
+ * Owner decision, 2026-09-06. The row used to say "Reconciled" or "Did not reconcile" and
+ * nothing else, because only the §H verdict was stored: a reader could see that the
+ * source and the platform disagreed and never by how much or in which direction.
+ */
+describe('the population reconciliation', () => {
+  const publication = {
+    templateId: 'P-2',
+    controlName: 'Segregation of Duties',
+    scope: 'Every AccessGate account.',
+    period: { from: '2026-08-01', to: '2026-08-31' },
+    population: { rowsParsed: 8, included: 8, excluded: 0, indeterminate: 0 },
+    exclusions: [],
+    coverage: [],
+    conditions: [],
+    exceptions: { total: 0, records: [] },
+    unevaluated: { total: 0, records: [] },
+    controlFields: [],
+    gate: { passed: true, checks: 20, failed: [] },
+    evidence: { state: 'SEALED' as const, requiredTotal: 1, registered: 1, missingRequired: 0, abandoned: 0 },
+    statement: 'Every condition on every inspected record is Compliant.',
+  };
+  const evidence = {
+    evidenceId: '019823ab-0000-7000-8000-0000000000f1',
+    objectKey: 'population/019823ab-0000-7000-8000-0000000000aa/raw',
+    envelopeKey: 'population/019823ab-0000-7000-8000-0000000000aa/acquisition-v1',
+  };
+  const render = (overrides: Record<string, unknown> = {}): string =>
+    renderToStaticMarkup(
+      React.createElement(PopulationReconciliation, {
+        publication,
+        rowsDigest: 'a'.repeat(64),
+        declaredCountPassed: true,
+        declaredCount: 8,
+        retrievedCount: 8,
+        evidence,
+        runId: '019823ab-0000-7000-8000-0000000000aa',
+        uninspected: 0,
+        ...overrides,
+      } as never),
+    );
+
+  it('shows both counts, each attributed to the artifact it came from', () => {
+    const html = render();
+    expect(html).toContain('Declared count');
+    expect(html).toContain('Retrieved count');
+    // The declaration is frozen in the acquisition ENVELOPE, the rows in the raw object.
+    // The attribution is a reference the reader can follow to the Evidence tab, never
+    // bytes this surface read for itself.
+    expect(html).toContain(evidence.envelopeKey);
+    expect(html).toContain(evidence.objectKey);
+    expect(html).toContain('/runs/019823ab-0000-7000-8000-0000000000aa/evidence#evidence-019823ab-0000-7000-8000-0000000000f1');
+    // The stored §H verdict stays beside them, READ and never re-derived from the two
+    // numbers: a second answer to one question is how a surface comes to disagree with
+    // the Gate it reports.
+    expect(html).toContain('Reconciled exactly against the independent declaration.');
+  });
+
+  it('marks a disagreement as a difference rather than only as a word', () => {
+    const html = render({ declaredCount: 9, declaredCountPassed: false });
+    expect(html).toContain('ls-difference');
+    expect(html).toContain('Did not reconcile against the independent declaration.');
+  });
+
+  it('says in words when no declared count was recorded, and shows no dash', () => {
+    const html = render({ declaredCount: null, declaredCountPassed: null });
+    expect(html).toContain('Not recorded');
+    expect(html).toContain('the independent declaration stated no count this build could store');
+    expect(html).not.toContain('>—<');
+    // And it never borrows the retrieved count to fill the gap, which would make an
+    // unreconciled population look reconciled.
+    expect(html).not.toContain('ls-difference');
+  });
+});
+
+/**
+ * The Result names the artifacts it sealed with (owner decision, 2026-09-06).
+ *
+ * Without this the identities were stored on the published document and shown nowhere,
+ * which is a field nothing reads — and the distinction the decision exists for
+ * (Inconclusive with Evidence versus Inconclusive with nothing) would be invisible on the
+ * one surface that states the outcome.
+ */
+describe('the sealed Evidence package on the Result', () => {
+  const base = {
+    templateId: 'P-2',
+    controlName: 'Segregation of Duties',
+    scope: 'Every AccessGate account.',
+    period: { from: '2026-08-01', to: '2026-08-31' },
+    population: { rowsParsed: 8, included: 8, excluded: 0, indeterminate: 0 },
+    exclusions: [],
+    coverage: [],
+    conditions: [],
+    exceptions: { total: 0, records: [] },
+    unevaluated: { total: 0, records: [] },
+    controlFields: [],
+    gate: { passed: false, checks: 0, failed: [] },
+    statement: 'The Evidence does not support a conclusion.',
+  };
+  const render = (evidence: Record<string, unknown>): string =>
+    renderToStaticMarkup(
+      React.createElement(EvidencePackageSection, {
+        publication: { ...base, evidence },
+        runId: '019823ab-0000-7000-8000-0000000000aa',
+      } as never),
+    );
+
+  it('names each registered artifact and links it to its Evidence card', () => {
+    const html = render({
+      state: 'SEALED',
+      requiredTotal: 1,
+      registered: 1,
+      missingRequired: 0,
+      abandoned: 0,
+      artifacts: [
+        {
+          evidenceId: '019823ab-0000-7000-8000-0000000000f1',
+          kind: 'population',
+          objectKey: 'population/019823ab-0000-7000-8000-0000000000aa/raw',
+        },
+      ],
+    });
+    expect(html).toContain('Population');
+    expect(html).toContain('019823ab-0000-7000-8000-0000000000f1');
+    expect(html).toContain('/runs/019823ab-0000-7000-8000-0000000000aa/evidence#evidence-019823ab-0000-7000-8000-0000000000f1');
+  });
+
+  it('distinguishes "this build did not record which" from "this Run froze nothing"', () => {
+    // An older document has no `artifacts` key at all. Rendering an empty list there would
+    // say the Run collected nothing, which is a claim nobody made.
+    const older = render({ state: 'SEALED', requiredTotal: 0, registered: 2, missingRequired: 0, abandoned: 0 });
+    expect(older).toContain('published before the artifacts were named');
+    expect(older).not.toContain('registered no Evidence at all');
+    const empty = render({ state: 'SEALED', requiredTotal: 0, registered: 0, missingRequired: 0, abandoned: 0, artifacts: [] });
+    expect(empty).toContain('registered no Evidence at all');
+    expect(empty).not.toContain('published before the artifacts were named');
+  });
+});

@@ -80,6 +80,31 @@ export interface PopulationResult {
   rows: PopulationRow[]; checks: PopulationCheck[]; rawDigest: string; rowsDigest: string | null;
   included: number; excluded: number; indeterminate: number; ready: boolean;
   /**
+   * The record count the INDEPENDENT declaration stated, or `null` when it stated none
+   * this build can read.
+   *
+   * The `declared-count` check above says whether it AGREED with what was retrieved; this
+   * is the number itself. They are two different facts and the surface needs both: a
+   * failed check tells an auditor that the source and the platform disagree, and only the
+   * two numbers tell them by how much and in which direction. Until generation 32 only the
+   * boolean was stored and the number lived exclusively inside the frozen acquisition
+   * envelope in object storage, which no surface may read (`no-evidence-store-in-web`).
+   *
+   * Never invented and never defaulted to `retrievedCount`: a declaration that stated no
+   * count is a different thing from one that stated the right one, and writing the
+   * retrieved count here would make every unreconciled population look reconciled.
+   */
+  declaredCount: number | null;
+  /**
+   * The number of records RETRIEVED — the rows parsed out of the frozen raw artifact.
+   *
+   * Exactly `included + excluded + indeterminate`, because `includePopulation` maps every
+   * parsed row to exactly one row and the three dispositions partition them. It is stored
+   * beside the declared count so the reconciliation reads as an arithmetic statement about
+   * two artifacts rather than as a verdict a reader has to take on trust.
+   */
+  retrievedCount: number;
+  /**
    * The snapshot's own generation time, exactly as the declaration stated it, or `null`
    * when it stated none this build can read.
    *
@@ -211,5 +236,10 @@ export function reconcilePopulation(input: { bytes: Uint8Array; mediaType: strin
   // read. Never invented and never defaulted to now(): a fabricated generation time would
   // make the §H freshness row report a snapshot nobody generated.
   const generatedAt = typeof d['generated_at'] === 'string' && populationUtcDate(d['generated_at']) !== null ? d['generated_at'] : null;
-  return { rows, checks, rawDigest, rowsDigest, included, excluded, indeterminate, ready:checks.every(c=>c.passed||POPULATION_CHECKS_DECIDED_AT_THE_GATE.includes(c.name)), generatedAt };
+  // The declared count, verbatim, when the declaration states one this build can store.
+  // A non-integer, a negative number or a number past 2^53 is NOT a declared count and is
+  // recorded as an absent one — the `declared-count` check above has already failed on it,
+  // and a column holding an unstorable number would be a second, worse answer.
+  const declaredCount = typeof d['count'] === 'number' && Number.isSafeInteger(d['count']) && d['count'] >= 0 ? d['count'] : null;
+  return { rows, checks, rawDigest, rowsDigest, included, excluded, indeterminate, ready:checks.every(c=>c.passed||POPULATION_CHECKS_DECIDED_AT_THE_GATE.includes(c.name)), declaredCount, retrievedCount: rawRows.length, generatedAt };
 }

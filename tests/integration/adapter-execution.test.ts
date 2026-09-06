@@ -231,7 +231,7 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
           await sql`DELETE FROM population_execution WHERE run_id=${run.id}`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${run.id}`;
           await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.id}`;
-          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id} OR refused_run_id=${run.id}`;
         }
         await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
         await sql`DELETE FROM procedure_version WHERE procedure_id=${id}`;
@@ -424,9 +424,17 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ state: 'OBSERVED', observations: 4 });
 
-    const evidence = await sql`SELECT kind,state,digest,size FROM run_evidence WHERE run_id=${seeded.run.runId} ORDER BY kind`;
+    const evidence = await sql`SELECT kind,state,digest,size,captured_at,capture_method,capture_time_source FROM run_evidence WHERE run_id=${seeded.run.runId} ORDER BY kind`;
     expect(evidence.map((row) => row.kind)).toEqual(['adapter-extraction', 'reference-source']);
     expect(evidence.every((row) => row.state === 'REGISTERED')).toBe(true);
+    // FR-31's capture provenance, STORED by the stage that registered each artifact
+    // (generation 32, owner decision 2026-09-06). It used to be derived on the way to a
+    // screen — the method from the artifact's kind, the instant from the Step Execution —
+    // and a derivation is a guess with good manners the moment two processes can produce
+    // one kind.
+    expect(evidence.every((row) => row.capture_method === 'adapter')).toBe(true);
+    expect(evidence.every((row) => row.capture_time_source === 'registration')).toBe(true);
+    expect(evidence.every((row) => Number.isFinite(Date.parse(String(row.captured_at))))).toBe(true);
     const referenceRow = evidence.find((row) => row.kind === 'reference-source')!;
     expect(referenceRow.digest).toBe(sha256HexOfBytes(utf8Bytes(ROLE_MATRIX)));
     // The exact served bytes: the entry ordinals that keep AMBIGUOUS_DUAL ambiguous.

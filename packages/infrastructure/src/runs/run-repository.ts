@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import type { RunReader, RunWriter } from '@intellifin/application';
-import { ACTIVE_RUN_STATES, type ExplicitPeriod, type RunCancellationRequest, type RunRecord } from '@intellifin/domain';
+import type { RunReader, RunRequestDecision, RunWriter } from '@intellifin/application';
+import { ACTIVE_RUN_STATES, isRunRequestRefusalCode, type ExplicitPeriod, type RunCancellationRequest, type RunRecord } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { auditRun, runInitiationRequest } from '../db/schema.js';
 import { isUuidText } from '../db/identifier.js';
@@ -51,12 +51,42 @@ export class DrizzleRunRepository implements RunReader, RunWriter {
       .limit(Math.max(1, Math.min(limit, 25)));
     return rows.map(record);
   }
-  async bindRequest(initiatorId: string, requestToken: string, runId: string): Promise<void> {
-    await this.db.insert(runInitiationRequest).values({ initiatorId, requestToken, runId });
+  /**
+   * Record what this token was decided to mean. The FIRST decision wins.
+   *
+   * `onConflictDoNothing`, not an upsert: a token means one thing forever, so a second
+   * write must change nothing rather than replace an answer somebody has already been
+   * given. It also makes two racing requests carrying one token safe — one inserts, the
+   * other no-ops, and both read the same row back.
+   */
+  async bindRequest(initiatorId: string, requestToken: string, decision: RunRequestDecision): Promise<void> {
+    await this.db.insert(runInitiationRequest).values({
+      initiatorId, requestToken,
+      procedureId: decision.procedureId, periodFrom: decision.period.from, periodTo: decision.period.to,
+      runId: decision.runId, refusal: decision.refusal, refusedRunId: decision.refusedRunId,
+    }).onConflictDoNothing({ target: [runInitiationRequest.initiatorId, runInitiationRequest.requestToken] });
   }
-  async findRequest(initiatorId: string, requestToken: string): Promise<RunRecord | null> {
-    const row = (await this.db.select({ run: auditRun }).from(runInitiationRequest).innerJoin(auditRun, eq(runInitiationRequest.runId, auditRun.runId)).where(and(eq(runInitiationRequest.initiatorId, initiatorId), eq(runInitiationRequest.requestToken, requestToken))).limit(1))[0];
-    return row ? record(row.run) : null;
+  /**
+   * The decision, read from the request row ALONE — no join to a Run.
+   *
+   * The join is what made the old behaviour possible: the row pointed at a Run and the
+   * command answered with whatever it found there, including a Run this caller never
+   * initiated. A decision is now a fact about the request, and a Run id on it is a
+   * reference the caller can follow, never the answer itself.
+   */
+  async findRequest(initiatorId: string, requestToken: string): Promise<RunRequestDecision | null> {
+    const row = (await this.db.select().from(runInitiationRequest).where(and(eq(runInitiationRequest.initiatorId, initiatorId), eq(runInitiationRequest.requestToken, requestToken))).limit(1))[0];
+    if (!row) return null;
+    return {
+      procedureId: row.procedureId,
+      period: { from: row.periodFrom, to: row.periodTo },
+      runId: row.runId,
+      // A stored value, so it is read as request-shaped input: a code this build does not
+      // know is `null`, which `replay` reads fail-closed as a refusal rather than as the
+      // success an unrecognised string must never become.
+      refusal: isRunRequestRefusalCode(row.refusal) ? row.refusal : null,
+      refusedRunId: row.refusedRunId,
+    };
   }
   async findActive(procedureId: string, period: ExplicitPeriod): Promise<RunRecord | null> {
     const row = (await this.db.select().from(auditRun).where(and(eq(auditRun.procedureId, procedureId), eq(auditRun.periodFrom, period.from), eq(auditRun.periodTo, period.to), eq(auditRun.kind, 'STANDARD'), inArray(auditRun.state, ACTIVE))).limit(1))[0];

@@ -10,6 +10,7 @@ import {
   type SystemOutcome,
 } from '@intellifin/domain';
 
+import { CAPTURE_TIME_SOURCE } from '../design/copy';
 import type { StatusState } from '../design/status';
 
 /**
@@ -328,23 +329,24 @@ const EVIDENCE_KIND_WORDS: Readonly<Record<string, string>> = {
 export const evidenceKindWord = (kind: string): string => wordFor(EVIDENCE_KIND_WORDS, kind);
 
 /**
- * How an Evidence item was captured, from its kind.
+ * How an Evidence item was captured, READ from the row (generation 32).
  *
- * Every kind Epic 3 writes is Adapter-captured by construction: `population`,
- * `reference-source` and `adapter-extraction` are the three artifacts the Adapter path
- * freezes, and the Agent path (Epic 4) writes different kinds. FR-31 requires the field,
- * `run_evidence` has no column for it, and the KIND is what records it — a derivation
- * from stored data rather than a guess.
+ * It used to be derived from the artifact's KIND — true of every kind Epic 3 writes, and
+ * a guess with good manners the moment two processes can produce one kind: the agent path
+ * captures a Structural Snapshot and so can the adapter path. FR-31 requires the field on
+ * every Evidence item, so the process that captured the artifact records it and this only
+ * puts it in words.
+ *
+ * `null` for a row that recorded none, which the card says rather than showing a dash.
  */
-const EVIDENCE_CAPTURE_METHOD: Readonly<Record<string, string>> = {
-  population: 'adapter',
-  'reference-source': 'adapter',
-  'adapter-extraction': 'adapter',
-};
+export function evidenceCaptureMethod(method: string | null): string | null {
+  return method === null ? null : captureMethodWord(method);
+}
 
-export function evidenceCaptureMethod(kind: string): string | null {
-  return Object.hasOwn(EVIDENCE_CAPTURE_METHOD, kind)
-    ? captureMethodWord(EVIDENCE_CAPTURE_METHOD[kind]!)
+/** How the recorded capture time came to be, from the row's own provenance value. */
+export function captureTimeSourceSentence(source: string | null): string | null {
+  return source !== null && Object.hasOwn(CAPTURE_TIME_SOURCE, source)
+    ? CAPTURE_TIME_SOURCE[source as keyof typeof CAPTURE_TIME_SOURCE]
     : null;
 }
 

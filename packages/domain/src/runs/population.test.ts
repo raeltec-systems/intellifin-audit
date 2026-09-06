@@ -21,6 +21,31 @@ describe('deterministic population',()=>{
  it('keeps arbitrary precision and never converts currency',()=>expect(includePopulation([{amount:'999999999999999999999999.99',currency:'USD',date:'2026-08-01'}],rule,period)[0]!.disposition).toBe('included'));
  it.each(['2026-02-30','2026-08-01T24:00:00Z','2026-08-01T12:00:00+99:00','2026-08-01T12:00:00','2026-08-01junk'])('refuses malformed Gregorian time %s',s=>expect(populationUtcDate(s)).toBeNull());
  it('reconciles independent declarations before inclusion and allows covered subperiod',()=>expect(reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n').ready).toBe(true));
+ // Generation 32 (owner decision, 2026-09-06). The `declared-count` CHECK says only THAT
+ // the two disagreed; these are the two numbers, so a reader can see by how much and in
+ // which direction. `declaredCount` is never defaulted to what was retrieved — that would
+ // make every unreconciled population look reconciled — and `retrievedCount` is exactly
+ // the partition the three dispositions cover.
+ it('reports the declared and the retrieved count as two separate facts',()=>{
+  const agreed=reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n');
+  expect(agreed).toMatchObject({declaredCount:1,retrievedCount:1});
+  const short=reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n99999.99,USD,2026-08-02\n',{count:1,sha256:sha256Hex('amount,currency,date\n100000.00,USD,2026-08-01\n99999.99,USD,2026-08-02\n')});
+  expect(short).toMatchObject({declaredCount:1,retrievedCount:2});
+  expect(short.checks.find(c=>c.name==='declared-count')?.passed).toBe(false);
+  expect(short.included+short.excluded+short.indeterminate).toBe(short.retrievedCount);
+ });
+ it.each([{count:undefined},{count:'3'},{count:-1},{count:1.5},{count:Number.MAX_SAFE_INTEGER+2}])('records no declared count for an unstorable %j',patch=>{
+  const result=reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n',patch);
+  expect(result.declaredCount).toBeNull();
+  expect(result.retrievedCount).toBe(1);
+ });
+ it('reports a retrieved count of zero when the bytes could not be parsed at all',()=>{
+  // The rows are what the RAW artifact yielded, so an unparsable artifact retrieved
+  // nothing. A count borrowed from the declaration here would report records nobody read.
+  const result=reconcile('a\n"unterminated');
+  expect(result.checks.find(c=>c.name==='parse')?.passed).toBe(false);
+  expect(result.retrievedCount).toBe(0);
+ });
  it.each([{count:2},{sha256:'0'.repeat(64)},{schema:['wrong']},{complete:false},{effective_period:{from:'2026-07-01',to:'2026-07-31'}},{generated_at:'2026-10-01T00:00:00.000Z'},{generated_at:'2026-09-01'}])('fails independent check %j',patch=>{ const result=reconcile('amount,currency,date\n100000.00,USD,2026-08-01\n',patch);expect(result.ready).toBe(false);expect(result.rows).toHaveLength(1); });
  it('opt-in never overrides malformed headers or other failed checks',()=>{expect(reconcile('amount,currency,date\n',{count:0},true).ready).toBe(true);expect(reconcile('wrong,header,names\n',{count:0},true).ready).toBe(false);expect(reconcile('amount,currency,date\n',{count:0},false).ready).toBe(false);});
  it('retains missing inclusion values as indeterminate',()=>{const result=reconcile('amount,currency,date\n,EUR,2026-08-01\n');expect(result.indeterminate).toBe(1);expect(result.excluded).toBe(0);

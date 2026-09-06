@@ -93,7 +93,7 @@ describe.skipIf(!url)('durable population execution', () => {
           await sql`DELETE FROM population_execution WHERE run_id=${r.id}`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${r.id}`;
           await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${r.id}`;
-          await sql`DELETE FROM run_initiation_request WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_initiation_request WHERE run_id=${r.id} OR refused_run_id=${r.id}`;
         }
         await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
         await sql`DELETE FROM procedure_version WHERE procedure_id=${id}`;
@@ -385,9 +385,61 @@ describe.skipIf(!url)('durable population execution', () => {
     expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(
       'INCONCLUSIVE',
     );
-    expect(
-      (await deps.repository.readPopulation(job.runId))?.evidence?.rawDigest,
-    ).toBe(declaration.sha256);
+    const view = await deps.repository.readPopulation(job.runId);
+    expect(view?.evidence?.rawDigest).toBe(declaration.sha256);
+    // Generation 32 (owner decision, 2026-09-06): BOTH numbers are stored, so a reader can
+    // see by HOW MUCH and in WHICH DIRECTION the source and the platform disagree. The
+    // stored §H verdict says only that they did.
+    expect(view?.summary).toMatchObject({ declaredCount: 4, retrievedCount: 3 });
+    expect(view?.summary?.checks.find((check) => check.name === 'declared-count')?.passed).toBe(false);
+  });
+  it('persists the declared and retrieved counts, attributable to the two frozen artifacts', async () => {
+    const job = await seed(),
+      deps = dependencies();
+    await acquirePopulation(deps, job);
+    const view = await deps.repository.readPopulation(job.runId);
+    // The declaration states 3 and the raw artifact parses to 3, so the §H row passes —
+    // and the two numbers are stored beside the verdict rather than only behind it.
+    expect(view?.summary).toMatchObject({ declaredCount: declaration.count, retrievedCount: 3 });
+    // The attribution is a REFERENCE to the reservation's own two object keys, never a
+    // second copy of `evidenceObjectKeys` and never bytes a surface read for itself: the
+    // declaration is frozen in the envelope, the rows in the raw artifact.
+    const keys = evidenceObjectKeys({ runId: job.runId, kind: 'population', scope: '' });
+    expect(view?.evidence).toMatchObject({ objectKey: keys[0], envelopeKey: keys[1] });
+    // FR-31's capture provenance, MEASURED at the registration that verified the bytes.
+    expect(view?.evidence?.captureMethod).toBe('adapter');
+    expect(view?.evidence?.captureTimeSource).toBe('registration');
+    expect(Date.parse(view!.evidence!.capturedAt!)).toBeGreaterThan(0);
+    // A redelivery re-verifies the artifact and must NOT move the instant it was captured
+    // at: re-reading bytes is not re-capturing them.
+    await acquirePopulation(deps, job);
+    expect((await deps.repository.readPopulation(job.runId))?.evidence?.capturedAt).toBe(view!.evidence!.capturedAt);
+    // The retrieved count is pinned to the dispositions by the database, so a row cannot
+    // claim to have retrieved a number its own partition contradicts.
+    await expect(
+      sql`UPDATE population_snapshot SET retrieved_count = retrieved_count + 1 WHERE run_id=${job.runId}`,
+    ).rejects.toThrow(/population_snapshot_retrieved/);
+    await expect(
+      sql`UPDATE population_snapshot SET declared_count = -1 WHERE run_id=${job.runId}`,
+    ).rejects.toThrow(/population_snapshot_counts/);
+  });
+  it('records no declared count when the declaration states none this build can store', async () => {
+    // Never defaulted to the retrieved count: a declaration that stated nothing is a
+    // different fact from one that stated the right number, and writing the retrieved
+    // count here would make every unreconciled population look reconciled.
+    const job = await seed(),
+      deps = dependencies({
+        acquire: async () => ({
+          bytes: raw,
+          mediaType: 'text/csv',
+          declaration: { ...declaration, count: 3.5 },
+        }),
+      });
+    await acquirePopulation(deps, job);
+    expect((await deps.repository.readPopulation(job.runId))?.summary).toMatchObject({
+      declaredCount: null,
+      retrievedCount: 3,
+    });
   });
   it('persists four attempts across fresh handlers and refuses a mismatched queued identity', async () => {
     const job = await seed();
@@ -496,6 +548,10 @@ describe.skipIf(!url)('durable population execution', () => {
           diagnostic: null,
           stepId: 'session-1',
           attemptId: ids.next(),
+          // A reservation has captured nothing; the provenance is stamped at registration.
+          capturedAt: null,
+          captureMethod: null,
+          captureTimeSource: null,
         },
         'RUNNING',
       );
@@ -853,13 +909,22 @@ describe.skipIf(!url)('durable population execution', () => {
     expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual(rows);
   });
 
-  it('rejects ready verification when the overall deadline expires after hashing', async () => {
+  it('stops at the Run time limit after a successful re-verification WITHOUT discarding the population', async () => {
+    // This test used to be called "rejects ready verification when the overall deadline
+    // expires after hashing", and it pinned the OLD decision: the deadline check that ran
+    // after a SUCCESSFUL verification threw, and the failure path recorded the Run as
+    // Inconclusive, spent a durable attempt on work nobody did, and left the Result
+    // reporting a count with no artifact named. The owner's 2026-09-06 decision reverses
+    // that half: the limit is real and unchanged, and the Evidence it already acquired,
+    // stored and verified is preserved, registered and REFERENCED on the sealed Result.
     const job = await seed(), deps = dependencies();
     const base = Date.now();
     await acquirePopulation({ ...deps, clock: { now: () => new Date(base) } }, job);
+    const before = (await deps.repository.readPopulation(job.runId))!;
     const read = deps.store.read;
-    let rawReturned = false, afterReadChecks = 0;
+    let rawReturned = false, afterReadChecks = 0, reads = 0;
     deps.store.read = async (key, timeout) => {
+      reads++;
       const bytes = await read(key, timeout);
       if (key.endsWith('/raw')) rawReturned = true;
       return bytes;
@@ -867,10 +932,53 @@ describe.skipIf(!url)('durable population execution', () => {
     // The first time check after both reads is before hashing; the second is after.
     const clock = { now: () => new Date(rawReturned && ++afterReadChecks >= 2 ? base + 3_600_000 : base + 3_599_000) };
     expect(await acquirePopulation({ ...deps, clock }, job)).toEqual({ retry: false });
+    // Both artifacts really were re-read and re-hashed before the limit was observed.
+    expect(reads).toBe(2);
     expect(afterReadChecks).toBeGreaterThanOrEqual(2);
+    // The limit is NOT weakened: the Run still ends Inconclusive on `run-time-limit`.
     expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('INCONCLUSIVE');
-    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'TERMINAL', diagnostic: 'run-time-limit' });
+    const after = (await deps.repository.readPopulation(job.runId))!;
+    expect(after).toMatchObject({ status: 'TERMINAL', diagnostic: 'run-time-limit' });
     expect(await sql`SELECT outcome FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='run-time-limit'`).toEqual([{ outcome: 'failure' }]);
+    // Preserved: the artifact is still REGISTERED with the digests, size and capture
+    // provenance the acquisition recorded, and no attempt was spent on the limit.
+    expect(after.evidence).toEqual(before.evidence);
+    expect(after.evidence?.state).toBe('REGISTERED');
+    expect(after.attempts).toBe(before.attempts);
+    // And REFERENCED: the sealed Result names the artifact, so "Inconclusive with
+    // Evidence" is a different document from "Inconclusive with nothing".
+    const [result] = await sql<{ publication: { evidence: { state: string; registered: number; artifacts: { evidenceId: string; kind: string; objectKey: string }[] } } }[]>`
+      SELECT publication FROM run_result WHERE run_id=${job.runId}`;
+    expect(result?.publication.evidence).toMatchObject({ state: 'SEALED', registered: 1 });
+    expect(result?.publication.evidence.artifacts).toEqual([
+      { evidenceId: before.evidence!.evidenceId, kind: 'population', objectKey: before.evidence!.objectKey },
+    ]);
+    expect(await sql`SELECT state FROM run_evidence_package WHERE run_id=${job.runId}`).toEqual([{ state: 'SEALED' }]);
+  });
+
+  it('does no new work when a redelivered ready job arrives after the Run time limit', async () => {
+    // The other half of the same decision: a timeout must not START anything. The limit is
+    // observed BEFORE any store read, so nothing is fetched, nothing is re-verified and no
+    // durable attempt is spent — and what was already frozen is still there.
+    const job = await seed(), deps = dependencies();
+    const base = Date.now();
+    await acquirePopulation({ ...deps, clock: { now: () => new Date(base) } }, job);
+    const before = (await deps.repository.readPopulation(job.runId))!;
+    let reads = 0, acquisitions = 0;
+    const read = deps.store.read;
+    deps.store.read = async (key, timeout) => { reads++; return read(key, timeout); };
+    const acquire = deps.acquisition.acquire;
+    deps.acquisition = { acquire: async (...args) => { acquisitions++; return acquire(...args); } };
+    expect(await acquirePopulation({ ...deps, clock: { now: () => new Date(base + 3_600_001) } }, job)).toEqual({ retry: false });
+    expect(reads).toBe(0);
+    expect(acquisitions).toBe(0);
+    const after = (await deps.repository.readPopulation(job.runId))!;
+    expect(after).toMatchObject({ status: 'TERMINAL', diagnostic: 'run-time-limit', attempts: before.attempts });
+    expect(after.evidence).toEqual(before.evidence);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('INCONCLUSIVE');
+    // The snapshot the successful acquisition wrote is untouched: the counts an auditor
+    // reads are the ones the population really had.
+    expect(after.summary).toEqual(before.summary);
   });
 
   it.each(['recover', 'exhaust'] as const)('rolls back reverify Timeline failure and can %s without changing registered rows', async disposition => {

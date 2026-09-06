@@ -225,6 +225,13 @@
       "when": 1788724779906,
       "tag": "0031_furry_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788731033318,
+      "tag": "0032_petite_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import {
   populationSessionStep,
   reconcilePopulation,
   sha256HexOfBytes,
+  type ExecutablePlan,
   type RunRecord,
 } from '@intellifin/domain';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
@@ -65,6 +66,66 @@ async function event(
   });
   await context.notifyTimeline(stored.sequence);
 }
+/**
+ * Stop a Run at its own time limit WITHOUT discarding what it already froze.
+ *
+ * The owner's decision of 2026-09-06, which this file previously recorded as an accepted
+ * risk rather than a defect. A Run that has already acquired, stored and verified its
+ * population and then crosses the Run time limit still ends `INCONCLUSIVE` — the limit is
+ * real and `runTimeoutSeconds` is a frozen compiler-1 value that nothing here may weaken —
+ * but the population Evidence stays REGISTERED and the sealed Result names it. Inconclusive
+ * with Evidence and Inconclusive with nothing are different findings to an auditor, and
+ * only one of them is true here.
+ *
+ * Three properties, and all three are the point:
+ *
+ * - **Nothing new starts.** No store read, no acquisition, no re-verification. A timeout
+ *   must not begin work; it ends a Run.
+ * - **Nothing already frozen is lost.** The checkpoint's digests, size, capture provenance
+ *   and Evidence id are carried through verbatim, so `population_evidence` stays
+ *   `REGISTERED` and the seal finds it. Nothing here abandons a reservation either —
+ *   `SealPackage` is the one thing that does.
+ * - **No attempt is spent.** The old path came out of a thrown `remaining()` and was
+ *   handled as a verification FAILURE, which incremented the durable attempt counter for
+ *   work nobody did. A limit is not an attempt.
+ */
+async function stopAtRunLimit(
+  deps: PopulationDependencies,
+  input: {
+    readonly run: RunRecord;
+    readonly plan: ExecutablePlan | null;
+    readonly checkpoint: PopulationCheckpoint;
+  },
+): Promise<{ retry: boolean }> {
+  const { run, plan, checkpoint } = input;
+  return deps.repository.transaction(run.runId, async (context) => {
+    // The same guard every other write in this file takes: a claim whose checkpoint moved
+    // under it commits nothing. Re-read here rather than trusted from the claim, because
+    // the recovery sweep and a redelivery can both be in flight.
+    if (
+      context.checkpoint?.revision !== checkpoint.revision ||
+      context.checkpoint.status !== checkpoint.status ||
+      context.run?.state !== 'RUNNING'
+    )
+      return { retry: false };
+    const next: PopulationCheckpoint = {
+      ...checkpoint,
+      revision: checkpoint.revision + 1,
+      status: 'TERMINAL',
+      diagnostic: 'run-time-limit',
+    };
+    await context.save(next, 'INCONCLUSIVE');
+    await event(context, 'run-time-limit', 'INCONCLUSIVE', next.attempts, next, 'failure');
+    await completeRun(context, {
+      run,
+      state: 'INCONCLUSIVE',
+      at: deps.clock.now().toISOString(),
+      plan: plan ?? null,
+    });
+    return { retry: false };
+  });
+}
+
 /** Each I/O is bounded by the original attempt deadline, including after restart. */
 export async function acquirePopulation(
   deps: PopulationDependencies,
@@ -136,6 +197,12 @@ export async function acquirePopulation(
         objectKey: prior?.objectKey ?? reserved.objectKeys[0]!,
         envelopeKey: prior?.envelopeKey ?? reserved.objectKeys[1]!,
         evidenceRequired: reserved.required,
+        // A reservation has captured nothing. The provenance is stamped at the
+        // registration that verifies the raw bytes, and a resumed attempt inherits what
+        // the attempt that really captured them recorded.
+        capturedAt: prior?.capturedAt ?? null,
+        captureMethod: prior?.captureMethod ?? null,
+        captureTimeSource: prior?.captureTimeSource ?? null,
         rawDigest: prior?.rawDigest ?? null,
         envelopeDigest: prior?.envelopeDigest ?? null,
         stepId: (plan === null ? null : populationSessionStep(plan))?.stepId ?? 'unsupported',
@@ -189,15 +256,19 @@ export async function acquirePopulation(
   if (claim.verificationOnly) {
     const { checkpoint, run, plan } = claim;
     const runDeadline = Date.parse(checkpoint.startedAt) + (plan?.limits.runTimeoutSeconds ?? 3600) * 1000;
+    const overRunLimit = () => deps.clock.now().getTime() >= runDeadline;
     const deadline = Math.min(checkpoint.status === 'ACQUIRING' ? Date.parse(checkpoint.leaseUntil) : deps.clock.now().getTime() + (plan?.limits.stepTimeoutSeconds ?? 120) * 1000, runDeadline);
     const remaining = () => { const ms = deadline - deps.clock.now().getTime(); if (ms <= 0) throw new PopulationAcquisitionError('transport'); return ms; };
+    // The Run's own time limit, BEFORE any I/O. A redelivered job past the limit does no
+    // new work — it does not read the store, it does not spend an attempt — and it does
+    // not throw away what is already frozen. See `stopAtRunLimit`.
+    if (overRunLimit()) return stopAtRunLimit(deps, { run, plan, checkpoint });
     try {
       if (!plan) throw new PopulationAcquisitionError('contract');
       const envelope = await deps.store.read(checkpoint.envelopeKey, remaining());
       const raw = await deps.store.read(checkpoint.objectKey, remaining());
       remaining();
       if (!envelope || !raw || sha256HexOfBytes(envelope) !== checkpoint.envelopeDigest || sha256HexOfBytes(raw) !== checkpoint.rawDigest || raw.length !== checkpoint.size) throw new PopulationAcquisitionError('integrity');
-      remaining();
       if (checkpoint.status === 'ACQUIRING') {
         await deps.repository.transaction(run.runId, async context => {
           if (context.checkpoint?.revision !== checkpoint.revision || context.checkpoint.status !== 'ACQUIRING' || context.run?.state !== 'RUNNING') return;
@@ -207,6 +278,11 @@ export async function acquirePopulation(
           remaining();
         });
       }
+      // The verification SUCCEEDED and only then did the limit pass. It used to be a
+      // `remaining()` here, which threw the success away as a transport failure and spent
+      // a durable attempt on it; the Run stops at its limit instead, with the Evidence it
+      // verified a moment ago left registered.
+      if (overRunLimit()) return stopAtRunLimit(deps, { run, plan, checkpoint });
       return { retry: false };
     } catch (error) {
       const expired = deps.clock.now().getTime() >= runDeadline;
@@ -326,10 +402,28 @@ export async function acquirePopulation(
       )
         return;
       remaining();
+      const registeredAt = deps.clock.now().toISOString();
       const next = {
         ...checkpoint,
         rawDigest: result.rawDigest,
         size: bytes.length,
+        // FR-31's capture provenance, MEASURED here: this transaction is where the
+        // population artifact becomes `REGISTERED`, so this is the instant it was captured
+        // and `registration` says that is what it is.
+        //
+        // Unconditional, and it has to be reasoned about rather than coalesced. This
+        // transaction is reached ONLY when the claim found no raw digest — an
+        // already-registered artifact is routed to the verification-only path above — and
+        // these three fields are written in this one object beside `rawDigest`, so a
+        // checkpoint that reaches here has captured nothing yet. A `?? checkpoint.capturedAt`
+        // fallback would read as the guard that stops a redelivery moving the instant and
+        // would be a branch nothing can reach, which is a branch nothing would notice being
+        // inverted. The guard that IS reachable is `registerEvidence`, for the adapter
+        // artifacts a retry really can re-register; here the property is that a redelivery
+        // never comes back through this transaction at all.
+        capturedAt: registeredAt,
+        captureMethod: 'adapter' as const,
+        captureTimeSource: 'registration' as const,
         status: result.ready
           ? ('POPULATION_READY' as const)
           : ('TERMINAL' as const),

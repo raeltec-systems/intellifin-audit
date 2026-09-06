@@ -221,6 +221,7 @@ class FakeRepository implements AdapterExecutionRepository {
     leaseUntil: '2026-09-04T23:32:00.000Z', evidenceId: 'pop', objectKey: 'pop', envelopeKey: 'pop-envelope',
     rawDigest: 'a'.repeat(64), envelopeDigest: 'b'.repeat(64), size: 1, diagnostic: null,
     stepId: 'session-1', attemptId: 'attempt', evidenceRequired: true,
+    capturedAt: '2026-09-04T23:31:00.000Z', captureMethod: 'adapter', captureTimeSource: 'registration',
   };
   checkpoint: AdapterExecutionCheckpoint | null = null;
   steps = new Map<string, SessionStepRecord>();

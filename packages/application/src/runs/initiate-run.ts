@@ -1,21 +1,41 @@
-import { authorizeAction, isActiveRunState, isExplicitPeriod, isInitiationRequestToken, RUN_REASON_MAX_LENGTH, RUN_RERUN_DEFAULT_REASON, RUN_RERUN_REFUSALS, type ExplicitPeriod, type RunRecord, type Role } from '@intellifin/domain';
+import { authorizeAction, isActiveRunState, isExplicitPeriod, isInitiationRequestToken, RUN_REASON_MAX_LENGTH, RUN_REQUEST_REFUSALS, RUN_RERUN_DEFAULT_REASON, RUN_RERUN_REFUSALS, type ExplicitPeriod, type RunRecord, type RunRequestRefusalCode, type Role } from '@intellifin/domain';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
 import type { AuditUnitOfWork } from '../audit/ports.js';
 import { authorizeCommandRole, recordAuthorizationDenial } from '../identity/authorize.js';
 import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
-import type { RunsUnitOfWorkContext } from './ports.js';
+import type { RunRequestDecision, RunsUnitOfWorkContext } from './ports.js';
 export interface RunDependencies { readonly roles: RoleRepository; readonly unitOfWork: AuditUnitOfWork<RunsUnitOfWorkContext>; readonly ids: UuidV7Generator; readonly clock: Clock }
 export type InitiateRunOutcome = { readonly ok: true; readonly runId: string } | { readonly ok: false; readonly reason: string; readonly existingRunId?: string };
 class Revoked extends Error { constructor(readonly role: Role | null, reason: string) { super(reason); } }
-export const NO_RUN_OWNER = 'No executable Active version owns that period. Check the approved version and handover dates.';
+/** The two refusals a decided token can carry, stated in the domain and read from it. */
+export const NO_RUN_OWNER = RUN_REQUEST_REFUSALS['no-owner'];
+export const RUN_ALREADY_ACTIVE = RUN_REQUEST_REFUSALS['already-active'];
 export const RUN_REQUEST_MALFORMED = 'Choose a valid Procedure and inclusive start and end dates.';
 export const RERUN_REQUEST_MALFORMED = 'Choose a Run that has ended, and a reason of at most 500 characters.';
 export const RUN_TOKEN_REUSED = 'That initiation token was already used for a different Procedure or period. Start a fresh initiation.';
-export const RUN_ALREADY_ACTIVE = 'An active Run already exists for this Procedure and period.';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** The predecessor a rerun records, and the reason it exists. */
 interface RerunLink { readonly predecessorRunId: string; readonly reason: string }
+
+/**
+ * Decide a token as a refusal, once, and answer with it.
+ *
+ * Both commands go through this, so there is no spelling of a refusal that records nothing
+ * and no spelling that binds the caller's token to somebody else's Run. `bindRequest` keeps
+ * the FIRST decision, so two racing requests with one token still mean one thing.
+ */
+async function recordRefusal(
+  context: RunsUnitOfWorkContext,
+  initiatorId: string,
+  requestToken: string,
+  subject: { readonly procedureId: string; readonly period: ExplicitPeriod },
+  refusal: RunRequestRefusalCode,
+  refusedRunId: string | null,
+): Promise<InitiateRunOutcome> {
+  await context.runs.bindRequest(initiatorId, requestToken, { ...subject, runId: null, refusal, refusedRunId });
+  return { ok: false, reason: RUN_REQUEST_REFUSALS[refusal], ...(refusedRunId === null ? {} : { existingRunId: refusedRunId }) };
+}
 
 /**
  * The ONE path that creates a Run (Story 3.1, extended by Story 3.10).
@@ -37,22 +57,23 @@ async function createRun(
   input: { session: SessionSnapshot; correlationId: string; role: string; procedureId: string; period: ExplicitPeriod; requestToken: string; link: RerunLink | null },
 ): Promise<InitiateRunOutcome> {
   const { procedureId, period, requestToken, link } = input;
+  // Every refusal from here on is DECIDED against the token, so replaying it repeats the
+  // refusal instead of re-deriving it against a world that has since changed. A refusal
+  // records the blocking Run by reference; it never binds this caller's token TO it.
+  const refuse = (refusal: RunRequestRefusalCode, refusedRunId: string | null): Promise<InitiateRunOutcome> =>
+    recordRefusal(context, input.session.userId, requestToken, { procedureId, period }, refusal, refusedRunId);
   const active = await context.runs.findActive(procedureId, period);
-  if (active) {
-    await context.runs.bindRequest(input.session.userId, requestToken, active.runId);
-    return { ok: false, reason: RUN_ALREADY_ACTIVE, existingRunId: active.runId };
-  }
+  if (active) return refuse('already-active', active.runId);
   const owner = await context.procedures.findPeriodOwner(procedureId, period);
-  if (!owner || owner.state !== 'ACTIVE' || !owner.frozenReview) return { ok: false, reason: NO_RUN_OWNER };
+  if (!owner || owner.state !== 'ACTIVE' || !owner.frozenReview) return refuse('no-owner', null);
   const run: RunRecord = { runId: dependencies.ids.next(), requestToken, correlationId: input.correlationId, procedureId, versionId: owner.versionId, versionNumber: owner.versionNumber, procedureName: owner.controlName,
     period, state: 'QUEUED', kind: 'STANDARD', initiatorId: input.session.userId, sessionId: input.session.sessionId, initiatedAt: dependencies.clock.now().toISOString(), authorizationRole: input.role,
     predecessorRunId: link?.predecessorRunId ?? null, rerunReason: link?.reason ?? null, cancellation: null };
   if (!await context.runs.insert(run)) {
     const existing = await context.runs.findActive(procedureId, period);
-    if (existing) await context.runs.bindRequest(input.session.userId, requestToken, existing.runId);
-    return { ok: false, reason: RUN_ALREADY_ACTIVE, ...(existing ? { existingRunId: existing.runId } : {}) };
+    return refuse('already-active', existing?.runId ?? null);
   }
-  await context.runs.bindRequest(input.session.userId, requestToken, run.runId);
+  await context.runs.bindRequest(input.session.userId, requestToken, { procedureId, period, runId: run.runId, refusal: null, refusedRunId: null });
   await context.dispatch.enqueue({ schemaVersion: 1, runId: run.runId, correlationId: input.correlationId });
   const event = await context.auditEvents.append({ actor: { type: 'human', id: run.initiatorId }, eventType: 'lifecycle.run-queued', source: 'web', outcome: 'success', aggregateId: run.runId, correlationId: input.correlationId, sessionId: run.sessionId,
     payload: { priorState: null, state: 'QUEUED', reason: link === null ? 'Auditor initiated a Standard Run.' : link.reason, occurredAt: run.initiatedAt, procedureId, versionId: run.versionId, period: { ...period }, authorizationRole: run.authorizationRole,
@@ -64,10 +85,34 @@ async function createRun(
   return { ok: true, runId: run.runId };
 }
 
-/** A request token already spent: the same Run, or a refusal naming the mismatch. */
-function replay(prior: RunRecord, procedureId: string, period: ExplicitPeriod): InitiateRunOutcome {
+/**
+ * A request token already decided: EXACTLY the answer it was decided to mean.
+ *
+ * Two properties, and they are the owner's own words (2026-09-06).
+ *
+ * **Explicit.** The decision is stored — the Run this caller's request created, or the
+ * refusal it received, with the Procedure and period it was decided for. Nothing is
+ * re-derived from a world that has moved on since.
+ *
+ * **Stable.** The same token gives the same answer every time, including the link the
+ * refusal offered, so a person retrying a lost response cannot be told two different
+ * things by the same click.
+ *
+ * And the property that made the change necessary: a token is NEVER an entry into a Run
+ * the caller did not initiate. The refused Run is named as a reference — a Run everyone
+ * with the role can already see in the Runs list — and never as `ok: true` with its id,
+ * which is what walked one auditor into another's audit work.
+ *
+ * `RUN_TOKEN_REUSED` is decided against the SUBJECT stored on the record, not against a
+ * bound Run: a refused token has no Run to read a Procedure and period off.
+ */
+function replay(prior: RunRequestDecision, procedureId: string, period: ExplicitPeriod): InitiateRunOutcome {
   if (prior.procedureId !== procedureId || prior.period.from !== period.from || prior.period.to !== period.to) return { ok: false, reason: RUN_TOKEN_REUSED };
-  return { ok: true, runId: prior.runId };
+  if (prior.runId !== null) return { ok: true, runId: prior.runId };
+  // A stored decision with neither a Run nor a refusal cannot be written — the database
+  // CHECK refuses it — so this is the fail-closed reading of a row somebody made by hand.
+  const refusal = prior.refusal ?? 'already-active';
+  return { ok: false, reason: RUN_REQUEST_REFUSALS[refusal], ...(prior.refusedRunId === null ? {} : { existingRunId: prior.refusedRunId }) };
 }
 
 export async function initiateRun(dependencies: RunDependencies, input: { session: SessionSnapshot; request: unknown }): Promise<InitiateRunOutcome> {
@@ -83,6 +128,11 @@ export async function initiateRun(dependencies: RunDependencies, input: { sessio
     return await dependencies.unitOfWork.execute(async context => {
       const role = await context.authorizationRoles.findRole(input.session.userId);
       const locked = authorizeAction(role, 'run.initiate');
+      // An authorization refusal is deliberately NOT decided against the token. AD-7 says
+      // the role is read on every request and never cached, and a token that remembered a
+      // denial would be exactly that cache: a person whose role was granted a minute later
+      // would still be refused by a stored answer. Authorization is re-decided every time,
+      // which is the one place a replay is SUPPOSED to be able to answer differently.
       if (!locked.allowed) throw new Revoked(role, locked.reason);
       const priorRequest = await context.runs.findRequest(input.session.userId, requestToken);
       if (priorRequest) return replay(priorRequest, procedureId, period);
@@ -130,14 +180,25 @@ export async function rerunRun(dependencies: RunDependencies, input: { session: 
       const locked = authorizeAction(role, 'run.initiate');
       if (!locked.allowed) throw new Revoked(role, locked.reason);
       const predecessor = await context.runs.findRun(predecessorRunId);
+      // Not decided against the token, and it does not need to be: a Run id that does not
+      // exist never starts existing — ids are minted and never reused — so this refusal is
+      // already the same answer on every replay, and there is no subject to record it
+      // under anyway.
       if (predecessor === null) return { ok: false, reason: RUN_RERUN_REFUSALS.UNKNOWN };
+      const subject = { procedureId: predecessor.procedureId, period: predecessor.period };
+      // The token is consulted BEFORE the predecessor's state is judged, so a decided token
+      // answers from its own record and from nothing else. It comes after `findRun` only
+      // because a rerun's SUBJECT is the predecessor's Procedure and period, which is what
+      // `RUN_TOKEN_REUSED` compares against.
+      const priorRequest = await context.runs.findRequest(input.session.userId, requestToken);
+      if (priorRequest) return replay(priorRequest, subject.procedureId, subject.period);
       // Read INSIDE the transaction that writes, so a Run that becomes terminal while
       // this rerun is refused, and a Run cancelled a moment ago, each see one committed
-      // answer rather than a state read through the pool a moment earlier.
-      if (isActiveRunState(predecessor.state)) return { ok: false, reason: RUN_RERUN_REFUSALS.STILL_ACTIVE, existingRunId: predecessor.runId };
-      const priorRequest = await context.runs.findRequest(input.session.userId, requestToken);
-      if (priorRequest) return replay(priorRequest, predecessor.procedureId, predecessor.period);
-      return createRun(dependencies, context, { session: input.session, correlationId, role: role!, procedureId: predecessor.procedureId, period: predecessor.period, requestToken, link: { predecessorRunId, reason } });
+      // answer rather than a state read through the pool a moment earlier. DECIDED against
+      // the token as well: without that, the same click answered "not ended yet" now and
+      // started a Run an hour later, which is one token meaning two things.
+      if (isActiveRunState(predecessor.state)) return recordRefusal(context, input.session.userId, requestToken, subject, 'predecessor-active', predecessor.runId);
+      return createRun(dependencies, context, { session: input.session, correlationId, role: role!, ...subject, requestToken, link: { predecessorRunId, reason } });
     });
   } catch (error) {
     if (error instanceof Revoked) { await recordAuthorizationDenial(dependencies, authorization, error.role, error.message); return { ok: false, reason: error.message }; }

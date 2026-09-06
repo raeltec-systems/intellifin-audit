@@ -31,21 +31,41 @@ import { countText, evaluationOriginWord, evaluationValueWord, utcStamp } from '
  * acquisition that produced them; EXPERIENCE.md's "excluded rows expand to the exclusion
  * reason list" is the reason list below, which the sealed Result publishes.
  *
- * The DECLARED count is not among them, and cannot be: it is checked at acquisition and
- * the verdict is stored, but the number itself lives only inside the frozen acquisition
- * envelope in object storage, which this surface may not read (`no-evidence-store-in-web`).
- * So the row states the §H verdict and says where the declaration is, rather than showing
- * a number nobody stored or a dash a reader takes for "fine".
+ * The DECLARED count and the RETRIEVED count are both here, as numbers, with the artifact
+ * each is attributable to (owner decision, 2026-09-06). Until generation 32 only the §H
+ * verdict was stored and the row said "Reconciled" or "Did not reconcile" in words: a
+ * reader could see that the source and the platform disagreed and never by how much, or in
+ * which direction. The declaration is frozen inside the acquisition ENVELOPE and the rows
+ * inside the RAW artifact, and both objects belong to the population Evidence reservation,
+ * so each number names the Evidence item it came from — a reference the reader can follow
+ * to the Evidence tab, never bytes this surface read for itself (`no-evidence-store-in-web`
+ * still fails the build on that, and must).
  */
 export function PopulationReconciliation({
   publication,
   rowsDigest,
   declaredCountPassed,
+  declaredCount,
+  retrievedCount,
+  evidence,
+  runId,
   uninspected,
 }: {
   readonly publication: RunResultPublication;
   readonly rowsDigest: string | null;
   readonly declaredCountPassed: boolean | null;
+  /** The number the independent declaration stated, or `null` when it stated none. */
+  readonly declaredCount: number | null;
+  /** The rows parsed out of the frozen raw artifact, or `null` with no snapshot at all. */
+  readonly retrievedCount: number | null;
+  /** The population reservation's identity and its two object keys, for attribution. */
+  readonly evidence: {
+    readonly evidenceId: string;
+    readonly objectKey: string;
+    readonly envelopeKey: string;
+  } | null;
+  /** The Run, so each reference links to the Evidence tab's card for that artifact. */
+  readonly runId: string;
   readonly uninspected: number;
 }): React.JSX.Element {
   const population = publication.population;
@@ -55,15 +75,65 @@ export function PopulationReconciliation({
       <h3 className="ls-overline">File level</h3>
       <dl className="ls-definition ls-reconciliation">
         <div>
-          <dt>Declared count and digest</dt>
+          <dt>Declared count</dt>
+          <dd>
+            <span className="ls-mono">
+              {declaredCount === null ? 'Not recorded' : countText(declaredCount)}
+            </span>
+            {declaredCount === null ? (
+              <>
+                {' '}
+                — the independent declaration stated no count this build could store, or
+                this Run was acquired before the count was persisted.
+              </>
+            ) : null}
+            {evidence === null ? null : (
+              <>
+                {' '}
+                · from the acquisition envelope of Evidence{' '}
+                <a href={`/runs/${runId}/evidence#evidence-${evidence.evidenceId}`} className="ls-mono">
+                  {evidence.evidenceId}
+                </a>{' '}
+                <span className="ls-mono">({evidence.envelopeKey})</span>
+              </>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Retrieved count</dt>
+          <dd>
+            <span
+              className={
+                declaredCount !== null && retrievedCount !== null && declaredCount !== retrievedCount
+                  ? 'ls-mono ls-difference'
+                  : 'ls-mono'
+              }
+            >
+              {retrievedCount === null ? 'Not recorded' : countText(retrievedCount)}
+            </span>
+            {evidence === null ? null : (
+              <>
+                {' '}
+                · from the population artifact of Evidence{' '}
+                <a href={`/runs/${runId}/evidence#evidence-${evidence.evidenceId}`} className="ls-mono">
+                  {evidence.evidenceId}
+                </a>{' '}
+                <span className="ls-mono">({evidence.objectKey})</span>
+              </>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Record-count reconciliation</dt>
+          {/* The stored §H verdict, READ and never re-derived from the two numbers above:
+              a second answer to one question is how a surface comes to disagree with the
+              Gate it reports. */}
           <dd>
             {declaredCountPassed === null
               ? 'Not reconciled: the population was never acquired.'
               : declaredCountPassed
                 ? 'Reconciled exactly against the independent declaration.'
-                : 'Did not reconcile against the independent declaration.'}{' '}
-            The declaration itself is frozen in the acquisition envelope Evidence, not
-            stored as a column.
+                : 'Did not reconcile against the independent declaration.'}
           </dd>
         </div>
         <div>
@@ -132,6 +202,76 @@ export function PopulationReconciliation({
       )}
     </section>
   );
+}
+
+/**
+ * What the Run FROZE, named — not only counted (owner decision, 2026-09-06).
+ *
+ * A Run stopped by its own time limit after acquiring, storing and verifying a population
+ * is `INCONCLUSIVE` with that population still registered, and a Run that never reached a
+ * source is `INCONCLUSIVE` with nothing. Those are different findings to an auditor, and a
+ * `registered: 1` count cannot tell them apart: it says a number, not which artifact, and
+ * a reader cannot follow a number to the bytes. Each identity links to its card on the
+ * Evidence tab.
+ *
+ * Read from the sealed document and never recomputed. A document written before this
+ * decision has NO `artifacts` key, which is a different statement from an empty list — one
+ * means "this build did not record which", the other means "this Run froze nothing" — and
+ * the section says which rather than rendering an empty list a reader takes for the second.
+ */
+export function EvidencePackageSection({
+  publication,
+  runId,
+}: {
+  readonly publication: RunResultPublication;
+  readonly runId: string;
+}): React.JSX.Element {
+  const evidence = publication.evidence;
+  const artifacts = evidence.artifacts;
+  return (
+    <section className="ls-card ls-stack" aria-labelledby="evidence-package-summary">
+      <h2 id="evidence-package-summary">Evidence this Run froze</h2>
+      <p>
+        {evidence.state === 'SEALED'
+          ? 'Sealed. Every artifact this Run required is registered and verified.'
+          : 'Sealed as incomplete. An artifact this Run required was never registered.'}{' '}
+        Registered artifacts: <span className="ls-mono">{countText(evidence.registered)}</span>.
+        Required: <span className="ls-mono">{countText(evidence.requiredTotal)}</span>. Abandoned
+        reservations: <span className="ls-mono">{countText(evidence.abandoned)}</span>.
+      </p>
+      {artifacts === undefined ? (
+        <p>
+          This Result was published before the artifacts were named, so which ones were
+          registered is not recorded on it. The Evidence tab lists what the Run holds.
+        </p>
+      ) : artifacts.length === 0 ? (
+        <p>This Run registered no Evidence at all.</p>
+      ) : (
+        <ul className="ls-plain-list">
+          {artifacts.map((artifact) => (
+            <li key={artifact.evidenceId}>
+              {artifactKindWord(artifact.kind)} ·{' '}
+              <a className="ls-mono" href={`/runs/${runId}/evidence#evidence-${artifact.evidenceId}`}>
+                {artifact.evidenceId}
+              </a>{' '}
+              <span className="ls-mono">({artifact.objectKey})</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** The artifact kinds the sealed document names, in words. A stored value, so guarded. */
+const ARTIFACT_KIND_WORDS: Readonly<Record<string, string>> = {
+  population: 'Population',
+  'reference-source': 'Reference Source',
+  'adapter-extraction': 'Adapter extraction',
+};
+
+function artifactKindWord(kind: string): string {
+  return Object.hasOwn(ARTIFACT_KIND_WORDS, kind) ? ARTIFACT_KIND_WORDS[kind]! : kind;
 }
 
 /** Per-Target-System coverage, exactly as the sealed Result reports it. */

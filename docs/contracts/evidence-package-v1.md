@@ -74,6 +74,41 @@ leaves the seal with nothing open to find, and the Result with nothing to name. 
 that has exhausted both retry cycles leaves its reservation OPEN while the Run continues,
 which is true: the Run has not stopped yet.
 
+## Capture provenance (generation 32)
+
+Every artifact records FR-31's capture method and capture time on its own row, in both
+Evidence tables. `registerEvidence` is the ONE way an adapter-stage record becomes
+`REGISTERED` and the population checkpoint stamps the same three fields at the registration
+that verifies its raw bytes, so the provenance is a property of BECOMING registered rather
+than of a producer remembering to set it.
+
+| Field | Means |
+| --- | --- |
+| `capture_method` | `agent` or `adapter` — the same two words an Observation's capture method uses, deliberately one list |
+| `captured_at` | The instant, in UTC |
+| `capture_time_source` | `registration` (measured inside the transaction that wrote `REGISTERED`) or `step-execution` (RECOVERED from the Step Execution that froze the bytes) |
+
+Written whole or not at all: `(captured_at IS NULL) = (capture_time_source IS NULL)` is a
+CHECK, because a time with no source is a number a reader takes for measured and a source
+with no time names a provenance for nothing.
+
+**The instant never moves.** A resumed attempt that re-verifies an artifact a previous
+attempt registered keeps the instant THAT attempt recorded: re-reading bytes is not
+re-capturing them, and moving the time forward on a redelivery would make an artifact look
+younger than the Run that froze it.
+
+**There is no third value for "we made one up".** Generation 32 backfilled
+`capture_time_source = 'step-execution'` onto registered `run_evidence` rows, because the
+step that uploaded, verified and registered the bytes is a real instant for them; it
+backfilled NOTHING onto `population_evidence`, whose artifact no Step Execution produced.
+Those rows keep a null capture time and the surface says so in words — the same refusal
+generation 20 made over a digest and generation 24 over a snapshot's generation time.
+
+Before this, the capture method was DERIVED on the way to a screen from the artifact's kind.
+That was true of every kind Epic 3 writes and stops being true the moment two processes can
+produce one kind — the agent path captures a Structural Snapshot and so can the adapter
+path.
+
 ## `required`, and what it is a property of
 
 `required` is a flag on a RESERVATION, stamped from the frozen Template at reserve time by

@@ -54,6 +54,68 @@ export const EVIDENCE_ARTIFACT_STATES = ['RESERVED', 'REGISTERED', 'ABANDONED'] 
 export type EvidenceArtifactState = (typeof EVIDENCE_ARTIFACT_STATES)[number];
 
 /**
+ * HOW an artifact was captured — FR-31's "capture method", as a STORED value.
+ *
+ * It used to be derived on the way to the screen from the artifact's KIND, which was true
+ * of every kind Epic 3 writes and stops being true the moment one process can produce a
+ * kind another also produces: a Structural Snapshot is captured by the agent, and the
+ * adapter path may freeze the same substrate. A field FR-31 requires on every Evidence
+ * item has to be recorded by the process that captured it, not inferred later by the
+ * process that displays it.
+ *
+ * It is the SAME two words `OBSERVATION_CAPTURE_METHODS` uses, deliberately re-exported
+ * rather than retyped: an Observation's capture method and its Evidence's answer the one
+ * question — which process took this — and two lists would agree on `adapter` and diverge
+ * on the first value only one of them learned.
+ */
+export const EVIDENCE_CAPTURE_METHODS = ['agent', 'adapter'] as const;
+export type EvidenceCaptureMethod = (typeof EVIDENCE_CAPTURE_METHODS)[number];
+
+export function isEvidenceCaptureMethod(value: unknown): value is EvidenceCaptureMethod {
+  return typeof value === 'string' && (EVIDENCE_CAPTURE_METHODS as readonly string[]).includes(value);
+}
+
+/**
+ * Where an artifact's recorded capture time CAME FROM.
+ *
+ * FR-31 asks for a capture time in UTC, and there are two honest ways to have one:
+ *
+ * - `registration` — the instant the producer registered the artifact, read from the
+ *   clock inside the transaction that wrote `REGISTERED`. It is the measured value and it
+ *   is what every artifact frozen from generation 32 onwards carries.
+ * - `step-execution` — the completion of the Step Execution that uploaded, verified and
+ *   registered the bytes. It is RECOVERED rather than measured, and rows written before
+ *   generation 32 carry it because that is the only real instant those rows can be
+ *   attributed to.
+ *
+ * There is deliberately no third value for "we made one up". An artifact with no
+ * recoverable instant keeps a null capture time and the surface says so in words — the
+ * same refusal generation 20 made when it would not backfill a digest, and generation 24
+ * when it would not default a snapshot's generation time to `now()`.
+ */
+export const EVIDENCE_CAPTURE_TIME_SOURCES = ['registration', 'step-execution'] as const;
+export type EvidenceCaptureTimeSource = (typeof EVIDENCE_CAPTURE_TIME_SOURCES)[number];
+
+export function isEvidenceCaptureTimeSource(value: unknown): value is EvidenceCaptureTimeSource {
+  return (
+    typeof value === 'string' &&
+    (EVIDENCE_CAPTURE_TIME_SOURCES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The capture provenance of one artifact: when it was captured, how, and how we know when.
+ *
+ * Written whole or not at all. A time with no source is a number a reader would take for
+ * measured, and a source with no time names a provenance for nothing.
+ */
+export interface EvidenceCapture {
+  readonly capturedAt: string | null;
+  readonly captureMethod: EvidenceCaptureMethod | null;
+  readonly captureTimeSource: EvidenceCaptureTimeSource | null;
+}
+
+/**
  * The seal outcome.
  *
  * `SEALED` means every artifact the Run marked `required` is Registered and verified.
@@ -280,6 +342,17 @@ export interface PackageSealDecision {
   readonly missingRequired: readonly PackageArtifact[];
   /** Reservations still open at the terminal transition. They become `ABANDONED`. */
   readonly abandoned: readonly PackageArtifact[];
+  /**
+   * The artifacts this Run really froze, BY IDENTITY.
+   *
+   * `registered` is their count and stays exact; this is the list the Result names, so
+   * that "Inconclusive with Evidence" and "Inconclusive with nothing" are two different
+   * documents rather than two readings of one count. A Run stopped by its own time limit
+   * after acquiring, storing and verifying a population is the case the distinction was
+   * added for: the population is registered, and a Result that only counted it left an
+   * auditor unable to tell that from a Run that acquired nothing at all.
+   */
+  readonly registeredArtifacts: readonly PackageArtifact[];
   readonly registered: number;
   readonly requiredTotal: number;
 }
@@ -305,11 +378,16 @@ export function sealPackageDecision(
   );
   const required = settled.filter((artifact) => artifact.required);
   const missingRequired = required.filter((artifact) => artifact.state !== 'REGISTERED');
+  // ONE walk decides both the list and the count, so the two can never disagree about what
+  // this Run froze. A count derived separately from the list is the "two answers to one
+  // question" this module exists to prevent.
+  const registeredArtifacts = settled.filter((artifact) => artifact.state === 'REGISTERED');
   return {
     state: missingRequired.length === 0 ? 'SEALED' : 'INCOMPLETE',
     missingRequired,
     abandoned,
-    registered: settled.filter((artifact) => artifact.state === 'REGISTERED').length,
+    registeredArtifacts,
+    registered: registeredArtifacts.length,
     requiredTotal: required.length,
   };
 }

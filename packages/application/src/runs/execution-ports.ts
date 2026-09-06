@@ -2,6 +2,8 @@ import type {
   CoverageObservation,
   EvidenceArtifactKind,
   EvidenceArtifactState,
+  EvidenceCaptureMethod,
+  EvidenceCaptureTimeSource,
   EvidenceIntegrityFindingKind,
   GateCheckResult,
   ObservationCheckName,
@@ -107,6 +109,18 @@ export interface PopulationCheckpoint {
    * which is the fail-closed direction.
    */
   evidenceRequired: boolean;
+  /**
+   * FR-31's capture provenance for the population artifact (generation 32).
+   *
+   * Written at the registration that verifies the raw bytes and never before: a reservation
+   * has captured nothing, and a capture time on one would be an instant attributed to bytes
+   * that had not arrived. Once written it is never moved — a resumed attempt that re-verifies
+   * the SAME artifact inherits the instant the artifact was actually captured at, not the
+   * instant somebody looked at it again.
+   */
+  capturedAt: string | null;
+  captureMethod: EvidenceCaptureMethod | null;
+  captureTimeSource: EvidenceCaptureTimeSource | null;
 }
 export interface PopulationExecutionContext extends RunResultContext {
   run: RunRecord | null;
@@ -336,6 +350,10 @@ export interface AdapterEvidenceRecord {
   size: number | null;
   required: boolean;
   state: EvidenceArtifactState;
+  /** FR-31's capture provenance, stamped by `registerEvidence` and by nothing else. */
+  capturedAt: string | null;
+  captureMethod: EvidenceCaptureMethod | null;
+  captureTimeSource: EvidenceCaptureTimeSource | null;
 }
 
 /** One included population record, in source order. */

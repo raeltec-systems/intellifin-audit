@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { initiateRun, type RunsUnitOfWorkContext, type AuditUnitOfWork } from '@intellifin/application';
+import { initiateRun, NO_RUN_OWNER, RUN_ALREADY_ACTIVE, RUN_TOKEN_REUSED, type RunsUnitOfWorkContext, type AuditUnitOfWork } from '@intellifin/application';
 import { createDb, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository, DrizzleRunRepository, PostgresRunsUnitOfWork, PostgresProceduresUnitOfWork, PostgresAuditChainReader, SystemClock, type Database, type Sql } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 const url = process.env.DATABASE_URL;
@@ -19,12 +19,19 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
       for (const run of runs) { await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${run.run_id}`; await sql`DELETE FROM audit_events WHERE aggregate_id=${run.run_id}`; await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.run_id}`; }
       await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
       await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
-      await sql`DELETE FROM run_initiation_request WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${id})`;
+      // Generation 32: a refusal row has no `run_id` and names the blocking Run in
+      // `refused_run_id`, so the row is deleted by the subject Procedure it carries.
+      await sql`DELETE FROM run_initiation_request WHERE procedure_id=${id}`;
       await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
       await sql`DELETE FROM procedure_succession WHERE procedure_id=${id}`;
       await sql`DELETE FROM procedure_version WHERE procedure_id=${id}`;
       await sql`DELETE FROM procedure WHERE procedure_id=${id}`;
     }
+    // Generation 32: a refusal is DECIDED against the token, so a request naming a
+    // Procedure this file never created still leaves a row — the unknown-owner case does
+    // exactly that, and `procedure_id` carries no foreign key precisely so it can. Keyed on
+    // the author, which owns every request row this file wrote whatever Procedure it named.
+    await sql`DELETE FROM run_initiation_request WHERE initiator_id=${author}`;
     await sql`DELETE FROM auth_user WHERE id=${author}`; await sql.end({ timeout: 5 });
   });
   async function seed() { const row = activeRunVersion(ids.next(),ids.next(),author); procedures.push(row.procedureId); await new PostgresProceduresUnitOfWork(db).execute(async c => { await c.procedures.insertProcedure(row); await c.procedures.insertVersion(row); }); return row; }
@@ -154,13 +161,59 @@ describe.skipIf(!url)('durable queued Run initiation', () => {
     expect(await start(row.procedureId)).toMatchObject({ok:true});
     expect(await sql`SELECT * FROM audit_run WHERE procedure_id=${row.procedureId}`).toHaveLength(2);
   });
-  it('links an existing active Run before checking an unreadable current owner', async () => {
+  it('names an existing active Run in the refusal, and REPLAYS that refusal for ever', async () => {
+    // This test used to be called "links an existing active Run before checking an
+    // unreadable current owner", and it pinned the OLD behaviour: the refusal BOUND the
+    // caller's token to the other Run, so once that Run ended a replay of the same token
+    // answered `ok: true` with its id — the same click meaning two different things, and
+    // the second one walking the caller into a Run they did not initiate. The owner's
+    // 2026-09-06 decision makes a token's answer explicit and stable; see
+    // `docs/contracts/run-request-token-v1.md`.
     const row=await seed(), first=await start(row.procedureId); if(!first.ok) throw new Error(first.reason);
     const unavailable: AuditUnitOfWork<RunsUnitOfWorkContext>={execute:work=>uow.execute(c=>work({...c,procedures:{findPeriodOwner:async()=>{throw new Error('Owner must not hide the existing Run');}}}))};
     const duplicateToken=ids.next();
-    expect(await start(row.procedureId,unavailable,period,duplicateToken)).toMatchObject({ok:false,existingRunId:first.runId});
+    const refusal=await start(row.procedureId,unavailable,period,duplicateToken);
+    expect(refusal).toEqual({ok:false,reason:RUN_ALREADY_ACTIVE,existingRunId:first.runId});
+    // The refusal is DECIDED, not re-derived: the row records the code and the Run it
+    // named, and the caller's token is bound to no Run at all.
+    expect(await sql`SELECT run_id, refusal, refused_run_id, procedure_id, period_from::text, period_to::text FROM run_initiation_request WHERE request_token=${duplicateToken}`)
+      .toEqual([{run_id:null,refusal:'already-active',refused_run_id:first.runId,procedure_id:row.procedureId,period_from:period.from,period_to:period.to}]);
+    // Stable while the blocking Run is active…
+    expect(await start(row.procedureId,unavailable,period,duplicateToken)).toEqual(refusal);
     await terminate(first.runId, 'COMPLETED');
-    expect(await start(row.procedureId,unavailable,period,duplicateToken)).toEqual(first);
+    // …and stable AFTER it ends. This is the assertion that changed: it used to expect
+    // `first`. A replay never becomes an entry into somebody else's audit work, and it
+    // never silently starts a Run the caller last heard was refused.
+    expect(await start(row.procedureId,unavailable,period,duplicateToken)).toEqual(refusal);
+    expect(await sql`SELECT run_id FROM audit_run WHERE procedure_id=${row.procedureId}`).toHaveLength(1);
+    // A FRESH token is how the caller starts the Run they now want.
+    expect(await start(row.procedureId,uow,period,ids.next())).toMatchObject({ok:true});
+  });
+  it('decides a no-owner refusal against the token, and never against another caller', async () => {
+    // `no-owner` is the other refusal `createRun` can reach with a token in hand. Before
+    // the decision was recorded, a replay after a version was activated would quietly
+    // START a Run the caller had last been told was impossible.
+    const procedureId=ids.next(), token=ids.next();
+    // No such Procedure yet, which is the `no-owner` path — and the reason the subject
+    // column carries NO foreign key: a request that names a Procedure which does not exist
+    // is exactly the case this record has to be able to hold, and a foreign key would
+    // answer the caller a framework 500 instead of the refusal sentence.
+    const refused=await start(procedureId,uow,period,token);
+    expect(refused).toEqual({ok:false,reason:NO_RUN_OWNER});
+    expect(await sql`SELECT refusal, refused_run_id, procedure_id FROM run_initiation_request WHERE request_token=${token}`)
+      .toEqual([{refusal:'no-owner',refused_run_id:null,procedure_id:procedureId}]);
+    const row=activeRunVersion(procedureId,ids.next(),author); procedures.push(procedureId);
+    await new PostgresProceduresUnitOfWork(db).execute(async c=>{await c.procedures.insertProcedure(row);await c.procedures.insertVersion(row);});
+    // The world changed; the token's answer did not.
+    expect(await start(procedureId,uow,period,token)).toEqual(refused);
+    expect(await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId}`).toHaveLength(0);
+    // The same token used for a DIFFERENT subject is still the reuse refusal, decided
+    // against the subject stored on the record rather than against a Run it never had.
+    expect(await start(procedureId,uow,{from:'2026-09-01',to:'2026-09-30'},token))
+      .toEqual({ok:false,reason:RUN_TOKEN_REUSED});
+    // And a fresh token now succeeds, because authorization and ownership are re-decided
+    // on every request — only the TOKEN's answer is frozen.
+    expect(await start(procedureId,uow,period,ids.next())).toMatchObject({ok:true});
   });
   it('does not swallow Run identity conflicts and rejects a version belonging to another Procedure', async () => {
     const first=await seed(), second=await seed(), result=await start(first.procedureId); if(!result.ok) throw new Error(result.reason);

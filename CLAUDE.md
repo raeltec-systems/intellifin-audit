@@ -367,7 +367,7 @@ There is no lint step yet.
 - **`scripts/seed-northstar.mts` registers through the Story 1.6 and 1.7 COMMANDS, never through SQL**, so a seeded row is audited exactly like one a person typed and a seeded row that could not be audited does not exist. It reads `fixtures/northstar/datasets/systems.json` — the one catalogue both it and the Northstar index page use — and re-running leaves an already-registered system alone. Every event it appends carries a `seed-northstar:` correlation-id prefix.
 - **Playwright now starts TWO servers**, and `pnpm build` is a precondition for both: `pnpm --filter @intellifin/northstar start` runs `node dist/main.js`. `tests/e2e/northstar.ts` holds the port, the base URL and the verbatim denial rule, and has no side effects — `playwright.config.ts` imports it, and a module-level throw there would make the config unloadable.
 - **`apps/northstar` builds through `tsconfig.build.json`**, which excludes `*.test.ts`, while `tsconfig.json` includes them so `pnpm -r typecheck` checks them. A build config that excluded them from both would leave the tests unchecked by anything.
-- **`[DEFERRED]` LedgerDesk** (the desktop Target System) and **`[DEFERRED]` a Railway service for Northstar.** The first needs a desktop sandbox nothing in Epic 1 provides; the second is the user's call and `.railway/railway.ts` gains nothing here. Both are named in `fixtures/northstar/datasets/systems.json` and in the story spec's Design Notes so Epic 3 picks them up deliberately.
+- **`[DEFERRED to Epic 7]` LedgerDesk** (the desktop Target System) and **`[DEFERRED]` a Railway service for Northstar.** The first needs a desktop sandbox; the second is the user's call and `.railway/railway.ts` gains nothing here. This note used to say "so Epic 3 picks them up deliberately", which was wrong twice over: Epic 3 came and went without it, and `epics.md` places the desktop kind in **Epic 7** (`FR7: … desktop kind completed in Epic 7`; `FR20: Epic 4 (web path) and Epic 7 (desktop path)`), which is the authoritative record. The owner reaffirmed Epic 7 on 2026-09-06. `fixtures/northstar/datasets/systems.json` still says "Epic 3" and `_bmad-output/implementation-artifacts/deferred-work.md` does not name the deferral at all — reported to the owner rather than edited, because they are planning artifacts and the disagreement is the finding.
 
 ### Story 1.8 review findings (applied 2026-09-02)
 
@@ -578,7 +578,7 @@ The implementing agent could run neither `pnpm test:integration` nor `pnpm test:
 - **The acquisition adapter and the evidence store are outside the barrel, and that is a build failure, not a convention.** Both were `export *`ed from `packages/infrastructure/src/index.ts`, which `apps/web/src/bootstrap.ts` imports, so the module whose whole job is an outbound GET to a registered Target System was reachable from the web, and the S3 SDK was in the web bundle graph. They now have `./acquisition` and `./evidence` subpaths; `no-population-acquisition-in-web` and `no-evidence-store-in-web` fail `pnpm boundaries` on any import from `apps/web/`, both spellings planted in `tests/unit/boundaries.test.ts`. The rule is scoped to the WEB, not to all of `apps/`: unlike the probe, the worker composes these in its own main loop, so a blanket `^apps/` rule would forbid the thing the worker exists to do. A new subpath needs an alias in `vitest.config.ts` AND `tests/integration/vitest.config.ts`.
 - **`controller.abort()` in the deadline's `dispose`, third occurrence.** `withDeadline` cleared the timer and never aborted, so every early exit — a non-2xx, a redirect, a bad or over-long `Content-Length`, each `return null` in the declaration fetch — left the body unread with the only bound on it cancelled. `fetch` resolves on HEADERS. Every adapter test used a synthetic in-memory `Response`, so no socket existed and none of them could see it; the test that catches it runs a real server that sends headers and then nothing, and asserts `server.close()` completes.
 - **The frozen source host guard is deliberately narrow: link-local and the unspecified address only.** A blanket internal-address refusal is WRONG here — the synthetic Northstar systems are served on loopback (`http://localhost:4300/loancore`) and a PoC may bind a source to a private neighbour, so refusing those breaks the documented path, and an existing adapter test proved it immediately. What no legitimate source ever names is `169.254.0.0/16` (cloud instance metadata), `fe80::/10`, or `0.0.0.0`. `isRefusedSourceHost` refuses those before a request is made, including the IPv4-mapped hex form a URL normalizes to (`::ffff:a9fe:*`). A host NAME that resolves to link-local is not covered; that needs a resolved-address check at connect time.
-- **Two findings were left alone because a test pins the behaviour as intended.** A redelivered POPULATION_READY job past the Run time limit marks the Run INCONCLUSIVE and discards a population that was already acquired, stored and verified — but `population.test.ts` asserts exactly that for a deadline crossed mid-verification, and the Run limit is a frozen compiler-1 value, so suspending it for the acknowledgement is a contract decision, not a repair. Likewise `initiate-run.ts` binds the request token to the OTHER auditor's Run on a duplicate refusal, so replaying that token answers `ok: true` and redirects into a Run the caller did not initiate; `runs.test.ts` pins it and the checkpoint records it as an accepted recovery fix. Both are recorded for the owner rather than changed.
+- **Two findings were left for the owner, and the owner has now decided both (2026-09-06).** They are no longer accepted risks; the rules that replace them are under "Owner decisions" below. A redelivered POPULATION_READY job past the Run time limit no longer discards the population it had already acquired, stored and verified, and a replayed request token no longer resolves into a Run the caller did not initiate. Both tests that pinned the old behaviour were rewritten to the new decision and say so in their own names.
 
 ### Adapter extraction and Reference Sources (added with Story 3.3)
 
@@ -779,8 +779,8 @@ The implementing agent could run neither `pnpm test:integration` nor `pnpm test:
 
 Both are stated on the surface in words rather than shown as a dash, and both are named here so a later story fixes the WRITE rather than the read:
 
-- **No Evidence table records a capture time.** FR-31 requires "Work Item, Target System, Step, capture method, capture time in UTC, and integrity digest" on every Evidence item, and neither `run_evidence` nor `population_evidence` has a column for one. For a Reference Source and an adapter extraction the instant is recovered from the `run_step_execution` that uploaded, verified and registered the bytes; for the POPULATION artifact nothing recorded one at all and the card says `Capture time was not recorded.` The capture METHOD is derived from the kind, which is a stored value and not a guess.
-- **The independently declared record count is never persisted.** `reconcilePopulation` checks `d['count']` and stores only the `declared-count` pass/fail boolean; the declaration itself is frozen inside the acquisition envelope in object storage, which this surface may not read (`no-evidence-store-in-web`). The Population reconciliation states the §H verdict and says where the declaration is, rather than printing a number nobody stored.
+- **`[CLOSED 2026-09-06]` No Evidence table recorded a capture time.** FR-31 requires "Work Item, Target System, Step, capture method, capture time in UTC, and integrity digest" on every Evidence item, and neither table had a column for one, so the instant was DERIVED from the Step Execution and the METHOD from the kind. Generation 32 stores all three fields on both tables; see "Owner decisions" below. The read no longer derives anything.
+- **`[CLOSED 2026-09-06]` The independently declared record count was never persisted.** `reconcilePopulation` checked `d['count']` and stored only the `declared-count` pass/fail boolean. Generation 32 stores the declared and the retrieved count, each attributable to the artifact it came from; see "Owner decisions" below. The web still may not read object storage and `no-evidence-store-in-web` still fails the build on it.
 - **The Review tab and the Review column have no data by DESIGN, not by omission.** Epic 3 creates no Auditor Review; Story 6.3 submits one. The column shows the contract's absent marker with a spoken sentence beside it, and the tab says what would appear — never a "Draft" badge for a review nobody started, which is Story 2.1's "Active version: Draft" defect in a new place.
 - **An accessibility scan that runs while a navigation is committing reads the wrong document.** `executable-plan.spec.ts` failed once in a full-suite run with a `document-title` violation of `serious` impact, and passed alone immediately afterwards — the shape of a race, not of a missing title, and the page does set one. The preview POLLS, so a refresh can be in flight when the scan starts, and a navigation that has begun committing briefly has no `<title>`. Assert the title BEFORE scanning: it removes the race and asserts something true, since WCAG 2.4.2 requires that title and the page has it. Do not re-run an intermittent accessibility failure until it is green — the gate has no allowlist precisely so that a violation cannot be waved through, and an intermittent one is the kind that ships.
 
@@ -991,3 +991,89 @@ what is deliberately NOT changed are in
 - **The other synthetic systems stay unauthenticated and fully read-only.** Only LoanCore
   has a sign-in. Adding one everywhere would make every Epic 3 adapter test carry a
   credential for no reason.
+
+### Owner decisions (2026-09-06): five closed questions
+
+Five decisions the owner took together. Three needed storage and are one migration,
+**generation 32**, because they are one release. Each closes something this file used to
+record as an accepted risk or a named gap; those notes now point here.
+
+- **A Run stopped by its own time limit keeps the Evidence it already froze.** The limit is
+  unchanged and `runTimeoutSeconds` is still a frozen compiler-1 value: a Run that crosses
+  it still ends `INCONCLUSIVE`. What changed is that it no longer throws away a population
+  it had already acquired, stored and verified. `stopAtRunLimit` in
+  `acquire-population.ts` is the one path — it does NO store read, spends NO durable
+  attempt, and carries the checkpoint's digests, size and capture provenance through
+  verbatim, so `population_evidence` stays `REGISTERED` and the seal finds it. The limit is
+  checked BEFORE any I/O (a timeout must not start work) and again after a SUCCESSFUL
+  verification, where it used to be a `remaining()` that turned the success into a
+  transport failure and spent an attempt on it. Inconclusive-with-Evidence and
+  inconclusive-with-nothing are different findings to an auditor.
+- **The Result NAMES the artifacts it sealed with**, in `publication.evidence.artifacts`,
+  beside the exact `registered` count. A count cannot tell those two findings apart:
+  `registered: 1` says a number, not which artifact, and a reader cannot follow a number to
+  the bytes. `completeRun` reads `readPackageArtifacts()` AFTER the seal — the same rows in
+  the same transaction the seal counted, and abandonment can only touch a `RESERVED` row,
+  so the count and the list cannot disagree. `sealPackageDecision` derives the count FROM
+  the list for the same reason, and the seal EVENT names them too — it used to record only
+  the gaps, so the chain could not tell a Run that froze a population and then hit its time
+  limit from one that froze nothing. `EvidencePackageSection` shows them on the Result tab,
+  each linked to its Evidence card: a field nothing reads is a field nobody maintains. An
+  older document has NO `artifacts` key, which is a different statement from an empty list
+  — "this build did not record which" against "this Run froze nothing" — and the section
+  says which rather than rendering an empty list a reader takes for the second.
+- **A request token records a DECISION, not a Run.** `docs/contracts/run-request-token-v1.md`
+  is the whole rule. The first use of a token decides its answer — the Run **this caller's
+  own request created**, or the refusal it received — and every later use returns exactly
+  that, link included. It used to BIND the caller's token to whichever Run blocked it, so a
+  replay after that Run ended answered `ok: true` with its id and walked one auditor into
+  another's audit work. The subject (Procedure and period) is stored on the row, because a
+  refused request has no Run to read it off, and `procedure_id` carries **no foreign key**:
+  a request naming a Procedure that does not exist is exactly the `no-owner` case the record
+  has to hold, and a foreign key answered a framework 500 to the caller most likely to be
+  probing. Refusals are CODES, never sentences. An authorization denial is deliberately NOT
+  recorded — AD-7 forbids caching a role decision, and that is the one thing a replay
+  should be able to answer differently.
+- **Capture provenance is stored per artifact, never derived on the way to a screen.**
+  `captured_at`, `capture_method` and `capture_time_source` on both `run_evidence` and
+  `population_evidence`. `registerEvidence` is the ONE way an adapter record becomes
+  `REGISTERED`, so the provenance is a property of becoming registered rather than of three
+  call sites remembering to set it. `capture_time_source` distinguishes `registration` (the
+  clock inside the transaction that wrote `REGISTERED`) from `step-execution` (RECOVERED,
+  which is what the migration backfilled onto older `run_evidence` rows) — and there is no
+  third value for "we made one up": `population_evidence` was NOT backfilled, because no
+  Step Execution produced that artifact, and those rows keep saying `Capture time was not
+  recorded.` The instant never moves on a redelivery: re-verifying bytes is not
+  re-capturing them. The method backfill IS honest — it is structural, not a guess, because
+  every row either table has ever held was written by the adapter path.
+- **The reconciliation shows two numbers, not a pass/fail word.**
+  `population_snapshot.declared_count` and `retrieved_count`, each attributable to one of
+  the reservation's two objects — the declaration to the envelope, the rows to the raw
+  artifact — by REFERENCE to `population_evidence`, never a second copy of
+  `evidenceObjectKeys` and never bytes the web read (`no-evidence-store-in-web` still
+  fails the build, and must). `retrieved_count` was honestly backfilled and a CHECK pins it
+  to `included + excluded + indeterminate` for every row; `declared_count` was NOT, because
+  the declaration lives in object storage and SQL cannot read it, and defaulting it to the
+  retrieved count would make every unreconciled population look reconciled. The stored §H
+  verdict stays beside them, READ and never re-derived from the two numbers.
+- **Desktop execution stays deferred to Epic 7.** Nothing to build; see the Story 1.8 note
+  above for the two planning artifacts that disagree.
+
+Two mechanical lessons from doing it:
+
+- **A teardown keyed on `run_id` misses a row whose decision has none.** A refusal record
+  has a NULL `run_id` and names the blocking Run in `refused_run_id`, so every teardown
+  keyed on `run_id` alone left it behind and the `audit_run` delete then failed on its
+  foreign key — taking the whole file's cleanup with it and leaving 40 Runs that made an
+  unrelated suite's bounded read return the wrong page. Delete by `procedure_id`, which the
+  row now carries, or by `run_id OR refused_run_id`.
+- **And a refusal can name a Procedure the file never created.** The unknown-owner case is
+  exactly that, and `procedure_id` carries no foreign key precisely so it can — so a
+  teardown scoped to the Procedures a file seeded leaks one row per run, silently and
+  forever. A file that initiates Runs also deletes `run_initiation_request` by its own
+  `initiator_id`, which owns every request row it wrote whatever Procedure it named. Under
+  the old behaviour nothing was recorded on that path, so nothing leaked; a decision that
+  starts being recorded starts needing to be cleaned up.
+- **Read the FIRST failure.** Four suites failed on that pollution and none of them had
+  anything to do with it — `immutable-versions.test.ts` inside `listActiveVersions`, and
+  `run-surfaces.test.ts` on four bounded reads that had fallen off page one.

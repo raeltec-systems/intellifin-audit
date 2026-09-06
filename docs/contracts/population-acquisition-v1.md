@@ -178,6 +178,25 @@ The invariant is:
 rows_in = included + excluded + indeterminate
 ```
 
+### The two numbers behind the count reconciliation (generation 32)
+
+`population_snapshot` stores `declared_count` and `retrieved_count` beside the
+`declared-count` check, because the check says only THAT the source and the platform
+disagreed, and a reader needs to know by how much and in which direction.
+
+- `retrieved_count` is the rows parsed out of the frozen RAW artifact, which is exactly the
+  invariant above, and a CHECK pins the two together for every row, old and new.
+- `declared_count` is what the INDEPENDENT declaration stated, frozen in the acquisition
+  ENVELOPE. It is `null` when the declaration stated no count this build can store, and on
+  every row written before this generation: the declaration lives in object storage, which
+  no surface may read (`no-evidence-store-in-web`) and SQL cannot. It is never defaulted to
+  the retrieved count — that would make every unreconciled population look reconciled.
+
+Each number is attributable to the artifact it came from, and the attribution is a
+REFERENCE to the population reservation's own two object keys — `object_key` for the rows,
+`envelope_key` for the declaration — rather than a second copy of them or bytes a surface
+read for itself. The owner's decision of 2026-09-06.
+
 `indeterminate > 0`, a failed declaration check, a count or digest mismatch, incomplete
 pagination, a schema mismatch, or a failed parse prevents `POPULATION_READY` and maps
 to the safe Inconclusive outcome. A complete zero included population is allowed only by

@@ -160,6 +160,24 @@ export async function completeRun(
     terminalState: decision.runState,
     sealedAt: input.at,
   });
+  // What this Run actually froze, BY IDENTITY (owner decision, 2026-09-06).
+  //
+  // Read after the seal, so it sees the artifacts in their settled state: sealing abandons
+  // still-open reservations first, and abandonment can only touch a `RESERVED` row, so the
+  // `REGISTERED` set is identical to the one `seal.registered` counted. The count and this
+  // list therefore cannot disagree — they are the same rows read inside one transaction.
+  //
+  // It is here rather than a count on its own because "Inconclusive with Evidence" and
+  // "Inconclusive with nothing" are different findings, and a number cannot tell them
+  // apart: a Run stopped by its own time limit after acquiring, storing and verifying a
+  // population still has that population, and the Result has to say which artifact.
+  const registeredArtifacts = (await context.readPackageArtifacts())
+    .filter((artifact) => artifact.state === 'REGISTERED')
+    .map((artifact) => ({
+      evidenceId: artifact.evidenceId,
+      kind: artifact.kind,
+      objectKey: artifact.objectKey,
+    }));
 
   const populationFacts = await context.readPopulationFacts();
   const population: RunResultPopulation | null =
@@ -199,6 +217,7 @@ export async function completeRun(
       registered: seal.registered,
       missingRequired: seal.missingRequired.length,
       abandoned: seal.abandoned.length,
+      artifacts: registeredArtifacts,
     },
   });
 

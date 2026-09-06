@@ -125,6 +125,10 @@ export async function sealPackage(
       // it can never be taken out.
       missingRequired: seal.missingRequired.map((artifact) => artifact.objectKey),
       abandoned: seal.abandoned.map((artifact) => artifact.objectKey),
+      // What the package sealed WITH, and not only what it lacked. The event used to name
+      // the gaps and count the rest, so the chain could not tell a Run that froze a
+      // population and then hit its time limit from one that froze nothing at all.
+      registeredArtifacts: decision.registeredArtifacts.map((artifact) => artifact.objectKey),
     },
   });
   await context.notifyTimeline(stored.sequence);

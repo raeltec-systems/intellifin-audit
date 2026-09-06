@@ -23,6 +23,8 @@ import {
   GATE_AFFECTED_LIMIT,
   RULE_DOES_NOT_NAME_VALUE,
   POPULATION_LIMITS,
+  isEvidenceCaptureMethod,
+  isEvidenceCaptureTimeSource,
   type CoverageObservation,
   type GateCheckResult,
   type ObservationCheckName,
@@ -122,6 +124,9 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
             envelopeDigest: null,
             size: null,
             evidenceRequired: true,
+            capturedAt: null,
+            captureMethod: null,
+            captureTimeSource: null,
           } satisfies PopulationCheckpoint)
         : null;
 
@@ -183,6 +188,9 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
             size: row.size,
             required: row.required,
             state: row.state as AdapterEvidenceRecord['state'],
+            capturedAt: row.capturedAt === null ? null : row.capturedAt.toISOString(),
+            captureMethod: isEvidenceCaptureMethod(row.captureMethod) ? row.captureMethod : null,
+            captureTimeSource: isEvidenceCaptureTimeSource(row.captureTimeSource) ? row.captureTimeSource : null,
           }),
         ),
         auditEvents: createAuditEventWriter(tx, new SystemClock(), new CryptoUuidV7Generator()),
@@ -219,10 +227,11 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
           await tx.update(auditRun).set({ state }).where(eq(auditRun.runId, runId));
         },
         async saveEvidence(record) {
-          const values = { ...record, runId };
+          const { capturedAt, ...rest } = record;
+          const capture = { capturedAt: capturedAt === null ? null : new Date(capturedAt) };
           await tx
             .insert(runEvidence)
-            .values(values)
+            .values({ ...rest, ...capture, runId })
             .onConflictDoUpdate({
               target: runEvidence.evidenceId,
               set: {
@@ -231,6 +240,12 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
                 size: record.size,
                 required: record.required,
                 state: record.state,
+                // Generation 32. Carried on every save so a record that becomes REGISTERED
+                // on a later attempt gets its provenance, and one that already had it keeps
+                // exactly the instant it was captured at.
+                ...capture,
+                captureMethod: record.captureMethod,
+                captureTimeSource: record.captureTimeSource,
               },
             });
         },

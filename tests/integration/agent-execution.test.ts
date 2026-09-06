@@ -183,7 +183,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
           await sql`DELETE FROM run_evidence_package WHERE run_id=${run.id}`;
           await sql`DELETE FROM audit_events WHERE aggregate_id=${run.id}`;
           await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${run.id}`;
-          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id}`;
+          await sql`DELETE FROM run_initiation_request WHERE run_id=${run.id} OR refused_run_id=${run.id}`;
           await sql`DELETE FROM population_execution WHERE run_id=${run.id}`;
         }
         // `run_workspace` and `run_agent_execution` cascade from `audit_run`, deliberately:

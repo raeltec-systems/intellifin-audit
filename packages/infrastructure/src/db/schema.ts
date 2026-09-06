@@ -806,11 +806,49 @@ export const auditRun = pgTable('audit_run', {
 ]);
 
 
-/** Multiple acknowledgement attempts may point at the same active or terminal Run. */
+/**
+ * What one caller's initiation request token was DECIDED to mean (generation 32).
+ *
+ * It used to be a binding from a token to a Run, and a request refused because somebody
+ * else's Run held the Procedure and period was recorded by binding the token to THAT Run —
+ * so replaying it answered success and walked the caller into another person's audit work.
+ * The row now records the DECISION: the Run this caller's own request created, or the
+ * refusal it received. Exactly one of the two, forever.
+ *
+ * The SUBJECT is stored here rather than read off a bound Run, because a refused request
+ * has no Run to read it from, and it is what a token used for a different Procedure or
+ * period is refused against.
+ */
 export const runInitiationRequest = pgTable('run_initiation_request', {
   initiatorId: text('initiator_id').notNull(), requestToken: uuid('request_token').notNull(),
-  runId: uuid('run_id').notNull().references(() => auditRun.runId),
-}, table => [primaryKey({ columns: [table.initiatorId, table.requestToken] })]);
+  /**
+   * The Procedure and period the request NAMED — deliberately with no foreign key.
+   *
+   * A request that names a Procedure which does not exist is exactly the `no-owner` case
+   * this table has to be able to record, and a foreign key would refuse the row and answer
+   * the caller a framework 500 instead of the refusal sentence. The subject is what the
+   * caller asked for, not a claim that it exists; `RUN_TOKEN_REUSED` compares against it,
+   * and it needs nothing more than to be the same string on a replay.
+   */
+  procedureId: uuid('procedure_id').notNull(),
+  periodFrom: date('period_from').notNull(), periodTo: date('period_to').notNull(),
+  /** The Run THIS caller's request created. Never another caller's. */
+  runId: uuid('run_id').references(() => auditRun.runId),
+  refusal: text('refusal'),
+  /** The Run the refusal named, when it named one. A reference, never a binding. */
+  refusedRunId: uuid('refused_run_id').references(() => auditRun.runId),
+}, table => [
+  primaryKey({ columns: [table.initiatorId, table.requestToken] }),
+  // Exactly one outcome. `(a IS NULL) <> (b IS NULL)` is boolean <> boolean and is never
+  // NULL, so unlike a comparison of the values themselves this cannot pass by evaluating
+  // to NULL — the `audit_run_cancel_request` idiom, and the `array_length` trap avoided.
+  check('run_initiation_request_decision', sql`(${table.runId} IS NULL) <> (${table.refusal} IS NULL)`),
+  check('run_initiation_request_refusal', sql`${table.refusal} IS NULL OR ${table.refusal} IN ('already-active','no-owner','predecessor-active')`),
+  // A named Run belongs to a refusal. A created Run is `run_id`; naming it twice would
+  // invite a reader to ask which of the two the token really means.
+  check('run_initiation_request_refused_run', sql`${table.refusedRunId} IS NULL OR ${table.refusal} IS NOT NULL`),
+  check('run_initiation_request_period', sql`${table.periodFrom} <= ${table.periodTo}`),
+]);
 
 export const populationExecution = pgTable('population_execution', {
   runId: uuid('run_id').primaryKey().references(() => auditRun.runId),
@@ -824,11 +862,28 @@ export const populationEvidence = pgTable('population_evidence', {
   objectKey:text('object_key').notNull().unique(), envelopeKey:text('envelope_key').notNull().unique(),
   rawDigest:text('raw_digest'),envelopeDigest:text('envelope_digest'),size:integer('size'),state:text('state').notNull(),
   required:boolean('required').notNull(),
+  /**
+   * Generation 32: the same capture provenance `run_evidence` carries, for the artifact
+   * that had none at all.
+   *
+   * The population artifact is the one FR-31 could say nothing about: an adapter
+   * extraction's instant was recoverable from its Step Execution, and this row's was not,
+   * so the Evidence tab said `Capture time was not recorded.` in words. It is measured
+   * now, at the registration that verifies the raw bytes. Rows written before this
+   * generation stay NULL and the surface keeps saying so — a fabricated capture time is a
+   * fact nobody measured entering an immutable record, which is why generation 20 refused
+   * to backfill a digest and generation 24 refused to default a generation time.
+   */
+  capturedAt: timestamp('captured_at',{withTimezone:true}),
+  captureMethod: text('capture_method'),
+  captureTimeSource: text('capture_time_source'),
 },t=>[check('population_evidence_digest',sql`${t.rawDigest} IS NULL OR ${t.rawDigest} ~ '^[0-9a-f]{64}$'`),check('population_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),check('population_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.rawDigest} IS NOT NULL AND ${t.envelopeDigest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
   // Generation 21: an ABANDONED reservation is one nothing was ever written to. A
   // registered artifact is never demoted, so a raw digest beside `ABANDONED` would be a
   // row claiming both that the bytes were verified and that they never arrived.
-  check('population_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.rawDigest} IS NULL`)]);
+  check('population_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.rawDigest} IS NULL`),
+  check('population_evidence_capture_method',sql`${t.captureMethod} IS NULL OR ${t.captureMethod} IN ('agent','adapter')`),
+  check('population_evidence_capture_time',sql`(${t.capturedAt} IS NULL) = (${t.captureTimeSource} IS NULL) AND (${t.captureTimeSource} IS NULL OR ${t.captureTimeSource} IN ('registration','step-execution'))`)]);
 export const populationSnapshot = pgTable('population_snapshot', {
   runId:uuid('run_id').primaryKey().references(()=>auditRun.runId), included:integer('included').notNull(),excluded:integer('excluded').notNull(),indeterminate:integer('indeterminate').notNull(),
   rowsDigest:text('rows_digest'), checks:jsonb('checks').$type<import('@intellifin/domain').PopulationCheck[]>().notNull(),
@@ -842,7 +897,29 @@ export const populationSnapshot = pgTable('population_snapshot', {
    * generation time would make the Gate report a snapshot nobody generated.
    */
   generatedAt: timestamp('generated_at',{withTimezone:true}),
-});
+  /**
+   * Generation 32 (owner decision, 2026-09-06): the two numbers behind the §H
+   * record-count reconciliation, so a surface can show them instead of a pass/fail word.
+   *
+   * `declared_count` is what the INDEPENDENT declaration stated; `retrieved_count` is what
+   * was parsed out of the frozen raw artifact. Each is attributable to an artifact of the
+   * population reservation — the declaration to the acquisition envelope, the rows to the
+   * raw object — and `population_evidence` holds both object keys for the same Run, so the
+   * attribution is a reference to a stored row and not a second copy of it.
+   *
+   * `declared_count` is NULL when the declaration stated no count this build can store, and
+   * on every row written before this generation: the declaration itself lives inside the
+   * frozen envelope in object storage, which SQL cannot read and no surface may
+   * (`no-evidence-store-in-web`). `retrieved_count` IS honestly backfilled, because
+   * `includePopulation` maps every parsed row to exactly one row and the three dispositions
+   * partition them — which the CHECK below then pins for every row, old and new.
+   */
+  declaredCount: integer('declared_count'),
+  retrievedCount: integer('retrieved_count').notNull(),
+}, t=>[
+  check('population_snapshot_counts',sql`${t.included} >= 0 AND ${t.excluded} >= 0 AND ${t.indeterminate} >= 0 AND ${t.retrievedCount} >= 0 AND (${t.declaredCount} IS NULL OR ${t.declaredCount} >= 0)`),
+  check('population_snapshot_retrieved',sql`${t.retrievedCount} = ${t.included} + ${t.excluded} + ${t.indeterminate}`),
+]);
 export const populationRow = pgTable('population_row', {
   runId:uuid('run_id').notNull().references(()=>populationSnapshot.runId),ordinal:integer('ordinal').notNull(),
   values:jsonb('values').$type<Record<string,import('@intellifin/domain').JsonValue>>().notNull(), disposition:text('disposition').$type<import('@intellifin/domain').PopulationRow['disposition']>().notNull(), reasons:jsonb('reasons').$type<string[]>().notNull(),
@@ -945,12 +1022,29 @@ export const runEvidence = pgTable('run_evidence', {
   digest: text('digest'), size: integer('size'), state: text('state').notNull(),
   /** Generation 21: may this Run conclude without the artifact? Stamped at reservation. */
   required: boolean('required').notNull(),
+  /**
+   * Generation 32 (owner decision, 2026-09-06): FR-31's capture provenance, per artifact.
+   *
+   * `captured_at` is the instant, `capture_time_source` says how we come to have it —
+   * `registration` for one measured inside the transaction that wrote `REGISTERED`,
+   * `step-execution` for one recovered from the Step Execution that froze the bytes — and
+   * `capture_method` is a STORED value rather than one derived from the kind on the way to
+   * a screen. A derivation is a guess with good manners: it is true of every kind Epic 3
+   * writes and stops being true the first time two processes can produce one kind.
+   */
+  capturedAt: timestamp('captured_at',{withTimezone:true}),
+  captureMethod: text('capture_method'),
+  captureTimeSource: text('capture_time_source'),
 }, t=>[
   check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction')`),
   check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
   check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
   check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
   check('run_evidence_abandoned',sql`${t.state}<>'ABANDONED' OR ${t.digest} IS NULL`),
+  check('run_evidence_capture_method',sql`${t.captureMethod} IS NULL OR ${t.captureMethod} IN ('agent','adapter')`),
+  // A time and its provenance are written whole or not at all: a time with no source is a
+  // number a reader takes for measured, and a source with no time names nothing.
+  check('run_evidence_capture_time',sql`(${t.capturedAt} IS NULL) = (${t.captureTimeSource} IS NULL) AND (${t.captureTimeSource} IS NULL OR ${t.captureTimeSource} IN ('registration','step-execution'))`),
 ]);
 
 /**

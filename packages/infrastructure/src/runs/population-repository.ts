@@ -22,6 +22,7 @@ import {
   SystemClock,
 } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
+import { isEvidenceCaptureMethod, isEvidenceCaptureTimeSource } from '@intellifin/domain';
 
 export class PostgresPopulationRepository
   implements PopulationExecutionRepository
@@ -70,6 +71,12 @@ export class PostgresPopulationRepository
               envelopeDigest: evidence.envelopeDigest,
               size: evidence.size,
               evidenceRequired: evidence.required,
+              // Generation 32. Read as request-shaped input, like every other stored
+              // value: a code this build does not know is `null`, which the surface says
+              // in words rather than rendering as a fact.
+              capturedAt: evidence.capturedAt === null ? null : evidence.capturedAt.toISOString(),
+              captureMethod: isEvidenceCaptureMethod(evidence.captureMethod) ? evidence.captureMethod : null,
+              captureTimeSource: isEvidenceCaptureTimeSource(evidence.captureTimeSource) ? evidence.captureTimeSource : null,
             }
           : null;
       if (Boolean(progress) !== Boolean(evidence))
@@ -123,6 +130,9 @@ export class PostgresPopulationRepository
               envelopeDigest: cp.envelopeDigest,
               size: cp.size,
               required: cp.evidenceRequired,
+              capturedAt: cp.capturedAt === null ? null : new Date(cp.capturedAt),
+              captureMethod: cp.captureMethod,
+              captureTimeSource: cp.captureTimeSource,
               // REGISTERED once the raw digest is verified, RESERVED until then. It is
               // deliberately NOT abandoned here even at a TERMINAL checkpoint: `SealPackage`
               // is the one thing that abandons a reservation (Story 3.5), and a repository
@@ -138,6 +148,9 @@ export class PostgresPopulationRepository
                 envelopeDigest: cp.envelopeDigest,
                 size: cp.size,
                 required: cp.evidenceRequired,
+                capturedAt: cp.capturedAt === null ? null : new Date(cp.capturedAt),
+                captureMethod: cp.captureMethod,
+                captureTimeSource: cp.captureTimeSource,
                 state: cp.rawDigest ? 'REGISTERED' : 'RESERVED',
               },
             });
@@ -153,6 +166,12 @@ export class PostgresPopulationRepository
                 included: result.included,
                 excluded: result.excluded,
                 indeterminate: result.indeterminate,
+                // Generation 32: the two numbers behind the §H record-count reconciliation.
+                // `declaredCount` is `null` when the declaration stated none this build can
+                // store — never the retrieved count, which would make every unreconciled
+                // population look reconciled.
+                declaredCount: result.declaredCount,
+                retrievedCount: result.retrievedCount,
                 rowsDigest: result.rowsDigest,
                 checks: result.checks,
                 // Generation 24: the declaration's own generation time, so the Run-level
@@ -208,8 +227,18 @@ export class PostgresPopulationRepository
           evidenceId: populationEvidence.evidenceId,
           state: populationEvidence.state,
           rawDigest: populationEvidence.rawDigest,
+          envelopeDigest: populationEvidence.envelopeDigest,
           size: populationEvidence.size,
           required: populationEvidence.required,
+          // The two objects this ONE reservation addresses. The Evidence tab used to spell
+          // `population/<runId>/raw` inline, which is a second copy of `evidenceObjectKeys`
+          // that nothing compared with the first; and the Result's declared-count row needs
+          // the ENVELOPE key, because that is the artifact the declaration is frozen in.
+          objectKey: populationEvidence.objectKey,
+          envelopeKey: populationEvidence.envelopeKey,
+          capturedAt: populationEvidence.capturedAt,
+          captureMethod: populationEvidence.captureMethod,
+          captureTimeSource: populationEvidence.captureTimeSource,
         })
         .from(populationEvidence)
         .where(eq(populationEvidence.runId, runId))
@@ -240,7 +269,11 @@ export class PostgresPopulationRepository
       status: progress.status,
       attempts: progress.attempts,
       diagnostic: progress.diagnostic,
-      evidence,
+      // The capture instant is rendered as ISO 8601 UTC on every Run surface, so the
+      // conversion happens once here rather than on each page that shows it.
+      evidence: evidence
+        ? { ...evidence, capturedAt: evidence.capturedAt === null ? null : evidence.capturedAt.toISOString() }
+        : evidence,
       summary,
       rows: rows.slice(0, 50),
       next: rows.length > 50 ? rows[49]!.ordinal : null,

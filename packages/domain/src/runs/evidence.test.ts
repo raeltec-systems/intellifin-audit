@@ -172,6 +172,27 @@ describe('the sealable decision', () => {
     });
   });
 
+  it('names the artifacts it sealed with, and counts exactly those', () => {
+    // Owner decision, 2026-09-06. `registered` alone cannot tell "Inconclusive with
+    // Evidence" from "Inconclusive with nothing": a number does not say WHICH artifact,
+    // and a reader cannot follow a number to the bytes. One walk decides the list and the
+    // count, so the two can never disagree.
+    const decision = sealPackageDecision([
+      artifact(),
+      artifact({ evidenceId: 'b', kind: 'reference-source', required: true }),
+      artifact({ evidenceId: 'c', kind: 'adapter-extraction', required: false, state: 'RESERVED' }),
+    ]);
+    expect(decision.registeredArtifacts.map((entry) => entry.evidenceId)).toEqual([
+      '01a06fd8-0000-7000-8000-00000000000a',
+      'b',
+    ]);
+    expect(decision.registered).toBe(decision.registeredArtifacts.length);
+    // A reservation abandoned by this very decision is NOT among them: completeness is
+    // judged over the artifacts as they will be, and so is the list the Result names.
+    expect(decision.registeredArtifacts.some((entry) => entry.evidenceId === 'c')).toBe(false);
+    expect(decision.abandoned.map((entry) => entry.evidenceId)).toEqual(['c']);
+  });
+
   it('seals an empty package: a Run that froze nothing owes nothing', () => {
     expect(sealPackageDecision([])).toMatchObject({
       state: 'SEALED',

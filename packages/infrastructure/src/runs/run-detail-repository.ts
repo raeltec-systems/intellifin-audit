@@ -94,14 +94,21 @@ export interface RunEvidenceItem {
   readonly displayName: string | null;
   readonly workItemId: string | null;
   /**
-   * When the Step Execution that froze this artifact completed.
+   * FR-31's capture provenance, READ from the row (generation 32).
    *
-   * `run_evidence` records NO capture time of its own (see the Story 3.11 note in
-   * `CLAUDE.md`), so this is the recorded instant of the step that uploaded, verified and
-   * registered the bytes. It is `null` when no Step Execution for that plan step has
-   * completed, and the surface says so in words rather than showing a dash.
+   * It used to be derived here — the completion of the last Step Execution of the plan step
+   * — and the capture METHOD was derived on the way to the screen from the artifact's kind.
+   * Both are stored now: an artifact records how and when it was captured at the moment it
+   * is registered, and `captureTimeSource` says whether the instant was measured then
+   * (`registration`) or recovered from the Step Execution that froze the bytes
+   * (`step-execution`, which is what generation 32 backfilled onto older rows).
+   *
+   * `null` is an artifact with no recoverable instant at all, and the surface says so in
+   * words rather than showing a dash a reader takes for "fine".
    */
   readonly capturedAt: string | null;
+  readonly captureMethod: string | null;
+  readonly captureTimeSource: string | null;
 }
 
 export interface RunObservationRow {
@@ -313,20 +320,6 @@ export class DrizzleRunDetailRepository {
       .select({ stepId: runWorkItem.stepId, displayName: runWorkItem.displayName, evidenceId: runWorkItem.evidenceId, workItemId: runWorkItem.workItemId })
       .from(runWorkItem)
       .where(eq(runWorkItem.runId, runId));
-    // The completion of the LAST Step Execution of a plan step: an artifact is uploaded,
-    // verified and registered inside the step that produced it, and a retried step froze
-    // its bytes on the attempt that succeeded.
-    const completions = await this.db.execute<{ plan_step_id: string; completed_at: Date | string }>(sql`
-      SELECT ${runStepExecution.planStepId} AS plan_step_id, max(${runStepExecution.completedAt}) AS completed_at
-      FROM ${runStepExecution}
-      WHERE ${runStepExecution.runId} = ${runId} AND ${runStepExecution.completedAt} IS NOT NULL
-      GROUP BY ${runStepExecution.planStepId}`);
-    const completedAt = new Map(
-      completions.map((row) => [
-        row.plan_step_id,
-        row.completed_at instanceof Date ? row.completed_at.toISOString() : new Date(row.completed_at).toISOString(),
-      ]),
-    );
     const producers = new Map<string, { stepId: string; displayName: string; workItemId: string | null }>();
     for (const step of steps) {
       if (step.evidenceId !== null) producers.set(step.evidenceId, { stepId: step.stepId, displayName: step.displayName, workItemId: null });
@@ -349,7 +342,9 @@ export class DrizzleRunDetailRepository {
         stepId: producer?.stepId ?? null,
         displayName: producer?.displayName ?? null,
         workItemId: producer?.workItemId ?? null,
-        capturedAt: producer === null ? null : completedAt.get(producer.stepId) ?? null,
+        capturedAt: item.capturedAt === null ? null : item.capturedAt.toISOString(),
+        captureMethod: item.captureMethod,
+        captureTimeSource: item.captureTimeSource,
       };
     });
   }
