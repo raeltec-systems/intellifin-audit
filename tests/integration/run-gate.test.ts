@@ -40,6 +40,7 @@ import {
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
+import { resolvedCredential } from '@intellifin/infrastructure/credentials';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 
 /**
@@ -321,10 +322,8 @@ describe.skipIf(!url)('the Run-level Evidence Quality Gate against PostgreSQL', 
           }),
       },
       credentials: {
-        resolve: async (reference: string): Promise<ResolvedCredential> => ({
-          reference,
-          authorize: (headers) => headers.set('authorization', `Bearer ${TOKEN}`),
-        }),
+        resolve: async (reference: string): Promise<ResolvedCredential> =>
+          resolvedCredential(reference, TOKEN),
       },
       store: seeded.store,
       clock: new SystemClock(),

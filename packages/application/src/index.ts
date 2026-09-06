@@ -47,6 +47,7 @@ export * from './procedures/apply-platform-configuration.js';
 export * from './runs/ports.js';
 export * from './runs/initiate-run.js';
 export * from './runs/execution-ports.js';
+export * from './runs/credential-guard.js';
 export * from './runs/acquire-population.js';
 export * from './runs/provision-workspace.js';
 export * from './runs/execute-adapter-steps.js';

@@ -105,6 +105,7 @@ provider object.
 | `method` | `GET` or `HEAD`, at the database. A read-only execution takes no other, and the system it reads refuses every other at its own level |
 | `status` | the response status when one came back. A 401 is `performed` with `status: 401`: the action HAPPENED and the system said no, which is a different fact from a gate refusal |
 | `redirected`, `downloads` | what the workspace observed. A download is offered and never executed (`acceptDownloads: false`) |
+| `capture`, `capture_suppression` | whether the platform captured anything from this action, and why not. Story 4.3; the whole rule is `credential-containment-v1.md` |
 
 **A denied SUB-RESOURCE does not fail the Tool Action.** A page referencing a font, a
 beacon or an image off-origin is ordinary; the request is aborted in the browser and
@@ -171,6 +172,17 @@ origin; the actions are the frozen list; the parameters are checked against the 
 population. Nothing in this contract reads a response body, and `BrowserActionResult`
 carries a status, a sanitized location, two booleans and a count — there is no field a page
 could put text into.
+
+## Capture is suppressed while a credential is on the wire
+
+Story 4.3. `BrowserToolAction` is a union whose credential-carrying arm has NO `capture`
+field, so a Structural Snapshot, a screenshot or a frame cannot be asked for while a
+credential is being presented — it does not compile, and the port refuses it at runtime as
+well. Every row records `capture` (`PERMITTED` or `SUPPRESSED`) and, when suppressed, the
+reason, because a missing artifact with no explanation reads as "nothing happened here".
+The value is derived by the PLATFORM from its own request (`captureStateFor`), never
+reported by a provider. The whole rule, including the registration wall that refuses any
+artifact disclosing a credential, is `credential-containment-v1.md`.
 
 ## What is NOT in this contract
 

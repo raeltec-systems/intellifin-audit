@@ -61,8 +61,21 @@ export interface EvidenceStore {
  * through `!response.ok` — a denial was retried three times against a system that would go
  * on refusing, and the only record that the platform had been told no was a transport
  * count. Folded into `contract` it would be terminal but still silent.
+ *
+ * `credential` is Story 4.3's: the artifact discloses the credential this Run presented, so
+ * it is REFUSED rather than stored. It is not `integrity` — the bytes are exactly what the
+ * Target System served and nothing is damaged — and it is not `contract`, because the
+ * system honoured the contract; what happened is that the platform may not keep what it
+ * answered with. Terminal for its unit, like every other refusal whose input does not
+ * change between attempts.
  */
-export type AcquisitionFailureCode = 'transport' | 'integrity' | 'contract' | 'denied' | 'scope';
+export type AcquisitionFailureCode =
+  | 'transport'
+  | 'integrity'
+  | 'contract'
+  | 'denied'
+  | 'scope'
+  | 'credential';
 
 export class PopulationAcquisitionError extends Error {
   constructor(readonly code: AcquisitionFailureCode) {
@@ -133,6 +146,30 @@ export interface ResolvedCredential {
   readonly reference: string;
   /** Write the credential onto an outbound request. Called once, on the wire, only. */
   authorize(headers: CredentialHeaderSink): void;
+  /**
+   * Every whole-value spelling of the credential in `text`, replaced (Story 4.3).
+   *
+   * The redaction half of the same containment. It ANSWERS A QUESTION about the value and
+   * returns text with it removed, so it adds no way to read the credential that
+   * `authorize` did not already have — and, exactly like `authorize`, it is a method and
+   * never a field, so `JSON.stringify` of a resolved credential still yields its reference
+   * alone.
+   *
+   * For an artifact this PLATFORM produced, before it is registered. Never for bytes a
+   * Target System served: rewriting those would falsify Evidence, and an artifact that
+   * really does carry a credential must FAIL registration rather than be edited into
+   * something acceptable.
+   */
+  redact(text: string): string;
+  /**
+   * Whether these bytes disclose the credential, in any form this build recognises.
+   *
+   * Over bytes rather than over a decoded document, because a screenshot is not text and a
+   * Structural Snapshot is not always valid UTF-8. This is the question `freezeArtifact`
+   * asks of every artifact before anything is uploaded; a `true` is a refusal, never a
+   * repair.
+   */
+  discloses(bytes: Uint8Array): boolean;
 }
 
 /**
@@ -1068,20 +1105,64 @@ export interface WorkspaceExecutionRepository {
  * that enforced its own allowlist would make the guarantee a property of that adapter, and
  * the whole point of the port is that the provider can be replaced.
  */
-export interface BrowserToolAction {
+interface BrowserToolActionBase {
   /** The action the frozen registration permits. `navigate` is the only one Story 4.2 takes. */
   readonly action: string;
   /** An absolute destination the gate has already proved is inside the frozen origins. */
   readonly destination: string;
-  /**
-   * The credential to present on THIS request and no other, or `null`.
-   *
-   * Presented just in time and withdrawn immediately after: an implementation that left it
-   * on the workspace would put it on every later request of the Run, which is the opposite
-   * of what Story 4.3 owns.
-   */
-  readonly credential: ResolvedCredential | null;
 }
+
+/**
+ * One Tool Action, as the port receives it.
+ *
+ * A UNION, and the two arms are the whole of Story 4.3's capture suppression: an action
+ * that PRESENTS a credential has no `capture` field at all, so asking for a Structural
+ * Snapshot, a screenshot or a frame while a credential is on the wire does not compile.
+ * That is the containment shape this codebase uses everywhere — the wrong thing is
+ * unrepresentable rather than forbidden by a rule every call site has to remember — and it
+ * is why suppression is not a flag the caller sets and the implementation is trusted to
+ * honour.
+ *
+ * "Entry" here is credential USE and not typing: LoanCore authenticates a GET with an
+ * `Authorization` header and has no form, so what must have nowhere to land is the request
+ * header and every artifact that could carry it. That is the stronger guarantee, not the
+ * weaker one (`epic-4-loancore-authentication-decision.md`).
+ */
+export type BrowserToolAction =
+  | (BrowserToolActionBase & {
+      /**
+       * The credential to present on THIS request and no other.
+       *
+       * Presented just in time and withdrawn immediately after: an implementation that left
+       * it on the workspace would put it on every later request of the Run.
+       */
+      readonly credential: ResolvedCredential;
+      /** Not a field of this arm. Capture is SUPPRESSED for a credential-entry action. */
+      readonly capture?: never;
+    })
+  | (BrowserToolActionBase & {
+      readonly credential: null;
+      /**
+       * What the platform captures from this action.
+       *
+       * `[]` is "capture nothing", written out rather than defaulted, so a caller that
+       * wants no capture says so and a caller that wants some has to name it. **Nothing in
+       * this build captures yet** — Story 4.4 is what implements the `web_tree` Structural
+       * Snapshot and the screenshot — and the vocabulary is here so that the suppression is
+       * already structural when it arrives rather than being retrofitted around it.
+       */
+      readonly capture: readonly BrowserCaptureKind[];
+    });
+
+/**
+ * What the platform can capture from a Tool Action.
+ *
+ * The three the spec names, and no more. `[NAMED, NOT BUILT]` in this story: `perform`
+ * produces none of them and Story 4.4 owns the mechanism. What is built here is that a
+ * credential-entry action can never ask for one.
+ */
+export const BROWSER_CAPTURE_KINDS = ['structural-snapshot', 'screenshot', 'frame'] as const;
+export type BrowserCaptureKind = (typeof BROWSER_CAPTURE_KINDS)[number];
 
 /** What one Tool Action produced, with nothing in it that came out of the page. */
 export interface BrowserActionResult {

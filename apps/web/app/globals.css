@@ -1574,6 +1574,18 @@ a {
   line-height: var(--type-caption-line-height);
 }
 
+/* A Step Execution whose surface records no Tool Actions in this build. It is a statement
+   about the build, not about the Run, so it reads as secondary prose rather than as a row:
+   no marker, no status, indented to the level a Tool Action would occupy. */
+.ls-timeline__note {
+  padding-left: calc(var(--spacing-3) + (var(--ls-timeline-level, 0) * 20px));
+  padding-block: var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-style: italic;
+}
+
 .ls-timeline__status {
   justify-self: end;
   white-space: nowrap;

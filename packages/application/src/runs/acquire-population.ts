@@ -15,6 +15,7 @@ import {
 } from './execution-ports.js';
 import { decodeAcquisitionEnvelope, encodeAcquisitionEnvelope } from './acquisition-envelope.js';
 import { freezeArtifact, reserveArtifact } from './evidence-package.js';
+import { NO_CREDENTIALS } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 export interface PopulationDependencies {
@@ -279,6 +280,12 @@ export async function acquirePopulation(
         { objectKey: checkpoint.envelopeKey, registeredDigest: digest, registeredSize: null },
         envelope,
         remaining,
+        // This stage presents no credential, and it cannot: population acquisition runs
+        // BEFORE the sign-in and before any adapter extraction, so at the moment these
+        // bytes are frozen the Run has resolved nothing to scan for. Holding the plan's
+        // credentials here to scan for them anyway would mean resolving a secret in a stage
+        // that must never have one, which is the opposite of just in time.
+        NO_CREDENTIALS,
       );
     }
     if (
@@ -299,6 +306,7 @@ export async function acquirePopulation(
       },
       bytes,
       remaining,
+      NO_CREDENTIALS,
     );
     const result = reconcilePopulation({
       bytes,

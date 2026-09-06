@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   bindingDigest,
   bindingDigestEnvelope,
+  bytesDiscloseCompiled,
+  compileSecret,
+  redactCompiled,
+  REDACTED_CREDENTIAL,
   deriveExecutablePlan,
   initialDraftCompliance,
   initialDraftEvidence,
@@ -19,6 +23,7 @@ import {
 } from '@intellifin/domain';
 
 import { executeAgentSteps, performToolAction } from './execute-agent-steps.js';
+import { NO_CREDENTIALS, guardedCredentials } from './credential-guard.js';
 import {
   BrowserActionError,
   type AgentExecutionCheckpoint,
@@ -290,12 +295,22 @@ class FakeBrowser implements BrowserExecution {
   };
 }
 
+/**
+ * A resolved credential shaped exactly like the real one.
+ *
+ * `redact` and `discloses` go through the DOMAIN functions the infrastructure factory uses,
+ * rather than being stubbed to the identity: a stub would make every test that asserts a
+ * destination or an artifact pass against an implementation that redacts nothing.
+ */
 function credential(reference = CREDENTIAL_REF, token = TOKEN): ResolvedCredential {
+  const secret = compileSecret(token);
   return {
     reference,
     authorize(headers) {
       headers.set('authorization', `Bearer ${token}`);
     },
+    redact: (text) => redactCompiled(text, secret),
+    discloses: (bytes) => bytesDiscloseCompiled(bytes, secret),
   };
 }
 
@@ -385,6 +400,42 @@ describe('the sign-in Session Step', () => {
     expect(state.executions.map((row) => row.stepExecutionId)).toContain(
       state.actions[0]?.stepExecutionId,
     );
+  });
+
+  it('records the sign-in as a credential-entry action whose capture was SUPPRESSED', async () => {
+    // Story 4.3. The action is on the log, and its row SAYS capture was suppressed and
+    // why. A missing artifact with no explanation reads to an auditor as "nothing happened
+    // here" — the defect class this codebase keeps finding — so the suppression is a
+    // recorded fact rather than an absence to be inferred.
+    const state = store(planFor('web'));
+    await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
+    expect(state.actions[0]).toMatchObject({
+      capture: 'SUPPRESSED',
+      captureSuppression: 'credential-entry',
+    });
+  });
+
+  it('asks the port for no capture at all while the credential is on the wire', async () => {
+    // The union is the guarantee — a credential-carrying `BrowserToolAction` has no
+    // `capture` field, so this does not compile the other way — and this is what proves the
+    // stage takes the arm it says it does.
+    const browser = new FakeBrowser();
+    await executeAgentSteps(DEPS(store(planFor('web')), browser), JOB);
+    const [performed] = browser.performed;
+    expect(performed?.credential).not.toBeNull();
+    expect((performed as { capture?: unknown } | undefined)?.capture).toBeUndefined();
+  });
+
+  it('redacts the credential out of a destination before it is recorded', async () => {
+    // `sanitizeDestination` strips the query and `user:pass@` and keeps the PATH, so a
+    // Target System that put the token in a path segment — or a redirect that did — would
+    // otherwise put it into the immutable chain. Same doctrine one step along: a
+    // destination denied FOR carrying a credential must still be recorded, without it.
+    const browser = new FakeBrowser({ result: { location: `${ORIGIN}/session/${TOKEN}` } });
+    const state = store(planFor('web'));
+    await executeAgentSteps(DEPS(state, browser), JOB);
+    expect(state.actions[0]?.destination).toBe(`${ORIGIN}/session/${REDACTED_CREDENTIAL}`);
+    expect(JSON.stringify(state.actions)).not.toContain(TOKEN);
   });
 
   it('audits the retrieval by naming the Target System, never the credential reference', async () => {
@@ -569,6 +620,7 @@ describe('the gate, at the port’s call site', () => {
     startedAt: '2026-09-06T00:05:00.000Z',
     completedAt: () => '2026-09-06T00:05:01.000Z',
     timeoutMs: () => 1000,
+    guard: NO_CREDENTIALS,
   };
 
   it('denies an action outside the frozen permitted list BEFORE the port is reached', async () => {
@@ -661,6 +713,40 @@ describe('the gate, at the port’s call site', () => {
       redirected: true,
       downloads: 2,
     });
+  });
+
+  it('records an action that presents no credential as PERMITTED capture', async () => {
+    // The other half of the suppression. Without it, "capture is suppressed for a
+    // credential-entry action" is satisfied by suppressing it for every action, which
+    // would make Story 4.4 impossible and this column meaningless.
+    const browser = new FakeBrowser();
+    const result = await performToolAction(browser, {
+      ...base,
+      scope: { target, scopeValues: new Set() },
+      request: { action: 'navigate', destination: ORIGIN, parameters: [] },
+    });
+    expect(result.action).toMatchObject({ capture: 'PERMITTED', captureSuppression: null });
+    // And the port is asked for the arm that CAN carry a capture request.
+    expect(browser.performed[0]).toMatchObject({ credential: null, capture: [] });
+  });
+
+  it('records a DENIED credential-entry action as suppressed too', async () => {
+    // The gate refused it, so nothing left — but a credential was being presented, and a
+    // row that said PERMITTED would describe an action the platform did not take.
+    const browser = new FakeBrowser();
+    const result = await performToolAction(browser, {
+      ...base,
+      credential: credential(),
+      scope: { target, scopeValues: new Set() },
+      request: { action: 'disable', destination: ORIGIN, parameters: [] },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.action).toMatchObject({
+      outcome: 'denied',
+      capture: 'SUPPRESSED',
+      captureSuppression: 'credential-entry',
+    });
+    expect(browser.performed).toEqual([]);
   });
 });
 

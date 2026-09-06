@@ -13,6 +13,7 @@ import {
   type AdapterEvidenceRecord,
   type EvidenceStore,
 } from './execution-ports.js';
+import type { CredentialGuard } from './credential-guard.js';
 
 /**
  * Reservation, upload and verification: the one owned mechanism (Story 3.5).
@@ -118,6 +119,24 @@ export function adapterEvidenceRecord(
  * A failure throws `PopulationAcquisitionError('integrity')`. It never deletes, repairs or
  * re-uploads: a damaged object is a terminal integrity failure, and the bytes stay exactly
  * as they are so that what is there can be looked at.
+ *
+ * **The credential wall (Story 4.3).** Before ANYTHING is uploaded, the bytes are scanned
+ * for every credential the stage has presented, and an artifact that discloses one is
+ * REFUSED — `PopulationAcquisitionError('credential')`, nothing written to the store, no
+ * digest, no registration. It runs before the upload rather than after the read-back so
+ * that "nothing is stored" is literally true rather than nearly true: the object store is
+ * append-only and immutable by design, so an artifact that reached it could not be taken
+ * back out.
+ *
+ * It is a REFUSAL and never a redaction. Bytes a Target System served are Evidence, and
+ * rewriting them to make them acceptable would be falsifying what a system answered. An
+ * artifact this PLATFORM produced is redacted by its producer — through the same guard,
+ * before it gets here — and if it still discloses a credential afterwards, that is a
+ * defect in the redaction and it has to fail loudly rather than be quietly re-redacted.
+ *
+ * `guard` is a REQUIRED argument, so a producer must decide what it is scanning for.
+ * `NO_CREDENTIALS` is the explicit "this stage has presented none", which is the truth for
+ * the population stage: the population is acquired before any credential is resolved.
  */
 export async function freezeArtifact(
   store: EvidenceStore,
@@ -129,7 +148,9 @@ export async function freezeArtifact(
   },
   bytes: Uint8Array,
   budget: () => number,
+  guard: CredentialGuard,
 ): Promise<{ digest: string; size: number }> {
+  if (guard.discloses(bytes)) throw new PopulationAcquisitionError('credential');
   const sent = sha256HexOfBytes(bytes);
   await store.putIfAbsent(input.objectKey, bytes, budget());
   const stored = await store.read(input.objectKey, budget());

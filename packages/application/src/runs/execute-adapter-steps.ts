@@ -62,6 +62,7 @@ import {
   readRegisteredArtifact,
   reserveArtifact,
 } from './evidence-package.js';
+import { guardedCredentials, type CredentialGuard } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
@@ -128,11 +129,15 @@ export type AdapterExecutionDiagnostic =
   | 'reference-contract-failed'
   | 'reference-denied'
   | 'reference-scope-violation'
+  /** The artifact disclosed a credential this Run presented. Refused, never stored. */
+  | 'reference-credential-disclosed'
   | 'extraction-transport-failed'
   | 'extraction-integrity-failed'
   | 'extraction-contract-failed'
   | 'extraction-denied'
   | 'extraction-scope-violation'
+  /** The artifact disclosed a credential this Run presented. Refused, never stored. */
+  | 'extraction-credential-disclosed'
   | 'observation-registration-refused'
   /** A person cancelled the Run. Never produced by a limit, a Gate or a failure. */
   | 'canceled';
@@ -466,14 +471,27 @@ function failureDiagnostic(
   // place.
   if (code === 'denied') return `${unit}-denied` as AdapterExecutionDiagnostic;
   if (code === 'scope') return `${unit}-scope-violation` as AdapterExecutionDiagnostic;
+  // Story 4.3. The artifact carried a credential this Run had presented, so it was refused
+  // before anything was uploaded. Named for what it is: it is not an integrity failure —
+  // nothing is damaged and the bytes are exactly what the system served — and it is not a
+  // transport failure, which would send an operator to look at a system that answered
+  // perfectly well.
+  if (code === 'credential') return `${unit}-credential-disclosed` as AdapterExecutionDiagnostic;
   return `${unit}-${code}-failed` as AdapterExecutionDiagnostic;
 }
 
 /** Every I/O is bounded by the lease, the frozen Step timeout and the Run deadline. */
 export async function executeAdapterSteps(
-  deps: AdapterExecutionDependencies,
+  dependencies: AdapterExecutionDependencies,
   job: PopulationJob,
 ): Promise<{ retry: boolean }> {
+  // Every credential this stage resolves is held by `guard`, because the stage resolves
+  // through the WRAPPED resolver and never through the one it was handed (Story 4.3).
+  // There is no "remember this one" step for a branch to skip, and `freezeArtifact` takes
+  // the guard as a required argument, so no artifact reaches the object store without
+  // having been scanned for every credential this Run has presented.
+  const { credentials, guard } = guardedCredentials(dependencies.credentials);
+  const deps: AdapterExecutionDependencies = { ...dependencies, credentials };
   const claim = await deps.repository.transaction(job.runId, async (context) => {
     const run = context.run;
     if (!run || run.correlationId !== job.correlationId || job.schemaVersion !== 1) return null;
@@ -777,7 +795,7 @@ export async function executeAdapterSteps(
       }
       const outcome = await runReferenceStep(deps, {
         checkpoint, plan, run, entry, step, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, limitReached, evidence, references,
+        startStepExecution, attemptsPerCycle, limitReached, evidence, references, guard,
       });
       if (outcome === 'limit') {
         await stopForCause(limitReached() ?? 'run-time-limit', { stepId: step.stepId });
@@ -810,7 +828,7 @@ export async function executeAdapterSteps(
       }
       const outcome = await runWorkItem(deps, {
         checkpoint, plan, run, entry, item, records, guarded, renewLease, budget,
-        startStepExecution, attemptsPerCycle, limitReached, evidence, references,
+        startStepExecution, attemptsPerCycle, limitReached, evidence, references, guard,
       });
       if (outcome === 'limit') {
         await stopForCause(limitReached() ?? 'run-time-limit', { workItemId: item.workItemId });
@@ -887,6 +905,16 @@ interface UnitContext {
    * evaluator. Mutable on purpose — every Reference Source is acquired before any Work
    * Item, so by the time a Work Item reads it the list is complete. */
   references: ReferenceArtifact[];
+  /**
+   * Every credential this stage has presented so far (Story 4.3).
+   *
+   * Fed by the wrapped resolver rather than by each Work Item remembering to add its own,
+   * and handed to `freezeArtifact` so an artifact that discloses one is refused before
+   * anything is uploaded. It grows as the stage goes: a Reference Source acquired before
+   * any extraction is scanned against an empty guard, which is the truth — no credential
+   * had been presented when those bytes were fetched.
+   */
+  guard: CredentialGuard;
 }
 
 /**
@@ -975,6 +1003,7 @@ async function runReferenceStep(
         { objectKey: evidence.objectKey, registeredDigest: evidence.digest, registeredSize: evidence.size },
         artifact.bytes,
         unit.budget,
+        unit.guard,
       );
       step.state = 'ACQUIRED';
       // Held for the evaluator: these are the bytes `freezeArtifact` just read back out of
@@ -1143,6 +1172,7 @@ async function runWorkItem(
         { objectKey: evidence.objectKey, registeredDigest: evidence.digest, registeredSize: evidence.size },
         artifact.bytes,
         unit.budget,
+        unit.guard,
       );
       evidence.mediaType = artifact.mediaType;
       evidence.digest = frozen.digest;
@@ -1252,6 +1282,7 @@ async function runWorkItem(
       item.attempts >= maxAttempts ||
       denied ||
       diagnostic === 'credential-unresolved' ||
+      diagnostic === 'extraction-credential-disclosed' ||
       diagnostic === 'observation-registration-refused';
     item.cycles = Math.min(2, Math.ceil(item.attempts / unit.attemptsPerCycle));
     item.state = terminal ? 'FAILED' : cycleExhausted ? 'AWAITING' : 'IN_PROGRESS';

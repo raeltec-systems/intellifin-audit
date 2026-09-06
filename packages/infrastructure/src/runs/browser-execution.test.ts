@@ -8,6 +8,7 @@ import {
   provisionFailure,
   safeDestination,
 } from './browser-execution.js';
+import { resolvedCredential } from './credential-resolver.js';
 
 /**
  * The pure halves of the Agent Workspace implementation.
@@ -157,5 +158,66 @@ describe('attaching and releasing without a live workspace', () => {
     expect(
       new PlaywrightBrowserExecution({ mode: 'solari', apiKey: 'slr_live_x', recording: true }).mode,
     ).toBe('solari');
+  });
+});
+
+describe('capture during credential use', () => {
+  const execution = new PlaywrightBrowserExecution({ mode: 'local' });
+  const ref = { runId: 'run-1', workspaceId: 'gone', mode: 'local' as const };
+  const credential = resolvedCredential('cred://a', 'synthetic-token-never-store-me');
+
+  it('refuses a credential-entry action that asks for capture, before anything else', async () => {
+    // The `BrowserToolAction` union makes this not compile, so the only way to reach it is
+    // the way a real defect would: a cast past the union, or a JavaScript caller. Refusing
+    // it in the MECHANISM is what makes suppression a guarantee rather than a promise —
+    // "a structural type does not CONTAIN anything" is a lesson this codebase has already
+    // paid for once.
+    for (const capture of [['screenshot'], ['structural-snapshot'], ['frame'], ['screenshot', 'frame']]) {
+      await expect(
+        execution.perform(
+          ref,
+          { action: 'navigate', destination: 'http://localhost:4300/loancore', credential, capture } as never,
+          1000,
+        ),
+      ).rejects.toMatchObject({ code: 'contract' });
+    }
+  });
+
+  it('does not refuse a credential-entry action that asks for nothing', async () => {
+    // The refusal is about CAPTURE, not about credentials: the sign-in itself must still
+    // reach the workspace, and here it gets as far as the liveness check and reports the
+    // workspace it cannot find — which is the next thing that is wrong, not this one.
+    await expect(
+      execution.perform(
+        ref,
+        { action: 'navigate', destination: 'http://localhost:4300/loancore', credential },
+        1000,
+      ),
+    ).rejects.toMatchObject({ code: 'unavailable' });
+    // An empty request from a caller that cast is the same: nothing was asked for.
+    await expect(
+      execution.perform(
+        ref,
+        { action: 'navigate', destination: 'http://localhost:4300/loancore', credential, capture: [] } as never,
+        1000,
+      ),
+    ).rejects.toMatchObject({ code: 'unavailable' });
+  });
+
+  it('leaves an action with no credential free to ask for capture', async () => {
+    // Story 4.4 is what implements capture; the suppression is what this story owns, and it
+    // must not turn into "nothing may ever be captured".
+    await expect(
+      execution.perform(
+        ref,
+        {
+          action: 'navigate',
+          destination: 'http://localhost:4300/loancore',
+          credential: null,
+          capture: ['screenshot'],
+        },
+        1000,
+      ),
+    ).rejects.toMatchObject({ code: 'unavailable' });
   });
 });

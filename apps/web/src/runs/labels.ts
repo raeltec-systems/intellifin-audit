@@ -236,6 +236,37 @@ const PLAN_ACTION_WORDS: Readonly<Record<string, string>> = {
  * provider-side egress, `local` isolates browser state per Run and does not isolate the
  * worker process at all.
  */
+/**
+ * What became of one Tool Action, in words (Story 4.2's rows, Story 4.3's read).
+ *
+ * `denied` is the GATE refusing before anything left; `failed` is a transport failure;
+ * `performed` reached the system, whatever the system then said. A 401 is `performed` with
+ * a status of 401, because the action HAPPENED and the system said no — a different fact
+ * from a gate refusal, and the difference is the one Epic 3 paid for losing.
+ */
+const TOOL_ACTION_OUTCOME_WORDS: Readonly<Record<string, string>> = {
+  performed: 'Performed',
+  denied: 'Denied',
+  failed: 'Failed',
+};
+
+/**
+ * Whether the platform captured anything from an action, in words (Story 4.3).
+ *
+ * Said out loud on every row. A missing Structural Snapshot with no explanation reads to a
+ * reader as "nothing happened here", which is the same defect class as a dash that reads
+ * as "fine" and an empty Gate checklist that reads as a passed control.
+ */
+const TOOL_ACTION_CAPTURE_WORDS: Readonly<Record<string, string>> = {
+  PERMITTED: 'Capture permitted',
+  SUPPRESSED: 'Capture suppressed',
+};
+
+/** Why capture was suppressed. One reason exists, and it is stated rather than implied. */
+const CAPTURE_SUPPRESSION_WORDS: Readonly<Record<string, string>> = {
+  'credential-entry': 'a credential was presented on this request',
+};
+
 const WORKSPACE_MODE_WORDS: Readonly<Record<string, string>> = {
   solari: 'Managed remote browser',
   local: 'Local browser, shared process',
@@ -258,6 +289,20 @@ export const evidenceStateWord = (state: string): string => wordFor(EVIDENCE_STA
 export const coverageWord = (state: string): string => wordFor(OBSERVATION_COVERAGE_WORDS, state);
 export const foundWord = (found: string): string => wordFor(OBSERVATION_FOUND_WORDS, found);
 export const captureMethodWord = (method: string): string => wordFor(CAPTURE_METHOD_WORDS, method);
+export const toolActionOutcomeWord = (outcome: string): string =>
+  wordFor(TOOL_ACTION_OUTCOME_WORDS, outcome);
+
+/**
+ * The capture sentence for one Tool Action.
+ *
+ * A suppressed capture always says WHY, in the same breath: "Capture suppressed" alone is a
+ * gap with a label on it, and the reason is what tells an auditor that the absence of an
+ * artifact here is a decision rather than a failure.
+ */
+export function captureSentence(capture: string, suppression: string | null): string {
+  const word = wordFor(TOOL_ACTION_CAPTURE_WORDS, capture);
+  return suppression === null ? word : `${word} — ${wordFor(CAPTURE_SUPPRESSION_WORDS, suppression)}`;
+}
 export const matchOriginWord = (origin: string): string => wordFor(MATCH_ORIGIN_WORDS, origin);
 export const planActionWord = (action: string): string => wordFor(PLAN_ACTION_WORDS, action);
 export const workspaceModeWord = (mode: string): string => wordFor(WORKSPACE_MODE_WORDS, mode);

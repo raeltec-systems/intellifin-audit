@@ -15,6 +15,7 @@ import {
   targetOrigin,
   withinOrigin,
 } from './adapter-extraction-http.js';
+import { resolvedCredential } from './credential-resolver.js';
 
 const TOKEN = 'SECRET-TOKEN-do-not-store-me';
 
@@ -36,10 +37,10 @@ function target(kind: TargetSystemKind, origin: string): ProcedureTargetSnapshot
   };
 }
 
-const credential: ResolvedCredential = {
-  reference: 'cred://synthetic/read-only',
-  authorize: (headers) => headers.set('authorization', `Bearer ${TOKEN}`),
-};
+// Built by the real factory rather than by hand, so `redact` and `discloses` are the real
+// ones. A hand-written stub whose redaction is the identity would let a test assert a
+// containment that this build does not actually provide.
+const credential: ResolvedCredential = resolvedCredential('cred://synthetic/read-only', TOKEN);
 
 /** `Response.url` is read-only, so a stub carries the URL the adapter compares. */
 function respond(body: string, contentType: string, url: string, status = 200): Response {

@@ -59,6 +59,7 @@ import {
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
+import { resolvedCredential } from '@intellifin/infrastructure/credentials';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 
 /**
@@ -393,10 +394,11 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
             }),
         },
         credentials: {
-          resolve: async (reference: string): Promise<ResolvedCredential> => ({
-            reference,
-            authorize: (headers) => headers.set('authorization', `Bearer ${TOKEN}`),
-          }),
+          // The REAL factory, so `redact` and `discloses` are the real ones: a hand-made
+          // stub whose redaction is the identity would let these tests assert a
+          // containment this build does not actually provide (Story 4.3).
+          resolve: async (reference: string): Promise<ResolvedCredential> =>
+            resolvedCredential(reference, TOKEN),
         },
         store: seeded.store,
         clock: new SystemClock(),
@@ -566,6 +568,62 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect(resolved).toHaveLength(1);
     expect(Object.keys(resolved[0]!.payload as object)).not.toContain('credentialRef');
     expect(String((resolved[0]!.payload as Record<string, unknown>)['registrationId'])).not.toBe('');
+  });
+
+  it('REFUSES to register an extraction that echoed the credential, and stores nothing', async () => {
+    // Story 4.3, against a real PostgreSQL and a real Evidence store. The credential
+    // reached the artifact by a path nobody predicted — the Target System answered with it
+    // — and the bytes are exactly what it served, so they are REFUSED rather than rewritten.
+    const seeded = await seed(['api']);
+    const before = new Set(seeded.objects.keys());
+    const { deps } = dependencies(seeded, {
+      extract: async (_target, credential) => {
+        const headers = new Map<string, string>();
+        credential.authorize({ set: (name, value) => headers.set(name, value) });
+        return {
+          bytes: utf8Bytes(`{"you_sent":${JSON.stringify(headers.get('authorization'))},"rows":[]}`),
+          mediaType: 'application/json',
+          location: 'https://synthetic.invalid/x',
+        };
+      },
+    });
+    await executeAdapterSteps(deps, seeded.job);
+
+    const [item] = await sql<{ state: string; diagnostic: string; attempts: number }[]>`
+      SELECT state, diagnostic, attempts FROM run_work_item WHERE run_id=${seeded.run.runId}`;
+    expect(item).toMatchObject({ state: 'FAILED', diagnostic: 'extraction-credential-disclosed' });
+    // Terminal on the FIRST attempt: the same bytes disclose the same credential every
+    // time, so seven more attempts against a live system prove nothing.
+    expect(item?.attempts).toBe(1);
+
+    // Nothing was stored. The scan runs BEFORE the upload, because the object store is
+    // immutable by design and an artifact that reached it could not be taken back out.
+    for (const key of seeded.objects.keys()) expect(before.has(key)).toBe(true);
+    for (const bytes of seeded.objects.values()) {
+      expect(new TextDecoder().decode(bytes)).not.toContain(TOKEN);
+    }
+    // The Evidence row was reserved and never registered, and the seal then ABANDONED it —
+    // `SealPackage` is the one thing that does, and an abandoned reservation with no digest
+    // is the truthful record of an artifact this platform refused to keep.
+    const evidence = await sql<{ state: string; digest: string | null }[]>`
+      SELECT state, digest FROM run_evidence WHERE run_id=${seeded.run.runId} AND kind='adapter-extraction'`;
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toMatchObject({ state: 'ABANDONED', digest: null });
+
+    // And the token is in nothing the Run stored, including the diagnostic that says why.
+    const dumps = await Promise.all([
+      sql`SELECT payload::text AS text FROM audit_events WHERE aggregate_id=${seeded.run.runId}`,
+      sql`SELECT row_to_json(t)::text AS text FROM run_evidence t WHERE run_id=${seeded.run.runId}`,
+      sql`SELECT row_to_json(t)::text AS text FROM run_work_item t WHERE run_id=${seeded.run.runId}`,
+      sql`SELECT row_to_json(t)::text AS text FROM run_gate_check t WHERE run_id=${seeded.run.runId}`,
+      sql`SELECT row_to_json(t)::text AS text FROM run_result t WHERE run_id=${seeded.run.runId}`,
+    ]);
+    for (const rows of dumps) for (const row of rows) expect(String(row.text)).not.toContain(TOKEN);
+
+    // A Work Item failure never stops a Run. The Gate concluded it on the coverage this
+    // item never produced.
+    const [run] = await sql<{ state: string }[]>`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`;
+    expect(run?.state).toBe('INCONCLUSIVE');
   });
 
   it('fails one Work Item after both bounded cycles and still runs the next', async () => {

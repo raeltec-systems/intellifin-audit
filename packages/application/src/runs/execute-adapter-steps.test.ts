@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  bytesDiscloseCompiled,
+  compileSecret,
+  redactCompiled,
   observationBatchDigest,
   observationDigest,
   observationIdFor,
@@ -52,6 +55,23 @@ import {
 
 /** The one token in this file. Nothing the stage writes may ever contain it. */
 const TOKEN = 'SECRET-TOKEN-9d3f-do-not-store-me';
+
+/**
+ * A resolved credential shaped exactly like the real one (Story 4.3).
+ *
+ * `redact` and `discloses` go through the DOMAIN functions the infrastructure factory uses
+ * rather than being stubbed to the identity: a stub would make the registration refusal
+ * pass against an implementation that scans for nothing.
+ */
+function testCredential(reference: string, token: string): ResolvedCredential {
+  const secret = compileSecret(token);
+  return {
+    reference,
+    authorize: (headers) => headers.set('authorization', `Bearer ${token}`),
+    redact: (text) => redactCompiled(text, secret),
+    discloses: (bytes) => bytesDiscloseCompiled(bytes, secret),
+  };
+}
 
 function target(id: string, kind: TargetSystemKind, origin: string): ProcedureTargetSnapshot {
   const fields = {
@@ -585,10 +605,7 @@ function harness(options: {
     credentials: {
       resolve:
         options.resolve === undefined
-          ? async (reference) => ({
-              reference,
-              authorize: (headers) => headers.set('authorization', `Bearer ${TOKEN}`),
-            })
+          ? async (reference) => testCredential(reference, TOKEN)
           : (reference) => options.resolve!(reference),
     },
     store: {
@@ -859,10 +876,7 @@ describe('executeAdapterSteps', () => {
   it('fails a Work Item whose credential answers about a different reference', async () => {
     const test = harness({
       plan: plan([adapter]),
-      resolve: async () => ({
-        reference: 'cred://synthetic/somebody-else',
-        authorize: (headers) => headers.set('authorization', `Bearer ${TOKEN}`),
-      }),
+      resolve: async () => testCredential('cred://synthetic/somebody-else', TOKEN),
     });
     await executeAdapterSteps(test.deps, JOB);
     const item = [...test.repository.items.values()][0]!;
@@ -878,6 +892,56 @@ describe('executeAdapterSteps', () => {
     // RUN_FAILED.
     expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
     expect(test.repository.run.state).toBe('INCONCLUSIVE');
+  });
+
+  it('REFUSES to register an extraction that echoed the credential back, and stores nothing', async () => {
+    // Story 4.3, and the case that matters: the credential reached the artifact by a path
+    // nobody predicted — the Target System answered with it. The bytes are exactly what it
+    // served, so they are not rewritten; they are REFUSED, before anything is uploaded.
+    const test = harness({
+      plan: plan([adapter]),
+      extract: async (_target, credential) =>
+        Promise.resolve({
+          bytes: utf8Bytes(`{"you_sent":"Bearer ${TOKEN}","reference":"${credential.reference}"}`),
+          mediaType: 'application/json',
+          location: 'https://synthetic.invalid/x',
+        }),
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const item = [...test.repository.items.values()][0]!;
+    expect(item.state).toBe('FAILED');
+    expect(item.diagnostic).toBe('extraction-credential-disclosed');
+    // Terminal on the first attempt: the same bytes disclose the same credential every
+    // time, so seven more attempts against a live system prove nothing.
+    expect(item.attempts).toBe(1);
+    // Nothing was stored. Literally: the scan runs BEFORE the upload, because the object
+    // store is immutable by design and an artifact that reached it could not be taken out.
+    expect(test.puts).toEqual([]);
+    expect(test.objects.size).toBe(0);
+    expect(everythingWritten(test)).not.toContain(TOKEN);
+    // The Work Item failed and the Run still concluded. A Work Item failure never stops a
+    // Run; the Gate does, on the coverage this item never produced.
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    expect(test.repository.run.state).toBe('INCONCLUSIVE');
+  });
+
+  it('REFUSES a Reference Source that discloses a credential the Run already presented', async () => {
+    // A Reference Source is a Run-level Session Step, so §E maps its failure to RUN_FAILED
+    // — but only once a credential has been presented, and the ORDER matters: Reference
+    // Sources are acquired before any Work Item, so on this plan the guard is empty when
+    // they are frozen and the artifact is registered exactly as it always was.
+    const test = harness({
+      plan: plan([reference, adapter]),
+      reference: async () => Promise.resolve({
+        bytes: utf8Bytes(`role,permission\nBearer ${TOKEN},X\n`),
+        mediaType: 'text/csv',
+        location: 'https://synthetic.invalid/roles.csv',
+      }),
+    });
+    await executeAdapterSteps(test.deps, JOB);
+    const step = [...test.repository.steps.values()][0]!;
+    expect(step.state).toBe('ACQUIRED');
+    expect(test.objects.size).toBeGreaterThan(0);
   });
 
   it('claims nothing while the population is not ready, or the Run is not running', async () => {

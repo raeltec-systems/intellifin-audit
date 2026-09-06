@@ -331,6 +331,26 @@ export const NO_RESULT_STATEMENT = 'No Result has been published for this Run.';
 export const CAPTURE_TIME_UNRECORDED = 'Capture time was not recorded.';
 
 /**
+ * What a Step Execution says when its surface records no Tool Actions in this build.
+ *
+ * OURS. `run_tool_action` is ONE table and one shape for both surfaces (AD-6), and Story
+ * 4.2 wrote the `agent` rows; the ADAPTER path writes none yet. So an adapter Step
+ * Execution renders with nothing beneath it — and an empty fourth level reads as "no
+ * actions were taken", which is false: the adapter resolved a credential, fetched a
+ * collection and froze the response.
+ *
+ * This project has already chosen a sentence over an empty space three times for exactly
+ * this reason: `Never probed` on the connectivity column, `Not evaluated` on an unrun Gate,
+ * and `Capture time was not recorded.` above. A dash or an empty cell is something a reader
+ * takes for "fine".
+ *
+ * An AGENT Step Execution with no Tool Actions is a genuine absence and says nothing,
+ * because one that took no action really did take none.
+ */
+export const ADAPTER_ACTIONS_UNRECORDED =
+  'This build does not record adapter actions here yet; the extraction is on the Evidence tab.';
+
+/**
  * The Runs table's Change cell, when the two Runs are comparable.
  *
  * OURS. EXPERIENCE.md fixes only the incomparable sentence above; the compact form of

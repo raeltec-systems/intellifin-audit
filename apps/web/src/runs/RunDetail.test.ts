@@ -16,6 +16,7 @@ import { EvidenceCard, GroundingInspector, evidenceCardProps } from './EvidenceC
 import { ExceptionCard } from './ExceptionList';
 import { GateChecklist } from './GateChecklist';
 import { SafeNextActionPanel } from './ResultSections';
+import { ADAPTER_ACTIONS_UNRECORDED } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
 import { ConclusionTriptych } from './Triptych';
 import { UntrustedText } from './UntrustedText';
@@ -424,6 +425,7 @@ const timeline = (overrides: Partial<RunTimelineRead> = {}): RunTimelineRead => 
       stepId: 'step-ref',
       ordinal: 1,
       displayName: 'RoleMatrix',
+      action: 'extract-adapter',
       registrationId: 'rolematrix',
       state: 'ACQUIRED',
       attempts: 1,
@@ -473,6 +475,7 @@ const timeline = (overrides: Partial<RunTimelineRead> = {}): RunTimelineRead => 
       },
     ],
   },
+  toolActions: { total: 0, rows: [] },
   ...overrides,
 });
 
@@ -536,6 +539,39 @@ describe('the Execution Timeline', () => {
     expect(html).toContain('id="work-item-019823ab-0000-7000-8000-0000000000c1"');
   });
 
+  it('says in words that an adapter Step Execution records no Tool Actions, and stays silent for an agent one', () => {
+    // The adapter path writes no `run_tool_action` rows, so its Step Executions render with
+    // nothing beneath them — and an empty fourth level reads as "no actions were taken",
+    // which is false: the adapter resolved a credential, fetched a collection and froze the
+    // response. `Never probed` and `Not evaluated` are the same choice made before.
+    const adapter = renderTimeline(timeline());
+    expect(adapter).toContain(ADAPTER_ACTIONS_UNRECORDED);
+
+    // An AGENT Step Execution with no Tool Actions really did take none, so it says nothing
+    // rather than blaming the build for an absence that is true.
+    const agent = renderTimeline(
+      timeline({
+        stepExecutions: {
+          total: 1,
+          rows: [
+            {
+              stepExecutionId: '019823ab-0000-7000-8000-0000000000d3',
+              planStepId: 'step-sign-in',
+              workItemId: null,
+              action: 'sign-in',
+              state: 'SUCCEEDED',
+              attempt: 1,
+              startedAt: '2026-09-06T09:03:00.000Z',
+              completedAt: '2026-09-06T09:03:02.000Z',
+              diagnostic: null,
+            },
+          ],
+        },
+      }),
+    );
+    expect(agent).not.toContain(ADAPTER_ACTIONS_UNRECORDED);
+  });
+
   it('collapses to Work Item rows by default, and expands a unit whose Step Execution failed', () => {
     const collapsed = renderTimeline(timeline());
     expect(collapsed).toContain('<details');
@@ -562,4 +598,97 @@ describe('the Execution Timeline', () => {
     expect(html).toContain('Acquired');
     expect(html).toContain('20s');
   });
+
+  it('names the Session Step by the action the plan froze, not by a hard-coded kind', () => {
+    // The detail said "Reference Source" for every Session Step, which stopped being true
+    // the moment Story 4.2 wrote the first `sign-in` row. A label that states something
+    // untrue is worse than one that states nothing.
+    const html = renderTimeline(
+      timeline({
+        sessionSteps: [
+          {
+            stepId: 'session-2',
+            ordinal: 1,
+            displayName: 'LoanCore',
+            action: 'sign-in',
+            registrationId: 'loancore',
+            state: 'ACQUIRED',
+            attempts: 1,
+            diagnostic: null,
+            evidenceId: null,
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('Sign in to the Target System');
+    expect(html).not.toContain('Reference Source');
+  });
+
+  it('renders the Tool Action and SAYS its capture was suppressed, and why', () => {
+    // Story 4.3. The action happened and must be visible; only its content is withheld. A
+    // suppression that showed as a gap is what a reader takes for nothing having occurred
+    // — the sign-out defect's shape, an absent signal that looks like success.
+    const html = renderTimeline(timeline({ toolActions: { total: 1, rows: [SIGN_IN_ACTION] } }));
+    expect(html).toContain('Tool Action');
+    expect(html).toContain('navigate');
+    expect(html).toContain('Capture suppressed');
+    expect(html).toContain('a credential was presented on this request');
+    expect(html).toContain('http://localhost:4300/loancore');
+    expect(html).toContain('Performed');
+  });
+
+  it('says capture was PERMITTED for an action that presented no credential', () => {
+    // The other half. Without it "capture is suppressed for a credential-entry action" is
+    // satisfied by a surface that says so on every row.
+    const html = renderTimeline(
+      timeline({
+        toolActions: {
+          total: 1,
+          rows: [{ ...SIGN_IN_ACTION, capture: 'PERMITTED', captureSuppression: null }],
+        },
+      }),
+    );
+    expect(html).toContain('Capture permitted');
+    expect(html).not.toContain('Capture suppressed');
+  });
+
+  it('shows a denied Tool Action with the rule that refused it', () => {
+    const html = renderTimeline(
+      timeline({
+        toolActions: {
+          total: 1,
+          rows: [
+            {
+              ...SIGN_IN_ACTION,
+              outcome: 'denied',
+              denial: 'origin-not-allowed',
+              status: null,
+            },
+          ],
+        },
+      }),
+    );
+    expect(html).toContain('Denied');
+    expect(html).toContain('origin-not-allowed');
+  });
 });
+
+/** One agent sign-in Tool Action, nested under the workspace's Step Execution. */
+const SIGN_IN_ACTION = {
+  toolActionId: '019823ab-0000-7000-8000-0000000000e1',
+  stepExecutionId: '019823ab-0000-7000-8000-0000000000d1',
+  surface: 'agent',
+  action: 'navigate',
+  method: 'GET',
+  destination: 'http://localhost:4300/loancore',
+  outcome: 'performed',
+  denial: null,
+  status: 200,
+  redirected: false,
+  downloads: 0,
+  capture: 'SUPPRESSED',
+  captureSuppression: 'credential-entry',
+  startedAt: '2026-09-06T09:01:01.000Z',
+  completedAt: '2026-09-06T09:01:02.000Z',
+  diagnostic: null,
+};

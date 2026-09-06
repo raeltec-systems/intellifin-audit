@@ -332,6 +332,46 @@ export const TOOL_ACTION_OUTCOMES = ['performed', 'denied', 'failed'] as const;
 export type ToolActionOutcome = (typeof TOOL_ACTION_OUTCOMES)[number];
 
 /**
+ * Whether the platform captured anything from this action (Story 4.3).
+ *
+ * `SUPPRESSED` is a recorded FACT and never a gap. A missing Structural Snapshot with no
+ * explanation reads to an auditor as "nothing happened here", which is the same defect
+ * class as a dash that reads as "fine", an empty Gate checklist that reads as a passed
+ * control, and the sign-out that did nothing and looked like success. The action itself is
+ * on the Timeline either way — only its content is withheld.
+ */
+export const TOOL_ACTION_CAPTURES = ['PERMITTED', 'SUPPRESSED'] as const;
+export type ToolActionCapture = (typeof TOOL_ACTION_CAPTURES)[number];
+
+/**
+ * Why capture was suppressed, as a closed vocabulary.
+ *
+ * Exactly one reason exists, and it is the one this story owns: the action presented a
+ * credential, so a Structural Snapshot, a screenshot or a frame taken while it was on the
+ * wire could put a working credential into immutable Evidence. "Entry" is credential USE
+ * and not typing — LoanCore authenticates a GET with an `Authorization` header and has no
+ * form — so the suppression follows the CREDENTIAL rather than a keystroke.
+ */
+export const CAPTURE_SUPPRESSIONS = ['credential-entry'] as const;
+export type CaptureSuppression = (typeof CAPTURE_SUPPRESSIONS)[number];
+
+/**
+ * What capture state an action has, from the PLATFORM's own knowledge of its request.
+ *
+ * Derived here rather than reported by a provider: whether a credential is being presented
+ * is something the caller decided before the port was reached, and a fact the provider
+ * reported would be a fact the provider could get wrong.
+ */
+export function captureStateFor(presentsCredential: boolean): {
+  readonly capture: ToolActionCapture;
+  readonly suppression: CaptureSuppression | null;
+} {
+  return presentsCredential
+    ? { capture: 'SUPPRESSED', suppression: 'credential-entry' }
+    : { capture: 'PERMITTED', suppression: null };
+}
+
+/**
  * One action, as it is recorded — the SAME shape for both surfaces.
  *
  * There is nowhere here for a credential, a request body, a response body, a header or a
@@ -369,6 +409,15 @@ export interface SanitizedToolAction {
   readonly completedAt: string | null;
   /** A closed diagnostic from the producing stage. Never an error message, never a URL. */
   readonly diagnostic: string | null;
+  /**
+   * Whether the platform captured anything from this action (Story 4.3).
+   *
+   * Recorded on every row, so a reader never has to infer from an absent artifact whether
+   * capture was suppressed or simply produced nothing.
+   */
+  readonly capture: ToolActionCapture;
+  /** Why capture was suppressed, or `null` when it was not. */
+  readonly captureSuppression: CaptureSuppression | null;
 }
 
 /**

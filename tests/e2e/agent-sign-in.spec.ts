@@ -264,6 +264,10 @@ test.describe('the agent signs in to LoanCore', () => {
     });
     expect(String(action!['destination'])).toBe(`${NORTHSTAR_BASE_URL}/loancore`);
     expect(String(action!['target_system'])).toBe(LOANCORE.registrationId);
+    // Story 4.3. The sign-in presents a credential, so its capture is SUPPRESSED and the
+    // row says so and says why — the action is visible, only its content is withheld. A
+    // gap with no explanation is what a reader takes for nothing having occurred.
+    expect(action).toMatchObject({ capture: 'SUPPRESSED', capture_suppression: 'credential-entry' });
 
     // The workspace the sign-in happened in. Its STATUS is deliberately not asserted: this
     // Run goes on to be refused by the adapter stage and the worker releases the workspace
@@ -304,6 +308,32 @@ test.describe('the agent signs in to LoanCore', () => {
       expect(Buffer.from(bytes).toString('utf8')).not.toContain(LOANCORE_TOKEN);
     }
     expect(workerLog).not.toContain(LOANCORE_TOKEN);
+  });
+
+  test('the Timeline shows the Tool Action and says its capture was suppressed', async ({ page }) => {
+    // Story 4.3: suppression must not look like absence. The Tool Action is on the
+    // Timeline, and the row states that nothing was captured from it and why.
+    runId = runId || String((await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId}`)[0]?.['run_id'] ?? '');
+    expect(runId).not.toBe('');
+    await page.goto(`/runs/${runId}/timeline`);
+    // "Collapsed to Work Item rows by default" (EXPERIENCE.md), so everything below that
+    // level — Step Executions and the Tool Actions under them — sits inside a `<details>`.
+    // A reader opens it; so does this test. It is a `<details>` rather than a click
+    // handler precisely so it works with no JavaScript and is reachable by keyboard.
+    const blocks = page.locator('details.ls-expand');
+    for (let index = 0; index < (await blocks.count()); index += 1) {
+      await blocks.nth(index).locator('summary').click();
+    }
+    await expect(page.getByText('Tool Action').first()).toBeVisible();
+    await expect(
+      page.getByText('Capture suppressed — a credential was presented on this request').first(),
+    ).toBeVisible();
+    // The Session Step is named by the action the plan froze, not by a hard-coded kind:
+    // "Reference Source" on a sign-in row would be a label stating something untrue.
+    await expect(page.getByText('Sign in to the Target System').first()).toBeVisible();
+    const body = (await page.locator('body').innerText()).concat(await page.content());
+    expect(body).not.toContain(LOANCORE_TOKEN);
+    expect(body).not.toContain(LOANCORE_CREDENTIAL);
   });
 
   test('the Run then ends RUN_FAILED, because the record-level steps are Story 4.4', async () => {

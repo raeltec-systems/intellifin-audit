@@ -1,5 +1,6 @@
 import {
   authorizeToolAction,
+  captureStateFor,
   exhaustedRunLimit,
   runStopFor,
   sanitizeDestination,
@@ -23,6 +24,7 @@ import {
   type AgentExecutionRepository,
   type BrowserActionFailureCode,
   type BrowserExecution,
+  type BrowserCaptureKind,
   type CredentialResolver,
   type ResolvedCredential,
   type SessionStepRecord,
@@ -30,6 +32,7 @@ import {
   type WorkspaceRef,
 } from './execution-ports.js';
 import type { PopulationJob } from './acquire-population.js';
+import { guardedCredentials, type CredentialGuard } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 import { SECURITY_DENIED_EVENT } from './run-gate.js';
@@ -127,6 +130,15 @@ const READ_METHOD = 'GET';
  */
 const NO_PARAMETERS: ReadonlySet<string> = new Set<string>();
 const NO_ARGUMENTS: readonly ToolActionParameter[] = [];
+
+/**
+ * What a Tool Action captures in this build: nothing.
+ *
+ * Written out rather than defaulted, so the day capture arrives (Story 4.4) the caller has
+ * to name what it wants rather than inherit whatever the port decided. A credential-entry
+ * action does not even have this field.
+ */
+const NO_CAPTURE: readonly BrowserCaptureKind[] = [];
 
 /**
  * How a GATE denial is recorded, exhaustive by type.
@@ -259,11 +271,29 @@ export async function performToolAction(
     readonly startedAt: string;
     readonly completedAt: () => string;
     readonly timeoutMs: () => number;
+    /**
+     * Every credential this stage has presented (Story 4.3).
+     *
+     * Required, so no call site can record a destination without deciding what it is
+     * scanning for. A destination is written into the immutable audit chain, and
+     * `sanitizeDestination` strips the query and `user:pass@` but keeps the PATH — so a
+     * system that put a token in a path segment, or a redirect that did, would otherwise
+     * put it there permanently. The strip and the redaction are the same doctrine one step
+     * apart: a destination denied FOR carrying a credential must still be recorded, and
+     * recorded without it.
+     */
+    readonly guard: CredentialGuard;
   },
 ): Promise<
   | { readonly ok: true; readonly action: SanitizedToolAction; readonly status: number | null; readonly session: boolean }
   | { readonly ok: false; readonly action: SanitizedToolAction; readonly diagnostic: AgentExecutionDiagnostic }
 > {
+  // The platform's OWN knowledge of its own request, taken before the port is reached: an
+  // action that presents a credential is a credential-entry action, its capture is
+  // suppressed, and the row says so rather than leaving a reader to infer it from an
+  // artifact that is not there. The `BrowserToolAction` union makes asking for capture on
+  // such an action not compile; this is what records that it was suppressed.
+  const { capture, suppression } = captureStateFor(input.credential !== null);
   const base = {
     toolActionId: input.toolActionId,
     runId: input.runId,
@@ -273,11 +303,13 @@ export async function performToolAction(
     targetSystem: input.scope.target.registrationId,
     action: input.request.action,
     method: READ_METHOD,
-    destination: sanitizeDestination(input.request.destination),
+    destination: input.guard.redact(sanitizeDestination(input.request.destination)),
     parameters: input.request.parameters,
     startedAt: input.startedAt,
     redirected: false,
     downloads: 0,
+    capture,
+    captureSuppression: suppression,
   };
 
   // The gate, BEFORE the port. Nothing below this line can be reached by an action the
@@ -303,11 +335,22 @@ export async function performToolAction(
   try {
     const result = await browser.perform(
       input.ref,
-      {
-        action: decision.action,
-        destination: decision.destination,
-        credential: input.credential,
-      },
+      // The union is the suppression. An action carrying a credential has no `capture`
+      // field to fill, so a Structural Snapshot, a screenshot or a frame cannot be asked
+      // for while a credential is on the wire — it does not compile. An action carrying
+      // none says what it captures, and today that is nothing: Story 4.4 is what captures.
+      input.credential === null
+        ? {
+            action: decision.action,
+            destination: decision.destination,
+            credential: null,
+            capture: NO_CAPTURE,
+          }
+        : {
+            action: decision.action,
+            destination: decision.destination,
+            credential: input.credential,
+          },
       input.timeoutMs(),
     );
     return {
@@ -318,8 +361,11 @@ export async function performToolAction(
         ...base,
         // What the workspace ENDED on, which is not always what it was sent to: a
         // same-origin redirect is followed and a cross-origin one is aborted by the
-        // egress interception, and the difference has to be visible in the log.
-        destination: result.location,
+        // egress interception, and the difference has to be visible in the log. Redacted
+        // for the same reason the requested destination is: this one is chosen by the
+        // Target System rather than by the platform, so it is the likelier of the two to
+        // carry something the platform never put there.
+        destination: input.guard.redact(result.location),
         redirected: result.redirected,
         downloads: result.downloads,
         outcome: 'performed',
@@ -361,9 +407,15 @@ export async function performToolAction(
  * one of that stage's four durable attempts (the Story 3.3 rule, one phase along).
  */
 export async function executeAgentSteps(
-  deps: AgentExecutionDependencies,
+  dependencies: AgentExecutionDependencies,
   job: PopulationJob,
 ): Promise<{ retry: boolean; proceed: boolean }> {
+  // Every credential this stage resolves is held by `guard`, because the stage resolves
+  // through the WRAPPED resolver and never through the one it was handed (Story 4.3).
+  // `performToolAction` takes it as a required argument, so no destination this stage
+  // records can carry a credential the Run has presented.
+  const { credentials, guard } = guardedCredentials(dependencies.credentials);
+  const deps: AgentExecutionDependencies = { ...dependencies, credentials };
   const claim = await deps.repository.transaction(job.runId, async (context) => {
     const run = context.run;
     if (!run || run.correlationId !== job.correlationId || job.schemaVersion !== 1) return null;
@@ -602,6 +654,7 @@ export async function executeAgentSteps(
       budget,
       limitReached,
       startStepExecution,
+      guard,
     });
     if (outcome === 'lost') return { retry: false, proceed: false };
     if (outcome === 'limit') {
@@ -651,6 +704,8 @@ interface SignInUnit {
   entry: ClassifiedTarget;
   step: SessionStepRecord;
   ref: WorkspaceRef;
+  /** Every credential this stage has presented, for the recorded destinations. */
+  guard: CredentialGuard;
   guarded(work: (context: AgentExecutionContext) => Promise<void>): Promise<boolean>;
   budget(): number;
   limitReached(): RunLimitCause | null;
@@ -807,6 +862,7 @@ async function runSignInStep(
       startedAt,
       completedAt: () => deps.clock.now().toISOString(),
       timeoutMs: unit.budget,
+      guard: unit.guard,
     });
     if (!performed.ok) {
       // A gate denial and a Target System refusal are both TERMINAL: the same frozen bytes

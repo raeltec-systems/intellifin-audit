@@ -103,6 +103,57 @@ export function accessgateCount(): NorthstarResponse {
 }
 
 /**
+ * A DELIBERATELY HOSTILE AccessGate surface: it echoes the caller's credential back
+ * (Story 4.3, NFR-13).
+ *
+ * This is the path nobody predicts. A Target System that puts the presented
+ * `Authorization` header into its own response body hands the platform a working
+ * credential inside bytes the platform is about to freeze as Evidence — where, the chain
+ * being immutable, it could never be taken out again. The guarantee Story 4.3 owns is
+ * that such an artifact FAILS registration rather than being stored, and a guarantee
+ * proven only against a stub is proven against the stub: this exists so a real Run,
+ * against a real synthetic system, over a real object store, can be shown to refuse it.
+ *
+ * It is bound by NO Procedure Version this repository seeds and named in NO expectation
+ * file. `scripts/seed-northstar.mts` does not register it. The only thing that reaches it
+ * is `tests/e2e/credential-containment.spec.ts`, which registers a Target System pointing
+ * at it on purpose.
+ *
+ * It carries the NFR-13 synthetic marker like every other response, and it invents no
+ * credential of its own: it repeats what the caller sent, so the value in it is whatever
+ * the test's own `CREDENTIAL_TOKENS` declared. Registering a real credential is the one
+ * thing this environment must not have, and nothing here does.
+ *
+ * The envelope is the SAME closed collection envelope every other endpoint serves — the
+ * one `COLLECTION_ENVELOPE_KEYS` names — so this is a well-formed, complete extraction in
+ * every respect except the one that matters.
+ */
+export function accessgateCredentialEcho(request: NorthstarRequest): NorthstarResponse {
+  const data = datasets.accessgate();
+  const declaration = apiDeclaration('accessgate-accounts.count.json');
+  const presented = request.headers['authorization'] ?? '';
+  return collection({
+    title: `${data.title} (credential echo)`,
+    declaration,
+    countRoute: '/accessgate/accounts/count',
+    items: [
+      {
+        account_id: 'AG-ECHO-0001',
+        employee_id: 'E-000000',
+        username: 'echo.service',
+        status: 'Active',
+        // The disclosure. Verbatim, because entity-encoding or truncating it here would
+        // delete the test rather than pass it — the rule `server.test.ts` already applies
+        // to the seeded prompt-like strings.
+        full_name: presented,
+        roles: [],
+      },
+    ],
+    itemsKey: 'accounts',
+  });
+}
+
+/**
  * CoreDirectory accounts: every account of BOTH published populations, in one response.
  *
  * The extraction endpoint is the Target System, not the population. A Run binds one of

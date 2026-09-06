@@ -28,6 +28,7 @@ import {
   runResult,
   runSessionStep,
   runStepExecution,
+  runToolAction,
   runWorkItem,
   runWorkspace,
 } from '../db/schema.js';
@@ -174,6 +175,14 @@ export interface RunTimelineSessionStep {
   readonly stepId: string;
   readonly ordinal: number;
   readonly displayName: string;
+  /**
+   * The frozen action this Session Step performs (`sign-in` or `extract-adapter`).
+   *
+   * Read rather than assumed. The row said "Reference Source" for every Session Step,
+   * which became false the moment Story 4.2 wrote the first `sign-in` row — a label that
+   * states something untrue, which is worse than one that states nothing.
+   */
+  readonly action: string;
   readonly registrationId: string;
   readonly state: string;
   readonly attempts: number;
@@ -181,7 +190,36 @@ export interface RunTimelineSessionStep {
   readonly evidenceId: string | null;
 }
 
-export interface RunTimelineWorkItem extends Omit<RunTimelineSessionStep, 'ordinal'> {
+/**
+ * One Tool Action, as the Timeline's fourth level renders it (Story 4.3).
+ *
+ * The rows Story 4.2 started writing, finally read. It carries `capture` because a
+ * suppression must be a stated fact rather than an absence a reader infers: an action with
+ * no artifact beside it and no explanation reads as "nothing happened here", which is the
+ * defect class this codebase keeps finding.
+ */
+export interface RunTimelineToolAction {
+  readonly toolActionId: string;
+  readonly stepExecutionId: string;
+  readonly surface: string;
+  readonly action: string;
+  readonly method: string;
+  readonly destination: string;
+  readonly outcome: string;
+  readonly denial: string | null;
+  readonly status: number | null;
+  readonly redirected: boolean;
+  readonly downloads: number;
+  readonly capture: string;
+  readonly captureSuppression: string | null;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+  readonly diagnostic: string | null;
+}
+
+// `action` is a Session Step's column and not a Work Item's: a Work Item's action is the
+// plan step it belongs to, which is already `stepId`.
+export interface RunTimelineWorkItem extends Omit<RunTimelineSessionStep, 'ordinal' | 'action'> {
   readonly workItemId: string;
   readonly ordinal: number;
   readonly cycles: number;
@@ -204,6 +242,7 @@ export interface RunTimelineRead {
   readonly sessionSteps: readonly RunTimelineSessionStep[];
   readonly workItems: readonly RunTimelineWorkItem[];
   readonly stepExecutions: Bounded<RunStepExecutionRow>;
+  readonly toolActions: Bounded<RunTimelineToolAction>;
 }
 
 export class DrizzleRunDetailRepository {
@@ -433,7 +472,7 @@ export class DrizzleRunDetailRepository {
    * with their clocks and nothing else.
    */
   async readTimeline(runId: string): Promise<RunTimelineRead> {
-    const empty: RunTimelineRead = { workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 } };
+    const empty: RunTimelineRead = { workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 }, toolActions: { rows: [], total: 0 } };
     if (!isUuidText(runId)) return empty;
     const [workspace] = await this.db.select().from(runWorkspace).where(eq(runWorkspace.runId, runId));
     const [population] = await this.db.select().from(populationExecution).where(eq(populationExecution.runId, runId));
@@ -484,6 +523,7 @@ export class DrizzleRunDetailRepository {
         stepId: row.stepId,
         ordinal: row.ordinal,
         displayName: row.displayName,
+        action: row.action,
         registrationId: row.registrationId,
         state: row.state,
         attempts: row.attempts,
@@ -504,6 +544,53 @@ export class DrizzleRunDetailRepository {
         observations: row.observations,
       })),
       stepExecutions,
+      toolActions: await this.readToolActions(runId),
+    };
+  }
+
+  /**
+   * Every Tool Action, oldest first, bounded like every other list this surface renders.
+   *
+   * Ordered by `(started_at, tool_action_id)` — the id is a UUIDv7, so the tiebreak is
+   * deterministic rather than arbitrary, which is the same reason the Runs list keysets on
+   * it. An exact total beside a bounded sample: a Run that took ten thousand actions must
+   * still render, and a count that silently stopped at the sample size would understate the
+   * case that matters.
+   */
+  async readToolActions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunTimelineToolAction>> {
+    if (!isUuidText(runId)) return { rows: [], total: 0 };
+    const counted = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(runToolAction)
+      .where(eq(runToolAction.runId, runId));
+    const total = Number(counted[0]?.total ?? 0);
+    if (total === 0) return { rows: [], total: 0 };
+    const rows = await this.db
+      .select()
+      .from(runToolAction)
+      .where(eq(runToolAction.runId, runId))
+      .orderBy(asc(runToolAction.startedAt), asc(runToolAction.toolActionId))
+      .limit(limit);
+    return {
+      total,
+      rows: rows.map((row) => ({
+        toolActionId: row.toolActionId,
+        stepExecutionId: row.stepExecutionId,
+        surface: row.surface,
+        action: row.action,
+        method: row.method,
+        destination: row.destination,
+        outcome: row.outcome,
+        denial: row.denial,
+        status: row.status,
+        redirected: row.redirected,
+        downloads: row.downloads,
+        capture: row.capture,
+        captureSuppression: row.captureSuppression,
+        startedAt: row.startedAt.toISOString(),
+        completedAt: row.completedAt === null ? null : row.completedAt.toISOString(),
+        diagnostic: row.diagnostic,
+      })),
     };
   }
 

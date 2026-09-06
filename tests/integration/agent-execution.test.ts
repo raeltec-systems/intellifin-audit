@@ -16,6 +16,7 @@ import {
   initialDraftSections,
   registrationDigest,
   snapshotFromRegistration,
+  REDACTED_CREDENTIAL,
 } from '@intellifin/domain';
 import {
   createDb,
@@ -32,6 +33,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentials';
+import { NO_CREDENTIALS } from '@intellifin/application';
 import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 
@@ -67,6 +69,14 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
   const browsers: PlaywrightBrowserExecution[] = [];
   /** Every request the real server was asked for, with the credential it carried. */
   let requested: { path: string; authorized: boolean; cookie: string }[] = [];
+  /**
+   * A synthetic system that puts the credential in a PATH it redirects to (Story 4.3).
+   *
+   * `sanitizeDestination` strips the query and `user:pass@` and keeps the path, so without
+   * the redaction this would put a working credential into the immutable action log. It is
+   * off by default, because it is the hostile case rather than the ordinary one.
+   */
+  let leakCredentialInPath = false;
 
   beforeAll(async () => {
     const target = new URL(url!);
@@ -92,6 +102,14 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
           'www-authenticate': 'Bearer realm="synthetic"',
         });
         response.end('{"error":"authentication_required"}');
+        return;
+      }
+      if (leakCredentialInPath && (request.url ?? '') === '/loancore') {
+        response.writeHead(302, {
+          location: `/loancore/session/${TOKEN}`,
+          ...(authorized ? { 'set-cookie': 'session=granted; Path=/' } : {}),
+        });
+        response.end();
         return;
       }
       response.writeHead(200, {
@@ -333,6 +351,47 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     expect(dump?.text).not.toContain(CREDENTIAL_REF);
   }, 120_000);
 
+  it('records the sign-in as a credential-entry action whose capture was SUPPRESSED', async () => {
+    // Story 4.3. The action is on the log and its row SAYS capture was suppressed and why.
+    // A gap with no explanation is what a reader takes for nothing having occurred.
+    const job = await seed();
+    const execution = browser();
+    await ready(job, execution);
+    await executeAgentSteps(deps(execution), job);
+    const [action] = await sql<{ capture: string; capture_suppression: string | null }[]>`
+      SELECT capture, capture_suppression FROM run_tool_action WHERE run_id=${job.runId}`;
+    expect(action).toMatchObject({ capture: 'SUPPRESSED', capture_suppression: 'credential-entry' });
+  }, 120_000);
+
+  it('redacts the credential out of a destination the Target System chose', async () => {
+    // The hostile case: the system redirects the sign-in to a path carrying the token.
+    // `sanitizeDestination` strips a query and `user:pass@` and KEEPS the path, so without
+    // the redaction the immutable action log would hold a working credential for ever.
+    leakCredentialInPath = true;
+    try {
+      const job = await seed();
+      const execution = browser();
+      await ready(job, execution);
+      await executeAgentSteps(deps(execution), job);
+      const [action] = await sql<{ destination: string; redirected: boolean }[]>`
+        SELECT destination, redirected FROM run_tool_action WHERE run_id=${job.runId}`;
+      // The redirect really happened and really landed on the leaking path...
+      expect(action?.redirected).toBe(true);
+      expect(action?.destination).toContain('/loancore/session/');
+      // ...and what was STORED does not carry the credential.
+      expect(action?.destination).not.toContain(TOKEN);
+      expect(action?.destination).toContain(REDACTED_CREDENTIAL);
+      const [dump] = await sql<{ text: string }[]>`
+        SELECT coalesce(string_agg(t, ' '), '') AS text FROM (
+          SELECT payload::text AS t FROM audit_events WHERE aggregate_id=${job.runId}
+          UNION ALL SELECT to_jsonb(a)::text FROM run_tool_action a WHERE run_id=${job.runId}
+        ) rows`;
+      expect(dump?.text).not.toContain(TOKEN);
+    } finally {
+      leakCredentialInPath = false;
+    }
+  }, 120_000);
+
   it('puts the sign-in in the audit chain, and the chain still verifies', async () => {
     const job = await seed();
     const execution = browser();
@@ -375,6 +434,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
       workItemId: null,
       toolActionId: ids.next(),
       scope: { target, scopeValues: new Set() },
+      guard: NO_CREDENTIALS,
       // A path the SAME server answers, one segment outside the frozen origin. The
       // sibling-prefix case is the one a string comparison gets wrong, and this server
       // would answer it, so the gate is what has to stop it.
@@ -427,7 +487,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     await expect(
       execution.perform(
         { runId: job.runId, workspaceId: workspace!.id, mode: 'local' },
-        { action: 'navigate', destination: `${origin}-elsewhere/users`, credential: null },
+        { action: 'navigate', destination: `${origin}-elsewhere/users`, credential: null, capture: [] },
         10_000,
       ),
     ).rejects.toMatchObject({ code: 'scope' });
@@ -477,6 +537,10 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     // The table has nowhere for a credential to live, by construction.
     expect(columns.map((row) => row.column_name)).toEqual([
       'action',
+      // Story 4.3: whether the platform captured anything from this action, and why not.
+      // Two more columns and still nowhere for a credential, a header or a body.
+      'capture',
+      'capture_suppression',
       'completed_at',
       'denial',
       'destination',
@@ -508,23 +572,44 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     // A denial that names no rule, and a performed action that names one: either alone
     // permits a row that reads as the other, which is why the CHECK is one expression.
     await expect(
-      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at)
-          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'denied',NULL,false,0,now())`,
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'denied',NULL,false,0,now(),'PERMITTED')`,
     ).rejects.toThrow(/run_tool_action_denied/);
     await expect(
-      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at)
-          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed','origin-not-allowed',false,0,now())`,
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed','origin-not-allowed',false,0,now(),'PERMITTED')`,
     ).rejects.toThrow(/run_tool_action_denied/);
     // A write method cannot be recorded at all: FR-3 is enforced by the schema as well.
     await expect(
-      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at)
-          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','POST','http://x/','[]'::jsonb,'performed',NULL,false,0,now())`,
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','POST','http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'PERMITTED')`,
     ).rejects.toThrow(/run_tool_action_method/);
     // And a denial reason outside the closed vocabulary.
     await expect(
-      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at)
-          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'denied','invented-reason',false,0,now())`,
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'denied','invented-reason',false,0,now(),'PERMITTED')`,
     ).rejects.toThrow(/run_tool_action_denial/);
+    // Story 4.3's own pair, at the database. A SUPPRESSED row with no reason is a gap
+    // wearing a label; a PERMITTED row with one says capture was both allowed and refused.
+    // One CHECK, like `run_tool_action_denied`, because either half alone permits a row
+    // that reads as the other.
+    await expect(
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture,capture_suppression)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'SUPPRESSED',NULL)`,
+    ).rejects.toThrow(/run_tool_action_capture_suppressed/);
+    await expect(
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture,capture_suppression)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'PERMITTED','credential-entry')`,
+    ).rejects.toThrow(/run_tool_action_capture_suppressed/);
+    // And neither half may be spelled outside its closed vocabulary.
+    await expect(
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'permitted')`,
+    ).rejects.toThrow(/run_tool_action_capture/);
+    await expect(
+      sql`INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture,capture_suppression)
+          VALUES(gen_random_uuid(),${job.runId},${row!.step},'agent','x','navigate','GET','http://x/','[]'::jsonb,'performed',NULL,false,0,now(),'SUPPRESSED','because-i-said-so')`,
+    ).rejects.toThrow(/run_tool_action_capture_reason/);
     expect(row?.id).toBeDefined();
   }, 120_000);
 });

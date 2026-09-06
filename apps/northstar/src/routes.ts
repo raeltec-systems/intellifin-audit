@@ -1,6 +1,7 @@
 import {
   accessgateAccounts,
   accessgateCount,
+  accessgateCredentialEcho,
   approvenowApprovals,
   approvenowCount,
   coredirectoryAccounts,
@@ -138,6 +139,15 @@ export const ROUTES: readonly Route[] = [
     probe: '/accessgate/accounts/count',
     summary: 'The declared count of active accounts, generated from the dataset.',
     handle: () => accessgateCount(),
+  },
+  {
+    id: 'accessgate-credential-echo',
+    system: 'AccessGate',
+    pattern: /^\/accessgate\/credential-echo$/,
+    probe: '/accessgate/credential-echo',
+    summary:
+      'DELIBERATELY HOSTILE (Story 4.3): echoes the caller’s Authorization header into a row, so a Run can be shown to REFUSE to freeze it. Bound by no Procedure and seeded by nothing.',
+    handle: (request) => accessgateCredentialEcho(request),
   },
   {
     id: 'accessgate-home',

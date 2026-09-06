@@ -1117,6 +1117,11 @@ export const runToolAction = pgTable('run_tool_action', {
   status: integer('status'), redirected: boolean('redirected').notNull(), downloads: integer('downloads').notNull(),
   startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
   completedAt: timestamp('completed_at',{withTimezone:true}), diagnostic: text('diagnostic'),
+  // Generation 29 (Story 4.3). Whether the platform captured anything from this action,
+  // and why not. Recorded on EVERY row, so a reader never has to infer from an artifact
+  // that is not there whether capture was suppressed or simply produced nothing — a gap is
+  // what a reader takes for "nothing happened here".
+  capture: text('capture').notNull(), captureSuppression: text('capture_suppression'),
 }, t=>[
   index('run_tool_action_run_idx').on(t.runId,t.startedAt),
   check('run_tool_action_surface',sql`${t.surface} IN ('agent','adapter')`),
@@ -1129,6 +1134,13 @@ export const runToolAction = pgTable('run_tool_action', {
   // are one CHECK because either alone permits a row that reads as the other.
   check('run_tool_action_denied',sql`(${t.outcome}='denied') = (${t.denial} IS NOT NULL)`),
   check('run_tool_action_counts',sql`${t.downloads}>=0 AND (${t.status} IS NULL OR (${t.status}>=100 AND ${t.status}<=599))`),
+  check('run_tool_action_capture',sql`${t.capture} IN ('PERMITTED','SUPPRESSED')`),
+  check('run_tool_action_capture_reason',sql`${t.captureSuppression} IS NULL OR ${t.captureSuppression} IN ('credential-entry')`),
+  // A suppressed capture ALWAYS names its reason and a permitted one never carries one.
+  // One CHECK, like `run_tool_action_denied`, because either half alone permits a row that
+  // reads as the other: a SUPPRESSED row with no reason is a gap wearing a label, and a
+  // PERMITTED row with a reason says capture was both allowed and refused.
+  check('run_tool_action_capture_suppressed',sql`(${t.capture}='SUPPRESSED') = (${t.captureSuppression} IS NOT NULL)`),
 ]);
 
 export const runObservation = pgTable('run_observation', {

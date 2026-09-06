@@ -120,6 +120,18 @@ function sessionOptions(connection: SolariConnection): { recording?: boolean } {
 }
 
 /**
+ * What a caller asked to be captured, read through the union rather than around it.
+ *
+ * `capture` exists only on the arm with no credential, so this is `[]` for every
+ * credential-entry action the type system permits — and reads whatever a caller that cast
+ * past the union actually put there, which is the case the runtime refusal exists for.
+ */
+function requestedCapture(action: BrowserToolAction): readonly string[] {
+  const requested = (action as { readonly capture?: unknown }).capture;
+  return Array.isArray(requested) ? (requested as readonly string[]) : [];
+}
+
+/**
  * The scheme, authority and path of a destination — never its query, fragment or body.
  *
  * This value is written into the immutable audit chain as a security event, and anything
@@ -427,6 +439,21 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     action: BrowserToolAction,
     timeoutMs: number,
   ): Promise<BrowserActionResult> {
+    // FIRST, before the workspace is even looked up. The union already makes this
+    // unrepresentable: a `BrowserToolAction` carrying a credential has no `capture` field.
+    // A structural type does not CONTAIN anything though — TypeScript's excess-property
+    // check fires only on a fresh literal assigned to an annotated type, and a caller that
+    // cast past the union compiles — so the mechanism refuses it as well. Capture is
+    // SUPPRESSED for a credential-entry action: a Structural Snapshot, a screenshot or a
+    // frame taken while a credential is on the wire would put a working credential into
+    // immutable Evidence, and nothing can take it out again.
+    //
+    // It is checked before the liveness lookup because it is a fact about the REQUEST, not
+    // about the workspace: reporting it as `unavailable` because the browser happened to be
+    // gone would name the wrong thing, and would hide the request that must never be made.
+    if (action.credential !== null && requestedCapture(action).length > 0) {
+      throw new BrowserActionError('contract');
+    }
     const live = this.live.get(ref.workspaceId);
     // A workspace belongs to ONE Run and to one mode, exactly as `attach` requires.
     if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode) {

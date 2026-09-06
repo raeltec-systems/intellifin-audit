@@ -7,6 +7,7 @@ import {
   verifySealedPackage,
 } from './seal-package.js';
 import { freezeArtifact, reserveArtifact, verifyRegisteredArtifact } from './evidence-package.js';
+import { NO_CREDENTIALS } from './credential-guard.js';
 import {
   PopulationAcquisitionError,
   type EvidenceIntegrityRecord,
@@ -136,6 +137,7 @@ describe('reserving and freezing an artifact', () => {
       { objectKey: first.objectKeys[0]!, registeredDigest: null, registeredSize: null },
       bytes,
       budget,
+      NO_CREDENTIALS,
     );
 
     // The crash. A second production of the same artifact names the same reservation.
@@ -156,6 +158,7 @@ describe('reserving and freezing an artifact', () => {
       },
       bytes,
       budget,
+      NO_CREDENTIALS,
     );
     expect(again).toEqual(frozen);
     // Exactly one object exists: `putIfAbsent` reconciled rather than writing a second.
@@ -170,6 +173,7 @@ describe('reserving and freezing an artifact', () => {
       { objectKey: key, registeredDigest: null, registeredSize: null },
       utf8Bytes('first'),
       budget,
+      NO_CREDENTIALS,
     );
     // A resumed attempt fetched different bytes. The store keeps the first ones, so the
     // comparison against what was SENT fails and nothing is repaired or re-uploaded.
@@ -179,6 +183,7 @@ describe('reserving and freezing an artifact', () => {
         { objectKey: key, registeredDigest: null, registeredSize: null },
         utf8Bytes('second'),
         budget,
+        NO_CREDENTIALS,
       ),
     ).rejects.toBeInstanceOf(PopulationAcquisitionError);
     expect(store.objects.get(key)).toEqual(utf8Bytes('first'));
@@ -199,6 +204,7 @@ describe('reserving and freezing an artifact', () => {
         { objectKey: 'k', registeredDigest: null, registeredSize: null },
         utf8Bytes('x'),
         budget,
+        NO_CREDENTIALS,
       ),
     ).rejects.toBeInstanceOf(PopulationAcquisitionError);
   });
