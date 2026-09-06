@@ -117,6 +117,23 @@ that matters. Do not suppress the Tool Action itself, only its capture.
 
 ## Design Notes
 
+**"Entry" is credential USE, not typing — settled in `epic-4-loancore-authentication-decision.md`.**
+LoanCore authenticates by an `Authorization` header on GET, not by a form, because every
+synthetic system refuses a POST above routing and a `method="get"` form would put the credential
+in the URL. So there is no typing to suppress capture around, and the target of the suppression
+is the REQUEST HEADER and every artifact that could carry it: a network artifact, a Structural
+Snapshot, a screenshot, a frame. That is the stronger guarantee, not the weaker one — the
+credential must have nowhere to land, whatever the capture mechanism, rather than merely not
+being photographed while it is typed. Everything else in this story is unchanged: the resolver
+port whose result has no field holding a value, the audit that names the Target System and never
+the reference, the redaction BEFORE registration, and the artifact that FAILS registration
+rather than being stored. The Tool Action still appears on the Timeline saying capture was
+suppressed, because a gap is something a reader takes for nothing having happened.
+
+If a later story adds a Target System that really does have a form — a desktop application, say —
+the typing case joins this one; it does not replace it.
+
+
 **Containment by shape, not by discipline.** This is the fourth time this codebase has made the
 same move: the capability report has two fields so a secret has nowhere to travel; the resolved
 credential closes over its token so serialising it yields the reference; the fingerprint key
