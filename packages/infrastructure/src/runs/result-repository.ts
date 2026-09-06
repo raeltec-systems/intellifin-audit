@@ -9,12 +9,14 @@ import {
   GATE_AFFECTED_LIMIT,
   POPULATION_LIMITS,
   RESULT_SAMPLE_LIMIT,
+  TARGET_DRAFT_LIMITS,
   type CoverageObservation,
   type GateCheckResult,
   type ObservationAttribute,
   type OutcomeRowId,
   type PopulationCheck,
   type PopulationGateRow,
+  type RunCancellationRequest,
   type RunResultConditionCount,
   type RunResultExclusion,
   type RunResultFinding,
@@ -32,6 +34,26 @@ import {
   runObservationEvaluation,
   runResult,
 } from '../db/schema.js';
+
+/**
+ * How many Observations the per-record coverage matrix may read.
+ *
+ * **It is not a row count, and a row count here was a defect.** The matrix `coverageFindings`
+ * decides is RECORDS × REQUIRED TARGET SYSTEMS, so `POPULATION_LIMITS.rows` — correct for
+ * `readPopulationRows`, because acquisition caps `population_row` at exactly that — silently
+ * dropped every Observation past the hundred-thousandth. A dropped `COVERED` cell reads as
+ * MISSING coverage, so a fully covered Run over 60,000 records and two systems would seal
+ * `INCONCLUSIVE` and publish coverage counts that were simply wrong.
+ *
+ * Derived from the two limits that actually produce the cardinality, so it cannot bind:
+ * `run_observation` is unique on `(work_item_id, population_record_key)`, a Work Item holds
+ * at most `OBSERVATION_LIMITS.batch` (= `POPULATION_LIMITS.rows`) Observations, and a
+ * Procedure Version selects at most `TARGET_DRAFT_LIMITS.targets` Target Systems — which
+ * generation 9's `procedure_version_targets_shape` CHECK enforces below every command.
+ * It stays a bound rather than an unbounded read for the reason `EXECUTABLE_PLAN_LIMITS` is
+ * referenced in `limits.ts`: a read with no ceiling at all is bounded by nothing.
+ */
+export const GATE_OBSERVATION_LIMIT = POPULATION_LIMITS.rows * TARGET_DRAFT_LIMITS.targets;
 
 /**
  * The facts a Run's Result and its Run-level Gate are decided on, in ONE place.
@@ -71,6 +93,37 @@ export function runResultContext(
 
     async saveRunState(state) {
       await tx.update(auditRun).set({ state }).where(eq(auditRun.runId, runId));
+    },
+
+    /**
+     * The cancellation marker as it is NOW, on this transaction's connection.
+     *
+     * Not the copy on the `RunRecord` the caller carries: a worker stage read that at its
+     * claim, and the case this answers is a person cancelling DURING the last unit. The
+     * four columns are written whole or not at all — generation 26's CHECK says so — so a
+     * row carrying the time carries the other three.
+     */
+    async readCancellation(): Promise<RunCancellationRequest | null> {
+      const row = (
+        await tx
+          .select({
+            requestedAt: auditRun.cancelRequestedAt,
+            requestedBy: auditRun.cancelRequestedBy,
+            sessionId: auditRun.cancelRequestedSession,
+            reason: auditRun.cancelReason,
+          })
+          .from(auditRun)
+          .where(eq(auditRun.runId, runId))
+      )[0];
+      if (!row || row.requestedAt === null || row.requestedBy === null || row.sessionId === null || row.reason === null) {
+        return null;
+      }
+      return {
+        requestedBy: row.requestedBy,
+        sessionId: row.sessionId,
+        requestedAt: row.requestedAt.toISOString(),
+        reason: row.reason,
+      };
     },
 
     async readPopulationFacts(): Promise<RunGatePopulationFacts | null> {
@@ -127,7 +180,10 @@ export function runResultContext(
         })
         .from(runObservation)
         .where(eq(runObservation.runId, runId))
-        .limit(POPULATION_LIMITS.rows);
+        // Ordered on the unique index, so the read is deterministic — and so a bound that
+        // somehow DID bind would drop the same rows every time rather than arbitrary ones.
+        .orderBy(asc(runObservation.workItemId), asc(runObservation.populationRecordKey))
+        .limit(GATE_OBSERVATION_LIMIT);
       return rows.map((row) => ({
         ...row,
         coverage: row.coverage as CoverageObservation['coverage'],

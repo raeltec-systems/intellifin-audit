@@ -190,6 +190,13 @@
       "when": 1788675522923,
       "tag": "0026_tiny_mystique",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788675522924,
+      "tag": "0027_sealed_evidence_delete",
+      "breakpoints": true
     }
   ]
 }

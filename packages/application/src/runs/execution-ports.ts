@@ -23,6 +23,7 @@ import type {
   ExceptionFingerprintEnvelope,
   OutcomeRowId,
   RaisedException,
+  RunCancellationRequest,
   RunRecord,
   RunResultConditionCount,
   RunResultExclusion,
@@ -723,6 +724,16 @@ export interface StoredRunResult {
 export interface RunResultContext extends EvidencePackageContext {
   /** Already-recorded Gate rows. The first Gate wins; a redelivery re-reads and writes nothing. */
   readGateChecks(): Promise<readonly GateCheckRow[]>;
+  /**
+   * The Run's cancellation marker AS IT IS NOW, read on this transaction's connection.
+   *
+   * Not `input.run.cancellation`: the `RunRecord` a worker stage carries was read at its
+   * CLAIM, and the whole case this exists for is a person cancelling DURING the last unit —
+   * after that claim and before this terminal transaction. A claim-time copy would find
+   * nothing precisely when there is something to find. The same rule the role rechecks of
+   * Stories 1.5 and 2.7 follow: read inside the transaction that writes.
+   */
+  readCancellation(): Promise<RunCancellationRequest | null>;
   /** The terminal transition being committed. Sealed in the same transaction. */
   saveRunState(state: RunRecord['state']): Promise<void>;
   readPopulationFacts(): Promise<RunGatePopulationFacts | null>;

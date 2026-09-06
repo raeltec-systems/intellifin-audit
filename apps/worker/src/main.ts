@@ -1,4 +1,4 @@
-import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, derivePlan, reconcilePlanDerivation, deliverNotifications, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
@@ -106,10 +106,17 @@ async function main(): Promise<void> {
   const evidence = populationExecution(config);
   const credentials = adapterExtraction(config);
   if (!credentials.enabled) telemetry.info('Adapter extraction disabled', { reason: credentials.reason });
+  if (!evidence.enabled) telemetry.info('Population execution disabled', { reason: evidence.reason });
+  // Disabling a capability must also stop the work that depends on it from being STARTED,
+  // and the web cannot make that decision: `EVIDENCE_S3_*` and `CREDENTIAL_TOKENS` are the
+  // WORKER's environment, so the web's Initiate Run action neither knows nor should guess.
+  // The worker therefore ALWAYS consumes the `runs` queue: a queue with no consumer is not
+  // a capability that is "off", it is a Run that never moves and never says why.
+  const populationRepository = new PostgresPopulationRepository(db);
+  const clock = new SystemClock();
+  const stoppable = { repository: populationRepository, clock };
   if (evidence.enabled) {
-    const populationRepository = new PostgresPopulationRepository(db);
     const store = createS3EvidenceStore(evidence.config);
-    const clock = new SystemClock();
     const ids = new CryptoUuidV7Generator();
     const population = { repository:populationRepository, acquisition:new HttpPopulationAcquisition(), store, clock, ids };
     const adapterRepository = new PostgresAdapterExecutionRepository(db);
@@ -134,16 +141,28 @@ async function main(): Promise<void> {
     // extraction recovery sweep picks up.
     const handle = async (job: PopulationJob): Promise<{ retry: boolean }> => {
       const acquired = await acquirePopulation(population, job);
-      if (acquired.retry || adapter === null) return acquired;
+      if (acquired.retry) return acquired;
+      // Story 3.3's stage cannot run on this deployment. Acknowledging the job here left the
+      // Run RUNNING at POPULATION_READY with its Evidence frozen and nothing on either sweep
+      // able to select it again — a Run stranded mid-flight, which is worse than one that
+      // never started. It is stopped with a named diagnostic instead.
+      if (adapter === null) return stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured');
       await executeAdapterSteps(adapter, job);
       return { retry: false };
     };
     await startPopulationWorker(queue,handle);
     stopPopulationRecovery=startPopulationRecovery(db,populationRepository,handle,()=>telemetry.captureError('Fatal worker error',new Error('Population recovery failed'),{}));
-    if (adapter !== null) {
+    {
       // Its own sweep, on its own read: after POPULATION_READY the population sweep no
-      // longer selects the Run, so a stalled extraction would be recovered by nothing.
-      const stopAdapterRecovery = startPopulationRecovery(db,adapterRepository,job=>executeAdapterSteps(adapter,job),()=>telemetry.captureError('Fatal worker error',new Error('Adapter recovery failed'),{}));
+      // longer selects the Run, so a stalled extraction would be recovered by nothing. It
+      // is installed whether or not extraction is configured, and that is the OTHER half of
+      // the gap above: a Run left at POPULATION_READY by an earlier claim, before this
+      // process restarted without a credential manifest, is selected by nothing else and
+      // would stay RUNNING for ever. With extraction off, the sweep stops it instead.
+      const recover = adapter === null
+        ? (job: PopulationJob) => stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')
+        : (job: PopulationJob) => executeAdapterSteps(adapter, job);
+      const stopAdapterRecovery = startPopulationRecovery(db,adapterRepository,recover,()=>telemetry.captureError('Fatal worker error',new Error('Adapter recovery failed'),{}));
       const stopPopulation = stopPopulationRecovery;
       stopPopulationRecovery = async () => { await stopAdapterRecovery(); await stopPopulation(); };
     }
@@ -160,7 +179,14 @@ async function main(): Promise<void> {
       () => telemetry.captureError('Fatal worker error', new Error('Evidence integrity sweep failed'), {}),
     );
   } else {
-    telemetry.info('Population execution disabled', { reason: evidence.reason });
+    // No object storage, so no Run can be executed at all — but the queue is still
+    // consumed. A Run is stopped `RUN_FAILED` with a diagnostic an operator can act on and
+    // an auditor can rerun from, rather than left QUEUED with nothing said about it. No
+    // recovery sweep is installed: answering a job dispatched to this worker is one thing,
+    // and going looking for work it cannot do is another.
+    await startPopulationWorker(queue, (job: PopulationJob) =>
+      stopUnexecutableRun(stoppable, job, 'evidence-store-unconfigured'),
+    );
   }
 
   const loop = createHeartbeatLoop(db, host, telemetry);

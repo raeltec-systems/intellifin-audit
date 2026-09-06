@@ -129,10 +129,14 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
         // foreign key to the Run. Without this the teardown fails and leaves rows
         // that make an unrelated suite's empty-list assertion fail.
         await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
         await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
         await sql`DELETE FROM run_result WHERE run_id=${runId}`;
+        // The SEAL goes before what it sealed. Generation 27 refuses to delete an Evidence
+        // row while its package row survives, because that leaves a package claiming
+        // artifacts whose metadata is gone and an integrity sweep that cannot see it.
+        // Removing a whole Run is still allowed and this is what "whole" means.
         await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
         await sql`DELETE FROM population_row WHERE run_id=${runId}`;
         await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
         await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
@@ -166,7 +170,13 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     // A cursor naming a Run that is not there is the FIRST page, never a 500: it comes
     // out of the query string and a person who edits a URL should meet page one.
     expect((await list().listRuns('not-a-uuid', 1)).rows[0]!.runId).toBe(first.rows[0]!.runId);
-    expect((await list().listRuns(ids.next(), 1)).rows).toHaveLength(0);
+    // A syntactically VALID uuid naming no Run is the same case, and it used to come back
+    // EMPTY — the cursor was compared against a scalar subquery, so an absent Run made
+    // `(initiated_at, run_id) < NULL` NULL for every row. An empty page is neither the
+    // first page nor an error: it tells the reader this deployment has no Runs at all.
+    const missing = await list().listRuns(ids.next(), 1);
+    expect(missing.rows).toHaveLength(1);
+    expect(missing.rows[0]!.runId).toBe(first.rows[0]!.runId);
   });
 
   it('reports no conclusion and no Gate for a Run that has neither', async () => {

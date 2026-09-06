@@ -22,9 +22,17 @@ async function body(request: IncomingMessage): Promise<Uint8Array> {
   return new Uint8Array(Buffer.concat(chunks));
 }
 
+/** The bucket every well-configured store in this file addresses. */
+const BUCKET = 'evidence';
+
+function bucketFrom(request: IncomingMessage): string {
+  const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+  return decodeURIComponent(pathname.slice(1).split('/')[0] ?? '');
+}
+
 function keyFrom(request: IncomingMessage): string {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
-  const prefix = '/evidence/';
+  const prefix = `/${BUCKET}/`;
   return decodeURIComponent(pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname.slice(1));
 }
 
@@ -38,6 +46,17 @@ beforeAll(async () => {
   server = createServer(async (request, response) => {
     const key = keyFrom(request);
     requests.push({ method: request.method ?? '', path: key, ifNoneMatch: request.headers['if-none-match'] });
+    // A bucket that is not there. S3 answers this with HTTP 404 and `Code: NoSuchBucket`,
+    // which is exactly why a 404 alone cannot be read as "this object is absent".
+    if (bucketFrom(request) !== BUCKET) {
+      response.statusCode = 404;
+      response.setHeader('content-type', 'application/xml');
+      response.end(
+        '<?xml version="1.0" encoding="UTF-8"?><Error><Code>NoSuchBucket</Code>' +
+          '<Message>The specified bucket does not exist</Message></Error>',
+      );
+      return;
+    }
     if (request.method === 'PUT') {
       if (request.headers['if-none-match'] === '*' && objects.has(key)) {
         respond(response, 412);
@@ -70,9 +89,9 @@ afterAll(async () => {
   await once(server, 'close');
 });
 
-function store(maxBytes = EVIDENCE_STORE_MAX_BYTES): S3EvidenceStore {
+function store(maxBytes = EVIDENCE_STORE_MAX_BYTES, bucket = BUCKET): S3EvidenceStore {
   return new S3EvidenceStore({
-    bucket: 'evidence',
+    bucket,
     maxBytes,
     client: new S3Client({
       endpoint,
@@ -115,6 +134,23 @@ describe('S3EvidenceStore', () => {
     await expect(store(3).read('population/large', 5000))
       .rejects.toMatchObject({ code: 'integrity' });
     expect(EVIDENCE_STORE_MAX_BYTES).toBe(40 * 1024 * 1024);
+  });
+
+  it('propagates a missing BUCKET instead of reporting every object absent', async () => {
+    // The bucket is deleted, renamed or misconfigured. S3 says so with HTTP 404 and
+    // `NoSuchBucket`, so a status-only test reads it as one absent object — and `read`
+    // answering `null` is precisely what `verifySealedPackage` records as `object-missing`.
+    // One outage would then write a permanent tamper finding, and its immutable
+    // `failure.evidence-integrity` event, against every artifact of every terminal Run.
+    objects.set('population/present', new Uint8Array([7, 7, 7]));
+    const failure = await store(EVIDENCE_STORE_MAX_BYTES, 'deleted-bucket')
+      .read('population/present', 5000)
+      .then(() => null, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(PopulationAcquisitionError);
+    expect((failure as PopulationAcquisitionError).code).toBe('transport');
+    // And the same object read through the configured bucket is still there, so the
+    // failure above is about the BUCKET and not about the key.
+    expect(await store().read('population/present', 5000)).toEqual(new Uint8Array([7, 7, 7]));
   });
 
   it('does not expose provider errors or object keys in failures', async () => {

@@ -310,3 +310,50 @@ describe('adapterExtraction', () => {
     expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
   });
 });
+
+/**
+ * A capability disabled by name must also stop the work that depends on it.
+ *
+ * The PR 23 repair was right to let the worker start without object storage, and it opened
+ * this: with the whole Run block inside `if (evidence.enabled)`, NO consumer was registered
+ * for the `runs` queue while the web's Initiate Run action stayed enabled and went on
+ * enqueueing, so every Run sat QUEUED for ever with no worker, no diagnostic and no Result.
+ * One stage along it was worse: with storage configured but no credential manifest, the
+ * handler acknowledged the job after acquisition, leaving the Run RUNNING at
+ * POPULATION_READY with its Evidence frozen and neither sweep able to select it again.
+ *
+ * The BEHAVIOUR is proved in `stop-unexecutable-run.test.ts` and against PostgreSQL. What is
+ * proved here is that the composition root actually branches that way — a regression would
+ * be a wiring change, and behaviour alone would not catch a consumer quietly moved back
+ * inside the branch.
+ */
+describe('a Run this deployment cannot execute', () => {
+  const main = (): string => readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+
+  it('consumes the runs queue even when population execution is off', () => {
+    const source = main();
+    const disabled = source.slice(source.indexOf('} else {'));
+    expect(disabled).toContain('startPopulationWorker(queue,');
+    expect(disabled).toContain("stopUnexecutableRun(stoppable, job, 'evidence-store-unconfigured')");
+    // And it still says so once, by name, where an operator can act on it.
+    expect(source).toMatch(/Population execution disabled/);
+  });
+
+  it('stops a Run instead of acknowledging a job it cannot finish, when extraction is off', () => {
+    const source = main();
+    // The old line was `if (acquired.retry || adapter === null) return acquired;` — the
+    // second half of which acknowledged the job and stranded the Run.
+    expect(source).not.toMatch(/adapter === null\) return acquired/);
+    expect(source).toContain("if (adapter === null) return stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured');");
+  });
+
+  it('sweeps for Runs an earlier claim left at POPULATION_READY, whether or not extraction is on', () => {
+    // The population sweep stops selecting a Run once its population is ready, so a Run
+    // left mid-flight by a process that has since restarted is found by this read alone.
+    const source = main();
+    const recovery = source.slice(source.indexOf('const recover = adapter === null'));
+    expect(recovery).toContain("stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')");
+    expect(recovery).toContain('executeAdapterSteps(adapter, job)');
+    expect(recovery).toContain('startPopulationRecovery(db,adapterRepository,recover,');
+  });
+});
