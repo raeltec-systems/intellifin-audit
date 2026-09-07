@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bindingDigest,
+  utf8Bytes,
   bindingDigestEnvelope,
   bytesDiscloseCompiled,
   compileSecret,
@@ -746,6 +747,35 @@ describe('the gate, at the port’s call site', () => {
     expect(result.action).toMatchObject({ capture: 'PERMITTED', captureSuppression: null });
     // And the port is asked for the arm that CAN carry a capture request.
     expect(browser.performed[0]).toMatchObject({ credential: null, capture: [] });
+  });
+
+  it('returns requested capture only after the action gate and credential scan', async () => {
+    const artifact = { kind: 'structural-snapshot' as const, bytes: utf8Bytes('{}'), mediaType: 'application/json', location: ORIGIN };
+    const browser = new FakeBrowser({ result: { artifacts: [artifact] } });
+    const result = await performToolAction(browser, {
+      ...base, requestedCapture: ['structural-snapshot'],
+      scope: { target, scopeValues: new Set() },
+      request: { action: 'navigate', destination: ORIGIN, parameters: [] },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.artifacts).toEqual([artifact]);
+    expect(browser.performed[0]).toMatchObject({ capture: ['structural-snapshot'], parameters: [] });
+  });
+
+  it.each(['secret', 'unrequested', 'credential-entry'] as const)('refuses %s artifacts before callers can store them', async failure => {
+    const artifact = { kind: 'structural-snapshot' as const, bytes: utf8Bytes(TOKEN), mediaType: 'application/json', location: ORIGIN };
+    const browser = new FakeBrowser({ result: { artifacts: [artifact] } });
+    const result = await performToolAction(browser, {
+      ...base,
+      credential: failure === 'credential-entry' ? credential() : null,
+      requestedCapture: failure === 'unrequested' ? [] : ['structural-snapshot'],
+      guard: failure === 'secret' ? { held: 1, redact: x => x, discloses: () => true } : NO_CREDENTIALS,
+      scope: { target, scopeValues: new Set() },
+      request: { action: 'navigate', destination: ORIGIN, parameters: [] },
+    });
+    expect(result).toMatchObject({ ok: false, diagnostic: 'sign-in-contract-failed' });
+    expect(result).not.toHaveProperty('artifacts');
+    expect(JSON.stringify(result)).not.toContain(TOKEN);
   });
 
   it('records a DENIED credential-entry action as suppressed too', async () => {

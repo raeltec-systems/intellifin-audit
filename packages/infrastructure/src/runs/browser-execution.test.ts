@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SolariError } from '@solarisdk/browser';
-import { WorkspaceProvisionError } from '@intellifin/application';
+import { NO_CREDENTIALS, WorkspaceProvisionError } from '@intellifin/application';
 
 import {
   PlaywrightBrowserExecution,
@@ -9,6 +9,7 @@ import {
   safeDestination,
 } from './browser-execution.js';
 import { resolvedCredential } from './credential-resolver.js';
+import { completionForWebTree } from './web-tree-capture.js';
 
 /**
  * The pure halves of the Agent Workspace implementation.
@@ -217,7 +218,76 @@ describe('capture during credential use', () => {
           capture: ['screenshot'],
         },
         1000,
+        NO_CREDENTIALS,
       ),
     ).rejects.toMatchObject({ code: 'unavailable' });
+  });
+
+  it('requires a guard at the runtime capture seam', async () => {
+    await expect(
+      execution.perform(
+        ref,
+        {
+          action: 'navigate',
+          destination: 'http://localhost:4300/loancore',
+          credential: null,
+          capture: ['screenshot'],
+        },
+        1000,
+      ),
+    ).rejects.toMatchObject({ code: 'contract' });
+  });
+
+  it('refuses malformed or duplicate capture requests before workspace lookup', async () => {
+    const requests: readonly { readonly capture: unknown }[] = [
+      { capture: ['screenshot', 'screenshot'] },
+      { capture: ['structural-snapshot', 'screenshot', 'frame'] },
+      { capture: 'screenshot' },
+      { capture: [null] },
+    ];
+    for (const request of requests) {
+      await expect(
+        execution.perform(
+          ref,
+          { action: 'navigate', destination: 'http://localhost:4300/loancore', credential: null, ...request } as never,
+          1000,
+          NO_CREDENTIALS,
+        ),
+      ).rejects.toMatchObject({ code: 'contract' });
+    }
+  });
+});
+
+describe('LoanCore web-tree completion metadata', () => {
+  const base = {
+    schemaVersion: 1 as const,
+    nodes: [
+      {
+        group: 'page',
+        role: 'status' as const,
+        label: 'result-summary',
+        value: 'Showing 1 of 1 matching accounts.',
+        target: null,
+      },
+    ],
+  };
+
+  it('keeps the target declared total and marks a complete result', () => {
+    expect(completionForWebTree(base).completion).toEqual({ complete: true, returned: 1 });
+  });
+
+  it('does not infer a total from rows or an empty result', () => {
+    expect(completionForWebTree({ schemaVersion: 1, nodes: [] })).toEqual({ schemaVersion: 1, nodes: [] });
+    expect(completionForWebTree({
+      schemaVersion: 1,
+      nodes: [{ ...base.nodes[0]!, value: 'Showing 1 of 24 matching accounts.' }],
+    }).completion).toEqual({ complete: false, returned: 24 });
+    expect(completionForWebTree({
+      schemaVersion: 1,
+      nodes: [{ ...base.nodes[0]!, value: 'Showing 1 matching account.' }],
+    })).toEqual({
+      schemaVersion: 1,
+      nodes: [{ ...base.nodes[0]!, value: 'Showing 1 matching account.' }],
+    });
   });
 });

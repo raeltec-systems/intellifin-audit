@@ -26,6 +26,7 @@ import {
   type BrowserActionFailureCode,
   type BrowserExecution,
   type BrowserCaptureKind,
+  type BrowserActionArtifact,
   type CredentialResolver,
   type ResolvedCredential,
   type SessionStepRecord,
@@ -276,6 +277,7 @@ export async function performToolAction(
     readonly scope: ToolActionScope;
     readonly request: ToolActionRequest;
     readonly credential: ResolvedCredential | null;
+    readonly requestedCapture?: readonly BrowserCaptureKind[];
     readonly startedAt: string;
     readonly completedAt: () => string;
     readonly timeoutMs: () => number;
@@ -293,7 +295,7 @@ export async function performToolAction(
     readonly guard: CredentialGuard;
   },
 ): Promise<
-  | { readonly ok: true; readonly action: SanitizedToolAction; readonly status: number | null; readonly session: boolean }
+  | { readonly ok: true; readonly action: SanitizedToolAction; readonly status: number | null; readonly session: boolean; readonly artifacts: readonly BrowserActionArtifact[] }
   | { readonly ok: false; readonly action: SanitizedToolAction; readonly diagnostic: AgentExecutionDiagnostic }
 > {
   // The platform's OWN knowledge of its own request, taken before the port is reached: an
@@ -352,7 +354,8 @@ export async function performToolAction(
             action: decision.action,
             destination: decision.destination,
             credential: null,
-            capture: NO_CAPTURE,
+            capture: input.requestedCapture ?? NO_CAPTURE,
+            parameters: input.request.parameters,
           }
         : {
             action: decision.action,
@@ -360,7 +363,14 @@ export async function performToolAction(
             credential: input.credential,
           },
       input.timeoutMs(),
+      input.guard,
     );
+    // Refuse any capture returned across a credential-entry boundary, and scan every
+    // artifact before it can reach storage or model context. Evidence is never redacted.
+    const artifacts = result.artifacts ?? [];
+    if ((input.credential !== null && artifacts.length > 0) || artifacts.some(artifact =>
+      !(input.requestedCapture ?? NO_CAPTURE).includes(artifact.kind) || input.guard.discloses(artifact.bytes)
+    )) throw new BrowserActionError('contract');
     // The immutable action log records what happened, and a method this build cannot have
     // produced is a result it does not understand — recorded as a contract failure rather
     // than written into a row whose CHECK would refuse it and take the transaction with it.
@@ -383,6 +393,7 @@ export async function performToolAction(
       ok: true,
       status: result.status,
       session: result.session,
+      artifacts,
       action: {
         ...base,
         // What the workspace actually put on the wire, before any redirect the SYSTEM

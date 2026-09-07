@@ -15,6 +15,7 @@ import {
   BrowserActionError,
   WorkspaceProvisionError,
   type BrowserActionFailureCode,
+  type BrowserActionArtifact,
   type BrowserActionResult,
   type BrowserExecution,
   type BrowserToolAction,
@@ -25,10 +26,11 @@ import {
   type WorkspaceMode,
   type WorkspaceRef,
 } from '@intellifin/application';
-import { sanitizeDestination, withinFrozenOrigin } from '@intellifin/domain';
+import { sanitizeDestination, withinFrozenOrigin, WEB_TREE_MEDIA_TYPE } from '@intellifin/domain';
 
 import { withinOrigin } from './origin-policy.js';
 import { hasAuthenticatedAccount } from './authentication-proof.js';
+import { captureWebTree } from './web-tree-capture.js';
 
 /**
  * The ONE implementation of `BrowserExecution` (Story 4.1, AD-4).
@@ -138,7 +140,48 @@ function sessionOptions(connection: SolariConnection): { recording?: boolean } {
  */
 function requestedCapture(action: BrowserToolAction): readonly string[] {
   const requested = (action as { readonly capture?: unknown }).capture;
-  return Array.isArray(requested) ? (requested as readonly string[]) : [];
+  if (requested === undefined) return [];
+  if (!Array.isArray(requested)) throw new BrowserActionError('contract');
+  return requested as readonly string[];
+}
+
+const BROWSER_CAPTURE_KINDS = new Set(['structural-snapshot', 'screenshot']);
+
+type CaptureGuard = {
+  readonly held: number;
+  readonly discloses: (bytes: Uint8Array) => boolean;
+  readonly redact: (text: string) => string;
+};
+
+function isCaptureGuard(value: unknown): value is CaptureGuard {
+  try {
+    if (value === null || typeof value !== 'object') return false;
+    const guard = value as Partial<CaptureGuard>;
+    return (
+      typeof guard.discloses === 'function' &&
+      typeof guard.redact === 'function' &&
+      typeof guard.held === 'number' &&
+      Number.isSafeInteger(guard.held) &&
+      guard.held >= 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Refuse unknown capture names and the deferred frame capture at the browser boundary. */
+function validateCaptureRequest(action: BrowserToolAction, guard: unknown): readonly string[] {
+  const capture = requestedCapture(action);
+  if (
+    capture.length > 2 ||
+    new Set(capture).size !== capture.length ||
+    capture.some((kind) => typeof kind !== 'string' || !BROWSER_CAPTURE_KINDS.has(kind))
+  ) {
+    throw new BrowserActionError('contract');
+  }
+  if (capture.length === 0) return capture;
+  if (!isCaptureGuard(guard)) throw new BrowserActionError('contract');
+  return capture;
 }
 
 /**
@@ -427,6 +470,11 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     ref: WorkspaceRef,
     action: BrowserToolAction,
     timeoutMs: number,
+    captureGuard?: {
+      readonly held: number;
+      readonly discloses: (bytes: Uint8Array) => boolean;
+      readonly redact: (text: string) => string;
+    },
   ): Promise<BrowserActionResult> {
     // FIRST, before the workspace is even looked up. The union already makes this
     // unrepresentable: a `BrowserToolAction` carrying a credential has no `capture` field.
@@ -440,7 +488,15 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     // It is checked before the liveness lookup because it is a fact about the REQUEST, not
     // about the workspace: reporting it as `unavailable` because the browser happened to be
     // gone would name the wrong thing, and would hide the request that must never be made.
-    if (action.credential !== null && requestedCapture(action).length > 0) {
+    const capture = validateCaptureRequest(action, captureGuard);
+    if (action.credential !== null && capture.length > 0) {
+      throw new BrowserActionError('contract');
+    }
+    // Search is a fixed logical action. It is deliberately the only action that can fill
+    // controls: arbitrary click/type/evaluate operations would let a model choose a write
+    // surface that the frozen action gate never described. Credentials are only for the
+    // dedicated sign-in navigation and cannot be combined with a search submission.
+    if (action.action === 'search' && action.credential !== null) {
       throw new BrowserActionError('contract');
     }
     const live = this.live.get(ref.workspaceId);
@@ -468,6 +524,20 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         waitUntil: 'domcontentloaded',
         timeout,
       });
+      if (action.action === 'search') {
+        if (response === null) throw new BrowserActionError('contract');
+        if (!withinFrozenOrigin(action.destination, page.url())) {
+          throw new BrowserActionError('scope');
+        }
+        response = await submitSearch(
+          live,
+          page,
+          action.destination,
+          action.parameters ?? [],
+          timeout,
+          response,
+        );
+      }
       // The credential exists for the length of ONE submission and is dropped as soon as
       // the navigation it caused has settled. A workspace that kept it would present it on
       // every later request of the Run, which is the opposite of just in time.
@@ -486,7 +556,10 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (response === null) throw new BrowserActionError('contract');
     // The workspace may contain several configured Target Systems. Authentication proved by
     // a redirect into another allowed system is not authentication for this action's target.
-    if (action.credential !== null && !withinFrozenOrigin(action.destination, page.url())) {
+    if (
+      (action.credential !== null || action.action === 'search') &&
+      !withinFrozenOrigin(action.destination, page.url())
+    ) {
       throw new BrowserActionError('scope');
     }
     // Where the navigation ENDED, against the frozen allowlist rather than against the
@@ -502,6 +575,9 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (!live.allowed(page.url())) throw new BrowserActionError('scope');
 
     const location = safeDestination(page.url());
+    const artifacts = capture.length === 0
+      ? []
+      : await captureArtifacts(page, capture, captureGuard!, timeout, location);
     return {
       status: response.status(),
       // What the workspace actually put on the wire last, which for a sign-in is the
@@ -514,6 +590,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       // "The session held in the workspace", read from the workspace rather than believed:
       // a cookie for the destination's own origin is what a later request will carry.
       session: await hasAuthenticatedAccount(page, response),
+      artifacts,
     };
   }
 
@@ -622,6 +699,252 @@ interface SubmittableForm {
 }
 interface FormSubmitter {
   readonly formAction: string;
+  /** Empty when the submitter has no override; the form's method is then effective. */
+  readonly formMethod: string;
+  readonly form?: SubmittableForm | null;
+}
+
+interface SearchParameter {
+  readonly name: string;
+  readonly value: string;
+}
+
+/** The bounded parameter shape the application gate forwards to the browser. */
+const SEARCH_PARAMETER_LIMITS = {
+  count: 16,
+  name: 200,
+  value: 512,
+} as const;
+
+/**
+ * Resolve one control's accessible label from the rendered DOM.
+ *
+ * `getByLabel` is still used for the final exact lookup. This small fixed callback only
+ * identifies the label attached to a control selected by its query name; it never evaluates
+ * model text or returns a page supplied selector.
+ */
+const ACCESSIBLE_LABEL = (element: unknown): string => {
+  const control = element as {
+    readonly getAttribute: (name: string) => string | null;
+    readonly labels?: {
+      readonly length: number;
+      readonly item: (index: number) => { readonly innerText?: string } | null;
+    } | null;
+    readonly ownerDocument?: {
+      readonly getElementById: (id: string) => { readonly innerText?: string } | null;
+    };
+  };
+  const aria = control.getAttribute('aria-label');
+  if (aria !== null && aria.trim() !== '') return aria.trim().replace(/\s+/gu, ' ');
+  const labelledBy = control.getAttribute('aria-labelledby');
+  if (labelledBy !== null && labelledBy.trim() !== '') {
+    const text = labelledBy
+      .trim()
+      .split(/\s+/u)
+      .map((id) => control.ownerDocument?.getElementById(id))
+      .filter((label): label is { readonly innerText?: string } => label !== null && label !== undefined)
+      .map((label) => label.innerText ?? '')
+      .join(' ')
+      .trim()
+      .replace(/\s+/gu, ' ');
+    if (text !== '') return text;
+  }
+  const labels = control.labels;
+  if (labels === null || labels === undefined) return '';
+  const text: string[] = [];
+  for (let index = 0; index < labels.length; index += 1) {
+    const label = labels.item(index);
+    if (label !== null) text.push(label.innerText ?? '');
+  }
+  return text.join(' ').trim().replace(/\s+/gu, ' ');
+};
+
+/** Read the submitter's effective method and action without exposing a DOM object upstream. */
+async function resolvedSubmitter(submitter: Locator): Promise<{ readonly formAction: string; readonly formMethod: string }> {
+  const value: unknown = await submitter.evaluate((element) => {
+    const control = element as unknown as FormSubmitter;
+    return {
+      formAction: control.formAction,
+      formMethod: control.formMethod || control.form?.method || '',
+    };
+  });
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    typeof (value as { readonly formAction?: unknown }).formAction !== 'string' ||
+    typeof (value as { readonly formMethod?: unknown }).formMethod !== 'string'
+  ) {
+    throw new BrowserActionError('contract');
+  }
+  return value as { readonly formAction: string; readonly formMethod: string };
+}
+
+/**
+ * Submit the target's own GET search form using only application-approved parameters.
+ *
+ * The form and submitter are judged by their resolved browser properties before a value is
+ * typed. A POST, a cross-target action, an ambiguous label or a second submitter is a
+ * contract/scope refusal; no guessed control and no arbitrary JavaScript is used.
+ */
+async function submitSearch(
+  live: LiveWorkspace,
+  page: Page,
+  destination: string,
+  parameters: readonly SearchParameter[],
+  timeoutMs: number,
+  landed: Response,
+): Promise<Response> {
+  if (
+    !Array.isArray(parameters) ||
+    parameters.length === 0 ||
+    parameters.length > SEARCH_PARAMETER_LIMITS.count ||
+    parameters.some(
+      (parameter) =>
+        typeof parameter !== 'object' ||
+        parameter === null ||
+        typeof parameter.name !== 'string' ||
+        parameter.name.length === 0 ||
+        parameter.name.trim() !== parameter.name ||
+        parameter.name.length > SEARCH_PARAMETER_LIMITS.name ||
+        typeof parameter.value !== 'string' ||
+        parameter.value.length > SEARCH_PARAMETER_LIMITS.value,
+    )
+  ) {
+    throw new BrowserActionError('contract');
+  }
+  const names = new Set(parameters.map((parameter) => parameter.name));
+  if (names.size !== parameters.length) throw new BrowserActionError('contract');
+
+  const forms = page.locator('form');
+  let selected: { readonly form: Locator; readonly fields: readonly Locator[] } | null = null;
+  for (let formIndex = 0; formIndex < await forms.count(); formIndex += 1) {
+    const form = forms.nth(formIndex);
+    const fields: Locator[] = [];
+    for (const parameter of parameters) {
+      const candidates = form.locator(
+        'input:not([type])[name], input[type="text" i][name], input[type="search" i][name]',
+      );
+      const matches: Locator[] = [];
+      for (let fieldIndex = 0; fieldIndex < await candidates.count(); fieldIndex += 1) {
+        const candidate = candidates.nth(fieldIndex);
+        if (await candidate.getAttribute('name') !== parameter.name) continue;
+        const accessibleLabel = await candidate.evaluate(ACCESSIBLE_LABEL);
+        if (typeof accessibleLabel !== 'string' || accessibleLabel === '') {
+          throw new BrowserActionError('contract');
+        }
+        const exact = form.getByLabel(accessibleLabel, { exact: true });
+        if (await exact.count() !== 1 || await exact.getAttribute('name') !== parameter.name) {
+          throw new BrowserActionError('contract');
+        }
+        matches.push(exact);
+      }
+      if (matches.length !== 1) {
+        // This form does not describe this parameter. Continue looking for the one form
+        // that does; two forms that both describe it are rejected below.
+        fields.length = 0;
+        break;
+      }
+      const field = matches[0]!;
+      if (!await field.isVisible() || !await field.isEditable()) {
+        throw new BrowserActionError('contract');
+      }
+      fields.push(field);
+    }
+    if (fields.length !== parameters.length) continue;
+    if (selected !== null) throw new BrowserActionError('contract');
+    selected = { form, fields };
+  }
+  if (selected === null) throw new BrowserActionError('contract');
+
+  const submitters = selected.form.locator(
+    'button:not([type]), button[type="submit" i], input[type="submit" i]',
+  );
+  if (await submitters.count() !== 1) throw new BrowserActionError('contract');
+  const submitter = submitters.first();
+  if (!await submitter.isVisible() || !await submitter.isEnabled()) {
+    throw new BrowserActionError('contract');
+  }
+  const [formAction, formMethod, submitterDetails] = await Promise.all([
+    selected.form.evaluate((element) => (element as unknown as SubmittableForm).action),
+    selected.form.evaluate((element) => (element as unknown as SubmittableForm).method),
+    resolvedSubmitter(submitter),
+  ]);
+  if (typeof formAction !== 'string' || typeof formMethod !== 'string') {
+    throw new BrowserActionError('contract');
+  }
+  // Search is a read only GET. A form that would place values in a request body, or a
+  // submitter whose override points elsewhere, cannot be treated as this logical action.
+  if (formMethod.toUpperCase() !== 'GET') throw new BrowserActionError('scope');
+  if (submitterDetails.formMethod.toUpperCase() !== 'GET') throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, formAction)) throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, submitterDetails.formAction)) throw new BrowserActionError('scope');
+
+  for (const [index, parameter] of parameters.entries()) {
+    await selected.fields[index]!.fill(parameter.value, { timeout: timeoutMs });
+  }
+  const settled = page.waitForResponse(
+    (response) =>
+      response.request().isNavigationRequest() &&
+      response.frame() === page.mainFrame() &&
+      (response.status() < 300 || response.status() >= 400),
+    { timeout: timeoutMs },
+  );
+  await submitter.click({ timeout: timeoutMs });
+  const response = await settled;
+  await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs });
+  if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
+  // Keep this explicit. A same-document response is not a result page the action can bind
+  // to, and the initial landing response is only used to find the form.
+  if (response === landed) throw new BrowserActionError('contract');
+  return response;
+}
+
+/** Capture exactly the requested final-page artifacts, each bound to its sanitized URL. */
+async function captureArtifacts(
+  page: Page,
+  capture: readonly string[],
+  guard: {
+    readonly held: number;
+    readonly discloses: (bytes: Uint8Array) => boolean;
+    readonly redact: (text: string) => string;
+  },
+  timeoutMs: number,
+  location: string,
+): Promise<readonly BrowserActionArtifact[]> {
+  const captured = await captureWebTree(page, guard, {
+    screenshot: capture.includes('screenshot'),
+    timeoutMs,
+  });
+  let artifactLocation: string;
+  try {
+    artifactLocation = guard.redact(location);
+    if (guard.discloses(new TextEncoder().encode(artifactLocation))) {
+      throw new BrowserActionError('contract');
+    }
+  } catch (error) {
+    if (error instanceof BrowserActionError) throw error;
+    throw new BrowserActionError('contract');
+  }
+  const artifacts: BrowserActionArtifact[] = [];
+  for (const kind of capture) {
+    if (kind === 'structural-snapshot') {
+      artifacts.push({
+        kind,
+        bytes: captured.snapshot,
+        mediaType: WEB_TREE_MEDIA_TYPE,
+        location: artifactLocation,
+      });
+    } else if (kind === 'screenshot' && captured.screenshot !== null) {
+      artifacts.push({
+        kind,
+        bytes: captured.screenshot,
+        mediaType: 'image/png',
+        location: artifactLocation,
+      });
+    }
+  }
+  return artifacts;
 }
 
 /**
@@ -686,16 +1009,21 @@ async function signIn(
   // `HTMLFormElement.action`/`.method` and `HTMLButtonElement.formAction` are the RESOLVED
   // values the browser will actually use, which is what has to be judged — not the
   // attribute text, which may be relative, absent, or overridden by the submitter.
-  const [formAction, formMethod, submitterAction] = await Promise.all([
+  const [formAction, formMethod, submitterDetails] = await Promise.all([
     form.evaluate((element) => (element as unknown as SubmittableForm).action),
     form.evaluate((element) => (element as unknown as SubmittableForm).method),
-    submitter.evaluate((element) => (element as unknown as FormSubmitter).formAction),
+    resolvedSubmitter(submitter),
   ]);
   // A `GET` form would put the credential in the URL, in browser history, in the `Referer`
-  // header and in every access log. This platform will not type one into it.
+  // header and in every access log. This platform will not type one into it. The submitter
+  // can override the form method, so its effective method is checked too.
+  if (typeof formAction !== 'string' || typeof formMethod !== 'string') {
+    throw new BrowserActionError('contract');
+  }
   if (formMethod.toUpperCase() !== 'POST') throw new BrowserActionError('scope');
+  if (submitterDetails.formMethod.toUpperCase() !== 'POST') throw new BrowserActionError('scope');
   if (!withinFrozenOrigin(destination, formAction)) throw new BrowserActionError('scope');
-  if (!withinFrozenOrigin(destination, submitterAction)) throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, submitterDetails.formAction)) throw new BrowserActionError('scope');
 
   await enterCredential(credential, fields.first(), timeoutMs);
 

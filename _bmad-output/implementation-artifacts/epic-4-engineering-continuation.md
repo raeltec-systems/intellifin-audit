@@ -70,3 +70,7 @@ Generation33 adds structural-snapshot/screenshot kinds to the existing Evidence 
 ## Supported-substrate regression correction
 
 CI34132656180 on f3ba33e20e5dcee49623e73aba686ed60ab86e72 passes container and full browser/accessibility gates. Unit and PostgreSQL suites each fail one stale test expecting web_tree to be unsupported. The desktop_tree case now retains unsupported rejection coverage; malformed web_tree explicitly fails corroboration-unavailable without matched identity or attributes. Seven focused application tests pass locally. Hosted verification of this correction is pending; no story acceptance claimed.
+
+## Verified generation33 and browser capture checkpoint
+
+026833c1104e8b638b3944114039110f9a157d0c is pushed and all four CI34134813593 jobs pass, including fresh/populated migrations through33, drift, PostgreSQL integrations, container guards, browser/accessibility. The next capture checkpoint adds real bounded GET form search and guarded platform web_tree/PNG production; browser unit25 and action-gate31 tests pass locally, full typecheck passes. Four new real Chromium capture integrations await hosted CI. This is a capture mechanism checkpoint, not accepted4.4: actual worker Observation registration and authorized inspector artifact access remain unfinished.

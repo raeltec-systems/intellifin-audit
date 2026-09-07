@@ -306,6 +306,8 @@ export interface SessionStepRecord {
 /** One adapter Work Item, one per adapter-acquired Target System. */
 export interface WorkItemRecord {
   workItemId: string;
+  /** P-1 has one item per opaque population key; adapter/P-4 items use null. */
+  subjectKey?: string | null;
   stepId: string;
   ordinal: number;
   registrationId: string;
@@ -342,7 +344,7 @@ export interface StepExecutionRecord {
  */
 export interface AdapterEvidenceRecord {
   evidenceId: string;
-  kind: 'reference-source' | 'adapter-extraction';
+  kind: 'reference-source' | 'adapter-extraction' | 'structural-snapshot' | 'screenshot';
   registrationId: string;
   objectKey: string;
   mediaType: string | null;
@@ -1090,6 +1092,12 @@ export interface BrowserExecution {
     ref: WorkspaceRef,
     action: BrowserToolAction,
     timeoutMs: number,
+    /** Required at runtime for any requested capture; omitted legacy calls can only capture `[]`. */
+    captureGuard?: {
+      readonly held: number;
+      readonly discloses: (bytes: Uint8Array) => boolean;
+      readonly redact: (text: string) => string;
+    },
   ): Promise<BrowserActionResult>;
 }
 
@@ -1165,6 +1173,12 @@ interface BrowserToolActionBase {
   readonly action: string;
   /** An absolute destination the gate has already proved is inside the frozen origins. */
   readonly destination: string;
+  /**
+   * Values the application gate already proved are in the Run's frozen population scope.
+   * Search is the only action that consumes them; optional keeps existing parameterless
+   * callers source-compatible while the browser mechanism refuses a search without one.
+   */
+  readonly parameters?: readonly { readonly name: string; readonly value: string }[];
 }
 
 /**
@@ -1203,10 +1217,9 @@ export type BrowserToolAction =
        * What the platform captures from this action.
        *
        * `[]` is "capture nothing", written out rather than defaulted, so a caller that
-       * wants no capture says so and a caller that wants some has to name it. **Nothing in
-       * this build captures yet** — Story 4.4 is what implements the `web_tree` Structural
-       * Snapshot and the screenshot — and the vocabulary is here so that the suppression is
-       * already structural when it arrives rather than being retrofitted around it.
+       * wants no capture says so and a caller that wants some has to name it. The browser
+       * provider produces the requested `web_tree` Structural Snapshot and screenshot;
+       * `frame` remains a named deferred kind and is refused until its mechanism exists.
        */
       readonly capture: readonly BrowserCaptureKind[];
     });
@@ -1214,9 +1227,9 @@ export type BrowserToolAction =
 /**
  * What the platform can capture from a Tool Action.
  *
- * The three the spec names, and no more. `[NAMED, NOT BUILT]` in this story: `perform`
- * produces none of them and Story 4.4 owns the mechanism. What is built here is that a
- * credential-entry action can never ask for one.
+ * The three the spec names, and no more. The browser provider currently produces the first
+ * two; `frame` stays named so callers cannot invent a fourth kind and is refused until its
+ * mechanism exists. A credential-entry action can never ask for any of them.
  */
 export const BROWSER_CAPTURE_KINDS = ['structural-snapshot', 'screenshot', 'frame'] as const;
 export type BrowserCaptureKind = (typeof BROWSER_CAPTURE_KINDS)[number];
@@ -1251,6 +1264,21 @@ export interface BrowserActionResult {
   readonly downloads: number;
   /** Whether the workspace now holds a session cookie for this destination's origin. */
   readonly session: boolean;
+  /**
+   * Artifacts captured from the final rendered page. The field is optional for existing
+   * provider fakes and legacy noncapture actions; a real capture request always returns an
+   * array, possibly empty when the screenshot itself timed out.
+   */
+  readonly artifacts?: readonly BrowserActionArtifact[];
+}
+
+/** One artifact produced at the final page location of a permitted browser action. */
+export interface BrowserActionArtifact {
+  readonly kind: Exclude<BrowserCaptureKind, 'frame'>;
+  readonly bytes: Uint8Array;
+  readonly mediaType: string;
+  /** Scheme, authority and path only; never a query or fragment. */
+  readonly location: string;
 }
 
 /**
