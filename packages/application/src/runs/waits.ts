@@ -1,3 +1,5 @@
+import { ESCALATION_KINDS, type EscalationKind } from './escalation-kind.js';
+export { ESCALATION_KINDS, type EscalationKind } from './escalation-kind.js';
 import {
   authorizeAction,
   type JsonObject,
@@ -20,14 +22,6 @@ export const WAIT_QUEUE_SCHEMA_VERSION = WAIT_SCHEMA_VERSION;
 
 /** The human-in-the-loop wait is bounded independently of the Run timeout. */
 export const AWAITING_AUDITOR_TIMEOUT_MS = 4 * 60 * 60 * 1000;
-
-/** The only Escalation kinds in the PoC. */
-export const ESCALATION_KINDS = [
-  'choose-candidate',
-  'unnamed-value',
-  'retry-or-skip',
-] as const;
-export type EscalationKind = (typeof ESCALATION_KINDS)[number];
 
 /** The only lifecycle states a wait can record. */
 export const WAIT_CLOSURE_KINDS = ['answer', 'timeout'] as const;

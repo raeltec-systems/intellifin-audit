@@ -72,7 +72,7 @@ describe.skipIf(!url)('durable escalation notification delivery', () => {
       INSERT INTO run_wait(
         wait_id, run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor
       ) VALUES (
-        ${waitId}, ${runId}, 'choose-candidate', ${sql.json([{ id: 'mark-ambiguous', label: 'Mark ambiguous' }])},
+        ${waitId}, ${runId}, 'choose-candidate', ${JSON.stringify([{ id: 'mark-ambiguous', label: 'Mark ambiguous' }])}::jsonb,
         ${notification.deadline}::timestamptz, NULL, NULL, NULL, NULL
       )
     `;

@@ -1,5 +1,5 @@
 import type { SessionSnapshot } from '../identity/ports.js';
-import type { EscalationKind } from '../runs/waits.js';
+import type { EscalationKind } from '../runs/escalation-kind.js';
 import { canonicalJson } from '@intellifin/domain';
 
 export const NOTIFICATION_DELIVERY_OUTCOMES = ['delivered', 'unconfigured', 'failed', 'superseded'] as const;

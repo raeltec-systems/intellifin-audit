@@ -1,3 +1,7 @@
+## 2026-09-07 — Escalation checkpoint CI corrections
+
+Closed escalation kind vocabulary lives in a dependency-free leaf shared by wait commands and notification ports; importing command modules from notification contracts creates an identity/notification cycle. Raw PostgreSQL test JSON arrays use explicit JSON.stringify plus jsonb casts, matching the test connection serialization. Untrusted question provenance assertions target the label element because the component appends platform safety guidance.
+
 ## 2026-09-07 — Escalation delivery and answer checkpoint
 
 Generation35 expands existing notification tracking rather than creating another queue. Lock order is audit_run then run_wait then notification/audit chain, matching wait creation/answer. Open waits drive the inbox independently of delivery. No email transport is configured: audit outcome is unconfigured, never sent. Run Detail reads the current wait and revision with matching Step/Evidence references; agent question and candidate text remain inert. Fixed labels come from application vocabulary. Full local typecheck and focused tests pass; hosted new journey/migration verification is pending and Epic4 remains incomplete.

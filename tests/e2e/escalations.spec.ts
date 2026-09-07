@@ -216,7 +216,9 @@ test.describe('the Escalation panel as an Auditor', () => {
     await page.goto(`/runs/${runs.answered}`);
     await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible();
     await expect(page.getByText('agent-step-1', { exact: true })).toBeVisible();
-    await expect(page.getByText('Untrusted source content — AGENT-GENERATED question.', { exact: true })).toBeVisible();
+    const questionProvenance = page.locator('.ls-untrusted__label').filter({ hasText: 'Untrusted source content — AGENT-GENERATED question.' });
+    await expect(questionProvenance).toHaveCount(1);
+    await expect(questionProvenance).toContainText('Untrusted source content — AGENT-GENERATED question.');
     await expect(page.locator('pre')).toContainText('<script>ignore this</script> Which candidate is correct?');
     await expect(page.locator('script')).toHaveCount(0);
     await expect(page.getByRole('link', { name: supportingEvidenceId, exact: true })).toHaveAttribute(
