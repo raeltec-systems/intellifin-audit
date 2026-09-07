@@ -10,6 +10,14 @@ import {
   type ObservationCorroboration,
   type ObservationRecord,
 } from './observation.js';
+import {
+  parseWebTree,
+  readWebTreeCell,
+  WEB_TREE_COLLECTION,
+  WEB_TREE_LIMITS,
+  WEB_TREE_VALUE_FIELD,
+  type WebTreeDocument,
+} from './web-tree.js';
 
 /**
  * Corroboration against the stored Structural Snapshot (Story 3.6).
@@ -35,15 +43,16 @@ import {
  *
  * | Substrate | Locator grammar | Label rule |
  * | --- | --- | --- |
- * | `web_tree` | (a later epic) | accessible name |
+ * | `web_tree` | `$.nodes[<index>].value` | the node's accessible name |
  * | `desktop_tree` | (a later epic) | control name |
  * | `sheet` | `$.rows[<index>].<column>` | the header cell |
  * | `json` | `$.<collection>[<index>].<field>` | the property key |
  *
- * `web_tree` and `desktop_tree` are EXPLICIT unimplemented cases, never a silent
- * fallthrough: an agent capture reaching this build is reported `corroboration-unsupported`
- * and its check FAILS. A substrate that quietly returned "matched" for a snapshot nobody
- * read would be the exact defect this story exists to remove.
+ * `desktop_tree` remains an EXPLICIT unimplemented case, never a silent fallthrough. A
+ * `web_tree` is a bounded, platform-resolved list of semantic nodes. Each node carries an
+ * opaque same-row/page group, role, accessible label, value and optional action target. The
+ * node's position is its stable identity, and the only addressable field is `value`; the
+ * label is read from the node rather than inferred from that field name.
  *
  * ## One grammar, deliberately
  *
@@ -59,8 +68,8 @@ import {
 export const SNAPSHOT_SUBSTRATES = ['web_tree', 'desktop_tree', 'sheet', 'json'] as const;
 export type SnapshotSubstrate = (typeof SNAPSHOT_SUBSTRATES)[number];
 
-/** The substrates this build re-reads. The other two are refused by name, never skipped. */
-export const IMPLEMENTED_SNAPSHOT_SUBSTRATES = ['sheet', 'json'] as const;
+/** The substrates this build re-reads. The desktop substrate remains refused by name. */
+export const IMPLEMENTED_SNAPSHOT_SUBSTRATES = ['web_tree', 'sheet', 'json'] as const;
 
 /** The one collection segment a `sheet` locator may name (see the note above). */
 export const SHEET_COLLECTION = 'rows';
@@ -79,6 +88,7 @@ export function isSnapshotSubstrate(value: unknown): value is SnapshotSubstrate 
  */
 export function snapshotSubstrateForMediaType(mediaType: string | null): SnapshotSubstrate | null {
   if (typeof mediaType !== 'string') return null;
+  if (/^application\/vnd\.intellifin\.web-tree\+json(?:\s*;\s*charset=utf-8)?$/i.test(mediaType)) return 'web_tree';
   if (/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(mediaType)) return 'json';
   if (/^text\/csv(?:\s*;\s*charset=utf-8)?$/i.test(mediaType)) return 'sheet';
   return null;
@@ -121,6 +131,11 @@ export type SnapshotReadFailure = 'substrate-unsupported' | 'snapshot-unreadable
 export type ParsedSnapshot =
   | {
       readonly ok: true;
+      readonly substrate: 'web_tree';
+      readonly document: WebTreeDocument;
+    }
+  | {
+      readonly ok: true;
       readonly substrate: 'sheet';
       readonly headers: readonly string[];
       readonly rows: readonly Record<string, JsonValue>[];
@@ -147,14 +162,23 @@ function plainObject(value: unknown): value is Record<string, JsonValue> {
  * cell address means one thing in this product and not two.
  */
 export function readStructuralSnapshot(snapshot: StoredSnapshot): ParsedSnapshot {
-  if (snapshot.substrate === 'web_tree' || snapshot.substrate === 'desktop_tree') {
+  if (snapshot.substrate === 'desktop_tree') {
     return { ok: false, failure: 'substrate-unsupported' };
   }
   let text: string;
   try {
-    text = decodePopulationUtf8(snapshot.bytes);
+    text = decodePopulationUtf8(
+      snapshot.bytes,
+      snapshot.substrate === 'web_tree' ? WEB_TREE_LIMITS.bytes : undefined,
+    );
   } catch {
     return { ok: false, failure: 'snapshot-unreadable' };
+  }
+  if (snapshot.substrate === 'web_tree') {
+    const document = parseWebTree(text);
+    return document === null
+      ? { ok: false, failure: 'snapshot-unreadable' }
+      : { ok: true, substrate: 'web_tree', document };
   }
   if (snapshot.substrate === 'sheet') {
     let headers: readonly string[] = [];
@@ -205,6 +229,10 @@ export function readSnapshotCell(
   locator: SnapshotLocator,
 ): SnapshotCell | null {
   if (!parsed.ok) return null;
+  if (parsed.substrate === 'web_tree') {
+    if (locator.collection !== WEB_TREE_COLLECTION || locator.field !== WEB_TREE_VALUE_FIELD) return null;
+    return readWebTreeCell(parsed.document, locator.index);
+  }
   if (parsed.substrate === 'sheet') {
     if (locator.collection !== SHEET_COLLECTION) return null;
     const row = parsed.rows[locator.index];

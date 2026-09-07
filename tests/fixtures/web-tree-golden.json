@@ -1,0 +1,282 @@
+{
+  "producer": "Python 3.12.13 + json + re",
+  "producedBy": "scripts/make-web-tree-golden.py",
+  "regenerateWith": "uv run scripts/make-web-tree-golden.py",
+  "why": "Story 4.4 web-tree vectors are produced by Python rather than the TypeScript parser under test. The fixture preserves grouped semantic nodes, action targets and completion metadata while checking only the bounded locator projection.",
+  "document": "{\"schemaVersion\":1,\"nodes\":[{\"group\":\"record:0\",\"role\":\"datum\",\"label\":\"Employee ID\",\"value\":\"E-000105\",\"target\":null},{\"group\":\"record:0\",\"role\":\"datum\",\"label\":\"Full name\",\"value\":\"Esther Kabwe\",\"target\":null},{\"group\":\"record:0\",\"role\":\"status\",\"label\":\"Status\",\"value\":\"Disabled\",\"target\":null},{\"group\":\"page\",\"role\":\"input\",\"label\":\"Username\",\"value\":\"e.kabwe\",\"target\":\"username\"},{\"group\":\"record:0\",\"role\":\"datum\",\"label\":\"Roles\",\"value\":[\"COLLECTIONS_AGENT\"],\"target\":null}],\"completion\":{\"complete\":true,\"returned\":null}}",
+  "cells": [
+    {
+      "name": "employee-id",
+      "locator": "$.nodes[0].value",
+      "resolves": true,
+      "value": "E-000105",
+      "label": "Employee ID"
+    },
+    {
+      "name": "status",
+      "locator": "$.nodes[2].value",
+      "resolves": true,
+      "value": "Disabled",
+      "label": "Status"
+    },
+    {
+      "name": "input-value",
+      "locator": "$.nodes[3].value",
+      "resolves": true,
+      "value": "e.kabwe",
+      "label": "Username"
+    },
+    {
+      "name": "roles",
+      "locator": "$.nodes[4].value",
+      "resolves": true,
+      "value": [
+        "COLLECTIONS_AGENT"
+      ],
+      "label": "Roles"
+    },
+    {
+      "name": "wrong-field",
+      "locator": "$.nodes[2].label",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "wrong-collection",
+      "locator": "$.rows[2].value",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "out-of-range",
+      "locator": "$.nodes[9].value",
+      "resolves": false,
+      "value": null,
+      "label": null
+    }
+  ],
+  "mutations": [
+    {
+      "name": "unknown-role",
+      "document": {
+        "schemaVersion": 1,
+        "nodes": [
+          {
+            "group": "record:0",
+            "role": "heading",
+            "label": "Employee ID",
+            "value": "E-000105",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Full name",
+            "value": "Esther Kabwe",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "status",
+            "label": "Status",
+            "value": "Disabled",
+            "target": null
+          },
+          {
+            "group": "page",
+            "role": "input",
+            "label": "Username",
+            "value": "e.kabwe",
+            "target": "username"
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Roles",
+            "value": [
+              "COLLECTIONS_AGENT"
+            ],
+            "target": null
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "datum-target",
+      "document": {
+        "schemaVersion": 1,
+        "nodes": [
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Employee ID",
+            "value": "E-000105",
+            "target": "unexpected"
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Full name",
+            "value": "Esther Kabwe",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "status",
+            "label": "Status",
+            "value": "Disabled",
+            "target": null
+          },
+          {
+            "group": "page",
+            "role": "input",
+            "label": "Username",
+            "value": "e.kabwe",
+            "target": "username"
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Roles",
+            "value": [
+              "COLLECTIONS_AGENT"
+            ],
+            "target": null
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "completion-extra-key",
+      "document": {
+        "schemaVersion": 1,
+        "nodes": [
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Employee ID",
+            "value": "E-000105",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Full name",
+            "value": "Esther Kabwe",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "status",
+            "label": "Status",
+            "value": "Disabled",
+            "target": null
+          },
+          {
+            "group": "page",
+            "role": "input",
+            "label": "Username",
+            "value": "e.kabwe",
+            "target": "username"
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Roles",
+            "value": [
+              "COLLECTIONS_AGENT"
+            ],
+            "target": null
+          }
+        ],
+        "completion": {
+          "complete": true,
+          "returned": null,
+          "extra": true
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "completion-invalid-count",
+      "document": {
+        "schemaVersion": 1,
+        "nodes": [
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Employee ID",
+            "value": "E-000105",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Full name",
+            "value": "Esther Kabwe",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "status",
+            "label": "Status",
+            "value": "Disabled",
+            "target": null
+          },
+          {
+            "group": "page",
+            "role": "input",
+            "label": "Username",
+            "value": "e.kabwe",
+            "target": "username"
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Roles",
+            "value": [
+              "COLLECTIONS_AGENT"
+            ],
+            "target": null
+          }
+        ],
+        "completion": {
+          "complete": false,
+          "returned": -1
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "incomplete-page",
+      "document": {
+        "schemaVersion": 1,
+        "nodes": [
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Employee ID",
+            "value": "E-000105",
+            "target": null
+          },
+          {
+            "group": "record:0",
+            "role": "datum",
+            "label": "Full name",
+            "value": "Esther Kabwe",
+            "target": null
+          }
+        ],
+        "completion": {
+          "complete": false,
+          "returned": 10
+        }
+      },
+      "valid": true
+    }
+  ]
+}

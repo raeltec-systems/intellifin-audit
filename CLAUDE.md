@@ -1,3 +1,4 @@
+<!-- Story4.4 substrate checkpoint: web_tree now re-reads bounded grouped semantic nodes at $.nodes[i].value. Completion metadata is optional and target-specific; missing counts stay unknown. Python golden vectors independently pin extraction; desktop_tree remains unsupported. -->
 <!-- Story4.4: identity and grounded declared attributes must name one Structural Snapshot. Registration refuses the entire batch on identity-grounding-split before corroboration or writes; the frozen13-key Observation schema is unchanged. -->
 <!-- Authentication: require the exact approved target/account postcondition, bind redirects to the action's selected target, and discard secret-bearing pages after submission failure while preserving provider cleanup identity. -->
 <!-- Workspace cleanup: a persisted Solari hard expiry is distinct from confirmed release; never discard an unexpired provider identity after a configuration mismatch or provider error. -->

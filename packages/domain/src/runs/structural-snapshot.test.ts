@@ -23,6 +23,17 @@ import {
   type SnapshotCorroborationFailure,
   type SnapshotSubstrate,
 } from './structural-snapshot.js';
+import {
+  isWebTreeDocument,
+  parseWebTree,
+  readWebTreeCell,
+  WEB_TREE_COLLECTION,
+  WEB_TREE_LIMITS,
+  WEB_TREE_MEDIA_TYPE,
+  WEB_TREE_SCHEMA_VERSION,
+  WEB_TREE_VALUE_FIELD,
+  webTreeValueLocator,
+} from './web-tree.js';
 
 /**
  * The extractor's behaviour that a golden vector cannot pin.
@@ -48,6 +59,17 @@ const ACCOUNTS = JSON.stringify({
 });
 
 const SHEET = 'entry,role,permission\n1,AP_CLERK,CREATE_PAYMENT\n2,LOAN_VIEWER,VIEW_LOAN\n';
+
+const WEB_TREE = JSON.stringify({
+  schemaVersion: WEB_TREE_SCHEMA_VERSION,
+  nodes: [
+    { group: 'record:0', role: 'datum', label: 'Employee ID', value: 'E-000105', target: null },
+    { group: 'record:0', role: 'datum', label: 'Full name', value: 'Esther Kabwe', target: null },
+    { group: 'record:0', role: 'status', label: 'Status', value: 'Disabled', target: null },
+    { group: 'page', role: 'input', label: 'Username', value: 'e.kabwe', target: 'username' },
+    { group: 'record:0', role: 'datum', label: 'Roles', value: ['COLLECTIONS_AGENT'], target: null },
+  ],
+});
 
 function view(substrate: SnapshotSubstrate, text: string): ReadonlyMap<string, ParsedSnapshot> {
   return new Map([
@@ -103,20 +125,17 @@ function record(over: Partial<ObservationRecord> = {}): ObservationRecord {
 }
 
 describe('the four substrates', () => {
-  it('names exactly four, and implements exactly two of them', () => {
+  it('names exactly four, and implements web_tree, sheet and json', () => {
     expect([...SNAPSHOT_SUBSTRATES]).toEqual(['web_tree', 'desktop_tree', 'sheet', 'json']);
-    expect([...IMPLEMENTED_SNAPSHOT_SUBSTRATES]).toEqual(['sheet', 'json']);
+    expect([...IMPLEMENTED_SNAPSHOT_SUBSTRATES]).toEqual(['web_tree', 'sheet', 'json']);
   });
 
-  it('refuses an agent substrate BY NAME rather than falling through it', () => {
-    // The whole point of the story: an unread snapshot must never report "matched".
-    for (const substrate of ['web_tree', 'desktop_tree'] as const) {
-      const judged = corroborateAttribute(attribute(), view(substrate, ACCOUNTS));
-      expect(judged.failure).toBe('substrate-unsupported');
-      // Not `contradictory`: nothing read it, so nothing disagreed with it.
-      expect(judged.corroboration).toBeNull();
-      expect(snapshotCorroborationDiagnostic(judged.failure!)).toBe('corroboration-unsupported');
-    }
+  it('refuses the desktop substrate BY NAME rather than falling through it', () => {
+    const judged = corroborateAttribute(attribute(), view('desktop_tree', ACCOUNTS));
+    expect(judged.failure).toBe('substrate-unsupported');
+    // Not `contradictory`: nothing read it, so nothing disagreed with it.
+    expect(judged.corroboration).toBeNull();
+    expect(snapshotCorroborationDiagnostic(judged.failure!)).toBe('corroboration-unsupported');
   });
 
   it('derives the substrate from the media type registration recorded', () => {
@@ -124,8 +143,104 @@ describe('the four substrates', () => {
     expect(snapshotSubstrateForMediaType('application/json; charset=utf-8')).toBe('json');
     expect(snapshotSubstrateForMediaType('text/csv')).toBe('sheet');
     expect(snapshotSubstrateForMediaType('TEXT/CSV; charset=utf-8')).toBe('sheet');
+    expect(snapshotSubstrateForMediaType(WEB_TREE_MEDIA_TYPE)).toBe('web_tree');
+    expect(snapshotSubstrateForMediaType(`${WEB_TREE_MEDIA_TYPE}; charset=utf-8`)).toBe('web_tree');
+    expect(snapshotSubstrateForMediaType(WEB_TREE_MEDIA_TYPE.toUpperCase())).toBe('web_tree');
     expect(snapshotSubstrateForMediaType('image/png')).toBeNull();
     expect(snapshotSubstrateForMediaType(null)).toBeNull();
+  });
+});
+
+describe('the bounded web tree', () => {
+  it('parses grouped semantic nodes and addresses values by stable index', () => {
+    const document = parseWebTree(WEB_TREE);
+    expect(document).toEqual({
+      schemaVersion: 1,
+      nodes: [
+        { group: 'record:0', role: 'datum', label: 'Employee ID', value: 'E-000105', target: null },
+        { group: 'record:0', role: 'datum', label: 'Full name', value: 'Esther Kabwe', target: null },
+        { group: 'record:0', role: 'status', label: 'Status', value: 'Disabled', target: null },
+        { group: 'page', role: 'input', label: 'Username', value: 'e.kabwe', target: 'username' },
+        { group: 'record:0', role: 'datum', label: 'Roles', value: ['COLLECTIONS_AGENT'], target: null },
+      ],
+    });
+    expect(webTreeValueLocator(2)).toBe('$.nodes[2].value');
+    expect(readWebTreeCell(document!, 2)).toEqual({ value: 'Disabled', label: 'Status' });
+    expect(readSnapshotCell(readStructuralSnapshot({
+      evidenceId: EVIDENCE,
+      substrate: 'web_tree',
+      bytes: utf8Bytes(WEB_TREE),
+    }), parseSnapshotLocator('$.nodes[2].value')!)).toEqual({ value: 'Disabled', label: 'Status' });
+  });
+
+  it('accepts an empty page and target-specific completion metadata, but rejects malformed shapes', () => {
+    expect(isWebTreeDocument({ schemaVersion: 1, nodes: [] })).toBe(true);
+    expect(isWebTreeDocument({ schemaVersion: 1, nodes: [], completion: { complete: false, returned: null } })).toBe(true);
+    const invalid = [
+      null,
+      { schemaVersion: 2, nodes: [] },
+      { schemaVersion: 1, nodes: {}, },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'datum', label: 'Status', value: 'Disabled' }] },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'text', label: 'Status', value: 'Disabled', target: null }] },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'datum', label: 'Status', value: 'Disabled', target: 'unexpected' }] },
+      { schemaVersion: 1, nodes: [{ group: '', role: 'datum', label: 'Status', value: 'Disabled', target: null }] },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'datum', label: '', value: 'Disabled', target: null }] },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'datum', label: '   ', value: 'Disabled', target: null }] },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'datum', label: 'Status', value: Number.NaN, target: null }] },
+      { schemaVersion: 1, nodes: [{ group: 'record:0', role: 'datum', label: 'Status', value: 'x'.repeat(WEB_TREE_LIMITS.value + 1), target: null }] },
+      { schemaVersion: 1, nodes: Array.from({ length: WEB_TREE_LIMITS.nodes + 1 }, () => ({ group: 'record:0', role: 'datum', label: 'Status', value: 'x', target: null })) },
+      { schemaVersion: 1, nodes: [], completion: { complete: true, returned: null, extra: true } },
+      { schemaVersion: 1, nodes: [], completion: { complete: 'true', returned: 0 } },
+      { schemaVersion: 1, nodes: [], completion: { complete: false, returned: -1 } },
+      { schemaVersion: 1, nodes: [], completion: { complete: false, returned: WEB_TREE_LIMITS.returned + 1 } },
+    ];
+    for (const value of invalid) expect(isWebTreeDocument(value), JSON.stringify(value)).toBe(false);
+    expect(parseWebTree('{"schemaVersion":1,"complete":true,"returned":0,"nodes":')).toBeNull();
+  });
+
+  it('requires the web-tree locator to name the nodes value field', () => {
+    const parsed = readStructuralSnapshot({ evidenceId: EVIDENCE, substrate: 'web_tree', bytes: utf8Bytes(WEB_TREE) });
+    expect(parsed.ok).toBe(true);
+    for (const locator of [
+      { collection: 'rows', index: 2, field: WEB_TREE_VALUE_FIELD },
+      { collection: WEB_TREE_COLLECTION, index: 2, field: 'label' },
+      { collection: WEB_TREE_COLLECTION, index: 99, field: WEB_TREE_VALUE_FIELD },
+    ]) {
+      expect(readSnapshotCell(parsed, locator)).toBeNull();
+    }
+  });
+
+  it('corroborates values with the node accessible label and catches mutations', () => {
+    const source = {
+      evidenceId: EVIDENCE,
+      substrate: 'web_tree' as const,
+      bytes: utf8Bytes(WEB_TREE),
+    };
+    const faithful = attribute({
+      name: 'account_status',
+      originalValue: 'Disabled',
+      normalizedValue: 'Disabled',
+      grounding: {
+        evidenceId: EVIDENCE,
+        locator: '$.nodes[2].value',
+        label: 'Status',
+        extractedText: 'Disabled',
+      },
+    });
+    expect(corroborateAttribute(faithful, new Map([[EVIDENCE, readStructuralSnapshot(source)]]))).toMatchObject({
+      corroboration: 'matched',
+      failure: null,
+    });
+    const wrongLabel = { ...faithful, grounding: { ...faithful.grounding!, label: 'Filter status' } };
+    expect(corroborateAttribute(wrongLabel, new Map([[EVIDENCE, readStructuralSnapshot(source)]]))).toMatchObject({
+      corroboration: 'contradictory',
+      failure: 'label-drift',
+    });
+    const wrongValue = { ...faithful, originalValue: 'Active', normalizedValue: 'Active' };
+    expect(corroborateAttribute(wrongValue, new Map([[EVIDENCE, readStructuralSnapshot(source)]]))).toMatchObject({
+      corroboration: 'contradictory',
+      failure: 'value-contradicted',
+    });
   });
 });
 
