@@ -35,7 +35,7 @@
       "kind": "web",
       "origin_path": "/prodconsole",
       "permitted_actions": ["navigate", "read-attribute", "read-metadata", "capture-screenshot"],
-      "attribute_label_patterns": ["Parameter", "Value", "Snapshot identifier", "Expected parameter count"],
+      "attribute_label_patterns": ["Parameter", "Value", "Snapshot identifier", "Expected parameter count", "Snapshot taken at"],
       "secondary_key": "",
       "note": "Synthetic production configuration surface. Agent-driven (P-4). Publishes a signed snapshot identifier and an expected parameter count."
     },

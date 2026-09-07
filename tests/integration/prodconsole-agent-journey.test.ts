@@ -77,7 +77,13 @@ interface CountExpectation {
 }
 
 interface AgentModelRequestLike {
-  readonly tools: readonly { readonly toolId: string; readonly action: string; readonly destination: string; readonly locator: unknown }[];
+  readonly tools: readonly {
+    readonly toolId: string;
+    readonly action: string;
+    readonly destination: string;
+    readonly locator: unknown;
+    readonly description: string;
+  }[];
   readonly retrieved: readonly { readonly source: string; readonly text: string }[];
   actions?: readonly {
     readonly toolId: string;
@@ -90,6 +96,21 @@ interface AgentModelRequestLike {
 
 const expectation = JSON.parse(readFileSync(EXPECTATIONS_PATH, 'utf8')) as P4Expectation;
 const countExpectation = JSON.parse(readFileSync(COUNT_EXPECTATIONS_PATH, 'utf8')) as CountExpectation;
+const SYSTEMS_PATH = fileURLToPath(new URL('../../fixtures/northstar/datasets/systems.json', import.meta.url));
+
+interface TargetSystemCatalogueEntry {
+  readonly id: string;
+  readonly attribute_label_patterns: readonly string[];
+}
+
+const systemsCatalogue = JSON.parse(readFileSync(SYSTEMS_PATH, 'utf8')) as {
+  readonly target_systems: readonly TargetSystemCatalogueEntry[];
+};
+const prodConsoleAttributeLabels = (() => {
+  const entry = systemsCatalogue.target_systems.find((candidate) => candidate.id === 'prodconsole');
+  if (entry === undefined) throw new Error('Northstar catalogue has no ProdConsole target system');
+  return entry.attribute_label_patterns;
+})();
 
 function expectedOutcome(value: string): string {
   return {
@@ -103,6 +124,18 @@ function expectedOutcome(value: string): string {
 function bodyBuffer(body: string | Uint8Array): Buffer {
   return typeof body === 'string' ? Buffer.from(body, 'utf8') : Buffer.from(body);
 }
+
+describe('P-4 Northstar catalogue contract', () => {
+  it('authorizes the served snapshot timestamp used to evaluate freshness', () => {
+    expect(prodConsoleAttributeLabels).toEqual([
+      'Parameter',
+      'Value',
+      'Snapshot identifier',
+      'Expected parameter count',
+      'Snapshot taken at',
+    ]);
+  });
+});
 
 async function listenNorthstar(): Promise<{ readonly server: Server; readonly origin: string }> {
   const server = createServer((request, response) => {
@@ -248,7 +281,9 @@ describe.skipIf(!databaseUrl)('P-4 ProdConsole agent journey', () => {
       // verification must never resolve or present it.
       credentialRef: CREDENTIAL_REF,
       permittedActions: ['navigate', 'read-attribute', 'read-metadata', 'capture-screenshot'] as const,
-      attributeLabelPatterns: ['Parameter', 'Value', 'Snapshot identifier', 'Expected parameter count', 'Snapshot taken at'] as const,
+      // The golden journey must freeze the same label contract the Northstar seed uses.
+      // Keeping this derived prevents a custom superset from hiding a missing catalogue field.
+      attributeLabelPatterns: [...prodConsoleAttributeLabels],
       secondaryKey: '',
     };
     const target = snapshotFromRegistration({ ...registration, digest: registrationDigest(registration) });
@@ -387,6 +422,9 @@ describe.skipIf(!databaseUrl)('P-4 ProdConsole agent journey', () => {
     await executeAgentWorkItem(seeded.dependencies, seeded.job);
 
     expect(seeded.modelCalls.length).toBeGreaterThan(0);
+    expect(
+      seeded.modelCalls.some((call) => call.tools.some((tool) => tool.description === 'Read the approved ProdConsole snapshot time.')),
+    ).toBe(true);
     for (const call of seeded.modelCalls) {
       for (const action of call.actions ?? []) {
         expect(action.parameters).toEqual([]);

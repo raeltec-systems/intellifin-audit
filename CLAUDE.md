@@ -1227,3 +1227,8 @@ A provider response rejected by the strict gateway must not disappear into ordin
 ## Executable agent mutation evidence
 
 Run destructive guard mutations only in a clean detached linked worktree, never in an engineering branch. The mutation harness requires an assertion-passing baseline and an actual failing assertion after each guard removal, restores each source in finally, and rejects source-anchor drift, import failures and skipped tests. Keep real provider, intercepted-provider, SSR, local Chromium and Solari evidence distinct. A surviving SSR preselection mutation means browser coverage is still required, not that the product guard may be assumed verified.
+
+
+## ProdConsole catalog fidelity
+
+Golden journeys must derive the registered label and entry-origin contracts from the seed catalog, not a custom superset or deeper URL. ProdConsole already serves Snapshot taken at; declaring that existing label changes no golden timestamp or expected outcome and prevents a missing registration field from being hidden by test setup. Capture time cannot substitute for page publication time. The seeded home page still requires actual model-directed navigation to its configuration page; a journey starting directly at that deeper URL does not prove the seeded route.
