@@ -1155,3 +1155,7 @@ A closed wait is not consumed when a lease is claimed. Keep its exact wait id an
 ### Sealed review history remains visible for an Inconclusive Result
 
 A human rejection can seal a pending Result and set the Run to INCONCLUSIVE. The Run-detail composition must mount the immutable evaluation history for that terminal state as well as COMPLETED; a successful server action followed by refresh must not hide its own decision. Disposable review fixtures delete Work Items before their referenced Evidence rows.
+
+### Agent limits apply again at the commit boundary
+
+A successful browser/model read can consume the deadline while its registration waits for the Run lock. Check the original Run limit inside that transaction and again before the final Gate; retain acquired Evidence but never seal Pass after expiry. Process frozen targets outermost, included population records innermost. Typed uncertainty must consume the same bounded extra retry cycle as transport failure, rather than minting unlimited human Retry grants.

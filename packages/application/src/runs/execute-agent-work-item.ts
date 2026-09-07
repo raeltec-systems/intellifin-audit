@@ -542,12 +542,12 @@ export async function executeAgentWorkItem(
 
     const created: WorkItemRecord[] = [];
     for (const entry of classification.agents) {
-      for (const record of records) {
+      for (const record of [...records].sort((left, right) => left.ordinal - right.ordinal)) {
         const subjectKey = record.values[primary];
         if (typeof subjectKey !== 'string' || subjectKey.length === 0) continue;
-        const ordinal = (record.ordinal - 1) * classification.agents.length + entry.ordinal;
+        const ordinal = created.length + 1;
         const existing = context.workItems.find((item) => item.stepId === entry.stepId && item.subjectKey === subjectKey);
-        const item = existing ?? {
+        const item = existing ? { ...existing, ordinal } : {
           workItemId: dependencies.ids.next(),
           subjectKey,
           stepId: entry.stepId,
@@ -675,23 +675,34 @@ export async function executeAgentWorkItem(
     return canceled ? 'canceled' : 'continue';
   };
 
-  const stopRun = async (diagnostic: AgentWorkDiagnostic, cause: RunLimitCause | 'action-denied' | 'scope-violation' | 'session-step-failed' = 'session-step-failed'): Promise<void> => {
+  const stopWithin = async (context: AgentWorkContext, diagnostic: AgentWorkDiagnostic, cause: RunLimitCause | 'action-denied' | 'scope-violation' | 'session-step-failed'): Promise<void> => {
     const decision = runStopFor(cause);
-    await guarded(async (context) => {
-      const next: AgentWorkCheckpoint = { ...checkpoint, status: 'TERMINAL', diagnostic, leaseUntil: nowIso(dependencies.clock) };
-      await context.saveCheckpoint(next, decision.state);
-      await appendEvent(context, run, diagnostic, decision.state, next, {}, 'failure');
-      if (decision.securityEvent) {
-        const security = await context.auditEvents.append({
-          actor: { type: 'system', id: 'agent-worker' }, eventType: SECURITY_DENIED_EVENT,
-          source: 'worker', outcome: 'denied', aggregateId: run.runId,
-          correlationId: run.correlationId, sessionId: run.sessionId,
-          payload: { cause, diagnostic, state: decision.state, workItemId: checkpoint.workItemId },
-        });
-        await context.notifyTimeline(security.sequence);
-      }
-      await completeRun(context, { run, state: decision.state, at: nowIso(dependencies.clock), plan });
-    });
+    const next: AgentWorkCheckpoint = { ...checkpoint, status: 'TERMINAL', diagnostic, leaseUntil: nowIso(dependencies.clock) };
+    await context.saveCheckpoint(next, decision.state);
+    await appendEvent(context, run, diagnostic, decision.state, next, {}, 'failure');
+    if (decision.securityEvent) {
+      const security = await context.auditEvents.append({
+        actor: { type: 'system', id: 'agent-worker' }, eventType: SECURITY_DENIED_EVENT,
+        source: 'worker', outcome: 'denied', aggregateId: run.runId,
+        correlationId: run.correlationId, sessionId: run.sessionId,
+        payload: { cause, diagnostic, state: decision.state, workItemId: checkpoint.workItemId },
+      });
+      await context.notifyTimeline(security.sequence);
+    }
+    await completeRun(context, { run, state: decision.state, at: nowIso(dependencies.clock), plan });
+  };
+
+  const stopRun = async (diagnostic: AgentWorkDiagnostic, cause: RunLimitCause | 'action-denied' | 'scope-violation' | 'session-step-failed' = 'session-step-failed'): Promise<void> => {
+    await guarded(context => stopWithin(context, diagnostic, cause));
+  };
+
+  // Recheck under the Run lock: capture/model I/O and lock acquisition can consume
+  // the remaining budget even when the action began within the approved limit.
+  const stopAtFinalLimit = async (context: AgentWorkContext): Promise<boolean> => {
+    const cause = runLimit(stepExecutions, checkpoint, plan, dependencies.clock);
+    if (cause === null) return false;
+    await stopWithin(context, cause, cause);
+    return true;
   };
 
   const retainedBusinessDecisions = (): readonly string[] => {
@@ -708,7 +719,7 @@ export async function executeAgentWorkItem(
     const attemptsPerCycle = plan.limits.retriesPerStep + 1;
     const exhausted = item.attempts % attemptsPerCycle === 0;
     const maxAttempts = attemptsPerCycle * 2;
-    if (item.attempts >= maxAttempts) {
+    if (item.attempts >= maxAttempts || (exhausted && item.cycles >= 2)) {
       item.state = 'FAILED';
       item.diagnostic = diagnostic;
     } else if (exhausted) {
@@ -718,7 +729,7 @@ export async function executeAgentWorkItem(
       item.state = 'IN_PROGRESS';
       item.diagnostic = diagnostic;
     }
-    item.cycles = Math.min(2, Math.ceil(item.attempts / attemptsPerCycle));
+    item.cycles = Math.min(2, Math.max(item.cycles, Math.ceil(item.attempts / attemptsPerCycle)));
     if (item.state === 'AWAITING') {
       const options = optionForKind('retry-or-skip', []);
       const next: AgentWorkCheckpoint = {
@@ -796,6 +807,24 @@ export async function executeAgentWorkItem(
     readonly supportingEvidenceIds: readonly string[];
   }): Promise<AgentWorkItemOutcome> => {
     input.item.evidenceId = input.supportingEvidenceIds[0] ?? input.item.evidenceId;
+    if (input.kind === 'retry-or-skip' && input.item.cycles >= 2) {
+      // The auditor already granted the one extra cycle. Preserve the evidence and
+      // honest failed Work Item; another answer must not authorize a third cycle.
+      input.item.state = 'FAILED';
+      input.item.diagnostic = input.diagnostic;
+      const next: AgentWorkCheckpoint = { ...checkpoint, revision: checkpoint.revision + 1,
+        status: 'RETRY', leaseUntil: nowIso(dependencies.clock), workItemId: null,
+        waitId: null, pendingWait: null, diagnostic: input.diagnostic };
+      const saved = await guarded(async context => {
+        await context.saveWorkItem(input.item);
+        await context.saveStepExecution({ ...input.execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic: input.diagnostic });
+        await context.saveCheckpoint(next, 'RUNNING');
+        await appendEvent(context, run, input.diagnostic, 'RUNNING', next, { stepExecutionId: input.execution.stepExecutionId }, 'failure');
+      });
+      if (saved) { checkpoint = next; humanDecision = null; }
+      return { retry: saved };
+    }
+    if (input.kind === 'retry-or-skip') input.item.cycles = Math.max(1, input.item.cycles);
     input.item.state = 'AWAITING';
     input.item.diagnostic = input.diagnostic;
     const waiting: AgentWorkCheckpoint = {
@@ -908,7 +937,9 @@ export async function executeAgentWorkItem(
     item.evidenceId = snapshot.evidenceId;
     item.diagnostic = state === 'UNINSPECTED' ? 'insufficient-evidence' : null;
     try {
+      let limited = false;
       const saved = await guarded(async (context) => {
+        if (await stopAtFinalLimit(context)) { limited = true; return; }
         await registerObservations(context, {
           run,
           workItemId: item.workItemId,
@@ -931,7 +962,7 @@ export async function executeAgentWorkItem(
           observations: item.observations,
         });
       });
-      if (!saved) {
+      if (!saved || limited) {
         item.observations = priorObservations;
         return 'lost';
       }
@@ -1060,7 +1091,7 @@ export async function executeAgentWorkItem(
           await stopRun('human-decision-refused', 'session-step-failed'); return { retry: false };
         }
         const finished = await finishObservation(item, execution, applied.item, original, applied.workItemState);
-        if (finished === 'lost') return { retry: false };
+        if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
         if (finished === 'refused') {
           // Preserve the choice across a retry. It is consumed only with registration.
           const result = await persistRetry(item, execution, 'observation-registration-refused');
@@ -1159,7 +1190,7 @@ export async function executeAgentWorkItem(
             screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
           });
           const finished = await finishObservation(item, execution, observation, current.snapshot, 'OBSERVED');
-          if (finished === 'lost') return { retry: false };
+          if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
           if (finished === 'refused') {
             const result = await persistRetry(item, execution, 'observation-registration-refused');
             const outcome = retryOutcome(result);
@@ -1240,7 +1271,7 @@ export async function executeAgentWorkItem(
               screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
             });
             const finished = await finishObservation(item, execution, observation, current.snapshot, 'UNINSPECTED');
-            if (finished === 'lost') return { retry: false };
+            if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
             if (finished === 'refused') {
               const result = await persistRetry(item, execution, 'observation-registration-refused');
               const outcome = retryOutcome(result);
@@ -1344,7 +1375,7 @@ export async function executeAgentWorkItem(
               observedAt: nowIso(dependencies.clock),
             });
             const finished = await finishObservation(item, execution, observation, current.snapshot, 'OBSERVED');
-            if (finished === 'lost') return { retry: false };
+            if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
             if (finished === 'refused') {
               const result = await persistRetry(item, execution, 'observation-registration-refused');
               const outcome = retryOutcome(result);
@@ -1367,6 +1398,7 @@ export async function executeAgentWorkItem(
 
     const completed = await dependencies.repository.transaction(run.runId, async (context) => {
       if (context.checkpoint?.revision !== checkpoint.revision || context.checkpoint.status !== 'EXECUTING' || context.run?.state !== 'RUNNING') return false;
+      if (await stopAtFinalLimit(context)) return true;
       const pending = context.workItems.some((item) => !isTerminalWorkItem(item));
       if (pending) return false;
       const next: AgentWorkCheckpoint = { ...checkpoint, status: 'COMPLETE', workItemId: null, pendingWait: null, waitId: null, diagnostic: null };
@@ -1374,6 +1406,7 @@ export async function executeAgentWorkItem(
       await appendEvent(context, run, 'agent-work-complete', 'RUNNING', next, {
         observations: context.workItems.reduce((total, item) => total + item.observations, 0),
       });
+      if (await stopAtFinalLimit(context)) return true;
       await runRunLevelGate(context, { run, plan, decidedAt: nowIso(dependencies.clock) });
       return true;
     });

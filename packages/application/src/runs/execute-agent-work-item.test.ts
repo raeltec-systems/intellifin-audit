@@ -26,6 +26,7 @@ import type {
   WorkspaceRef,
 } from './execution-ports.js';
 import { executeAgentWorkItem, type AgentWorkDependencies } from './execute-agent-work-item.js';
+import * as completion from './complete-run.js';
 import * as registration from './register-observations.js';
 import * as gate from './run-gate.js';
 import type { RunWait } from './waits.js';
@@ -162,13 +163,17 @@ class FakeRepository implements AgentWorkRepository {
   waits: RunWait[] = [];
   waitRaises: NonNullable<AgentWorkContext['waitRaise']>[] = [];
   failObservationWrite = false;
-  readonly records = [RECORD] as const;
+  plan: ExecutablePlan = PLAN;
+  records: readonly PopulationRecord[] = [RECORD];
+  afterObservationSave: (() => void) | null = null;
+  beforeTransaction: (() => void) | null = null;
   readonly population = {
     startedAt: '2026-09-07T00:00:00.000Z',
   } as unknown as PopulationCheckpoint;
   readonly workspace: WorkspaceRef = { runId: RUN_ID, workspaceId: WORKSPACE_ID, mode: 'local' };
 
   async transaction<T>(_runId: string, work: (context: AgentWorkContext) => Promise<T>): Promise<T> {
+    this.beforeTransaction?.();
     const records = this.records;
     const executions = this.executions;
     const context = {
@@ -192,12 +197,12 @@ class FakeRepository implements AgentWorkRepository {
       readObservations: async (_item: string, keys: readonly string[]) => this.observations.filter(row => keys.includes(row.record.populationRecordKey)).map(row => ({ ...row, observationId: row.record.observationId, populationRecordKey: row.record.populationRecordKey })),
       saveObservations: async (rows: readonly RegisteredObservation[]) => {
         if (this.failObservationWrite) { this.failObservationWrite = false; throw new Error('simulated transaction failure before Observation insert'); }
-        this.observations.push(...rows);
+        this.observations.push(...rows); this.afterObservationSave?.();
       },
       saveObservationChecks: async () => undefined,
       saveObservationEvaluations: async (rows: readonly ObservationEvaluationRow[]) => { this.evaluations.push(...rows); },
       saveExceptions: async () => undefined,
-      async frozenPlan() { return PLAN; },
+      frozenPlan: async () => this.plan,
       async includedRecords() { return records; },
       async readStepExecutionCount() { return executions.length; },
       saveCheckpoint: async (checkpoint: AgentWorkCheckpoint, state: RunRecord['state']) => {
@@ -557,5 +562,88 @@ describe('agent work consumes durable human decisions with original capture', ()
     expect(result).toEqual({ retry: false });
     expect(repository.observations[0]).toMatchObject({ coverage: 'AMBIGUOUS', record: { found: 'ambiguous', identity: null } });
     expect(repository.evaluations.some(row => row.evaluation.value === 'COMPLIANT')).toBe(false);
+  });
+});
+
+
+describe('agent work enforces final limits, target order and bounded human retries', () => {
+  afterEach(() => vi.restoreAllMocks());
+  function finalBoundaries() {
+    const gateCall = vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+    return gateCall;
+  }
+  it('uses target-major work ordering for multiple population records and web targets', async () => {
+    const repository = new FakeRepository();
+    finalBoundaries();
+    const second = { ...TARGET, registrationId: 'second-target', displayName: 'Second application' };
+    repository.plan = { ...PLAN, inputs: { ...PLAN.inputs, targets: [TARGET, second] },
+      sessionSteps: [...PLAN.sessionSteps, { id: 'second-signin', action: 'sign-in', targetSystemId: second.registrationId, text: 'Sign in.' }],
+      targetSystems: [...PLAN.targetSystems, { registrationId: second.registrationId, planSteps: PLAN.targetSystems[0]!.planSteps.map(step => ({ ...step, id: `second-${step.id}`, targetSystemId: second.registrationId })) }],
+      credentialReferences: [...PLAN.credentialReferences, { targetSystemId: second.registrationId, credentialRef: second.contract.credential_ref }] };
+    repository.records = [RECORD, { ordinal: 2, values: { employee_id: 'E-000106', full_name: 'Second Person' } }];
+    const model: AgentModelGateway = { identity: identity(), propose: vi.fn(async () => response(null)) };
+    await executeAgentWorkItem(deps(repository, browserFor(repository), model, durableWaitPort(repository)), JOB);
+    expect(repository.workItems.map(item => [item.registrationId, item.subjectKey])).toEqual([
+      [TARGET.registrationId, RECORD.values.employee_id], [TARGET.registrationId, 'E-000106'],
+      [second.registrationId, RECORD.values.employee_id], [second.registrationId, 'E-000106'],
+    ]);
+  });
+  it('stops before registering an absence when final verified capture read returns after the Run deadline', async () => {
+    const gateCall = finalBoundaries();
+    const repository = new FakeRepository(); let searches = 0, finalReads = 0, late = false;
+    const browser = browserFor(repository);
+    const originalPerform = browser.perform;
+    browser.perform = async (...args) => {
+      const result = await originalPerform(...args);
+      if (args[1].action === 'search') searches += 1;
+      const bytes = utf8Bytes(JSON.stringify({ schemaVersion: 1, nodes: SNAPSHOT_NODES, ...(searches > 0 ? { completion: { complete: true, returned: 0 } } : {}) }));
+      return { ...result, artifacts: [{ kind: 'structural-snapshot', bytes, mediaType: WEB_TREE_MEDIA_TYPE, location: result.location }] };
+    };
+    const model: AgentModelGateway = { identity: identity(), propose: vi.fn(async (request: AgentModelRequest) => response(request.tools.find(tool => tool.action === 'search')?.toolId ?? null)) };
+    const dependencies = deps(repository, browser, model, durableWaitPort(repository));
+    const originalRead = dependencies.store.read;
+    const store: EvidenceStore = { ...dependencies.store, read: async (...args) => {
+      const bytes = await originalRead(...args); if (searches === 2 && ++finalReads === 2) late = true; return bytes;
+    } };
+    await executeAgentWorkItem({ ...dependencies, store, clock: { now: () => new Date(late ? '2026-09-07T01:00:01.000Z' : '2026-09-07T00:00:01.000Z') } }, JOB);
+    expect(late).toBe(true); expect(repository.run.state).toBe('INCONCLUSIVE');
+    expect(repository.observations).toHaveLength(0); expect(repository.evidence.some(row => row.state === 'REGISTERED')).toBe(true);
+    expect(gateCall).not.toHaveBeenCalled();
+  });
+  it('rechecks the deadline after waiting for the Observation transaction lock', async () => {
+    const gateCall = finalBoundaries();
+    const repository = new FakeRepository(); let late = false, afterEvaluation = 0;
+    repository.beforeTransaction = () => {
+      if (repository.turns.some(turn => turn.response?.phase === 'evaluation') && ++afterEvaluation === 2) late = true;
+    };
+    const dependencies = deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), evaluationModel(), durableWaitPort(repository));
+    await executeAgentWorkItem({ ...dependencies, clock: { now: () => new Date(late ? '2026-09-07T01:00:01.000Z' : '2026-09-07T00:00:01.000Z') } }, JOB);
+    expect(late).toBe(true); expect(repository.observations).toHaveLength(0);
+    expect(repository.run.state).toBe('INCONCLUSIVE'); expect(gateCall).not.toHaveBeenCalled();
+    expect(repository.evidence.some(row => row.state === 'REGISTERED')).toBe(true);
+  });
+  it('checks the deadline again at final Gate after the Observation transaction completes', async () => {
+    const gateCall = finalBoundaries();
+    const repository = new FakeRepository(); let late = false;
+    repository.afterObservationSave = () => { late = true; };
+    const dependencies = deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), evaluationModel(), durableWaitPort(repository));
+    await executeAgentWorkItem({ ...dependencies, clock: { now: () => new Date(late ? '2026-09-07T01:00:01.000Z' : '2026-09-07T00:00:01.000Z') } }, JOB);
+    expect(repository.observations, JSON.stringify({ checkpoint: repository.checkpoint, items: repository.workItems })).toHaveLength(1); expect(repository.run.state).toBe('INCONCLUSIVE');
+    expect(gateCall).not.toHaveBeenCalled();
+  });
+  it.each(['action', 'evaluation'] as const)('does not offer another retry grant when the extra %s cycle is still uncertain', async phase => {
+    finalBoundaries();
+    const repository = new FakeRepository();
+    const ordinary = evaluationModel();
+    const model: AgentModelGateway = { identity: identity(), propose: vi.fn(async (request: AgentModelRequest) => {
+      if (phase === 'action') return response(null, { kind: 'insufficient-evidence', rationale: 'Still uncertain' });
+      if (request.phase === 'evaluation') return { ...response(null, { kind: 'insufficient-evidence', rationale: 'Still uncertain' }), phase: 'evaluation' as const, agentProposals: [] };
+      return ordinary.propose(request);
+    }) };
+    const dependencies = deps(repository, browserFor(repository, phase === 'evaluation' ? FOUND_CANDIDATES.slice(5) : SNAPSHOT_NODES), model, durableWaitPort(repository));
+    await executeAgentWorkItem(dependencies, JOB); expect(repository.waits).toHaveLength(1);
+    answerLast(repository, 'retry'); expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: true });
+    expect(repository.waits).toHaveLength(1); expect(repository.workItems[0]?.state).toBe('FAILED');
   });
 });
