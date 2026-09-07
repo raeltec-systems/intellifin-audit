@@ -49,7 +49,9 @@ export default defineConfig(() => {
       testTimeout: 30_000,
       hookTimeout: 30_000,
       fileParallelism: false,
-      reporters: ['default'],
+      // A stalled database/browser hook previously left CI silent for ten minutes. Name
+      // the active module before hooks start without logging queries or target content.
+      reporters: process.env['CI'] ? ['default', './tests/integration/progress-reporter.mjs'] : ['default'],
     },
   };
 });

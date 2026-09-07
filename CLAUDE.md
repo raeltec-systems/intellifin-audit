@@ -1163,3 +1163,7 @@ A successful browser/model read can consume the deadline while its registration 
 ### A submit button's DOM formAction is not its inherited form action
 
 Without a formaction attribute, the button property can report the document URL while native submission uses the associated form's action. Resolve explicit overrides by hasAttribute, otherwise use form.action/form.method. An exact one-request authentication grant must name the URL the browser actually submits to; never broaden it to the whole origin to mask this mismatch.
+
+### Identify stalled integration modules without logging payloads
+
+CI's progress reporter names a test module before hooks start and after it finishes. A stuck browser/database hook otherwise leaves only the prior successful module in aggregate logs. Keep this instrumentation to file identities: raw SQL and test/target payloads are not diagnostic telemetry.
