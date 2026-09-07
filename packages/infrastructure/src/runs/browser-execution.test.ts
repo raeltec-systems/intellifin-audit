@@ -9,7 +9,13 @@ import {
   safeDestination,
 } from './browser-execution.js';
 import { resolvedCredential } from './credential-resolver.js';
-import { completionForWebTree } from './web-tree-capture.js';
+import {
+  completionForWebTree,
+  isActionDeadlineExceeded,
+  remainingActionTime,
+  timeoutForDeadline,
+  withActionDeadline,
+} from './web-tree-capture.js';
 
 /**
  * The pure halves of the Agent Workspace implementation.
@@ -289,5 +295,28 @@ describe('LoanCore web-tree completion metadata', () => {
       schemaVersion: 1,
       nodes: [{ ...base.nodes[0]!, value: 'Showing 1 matching account.' }],
     });
+  });
+});
+
+describe('one absolute browser-action deadline', () => {
+  it('expires pending browser work once and exposes no fresh phase timeout', async () => {
+    const deadline = Date.now() + 25;
+    let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+    const work = new Promise<never>((_resolve, reject) => {
+      pendingTimer = setTimeout(() => reject(new Error('late browser response')), 250);
+    });
+    try {
+      let failure: unknown;
+      try {
+        await withActionDeadline(() => work, deadline);
+      } catch (error) {
+        failure = error;
+      }
+      expect(isActionDeadlineExceeded(failure)).toBe(true);
+      expect(remainingActionTime(deadline)).toBe(0);
+      expect(timeoutForDeadline(deadline, 10_000)).toBe(1);
+    } finally {
+      if (pendingTimer !== undefined) clearTimeout(pendingTimer);
+    }
   });
 });

@@ -98,3 +98,7 @@ CI34138046009 on a24c5d993551795e259827761f66b2564c09fbfb passes fresh migration
 ## Worker model configuration checkpoint (incomplete agent flow)
 
 Optional provider-native keys now compose the worker-only Anthropic primary/OpenAI fallback (or one configured provider), independently of plan derivation configuration. Production non-worker processes reject these keys without echoing values. Model identity carries a validated deployment commit when supplied, otherwise the truthful unidentified-build label. No provider means no gateway, never a scripted fallback.66 focused configuration/startup tests and full workspace/root-test typecheck pass locally. No network model call was made; the actual work-item loop remains in progress.
+
+## Browser deadline and search-containment checkpoint
+
+One absolute action deadline now covers page creation, navigation, actual form entry/submission, capture and authentication proof, with bounded failed-page cleanup preserving workspace/provider identity. Search validates browser FormData before submit and a temporary route aborts mutated main-frame requests before transmission, then falls back to the existing workspace egress guard. Explicit negative Chromium tests cover hidden fields, named submitters, onsubmit mutation and late navigation; blank optional controls remain supported.26 browser unit tests pass locally; new real Chromium regressions await hosted CI (no local browser/PG). This checkpoint does not complete4.6/4.11 or establish live Solari acceptance.

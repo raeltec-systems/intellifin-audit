@@ -64,6 +64,8 @@ describe.skipIf(!databaseUrl)('real browser web-tree capture', () => {
           <input id="employee-id" name="employee_id" type="text">
           <label for="full-name">Full name</label>
           <input id="full-name" name="name" type="text">
+          <label for="optional-filter">Optional filter</label>
+          <input id="optional-filter" name="optional_filter" type="text">
           <button type="submit">Search</button>
         </form>
       `);
@@ -97,7 +99,7 @@ describe.skipIf(!databaseUrl)('real browser web-tree capture', () => {
       expect(result.redirected).toBe(false);
       expect(requests.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
         'GET /target',
-        'GET /target/search?employee_id=E-000105&name=Esther+Kabwe',
+        'GET /target/search?employee_id=E-000105&name=Esther+Kabwe&optional_filter=',
       ]);
 
       const artifacts = result.artifacts ?? [];
@@ -119,6 +121,152 @@ describe.skipIf(!databaseUrl)('real browser web-tree capture', () => {
         expect.objectContaining({ group: 'record:0', role: 'datum', label: 'Username', value: 'e.kabwe' }),
         expect.objectContaining({ group: 'record:0', role: 'datum', label: 'Roles', value: ['COLLECTIONS_AGENT'] }),
       ]));
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
+  it('refuses a non-empty hidden successful control before the GET leaves the browser', async () => {
+    const requests: RequestRecord[] = [];
+    const { server, origin } = await listen((request, response) => {
+      requests.push({ method: request.method ?? '', url: request.url ?? '' });
+      html(response, `
+        <form method="get" action="/target/search">
+          <input type="hidden" name="tenant" value="unapproved-tenant">
+          <label for="employee-id">Employee ID</label>
+          <input id="employee-id" name="employee_id" type="text">
+          <button type="submit">Search</button>
+        </form>
+      `);
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'web-tree-hidden-query-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      await expect(browser.perform(
+        workspace.ref,
+        {
+          action: 'search',
+          destination: origin,
+          parameters: [{ name: 'employee_id', value: 'E-000105' }],
+          credential: null,
+          capture: [],
+        },
+        10_000,
+      )).rejects.toMatchObject({ code: 'scope' });
+      expect(requests).toEqual([{ method: 'GET', url: '/target' }]);
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
+  it('refuses a non-empty named submitter value before the GET leaves the browser', async () => {
+    const requests: RequestRecord[] = [];
+    const { server, origin } = await listen((request, response) => {
+      requests.push({ method: request.method ?? '', url: request.url ?? '' });
+      html(response, `
+        <form method="get" action="/target/search">
+          <label for="employee-id">Employee ID</label>
+          <input id="employee-id" name="employee_id" type="text">
+          <button type="submit" name="sort" value="unapproved-sort">Search</button>
+        </form>
+      `);
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'web-tree-submit-query-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      await expect(browser.perform(
+        workspace.ref,
+        {
+          action: 'search',
+          destination: origin,
+          parameters: [{ name: 'employee_id', value: 'E-000105' }],
+          credential: null,
+          capture: [],
+        },
+        10_000,
+      )).rejects.toMatchObject({ code: 'scope' });
+      expect(requests).toEqual([{ method: 'GET', url: '/target' }]);
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
+  it('aborts a same-origin search when onsubmit adds an unapproved query value', async () => {
+    const requests: RequestRecord[] = [];
+    const { server, origin } = await listen((request, response) => {
+      requests.push({ method: request.method ?? '', url: request.url ?? '' });
+      html(response, `
+        <form method="get" action="/target/search"
+          onsubmit="const extra = document.createElement('input'); extra.type = 'hidden'; extra.name = 'tenant'; extra.value = 'mutated-tenant'; this.append(extra);">
+          <label for="employee-id">Employee ID</label>
+          <input id="employee-id" name="employee_id" type="text">
+          <button type="submit">Search</button>
+        </form>
+      `);
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'web-tree-mutated-query-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      await expect(browser.perform(
+        workspace.ref,
+        {
+          action: 'search',
+          destination: origin,
+          parameters: [{ name: 'employee_id', value: 'E-000105' }],
+          credential: null,
+          capture: [],
+        },
+        10_000,
+      )).rejects.toMatchObject({ code: 'scope' });
+      // The route guard saw the mutated request and aborted it before the local server saw
+      // anything beyond the initial page navigation.
+      expect(requests).toEqual([{ method: 'GET', url: '/target' }]);
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
+  it('applies one absolute deadline and discards a page whose navigation is still pending', async () => {
+    const { server, origin } = await listen((_request, response) => {
+      setTimeout(() => html(response, '<p>late response</p>'), 250);
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'web-tree-deadline-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      const started = Date.now();
+      await expect(browser.perform(
+        workspace.ref,
+        {
+          action: 'navigate',
+          destination: origin,
+          credential: null,
+          capture: [],
+        },
+        40,
+      )).rejects.toMatchObject({ code: 'unavailable' });
+      expect(Date.now() - started).toBeLessThan(500);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(workspace.context.pages()).toHaveLength(0);
     } finally {
       await browser.close();
       await closeServer(server);

@@ -8,6 +8,53 @@ import {
   type WebTreeDocument,
 } from '@intellifin/domain';
 
+const ACTION_TIMEOUT_MAX_MS = 600_000;
+
+/** A fixed, non-secret failure used by every phase of one browser action. */
+class ActionDeadlineExceeded extends Error {
+  constructor() {
+    super('Tool Action deadline exceeded');
+    this.name = 'ActionDeadlineExceeded';
+  }
+}
+
+/** Identify the timeout that owns cleanup, without exposing a page or provider error. */
+export function isActionDeadlineExceeded(error: unknown): boolean {
+  return error instanceof ActionDeadlineExceeded;
+}
+
+/** Milliseconds still available to one action. A zero answer means the deadline is gone. */
+export function remainingActionTime(deadline: number): number {
+  const remaining = deadline - Date.now();
+  return Number.isFinite(remaining) && remaining > 0 ? Math.ceil(remaining) : 0;
+}
+
+/** A Playwright timeout bounded by the one absolute action deadline. */
+export function timeoutForDeadline(deadline: number, capMs: number = ACTION_TIMEOUT_MAX_MS): number {
+  const cap = Number.isFinite(capMs) && capMs > 0 ? Math.ceil(capMs) : 1;
+  return Math.max(1, Math.min(cap, remainingActionTime(deadline) || 1));
+}
+
+/** Refuse to start or finish a phase after the action's deadline. */
+export function assertActionDeadline(deadline: number): void {
+  if (remainingActionTime(deadline) === 0) throw new ActionDeadlineExceeded();
+}
+
+/** Race an async browser operation against the one absolute deadline. */
+export async function withActionDeadline<T>(work: () => Promise<T>, deadline: number): Promise<T> {
+  const remaining = remainingActionTime(deadline);
+  if (remaining === 0) throw new ActionDeadlineExceeded();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new ActionDeadlineExceeded()), remaining);
+  });
+  try {
+    return await Promise.race([work(), expiry]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Fixed platform code; page content and model output are never evaluated as code. */
 const PROJECT_PAGE = `(() => {
   const nodes = [];
@@ -132,16 +179,19 @@ function utf8(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function guardedDiscloses(guard: CredentialGuard, bytes: Uint8Array): boolean {
+function guardedDiscloses(guard: CredentialGuard, bytes: Uint8Array, deadline: number): boolean {
+  assertActionDeadline(deadline);
+  let disclosed: unknown;
   try {
-    const disclosed = guard.discloses(bytes);
-    if (typeof disclosed !== 'boolean') throw new Error('invalid-guard');
-    return disclosed;
+    disclosed = guard.discloses(bytes);
   } catch {
     // A broken guard cannot prove containment. Capture refuses instead of falling through
     // to an unscanned artifact.
     throw new BrowserActionError('contract');
   }
+  assertActionDeadline(deadline);
+  if (typeof disclosed !== 'boolean') throw new BrowserActionError('contract');
+  return disclosed;
 }
 
 /**
@@ -152,32 +202,43 @@ function guardedDiscloses(guard: CredentialGuard, bytes: Uint8Array): boolean {
 export async function captureWebTree(
   page: Page,
   guard: CredentialGuard,
-  options: { readonly screenshot: boolean; readonly timeoutMs: number },
+  options: { readonly screenshot: boolean; readonly timeoutMs: number; readonly deadline?: number },
 ): Promise<{ readonly snapshot: Uint8Array; readonly screenshot: Uint8Array | null }> {
+  const cap = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+    ? Math.ceil(Math.min(options.timeoutMs, ACTION_TIMEOUT_MAX_MS))
+    : 1;
+  const deadline = options.deadline ?? Date.now() + cap;
   // A capture MUST name the guard. The type is required, but this also closes the runtime
   // seam for JavaScript callers and callers that cast through the port.
   if (!isCredentialGuard(guard)) {
     throw new BrowserActionError('contract');
   }
+  assertActionDeadline(deadline);
 
   // Fail before producing either artifact when the page is a credential-entry surface.
   try {
-    if (await page.locator(PASSWORD_SURFACE_SELECTOR).count() !== 0) {
+    const passwordCount = await withActionDeadline(
+      () => page.locator(PASSWORD_SURFACE_SELECTOR).count(),
+      deadline,
+    );
+    if (passwordCount !== 0) {
       throw new BrowserActionError('contract');
     }
   } catch (error) {
-    if (error instanceof BrowserActionError) throw error;
+    if (error instanceof BrowserActionError || isActionDeadlineExceeded(error)) throw error;
     throw new BrowserActionError('contract');
   }
 
   let document: string;
   try {
-    document = await page.content();
-  } catch {
+    document = await withActionDeadline(() => page.content(), deadline);
+  } catch (error) {
+    if (isActionDeadlineExceeded(error)) throw error;
     throw new BrowserActionError('contract');
   }
   const raw = utf8(document);
-  if (raw.length > WEB_TREE_LIMITS.bytes || guardedDiscloses(guard, raw)) {
+  assertActionDeadline(deadline);
+  if (raw.length > WEB_TREE_LIMITS.bytes || guardedDiscloses(guard, raw, deadline)) {
     throw new BrowserActionError('contract');
   }
 
@@ -187,29 +248,42 @@ export async function captureWebTree(
   // when the control's HTML attribute remains empty.
   let liveValues: unknown;
   try {
-    liveValues = await page.evaluate(READ_LIVE_VALUES);
-  } catch {
+    liveValues = await withActionDeadline(() => page.evaluate(READ_LIVE_VALUES), deadline);
+  } catch (error) {
+    if (isActionDeadlineExceeded(error)) throw error;
     throw new BrowserActionError('contract');
   }
-  if (typeof liveValues !== 'string' || guardedDiscloses(guard, utf8(liveValues))) {
+  if (typeof liveValues !== 'string') {
+    throw new BrowserActionError('contract');
+  }
+  if (guardedDiscloses(guard, utf8(liveValues), deadline)) {
     throw new BrowserActionError('contract');
   }
 
   let projected: unknown;
-  try { projected = await page.evaluate(PROJECT_PAGE); }
-  catch { throw new BrowserActionError('contract'); }
+  try { projected = await withActionDeadline(() => page.evaluate(PROJECT_PAGE), deadline); }
+  catch (error) {
+    if (isActionDeadlineExceeded(error)) throw error;
+    throw new BrowserActionError('contract');
+  }
   if (!isWebTreeDocument(projected)) throw new BrowserActionError('contract');
   const completed = completionForWebTree(projected);
   if (!isWebTreeDocument(completed)) throw new BrowserActionError('contract');
+  assertActionDeadline(deadline);
   const snapshot = utf8(canonicalJson(completed as unknown as JsonValue));
+  assertActionDeadline(deadline);
   if (snapshot.length > WEB_TREE_LIMITS.bytes) throw new BrowserActionError('contract');
-  if (guardedDiscloses(guard, snapshot)) throw new BrowserActionError('contract');
+  if (guardedDiscloses(guard, snapshot, deadline)) throw new BrowserActionError('contract');
   // Screenshots do not ground Observations. A failure degrades completeness without
   // discarding the successfully captured structural Evidence.
   const screenshot = options.screenshot
-    ? await page.screenshot({ type: 'png', fullPage: true, timeout: options.timeoutMs }).catch(() => null)
+    ? await withActionDeadline(
+        () => page.screenshot({ type: 'png', fullPage: true, timeout: timeoutForDeadline(deadline, options.timeoutMs) }).catch(() => null),
+        deadline,
+      )
     : null;
-  if (screenshot !== null && guardedDiscloses(guard, screenshot)) {
+  assertActionDeadline(deadline);
+  if (screenshot !== null && guardedDiscloses(guard, screenshot, deadline)) {
     throw new BrowserActionError('contract');
   }
   return { snapshot, screenshot };

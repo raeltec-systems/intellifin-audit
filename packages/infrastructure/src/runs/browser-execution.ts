@@ -30,7 +30,14 @@ import { sanitizeDestination, withinFrozenOrigin, WEB_TREE_MEDIA_TYPE } from '@i
 
 import { withinOrigin } from './origin-policy.js';
 import { hasAuthenticatedAccount } from './authentication-proof.js';
-import { captureWebTree } from './web-tree-capture.js';
+import {
+  assertActionDeadline,
+  captureWebTree,
+  isActionDeadlineExceeded,
+  remainingActionTime,
+  timeoutForDeadline,
+  withActionDeadline,
+} from './web-tree-capture.js';
 
 /**
  * The ONE implementation of `BrowserExecution` (Story 4.1, AD-4).
@@ -509,89 +516,106 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       throw new BrowserActionError('unavailable');
     }
     const timeout = Math.max(1, Math.min(timeoutMs, 600_000));
+    const deadline = Date.now() + timeout;
     const before = live.handle.denied();
 
-    let page: Page;
+    let page: Page | null = null;
     try {
-      page = await this.pageFor(live);
-    } catch {
-      throw new BrowserActionError('unavailable');
-    }
-
-    let response: Awaited<ReturnType<Page['goto']>>;
-    try {
-      response = await page.goto(action.destination, {
-        waitUntil: 'domcontentloaded',
-        timeout,
-      });
+      page = await this.pageFor(live, deadline);
+      let response: Awaited<ReturnType<Page['goto']>> = await withActionDeadline(
+        () => page!.goto(action.destination, {
+          waitUntil: 'domcontentloaded',
+          timeout: timeoutForDeadline(deadline, timeout),
+        }),
+        deadline,
+      );
       if (action.action === 'search') {
         if (response === null) throw new BrowserActionError('contract');
         if (!withinFrozenOrigin(action.destination, page.url())) {
           throw new BrowserActionError('scope');
         }
-        response = await submitSearch(
-          live,
-          page,
-          action.destination,
-          action.parameters ?? [],
-          timeout,
-          response,
+        response = await withActionDeadline(
+          () => submitSearch(
+            live,
+            page!,
+            action.destination,
+            action.parameters ?? [],
+            timeout,
+            response!,
+            deadline,
+          ),
+          deadline,
         );
       }
       // The credential exists for the length of ONE submission and is dropped as soon as
       // the navigation it caused has settled. A workspace that kept it would present it on
       // every later request of the Run, which is the opposite of just in time.
       if (action.credential !== null && response !== null) {
-        response = await signIn(live, page, action.destination, action.credential, timeout, response);
+        response = await withActionDeadline(
+          () => signIn(live, page!, action.destination, action.credential, timeout, response!, deadline),
+          deadline,
+        );
       }
+      // `null` is a same-document navigation, which is not something this platform asked
+      // for and not something it can record a status for.
+      if (response === null) throw new BrowserActionError('contract');
+      // The workspace may contain several configured Target Systems. Authentication proved by
+      // a redirect into another allowed system is not authentication for this action's target.
+      if (
+        (action.credential !== null || action.action === 'search') &&
+        !withinFrozenOrigin(action.destination, page.url())
+      ) {
+        throw new BrowserActionError('scope');
+      }
+      // Where the navigation ENDED, against the frozen allowlist rather than against the
+      // destination: a same-origin redirect is legitimate and lands somewhere the action did
+      // not name. The interception should already have aborted anything else; this is the
+      // second lock on that door.
+      //
+      // Deliberately NOT `denied() > before`. That counts every request the workspace
+      // refused during the navigation, and a page referencing a font, a beacon or an image
+      // off-origin is ordinary — failing the Tool Action for it would report `scope` for
+      // something the PLATFORM never attempted. Those denials are still recorded, as the
+      // security events the workspace drains at its own transaction boundaries.
+      if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+
+      const location = safeDestination(page.url());
+      const artifacts = capture.length === 0
+        ? []
+        : await withActionDeadline(
+            () => captureArtifacts(page!, capture, captureGuard!, timeout, location, deadline),
+            deadline,
+          );
+      const session = await withActionDeadline(
+        () => hasAuthenticatedAccount(page!, response!),
+        deadline,
+      );
+      assertActionDeadline(deadline);
+      return {
+        status: response.status(),
+        // What the workspace actually put on the wire last, which for a sign-in is the
+        // form's own `POST` and not the `GET` the action started with. Read from the request
+        // rather than assumed, because the immutable action log records what happened.
+        method: originatingMethod(response),
+        location,
+        redirected: response.request().redirectedFrom() !== null,
+        downloads: live.downloads,
+        // Authentication is the approved target-specific postcondition on the live page and
+        // response; a cookie alone is never treated as proof.
+        session,
+        artifacts,
+      };
     } catch (error) {
-      // A submission can fail after `fill` but before navigation replaces the form. The page
-      // is then a live secret-bearing surface, so do not leave it available to a later action
-      // or capture. Keep the LiveWorkspace entry: release still needs its exact identity.
-      if (action.credential !== null) await this.discardCredentialPage(live, page, timeout);
+      // A timeout can happen during navigation, search, capture or the final authentication
+      // proof. The page is then an active browser surface that must not be reused. Set the
+      // workspace page slot aside before bounded cleanup; the LiveWorkspace identity remains
+      // in the map so release can still revoke the provider session.
+      const expired = isActionDeadlineExceeded(error) || remainingActionTime(deadline) === 0;
+      if (expired || action.credential !== null) {
+        await this.discardActivePage(live, page, CLOSE_TIMEOUT_MS);
+      }
       throw actionFailure(error, live.handle.denied() > before);
     }
-    // `null` is a same-document navigation, which is not something this platform asked
-    // for and not something it can record a status for.
-    if (response === null) throw new BrowserActionError('contract');
-    // The workspace may contain several configured Target Systems. Authentication proved by
-    // a redirect into another allowed system is not authentication for this action's target.
-    if (
-      (action.credential !== null || action.action === 'search') &&
-      !withinFrozenOrigin(action.destination, page.url())
-    ) {
-      throw new BrowserActionError('scope');
-    }
-    // Where the navigation ENDED, against the frozen allowlist rather than against the
-    // destination: a same-origin redirect is legitimate and lands somewhere the action did
-    // not name. The interception should already have aborted anything else; this is the
-    // second lock on that door.
-    //
-    // Deliberately NOT `denied() > before`. That counts every request the workspace
-    // refused during the navigation, and a page referencing a font, a beacon or an image
-    // off-origin is ordinary — failing the Tool Action for it would report `scope` for
-    // something the PLATFORM never attempted. Those denials are still recorded, as the
-    // security events the workspace drains at its own transaction boundaries.
-    if (!live.allowed(page.url())) throw new BrowserActionError('scope');
-
-    const location = safeDestination(page.url());
-    const artifacts = capture.length === 0
-      ? []
-      : await captureArtifacts(page, capture, captureGuard!, timeout, location);
-    return {
-      status: response.status(),
-      // What the workspace actually put on the wire last, which for a sign-in is the
-      // form's own `POST` and not the `GET` the action started with. Read from the request
-      // rather than assumed, because the immutable action log records what happened.
-      method: originatingMethod(response),
-      location,
-      redirected: response.request().redirectedFrom() !== null,
-      downloads: live.downloads,
-      // "The session held in the workspace", read from the workspace rather than believed:
-      // a cookie for the destination's own origin is what a later request will carry.
-      session: await hasAuthenticatedAccount(page, response),
-      artifacts,
-    };
   }
 
   /**
@@ -601,16 +625,51 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
    * would lose nothing but would make "what the workspace is looking at" a question with
    * several answers.
    */
-  private async pageFor(live: LiveWorkspace): Promise<Page> {
-    if (live.page !== null && !live.page.isClosed()) return live.page;
-    const page = await live.context.newPage();
-    // Counted, never accepted: `acceptDownloads: false` cancels it and this records that
-    // the Target System offered one.
-    page.on('download', () => {
-      live.downloads += 1;
-    });
-    live.page = page;
-    return page;
+  private async pageFor(live: LiveWorkspace, deadline: number): Promise<Page> {
+    if (live.page !== null && !live.page.isClosed()) {
+      assertActionDeadline(deadline);
+      return live.page;
+    }
+    assertActionDeadline(deadline);
+
+    // `context.newPage()` has no Playwright timeout option. Keep the pending promise
+    // attached so a page that resolves after this action expires is closed rather than
+    // becoming an unowned surface in the workspace.
+    let cancelled = false;
+    let cleanupStarted = false;
+    let resolved: Page | null = null;
+    const pending = live.context.newPage();
+    const cleanupLate = (page: Page): void => {
+      if (cleanupStarted) return;
+      cleanupStarted = true;
+      void this.discardActivePage(live, page, CLOSE_TIMEOUT_MS).catch(() => undefined);
+    };
+    void pending.then(
+      (page) => {
+        resolved = page;
+        if (cancelled || remainingActionTime(deadline) === 0) cleanupLate(page);
+      },
+      () => undefined,
+    );
+
+    try {
+      const page = await withActionDeadline(() => pending, deadline);
+      resolved = page;
+      assertActionDeadline(deadline);
+      // Counted, never accepted: `acceptDownloads: false` cancels it and this records that
+      // the Target System offered one.
+      page.on('download', () => {
+        live.downloads += 1;
+      });
+      live.page = page;
+      return page;
+    } catch (error) {
+      if (isActionDeadlineExceeded(error) || remainingActionTime(deadline) === 0) {
+        cancelled = true;
+        if (resolved !== null) cleanupLate(resolved);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -621,38 +680,42 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
    * and then the browser are fail-closed fallbacks if the page is unresponsive. The workspace
    * remains in `this.live` so its Run/provider identity can still be released.
    */
-  private async discardCredentialPage(live: LiveWorkspace, page: Page, timeoutMs: number): Promise<void> {
-    if (live.page === page) live.page = null;
-    const timeout = Math.max(1, Math.min(timeoutMs, CLOSE_TIMEOUT_MS));
-    try {
-      await withTimeout(page.close(), timeout);
-    } catch {
-      // The page may already be disconnected. The context/browser fallbacks below still
-      // have to run, and cleanup must never replace the original action failure.
-    }
+  private async discardActivePage(
+    live: LiveWorkspace,
+    page: Page | null,
+    timeoutMs: number = CLOSE_TIMEOUT_MS,
+  ): Promise<void> {
+    const active = page ?? live.page;
+    if (active === null) return;
+    // Make reuse impossible before asking Playwright to close anything. The workspace stays
+    // in `this.live`, so its provider/run identity remains available to release().
+    if (live.page === active) live.page = null;
+    const cleanupDeadline = Date.now() + Math.max(1, Math.min(timeoutMs, CLOSE_TIMEOUT_MS));
+    const closeBounded = async (work: () => Promise<unknown>): Promise<void> => {
+      const remaining = remainingActionTime(cleanupDeadline);
+      if (remaining === 0) return;
+      try {
+        await withTimeout(work(), remaining);
+      } catch {
+        // Cleanup must not replace the original action failure.
+      }
+    };
+    await closeBounded(() => active.close());
     let closed = false;
     try {
-      closed = page.isClosed();
+      closed = active.isClosed();
     } catch {
       closed = true;
     }
     if (closed) return;
+    await closeBounded(() => live.context.close());
     try {
-      await withTimeout(live.context.close(), timeout);
-    } catch {
-      // Fall through to the browser close if the context cannot answer.
-    }
-    try {
-      closed = page.isClosed();
+      closed = active.isClosed();
     } catch {
       closed = true;
     }
     if (closed) return;
-    try {
-      await withTimeout(live.browser.close(), timeout);
-    } catch {
-      // Keep the workspace identity for release even when the provider is already gone.
-    }
+    await closeBounded(() => live.browser.close());
   }
 
   /**
@@ -709,12 +772,113 @@ interface SearchParameter {
   readonly value: string;
 }
 
+interface SearchSubmissionEntry {
+  readonly name: string | null;
+  /** `null` is a non-string FormData entry (for example, a file control). */
+  readonly value: string | null;
+}
+
 /** The bounded parameter shape the application gate forwards to the browser. */
 const SEARCH_PARAMETER_LIMITS = {
   count: 16,
   name: 200,
   value: 512,
 } as const;
+
+/**
+ * Ask the browser for the exact successful controls it will serialize for this submitter.
+ * FormData(form, submitter) is fixed platform behaviour, so this does not reimplement form
+ * serialization in the host (where a hidden control or a named submit button could be
+ * missed). Non-string entries are represented only by `null`; file names never cross back.
+ */
+const SEARCH_FORM_DATA = (element: unknown): SearchSubmissionEntry[] => {
+  const control = element as { readonly form?: unknown };
+  const form = control.form;
+  if (form === null || form === undefined) throw new Error('form missing');
+  const constructor = (globalThis as unknown as {
+    readonly FormData?: new (
+      form: unknown,
+      submitter?: unknown,
+    ) => { readonly entries: () => IterableIterator<readonly [unknown, unknown]> };
+  }).FormData;
+  if (constructor === undefined) throw new Error('form data unavailable');
+  const data = new constructor(form, element);
+  const entries: SearchSubmissionEntry[] = [];
+  for (const pair of data.entries()) {
+    entries.push({
+      name: typeof pair[0] === 'string' ? pair[0] : null,
+      value: typeof pair[1] === 'string' ? pair[1] : null,
+    });
+  }
+  return entries;
+};
+
+/**
+ * Prove that the browser's successful controls contain only the gate's values. Empty
+ * controls are harmless and remain allowed so a real form may expose optional filters;
+ * every non-empty extra, duplicate approved field, or file entry is outside the frozen
+ * population scope and is refused before the click sends it.
+ */
+function validateSearchFormData(value: unknown, parameters: readonly SearchParameter[]): void {
+  if (!Array.isArray(value)) throw new BrowserActionError('contract');
+  const expected = new Map(parameters.map((parameter) => [parameter.name, parameter.value]));
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      !('name' in entry) ||
+      !('value' in entry)
+    ) {
+      throw new BrowserActionError('contract');
+    }
+    const name = (entry as { readonly name?: unknown }).name;
+    const submitted = (entry as { readonly value?: unknown }).value;
+    if (typeof name !== 'string' || (typeof submitted !== 'string' && submitted !== null)) {
+      throw new BrowserActionError('contract');
+    }
+    if (submitted === null) {
+      // A file is a successful control but cannot be represented as one of the gate's
+      // text parameters. Refuse it without returning its file name or contents.
+      throw new BrowserActionError('scope');
+    }
+    if (expected.has(name)) {
+      if (seen.has(name) || submitted !== expected.get(name)) {
+        throw new BrowserActionError('scope');
+      }
+      seen.add(name);
+      continue;
+    }
+    if (submitted !== '') throw new BrowserActionError('scope');
+  }
+  if (seen.size !== expected.size) throw new BrowserActionError('contract');
+}
+
+/** Compare the actual navigation request with the values approved by the application gate. */
+function searchRequestMatchesParameters(
+  requestUrl: string,
+  parameters: readonly SearchParameter[],
+): boolean {
+  let query: URLSearchParams;
+  try {
+    query = new URL(requestUrl).searchParams;
+  } catch {
+    return false;
+  }
+  const expected = new Map(parameters.map((parameter) => [parameter.name, parameter.value]));
+  const seen = new Set<string>();
+  for (const [name, value] of query) {
+    if (expected.has(name)) {
+      if (seen.has(name) || value !== expected.get(name)) return false;
+      seen.add(name);
+    } else if (value !== '') {
+      // Blank optional controls may be serialized by a conforming browser; non-empty
+      // material must always be an exact gate parameter.
+      return false;
+    }
+  }
+  return seen.size === expected.size;
+}
 
 /**
  * Resolve one control's accessible label from the rendered DOM.
@@ -760,14 +924,20 @@ const ACCESSIBLE_LABEL = (element: unknown): string => {
 };
 
 /** Read the submitter's effective method and action without exposing a DOM object upstream. */
-async function resolvedSubmitter(submitter: Locator): Promise<{ readonly formAction: string; readonly formMethod: string }> {
-  const value: unknown = await submitter.evaluate((element) => {
-    const control = element as unknown as FormSubmitter;
-    return {
-      formAction: control.formAction,
-      formMethod: control.formMethod || control.form?.method || '',
-    };
-  });
+async function resolvedSubmitter(
+  submitter: Locator,
+  deadline: number,
+): Promise<{ readonly formAction: string; readonly formMethod: string }> {
+  const value: unknown = await withActionDeadline(
+    () => submitter.evaluate((element) => {
+      const control = element as unknown as FormSubmitter;
+      return {
+        formAction: control.formAction,
+        formMethod: control.formMethod || control.form?.method || '',
+      };
+    }),
+    deadline,
+  );
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -782,9 +952,10 @@ async function resolvedSubmitter(submitter: Locator): Promise<{ readonly formAct
 /**
  * Submit the target's own GET search form using only application-approved parameters.
  *
- * The form and submitter are judged by their resolved browser properties before a value is
- * typed. A POST, a cross-target action, an ambiguous label or a second submitter is a
- * contract/scope refusal; no guessed control and no arbitrary JavaScript is used.
+ * The form and submitter are judged by their resolved browser properties, and the browser's
+ * own successful-control list is checked after approved values are filled. A POST, a
+ * cross-target action, an ambiguous label, a second submitter or an unapproved query value
+ * is a contract/scope refusal; no guessed control and no arbitrary JavaScript is used.
  */
 async function submitSearch(
   live: LiveWorkspace,
@@ -793,7 +964,9 @@ async function submitSearch(
   parameters: readonly SearchParameter[],
   timeoutMs: number,
   landed: Response,
+  deadline: number,
 ): Promise<Response> {
+  assertActionDeadline(deadline);
   if (
     !Array.isArray(parameters) ||
     parameters.length === 0 ||
@@ -817,7 +990,8 @@ async function submitSearch(
 
   const forms = page.locator('form');
   let selected: { readonly form: Locator; readonly fields: readonly Locator[] } | null = null;
-  for (let formIndex = 0; formIndex < await forms.count(); formIndex += 1) {
+  const formCount = await withActionDeadline(() => forms.count(), deadline);
+  for (let formIndex = 0; formIndex < formCount; formIndex += 1) {
     const form = forms.nth(formIndex);
     const fields: Locator[] = [];
     for (const parameter of parameters) {
@@ -825,15 +999,27 @@ async function submitSearch(
         'input:not([type])[name], input[type="text" i][name], input[type="search" i][name]',
       );
       const matches: Locator[] = [];
-      for (let fieldIndex = 0; fieldIndex < await candidates.count(); fieldIndex += 1) {
+      const candidateCount = await withActionDeadline(() => candidates.count(), deadline);
+      for (let fieldIndex = 0; fieldIndex < candidateCount; fieldIndex += 1) {
         const candidate = candidates.nth(fieldIndex);
-        if (await candidate.getAttribute('name') !== parameter.name) continue;
-        const accessibleLabel = await candidate.evaluate(ACCESSIBLE_LABEL);
+        const candidateName = await withActionDeadline(
+          () => candidate.getAttribute('name'),
+          deadline,
+        );
+        if (candidateName !== parameter.name) continue;
+        const accessibleLabel = await withActionDeadline(
+          () => candidate.evaluate(ACCESSIBLE_LABEL),
+          deadline,
+        );
         if (typeof accessibleLabel !== 'string' || accessibleLabel === '') {
           throw new BrowserActionError('contract');
         }
         const exact = form.getByLabel(accessibleLabel, { exact: true });
-        if (await exact.count() !== 1 || await exact.getAttribute('name') !== parameter.name) {
+        const exactCount = await withActionDeadline(() => exact.count(), deadline);
+        const exactName = exactCount === 1
+          ? await withActionDeadline(() => exact.getAttribute('name'), deadline)
+          : null;
+        if (exactCount !== 1 || exactName !== parameter.name) {
           throw new BrowserActionError('contract');
         }
         matches.push(exact);
@@ -845,7 +1031,11 @@ async function submitSearch(
         break;
       }
       const field = matches[0]!;
-      if (!await field.isVisible() || !await field.isEditable()) {
+      const [visible, editable] = await withActionDeadline(
+        () => Promise.all([field.isVisible(), field.isEditable()]),
+        deadline,
+      );
+      if (!visible || !editable) {
         throw new BrowserActionError('contract');
       }
       fields.push(field);
@@ -859,16 +1049,24 @@ async function submitSearch(
   const submitters = selected.form.locator(
     'button:not([type]), button[type="submit" i], input[type="submit" i]',
   );
-  if (await submitters.count() !== 1) throw new BrowserActionError('contract');
+  const submitterCount = await withActionDeadline(() => submitters.count(), deadline);
+  if (submitterCount !== 1) throw new BrowserActionError('contract');
   const submitter = submitters.first();
-  if (!await submitter.isVisible() || !await submitter.isEnabled()) {
+  const [submitterVisible, submitterEnabled] = await withActionDeadline(
+    () => Promise.all([submitter.isVisible(), submitter.isEnabled()]),
+    deadline,
+  );
+  if (!submitterVisible || !submitterEnabled) {
     throw new BrowserActionError('contract');
   }
-  const [formAction, formMethod, submitterDetails] = await Promise.all([
-    selected.form.evaluate((element) => (element as unknown as SubmittableForm).action),
-    selected.form.evaluate((element) => (element as unknown as SubmittableForm).method),
-    resolvedSubmitter(submitter),
-  ]);
+  const [formAction, formMethod, submitterDetails] = await withActionDeadline(
+    () => Promise.all([
+      selected!.form.evaluate((element) => (element as unknown as SubmittableForm).action),
+      selected!.form.evaluate((element) => (element as unknown as SubmittableForm).method),
+      resolvedSubmitter(submitter, deadline),
+    ]),
+    deadline,
+  );
   if (typeof formAction !== 'string' || typeof formMethod !== 'string') {
     throw new BrowserActionError('contract');
   }
@@ -880,24 +1078,132 @@ async function submitSearch(
   if (!withinFrozenOrigin(destination, submitterDetails.formAction)) throw new BrowserActionError('scope');
 
   for (const [index, parameter] of parameters.entries()) {
-    await selected.fields[index]!.fill(parameter.value, { timeout: timeoutMs });
+    await withActionDeadline(
+      () => selected!.fields[index]!.fill(parameter.value, { timeout: timeoutForDeadline(deadline, timeoutMs) }),
+      deadline,
+    );
   }
-  const settled = page.waitForResponse(
-    (response) =>
-      response.request().isNavigationRequest() &&
-      response.frame() === page.mainFrame() &&
-      (response.status() < 300 || response.status() >= 400),
-    { timeout: timeoutMs },
+  // FormData applies the browser's own successful-control rules, including hidden fields,
+  // selected options and the named submitter. Validate it after the approved values are in
+  // place so an unapproved non-empty control is refused before a request leaves the browser.
+  const formData = await withActionDeadline(
+    () => submitter.evaluate(SEARCH_FORM_DATA),
+    deadline,
   );
-  await submitter.click({ timeout: timeoutMs });
-  const response = await settled;
-  await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs });
-  if (!live.allowed(page.url())) throw new BrowserActionError('scope');
-  if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
-  // Keep this explicit. A same-document response is not a result page the action can bind
-  // to, and the initial landing response is only used to find the form.
-  if (response === landed) throw new BrowserActionError('contract');
-  return response;
+  validateSearchFormData(formData, parameters);
+  // A page-level route runs before the context's frozen-egress route. It closes the race
+  // between the FormData inspection above and the click: an onsubmit handler can still add a
+  // hidden control, change the method or redirect the first navigation. Approved requests
+  // call fallback so the workspace policy remains the final egress boundary.
+  let armed = false;
+  const searchRoute = async (route: Route): Promise<void> => {
+    const request = route.request();
+    const initialMainNavigation =
+      armed &&
+      request.isNavigationRequest() &&
+      request.frame() === page.mainFrame() &&
+      request.redirectedFrom() === null;
+    if (!initialMainNavigation) {
+      await route.fallback();
+      return;
+    }
+    const approved =
+      request.method().toUpperCase() === 'GET' &&
+      withinFrozenOrigin(destination, request.url()) &&
+      searchRequestMatchesParameters(request.url(), parameters);
+    if (!approved) {
+      await route.abort('blockedbyclient');
+      return;
+    }
+    // Do not continue directly: that would skip the context route which enforces the
+    // workspace's full frozen-origin policy.
+    await route.fallback();
+  };
+  let routeInstalled = false;
+  let routeCancelled = false;
+  let routeRemovalStarted = false;
+  const removeSearchRoute = async (): Promise<void> => {
+    if (!routeInstalled || routeRemovalStarted) return;
+    routeRemovalStarted = true;
+    try {
+      await withTimeout(page.unroute('**/*', searchRoute), CLOSE_TIMEOUT_MS);
+    } catch {
+      // A page can close while the late route installation is being unwound. Cleanup must
+      // never replace the action's original failure or create a raw provider error.
+    }
+  };
+  // `page.route` is normally immediate, but keep a late resolution attached so a deadline
+  // cannot leave a page-level guard installed after this action has already failed.
+  const installingRoute = page.route('**/*', searchRoute);
+  void installingRoute.then(
+    () => {
+      routeInstalled = true;
+      if (routeCancelled) void removeSearchRoute().catch(() => undefined);
+    },
+    () => undefined,
+  );
+  try {
+    await withActionDeadline(() => installingRoute, deadline);
+    routeInstalled = true;
+    armed = true;
+
+    const submitted = withActionDeadline(
+      () => page.waitForRequest(
+        (request) =>
+          request.isNavigationRequest() &&
+          request.frame() === page.mainFrame(),
+        { timeout: timeoutForDeadline(deadline, timeoutMs) },
+      ),
+      deadline,
+    );
+    const settled = withActionDeadline(
+      () => page.waitForResponse(
+        (response) =>
+          response.request().isNavigationRequest() &&
+          response.frame() === page.mainFrame() &&
+          (response.status() < 300 || response.status() >= 400),
+        { timeout: timeoutForDeadline(deadline, timeoutMs) },
+      ),
+      deadline,
+    );
+    // Both waits are started before the click. Attach observers immediately as well: if the
+    // route rejects the click, its request/response promise can still settle later at the
+    // deadline without becoming an unhandled rejection.
+    void submitted.catch(() => undefined);
+    void settled.catch(() => undefined);
+    const click = withActionDeadline(
+      () => submitter.click({ timeout: timeoutForDeadline(deadline, timeoutMs) }),
+      deadline,
+    );
+    const [clickResult, requestResult] = await Promise.allSettled([click, submitted]);
+    if (requestResult.status === 'fulfilled') {
+      const request = requestResult.value;
+      if (
+        request.method().toUpperCase() !== 'GET' ||
+        !withinFrozenOrigin(destination, request.url()) ||
+        !searchRequestMatchesParameters(request.url(), parameters)
+      ) {
+        throw new BrowserActionError('scope');
+      }
+    }
+    if (clickResult.status === 'rejected') throw clickResult.reason;
+    if (requestResult.status === 'rejected') throw requestResult.reason;
+    const response = await settled;
+    await withActionDeadline(
+      () => page.waitForLoadState('domcontentloaded', { timeout: timeoutForDeadline(deadline, timeoutMs) }),
+      deadline,
+    );
+    if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+    if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
+    // Keep this explicit. A same-document response is not a result page the action can bind
+    // to, and the initial landing response is only used to find the form.
+    if (response === landed) throw new BrowserActionError('contract');
+    assertActionDeadline(deadline);
+    return response;
+  } finally {
+    routeCancelled = true;
+    await removeSearchRoute();
+  }
 }
 
 /** Capture exactly the requested final-page artifacts, each bound to its sanitized URL. */
@@ -911,19 +1217,24 @@ async function captureArtifacts(
   },
   timeoutMs: number,
   location: string,
+  deadline: number,
 ): Promise<readonly BrowserActionArtifact[]> {
   const captured = await captureWebTree(page, guard, {
     screenshot: capture.includes('screenshot'),
     timeoutMs,
+    deadline,
   });
   let artifactLocation: string;
   try {
+    assertActionDeadline(deadline);
     artifactLocation = guard.redact(location);
+    assertActionDeadline(deadline);
     if (guard.discloses(new TextEncoder().encode(artifactLocation))) {
       throw new BrowserActionError('contract');
     }
+    assertActionDeadline(deadline);
   } catch (error) {
-    if (error instanceof BrowserActionError) throw error;
+    if (error instanceof BrowserActionError || isActionDeadlineExceeded(error)) throw error;
     throw new BrowserActionError('contract');
   }
   const artifacts: BrowserActionArtifact[] = [];
@@ -981,7 +1292,9 @@ async function signIn(
   credential: ResolvedCredential,
   timeoutMs: number,
   landed: Response,
+  deadline: number,
 ): Promise<Response> {
+  assertActionDeadline(deadline);
   // A redirect into another configured Target System cannot establish this action's target
   // session, even if that other page happens to carry the approved account marker.
   if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
@@ -992,16 +1305,22 @@ async function signIn(
   // commit leaves the checkpoint saying `RETRY` while the browser still holds the cookie,
   // and the phase's own sweep re-claims in the same process. Without it that blip would
   // report `contract` and cost the Run, which is the opposite of what AD-16 asks for.
-  if (await hasAuthenticatedAccount(page, landed)) {
+  if (await withActionDeadline(() => hasAuthenticatedAccount(page, landed), deadline)) {
     return landed;
   }
 
   const forms = page.locator('form:has(input[type="password"])');
-  if ((await forms.count()) !== 1) throw new BrowserActionError('contract');
+  if (await withActionDeadline(() => forms.count(), deadline) !== 1) {
+    throw new BrowserActionError('contract');
+  }
   const form = forms.first();
   const fields = form.locator('input[type="password"]');
   const submits = form.locator('button[type="submit"], input[type="submit"]');
-  if ((await fields.count()) !== 1 || (await submits.count()) !== 1) {
+  const [fieldCount, submitCount] = await withActionDeadline(
+    () => Promise.all([fields.count(), submits.count()]),
+    deadline,
+  );
+  if (fieldCount !== 1 || submitCount !== 1) {
     throw new BrowserActionError('contract');
   }
   const submitter = submits.first();
@@ -1009,11 +1328,14 @@ async function signIn(
   // `HTMLFormElement.action`/`.method` and `HTMLButtonElement.formAction` are the RESOLVED
   // values the browser will actually use, which is what has to be judged — not the
   // attribute text, which may be relative, absent, or overridden by the submitter.
-  const [formAction, formMethod, submitterDetails] = await Promise.all([
-    form.evaluate((element) => (element as unknown as SubmittableForm).action),
-    form.evaluate((element) => (element as unknown as SubmittableForm).method),
-    resolvedSubmitter(submitter),
-  ]);
+  const [formAction, formMethod, submitterDetails] = await withActionDeadline(
+    () => Promise.all([
+      form.evaluate((element) => (element as unknown as SubmittableForm).action),
+      form.evaluate((element) => (element as unknown as SubmittableForm).method),
+      resolvedSubmitter(submitter, deadline),
+    ]),
+    deadline,
+  );
   // A `GET` form would put the credential in the URL, in browser history, in the `Referer`
   // header and in every access log. This platform will not type one into it. The submitter
   // can override the form method, so its effective method is checked too.
@@ -1025,27 +1347,40 @@ async function signIn(
   if (!withinFrozenOrigin(destination, formAction)) throw new BrowserActionError('scope');
   if (!withinFrozenOrigin(destination, submitterDetails.formAction)) throw new BrowserActionError('scope');
 
-  await enterCredential(credential, fields.first(), timeoutMs);
+  await withActionDeadline(
+    () => enterCredential(credential, fields.first(), timeoutForDeadline(deadline, timeoutMs), deadline),
+    deadline,
+  );
 
   // The FIRST non-redirect navigation response of the main frame after the submission.
   // Filtering the redirects out is what makes this the answer the system settled on rather
   // than the `303` it passed through on the way.
-  const settled = page.waitForResponse(
-    (response) =>
-      response.request().isNavigationRequest() &&
-      response.frame() === page.mainFrame() &&
-      (response.status() < 300 || response.status() >= 400),
-    { timeout: timeoutMs },
+  const settled = withActionDeadline(
+    () => page.waitForResponse(
+      (response) =>
+        response.request().isNavigationRequest() &&
+        response.frame() === page.mainFrame() &&
+        (response.status() < 300 || response.status() >= 400),
+      { timeout: timeoutForDeadline(deadline, timeoutMs) },
+    ),
+    deadline,
   );
-  await submitter.click({ timeout: timeoutMs });
+  await withActionDeadline(
+    () => submitter.click({ timeout: timeoutForDeadline(deadline, timeoutMs) }),
+    deadline,
+  );
   const response = await settled;
-  await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs });
+  await withActionDeadline(
+    () => page.waitForLoadState('domcontentloaded', { timeout: timeoutForDeadline(deadline, timeoutMs) }),
+    deadline,
+  );
   // The workspace is still inside its frozen allowlist. The interception should already
   // have aborted anything else; this is the second lock on that door, checked here as well
   // as by the caller because a sign-in is where a system most wants to send a browser
   // somewhere new.
   if (!live.allowed(page.url())) throw new BrowserActionError('scope');
   if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
+  assertActionDeadline(deadline);
   return response;
 }
 
@@ -1061,7 +1396,9 @@ async function enterCredential(
   credential: ResolvedCredential,
   field: Locator,
   timeoutMs: number,
+  deadline: number,
 ): Promise<void> {
+  assertActionDeadline(deadline);
   let typed = '';
   credential.enter({
     set: (value: string) => {
@@ -1072,7 +1409,11 @@ async function enterCredential(
   // an empty field would fail for a reason that is not the true one.
   if (typed === '') throw new BrowserActionError('contract');
   try {
-    await field.fill(typed, { timeout: timeoutMs });
+    await withActionDeadline(
+      () => field.fill(typed, { timeout: timeoutForDeadline(deadline, timeoutMs) }),
+      deadline,
+    );
+    assertActionDeadline(deadline);
   } finally {
     typed = '';
   }
