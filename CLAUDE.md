@@ -1151,3 +1151,7 @@ When the frozen evaluator returns MISSING_OBSERVATION_FIELD for Agent-Judged app
 ### Agent work resumption keeps human decisions until registration commits
 
 A closed wait is not consumed when a lease is claimed. Keep its exact wait id and original escalation/capture binding until the Observation transaction succeeds; chained candidate and unnamed-value decisions retain at most two explicit closed wait ids. Never rediscover a decision by guessing from history. A stored snapshot is Evidence, not proof that a reattached browser has that live page; ordinary retries re-navigate and search. Worker inspection recovery must also restore provider context and re-confirm authentication where process state was lost.
+
+### Sealed review history remains visible for an Inconclusive Result
+
+A human rejection can seal a pending Result and set the Run to INCONCLUSIVE. The Run-detail composition must mount the immutable evaluation history for that terminal state as well as COMPLETED; a successful server action followed by refresh must not hide its own decision. Disposable review fixtures delete Work Items before their referenced Evidence rows.

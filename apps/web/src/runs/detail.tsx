@@ -171,7 +171,7 @@ export async function RunDetailFrame({
   const escalation = run.state === 'AWAITING_AUDITOR'
     ? await readOpenEscalation(run.runId)
     : null;
-  const evaluationReview = tab === '' && run.state === 'COMPLETED'
+  const evaluationReview = tab === '' && (run.state === 'COMPLETED' || run.state === 'INCONCLUSIVE')
     ? await readEvaluationReview(run.runId)
     : null;
   const lifecycle = runLifecycleWord(run.state);

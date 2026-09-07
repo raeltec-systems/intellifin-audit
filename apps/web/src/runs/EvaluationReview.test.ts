@@ -133,6 +133,28 @@ describe('Evaluation review surface', () => {
     expect(html).not.toContain('Reject evaluation');
   });
 
+  it('keeps a rejection history visible after sealing an inconclusive Result', () => {
+    const html = render({
+      result: result({ outcome: 'INCONCLUSIVE', sealed: true, version: 2 }),
+      evaluations: [evaluation({
+        value: 'UNEVALUATED',
+        confirmation: null,
+        reviewDecision: {
+          action: 'reject',
+          actorId: 'auditor-1',
+          decidedAt: '2026-09-06T00:00:00.000Z',
+          rejectionRationale: 'The retained evidence does not support the proposal.',
+        },
+      })],
+      pendingCount: 0,
+    });
+    expect(html).toContain('Stored human review decision');
+    expect(html).toContain('The Result is sealed. Review history is read-only.');
+    expect(html).toContain('The retained evidence does not support the proposal.');
+    expect(html).not.toContain('Confirm evaluation');
+    expect(html).not.toContain('Reject evaluation');
+  });
+
   it('renders a sealed result read-only even if a stale payload still says pending', () => {
     const html = render({ result: result({ sealed: true }) });
     expect(html).toContain('The Result is sealed. Review history is read-only.');
