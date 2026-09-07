@@ -43,12 +43,12 @@ async function run(entry, phase) {
   });
   if (child.error || child.signal) throw new Error(`Process did not finish: ${entry.id}/${phase}`);
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  if (report.errors.length > 0) throw new Error(`Setup/report errors are not mutation evidence: ${entry.id}/${phase}`);
+  const reportErrors = report.errors.map(error => String(error.message ?? '').replaceAll(root, '<worktree>').slice(0, 2400));
   const assertions = specs(report.suites).filter(spec => spec.file.endsWith(entry.test.split('/').at(-1))).flatMap(spec => spec.tests.filter(test => test.projectName === 'chromium').map(test => ({
     name: spec.title, status: test.results.at(-1)?.status,
     errors: (test.results.at(-1)?.errors ?? []).map(error => String(error.message ?? '').replaceAll(root, '<worktree>').slice(0, 2400)),
   })));
-  return { exit: child.status, passed: assertions.filter(row => row.status === 'passed').length, failed: assertions.filter(row => row.status === 'failed').length, assertions };
+  return { exit: child.status, reportErrors, passed: assertions.filter(row => row.status === 'passed').length, failed: assertions.filter(row => row.status === 'failed').length, assertions };
 }
 try {
   for (const entry of cases) {
@@ -56,7 +56,8 @@ try {
     if (source.split(entry.before).length !== 2) throw new Error(`Mutation anchor drift: ${entry.id}`);
     if (entry.rebuild) build();
     const green = await run(entry, 'baseline');
-    if (green.exit !== 0 || (entry.count === undefined ? green.passed < entry.minimum : green.passed !== entry.count) || green.failed !== 0) throw new Error(`Baseline failed or test count changed: ${entry.id}`);
+    await writeFile(output, JSON.stringify({ baselineSha, completed: false, pending: { id: entry.id, phase: 'baseline', result: green }, results }, null, 2) + '\n');
+    if (green.reportErrors.length > 0 || green.exit !== 0 || (entry.count === undefined ? green.passed < entry.minimum : green.passed !== entry.count) || green.failed !== 0) { process.stderr.write(JSON.stringify(green, null, 2) + '\n'); throw new Error(`Baseline failed or test count changed: ${entry.id}`); }
     let red;
     try {
       await writeFile(path, source.replace(entry.before, entry.after));
@@ -64,7 +65,8 @@ try {
       red = await run(entry, 'mutant');
     } finally { await writeFile(path, source); if (entry.rebuild) build(); }
     // Every seeded case must itself fail an assertion, not time out or fail setup.
-    if (red.exit === 0 || red.failed !== green.passed || red.assertions.some(row => !row.errors.some(error => /expect\(|AssertionError/u.test(error)))) throw new Error(`Mutation survived or lacked per-case assertion failures: ${entry.id}`);
+    await writeFile(output, JSON.stringify({ baselineSha, completed: false, pending: { id: entry.id, phase: 'mutant', green, result: red }, results }, null, 2) + '\n');
+    if (red.reportErrors.length > 0 || red.exit === 0 || red.failed !== green.passed || red.assertions.some(row => !row.errors.some(error => /expect\(|AssertionError/u.test(error)))) throw new Error(`Mutation survived or lacked per-case assertion failures: ${entry.id}`);
     results.push({ id: entry.id, source: entry.file, guard: entry.before, replacement: entry.after, sourceSha256: digest(source), test: entry.test, testSha256: digest(await readFile(entry.test)), green, red });
     await writeFile(output, JSON.stringify({ baselineSha, mode: 'local-chromium-hydrated-ui-and-worker-intercepted-provider', completed: false, results }, null, 2) + '\n');
     process.stdout.write(`${entry.id}: baseline ${green.passed} passed; mutant ${red.failed} failed\n`);

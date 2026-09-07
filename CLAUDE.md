@@ -1257,3 +1257,8 @@ The seeded ProdConsole origin is its landing page, not the configuration table U
 ### Epic 4 hydrated and worker abuse verification
 
 SSR escaping alone cannot establish that hostile escalation text leaves hydrated choices unselected. Exercise actual browser controls and durable answers, then mutate the selection/answer guard and require the relevant assertions to fail. For runtime scope-widening cases, the test-only model HTTP preload may return hostile proposals, but must never create observations or replace browser results; boot the production worker with the candidate's migrated queues and actual synthetic form authentication. Keep mutation execution inside a clean detached worktree and restore guards after each run.
+
+
+### Mutation-runner failure evidence
+
+Persist baseline and mutant diagnostics before checking success conditions. A failing baseline is not a killed mutation, and setup/report errors are never assertion evidence. Retain bounded sanitized Playwright errors so hosted failures can be reproduced without rerunning an opaque harness; restore the changed source in all paths.
