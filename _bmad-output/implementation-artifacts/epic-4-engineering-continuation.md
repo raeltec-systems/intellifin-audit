@@ -126,3 +126,9 @@ d9b606307aaf27b1956a9e2bd66244f54c505394 is pushed. Its CI passes typecheck, bou
 ## Escalation question body selector correction
 
 The real browser rendered the question plus both candidate labels as separate inert pre elements. The regression now scopes the expected literal script text to the question's provenance container, retaining the zero executable scripts assertion. Previous CI reached this assertion after successfully checking question provenance. Hosted retest remains required; no assertion was removed.
+
+## Story4.9 evaluation and review backend checkpoint (incomplete story)
+
+Generation36 retains original machine proposals, adds a separately revisioned review aggregate and immutable decision ledger, and binds decisions to the actual pending evaluation and original evidence. Existing CompleteRun publishing is reused by sealResult; intermediate answers preserve Result.version1 and the original package, while the final answer seals version2. Effective counts/findings overlay history rather than rewriting machine rows. Missing historical proposals remain NULL. The adjacent revision reconciles AD21 with the frozen Result shape and single-update trigger; no owner decision is asserted.
+
+139 focused domain/evaluation/registration/sealing/review/schema tests pass locally. Four real PostgreSQL review tests cover concurrent answers, final Unevaluated/Exception/Compliant outcomes, original proposal/package preservation and authorization; hosted execution is pending. The migration consistency check passes locally. The browser surface and genuine model-producing work loop are separate pending checkpoints;4.9 is not accepted. Latest prior push33f36229cad6d5a7d9f0df4887b74141275c7e7b is under CI34143277716. No merge or deployment.

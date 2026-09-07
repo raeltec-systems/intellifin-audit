@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-35 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-36 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -95,6 +95,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_agent_execution',
       'run_agent_turn',
       'run_agent_work',
+      // Story 4.9. Human decisions retain the original Agent-Judged proposal in an
+      // immutable ledger beside the mutable Result review revision.
+      'run_evaluation_review',
       'run_evidence',
       'run_evidence_capture',
       // Story 3.5. The sealed Evidence package of one Run, and the Audit Trail integrity
@@ -119,6 +122,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Story 3.9. The sealed Result: the System Outcome, the §E.1 row that decided it and
       // the published document, written once in the transaction that completes the Run.
       'run_result',
+      'run_result_review',
       'run_session_step',
       'run_step_execution',
       'run_tool_action',
@@ -136,12 +140,12 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
   });
 
   /**
-   * The columns generation 32 added, asserted EXACTLY on the four tables it changed.
+   * The columns generations 32 and 36 added, asserted EXACTLY on the tables they changed.
    *
    * The table list above is exact so that a migration nobody reviewed fails; a column
-   * added to an existing table slipped past it entirely. These four tables now carry
-   * facts an auditor reads off a Result — FR-31's capture provenance and the two
-   * record-count numbers — so the same rule applies to their shape.
+   * added to an existing table slipped past it entirely. These rows carry facts an
+   * auditor reads off a Result — capture provenance, record counts and the preserved
+   * evaluation-review proposal — so the same rule applies to their shape.
    */
   it.each([
     [
@@ -160,7 +164,19 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_initiation_request',
       ['initiator_id', 'period_from', 'period_to', 'procedure_id', 'refusal', 'refused_run_id', 'request_token', 'run_id'],
     ],
-  ])('has exactly the generation-32 columns on %s', async (table, columns) => {
+    [
+      'run_observation_evaluation',
+      ['agent_proposed_confidence', 'agent_proposed_rationale', 'agent_proposed_value', 'confirmation', 'confidence', 'condition_id', 'corroboration', 'coverage', 'diagnostic', 'evidence_ids', 'observation_id', 'origin', 'rationale', 'run_id', 'value'],
+    ],
+    [
+      'run_evaluation_review',
+      ['action', 'actor_id', 'condition_id', 'decided_at', 'decision_id', 'effective_confirmation', 'effective_origin', 'effective_value', 'observation_id', 'original_confirmation', 'original_confidence', 'original_evidence_ids', 'original_origin', 'original_rationale', 'original_value', 'rejection_rationale', 'replacement_value', 'review_revision', 'run_id'],
+    ],
+    [
+      'run_result_review',
+      ['revision', 'run_id'],
+    ],
+  ])('has exactly the generation-36 columns on %s', async (table, columns) => {
     const rows = await sql<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = ${table}

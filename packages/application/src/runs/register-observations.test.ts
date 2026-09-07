@@ -18,12 +18,18 @@ import {
   type ObservationCheckRow,
   type ObservationCorroborationPort,
   type ObservationEvaluationPort,
+  type ObservationEvaluationResult,
   type ExceptionFingerprinter,
   type ObservationEvaluationRow,
   type ObservationRegistrationContext,
   type RegisteredObservation,
   type StoredObservation,
 } from './execution-ports.js';
+import type {
+  AgentJudgedEvaluationRow,
+  AgentJudgedProposal,
+  AgentProposalEvaluationPort,
+} from './agent-evaluation.js';
 import {
   ObservationRegistrationError,
   registerObservations,
@@ -235,6 +241,41 @@ const FINGERPRINTER: ExceptionFingerprinter = {
 };
 
 const SEAMS = { corroboration: NO_CORROBORATION, evaluation: NO_EVALUATION, exceptions: FINGERPRINTER };
+
+const AGENT_CONDITION_IDS = ['C1', 'C2'] as const;
+
+function agentBatch(
+  proposals: readonly AgentJudgedProposal[] = [],
+  overrides: Partial<ObservationBatch> = {},
+): ObservationBatch {
+  return batch([item(found('AG-1001'))], {
+    templateId: 'P-1',
+    expectedConditionIds: AGENT_CONDITION_IDS,
+    expectedAgentConditionIds: ['C2'],
+    agentProposals: proposals,
+    ...overrides,
+  });
+}
+
+const MATCHED_CORROBORATION: ObservationCorroborationPort = {
+  corroborate: async (subjects) =>
+    subjects.map((subject) => ({
+      observationId: subject.observationId,
+      outcome: 'PASS' as const,
+      diagnostic: null,
+      identity: 'matched' as const,
+      attributes: [{ name: 'roles', corroboration: 'matched' as const }],
+    })),
+};
+
+function agentEvaluationPort(
+  answer: (observationId: string, proposals: readonly AgentJudgedProposal[]) => ObservationEvaluationResult,
+): AgentProposalEvaluationPort {
+  return {
+    evaluateWithAgentProposals: async (subjects, proposals) =>
+      subjects.map((subject) => answer(subject.record.observationId, proposals)),
+  };
+}
 
 async function refusal(work: () => Promise<unknown>): Promise<string> {
   try {
@@ -665,6 +706,197 @@ describe('registerObservations', () => {
       ['UNINSPECTED', 'UNEVALUATED'],
     ]);
     expect(context.events[0]!.payload['evaluations']).toBe(2);
+  });
+
+  it('registers an applicable Agent-Judged C2 evaluation and retains its original proposal', async () => {
+    const proposal: AgentJudgedProposal = {
+      observationId: observationIdFor(WORK_ITEM, 'AG-1001'),
+      conditionId: 'C2',
+      value: 'EXCEPTION',
+      confidence: '0.80',
+      rationale: 'The captured roles are privileged.',
+    };
+    const agentEvaluation = agentEvaluationPort((observationId, proposals) => {
+      const current = proposals[0]!;
+      return {
+        observationId,
+        evaluations: [
+          {
+            conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+            confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [EVIDENCE],
+          },
+          {
+            conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value: current.value,
+            confirmation: 'pending' as const, confidence: current.confidence,
+            rationale: current.rationale, diagnostic: null, evidenceIds: [EVIDENCE],
+          },
+        ],
+      };
+    });
+    const context = new FakeContext();
+    const outcome = await registerObservations(
+      context,
+      agentBatch([proposal]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation },
+    );
+    expect(outcome).toMatchObject({ registered: 1, evaluations: 2, exceptions: 1 });
+    expect(context.evaluations[1]).toMatchObject({
+      evaluation: { conditionId: 'C2', origin: 'AGENT_JUDGED', confirmation: 'pending' },
+      agentProposal: proposal,
+    });
+    // The proposal is copied into the registration row, so later mutation of the caller's
+    // object cannot alter the retained machine record.
+    const retained = (context.evaluations[1] as AgentJudgedEvaluationRow).agentProposal;
+    expect(retained).not.toBe(proposal);
+    expect(retained).toEqual(proposal);
+  });
+
+  it('stores a below-threshold Agent proposal as UNEVALUATED with no pending control', async () => {
+    const proposal: AgentJudgedProposal = {
+      observationId: observationIdFor(WORK_ITEM, 'AG-1001'),
+      conditionId: 'C2',
+      value: 'EXCEPTION',
+      confidence: '0.79',
+      rationale: 'The role signal is below the frozen confidence threshold.',
+    };
+    const agentEvaluation = agentEvaluationPort((observationId, proposals) => {
+      const current = proposals[0]!;
+      return {
+        observationId,
+        evaluations: [
+          {
+            conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+            confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [EVIDENCE],
+          },
+          {
+            conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value: 'UNEVALUATED' as const,
+            confirmation: null, confidence: current.confidence,
+            rationale: current.rationale, diagnostic: 'Agent-Judged confidence for C2 is below the stored threshold',
+            evidenceIds: [EVIDENCE],
+          },
+        ],
+      };
+    });
+    const context = new FakeContext();
+    const outcome = await registerObservations(
+      context,
+      agentBatch([proposal]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation },
+    );
+    expect(outcome).toMatchObject({ registered: 1, evaluations: 2, exceptions: 0 });
+    expect(context.evaluations[1]).toMatchObject({
+      evaluation: { value: 'UNEVALUATED', origin: 'AGENT_JUDGED', confirmation: null, confidence: '0.79' },
+      agentProposal: proposal,
+    });
+  });
+
+  it.each([
+    { confidence: undefined },
+    { confidence: '1.5' },
+    { confidence: 'abc' },
+  ])('refuses malformed Agent confidence before calling the evaluation seam (%j)', async (overrides) => {
+    const proposal = Object.assign({
+      observationId: observationIdFor(WORK_ITEM, 'AG-1001'), conditionId: 'C2', value: 'EXCEPTION',
+      confidence: '0.80', rationale: 'A bounded rationale.',
+    }, overrides) as unknown as AgentJudgedProposal;
+    let calls = 0;
+    const agentEvaluation = agentEvaluationPort((observationId) => {
+      calls += 1;
+      return { observationId, evaluations: [] };
+    });
+    const context = new FakeContext();
+    expect(
+      await refusal(() => registerObservations(
+        context,
+        agentBatch([proposal]),
+        { ...SEAMS, agentEvaluation },
+      )),
+    ).toBe('evaluation-shape');
+    expect(calls).toBe(0);
+    expect(context.wroteNothing()).toBe(true);
+  });
+
+  it('refuses duplicate, unknown and extra Agent proposals before any writes', async () => {
+    const valid: AgentJudgedProposal = {
+      observationId: observationIdFor(WORK_ITEM, 'AG-1001'), conditionId: 'C2', value: 'COMPLIANT',
+      confidence: '0.95', rationale: 'The account is not privileged.',
+    };
+    const cases: readonly AgentJudgedProposal[][] = [
+      [valid, valid],
+      [{ ...valid, observationId: observationIdFor(WORK_ITEM, 'AG-0000') }],
+      [{ ...valid, conditionId: 'C3' }],
+      [{ ...valid, conditionId: 'C1' }],
+    ];
+    for (const proposals of cases) {
+      const context = new FakeContext();
+      expect(await refusal(() => registerObservations(
+        context,
+        agentBatch(proposals),
+        { ...SEAMS, agentEvaluation: agentEvaluationPort((observationId) => ({ observationId, evaluations: [] })) },
+      ))).toBe('evaluation-shape');
+      expect(context.wroteNothing()).toBe(true);
+    }
+  });
+
+  it('refuses an applicable Agent condition with no proposal and a result missing a frozen condition', async () => {
+    const context = new FakeContext();
+    const missingProposal = agentEvaluationPort((observationId) => ({
+      observationId,
+      evaluations: [
+        {
+          conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+          confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [EVIDENCE],
+        },
+        {
+          conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value: 'EXCEPTION' as const,
+          confirmation: 'pending' as const, confidence: '0.80', rationale: 'An answer exists, but no input proposal.',
+          diagnostic: null, evidenceIds: [EVIDENCE],
+        },
+      ],
+    }));
+    expect(await refusal(() => registerObservations(
+      context,
+      agentBatch([]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation: missingProposal },
+    ))).toBe('evaluation-shape');
+    expect(context.wroteNothing()).toBe(true);
+
+    const omittedCondition = agentEvaluationPort((observationId) => ({
+      observationId,
+      evaluations: [{
+        conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+        confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [EVIDENCE],
+      }],
+    }));
+    const second = new FakeContext();
+    expect(await refusal(() => registerObservations(
+      second,
+      agentBatch([{ observationId: observationIdFor(WORK_ITEM, 'AG-1001'), conditionId: 'C2', value: 'EXCEPTION', confidence: '0.80', rationale: 'A bounded rationale.' }]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation: omittedCondition },
+    ))).toBe('evaluation-shape');
+    expect(second.wroteNothing()).toBe(true);
+  });
+
+  it('allows an inapplicable C2 row only when the frozen evaluator marks it so', async () => {
+    const context = new FakeContext();
+    const agentEvaluation = agentEvaluationPort((observationId) => ({
+      observationId,
+      evaluations: [
+        {
+          conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+          confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [EVIDENCE],
+        },
+        {
+          conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value: 'COMPLIANT' as const,
+          confirmation: null, confidence: null, rationale: null, diagnostic: 'condition does not apply to this record', evidenceIds: [EVIDENCE],
+        },
+      ],
+    }));
+    await expect(registerObservations(
+      context,
+      agentBatch([]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation },
+    )).resolves.toMatchObject({ registered: 1, evaluations: 2, exceptions: 0 });
   });
 
   it('refuses to call an uninspected or ambiguous record Compliant', async () => {

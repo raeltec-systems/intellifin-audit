@@ -1,3 +1,4 @@
+import { evaluationReviewJoin, effectiveEvaluationConfirmation } from './effective-evaluation.js';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   EvaluationConfirmation,
@@ -24,6 +25,8 @@ import {
   runObservation,
   runObservationCheck,
   runObservationEvaluation,
+  runEvaluationReview,
+  runResultReview,
   runExecution,
   runResult,
   runSessionStep,
@@ -139,6 +142,9 @@ export interface RunEvaluationRow {
   readonly confidence: string | null;
   readonly rationale: string | null;
   readonly diagnostic: string | null;
+  /** Original machine proposal, retained even when thresholding or review changes its value. */
+  readonly machineProposal?: { readonly value: EvaluationValue; readonly confidence: string; readonly rationale: string } | null;
+  readonly reviewDecision?: { readonly action: 'confirm' | 'reject'; readonly actorId: string; readonly decidedAt: string; readonly rejectionRationale: string | null } | null;
 }
 
 export interface RunExceptionRow {
@@ -442,20 +448,42 @@ export class DrizzleRunDetailRepository {
     const ids = observationIds.filter((id) => isUuidText(id)).slice(0, RUN_DETAIL_PAGE_SIZE);
     if (ids.length === 0) return [];
     const rows = await this.db
-      .select()
+      .select({ evaluation: runObservationEvaluation, review: runEvaluationReview })
       .from(runObservationEvaluation)
+      .leftJoin(runEvaluationReview, evaluationReviewJoin)
       .where(and(eq(runObservationEvaluation.runId, runId), inArray(runObservationEvaluation.observationId, ids)))
       .orderBy(asc(runObservationEvaluation.observationId), asc(runObservationEvaluation.conditionId));
-    return rows.map((row): RunEvaluationRow => ({
+    return rows.map(({ evaluation: row, review }): RunEvaluationRow => ({
       observationId: row.observationId,
       conditionId: row.conditionId,
-      origin: row.origin as EvaluationOrigin,
-      value: row.value as EvaluationValue,
-      confirmation: row.confirmation as EvaluationConfirmation | null,
-      confidence: row.confidence,
-      rationale: row.rationale,
+      origin: (review?.effectiveOrigin ?? row.origin) as EvaluationOrigin,
+      value: (review?.effectiveValue ?? row.value) as EvaluationValue,
+      confirmation: (review ? review.effectiveConfirmation : row.confirmation) as EvaluationConfirmation | null,
+      confidence: review?.action === 'reject' ? null : row.confidence,
+      rationale: review?.action === 'reject' ? review.rejectionRationale : row.rationale,
       diagnostic: row.diagnostic,
+      machineProposal: row.agentProposedValue !== null && row.agentProposedConfidence !== null && row.agentProposedRationale !== null
+        ? { value: row.agentProposedValue as EvaluationValue, confidence: row.agentProposedConfidence, rationale: row.agentProposedRationale }
+        : row.origin === 'AGENT_JUDGED' && row.confidence !== null && row.rationale !== null
+          ? { value: row.value as EvaluationValue, confidence: row.confidence, rationale: row.rationale } : null,
+      reviewDecision: review ? { action: review.action as 'confirm' | 'reject', actorId: review.actorId, decidedAt: review.decidedAt.toISOString(), rejectionRationale: review.rejectionRationale } : null,
     }));
+  }
+
+  /** Count every remaining pending condition, independently of the bounded display page. */
+  async readPendingEvaluationCount(runId: string): Promise<number> {
+    if (!isUuidText(runId)) return 0;
+    const [row] = await this.db.select({ total: sql<number>`count(*)::int` })
+      .from(runObservationEvaluation).leftJoin(runEvaluationReview, evaluationReviewJoin)
+      .where(and(eq(runObservationEvaluation.runId, runId), eq(effectiveEvaluationConfirmation, 'pending')));
+    return row?.total ?? 0;
+  }
+
+  /** Separate mutable decision revision; the sealed Result wire contract remains unchanged. */
+  async readReviewRevision(runId: string): Promise<number> {
+    if (!isUuidText(runId)) return 0;
+    const [row] = await this.db.select({ revision: runResultReview.revision }).from(runResultReview).where(eq(runResultReview.runId, runId));
+    return row?.revision ?? 0;
   }
 
   /**

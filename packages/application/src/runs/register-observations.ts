@@ -1,4 +1,5 @@
 import {
+  CONDITION_NOT_APPLICABLE,
   OBSERVATION_LIMITS,
   canBeCompliant,
   corroborationAllowsCompliant,
@@ -26,6 +27,13 @@ import {
   type RaisedException,
   type RunRecord,
 } from '@intellifin/domain';
+import {
+  agentProposalKey,
+  isAgentJudgedProposal,
+  type AgentJudgedEvaluationRow,
+  type AgentJudgedProposal,
+  type AgentProposalEvaluationPort,
+} from './agent-evaluation.js';
 import type {
   ExceptionFingerprinter,
   ObservationCheckRow,
@@ -131,11 +139,26 @@ export interface ObservationBatch {
   /** The instant this registration is happening. */
   readonly registeredAt: string;
   readonly items: readonly ObservationBatchItem[];
+  /**
+   * Optional, already-selected Agent proposals for this batch. Legacy adapter callers omit
+   * this field and continue through the ordinary deterministic evaluation port.
+   */
+  readonly agentProposals?: readonly AgentJudgedProposal[];
+  /**
+   * Optional frozen condition-id set. When present, every evaluation result must cover it
+   * exactly once per fresh Observation; this catches missing/extra applicable conditions
+   * before any registration write.
+   */
+  readonly expectedConditionIds?: readonly string[];
+  /** Optional frozen subset whose conditions are Agent-Judged rather than Rule-Classified. */
+  readonly expectedAgentConditionIds?: readonly string[];
 }
 
 export interface ObservationRegistrationSeams {
   readonly corroboration: ObservationCorroborationPort;
   readonly evaluation: ObservationEvaluationPort;
+  /** Agent-aware evaluator used only when `batch.agentProposals` is supplied. */
+  readonly agentEvaluation?: AgentProposalEvaluationPort;
   /**
    * Story 3.7. Required, not optional: an Exception with no fingerprint is a permanent row
    * nothing can later be checked against, and a seam a composition root could omit would
@@ -168,6 +191,10 @@ export interface ObservationRegistrationOutcome {
 
 function refuse(refusal: ObservationRegistrationRefusal): never {
   throw new ObservationRegistrationError(refusal);
+}
+
+function validConditionId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= OBSERVATION_LIMITS.text;
 }
 
 /** Set one attribute's corroboration without touching anything else it carries. */
@@ -254,6 +281,71 @@ export async function registerObservations(
     // from one Structural Snapshot. Refuse before reading Evidence or calling a seam so
     // this is an atomic batch refusal with no observable registration side effect.
     if (hasIdentityGroundingSplit(record)) refuse('identity-grounding-split');
+  }
+
+  // Agent proposals are optional so the existing adapter registration contract remains
+  // source-compatible. Once a batch supplies them, however, they are a strict wire shape:
+  // every tuple names one offered Observation and one frozen condition, and a tuple can
+  // occur only once. Validate the complete set before reading Evidence or calling either
+  // evaluation seam; a malformed model response therefore cannot leave partial work in a
+  // caller transaction.
+  const agentProposals = batch.agentProposals;
+  const expectedConditionIds = batch.expectedConditionIds;
+  const expectedAgentConditionIds = batch.expectedAgentConditionIds;
+  const expectedConditionSet = expectedConditionIds === undefined
+    ? null
+    : new Set<string>();
+  const expectedAgentConditionSet = expectedAgentConditionIds === undefined
+    ? null
+    : new Set<string>();
+  if (expectedConditionIds !== undefined) {
+    if (!Array.isArray(expectedConditionIds)) refuse('evaluation-shape');
+    for (const conditionId of expectedConditionIds) {
+      if (!validConditionId(conditionId) || expectedConditionSet!.has(conditionId)) {
+        refuse('evaluation-shape');
+      }
+      expectedConditionSet!.add(conditionId);
+    }
+  }
+  if (expectedAgentConditionIds !== undefined) {
+    if (!Array.isArray(expectedAgentConditionIds)) refuse('evaluation-shape');
+    for (const conditionId of expectedAgentConditionIds) {
+      if (
+        !validConditionId(conditionId) ||
+        expectedAgentConditionSet!.has(conditionId) ||
+        expectedConditionSet !== null && !expectedConditionSet.has(conditionId)
+      ) {
+        refuse('evaluation-shape');
+      }
+      expectedAgentConditionSet!.add(conditionId);
+    }
+  }
+  if (
+    agentProposals !== undefined &&
+    (expectedConditionSet === null || expectedAgentConditionSet === null)
+  ) {
+    // A proposal-bearing batch must identify the complete frozen condition set and its
+    // Agent-Judged subset; otherwise registration could not distinguish a missing applicable
+    // answer or a model attempt to reclassify a Rule.
+    refuse('evaluation-shape');
+  }
+  if (agentProposals !== undefined) {
+    if (!Array.isArray(agentProposals)) refuse('evaluation-shape');
+    const observationIds = new Set(batch.items.map((item) => item.record.observationId));
+    const seenProposals = new Set<string>();
+    for (const proposal of agentProposals) {
+      if (!isAgentJudgedProposal(proposal)) refuse('evaluation-shape');
+      if (!observationIds.has(proposal.observationId)) refuse('evaluation-shape');
+      if (expectedConditionSet !== null && !expectedConditionSet.has(proposal.conditionId)) {
+        refuse('evaluation-shape');
+      }
+      if (expectedAgentConditionSet !== null && !expectedAgentConditionSet.has(proposal.conditionId)) {
+        refuse('evaluation-shape');
+      }
+      const key = agentProposalKey(proposal.observationId, proposal.conditionId);
+      if (seenProposals.has(key)) refuse('evaluation-shape');
+      seenProposals.add(key);
+    }
   }
 
   // ----------------------------------------------------- Evidence, then corroboration
@@ -392,32 +484,65 @@ export async function registerObservations(
   if (fresh.length === 0) return { ...empty, alreadyRegistered };
 
   // ------------------------------------------------------------------- evaluation
-  const results = await seams.evaluation.evaluate(
-    fresh.map((entry) => ({
-      record: entry.record,
-      coverage: entry.coverage,
-      corroboration: entry.corroboration,
-      checks: entry.checks,
-    })),
-  );
+  const subjects = fresh.map((entry) => ({
+    record: entry.record,
+    coverage: entry.coverage,
+    corroboration: entry.corroboration,
+    checks: entry.checks,
+  }));
+  const results = agentProposals === undefined
+    ? await seams.evaluation.evaluate(subjects)
+    : seams.agentEvaluation === undefined
+      ? refuse('evaluation-shape')
+      : await seams.agentEvaluation.evaluateWithAgentProposals(subjects, agentProposals);
   // ONE result per Observation offered, and the port says so by answering about all of
   // them. A port that answers about fewer leaves the rest with no evaluation row at all,
   // which is indistinguishable downstream from a frozen plan whose Compliance Rule this
   // build cannot recompile — the Run-level Gate's condition-completeness row would report
   // both as `condition-evaluation-missing` and nothing would say which happened. "Nothing
   // judged this" is said by returning a result with NO evaluations, not by omitting it.
+  if (!Array.isArray(results)) refuse('evaluation-shape');
+  if (
+    !results.every(
+      (result) =>
+        typeof result === 'object' &&
+        result !== null &&
+        !Array.isArray(result) &&
+        typeof result.observationId === 'string' &&
+        Array.isArray(result.evaluations),
+    )
+  ) {
+    refuse('evaluation-shape');
+  }
   const answered = new Set(results.map((result) => result.observationId));
   if (results.length !== fresh.length || answered.size !== results.length) refuse('evaluation-shape');
   const judgedOf = new Map(
     fresh.map((entry) => [entry.record.observationId, entry] as const),
   );
-  const evaluationRows: ObservationEvaluationRow[] = [];
+  const proposalsByKey = new Map<string, AgentJudgedProposal>();
+  for (const proposal of agentProposals ?? []) {
+    proposalsByKey.set(agentProposalKey(proposal.observationId, proposal.conditionId), proposal);
+  }
+  const evaluationRows: (ObservationEvaluationRow | AgentJudgedEvaluationRow)[] = [];
   const seenEvaluations = new Set<string>();
   const exceptions: RaisedException[] = [];
   const seenExceptions = new Set<string>();
   for (const result of results) {
     const entry = judgedOf.get(result.observationId);
     if (entry === undefined) refuse('evaluation-shape');
+    if (expectedConditionSet !== null) {
+      const resultConditionIds = new Set<string>();
+      for (const evaluation of result.evaluations) {
+        if (!isObservationEvaluation(evaluation)) refuse('evaluation-shape');
+        resultConditionIds.add(evaluation.conditionId);
+      }
+      if (
+        resultConditionIds.size !== expectedConditionSet.size ||
+        [...expectedConditionSet].some((conditionId) => !resultConditionIds.has(conditionId))
+      ) {
+        refuse('evaluation-shape');
+      }
+    }
     // §B's reduction puts Exception first, so the FIRST `EXCEPTION` recorded for a record
     // is what raises its Exception; the conditions that produced it are all of them, in
     // the version's frozen order, with every reason the rules gave.
@@ -428,6 +553,47 @@ export async function registerObservations(
       const key = `${result.observationId} ${evaluation.conditionId}`;
       if (seenEvaluations.has(key)) refuse('evaluation-shape');
       seenEvaluations.add(key);
+      const proposal = proposalsByKey.get(agentProposalKey(result.observationId, evaluation.conditionId));
+      const notApplicable = evaluation.diagnostic
+        ?.split('; ')
+        .includes(CONDITION_NOT_APPLICABLE) ?? false;
+      if (
+        expectedAgentConditionSet !== null &&
+        (expectedAgentConditionSet.has(evaluation.conditionId)
+          ? evaluation.origin !== 'AGENT_JUDGED'
+          : evaluation.origin !== 'RULE')
+      ) {
+        refuse('evaluation-shape');
+      }
+      if (evaluation.origin === 'AGENT_JUDGED') {
+        // An Agent may only submit a fresh pending judgment (or a below-threshold
+        // UNEVALUATED one). Confirmed/rejected states are human review history and cannot be
+        // smuggled through the registration path.
+        if (evaluation.confirmation !== null && evaluation.confirmation !== 'pending') {
+          refuse('evaluation-shape');
+        }
+        if (notApplicable) {
+          // Applicability is deterministic. A proposal for a condition that does not apply
+          // is an extra model answer, even if its value happens to be well-formed.
+          if (proposal !== undefined) refuse('evaluation-shape');
+        } else {
+          // Every applicable Agent-Judged condition needs one corresponding proposal. This
+          // catches a missing C2 answer before any Observation/evaluation/Exception write.
+          if (proposal === undefined) refuse('evaluation-shape');
+          if (
+            evaluation.confidence === null ||
+            evaluation.rationale === null ||
+            evaluation.confidence !== proposal.confidence ||
+            evaluation.rationale !== proposal.rationale ||
+            (evaluation.value !== proposal.value && evaluation.value !== 'UNEVALUATED')
+          ) {
+            refuse('evaluation-shape');
+          }
+        }
+      } else if (proposal !== undefined) {
+        // A proposal may never reclassify a frozen Rule or a later HUMAN row.
+        refuse('evaluation-shape');
+      }
       // H: an uninspected or ambiguous record is never Compliant, and neither is one the
       // stored Structural Snapshot contradicts (Story 3.6). The database says both too,
       // through the composite foreign key and its CHECK; refusing here names the defect
@@ -442,12 +608,16 @@ export async function registerObservations(
         raising.push(evaluation.conditionId);
         if (evaluation.diagnostic !== null) diagnostics.push(evaluation.diagnostic);
       }
-      evaluationRows.push({
+      const row = {
         observationId: result.observationId,
         coverage: entry.coverage,
         corroboration: entry.corroboration,
         evaluation,
-      });
+        ...(proposal === undefined
+          ? {}
+          : { agentProposal: Object.freeze({ ...proposal }) }),
+      } as ObservationEvaluationRow | AgentJudgedEvaluationRow;
+      evaluationRows.push(row);
     }
     if (raising.length === 0) continue;
     // The Exception is created HERE, in the transaction that stores the evaluation that
@@ -478,6 +648,24 @@ export async function registerObservations(
     // permanent row in the database: an Exception is never updated and never deleted.
     if (!isRaisedException(raised)) refuse('exception-shape');
     exceptions.push(raised);
+  }
+
+  // A supplied proposal must have been consumed by an applicable AGENT_JUDGED evaluation.
+  // Checking this after the full result set catches proposals for omitted conditions as well
+  // as proposals a faulty evaluator silently ignored.
+  if (agentProposals !== undefined) {
+    const consumed = new Set<string>();
+    for (const row of evaluationRows) {
+      if ('agentProposal' in row) {
+        consumed.add(agentProposalKey(row.agentProposal.observationId, row.agentProposal.conditionId));
+      }
+    }
+    if (
+      consumed.size !== proposalsByKey.size ||
+      [...proposalsByKey.keys()].some((key) => !consumed.has(key))
+    ) {
+      refuse('evaluation-shape');
+    }
   }
 
   // ------------------------------------------------------------------------ write

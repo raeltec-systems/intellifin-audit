@@ -1,3 +1,4 @@
+import type { AgentJudgedEvaluationRow } from '@intellifin/application';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   AdapterEvidenceRecord,
@@ -512,6 +513,9 @@ export async function withRunExecutionContext<T>(
           rationale: row.evaluation.rationale,
           diagnostic: row.evaluation.diagnostic,
           evidenceIds: [...row.evaluation.evidenceIds],
+          agentProposedValue: (row as Partial<AgentJudgedEvaluationRow>).agentProposal?.value ?? null,
+          agentProposedConfidence: (row as Partial<AgentJudgedEvaluationRow>).agentProposal?.confidence ?? null,
+          agentProposedRationale: (row as Partial<AgentJudgedEvaluationRow>).agentProposal?.rationale ?? null,
         }));
         if (batch.length > 0) {
           await tx

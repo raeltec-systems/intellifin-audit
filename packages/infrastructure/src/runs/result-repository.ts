@@ -1,3 +1,4 @@
+import { evaluationReviewJoin, effectiveEvaluationValue, effectiveEvaluationOrigin, effectiveEvaluationConfirmation } from './effective-evaluation.js';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type {
   GateCheckRow,
@@ -32,6 +33,7 @@ import {
   runGateCheck,
   runObservation,
   runObservationEvaluation,
+  runEvaluationReview,
   runResult,
 } from '../db/schema.js';
 
@@ -275,20 +277,21 @@ export function runResultContext(
       const rows = await tx
         .select({
           conditionId: runObservationEvaluation.conditionId,
-          origin: runObservationEvaluation.origin,
-          confirmation: runObservationEvaluation.confirmation,
-          value: runObservationEvaluation.value,
+          origin: effectiveEvaluationOrigin,
+          confirmation: effectiveEvaluationConfirmation,
+          value: effectiveEvaluationValue,
           total: sql<number>`count(*)::int`,
         })
         .from(runObservationEvaluation)
+        .leftJoin(runEvaluationReview, evaluationReviewJoin)
         .where(eq(runObservationEvaluation.runId, runId))
         .groupBy(
           runObservationEvaluation.conditionId,
-          runObservationEvaluation.origin,
-          runObservationEvaluation.confirmation,
-          runObservationEvaluation.value,
+          effectiveEvaluationOrigin,
+          effectiveEvaluationConfirmation,
+          effectiveEvaluationValue,
         )
-        .orderBy(asc(runObservationEvaluation.conditionId), asc(runObservationEvaluation.value));
+        .orderBy(asc(runObservationEvaluation.conditionId), asc(effectiveEvaluationValue));
       return rows.map(
         (row): RunResultConditionCount => ({
           conditionId: row.conditionId,
@@ -315,8 +318,9 @@ export function runResultContext(
       const raised = await tx
         .select({ observationId: runObservationEvaluation.observationId })
         .from(runObservationEvaluation)
+        .leftJoin(runEvaluationReview, evaluationReviewJoin)
         .where(
-          and(eq(runObservationEvaluation.runId, runId), eq(runObservationEvaluation.value, 'EXCEPTION')),
+          and(eq(runObservationEvaluation.runId, runId), eq(effectiveEvaluationValue, 'EXCEPTION')),
         )
         .groupBy(runObservationEvaluation.observationId);
       const raisedIds = new Set(raised.map((row) => row.observationId));
@@ -325,7 +329,8 @@ export function runResultContext(
         const observations = await tx
           .select({ observationId: runObservationEvaluation.observationId })
           .from(runObservationEvaluation)
-          .where(and(eq(runObservationEvaluation.runId, runId), eq(runObservationEvaluation.value, value)))
+        .leftJoin(runEvaluationReview, evaluationReviewJoin)
+          .where(and(eq(runObservationEvaluation.runId, runId), eq(effectiveEvaluationValue, value)))
           .groupBy(runObservationEvaluation.observationId)
           // A bounded sample needs a deterministic order, or two Runs over identical data
           // publish different records. The Observation id is derived from the Work Item
@@ -354,10 +359,11 @@ export function runResultContext(
               diagnostic: runObservationEvaluation.diagnostic,
             })
             .from(runObservationEvaluation)
+        .leftJoin(runEvaluationReview, evaluationReviewJoin)
             .where(
               and(
                 eq(runObservationEvaluation.observationId, observationId),
-                eq(runObservationEvaluation.value, value),
+                eq(effectiveEvaluationValue, value),
               ),
             )
             .orderBy(asc(runObservationEvaluation.conditionId));

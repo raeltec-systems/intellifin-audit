@@ -252,3 +252,43 @@ describe('the procedure and procedure_version check constraints', () => {
     );
   });
 });
+
+describe('generation 36 evaluation-review storage', () => {
+  const sql = migration('0036_zippy_thunderbolt.sql');
+
+  it('retains the original Agent-Judged proposal beside the effective evaluation', () => {
+    expect(sql).toContain('ADD COLUMN "agent_proposed_value" text');
+    expect(sql).toContain('ADD COLUMN "agent_proposed_confidence" numeric(7, 6)');
+    expect(sql).toContain('ADD COLUMN "agent_proposed_rationale" text');
+    expect(sql).toContain('CONSTRAINT "run_observation_evaluation_agent_proposal"');
+  });
+
+  it('creates the revision aggregate and immutable decision ledger with both uniqueness rules', () => {
+    expect(sql).toContain('CREATE TABLE "run_result_review"');
+    expect(sql).toContain('"run_id" uuid PRIMARY KEY NOT NULL');
+    expect(sql).toContain('CONSTRAINT "run_result_review_revision" CHECK');
+    expect(sql).toContain('CREATE TABLE "run_evaluation_review"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "run_evaluation_review_target_uidx"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "run_evaluation_review_revision_uidx"');
+    expect(sql).toContain('CREATE TRIGGER "run_observation_evaluation_immutable"');
+    expect(sql).toContain('CREATE TRIGGER "run_evaluation_review_immutable"');
+    expect(sql).toContain('CREATE CONSTRAINT TRIGGER "run_evaluation_review_undeletable"');
+  });
+
+  it('binds a decision to the current Run, Result, review revision and original evaluation', () => {
+    expect(sql).toContain('CREATE FUNCTION "run_evaluation_review_binding_guard"()');
+    expect(sql).toContain("current_run_state <> 'COMPLETED'");
+    expect(sql).toContain("result_outcome <> 'PENDING_CONFIRMATION'");
+    expect(sql).toContain('current_review_revision IS DISTINCT FROM NEW.review_revision');
+    expect(sql).toContain("evaluation_origin <> 'AGENT_JUDGED'");
+    expect(sql).toContain("evaluation_confirmation <> 'pending'");
+    expect(sql).toContain('evaluation_confidence IS DISTINCT FROM NEW.original_confidence');
+    expect(sql).toContain('evaluation_rationale IS DISTINCT FROM NEW.original_rationale');
+    expect(sql).toContain('evaluation_evidence_ids IS DISTINCT FROM NEW.original_evidence_ids');
+    expect(sql).toContain("IF NEW.effective_value = 'COMPLIANT'");
+    expect(sql).not.toContain("IF evaluation_value = 'COMPLIANT'");
+    expect(sql).toContain("observation_coverage <> 'COVERED'");
+    expect(sql).toContain("observation_corroboration <> 'MATCHED'");
+    expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (36)');
+  });
+});

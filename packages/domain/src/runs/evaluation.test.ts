@@ -7,6 +7,7 @@ import {
   exceptionFingerprint,
   exceptionFingerprintText,
   exceptionIdFor,
+  isAgentJudgedEvaluationProposal,
   observationEvidenceFacts,
   observationRuleValues,
   readRoleExpansion,
@@ -100,6 +101,21 @@ function approvalInput(amount: string, overrides: Partial<RecordEvaluationInput>
 
 const P3 = initialDraftCompliance('P-3');
 const P2 = initialDraftCompliance('P-2');
+const P1 = initialDraftCompliance('P-1');
+
+function p1Input(found: 'true' | 'false' = 'true'): RecordEvaluationInput {
+  const base = record('EMP-1', [
+    attribute('account_status', 'disabled'),
+    attribute('roles', 'PRIVILEGED'),
+  ]);
+  return {
+    record: found === 'true' ? base : { ...base, found, identity: null, attributes: [] },
+    coverage: 'COVERED',
+    corroboration: 'MATCHED',
+    checks: PASSING,
+    populationValues: { employee_id: 'EMP-1', full_name: 'Dana Ok' },
+  };
+}
 
 describe('evaluateObservationRecord', () => {
   it('records origin RULE and never an Agent-Judged field', () => {
@@ -116,6 +132,100 @@ describe('evaluateObservationRecord', () => {
     // gets quoted back as the reason for an outcome.
     expect(evaluation.rationale).toBeNull();
     expect(evaluation.evidenceIds).toEqual([EVIDENCE]);
+  });
+
+  it('keeps an applicable C2 proposal Agent-Judged and pending at the inclusive threshold', () => {
+    const proposal = {
+      conditionId: 'C2',
+      value: 'EXCEPTION' as const,
+      confidence: '0.80',
+      rationale: 'The captured role list is privileged.',
+    };
+    const outcome = evaluateObservationRecord(
+      'P-1',
+      P1,
+      p1Input(),
+      { roleExpansion: NO_ROLE_EXPANSION },
+      { C2: proposal },
+    );
+    expect(outcome.value).toBe('EXCEPTION');
+    expect(outcome.evaluations.map((entry) => [entry.conditionId, entry.origin, entry.value])).toEqual([
+      ['C1', 'RULE', 'COMPLIANT'],
+      ['C2', 'AGENT_JUDGED', 'EXCEPTION'],
+    ]);
+    expect(outcome.evaluations[1]).toMatchObject({
+      confirmation: 'pending',
+      confidence: '0.80',
+      rationale: proposal.rationale,
+    });
+    expect(outcome.agentProposals).toEqual([proposal]);
+  });
+
+  it('retains a below-threshold proposal while making its effective C2 value Unevaluated', () => {
+    const proposal = {
+      conditionId: 'C2',
+      value: 'EXCEPTION' as const,
+      confidence: '0.79',
+      rationale: 'The role signal is too weak to conclude.',
+    };
+    const outcome = evaluateObservationRecord(
+      'P-1',
+      P1,
+      p1Input(),
+      { roleExpansion: NO_ROLE_EXPANSION },
+      { C2: proposal },
+    );
+    const c2 = outcome.evaluations.find((entry) => entry.conditionId === 'C2')!;
+    expect(c2).toMatchObject({
+      origin: 'AGENT_JUDGED',
+      value: 'UNEVALUATED',
+      confirmation: null,
+      confidence: '0.79',
+      rationale: proposal.rationale,
+    });
+    expect(c2.diagnostic).toContain('below the stored threshold');
+    expect(outcome.value).toBe('UNEVALUATED');
+    expect(outcome.agentProposals).toEqual([proposal]);
+  });
+
+  it('uses frozen applicability and ignores a C2 proposal for an absent record', () => {
+    const proposal = {
+      conditionId: 'C2',
+      value: 'EXCEPTION' as const,
+      confidence: '0.95',
+      rationale: 'This proposal must not decide applicability.',
+    };
+    const outcome = evaluateObservationRecord(
+      'P-1',
+      P1,
+      p1Input('false'),
+      { roleExpansion: NO_ROLE_EXPANSION },
+      {},
+    );
+    const c2 = outcome.evaluations.find((entry) => entry.conditionId === 'C2')!;
+    expect(c2).toMatchObject({
+      origin: 'AGENT_JUDGED',
+      value: 'COMPLIANT',
+      confirmation: null,
+      confidence: null,
+      rationale: null,
+      diagnostic: CONDITION_NOT_APPLICABLE,
+    });
+    expect(outcome.agentProposals).toEqual([]);
+    expect(isAgentJudgedEvaluationProposal(proposal)).toBe(true);
+  });
+
+  it.each([
+    { confidence: '1.0000001' },
+    { confidence: 'abc' },
+    { confidence: '-0' },
+    { confidence: '0.80', rationale: '' },
+  ])('recognizes malformed proposal shape for application refusal (%j)', (overrides) => {
+    const candidate = Object.assign({
+      conditionId: 'C2', value: 'EXCEPTION', confidence: '0.80',
+      rationale: 'A bounded reason.',
+    }, overrides);
+    expect(isAgentJudgedEvaluationProposal(candidate)).toBe(false);
   });
 
   it('requires approval at exactly USD 100,000.00, and not one cent under', () => {

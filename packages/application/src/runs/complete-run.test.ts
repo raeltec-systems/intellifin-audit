@@ -10,7 +10,7 @@ import {
   type RunResultFinding,
   type RunResultFindings,
 } from '@intellifin/domain';
-import { completeRun } from './complete-run.js';
+import { completeRun, sealResult } from './complete-run.js';
 import type {
   GateCheckRow,
   PackageSeal,
@@ -488,6 +488,49 @@ describe('a cancellation the Run outran', () => {
     expect(
       context.events.filter((entry) => entry.eventType === 'lifecycle.cancellation-superseded'),
     ).toHaveLength(1);
+    expect(context.writes).toBe(1);
+  });
+});
+
+
+describe('shared Result sealing after human evaluation review', () => {
+  async function pending() {
+    const context = new FakeContext();
+    context.conditions = [{ conditionId: 'C2', origin: 'AGENT_JUDGED', confirmation: 'pending', value: 'COMPLIANT', total: 1 }];
+    await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    const originalPackage = context.seal;
+    const writer = async (result: StoredRunResult, expectedVersion: number) => {
+      expect(context.result?.version).toBe(expectedVersion);
+      expect(context.result?.sealed).toBe(false);
+      await context.writeResult(result);
+    };
+    return { context: Object.assign(context, { sealPendingResult: writer }), originalPackage };
+  }
+  const input = () => ({ run: { ...RUN, state: 'COMPLETED' as const }, state: 'COMPLETED' as const, at: AT, plan: plan() });
+  it('leaves intermediate answers at publication version one', async () => {
+    const { context } = await pending();
+    expect(await sealResult(context, input())).toMatchObject({ sealed: false, version: 1 });
+    expect(context.writes).toBe(1);
+  });
+  it('seals the last confirmed evaluation exactly once, preserving the evidence package', async () => {
+    const { context, originalPackage } = await pending();
+    context.conditions = [{ conditionId: 'C2', origin: 'AGENT_JUDGED', confirmation: 'confirmed', value: 'COMPLIANT', total: 1 }];
+    expect(await sealResult(context, input())).toMatchObject({ sealed: true, version: 2, outcome: 'PASS' });
+    expect(await sealResult(context, input())).toMatchObject({ sealed: true, version: 2 });
+    expect(context.writes).toBe(2);
+    expect(context.seal).toBe(originalPackage);
+  });
+  it('seals human Unevaluated as Inconclusive without rewriting the execution-time package', async () => {
+    const { context, originalPackage } = await pending();
+    context.conditions = [{ conditionId: 'C2', origin: 'HUMAN', confirmation: null, value: 'UNEVALUATED', total: 1 }];
+    expect(await sealResult(context, input())).toMatchObject({ sealed: true, version: 2, outcome: 'INCONCLUSIVE' });
+    expect(context.states).toEqual(['INCONCLUSIVE']);
+    expect(context.seal).toBe(originalPackage);
+    expect(context.seal?.runState).toBe('COMPLETED');
+  });
+  it('refuses review sealing during execution', async () => {
+    const { context } = await pending();
+    expect(await sealResult(context, { ...input(), run: RUN })).toBeNull();
     expect(context.writes).toBe(1);
   });
 });

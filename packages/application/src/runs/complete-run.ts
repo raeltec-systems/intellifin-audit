@@ -25,15 +25,9 @@ import { sealPackage } from './seal-package.js';
  * exactly as generation 21's is for the Evidence package: a branch that reaches a terminal
  * state without a Result does not ship a Run nobody can read, it fails to commit.
  *
- * **`SealResult` is a step of this command and not a function of its own.** The epic names
- * two commands; an exported `sealResult` would be a second, unowned way to write a Result —
- * the seam Stories 3.6, 3.7 and 3.8 each removed. Sealing happens where the outcome is
- * decided, in the transaction that completes the Run, and there is no other way to reach it.
- *
- * **The outcome is computed exactly once.** `readResult` returns what is already there and
- * this command then writes nothing more, so a redelivered job cannot recompute an outcome —
- * and generation 25 refuses an UPDATE to a sealed Result below the command as well, so a
- * second answer cannot be stored even from psql.
+ * CompleteRun publishes once. SealResult is the sole later transition for a pending
+ * publication, under the same Result lock held by the human-review command. Both use
+ * the shared publisher below and the generation25 one-update/version-increment guard.
  *
  * **A passed Gate is necessary and never sufficient for Pass.** `gatePassed` is READ from
  * the Gate rows Story 3.8 wrote — all twenty of them, all passing — and the evaluation
@@ -133,6 +127,31 @@ export async function completeRun(
     return existing;
   }
 
+  return publishResult(context, input, null);
+}
+
+/** The review transaction supplies a compare-and-set writer; ordinary writers remain insert-only. */
+export interface SealResultContext extends RunResultContext {
+  sealPendingResult(result: StoredRunResult, expectedVersion: number): Promise<void>;
+}
+
+/** Called only inside the locked human-review transaction after updating effective evaluations. */
+export async function sealResult(context: SealResultContext, input: CompleteRunInput): Promise<StoredRunResult | null> {
+  if (input.state !== 'COMPLETED' || input.run.state !== 'COMPLETED') return null;
+  const existing = await context.readResult();
+  if (existing === null || existing.sealed) return existing;
+  if (existing.outcome !== 'PENDING_CONFIRMATION') throw new Error('Unsealed Result is not pending');
+  const counts = await context.readConditionCounts();
+  if (counts.some(row => row.confirmation === 'pending' && row.total > 0)) return existing;
+  return publishResult(context, input, existing);
+}
+
+/** One outcome/publication implementation for initial completion and the final review answer. */
+async function publishResult(
+  context: RunResultContext,
+  input: CompleteRunInput,
+  previous: StoredRunResult | null,
+): Promise<StoredRunResult> {
   const gate = gateVerdict(await context.readGateChecks());
   const conditions = await context.readConditionCounts();
   const findings = await context.readResultFindings();
@@ -225,7 +244,7 @@ export async function completeRun(
     runId: input.run.runId,
     // The row is written at version 1. The only later version there can be is the sealing
     // of a Pending Confirmation Result, which is the only unsealed outcome there is.
-    version: 1,
+    version: previous === null ? 1 : previous.version + 1,
     outcome: decision.outcome,
     row: decision.row,
     sealed: decision.sealed,
@@ -235,7 +254,11 @@ export async function completeRun(
     scope: publication.scope,
     publication,
   };
-  await context.writeResult(result);
+  if (previous === null) await context.writeResult(result);
+  else {
+    if (!result.sealed) throw new Error('Result still has pending evaluations');
+    await (context as SealResultContext).sealPendingResult(result, previous.version);
+  }
 
   const stored = await context.auditEvents.append({
     actor: { type: 'system', id: 'result-sealer' },
@@ -278,7 +301,7 @@ export async function completeRun(
   // connection, because the request may have committed after the worker's claim; and only
   // when the state being committed is not `CANCELED`, which is the path where the request
   // DID take effect and `performCancellation` has already recorded it.
-  if (input.state !== 'CANCELED') {
+  if (previous === null && input.state !== 'CANCELED') {
     const request = await context.readCancellation();
     if (request !== null) {
       const superseded = await context.auditEvents.append({

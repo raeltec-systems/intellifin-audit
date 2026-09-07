@@ -1342,6 +1342,8 @@ export const runObservationCheck = pgTable('run_observation_check', {
  * key, so `value <> 'COMPLIANT' OR coverage = 'COVERED'` is a guarantee no command,
  * migration or psql session can route around: an uninspected or ambiguous record cannot
  * be recorded Compliant, by anybody. `UNEVALUATED` is a VALUE, never an origin.
+ * Generation 36 keeps these original rows insert-only. Human review copies their proposal
+ * fields into its immutable ledger; no later writer may rewrite what a reviewer saw.
  */
 export const runObservationEvaluation = pgTable('run_observation_evaluation', {
   observationId: uuid('observation_id').notNull(),
@@ -1353,6 +1355,10 @@ export const runObservationEvaluation = pgTable('run_observation_evaluation', {
   confirmation: text('confirmation'), confidence: numeric('confidence',{precision:7,scale:6}),
   rationale: text('rationale'), diagnostic: text('diagnostic'),
   evidenceIds: jsonb('evidence_ids').$type<string[]>().notNull(),
+  /** The original machine proposal, retained when the effective value is UNEVALUATED. */
+  agentProposedValue: text('agent_proposed_value'),
+  agentProposedConfidence: numeric('agent_proposed_confidence',{precision:7,scale:6}),
+  agentProposedRationale: text('agent_proposed_rationale'),
 }, t=>[
   primaryKey({columns:[t.observationId,t.conditionId]}),
   index('run_observation_evaluation_run_idx').on(t.runId,t.value),
@@ -1369,6 +1375,19 @@ export const runObservationEvaluation = pgTable('run_observation_evaluation', {
   // help — the triple has to exist in `run_observation`.
   check('run_observation_evaluation_corroboration',sql`${t.corroboration} IN ('MATCHED','CONTRADICTORY','UNJUDGED') AND (${t.value} <> 'COMPLIANT' OR ${t.corroboration} <> 'CONTRADICTORY')`),
   check('run_observation_evaluation_evidence',sql`coalesce(jsonb_typeof(${t.evidenceIds}) = 'array' AND jsonb_array_length(${t.evidenceIds}) <= 16, false)`),
+  // A proposal is an all-or-nothing machine record. It may accompany only an
+  // AGENT_JUDGED evaluation; RULE and HUMAN rows must carry three NULLs. Keeping the
+  // proposal's own vocabulary and numeric/text bounds here prevents a raw writer from
+  // smuggling an unreviewable value beside an otherwise valid evaluation.
+  check('run_observation_evaluation_agent_proposal',sql`coalesce((
+    (${t.agentProposedValue} IS NULL AND ${t.agentProposedConfidence} IS NULL AND ${t.agentProposedRationale} IS NULL)
+    OR (
+      ${t.origin} = 'AGENT_JUDGED'
+      AND ${t.agentProposedValue} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')
+      AND ${t.agentProposedConfidence} >= 0 AND ${t.agentProposedConfidence} <= 1
+      AND length(${t.agentProposedRationale}) BETWEEN 1 AND 8192
+    )
+  ), false)`),
 ]);
 
 /**
@@ -1524,6 +1543,89 @@ export const runResult = pgTable('run_result', {
   check('run_result_publication',sql`coalesce(jsonb_typeof(${t.publication})='object',false)`),
 ]);
 
+/**
+ * The mutable review revision for one unsealed Result (Story 4.9).
+ *
+ * The Result's ten-key contract stays frozen. Review answers advance this adjacent
+ * aggregate under the same Run -> Result -> review lock order; the immutable decision
+ * rows below bind to the revision they append.
+ */
+export const runResultReview = pgTable('run_result_review', {
+  runId: uuid('run_id').primaryKey().references(() => runResult.runId, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull().default(0),
+}, t => [
+  check('run_result_review_revision', sql`${t.revision} >= 0`),
+]);
+
+/**
+ * One immutable human decision over one original Agent-Judged evaluation.
+ *
+ * Every original field is copied into the row so a later effective overlay cannot change
+ * what the reviewer saw. The migration adds the cross-row guard: the copied proposal must
+ * still be the pending evaluation on a Completed Run with an unsealed Result, and its
+ * review revision must be the current locked aggregate revision.
+ */
+export const runEvaluationReview = pgTable('run_evaluation_review', {
+  decisionId: uuid('decision_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  observationId: uuid('observation_id').notNull(),
+  conditionId: text('condition_id').notNull(),
+  reviewRevision: integer('review_revision').notNull(),
+  action: text('action').notNull(),
+  originalOrigin: text('original_origin').notNull(),
+  originalValue: text('original_value').notNull(),
+  originalConfirmation: text('original_confirmation').notNull(),
+  originalConfidence: numeric('original_confidence',{precision:7,scale:6}),
+  originalRationale: text('original_rationale'),
+  originalEvidenceIds: jsonb('original_evidence_ids').$type<string[]>().notNull(),
+  effectiveOrigin: text('effective_origin').notNull(),
+  effectiveValue: text('effective_value').notNull(),
+  effectiveConfirmation: text('effective_confirmation'),
+  replacementValue: text('replacement_value'),
+  rejectionRationale: text('rejection_rationale'),
+  actorId: text('actor_id').notNull(),
+  decidedAt: timestamp('decided_at',{withTimezone:true}).notNull(),
+}, t => [
+  // One decision per target, and no two decisions may claim one review revision.
+  uniqueIndex('run_evaluation_review_target_uidx').on(t.runId,t.observationId,t.conditionId),
+  uniqueIndex('run_evaluation_review_revision_uidx').on(t.runId,t.reviewRevision),
+  foreignKey({
+    columns: [t.observationId,t.conditionId],
+    foreignColumns: [runObservationEvaluation.observationId,runObservationEvaluation.conditionId],
+    name: 'run_evaluation_review_evaluation_fk',
+  }).onDelete('cascade'),
+  check('run_evaluation_review_revision',sql`${t.reviewRevision} >= 1`),
+  check('run_evaluation_review_action',sql`${t.action} IN ('confirm','reject')`),
+  check('run_evaluation_review_original_origin',sql`${t.originalOrigin} = 'AGENT_JUDGED'`),
+  check('run_evaluation_review_original_value',sql`${t.originalValue} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')`),
+  check('run_evaluation_review_original_confirmation',sql`${t.originalConfirmation} = 'pending'`),
+  check('run_evaluation_review_original_confidence',sql`${t.originalConfidence} IS NULL OR (${t.originalConfidence} >= 0 AND ${t.originalConfidence} <= 1)`),
+  check('run_evaluation_review_original_rationale',sql`${t.originalRationale} IS NULL OR length(${t.originalRationale}) BETWEEN 1 AND 8192`),
+  check('run_evaluation_review_original_evidence',sql`coalesce(jsonb_typeof(${t.originalEvidenceIds}) = 'array' AND jsonb_array_length(${t.originalEvidenceIds}) BETWEEN 1 AND 16, false)`),
+  check('run_evaluation_review_effective_origin',sql`${t.effectiveOrigin} IN ('AGENT_JUDGED','HUMAN')`),
+  check('run_evaluation_review_effective_value',sql`${t.effectiveValue} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')`),
+  check('run_evaluation_review_effective_confirmation',sql`${t.effectiveConfirmation} IS NULL OR ${t.effectiveConfirmation} = 'confirmed'`),
+  check('run_evaluation_review_replacement_value',sql`${t.replacementValue} IS NULL OR ${t.replacementValue} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')`),
+  check('run_evaluation_review_rejection_rationale',sql`${t.rejectionRationale} IS NULL OR length(${t.rejectionRationale}) BETWEEN 1 AND 4000`),
+  check('run_evaluation_review_shape',sql`coalesce((
+    (${t.action} = 'confirm'
+      AND ${t.effectiveOrigin} = 'AGENT_JUDGED'
+      AND ${t.effectiveValue} = ${t.originalValue}
+      AND ${t.effectiveConfirmation} = 'confirmed'
+      AND ${t.replacementValue} IS NULL
+      AND ${t.rejectionRationale} IS NULL)
+    OR
+    (${t.action} = 'reject'
+      AND ${t.effectiveOrigin} = 'HUMAN'
+      AND ${t.effectiveConfirmation} IS NULL
+      AND ${t.replacementValue} IS NOT NULL
+      AND ${t.rejectionRationale} IS NOT NULL
+      AND btrim(${t.rejectionRationale}) <> '')
+  ), false)`),
+  check('run_evaluation_review_condition',sql`length(${t.conditionId}) BETWEEN 1 AND 255`),
+  check('run_evaluation_review_actor',sql`length(btrim(${t.actorId})) BETWEEN 1 AND 255`),
+]);
+
 /** Agent work progress extends the shared audit engine; no duplicate Observation tables. */
 export const runAgentWork = pgTable('run_agent_work', {
   runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
@@ -1580,3 +1682,7 @@ export const runWait = pgTable('run_wait', {
   check('run_wait_options',sql`jsonb_typeof(${t.options})='array' AND jsonb_array_length(${t.options})>0`),
   check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT NULL AND ${t.closureKind}='answer' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT NULL AND ${t.actor} IS NOT NULL AND ${t.closureKind}='timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor}='wait-wake')`),
 ]);
+
+export type RunObservationEvaluationRow = typeof runObservationEvaluation.$inferSelect;
+export type RunResultReviewRow = typeof runResultReview.$inferSelect;
+export type RunEvaluationReviewRow = typeof runEvaluationReview.$inferSelect;

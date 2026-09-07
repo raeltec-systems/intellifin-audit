@@ -1,6 +1,11 @@
 import { canonicalJson, type JsonValue } from '../canonical-json.js';
 import { hmacSha256Hex, sha256Hex, utf8Bytes } from '../sha256.js';
-import { COMPLIANCE_OBSERVATION_FIELDS, evaluateComplianceRecord, reduceComplianceEvaluations } from '../procedures/plan-compiler.js';
+import {
+  COMPLIANCE_OBSERVATION_FIELDS,
+  evaluateComplianceRecord,
+  reduceComplianceEvaluations,
+} from '../procedures/plan-compiler.js';
+import { compareComplianceDecimals, isComplianceConfidence } from '../procedures/compliance-draft.js';
 import type { ComplianceObservation, ComplianceRecordEvaluation } from '../procedures/plan-compiler.js';
 import type { DraftComplianceFields } from '../procedures/compliance-draft.js';
 import { isTemplateId, type TemplateId } from '../procedures/templates.js';
@@ -208,6 +213,58 @@ export interface RecordEvaluationInput {
   readonly populationValues: Readonly<Record<string, JsonValue>> | null;
 }
 
+/**
+ * The raw judgment supplied by an Agent for one frozen condition.
+ *
+ * `value` is the model's original proposal. The effective evaluation may become
+ * `UNEVALUATED` when confidence is below the frozen threshold or Evidence cannot support a
+ * conclusion. Keeping this value alongside the effective result lets the application store
+ * the machine proposal immutably for later human review without changing the deterministic
+ * rules or the Observation's Evidence links.
+ */
+export interface AgentJudgedEvaluationProposal {
+  readonly conditionId: string;
+  readonly value: EvaluationValue;
+  readonly confidence: string;
+  readonly rationale: string;
+}
+
+export type AgentJudgedEvaluationProposals = Readonly<
+  Record<string, AgentJudgedEvaluationProposal | undefined>
+>;
+
+const AGENT_PROPOSAL_VALUES = ['COMPLIANT', 'EXCEPTION', 'UNEVALUATED'] as const;
+const AGENT_PROPOSAL_KEYS = ['conditionId', 'value', 'confidence', 'rationale'] as const;
+
+function proposalObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function proposalText(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= limit;
+}
+
+/** Runtime guard used by the pure evaluator and by application-facing tests. */
+export function isAgentJudgedEvaluationProposal(
+  value: unknown,
+): value is AgentJudgedEvaluationProposal {
+  if (!proposalObject(value)) return false;
+  if (
+    Object.keys(value).length !== AGENT_PROPOSAL_KEYS.length ||
+    !AGENT_PROPOSAL_KEYS.every((key) => Object.hasOwn(value, key))
+  ) {
+    return false;
+  }
+  return (
+    proposalText(value['conditionId'], OBSERVATION_LIMITS.text) &&
+    typeof value['value'] === 'string' &&
+    (AGENT_PROPOSAL_VALUES as readonly string[]).includes(value['value']) &&
+    value['confidence'] !== '-0' &&
+    isComplianceConfidence(value['confidence']) &&
+    proposalText(value['rationale'], OBSERVATION_LIMITS.value)
+  );
+}
+
 /** The frozen reference data the compiled rules of this Template may consult. */
 export interface RecordEvaluationReference {
   readonly roleExpansion: RoleExpansion;
@@ -217,6 +274,8 @@ export interface RecordEvaluation {
   /** §B's fixed reduction over the per-condition values: Exception, Unevaluated, Compliant. */
   readonly value: EvaluationValue;
   readonly evaluations: readonly ObservationEvaluation[];
+  /** The validated raw Agent proposals, retained separately from effective values. */
+  readonly agentProposals: readonly AgentJudgedEvaluationProposal[];
 }
 
 /**
@@ -316,43 +375,60 @@ function diagnosticText(diagnostics: readonly string[]): string | null {
 /**
  * Evaluate one corroborated Observation against the version's frozen compiled conditions.
  *
- * Every row this produces carries origin `RULE`, including one that records an
- * Agent-Judged condition as Unevaluated: the origin says which evaluator wrote the row,
- * and the deterministic one did. Nothing here consults a model, re-derives a condition
- * from authored prose, or reads an expectation file.
+ * Rule-Classified rows carry origin `RULE`; an uncompiled condition carries origin
+ * `AGENT_JUDGED` and the validated proposal's confidence/rationale. Applicability still
+ * comes only from the frozen compiler predicate, and this function never consults a model,
+ * re-derives a condition from authored prose or reads an expectation file.
  */
 export function evaluateObservationRecord(
   templateId: TemplateId,
   fields: DraftComplianceFields,
   input: RecordEvaluationInput,
   reference: RecordEvaluationReference,
+  agentProposals: AgentJudgedEvaluationProposals = {},
 ): RecordEvaluation {
   const observation: ComplianceObservation = {
     values: observationRuleValues(templateId, input.record, input.populationValues),
     evidence: observationEvidenceFacts(input),
     roleMatrix: reference.roleExpansion,
   };
-  const result: ComplianceRecordEvaluation = evaluateComplianceRecord(templateId, fields, observation);
+  // The compiler remains the only rules engine. It receives only the value/confidence part
+  // of each already validated proposal; this module adds the audit-facing rationale and
+  // preserves the original proposal beside the effective result below.
+  const result: ComplianceRecordEvaluation = evaluateComplianceRecord(
+    templateId,
+    fields,
+    observation,
+    agentProposals,
+  );
   const compliantAllowed =
     canBeCompliant(input.coverage) && corroborationAllowsCompliant(input.corroboration);
   const evidenceIds = [...input.record.evidenceIds];
   const evaluations = result.conditions.map((condition): ObservationEvaluation => {
+    const agent = condition.origin === 'AGENT_JUDGED' && condition.applicable === true
+      && Object.hasOwn(agentProposals, condition.conditionId)
+      ? agentProposals[condition.conditionId]
+      : undefined;
+    const validAgent = agent !== undefined
+      && agent.conditionId === condition.conditionId
+      && isAgentJudgedEvaluationProposal(agent);
     const supportable = condition.value !== 'COMPLIANT' || compliantAllowed;
     const reasons = condition.applicable === false
       ? [...condition.diagnostics, CONDITION_NOT_APPLICABLE]
       : [...condition.diagnostics];
+    const value = supportable ? condition.value : 'UNEVALUATED';
+    const pending = validAgent && value !== 'UNEVALUATED'
+      && compareComplianceDecimals(agent.confidence, fields.agentJudgedThreshold) >= 0;
     return {
       conditionId: condition.conditionId,
-      origin: 'RULE',
-      value: supportable ? condition.value : 'UNEVALUATED',
-      // §B.1: `confirmation` and `confidence` belong to an Agent-Judged evaluation and to
-      // no other. This one is never Agent-Judged.
-      confirmation: null,
-      confidence: null,
-      // Deliberately none. A rule's reason is its diagnostics; a free-text rationale is
-      // where retrieved content gets quoted back as the reason for an outcome, which is
-      // exactly what the seeded prompt-like memos are there to catch.
-      rationale: null,
+      origin: condition.origin,
+      value,
+      // At or above the threshold, an applicable Agent-Judged value awaits a human
+      // confirmation. Below it, the effective value is UNEVALUATED and there is no control.
+      // A rule, an inapplicable condition, or unsupported Evidence never becomes pending.
+      confirmation: pending ? 'pending' : null,
+      confidence: validAgent ? agent.confidence : null,
+      rationale: validAgent ? agent.rationale : null,
       diagnostic: supportable
         ? diagnosticText(reasons)
         : diagnosticText([...reasons, UNSUPPORTABLE_COMPLIANT]),
@@ -364,6 +440,27 @@ export function evaluateObservationRecord(
     // Compliant, with an absent evaluation represented rather than filtered out.
     value: reduceComplianceEvaluations(evaluations.map((evaluation) => evaluation.value)),
     evaluations,
+    // Preserve proposals in the frozen condition order, rather than trusting object-key
+    // order from an adapter payload. Registration rejects an extra condition; this output
+    // carries only proposals that belong to the version's evaluated conditions.
+    agentProposals: result.conditions.flatMap(({ conditionId }) => {
+      const proposal = Object.hasOwn(agentProposals, conditionId)
+        ? agentProposals[conditionId]
+        : undefined;
+      if (
+        proposal === undefined ||
+        proposal.conditionId !== conditionId ||
+        !isAgentJudgedEvaluationProposal(proposal)
+      ) {
+        return [];
+      }
+      return [{
+        conditionId,
+        value: proposal.value,
+        confidence: proposal.confidence,
+        rationale: proposal.rationale,
+      }];
+    }),
   };
 }
 

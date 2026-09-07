@@ -1,3 +1,7 @@
+## 2026-09-07 — Human evaluation review storage
+
+Generation36 preserves original machine evaluations and nullable original proposals, then appends human decisions to an immutable ledger. Effective counts/findings overlay that ledger. The Result has a frozen ten-key wire/storage contract and generation25 permits only its final sealing update; AD21's answer revision therefore lives in adjacent run_result_review under the same Run→Result→review locks. Result.version changes only on final sealing. This is an implementation reconciliation, not a new owner decision. Pending UI counts must query effective evaluations, not the unchanged pending publication. Historical proposal fields stay NULL rather than fabricated; no retroactive matched-only check invalidates historical evaluations. New human Compliant decisions require covered, matched evidence.
+
 <!-- Escalation browser regression: scope the inert question body through its provenance container. A Run with candidate options intentionally has several pre elements, so a page-wide pre selector is ambiguous. -->
 ## 2026-09-07 — Preserve live search reads
 
