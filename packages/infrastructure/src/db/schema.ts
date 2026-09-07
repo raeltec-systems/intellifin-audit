@@ -1061,6 +1061,66 @@ export const runEvidence = pgTable('run_evidence', {
 ]);
 
 /**
+ * Generation 38 — an actor-bound, short-lived capability request for a stored Structural
+ * Snapshot (Story 4.4).
+ *
+ * This is request and capability metadata only. The worker/object-store boundary owns the
+ * object key lookup and signed GET; this table never stores bytes, credentials, or a durable
+ * object URL. The binding trigger in 0038 also checks the Run and Structural Snapshot kind,
+ * because `run_evidence.evidence_id` predates this table and is globally unique on its own.
+ */
+export const evidenceReadGrant = pgTable('evidence_read_grant', {
+  grantId: uuid('grant_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  evidenceId: uuid('evidence_id').notNull().references(() => runEvidence.evidenceId, { onDelete: 'cascade' }),
+  locator: text('locator').notNull(),
+  actorId: text('actor_id').notNull(),
+  sessionId: text('session_id').notNull(),
+  correlationId: text('correlation_id').notNull(),
+  requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'date' }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+  status: text('status').notNull(),
+  denialCode: text('denial_code'),
+  signedUrl: text('signed_url'),
+  signedUrlExpiresAt: timestamp('signed_url_expires_at', { withTimezone: true, mode: 'date' }),
+  capabilityMediaType: text('capability_media_type'),
+  capabilityDigest: text('capability_digest'),
+  capabilitySize: integer('capability_size'),
+}, table => [
+  check('evidence_read_grant_locator', sql`length(${table.locator}) BETWEEN 1 AND 1024 AND btrim(${table.locator}) = ${table.locator}`),
+  check('evidence_read_grant_actor', sql`length(btrim(${table.actorId})) BETWEEN 1 AND 255`),
+  check('evidence_read_grant_session', sql`length(btrim(${table.sessionId})) BETWEEN 1 AND 255`),
+  check('evidence_read_grant_correlation', sql`length(btrim(${table.correlationId})) BETWEEN 1 AND 255`),
+  check('evidence_read_grant_window', sql`${table.expiresAt} > ${table.requestedAt} AND ${table.expiresAt} <= ${table.requestedAt} + interval '5 minutes'`),
+  check('evidence_read_grant_status', sql`${table.status} IN ('pending','issued','denied','expired')`),
+  check('evidence_read_grant_denial', sql`${table.denialCode} IS NULL OR ${table.denialCode} IN ('expired','unauthorized','scope-mismatch','evidence-not-registered','unsupported-media-type','invalid-evidence-metadata','storage-unavailable')`),
+  check('evidence_read_grant_url', sql`${table.signedUrl} IS NULL OR (length(${table.signedUrl}) BETWEEN 1 AND 4096 AND ${table.signedUrl} ~* '^https?://[^[:space:]#@]+$')`),
+  check('evidence_read_grant_digest', sql`${table.capabilityDigest} IS NULL OR ${table.capabilityDigest} ~ '^[0-9a-f]{64}$'`),
+  check('evidence_read_grant_size', sql`${table.capabilitySize} IS NULL OR ${table.capabilitySize} BETWEEN 0 AND 4194304`),
+  check('evidence_read_grant_media_type', sql`${table.capabilityMediaType} IS NULL OR length(btrim(${table.capabilityMediaType})) BETWEEN 1 AND 255`),
+  check('evidence_read_grant_completion', sql`coalesce((
+    (${table.status} = 'pending'
+      AND ${table.denialCode} IS NULL AND ${table.signedUrl} IS NULL AND ${table.signedUrlExpiresAt} IS NULL
+      AND ${table.capabilityMediaType} IS NULL AND ${table.capabilityDigest} IS NULL AND ${table.capabilitySize} IS NULL)
+    OR (${table.status} = 'issued'
+      AND ${table.denialCode} IS NULL AND ${table.signedUrl} IS NOT NULL
+      AND ${table.signedUrlExpiresAt} > ${table.requestedAt} AND ${table.signedUrlExpiresAt} <= ${table.expiresAt}
+      AND ${table.capabilityMediaType} IS NOT NULL AND ${table.capabilityDigest} IS NOT NULL AND ${table.capabilitySize} IS NOT NULL)
+    OR (${table.status} = 'denied'
+      AND ${table.denialCode} IS NOT NULL AND ${table.denialCode} <> 'expired'
+      AND ${table.signedUrl} IS NULL AND ${table.signedUrlExpiresAt} IS NULL
+      AND ${table.capabilityMediaType} IS NULL AND ${table.capabilityDigest} IS NULL AND ${table.capabilitySize} IS NULL)
+    OR (${table.status} = 'expired'
+      AND ${table.denialCode} = 'expired'
+      AND ${table.signedUrl} IS NULL AND ${table.signedUrlExpiresAt} IS NULL
+      AND ${table.capabilityMediaType} IS NULL AND ${table.capabilityDigest} IS NULL AND ${table.capabilitySize} IS NULL)
+  ), false)`),
+  check('evidence_read_grant_issued_capability_window', sql`${table.status} <> 'issued' OR ${table.signedUrlExpiresAt} <= ${table.requestedAt} + interval '5 minutes'`),
+  index('evidence_read_grant_pending_expiry').on(table.status, table.expiresAt).where(sql`${table.status} = 'pending'`),
+  index('evidence_read_grant_actor').on(table.actorId, table.requestedAt),
+]);
+
+/**
  * Generation 21 — the sealed Evidence package (Story 3.5).
  *
  * One row per Run, written by `SealPackage` at the terminal transition and never again.

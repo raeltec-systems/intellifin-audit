@@ -307,3 +307,17 @@ describe('generation 37 durable evaluation-review commands', () => {
     expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (37)');
   });
 });
+
+
+describe('generation 38 stored snapshot read capabilities', () => {
+  const sql = migration('0038_evidence_read_grant.sql');
+  it('bounds the capability and permits revocation without changing request identity', () => {
+    expect(sql).toContain('CREATE TABLE "evidence_read_grant"');
+    expect(sql).toContain("interval '5 minutes'");
+    expect(sql).toContain("OLD.status IN ('denied', 'expired')");
+    expect(sql).toContain("OLD.status = 'issued' AND NEW.status NOT IN ('denied', 'expired')");
+    expect(sql).toContain('NEW.actor_id IS DISTINCT FROM OLD.actor_id');
+    expect(sql).toContain('NEW.expires_at IS DISTINCT FROM OLD.expires_at');
+    expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (38)');
+  });
+});

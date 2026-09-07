@@ -76,6 +76,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'auth_session',
       'auth_user',
       'auth_verification',
+      'evidence_read_grant',
       'notification',
       'population_evidence',
       'population_execution',
@@ -172,6 +173,10 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     [
       'run_evaluation_review',
       ['action', 'actor_id', 'condition_id', 'decided_at', 'decision_id', 'effective_confirmation', 'effective_origin', 'effective_value', 'observation_id', 'original_confidence', 'original_confirmation', 'original_evidence_ids', 'original_origin', 'original_rationale', 'original_value', 'rejection_rationale', 'replacement_value', 'review_revision', 'run_id'],
+    ],
+    [
+      'evidence_read_grant',
+      ['actor_id', 'capability_digest', 'capability_media_type', 'capability_size', 'correlation_id', 'denial_code', 'evidence_id', 'expires_at', 'grant_id', 'locator', 'requested_at', 'run_id', 'session_id', 'signed_url', 'signed_url_expires_at', 'status'],
     ],
     [
       'run_evaluation_review_command',

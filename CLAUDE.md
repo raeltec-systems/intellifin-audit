@@ -1237,3 +1237,8 @@ Golden journeys must derive the registered label and entry-origin contracts from
 ### Epic 4 durable human review completion
 
 Human review commands use a dedicated pg-boss queue and a durable PENDING/SUCCEEDED/REFUSED row. The web only authorizes/enqueues; the worker rechecks authority and commits the decision, worker-signed Exception and Result together. Pending-only uniqueness permits a fresh retry after an immutable refusal. Preserve an Exception's original conditions/fingerprint/diagnostics; display the effective review condition set separately. Missing worker fingerprint configuration must leave commands recoverable, never seal a result through a weaker path.
+
+
+### Epic 4 evidence read grant migration compatibility
+
+Generate unapplied expansions in journal order: generation38 adds bounded read-grant metadata; generation39 adds the optional frozen authentication destination. Keep snapshot prevId links consistent and generate39 from38, not37. An issued grant is revocable, not immutable terminal history: issued→denied/expired clears its capability under the completion constraint; denied/expired stay immutable and request identity/deadlines never change. Revocation must remain possible even if the Evidence is no longer readable.
