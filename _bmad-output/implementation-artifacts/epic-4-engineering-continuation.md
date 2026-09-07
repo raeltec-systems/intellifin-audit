@@ -102,3 +102,9 @@ Optional provider-native keys now compose the worker-only Anthropic primary/Open
 ## Browser deadline and search-containment checkpoint
 
 One absolute action deadline now covers page creation, navigation, actual form entry/submission, capture and authentication proof, with bounded failed-page cleanup preserving workspace/provider identity. Search validates browser FormData before submit and a temporary route aborts mutated main-frame requests before transmission, then falls back to the existing workspace egress guard. Explicit negative Chromium tests cover hidden fields, named submitters, onsubmit mutation and late navigation; blank optional controls remain supported.26 browser unit tests pass locally; new real Chromium regressions await hosted CI (no local browser/PG). This checkpoint does not complete4.6/4.11 or establish live Solari acceptance.
+
+## Agent evidence and turn-ledger helpers (incomplete worker flow)
+
+Capture helpers use existing artifact reservations/conditional upload/readback verification and registration, then bind Evidence to the persisted Tool Action. Found Observations read frozen grouped web_tree cells, require unique exact primary and configured secondary identity, and preserve missing fields as ungrounded. Absence uses the unchanged shared judge; an arbitrary empty page, missing secondary lookup or incomplete result cannot pass. Model turns reserve bounded token capacity durably before provider I/O and retain unknown paid usage conservatively across failure/restart.27 focused helper tests and full typecheck pass locally. Actual loop/repository integration remains in progress; no story acceptance.
+
+CI34139126887 on64df0310afab49ff930bd7cb33fd73d968a0e784 passes PostgreSQL migration/drift/integration, typecheck/boundaries/unit and containers; browser/accessibility was canceled by the next push and is not claimed passed for that SHA.
