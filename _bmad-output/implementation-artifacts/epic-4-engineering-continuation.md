@@ -222,3 +222,10 @@ The actual absence runtime defect concatenated pre/post-search controls, treatin
 ## Prohibited-baseline Gate regression
 
 The real P-4 golden journey at aafe3b6 registered all five expected Observations and their exact evaluations, but the shared population Gate incorrectly demanded an approved comparison value for an explicitly prohibited parameter. A domain regression reproduced that extra mandatory-values finding. The repair exempts only the empty approved_value of exact P-4 prohibited rows; schema presence and all other mandatory checks remain enforced.33 Gate tests and domain typecheck pass. Parent e179dd81ec54d118443ce505b909be369c63e8cc is pushed. This repair is pushed; the unchanged exact five-row Gate failure assertion remains the hosted acceptance target. CI34149265415 also confirms139/139 browser/accessibility tests passed at aafe3b6.
+
+
+## Journey verification cleanup checkpoint
+
+The found-journey digest assertion now reads run_evidence.digest, retaining exact stored-byte comparison and credential absence checks. Both disposable journey teardowns follow real protection dependencies: Result/package before capture metadata, Observation before permanent Exception. No trigger or production object is modified. These failures were reproduced in CI34149265415; hosted retest remains required. Parentd8d64f8eb97cfea37b4cc171faef682c5f044825 is pushed; this test checkpoint is pushed.
+
+Release remains blocked independently of CI: project ade2dc6b-9e91-4ecf-bba8-68638389125d, production environment1ea4d58f-afab-498f-9dcd-a195e0009026, worker84394c42-5018-4cb4-9a7a-707b2ca1fe4a has no Solari key, evidence-store variables, audit credential manifest or Exception fingerprint key. Provider key values are unavailable through OAuth. Northstar1a491862-5633-407b-8032-acd1b14113e0 has northstar-production-b312.up.railway.app:4300 and /health configured, but the available HTTP reader refuses that domain; this is not proof the service is down. No deployment, infrastructure, recording or variables changed. Full Solari audit/auth/evidence/result/confirmed-cleanup acceptance is still unverified. Continue code/CI repairs; do not merge.

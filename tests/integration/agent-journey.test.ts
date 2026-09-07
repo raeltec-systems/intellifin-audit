@@ -83,18 +83,21 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
         await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
         await sql`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
         await sql`DELETE FROM run_agent_work WHERE run_id=${runId}`;
+        // Tear down the whole disposable Run before its protected capture metadata.
+        await sql`DELETE FROM run_result_review WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_result WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_exception WHERE run_id=${runId}`;
         await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
         await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
         await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
         await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
         await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
         await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
-        await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
         await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
         await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
         await sql`DELETE FROM population_row WHERE run_id=${runId}`;
@@ -163,9 +166,9 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
       expect.objectContaining({ name: 'roles', normalizedValue: ['read_only'], corroboration: 'matched' }),
     ]));
     expect(seeded.selectedTools).toContain('search'); expect(seeded.selectedTools).toContain('read-attribute');
-    const evidence = await sql<{ object_key: string; raw_digest: string; kind: string }[]>`SELECT object_key,raw_digest,kind FROM run_evidence WHERE run_id=${seeded.job.runId} AND state='REGISTERED'`;
+    const evidence = await sql<{ object_key: string; digest: string; kind: string }[]>`SELECT object_key,digest,kind FROM run_evidence WHERE run_id=${seeded.job.runId} AND state='REGISTERED'`;
     expect(evidence.some(row => row.kind === 'structural-snapshot')).toBe(true);
-    for (const row of evidence) { const bytes = seeded.objects.get(row.object_key); expect(bytes).toBeDefined(); expect(sha256HexOfBytes(bytes!)).toBe(row.raw_digest); expect(new TextDecoder().decode(bytes)).not.toContain(TOKEN); }
+    for (const row of evidence) { const bytes = seeded.objects.get(row.object_key); expect(bytes).toBeDefined(); expect(sha256HexOfBytes(bytes!)).toBe(row.digest); expect(new TextDecoder().decode(bytes)).not.toContain(TOKEN); }
     expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(1);
     // Queue redelivery in a fresh repository cannot duplicate the Observation or capture.
     await executeAgentWorkItem({ ...seeded.dependencies, repository: new PostgresAgentWorkRepository(db) }, seeded.job);

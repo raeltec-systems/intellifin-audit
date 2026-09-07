@@ -1207,3 +1207,8 @@ A search result can repeat the form that submitted it. Bind the request paramete
 ## P-4 prohibited baseline fields (2026-09-07)
 
 An explicitly prohibited baseline parameter has no approved comparison value. populationFieldFindings therefore exempts only approved_value emptiness for P-4 rows with exact disposition=prohibited. The column must still exist in the declared schema, and approved/unknown-disposition rows still need a value. This matches the existing shared compiler's prohibited-parameter rule and Northstar's canonical fixture; it does not excuse any missing observed parameter or duplicate baseline.
+
+
+## Disposable journey fixture cleanup and release prerequisites (2026-09-07)
+
+Whole-Run teardown in isolated CI must remove Result/package before protected capture metadata, and Observations before permanent Exception rows; never disable protection triggers for cleanup. run_evidence stores digest, while raw_digest belongs to population_evidence. Railway production worker configuration inspection on 2026-09-07 found no SOLARI_API_KEY, EVIDENCE_S3_* configuration, CREDENTIAL_TOKENS or EXCEPTION_FINGERPRINT_KEY. OAuth reveals names only, not provider values. No infrastructure or variables were changed. The existing Northstar public domain is configured, but this environment's HTTP reader refused it; reachability from Solari remains unverified.
