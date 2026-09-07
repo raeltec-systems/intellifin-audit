@@ -1,21 +1,16 @@
 name: Engineering patch delivery
 
-# Temporary transport for the owner's offline engineering environment. Never deploys.
-# Only this repository's draft PR 24 and its existing Epic 4 branch are eligible.
-# The request contains reviewable commit messages plus digest-checked patches; actual
-# source changes are separate commits. Remove this workflow before merging the PR.
+# Temporary, branch-only transport. No deployments or production secrets.
+# Remove before release. Exact edits are readable; a stale/ambiguous edit aborts.
 on:
   pull_request:
     branches: [main]
     paths: ['.engineering/delivery.json']
-
 permissions:
   contents: write
-
 concurrency:
   group: intellifin-epic-4-delivery
   cancel-in-progress: false
-
 jobs:
   apply:
     if: github.event.pull_request.number == 24 && github.head_ref == 'codex/epic-4-agent-runs' && github.event.pull_request.head.repo.full_name == github.repository
@@ -26,53 +21,60 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - name: Apply atomic source patches without overwriting concurrent work
+      - name: Apply exact edits as atomic commits
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64, hashlib, json, os, pathlib, re, subprocess, zlib
-          def git(*args, **kwargs):
-              return subprocess.check_output(['git', *args], **kwargs).decode().strip()
-          request = json.loads(pathlib.Path('.engineering/delivery.json').read_text())
+          import json, os, pathlib, re, subprocess
+          def git(*args):
+              return subprocess.check_output(['git', *args]).decode().strip()
+          source = pathlib.Path('.engineering/delivery.json')
+          if source.stat().st_size > 2000000: raise RuntimeError('Oversized request')
+          request = json.loads(source.read_text())
           base = request['base']
-          if not re.fullmatch('[0-9a-f]{40}', base): raise RuntimeError('Invalid base')
+          if not re.fullmatch('[0-9a-f]{40}', base): raise RuntimeError('Invalid baseline')
           git('merge-base', '--is-ancestor', base, 'HEAD')
           transport = {'.engineering/delivery.json', '.github/workflows/engineering-delivery.yml'}
           if set(git('diff', '--name-only', base, 'HEAD').splitlines()) - transport:
-              raise RuntimeError('Source changed since the patch baseline; refusing stale delivery')
+              raise RuntimeError('Source changed since the baseline')
           remote = git('ls-remote', 'origin', 'refs/heads/codex/epic-4-agent-runs').split()[0]
-          if remote != os.environ['EXPECTED_HEAD']: raise RuntimeError('Branch moved; refusing stale delivery')
+          if remote != os.environ['EXPECTED_HEAD']: raise RuntimeError('Branch moved')
           git('config', 'user.name', 'Raeltec Engineering')
           git('config', 'user.email', 'engineering@raeltec.com')
-          if not 1 <= len(request['commits']) <= 12: raise RuntimeError('Invalid commit count')
-          allowed = ('apps/', 'packages/', 'tests/', 'docs/', 'scripts/', '_bmad-output/implementation-artifacts/')
-          for item in request['commits']:
-              compressed = base64.b64decode(item['patch'], validate=True)
-              decoder = zlib.decompressobj()
-              patch = decoder.decompress(compressed, 4 * 1024 * 1024)
-              if not decoder.eof or decoder.unused_data: raise RuntimeError('Invalid or oversized patch')
-              if hashlib.sha256(patch).hexdigest() != item['sha256']: raise RuntimeError('Patch digest mismatch')
-              if b'new file mode 120000' in patch or b'new file mode 160000' in patch:
-                  raise RuntimeError('No symlink or submodule creation in delivery')
-              names = git('apply', '--numstat', '-', input=patch).splitlines()
-              for row in names:
-                  path = row.split('\t', 2)[2]
-                  if path != 'CLAUDE.md' and not path.startswith(allowed): raise RuntimeError('Path outside source scope: ' + path)
-                  if '/.env' in path or path.startswith('/') or '..' in path.split('/'):
-                      raise RuntimeError('Unsafe patch path')
-              git('apply', '--check', '--index', '-', input=patch)
-              git('apply', '--index', '-', input=patch)
+          commits = request['commits']
+          if not 1 <= len(commits) <= 12: raise RuntimeError('Invalid batch')
+          roots = ('apps/', 'packages/', 'tests/', 'docs/', 'scripts/', '_bmad-output/implementation-artifacts/')
+          exact = {'CLAUDE.md', 'vitest.config.ts', 'package.json', 'pnpm-lock.yaml'}
+          for item in commits:
+              paths = set()
+              for edit in item['edits']:
+                  name = edit['path']
+                  path = pathlib.Path(name)
+                  if name not in exact and not name.startswith(roots): raise RuntimeError('Path outside scope')
+                  if path.is_absolute() or '..' in path.parts or any(p.startswith('.env') for p in path.parts):
+                      raise RuntimeError('Unsafe path')
+                  if path.is_symlink() or any(p.is_symlink() for p in path.parents): raise RuntimeError('Symlink path')
+                  if 'create' in edit:
+                      if path.exists(): raise RuntimeError('File already exists: ' + name)
+                      path.parent.mkdir(parents=True, exist_ok=True)
+                      path.write_text(edit['create'])
+                  else:
+                      text = path.read_text()
+                      old = edit['old']
+                      if not old or text.count(old) != 1: raise RuntimeError('Ambiguous edit: ' + name)
+                      path.write_text(text.replace(old, edit['new'], 1))
+                  paths.add(name)
+              git('add', '--', *sorted(paths))
               git('commit', '-m', item['message'])
               print(git('log', '-1', '--format=%h %s'))
           git('rm', '.engineering/delivery.json')
           git('commit', '-m', 'chore(ci): consume temporary engineering delivery request')
-          # Fast-forward only. A concurrent writer causes a refusal, never a force push.
           git('push', 'origin', 'HEAD:refs/heads/codex/epic-4-agent-runs')
           PY
-      - name: Archive the committed checkpoint for the offline workspace
+      - name: Preserve committed checkpoint
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/engineering"
