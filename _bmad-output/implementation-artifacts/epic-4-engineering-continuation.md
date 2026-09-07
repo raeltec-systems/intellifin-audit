@@ -210,3 +210,10 @@ The worker's P-4 branch now uses model-directed approved snapshot reads, one pag
 The two generation36 column inventories now match PostgreSQL's ORDER BY column_name without changing their exact sets. The adapter test verifies web work is left unobserved for the agent, with no Result fabricated. The real sign-in fixture now expects the current unsupported P-2 browser-investigation diagnostic after successful authentication, and safely polls all durable stages to expose future stalls. Explicit empty model keys keep that authentication test from making provider calls. No positive-authentication or credential-containment assertion was removed.
 
 The corresponding failures were reproduced in CI34147564576 at e324d360;138 browser and423 PostgreSQL tests passed there. Candidate typecheck previously passed before concurrent auth-contract work; diff check passes. Hosted rerun is required for these real PostgreSQL/browser changes. Parent2fe58e65d763baaf19c56d58c07ac9ec3df4ad33 is pushed. Checkpoint pushed, no release acceptance or merge.
+
+
+## Repeated search-form absence repair
+
+CI34149265415 at aafe3b66774b15b8995dafa82fca131d7252206f passes type/unit/boundaries/container builds and429 PostgreSQL tests. The found journey reaches correct grounded registration; its verification query used raw_digest rather than run_evidence.digest. P-4 registers all five expected Observations and matches every golden evaluation; its exact Gate assertion exposes an extra mandatory-value finding under review. Both new fixture teardowns also need the existing immutable-object deletion order.
+
+The actual absence runtime defect concatenated pre/post-search controls, treating a repeated form as duplicate fields. The new positive regression fails before repair and passes after;11 planner tests pass, including true duplicate controls and wrong-control-name refusal. Both searches still need registered complete zero-result snapshots. Parent aafe3b6 is pushed. This focused runtime repair is pushed; exact real-browser absence retest remains pending, no release acceptance.

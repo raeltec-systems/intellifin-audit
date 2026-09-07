@@ -1197,3 +1197,8 @@ A P-4 page is one Work Item, with one Observation per distinct frozen baseline k
 ## Historical stage assertions after agent wiring (2026-09-07)
 
 Adapter extraction now completes references and leaves web work for investigation; tests must assert zero fabricated adapter Observations rather than the removed agent-driven-target refusal. The sign-in-only P-2 browser fixture remains outside the implemented P-1/P-4 investigation scope and must fail with unsupported-frozen-plan after preserving authenticated access. Poll only safe durable stage/status/diagnostic columns when diagnosing stalls. Schema inventory fixtures follow the query's exact column-name order; never remove columns to repair an ordering mismatch.
+
+
+## Search-control provenance is temporal (2026-09-07)
+
+A search result can repeat the form that submitted it. Bind the request parameters to its single pre-search control snapshot; combining before/after node lists invents duplicate controls and prevents otherwise complete two-key absence proof. Retain the result's independent completeness proof. A supplied ambiguous/invalid pre-search page must not fall back to a cleaner result page. Existing evidence without a pre-search capture uses its one recorded page, preserving the bounded compatibility path.

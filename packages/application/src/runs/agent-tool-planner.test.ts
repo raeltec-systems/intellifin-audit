@@ -214,6 +214,24 @@ describe('planAgentTools', () => {
     expect(planned.tools.filter((tool) => tool.action === 'read-attribute')).toHaveLength(0);
   });
 
+  it('binds each submitted key to its pre-search page when the result repeats the same form', () => {
+    const zero = snapshot(HOME_NODES, { complete: true, returned: 0 });
+    const searches: readonly AgentSearchEvidence[] = [
+      { parameters: [{ name: 'employee_id', value: 'E-000105' }], controlSnapshot: snapshot(HOME_NODES), snapshot: zero },
+      { parameters: [{ name: 'name', value: 'Esther Kabwe' }], controlSnapshot: zero, snapshot: zero },
+    ];
+    expect(planAgentTools(input({ snapshot: zero, searches })).absenceReady).toBe(true);
+  });
+
+  it('refuses duplicate controls on the submitted page even when the result has a unique control', () => {
+    const zero = snapshot(HOME_NODES, { complete: true, returned: 0 });
+    const searches: readonly AgentSearchEvidence[] = [
+      { parameters: [{ name: 'employee_id', value: 'E-000105' }], controlSnapshot: snapshot([...HOME_NODES, HOME_NODES[0]]), snapshot: zero },
+      { parameters: [{ name: 'name', value: 'Esther Kabwe' }], controlSnapshot: zero, snapshot: zero },
+    ];
+    expect(planAgentTools(input({ snapshot: zero, searches })).absenceReady).toBe(false);
+  });
+
   it('does not attribute a value to a lookup key when the recorded control name is wrong', () => {
     const zero = snapshot([], { complete: true, returned: 0 });
     const searches: readonly AgentSearchEvidence[] = [{

@@ -330,9 +330,11 @@ function searchKeysForEvidence(
   lookups: readonly LookupSpec[],
 ): ReadonlySet<string> | null {
   if (!Array.isArray(evidence.parameters) || evidence.parameters.length === 0) return null;
-  const controlSnapshots = evidence.controlSnapshot === undefined
-    ? [evidence.snapshot]
-    : [evidence.controlSnapshot, evidence.snapshot];
+  // The submitted control is grounded in its pre-search capture. The result may
+  // render the same form again: those are two moments, not two ambiguous controls.
+  // Older evidence without a pre-search capture still has its one recorded page;
+  // an invalid supplied pre-search page must never fall back to a different page.
+  const controlSnapshots = [evidence.controlSnapshot ?? evidence.snapshot];
   const controls = controlSnapshots.flatMap((snapshot) => {
     if (snapshot.substrate !== 'web_tree') return [];
     const parsed = readStructuralSnapshot(snapshot);
