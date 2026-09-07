@@ -11,7 +11,6 @@ export * from './registrations/index.js';
 export * from './sources/index.js';
 export * from './telemetry/index.js';
 export * from './notifications/notification-repository.js';
-export * from './notifications/email-notification-sender.js';
 export * from './runs/run-repository.js';
 export * from './runs/run-list-repository.js';
 export * from './runs/run-detail-repository.js';

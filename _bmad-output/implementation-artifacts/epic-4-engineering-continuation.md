@@ -86,3 +86,7 @@ Generation34 adds operational agent progress/turn/capture bindings, per-populati
 ## Capture integration assertion correction
 
 CI34136780203 on31317cc2d5daf78cc143b4858cd278051fec3c97 passes typecheck/boundaries/unit. PostgreSQL runs396 integrations:395 pass, one new capture assertion compares Node Buffer with Uint8Array although the PNG signature bytes match exactly. This correction compares all eight byte values explicitly. It neither skips a check nor changes capture behavior. Candidate34 CI remains pending; full acceptance is not claimed.
+
+## Checkpoint composition correction
+
+CI34137578823 on a64d3078d2d0c2bb2f1941e3c9a73b6ef021dca4 fails infrastructure typecheck before migration/tests: the shared barrel included a notification sender export whose implementation remained uncommitted. This corrective checkpoint removes only that premature export; the notification implementation stays separate. Generation34 hosted verification remains pending.
