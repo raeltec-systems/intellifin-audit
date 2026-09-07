@@ -81,12 +81,18 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       await assertProtected();
       // Mutation: the old unguarded backfill must fail against REAL sealed records.
       const withoutGuards = await prefix('mutation', 32, text => text.replace(/^ALTER TABLE .* (?:DISABLE|ENABLE) TRIGGER .*;--> statement-breakpoint\n/gm, ''));
-      await expect(runMigrations(historicalUrl, { migrationsFolder: withoutGuards })).rejects.toThrow(/is frozen/);
+      // Drizzle wraps the PostgreSQL exception. Assert the server's cause and SQLSTATE,
+      // not the wrapper's query text: a syntax or connection failure is not guard proof.
+      await expect(runMigrations(historicalUrl, { migrationsFolder: withoutGuards })).rejects.toMatchObject({
+        cause: expect.objectContaining({ code: 'P0001', message: expect.stringMatching(/is frozen/) }),
+      });
       await assertProtected();
       expect((await sql`SELECT max(version) AS version FROM schema_meta`)[0]?.version).toBe(31);
       // Failure after disabling a trigger must roll back the DDL as well as the data.
       const broken = await prefix('rollback', 32, text => text.replace('ALTER TABLE "population_evidence" DISABLE TRIGGER "population_evidence_frozen_after_seal";', 'ALTER TABLE "population_evidence" DISABLE TRIGGER "population_evidence_frozen_after_seal";--> statement-breakpoint\nSELECT 1/0;'));
-      await expect(runMigrations(historicalUrl, { migrationsFolder: broken })).rejects.toThrow(/division by zero/);
+      await expect(runMigrations(historicalUrl, { migrationsFolder: broken })).rejects.toMatchObject({
+        cause: expect.objectContaining({ code: '22012', message: expect.stringMatching(/division by zero/) }),
+      });
       await assertProtected();
       expect(await runMigrations(historicalUrl)).toBeGreaterThanOrEqual(32);
       await assertProtected();
