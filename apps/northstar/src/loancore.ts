@@ -91,6 +91,7 @@ function signInPage(): NorthstarResponse {
     layout({
       system: SYSTEM,
       title: 'Sign in',
+      authenticated: false,
       body: `
 <h2>Sign in</h2>
 <p>This account directory requires the audit account credential.</p>

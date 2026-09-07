@@ -155,7 +155,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         response.end(
           path.startsWith('/loancore')
-            ? `<!doctype html><title>synthetic</title><body>synthetic<img src="/zelsewhere/pixel" alt="">${signedIn ? '' : form}</body>`
+            ? `<!doctype html><title>synthetic</title><body>synthetic<img src="/zelsewhere/pixel" alt="">${signedIn ? '<p role="status" aria-label="Current signed-in account">Signed in as audit.readonly</p>' : form}</body>`
             : '<!doctype html><title>synthetic</title><body>synthetic</body>',
         );
       });

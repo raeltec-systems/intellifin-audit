@@ -12,6 +12,7 @@ export function layout(options: {
   readonly system: string;
   readonly title: string;
   readonly body: string;
+  readonly authenticated?: boolean;
 }): string {
   return `<!doctype html>
 <html lang="en">
@@ -34,7 +35,7 @@ export function layout(options: {
 <header>
   <p class="banner">Synthetic system. Northstar Financial Group is a fictional organization and every value on this page is invented.</p>
   <h1>${escapeHtml(options.system)}</h1>
-  <p>Signed in as the read-only audit account <strong>audit.readonly</strong>. This account cannot change anything; the system refuses every write.</p>
+  ${options.authenticated === false ? '<p>Not signed in.</p>' : '<p role="status" aria-label="Current signed-in account">Signed in as the read-only audit account <strong>audit.readonly</strong>. This account cannot change anything; the system refuses every write.</p>'}
 </header>
 <main>
 ${options.body}

@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Engineering continuation — authentication proof
+
+Cookies are transport state, not authentication proof. The bounded synthetic sign-in contract requires a successful response, no password form, and the visible named signed-in account. Unknown UI is unconfirmed. The real-browser regression covers stale/unrelated cookies and a server issuing a cookie while still serving its login form.
+
 ## Engineering continuation — workspace identity
 
 An existing workspace is identified by provider mode plus provider session ID. Never overwrite its mode from current worker configuration. A provider change must preserve the old cleanup reference and refuse continuation; a new Run can use the new provider. The regression covers both Solari-to-local and local-to-Solari restarts.

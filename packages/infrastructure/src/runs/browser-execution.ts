@@ -28,6 +28,7 @@ import {
 import { sanitizeDestination, withinFrozenOrigin } from '@intellifin/domain';
 
 import { withinOrigin } from './origin-policy.js';
+import { hasAuthenticatedAccount } from './authentication-proof.js';
 
 /**
  * The ONE implementation of `BrowserExecution` (Story 4.1, AD-4).
@@ -503,7 +504,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       downloads: live.downloads,
       // "The session held in the workspace", read from the workspace rather than believed:
       // a cookie for the destination's own origin is what a later request will carry.
-      session: (await live.context.cookies(action.destination)).length > 0,
+      session: await hasAuthenticatedAccount(page, response),
     };
   }
 
@@ -613,7 +614,7 @@ async function signIn(
   // commit leaves the checkpoint saying `RETRY` while the browser still holds the cookie,
   // and the phase's own sweep re-claims in the same process. Without it that blip would
   // report `contract` and cost the Run, which is the opposite of what AD-16 asks for.
-  if (landed.status() < 300 && (await live.context.cookies(destination)).length > 0) {
+  if (await hasAuthenticatedAccount(page, landed)) {
     return landed;
   }
 
