@@ -95,6 +95,7 @@ class FakeContext implements EvaluationReviewContext {
   ];
   events: AuditEventDraft[] = [];
   timeline: number[] = [];
+  exceptions: Array<{ observationId: string; raisedAt: string }> = [];
   private sequence = 0;
 
   authorizationRoles = { findRole: async (): Promise<typeof this.role> => this.role };
@@ -153,6 +154,9 @@ class FakeContext implements EvaluationReviewContext {
   readConditionCounts = async (): Promise<readonly RunResultConditionCount[]> => this.conditions;
   readResultFindings = async (): Promise<{ exceptions: RunResultFindings; unevaluated: RunResultFindings }> => ({ exceptions: NO_FINDINGS, unevaluated: NO_FINDINGS });
   frozenPlan = async () => null;
+  ensureException = async (observationId: string, raisedAt: string): Promise<void> => {
+    this.exceptions.push({ observationId, raisedAt });
+  };
   sealPendingResult = async (result: StoredRunResult, expectedVersion: number): Promise<void> => {
     if (!this.result || this.result.version !== expectedVersion) throw new Error('stale result');
     this.result = result;
@@ -215,6 +219,7 @@ describe('evaluation review commands', () => {
       actor: { type: 'human', id: SESSION.userId },
       payload: { action: 'confirm', reviewRevision: 1, effectiveValue: 'EXCEPTION' },
     });
+    expect(repository.context.exceptions).toEqual([{ observationId: OBSERVATION_ID, raisedAt: NOW.toISOString() }]);
     expect(repository.context.timeline).toEqual([1, 2, 3]);
     expect(result.result).toMatchObject({ sealed: true, version: 2, outcome: 'INCONCLUSIVE' });
     expect(repository.context.reviewRevision).toBe(1);

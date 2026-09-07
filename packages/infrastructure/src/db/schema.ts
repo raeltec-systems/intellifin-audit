@@ -1626,6 +1626,83 @@ export const runEvaluationReview = pgTable('run_evaluation_review', {
   check('run_evaluation_review_actor',sql`length(btrim(${t.actorId})) BETWEEN 1 AND 255`),
 ]);
 
+/**
+ * Durable handoff for a human evaluation review (Story 4.9 worker completion).
+ *
+ * The web stores the bounded request and identity here, then enqueues only the command
+ * id. A worker locks this row before the Run/Result/review rows and changes PENDING to one
+ * terminal state in the same transaction as the immutable decision, any worker-signed
+ * Exception and Result seal. A redelivered queue job therefore sees its terminal row and
+ * performs no second write.
+ */
+export const runEvaluationReviewCommand = pgTable('run_evaluation_review_command', {
+  commandId: uuid('command_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  observationId: uuid('observation_id').notNull(),
+  conditionId: text('condition_id').notNull(),
+  expectedReviewRevision: integer('expected_review_revision').notNull(),
+  action: text('action').notNull(),
+  replacementValue: text('replacement_value'),
+  rationale: text('rationale'),
+  actorId: text('actor_id').notNull(),
+  sessionId: text('session_id').notNull(),
+  correlationId: uuid('correlation_id').notNull(),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull(),
+  status: text('status').notNull(),
+  decisionId: uuid('decision_id'),
+  reviewRevision: integer('review_revision'),
+  resultVersion: integer('result_version'),
+  resultOutcome: text('result_outcome'),
+  resultSealed: boolean('result_sealed'),
+  refusalCode: text('refusal_code'),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, t => [
+  // One command can claim one target/revision. A browser retry returns this same id.
+  // A refused command is immutable history, not a lock on the target. Only one pending
+  // request may claim a target/revision; a later authorized retry can therefore enqueue a
+  // fresh command after a transient role or worker refusal.
+  uniqueIndex('run_evaluation_review_command_target_uidx')
+    .on(t.runId, t.observationId, t.conditionId, t.expectedReviewRevision)
+    .where(sql`${t.status} = 'PENDING'`),
+  foreignKey({
+    columns: [t.observationId, t.conditionId],
+    foreignColumns: [runObservationEvaluation.observationId, runObservationEvaluation.conditionId],
+    name: 'run_evaluation_review_command_evaluation_fk',
+  }).onDelete('cascade'),
+  check('run_evaluation_review_command_revision', sql`${t.expectedReviewRevision} >= 0`),
+  check('run_evaluation_review_command_action', sql`${t.action} IN ('confirm','reject')`),
+  check('run_evaluation_review_command_replacement', sql`coalesce(
+    (${t.action} = 'confirm' AND ${t.replacementValue} IS NULL)
+    OR (${t.action} = 'reject' AND ${t.replacementValue} IN ('COMPLIANT','EXCEPTION','UNEVALUATED')),
+    false)`),
+  check('run_evaluation_review_command_rationale', sql`coalesce(
+    (${t.action} = 'confirm' AND ${t.rationale} IS NULL)
+    OR (${t.action} = 'reject' AND ${t.rationale} IS NOT NULL AND length(${t.rationale}) BETWEEN 1 AND 4000 AND btrim(${t.rationale}) <> ''),
+    false)`),
+  check('run_evaluation_review_command_actor', sql`length(btrim(${t.actorId})) BETWEEN 1 AND 255`),
+  check('run_evaluation_review_command_session', sql`length(btrim(${t.sessionId})) BETWEEN 1 AND 255`),
+  check('run_evaluation_review_command_status', sql`${t.status} IN ('PENDING','SUCCEEDED','REFUSED')`),
+  // Terminal metadata is all-or-nothing. `coalesce(..., false)` keeps NULL from passing a
+  // malformed terminal row through a CHECK's three-valued logic.
+  check('run_evaluation_review_command_completion', sql`coalesce((
+    (${t.status} = 'PENDING'
+      AND ${t.decisionId} IS NULL AND ${t.reviewRevision} IS NULL AND ${t.resultVersion} IS NULL
+      AND ${t.resultOutcome} IS NULL AND ${t.resultSealed} IS NULL AND ${t.refusalCode} IS NULL
+      AND ${t.processedAt} IS NULL)
+    OR
+    (${t.status} = 'SUCCEEDED'
+      AND ${t.decisionId} IS NOT NULL AND ${t.reviewRevision} >= 1 AND ${t.resultVersion} >= 1
+      AND ${t.resultOutcome} IN ('CANCELED','RUN_FAILED','INCONCLUSIVE','PENDING_CONFIRMATION','CONTROL_FAILURE','PASS')
+      AND ${t.resultSealed} IS NOT NULL AND ${t.refusalCode} IS NULL AND ${t.processedAt} IS NOT NULL)
+    OR
+    (${t.status} = 'REFUSED'
+      AND ${t.decisionId} IS NULL AND ${t.reviewRevision} IS NULL AND ${t.resultVersion} IS NULL
+      AND ${t.resultOutcome} IS NULL AND ${t.resultSealed} IS NULL
+      AND ${t.refusalCode} IN ('malformed','unauthorized','unknown','not-completed','sealed','not-pending','stale-revision','rationale-required','invalid-replacement')
+      AND ${t.processedAt} IS NOT NULL)
+  ), false)`),
+]);
+
 /** Agent work progress extends the shared audit engine; no duplicate Observation tables. */
 export const runAgentWork = pgTable('run_agent_work', {
   runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
@@ -1686,3 +1763,4 @@ export const runWait = pgTable('run_wait', {
 export type RunObservationEvaluationRow = typeof runObservationEvaluation.$inferSelect;
 export type RunResultReviewRow = typeof runResultReview.$inferSelect;
 export type RunEvaluationReviewRow = typeof runEvaluationReview.$inferSelect;
+export type RunEvaluationReviewCommandRow = typeof runEvaluationReviewCommand.$inferSelect;

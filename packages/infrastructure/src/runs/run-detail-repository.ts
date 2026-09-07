@@ -1,4 +1,4 @@
-import { evaluationReviewJoin, effectiveEvaluationConfirmation } from './effective-evaluation.js';
+import { evaluationReviewJoin, effectiveEvaluationConfirmation, effectiveEvaluationValue } from './effective-evaluation.js';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   EvaluationConfirmation,
@@ -153,7 +153,15 @@ export interface RunExceptionRow {
   readonly workItemId: string;
   readonly targetSystem: string;
   readonly populationRecordKey: string;
+  /** The immutable condition set captured when this finding was raised. */
   readonly conditionIds: readonly string[];
+  /**
+   * The condition set in the current effective evaluation overlay. This can differ from
+   * `conditionIds`: a human may remove one pending Agent-Judged Exception and classify a
+   * different pending condition as an Exception. The fingerprint and diagnostics remain
+   * bound to `conditionIds` and are never recomputed from this overlay.
+   */
+  readonly effectiveConditionIds: readonly string[];
   readonly diagnostics: readonly string[];
   readonly fingerprint: string;
   readonly raisedAt: string;
@@ -426,6 +434,26 @@ export class DrizzleRunDetailRepository {
       .where(eq(runException.runId, runId))
       .orderBy(asc(runException.exceptionId))
       .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+    const observationIds = rows.map((row) => row.observationId);
+    const effectiveRows = observationIds.length === 0 ? [] : await this.db
+      .select({
+        observationId: runObservationEvaluation.observationId,
+        conditionId: runObservationEvaluation.conditionId,
+      })
+      .from(runObservationEvaluation)
+      .leftJoin(runEvaluationReview, evaluationReviewJoin)
+      .where(and(
+        eq(runObservationEvaluation.runId, runId),
+        inArray(runObservationEvaluation.observationId, observationIds),
+        eq(effectiveEvaluationValue, 'EXCEPTION'),
+      ))
+      .orderBy(asc(runObservationEvaluation.observationId), asc(runObservationEvaluation.conditionId));
+    const effectiveByObservation = new Map<string, string[]>();
+    for (const row of effectiveRows) {
+      const conditions = effectiveByObservation.get(row.observationId) ?? [];
+      conditions.push(row.conditionId);
+      effectiveByObservation.set(row.observationId, conditions);
+    }
     return {
       total,
       rows: rows.map((row): RunExceptionRow => ({
@@ -435,6 +463,7 @@ export class DrizzleRunDetailRepository {
         targetSystem: row.targetSystem,
         populationRecordKey: row.populationRecordKey,
         conditionIds: row.conditionIds,
+        effectiveConditionIds: effectiveByObservation.get(row.observationId) ?? [],
         diagnostics: row.diagnostics,
         fingerprint: row.fingerprint,
         raisedAt: row.raisedAt.toISOString(),

@@ -5,13 +5,12 @@ import {
   type EvaluationValue,
   type ExecutablePlan,
   type JsonObject,
-  type Role,
   type RunRecord,
 } from '@intellifin/domain';
 
 import type { AuditUnitOfWork } from '../audit/ports.js';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
-import { authorizeCommandRole, recordAuthorizationDenial } from '../identity/authorize.js';
+import { authorizeCommandRole } from '../identity/authorize.js';
 import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
 import { sealResult, type SealResultContext, type CompleteRunInput } from './complete-run.js';
 import type { StoredRunResult } from './execution-ports.js';
@@ -92,6 +91,13 @@ export interface EvaluationReviewContext extends SealResultContext {
     decision: EvaluationReviewDecision,
     expectedReviewRevision: number,
   ): Promise<WriteEvaluationDecisionResult>;
+  /**
+   * Every transaction context must account for an effective Exception. A context without
+   * the worker-only signer must provide a fail-closed implementation that throws; leaving
+   * this optional would let a direct review write and seal a Result without its permanent
+   * Exception lineage.
+   */
+  ensureException: (observationId: string, raisedAt: string) => Promise<void>;
 }
 
 export interface EvaluationReviewRepository {
@@ -152,17 +158,11 @@ export type EvaluationReviewResult =
       readonly reason: string;
     };
 
-class Revoked extends Error {
-  constructor(readonly role: Role | null, reason: string) {
-    super(reason);
-  }
-}
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONDITION_ID = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
 const RATIONALE_MAX_LENGTH = 4_000;
 
-interface ParsedReviewRequest {
+export interface ParsedEvaluationReviewRequest {
   readonly runId: string;
   readonly observationId: string;
   readonly conditionId: string;
@@ -171,13 +171,13 @@ interface ParsedReviewRequest {
   readonly rationale: string | null;
 }
 
-type ReviewRequestParseResult = ParsedReviewRequest | { readonly error: EvaluationReviewRefusalCode };
+export type ReviewRequestParseResult = ParsedEvaluationReviewRequest | { readonly error: EvaluationReviewRefusalCode };
 
 function isEvaluationValue(value: unknown): value is EvaluationValue {
   return typeof value === 'string' && (EVALUATION_REVIEW_VALUES as readonly string[]).includes(value);
 }
 
-function parseRequest(value: unknown, action: EvaluationReviewAction): ReviewRequestParseResult {
+export function parseEvaluationReviewRequest(value: unknown, action: EvaluationReviewAction): ReviewRequestParseResult {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { error: 'malformed' };
   const record = value as Record<string, unknown>;
   const common = ['runId', 'observationId', 'conditionId', 'expectedReviewRevision'];
@@ -254,106 +254,142 @@ export async function reviewEvaluation(
   const permission = await authorizeCommandRole(dependencies, authorization);
   if (!permission.allowed) return refusal('unauthorized', permission.reason);
 
-  const parsed = parseRequest(input.request, action);
+  const parsed = parseEvaluationReviewRequest(input.request, action);
   if ('error' in parsed) return refusal(parsed.error);
   const request = parsed;
 
-  try {
-    return await dependencies.repository.transaction(request.runId, async (context) => {
-      const role = await context.authorizationRoles.findRole(input.session.userId);
-      const locked = authorizeAction(role, authorization.action);
-      if (!locked.allowed) throw new Revoked(role, locked.reason);
+  return dependencies.repository.transaction(request.runId, async (context) =>
+    reviewEvaluationInContext(dependencies, context, input, action, {
+      correlationId,
+      source: 'web',
+    }));
+}
 
-      const run = context.run;
-      if (!run) return refusal('unknown');
-      if (run.state !== 'COMPLETED') return refusal('not-completed');
+/**
+ * Execute a previously dispatched review in the caller's already locked transaction.
+ *
+ * This is deliberately separate from {@link reviewEvaluation}: the web command only
+ * authorizes and enqueues. The worker calls this function after locking the durable
+ * command row and the Run, so role reauthorization, the immutable decision, any newly
+ * raised Exception, the audit event and Result seal share one commit boundary.
+ */
+export async function reviewEvaluationInContext(
+  dependencies: Pick<EvaluationReviewDependencies, 'ids' | 'clock'>,
+  context: EvaluationReviewContext,
+  input: EvaluationReviewInput,
+  action: EvaluationReviewAction,
+  options: {
+    readonly correlationId: string;
+    readonly source: 'web' | 'worker';
+  },
+): Promise<EvaluationReviewResult> {
+  const parsed = parseEvaluationReviewRequest(input.request, action);
+  if ('error' in parsed) return refusal(parsed.error);
+  const request = parsed;
 
-      const result = await context.readResult();
-      if (!result) return refusal('unknown');
-      if (result.sealed) return refusal('sealed');
-      if (result.runState !== 'COMPLETED') return refusal('not-completed');
-      if (result.outcome !== 'PENDING_CONFIRMATION') return refusal('not-pending');
-
-      const reviewRevision = context.reviewRevision;
-      if (reviewRevision === null || reviewRevision !== request.expectedReviewRevision) {
-        return refusal('stale-revision');
-      }
-
-      const key = { observationId: request.observationId, conditionId: request.conditionId };
-      const target = await context.readReviewTarget(key);
-      if (!target || target.runId !== run.runId) return refusal('unknown');
-      if (target.origin !== 'AGENT_JUDGED' || target.confirmation !== 'pending') return refusal('not-pending');
-      const history = await context.readReviewDecisions(key);
-      if (history.length > 0) return refusal('not-pending');
-
-      const now = dependencies.clock.now().toISOString();
-      const decision: EvaluationReviewDecision = {
-        decisionId: dependencies.ids.next(),
-        runId: run.runId,
-        observationId: target.observationId,
-        conditionId: target.conditionId,
-        reviewRevision: reviewRevision + 1,
-        action,
-        originalOrigin: 'AGENT_JUDGED',
-        originalValue: target.value,
-        originalConfirmation: 'pending',
-        originalConfidence: target.confidence,
-        originalRationale: target.rationale,
-        originalEvidenceIds: [...target.evidenceIds],
-        effectiveOrigin: action === 'confirm' ? 'AGENT_JUDGED' : 'HUMAN',
-        effectiveValue: action === 'confirm' ? target.value : request.replacementValue as EvaluationValue,
-        effectiveConfirmation: action === 'confirm' ? 'confirmed' : null,
-        replacementValue: action === 'confirm' ? null : request.replacementValue,
-        rejectionRationale: action === 'confirm' ? null : request.rationale,
-        actorId: input.session.userId,
-        decidedAt: now,
-      };
-
-      const written = await context.writeDecision(decision, request.expectedReviewRevision);
-      if (written.status === 'stale-revision') return refusal('stale-revision');
-      if (written.status === 'already-decided') return refusal('not-pending');
-
-      const event = await context.auditEvents.append({
-        actor: { type: 'human', id: input.session.userId },
-        eventType: action === 'confirm' ? 'execution.evaluation-confirmed' : 'execution.evaluation-rejected',
-        source: 'web',
-        outcome: 'success',
-        aggregateId: run.runId,
-        correlationId,
-        sessionId: input.session.sessionId,
-        payload: {
-          observationId: target.observationId,
-          conditionId: target.conditionId,
-          action,
-          reviewRevision: decision.reviewRevision,
-          originalValue: target.value,
-          effectiveValue: decision.effectiveValue,
-          ...(action === 'reject'
-            ? { replacementValue: decision.replacementValue, rationale: decision.rejectionRationale }
-            : {}),
-          occurredAt: now,
-        } as JsonObject,
-      });
-      await context.notifyTimeline(event.sequence);
-
-      // `sealResult` re-reads the effective evaluation counts from this same transaction.
-      // It returns the still-open Result when another pending evaluation remains and seals
-      // exactly once when this decision removed the last pending row.
-      const sealed = await sealResult(context, {
-        run,
-        state: 'COMPLETED',
-        at: now,
-        plan: await context.frozenPlan(),
-      } satisfies CompleteRunInput);
-      const finalResult = sealed ?? (await context.readResult());
-      if (!finalResult) throw new Error('Evaluation review committed without a Result');
-      return { ok: true, action, decision, result: finalResult };
+  const role = await context.authorizationRoles.findRole(input.session.userId);
+  const authorizationAction = action === 'confirm' ? 'evaluation.confirm' as const : 'evaluation.reject' as const;
+  const locked = authorizeAction(role, authorizationAction);
+  if (!locked.allowed) {
+    await context.auditEvents.append({
+      actor: { type: 'human', id: input.session.userId },
+      eventType: 'security.denied',
+      source: options.source,
+      outcome: 'denied',
+      sessionId: input.session.sessionId,
+      correlationId: options.correlationId,
+      aggregateId: context.run?.runId,
+      payload: { action: authorizationAction, role: role ?? null, reason: locked.reason },
     });
-  } catch (error) {
-    if (error instanceof Revoked) {
-      await recordAuthorizationDenial(dependencies, authorization, error.role, error.message);
-      return refusal('unauthorized', error.message);
-    }
-    throw error;
+    return refusal('unauthorized', locked.reason);
   }
+
+  const run = context.run;
+  if (!run) return refusal('unknown');
+  if (run.state !== 'COMPLETED') return refusal('not-completed');
+
+  const result = await context.readResult();
+  if (!result) return refusal('unknown');
+  if (result.sealed) return refusal('sealed');
+  if (result.runState !== 'COMPLETED') return refusal('not-completed');
+  if (result.outcome !== 'PENDING_CONFIRMATION') return refusal('not-pending');
+
+  const reviewRevision = context.reviewRevision;
+  if (reviewRevision === null || reviewRevision !== request.expectedReviewRevision) {
+    return refusal('stale-revision');
+  }
+
+  const key = { observationId: request.observationId, conditionId: request.conditionId };
+  const target = await context.readReviewTarget(key);
+  if (!target || target.runId !== run.runId) return refusal('unknown');
+  if (target.origin !== 'AGENT_JUDGED' || target.confirmation !== 'pending') return refusal('not-pending');
+  const history = await context.readReviewDecisions(key);
+  if (history.length > 0) return refusal('not-pending');
+
+  const now = dependencies.clock.now().toISOString();
+  const decision: EvaluationReviewDecision = {
+    decisionId: dependencies.ids.next(),
+    runId: run.runId,
+    observationId: target.observationId,
+    conditionId: target.conditionId,
+    reviewRevision: reviewRevision + 1,
+    action,
+    originalOrigin: 'AGENT_JUDGED',
+    originalValue: target.value,
+    originalConfirmation: 'pending',
+    originalConfidence: target.confidence,
+    originalRationale: target.rationale,
+    originalEvidenceIds: [...target.evidenceIds],
+    effectiveOrigin: action === 'confirm' ? 'AGENT_JUDGED' : 'HUMAN',
+    effectiveValue: action === 'confirm' ? target.value : request.replacementValue as EvaluationValue,
+    effectiveConfirmation: action === 'confirm' ? 'confirmed' : null,
+    replacementValue: action === 'confirm' ? null : request.replacementValue,
+    rejectionRationale: action === 'confirm' ? null : request.rationale,
+    actorId: input.session.userId,
+    decidedAt: now,
+  };
+
+  const written = await context.writeDecision(decision, request.expectedReviewRevision);
+  if (written.status === 'stale-revision') return refusal('stale-revision');
+  if (written.status === 'already-decided') return refusal('not-pending');
+
+  if (decision.effectiveValue === 'EXCEPTION') {
+    await context.ensureException(target.observationId, now);
+  }
+
+  const event = await context.auditEvents.append({
+    actor: { type: 'human', id: input.session.userId },
+    eventType: action === 'confirm' ? 'execution.evaluation-confirmed' : 'execution.evaluation-rejected',
+    source: options.source,
+    outcome: 'success',
+    aggregateId: run.runId,
+    correlationId: options.correlationId,
+    sessionId: input.session.sessionId,
+    payload: {
+      observationId: target.observationId,
+      conditionId: target.conditionId,
+      action,
+      reviewRevision: decision.reviewRevision,
+      originalValue: target.value,
+      effectiveValue: decision.effectiveValue,
+      ...(action === 'reject'
+        ? { replacementValue: decision.replacementValue, rationale: decision.rejectionRationale }
+        : {}),
+      occurredAt: now,
+    } as JsonObject,
+  });
+  await context.notifyTimeline(event.sequence);
+
+  // `sealResult` re-reads the effective evaluation counts from this same transaction.
+  // It returns the still-open Result when another pending evaluation remains and seals
+  // exactly once when this decision removed the last pending row.
+  const sealed = await sealResult(context, {
+    run,
+    state: 'COMPLETED',
+    at: now,
+    plan: await context.frozenPlan(),
+  } satisfies CompleteRunInput);
+  const finalResult = sealed ?? (await context.readResult());
+  if (!finalResult) throw new Error('Evaluation review committed without a Result');
+  return { ok: true, action, decision, result: finalResult };
 }

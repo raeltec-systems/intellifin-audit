@@ -16,8 +16,9 @@ import { evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
  * THERE IS NO "Open" LINK. Exception Detail is a later epic, and inventing an `href` to a
  * page that does not exist would satisfy the letter of the rule while sending an auditor
  * to a 404 — the same call `DataTable`'s optional first-cell `href` records. What the
- * reader needs is here instead: the conditions that failed, their evaluation cards, and
- * the fingerprint that makes this finding recognisable in a later Run.
+ * reader needs is here instead: the immutable conditions that raised this finding, the
+ * current effective Exception conditions, and the fingerprint that makes the original
+ * finding recognisable in a later Run.
  *
  * THE STATE IS `Open`, and that is derived rather than stored. FR-42's Exception state
  * machine starts at Open and disposition is Epic 6, so no Exception in this environment
@@ -72,48 +73,73 @@ export function ExceptionCard({
           <dd className="ls-mono">{utcStamp(exception.raisedAt)}</dd>
         </div>
         <div>
-          <dt>Fingerprint</dt>
+          <dt>Original fingerprint</dt>
           {/* HMAC-SHA-256 hex. The Run is deliberately outside it, so the same control
               failure recurring next month fingerprints the same and is recognisable. */}
-          <Digest as="dd" label="Exception fingerprint" value={exception.fingerprint} />
+          <Digest as="dd" label="Original Exception fingerprint" value={exception.fingerprint} />
         </div>
       </dl>
-      <h3 className="ls-overline">Conditions violated</h3>
+      <h3 className="ls-overline">Original Exception conditions</h3>
+      <p>
+        Recorded when this finding was raised. The fingerprint and diagnostics below belong
+        to this immutable condition set.
+      </p>
       <ul className="ls-plain-list">
         {exception.conditionIds.map((conditionId) => {
-          const evaluation = evaluations.find((entry) => entry.conditionId === conditionId) ?? null;
-          const origin = evaluation === null ? null : evaluationOriginWord(evaluation.origin, evaluation.confirmation);
-          const value = evaluation === null ? null : evaluationValueWord(evaluation.value);
           const text = conditionText(conditionId);
           return (
             <li className="ls-evaluation" key={conditionId}>
-              <p className="ls-evaluation__badges">
-                {origin === null ? null : <StatusBadge family="evaluation-origin" state={origin} />}
-                {value === null ? null : <StatusBadge family="evaluation-value" state={value} />}
-              </p>
               <p className="ls-evaluation__condition">
                 <span className="ls-mono">{conditionId}</span>
                 {text === null ? null : <> — {text}</>}
               </p>
-              {/* A rule's own reason. The deterministic evaluator writes no free text, and
-                  `rationale` is null for every evaluation this epic produces; it is
-                  rendered as untrusted anyway, because a later origin can carry one. */}
-              {evaluation?.rationale ? (
-                <UntrustedList field="evaluation rationale" values={[evaluation.rationale]} />
-              ) : null}
-              {evaluation?.diagnostic ? (
-                <UntrustedList field="evaluation diagnostic" values={[evaluation.diagnostic]} />
-              ) : null}
             </li>
           );
         })}
       </ul>
+      <h3 className="ls-overline">Current effective Exception conditions</h3>
+      {exception.effectiveConditionIds.length === 0 ? (
+        <p>
+          No current evaluation is an Exception. This retained finding is historical and
+          does not count toward the current effective Result.
+        </p>
+      ) : (
+        <ul className="ls-plain-list">
+          {exception.effectiveConditionIds.map((conditionId) => {
+            const evaluation = evaluations.find((entry) => entry.conditionId === conditionId) ?? null;
+            const origin = evaluation === null ? null : evaluationOriginWord(evaluation.origin, evaluation.confirmation);
+            const value = evaluation === null ? null : evaluationValueWord(evaluation.value);
+            const text = conditionText(conditionId);
+            return (
+              <li className="ls-evaluation" key={conditionId}>
+                <p className="ls-evaluation__badges">
+                  {origin === null ? null : <StatusBadge family="evaluation-origin" state={origin} />}
+                  {value === null ? null : <StatusBadge family="evaluation-value" state={value} />}
+                </p>
+                <p className="ls-evaluation__condition">
+                  <span className="ls-mono">{conditionId}</span>
+                  {text === null ? null : <> — {text}</>}
+                </p>
+                {/* A rule's own reason. The deterministic evaluator writes no free text, and
+                    `rationale` is null for every evaluation this epic produces; it is
+                    rendered as untrusted anyway, because a later origin can carry one. */}
+                {evaluation?.rationale ? (
+                  <UntrustedList field="evaluation rationale" values={[evaluation.rationale]} />
+                ) : null}
+                {evaluation?.diagnostic ? (
+                  <UntrustedList field="evaluation diagnostic" values={[evaluation.diagnostic]} />
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {/*
         The compiled rules' own reasons — for P-2 this is where "report every prohibited
         pair" lives. A diagnostic MUST name an unknown value, so a Target System that
         answers with a sentence addressed to the auditor gets it stored here. It is data.
       */}
-      <UntrustedList field="Exception diagnostics" values={exception.diagnostics} />
+      <UntrustedList field="Original Exception diagnostics" values={exception.diagnostics} />
     </li>
   );
 }

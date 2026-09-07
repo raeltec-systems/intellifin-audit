@@ -5,8 +5,8 @@ import { revalidatePath } from 'next/cache';
 import {
   EVALUATION_REVIEW_REFUSALS,
   EVALUATION_REVIEW_VALUES,
-  confirmEvaluation,
-  rejectEvaluation,
+  dispatchEvaluationReview,
+  type EvaluationReviewDispatchResult,
   type EvaluationReviewResult,
 } from '@intellifin/application';
 import {
@@ -35,6 +35,7 @@ export interface RejectEvaluationRequest extends ConfirmEvaluationRequest {
 
 export type EvaluationReviewActionResult =
   | EvaluationReviewResult
+  | EvaluationReviewDispatchResult
   | { readonly ok: false; readonly code: 'malformed' | 'unknown-outcome'; readonly reason: string; readonly unknownOutcome?: boolean };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -99,7 +100,7 @@ async function unknownFailure(): Promise<EvaluationReviewActionResult> {
   return { ok: false, code: 'unknown-outcome', reason: UNKNOWN, unknownOutcome: true };
 }
 
-/** Confirm one pending Agent-Judged evaluation through the application command. */
+/** Confirm one pending Agent-Judged evaluation by enqueueing a worker-owned command. */
 export async function confirmEvaluationAction(request: unknown): Promise<EvaluationReviewActionResult> {
   try {
     // This endpoint authorizes before inspecting input or constructing a database port.
@@ -109,15 +110,16 @@ export async function confirmEvaluationAction(request: unknown): Promise<Evaluat
       return { ok: false, code: 'malformed', reason: EVALUATION_REVIEW_REFUSALS.malformed };
     }
     const runtime = await getRuntime();
-    const result = await confirmEvaluation(
+    const result = await dispatchEvaluationReview(
       {
-        repository: new PostgresEvaluationReviewRepository(runtime.db),
+        dispatcher: new PostgresEvaluationReviewRepository(runtime.db),
         roles: new DrizzleRoleRepository(runtime.db),
         unitOfWork: new PostgresAuditUnitOfWork(runtime.db),
         ids: new CryptoUuidV7Generator(),
         clock: new SystemClock(),
       },
       { session: decision.session, request },
+      'confirm',
     );
     if (result.ok) revalidateRun(request.runId as string);
     return result;
@@ -126,7 +128,7 @@ export async function confirmEvaluationAction(request: unknown): Promise<Evaluat
   }
 }
 
-/** Reject one pending Agent-Judged evaluation with a fixed replacement and rationale. */
+/** Reject one pending Agent-Judged evaluation by enqueueing a worker-owned command. */
 export async function rejectEvaluationAction(request: unknown): Promise<EvaluationReviewActionResult> {
   try {
     // The rejection endpoint has its own gate; a confirm permission cannot be substituted.
@@ -136,15 +138,16 @@ export async function rejectEvaluationAction(request: unknown): Promise<Evaluati
       return { ok: false, code: 'malformed', reason: EVALUATION_REVIEW_REFUSALS.malformed };
     }
     const runtime = await getRuntime();
-    const result = await rejectEvaluation(
+    const result = await dispatchEvaluationReview(
       {
-        repository: new PostgresEvaluationReviewRepository(runtime.db),
+        dispatcher: new PostgresEvaluationReviewRepository(runtime.db),
         roles: new DrizzleRoleRepository(runtime.db),
         unitOfWork: new PostgresAuditUnitOfWork(runtime.db),
         ids: new CryptoUuidV7Generator(),
         clock: new SystemClock(),
       },
       { session: decision.session, request },
+      'reject',
     );
     if (result.ok) revalidateRun(request.runId as string);
     return result;

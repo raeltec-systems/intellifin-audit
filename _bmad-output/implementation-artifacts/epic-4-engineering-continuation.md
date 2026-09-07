@@ -2,6 +2,15 @@
 
 Status: INCOMPLETE — not accepted, not merged.
 
+## Current checkpoint — durable review dispatch (not accepted)
+
+- Latest fully hosted-verified SHA: `fbd9c10d3d0827b1ff06c7910288ea2b9e99fbc3`; CI `34152702255` passes all four jobs. PostgreSQL: 439 tests / 35 files, including fresh/populated migrations and drift. Browser isolation mutation gate: all 15 deliberate guard removals detected by passing-baseline/failing-mutant assertions. This is local Chromium, not remote Solari evidence.
+- This checkpoint adds generation 37 durable review commands, a dedicated worker queue, fresh authorization at execution, worker-only Exception signing, immutable original proposal/finding history, and effective-condition UI projection. Web reports pending until worker transaction commits. Recovery retains pending work when the signer is unavailable.
+- Local focused review/application/repository/queue/UI validation: 82 tests pass. Production worker E2E and PostgreSQL command regressions are committed for hosted execution; candidate acceptance is pending those checks.
+- Stories 4.4–4.11 remain under final verification. Inspector access, exact frozen authentication destinations, seeded P4 model navigation and additional hydrated/worker abuse checks remain separate worktree checkpoints. No merge or deployment.
+- Live gate remains blocked by unavailable Solari credentials and production worker evidence/credential/fingerprint configuration. Next action: push this coherent review checkpoint, verify hosted results, then deliver inspector/authentication checkpoints and repeat affected gates.
+- Delivery: this entry travels with the atomic commit; the matching commit is pushed immediately after creation. It does not declare its own untested SHA accepted.
+
 ## Baseline and handoff
 
 - Branch: `codex/epic-4-agent-runs`; draft PR #24.
@@ -18,7 +27,7 @@ At `94978c9`, root TypeScript checking failed with `TS1161: Unterminated regular
 
 Current-head CI run 34098512827 ended `action_required`. Green run 34098492301 tested `982fd78`, before the migration repair, and is not evidence for that repair. No gate is waived.
 
-## Remaining work
+## Initial remaining work (historical handoff)
 
 - Re-run real PostgreSQL 18 fresh and populated upgrade tests; inspect migration compatibility and historical evidence preservation.
 - Verify provider-identity and authentication regressions, including cleanup discoverability and approved positive authentication postconditions.

@@ -16,10 +16,10 @@ export const dynamic = 'force-dynamic';
 /**
  * Run Detail → Exceptions.
  *
- * Every Exception this Run raised, ordered by identifier, with the conditions it failed
- * and their evaluation cards. There are no disposition controls: FR-42's Open → Under
- * Review → Confirmed / Not an Exception transitions are Epic 6, and a control that does
- * nothing is worse than a control that is not there yet.
+ * Every Exception this Run raised, ordered by identifier, with its immutable condition
+ * set and the current effective Exception conditions. There are no disposition controls:
+ * FR-42's Open → Under Review → Confirmed / Not an Exception transitions are Epic 6, and
+ * a control that does nothing is worse than a control that is not there yet.
  */
 export default async function RunExceptionsPage({
   params,

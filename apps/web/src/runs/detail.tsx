@@ -2,10 +2,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { isActiveRunState, type RunRecord } from '@intellifin/domain';
+import type { EvaluationReviewCommandStatus } from '@intellifin/application';
 import {
   CryptoUuidV7Generator,
   DrizzleRunDetailRepository,
   DrizzleRunRepository,
+  PostgresEvaluationReviewRepository,
   type RunEvaluationRow,
   type RunResultRow,
 } from '@intellifin/infrastructure';
@@ -79,6 +81,8 @@ export interface EvaluationReviewRead {
   readonly evaluations: readonly RunEvaluationRow[];
   readonly reviewRevision: number;
   readonly pendingCount: number | null;
+  /** Safe durable command state for the exact current review revision. */
+  readonly commandStatuses: readonly EvaluationReviewCommandStatus[];
 }
 
 /**
@@ -101,6 +105,8 @@ export async function readEvaluationReview(runId: string): Promise<EvaluationRev
     detail.readPendingEvaluationCount(runId),
   ]);
   const evaluations = await detail.readEvaluations(runId, observations.rows.map((row) => row.observationId));
+  const commandStatuses = await new PostgresEvaluationReviewRepository(runtime.db)
+    .readCommandStatuses(runId, reviewRevision, observations.rows.map((row) => row.observationId));
   // The unsealed publication is intentionally unchanged after each review decision. The
   // adjacent query counts the current effective rows, while an unreadable publication
   // keeps the count unavailable rather than presenting a partial Result as complete.
@@ -112,6 +118,7 @@ export async function readEvaluationReview(runId: string): Promise<EvaluationRev
     evaluations,
     reviewRevision,
     pendingCount,
+    commandStatuses,
   };
 }
 
@@ -225,6 +232,7 @@ export async function RunDetailFrame({
           evaluations={evaluationReview.evaluations}
           reviewRevision={evaluationReview.reviewRevision}
           pendingCount={evaluationReview.pendingCount}
+          commandStatuses={evaluationReview.commandStatuses}
         />
       ) : null}
       {children}

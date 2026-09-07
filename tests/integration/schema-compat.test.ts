@@ -98,6 +98,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Story 4.9. Human decisions retain the original Agent-Judged proposal in an
       // immutable ledger beside the mutable Result review revision.
       'run_evaluation_review',
+      'run_evaluation_review_command',
       'run_evidence',
       'run_evidence_capture',
       // Story 3.5. The sealed Evidence package of one Run, and the Audit Trail integrity
@@ -173,10 +174,14 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       ['action', 'actor_id', 'condition_id', 'decided_at', 'decision_id', 'effective_confirmation', 'effective_origin', 'effective_value', 'observation_id', 'original_confidence', 'original_confirmation', 'original_evidence_ids', 'original_origin', 'original_rationale', 'original_value', 'rejection_rationale', 'replacement_value', 'review_revision', 'run_id'],
     ],
     [
+      'run_evaluation_review_command',
+      ['action', 'actor_id', 'command_id', 'condition_id', 'correlation_id', 'decision_id', 'expected_review_revision', 'observation_id', 'processed_at', 'rationale', 'refusal_code', 'replacement_value', 'requested_at', 'result_outcome', 'result_sealed', 'result_version', 'review_revision', 'run_id', 'session_id', 'status'],
+    ],
+    [
       'run_result_review',
       ['revision', 'run_id'],
     ],
-  ])('has exactly the generation-36 columns on %s', async (table, columns) => {
+  ])('has exactly the reviewed release columns on %s', async (table, columns) => {
     const rows = await sql<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = ${table}

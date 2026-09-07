@@ -1,9 +1,13 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { EVALUATION_REVIEW_VALUES, type EvaluationReviewResult } from '@intellifin/application';
+import {
+  EVALUATION_REVIEW_REFUSALS,
+  EVALUATION_REVIEW_VALUES,
+  type EvaluationReviewCommandStatus,
+} from '@intellifin/application';
 import type { EvaluationValue } from '@intellifin/domain';
 import type { RunEvaluationRow, RunResultRow } from '@intellifin/infrastructure';
 
@@ -40,6 +44,8 @@ export interface EvaluationReviewProps {
   readonly reviewRevision: number;
   /** Exact count from the published Result, or null when that document was unreadable. */
   readonly pendingCount: number | null;
+  /** Durable command state for the exact target/revision read by the server. */
+  readonly commandStatuses?: readonly EvaluationReviewCommandStatus[];
 }
 
 type PendingDecision = {
@@ -57,6 +63,10 @@ type ReviewMessage = {
 
 function reviewKey(row: Pick<RunEvaluationRow, 'observationId' | 'conditionId'>): string {
   return `${row.observationId}:${row.conditionId}`;
+}
+
+function commandStatusKey(command: Pick<EvaluationReviewCommandStatus, 'observationId' | 'conditionId'>): string {
+  return `${command.observationId}:${command.conditionId}`;
 }
 
 function valueLabel(value: EvaluationValue): string {
@@ -101,6 +111,13 @@ function resultRefusal(result: EvaluationReviewActionResult): string {
     : 'The evaluation decision could not be confirmed. Reload the Run before trying again.';
 }
 
+function commandRefusal(code: EvaluationReviewCommandStatus['refusalCode']): string {
+  if (code !== null && code !== 'unknown' && Object.hasOwn(EVALUATION_REVIEW_REFUSALS, code)) {
+    return EVALUATION_REVIEW_REFUSALS[code];
+  }
+  return 'The review worker refused this command. Reload the Run before trying again.';
+}
+
 /**
  * The review cards for Agent-Judged evaluations.
  *
@@ -114,6 +131,7 @@ export function EvaluationReview({
   evaluations,
   reviewRevision,
   pendingCount,
+  commandStatuses = [],
 }: EvaluationReviewProps): React.JSX.Element | null {
   const router = useRouter();
   const headingId = useId();
@@ -123,6 +141,31 @@ export function EvaluationReview({
   const [busy, setBusy] = useState(false);
   const [dialogRefusal, setDialogRefusal] = useState<string | null>(null);
   const [message, setMessage] = useState<ReviewMessage | null>(null);
+  // Keep the row unavailable during the short interval between an accepted Server
+  // Action and the refreshed server projection. A response that was actually refused
+  // never enters this map, so it cannot mask another reviewer's pending command.
+  const [localPendingCommands, setLocalPendingCommands] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setLocalPendingCommands((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [key, commandId] of Object.entries(current)) {
+        const serverStatus = commandStatuses.find((status) => commandStatusKey(status) === key);
+        if (serverStatus === undefined) continue;
+        if (serverStatus.status === 'PENDING') {
+          if (next[key] !== serverStatus.commandId) {
+            next[key] = serverStatus.commandId;
+            changed = true;
+          }
+        } else {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [commandStatuses]);
 
   // The server supplies a fresh aggregate count. Rows are intentionally bounded, so this
   // component never derives a global count from the visible sample.
@@ -142,7 +185,10 @@ export function EvaluationReview({
   }
 
   function begin(row: RunEvaluationRow, action: 'confirm' | 'reject'): void {
-    if (!eligibleForReview(row, result) || busy) return;
+    const key = reviewKey(row);
+    const commandPending = localPendingCommands[key] !== undefined ||
+      commandStatuses.some((status) => commandStatusKey(status) === key && status.status === 'PENDING');
+    if (!eligibleForReview(row, result) || commandPending || busy) return;
     setDialogRefusal(null);
     setMessage(null);
     setPending({ action, row, replacementValue: action === 'reject' ? selectReplacement(row) : null });
@@ -189,12 +235,15 @@ export function EvaluationReview({
     }
 
     if (response.ok) {
+      if ('commandId' in response && typeof response.commandId === 'string') {
+        setLocalPendingCommands((current) => ({ ...current, [reviewKey(target.row)]: response.commandId }));
+      }
       setPending(null);
       setDialogRefusal(null);
       setMessage({
         tone: 'success',
-        title: target.action === 'confirm' ? 'Evaluation confirmed.' : 'Evaluation rejected.',
-        body: 'The Result is refreshed from the stored review decision.',
+        title: 'Review submitted.',
+        body: 'The worker will apply this decision and refresh the Result. Reload the Run to see the stored outcome.',
       });
       router.refresh();
     } else if (response.code === 'stale-revision' || response.code === 'unknown-outcome' ||
@@ -237,8 +286,13 @@ export function EvaluationReview({
             const key = reviewKey(row);
             const proposal = proposalFor(row);
             const reviewDecision = decisionFor(row);
+            const commandStatus = commandStatuses.find((status) => commandStatusKey(status) === key);
+            const commandPending = localPendingCommands[key] !== undefined || commandStatus?.status === 'PENDING';
             const eligible = eligibleForReview(row, result);
             const selected = selectReplacement(row);
+            const commandPendingReason = commandPending
+              ? 'A review decision is already queued for this evaluation.'
+              : undefined;
             return (
               <li className="ls-evaluation ls-stack" key={key}>
                 <p className="ls-evaluation__condition">
@@ -300,6 +354,14 @@ export function EvaluationReview({
                   </section>
                 ) : null}
 
+                {commandPending ? (
+                  <p role="status">Review queued. The worker is processing this decision.</p>
+                ) : commandStatus?.status === 'REFUSED' ? (
+                  <p role="alert">The review worker refused this command: {commandRefusal(commandStatus.refusalCode)}</p>
+                ) : commandStatus?.status === 'SUCCEEDED' && reviewDecision === null ? (
+                  <p role="status">The review worker completed this command. Reload the Run to read the stored decision.</p>
+                ) : null}
+
                 {eligible && proposal !== null ? (
                   <div className="ls-stack">
                     <div className="ls-dialog__field">
@@ -323,13 +385,19 @@ export function EvaluationReview({
                       </select>
                     </div>
                     <div className="ls-dialog__actions">
-                      <Button variant="primary" busy={busy} onClick={() => begin(row, 'confirm')}>
+                      <Button
+                        variant="primary"
+                        busy={busy}
+                        disabledReason={commandPendingReason}
+                        onClick={() => begin(row, 'confirm')}
+                      >
                         Confirm evaluation
                       </Button>
                       <Button
                         variant="secondary"
                         busy={busy}
-                        disabledReason={selected === null ? 'Choose a replacement value before rejecting this evaluation.' : undefined}
+                        disabledReason={commandPendingReason ??
+                          (selected === null ? 'Choose a replacement value before rejecting this evaluation.' : undefined)}
                         onClick={() => begin(row, 'reject')}
                       >
                         Reject evaluation

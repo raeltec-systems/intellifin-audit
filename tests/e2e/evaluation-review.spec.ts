@@ -1,5 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
 
 import { GATE_CHECKS } from '@intellifin/domain';
 import {
@@ -13,6 +15,7 @@ import {
 
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { EXCEPTION_FINGERPRINT_KEY, EXCEPTION_FINGERPRINT_KEY_ID } from './credentials';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 const ids = new CryptoUuidV7Generator();
@@ -27,6 +30,58 @@ const stepExecutions = { confirmed: ids.next(), rejected: ids.next() };
 let sql: Sql;
 let db: Database;
 let auditorId: string;
+let stopReviewWorker: (() => Promise<void>) | undefined;
+let reviewWorkerLog = '';
+
+/** Launch the production review consumer only after the browser has observed PENDING. */
+async function startReviewWorker(): Promise<void> {
+  if (stopReviewWorker !== undefined) return;
+  reviewWorkerLog = '';
+  let failure: string | null = null;
+  const worker = spawn(process.execPath, [resolve('apps/worker/dist/main.js')], {
+    cwd: process.cwd(),
+    windowsHide: true,
+    env: {
+      ...process.env,
+      SERVICE_NAME: 'worker',
+      MODEL_PROVIDER: '',
+      MODEL_ID: '',
+      MODEL_API_KEY: '',
+      ANTHROPIC_API_KEY: '',
+      OPENAI_API_KEY: '',
+      AGENT_ANTHROPIC_MODEL: '',
+      AGENT_OPENAI_MODEL: '',
+      CREDENTIAL_CAPABILITIES: '{}',
+      CREDENTIAL_TOKENS: '{}',
+      EXCEPTION_FINGERPRINT_KEY,
+      EXCEPTION_FINGERPRINT_KEY_ID,
+      SOLARI_API_KEY: '',
+      EVIDENCE_S3_ENDPOINT: '',
+      EVIDENCE_S3_REGION: '',
+      EVIDENCE_S3_BUCKET: '',
+      EVIDENCE_S3_ACCESS_KEY_ID: '',
+      EVIDENCE_S3_SECRET_ACCESS_KEY: '',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  worker.on('error', (error) => { failure = error.name; });
+  const exited = new Promise<void>((resolveExit) => {
+    worker.once('close', (code) => {
+      if (code !== null && code !== 0) failure = `Worker exited with code ${code}`;
+      resolveExit();
+    });
+  });
+  worker.stdout.on('data', (data) => { reviewWorkerLog += String(data); });
+  worker.stderr.on('data', (data) => { reviewWorkerLog += String(data); });
+  stopReviewWorker = async () => {
+    worker.kill('SIGTERM');
+    await exited;
+  };
+  await expect.poll(() => {
+    if (failure) throw new Error(`${failure}: ${reviewWorkerLog}`);
+    return reviewWorkerLog.includes('Heartbeat loop started');
+  }, { timeout: 60_000 }).toBe(true);
+}
 
 async function scan(page: Page): Promise<void> {
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -171,9 +226,12 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  await stopReviewWorker?.();
+  stopReviewWorker = undefined;
   if (!sql) return;
   try {
     for (const runId of Object.values(runs)) {
+      await sql`DELETE FROM pgboss.job WHERE name = 'evaluation-reviews' AND data->>'runId' = ${runId}`;
       // Removing the original evaluation cascades the immutable review row for a disposable
       // fixture; a production review row cannot be deleted while that evaluation exists.
       await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
@@ -197,7 +255,16 @@ test.afterAll(async () => {
   }
 });
 
+test.afterEach(async () => {
+  await stopReviewWorker?.();
+  stopReviewWorker = undefined;
+});
+
 test.describe('the Evaluation Review surface as an Auditor', () => {
+  test.skip(
+    process.env['PLAYWRIGHT_BASE_URL'] !== undefined,
+    'This journey starts its own production worker to prove PENDING → completion; an external server may already have a competing consumer.',
+  );
   test.use({ storageState: AUTH_STATE.auditor });
 
   test('rejects with a fixed replacement and required rationale, then preserves proposal history', async ({ page }) => {
@@ -217,6 +284,13 @@ test.describe('the Evaluation Review surface as an Auditor', () => {
     await expect(dialog.getByLabel('Rationale', { exact: true })).toBeFocused();
     await dialog.getByLabel('Rationale', { exact: true }).fill('The retained evidence does not support the proposal.');
     await dialog.getByRole('button', { name: 'Reject evaluation', exact: true }).click();
+    await expect(page.getByText('Review submitted.', { exact: true })).toBeVisible();
+    await expect.poll(async () => {
+      const [row] = await sql`SELECT status,result_version,result_sealed FROM run_evaluation_review_command WHERE run_id=${runs.rejected} ORDER BY requested_at DESC LIMIT 1`;
+      return row;
+    }).toMatchObject({ status: 'PENDING', result_version: null, result_sealed: null });
+    await expect(page.getByText('Review queued. The worker is processing this decision.', { exact: true })).toBeVisible();
+    await startReviewWorker();
     await expect.poll(async () => {
       const [row] = await sql`SELECT version,sealed,outcome FROM run_result WHERE run_id=${runs.rejected}`;
       return row;
@@ -225,6 +299,7 @@ test.describe('the Evaluation Review surface as an Auditor', () => {
       const [row] = await sql`SELECT action,effective_origin,effective_value,rejection_rationale FROM run_evaluation_review WHERE run_id=${runs.rejected}`;
       return row;
     }).toMatchObject({ action: 'reject', effective_origin: 'HUMAN', effective_value: 'UNEVALUATED', rejection_rationale: 'The retained evidence does not support the proposal.' });
+    await page.reload();
     await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();
     await expect(page.getByText('The Result is sealed. Review history is read-only.', { exact: true })).toBeVisible();
     await expect(page.getByText('Synthetic original machine proposal', { exact: true })).toBeVisible();
@@ -239,6 +314,13 @@ test.describe('the Evaluation Review surface as an Auditor', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Confirm evaluation', exact: true }).click();
+    await expect(page.getByText('Review submitted.', { exact: true })).toBeVisible();
+    await expect.poll(async () => {
+      const [row] = await sql`SELECT status,result_version,result_sealed FROM run_evaluation_review_command WHERE run_id=${runs.confirmed} ORDER BY requested_at DESC LIMIT 1`;
+      return row;
+    }).toMatchObject({ status: 'PENDING', result_version: null, result_sealed: null });
+    await expect(page.getByText('Review queued. The worker is processing this decision.', { exact: true })).toBeVisible();
+    await startReviewWorker();
     await expect.poll(async () => {
       const [row] = await sql`SELECT version,sealed,outcome FROM run_result WHERE run_id=${runs.confirmed}`;
       return row;
@@ -247,6 +329,7 @@ test.describe('the Evaluation Review surface as an Auditor', () => {
       const [row] = await sql`SELECT action,effective_origin,effective_value,effective_confirmation FROM run_evaluation_review WHERE run_id=${runs.confirmed}`;
       return row;
     }).toMatchObject({ action: 'confirm', effective_origin: 'AGENT_JUDGED', effective_value: 'COMPLIANT', effective_confirmation: 'confirmed' });
+    await page.reload();
     await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();
     await expect(page.getByText('The Result is sealed. Review history is read-only.', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Confirm evaluation', exact: true })).toHaveCount(0);

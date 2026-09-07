@@ -292,3 +292,18 @@ describe('generation 36 evaluation-review storage', () => {
     expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (36)');
   });
 });
+
+describe('generation 37 durable evaluation-review commands', () => {
+  const sql = migration('0037_chunky_bill_hollister.sql');
+
+  it('stores only a bounded command row and appends an immutable terminal-state guard', () => {
+    expect(sql).toContain('CREATE TABLE "run_evaluation_review_command"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "run_evaluation_review_command_target_uidx"');
+    expect(sql).toContain('WHERE "run_evaluation_review_command"."status" = \'PENDING\'');
+    expect(sql).toContain('CONSTRAINT "run_evaluation_review_command_completion" CHECK');
+    expect(sql).toContain('CREATE FUNCTION "run_evaluation_review_command_immutable"()');
+    expect(sql).toContain('CREATE TRIGGER "run_evaluation_review_command_immutable"');
+    expect(sql).toContain("OLD.status <> 'PENDING'");
+    expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (37)');
+  });
+});

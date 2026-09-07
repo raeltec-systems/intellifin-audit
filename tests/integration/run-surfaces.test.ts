@@ -270,6 +270,7 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
       populationRecordKey: 'E-001',
       targetSystem: 'accessgate',
       conditionIds: ['C1'],
+      effectiveConditionIds: ['C1'],
       fingerprint: 'a'.repeat(64),
     });
     const evaluations = await detail().readEvaluations(runs.first, [exceptions.rows[0]!.observationId]);

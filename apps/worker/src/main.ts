@@ -1,8 +1,9 @@
-import { acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
+  createExceptionFingerprinter, PostgresEvaluationReviewRepository, startEvaluationReviewWorker, startEvaluationReviewRecovery,
   PostgresWaitRepository, startWaitWorker, startWaitRecovery,
   PostgresAgentWorkRepository, PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
@@ -66,6 +67,7 @@ async function main(): Promise<void> {
 
   let interval: NodeJS.Timeout | undefined;
   let stopNotificationDelivery: (() => Promise<void>) | undefined;
+  let stopReviewRecovery: (() => Promise<void>) | undefined;
   let stopWaitRecovery: (() => Promise<void>) | undefined;
   let stopRecovery: (() => void) | undefined;
   let stopPopulationRecovery: (() => Promise<void>) | undefined;
@@ -82,6 +84,7 @@ async function main(): Promise<void> {
     await stopNotificationDelivery?.();
     stopRecovery?.();
     await stopWaitRecovery?.();
+    await stopReviewRecovery?.();
     await stopPopulationRecovery?.();
     await stopIntegritySweep?.();
     await stopWorkspaceReaper?.();
@@ -157,6 +160,18 @@ async function main(): Promise<void> {
   const waits = new PostgresWaitRepository(db);
   await startWaitWorker(queue, waits, clock);
   stopWaitRecovery = startWaitRecovery(waits, clock, () => telemetry.error('Wait recovery failed'));
+  // Human review is durable worker work even when acquisition or browser credentials
+  // are unavailable. Only this process owns the fingerprint closure; the web enqueues
+  // an actor-bound command and reports it as pending until this transaction commits.
+  const reviewRepository = new PostgresEvaluationReviewRepository(db, {
+    exceptions: config.EXCEPTION_FINGERPRINT_KEY === undefined ? undefined : createExceptionFingerprinter({
+      keyId: config.EXCEPTION_FINGERPRINT_KEY_ID,
+      key: config.EXCEPTION_FINGERPRINT_KEY,
+    }),
+  });
+  const review = { repository: reviewRepository, clock, ids: new CryptoUuidV7Generator() };
+  await startEvaluationReviewWorker(queue, (job) => executeEvaluationReviewCommand(review, job.commandId));
+  stopReviewRecovery = startEvaluationReviewRecovery(db, () => telemetry.captureError('Fatal worker error', new Error('Evaluation review recovery failed'), {}));
   const stoppable = { repository: populationRepository, clock };
   if (evidence.enabled) {
     const store = createS3EvidenceStore(evidence.config);

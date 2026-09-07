@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   authorize: vi.fn(),
   runtime: vi.fn(),
-  confirm: vi.fn(),
-  reject: vi.fn(),
+  dispatch: vi.fn(),
   revalidatePath: vi.fn(),
   telemetry: vi.fn(),
 }));
@@ -18,8 +17,7 @@ vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@intellifin/application', () => ({
   EVALUATION_REVIEW_VALUES: ['COMPLIANT', 'EXCEPTION', 'UNEVALUATED'],
   EVALUATION_REVIEW_REFUSALS: { malformed: 'Choose a valid evaluation review.' },
-  confirmEvaluation: mocks.confirm,
-  rejectEvaluation: mocks.reject,
+  dispatchEvaluationReview: mocks.dispatch,
 }));
 vi.mock('@intellifin/infrastructure', () => ({
   CryptoUuidV7Generator: class { next(): string { return '019823ab-0000-7000-8000-000000000099'; } },
@@ -50,8 +48,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.authorize.mockResolvedValue({ allowed: true, session, role: 'auditor' });
   mocks.runtime.mockResolvedValue({ db: {}, telemetry: { captureError: mocks.telemetry } });
-  mocks.confirm.mockResolvedValue({ ok: true, action: 'confirm', decision: {}, result: {} });
-  mocks.reject.mockResolvedValue({ ok: true, action: 'reject', decision: {}, result: {} });
+  mocks.dispatch.mockImplementation(async (_dependencies, _input, action) => ({
+    ok: true,
+    status: 'accepted',
+    pending: true,
+    commandId: '019823ab-0000-7000-8000-000000000099',
+    action,
+    runId: RUN_ID,
+    expectedReviewRevision: 4,
+  }));
 });
 
 describe('evaluation review Server Action boundary', () => {
@@ -66,7 +71,7 @@ describe('evaluation review Server Action boundary', () => {
     expect(await confirmEvaluationAction(hostile)).toEqual({ ok: false, code: 'unauthorized', reason });
     expect(mocks.authorize).toHaveBeenCalledWith('evaluation.confirm');
     expect(mocks.runtime).not.toHaveBeenCalled();
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.dispatch).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -79,14 +84,14 @@ describe('evaluation review Server Action boundary', () => {
     { ...confirmRequest, conditionId: 'bad condition' },
   ])('refuses malformed confirmation request %# before constructing dependencies', async request => {
     expect(await confirmEvaluationAction(request)).toMatchObject({ ok: false, code: 'malformed' });
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.dispatch).not.toHaveBeenCalled();
     expect(mocks.runtime).not.toHaveBeenCalled();
   });
 
   it('passes the fresh review revision and authorized session to confirmation', async () => {
     const result = await confirmEvaluationAction(confirmRequest);
     expect(result).toMatchObject({ ok: true, action: 'confirm' });
-    expect(mocks.confirm).toHaveBeenCalledWith(expect.any(Object), { session, request: confirmRequest });
+    expect(mocks.dispatch).toHaveBeenCalledWith(expect.any(Object), { session, request: confirmRequest }, 'confirm');
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/runs/${RUN_ID}`);
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/notifications');
   });
@@ -95,27 +100,27 @@ describe('evaluation review Server Action boundary', () => {
     expect(await rejectEvaluationAction({ ...rejectRequest, replacementValue: 'model supplied' })).toMatchObject({ ok: false });
     expect(await rejectEvaluationAction({ ...rejectRequest, rationale: '   ' })).toMatchObject({ ok: false });
     expect(await rejectEvaluationAction({ ...rejectRequest, rationale: 'x'.repeat(4001) })).toMatchObject({ ok: false });
-    expect(mocks.reject).not.toHaveBeenCalled();
+    expect(mocks.dispatch).not.toHaveBeenCalled();
   });
 
   it('passes the selected fixed replacement and rationale to rejection', async () => {
     const result = await rejectEvaluationAction(rejectRequest);
     expect(result).toMatchObject({ ok: true, action: 'reject' });
     expect(mocks.authorize).toHaveBeenCalledWith('evaluation.reject');
-    expect(mocks.reject).toHaveBeenCalledWith(expect.any(Object), { session, request: rejectRequest });
+    expect(mocks.dispatch).toHaveBeenCalledWith(expect.any(Object), { session, request: rejectRequest }, 'reject');
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/runs/${RUN_ID}/evidence`);
   });
 
   it('returns application refusals without revalidating the page', async () => {
-    mocks.confirm.mockResolvedValue({ ok: false, code: 'stale-revision', reason: 'This Result changed while you were deciding. Reload the Run.' });
+    mocks.dispatch.mockResolvedValue({ ok: false, code: 'unauthorized', reason: 'You are not allowed to review this evaluation.' });
     const result = await confirmEvaluationAction(confirmRequest);
-    expect(result).toMatchObject({ ok: false, code: 'stale-revision' });
+    expect(result).toMatchObject({ ok: false, code: 'unauthorized' });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it('marks a lost response unknown rather than claiming that no decision happened', async () => {
     const sqlWithRationale = "insert into run_evaluation_review (rationale) values ('do not log this')";
-    mocks.confirm.mockRejectedValue(new Error(sqlWithRationale));
+    mocks.dispatch.mockRejectedValue(new Error(sqlWithRationale));
     const result = await confirmEvaluationAction(confirmRequest);
     expect(result).toMatchObject({ ok: false, code: 'unknown-outcome', unknownOutcome: true });
     expect(JSON.stringify(result)).not.toContain('Nothing was changed');

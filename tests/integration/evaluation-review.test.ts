@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { completeRun, confirmEvaluation, rejectEvaluation, type AgentJudgedEvaluationRow } from '@intellifin/application';
-import { GATE_CHECKS, observationDigest, type ObservationRecord } from '@intellifin/domain';
-import { createDb, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, SystemClock, type Database, type Sql } from '@intellifin/infrastructure';
+import { completeRun, confirmEvaluation, dispatchEvaluationReview, executeEvaluationReviewCommand, rejectEvaluation, type AgentJudgedEvaluationRow } from '@intellifin/application';
+import { exceptionFingerprint, GATE_CHECKS, observationDigest, utf8Bytes, type ObservationRecord } from '@intellifin/domain';
+import { createDb, createExceptionFingerprinter, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository, EVALUATION_REVIEW_QUEUE, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, SystemClock, type Database, type Sql } from '@intellifin/infrastructure';
 import { PostgresEvaluationReviewRepository } from '../../packages/infrastructure/src/runs/evaluation-review-repository.js';
 import { withRunExecutionContext } from '../../packages/infrastructure/src/runs/adapter-execution-repository.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
@@ -28,6 +28,8 @@ describe.skipIf(!url)('human evaluation review on PostgreSQL', () => {
     try {
       for (const runId of runIds) {
         // Review history follows the evaluation's lifetime; direct ledger deletion is forbidden.
+        await sql`DELETE FROM pgboss.job WHERE name=${EVALUATION_REVIEW_QUEUE} AND data->>'runId'=${runId}`;
+        await sql`DELETE FROM run_evaluation_review_command WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
         await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
@@ -46,7 +48,7 @@ describe.skipIf(!url)('human evaluation review on PostgreSQL', () => {
     } finally { await sql.end({ timeout: 5 }); }
   });
   const dependencies = () => ({ repository: new PostgresEvaluationReviewRepository(db), roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db), ids, clock });
-  async function seed(count = 2) {
+  async function seed(count = 2, conditionId = 'C2') {
     const runId = ids.next(); runIds.push(runId);
     const at = clock.now().toISOString();
     await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
@@ -67,7 +69,7 @@ describe.skipIf(!url)('human evaluation review on PostgreSQL', () => {
           coverage: 'COVERED',
           corroboration: 'MATCHED',
           evaluation: {
-            conditionId: 'C2',
+            conditionId,
             origin: 'AGENT_JUDGED',
             value: 'COMPLIANT',
             confirmation: 'pending',
@@ -78,7 +80,7 @@ describe.skipIf(!url)('human evaluation review on PostgreSQL', () => {
           },
           agentProposal: {
             observationId,
-            conditionId: 'C2',
+            conditionId,
             value: 'COMPLIANT',
             confidence: '0.950000',
             rationale: 'Synthetic original machine proposal',
@@ -131,12 +133,113 @@ describe.skipIf(!url)('human evaluation review on PostgreSQL', () => {
       action: 'confirm', effective_origin: 'AGENT_JUDGED', effective_value: 'COMPLIANT', effective_confirmation: 'confirmed', replacement_value: null, rejection_rationale: null,
     }]);
   });
-  it('rejects to Exception with rationale and seals Control Failure', async () => {
+  it('refuses an unconfigured direct Exception review before it can seal the Result', async () => {
     const {runId,observationIds} = await seed(1);
-    const result = await rejectEvaluation(dependencies(), {session,request:{runId,observationId:observationIds[0],conditionId:'C2',expectedReviewRevision:0,replacementValue:'EXCEPTION',rationale:'The reviewed record violates the control'}});
-    expect(result).toMatchObject({ok:true,action:'reject',result:{version:2,sealed:true,outcome:'CONTROL_FAILURE',runState:'COMPLETED'}});
-    expect(await sql`SELECT action,effective_origin,effective_value,effective_confirmation,replacement_value,rejection_rationale FROM run_evaluation_review WHERE run_id=${runId}`).toEqual([{
-      action: 'reject', effective_origin: 'HUMAN', effective_value: 'EXCEPTION', effective_confirmation: null, replacement_value: 'EXCEPTION', rejection_rationale: 'The reviewed record violates the control',
-    }]);
+    await expect(rejectEvaluation(dependencies(), {session,request:{runId,observationId:observationIds[0],conditionId:'C2',expectedReviewRevision:0,replacementValue:'EXCEPTION',rationale:'The reviewed record violates the control'}})).rejects.toThrow('worker signer unavailable');
+    expect(await sql`SELECT count(*)::int AS n FROM run_evaluation_review WHERE run_id=${runId}`).toEqual([{n:0}]);
+    expect(await sql`SELECT version,sealed,outcome FROM run_result WHERE run_id=${runId}`).toEqual([{version:1,sealed:false,outcome:'PENDING_CONFIRMATION'}]);
+  });
+
+  it('dispatches a durable worker command and creates the signed Exception in the same transaction', async () => {
+    const {runId, observationIds} = await seed(1, 'C1');
+    const observationId = observationIds[0]!;
+    const request = {
+      runId,
+      observationId,
+      conditionId: 'C1',
+      expectedReviewRevision: 0,
+      replacementValue: 'EXCEPTION',
+      rationale: 'The reviewed record violates the control.',
+    } as const;
+    const accepted = await dispatchEvaluationReview({
+      dispatcher: new PostgresEvaluationReviewRepository(db),
+      roles: new DrizzleRoleRepository(db),
+      unitOfWork: new PostgresRunsUnitOfWork(db),
+      ids,
+      clock,
+    }, { session, request }, 'reject');
+    expect(accepted).toMatchObject({ ok: true, status: 'accepted', pending: true, action: 'reject', runId });
+    if (!accepted.ok) return;
+    const conflicting = await dispatchEvaluationReview({
+      dispatcher: new PostgresEvaluationReviewRepository(db),
+      roles: new DrizzleRoleRepository(db),
+      unitOfWork: new PostgresRunsUnitOfWork(db),
+      ids,
+      clock,
+    }, { session, request: { runId, observationId, conditionId: 'C1', expectedReviewRevision: 0 } }, 'confirm');
+    expect(conflicting).toMatchObject({ ok: false, code: 'already-pending' });
+
+    const key = 'review-worker-test-fingerprint-key';
+    const worker = await executeEvaluationReviewCommand({
+      repository: new PostgresEvaluationReviewRepository(db, {
+        exceptions: createExceptionFingerprinter({ keyId: 'review-worker-test', key }),
+      }),
+      ids,
+      clock,
+    }, accepted.commandId);
+    expect(worker).toMatchObject({ ok: true, action: 'reject', result: { sealed: true, outcome: 'CONTROL_FAILURE' } });
+    expect(await executeEvaluationReviewCommand({
+      repository: new PostgresEvaluationReviewRepository(db, {
+        exceptions: createExceptionFingerprinter({ keyId: 'review-worker-test', key }),
+      }),
+      ids,
+      clock,
+    }, accepted.commandId)).toBeNull();
+
+    const [command] = await sql`SELECT status,decision_id::text AS decision_id,review_revision,result_version,result_outcome,result_sealed FROM run_evaluation_review_command WHERE command_id=${accepted.commandId}`;
+    expect(command).toMatchObject({ status: 'SUCCEEDED', review_revision: 1, result_version: 2, result_outcome: 'CONTROL_FAILURE', result_sealed: true });
+    const [raised] = await sql`SELECT exception_id::text AS exception_id,condition_ids,diagnostics,fingerprint,fingerprint_key_id FROM run_exception WHERE run_id=${runId} AND observation_id=${observationId}`;
+    expect(raised).toMatchObject({ condition_ids: ['C1'], diagnostics: [], fingerprint_key_id: 'review-worker-test' });
+    expect(raised?.fingerprint).toBe(exceptionFingerprint(utf8Bytes(key), {
+      procedureId,
+      templateId: 'P-4',
+      targetSystem: 'review-target',
+      populationRecordKey: 'E-0',
+      conditionIds: ['C1'],
+    }));
+    expect(await sql`SELECT count(*)::int AS n FROM run_evaluation_review WHERE run_id=${runId}`).toEqual([{n: 1}]);
+  });
+
+  it('keeps a refused command as history while allowing an authorized retry of the same revision', async () => {
+    const {runId, observationIds} = await seed(1, 'C1');
+    const observationId = observationIds[0]!;
+    const request = { runId, observationId, conditionId: 'C1', expectedReviewRevision: 0 } as const;
+    const enqueue = () => dispatchEvaluationReview({
+      dispatcher: new PostgresEvaluationReviewRepository(db),
+      roles: new DrizzleRoleRepository(db),
+      unitOfWork: new PostgresRunsUnitOfWork(db),
+      ids,
+      clock,
+    }, { session, request }, 'confirm');
+    const first = await enqueue();
+    expect(first).toMatchObject({ ok: true, pending: true });
+    if (!first.ok) return;
+
+    await sql`DELETE FROM user_role WHERE user_id=${author}`;
+    try {
+      const refused = await executeEvaluationReviewCommand({
+        repository: new PostgresEvaluationReviewRepository(db, {
+          exceptions: createExceptionFingerprinter({ keyId: 'review-worker-test', key: 'review-worker-test-key' }),
+        }),
+        ids,
+        clock,
+      }, first.commandId);
+      expect(refused).toMatchObject({ ok: false, code: 'unauthorized' });
+    } finally {
+      await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`;
+    }
+
+    const second = await enqueue();
+    expect(second).toMatchObject({ ok: true, pending: true });
+    if (!second.ok) return;
+    expect(second.commandId).not.toBe(first.commandId);
+    await executeEvaluationReviewCommand({
+      repository: new PostgresEvaluationReviewRepository(db, {
+        exceptions: createExceptionFingerprinter({ keyId: 'review-worker-test', key: 'review-worker-test-key' }),
+      }),
+      ids,
+      clock,
+    }, second.commandId);
+    expect(await sql`SELECT status FROM run_evaluation_review_command WHERE run_id=${runId} ORDER BY requested_at,command_id`).toEqual([{status:'REFUSED'},{status:'SUCCEEDED'}]);
   });
 });

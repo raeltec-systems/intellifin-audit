@@ -260,6 +260,13 @@
       "when": 1788798810592,
       "tag": "0036_zippy_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788803988907,
+      "tag": "0037_chunky_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

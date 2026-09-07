@@ -52,3 +52,5 @@ export * from './notifications/notification-worker.js';
 export * from './runs/agent-work-repository.js';
 
 export { PostgresEvaluationReviewRepository } from './runs/evaluation-review-repository.js';
+
+export * from './runs/evaluation-review-queue.js';

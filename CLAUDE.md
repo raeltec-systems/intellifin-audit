@@ -1232,3 +1232,8 @@ Run destructive guard mutations only in a clean detached linked worktree, never 
 ## ProdConsole catalog fidelity
 
 Golden journeys must derive the registered label and entry-origin contracts from the seed catalog, not a custom superset or deeper URL. ProdConsole already serves Snapshot taken at; declaring that existing label changes no golden timestamp or expected outcome and prevents a missing registration field from being hidden by test setup. Capture time cannot substitute for page publication time. The seeded home page still requires actual model-directed navigation to its configuration page; a journey starting directly at that deeper URL does not prove the seeded route.
+
+
+### Epic 4 durable human review completion
+
+Human review commands use a dedicated pg-boss queue and a durable PENDING/SUCCEEDED/REFUSED row. The web only authorizes/enqueues; the worker rechecks authority and commits the decision, worker-signed Exception and Result together. Pending-only uniqueness permits a fresh retry after an immutable refusal. Preserve an Exception's original conditions/fingerprint/diagnostics; display the effective review condition set separately. Missing worker fingerprint configuration must leave commands recoverable, never seal a result through a weaker path.

@@ -383,6 +383,7 @@ const exceptionRow = (): RunExceptionRow => ({
   targetSystem: 'accessgate',
   populationRecordKey: 'E-001',
   conditionIds: ['C1'],
+  effectiveConditionIds: ['C1'],
   diagnostics: ['account_status is active'],
   fingerprint: 'c'.repeat(64),
   raisedAt: '2026-09-06T09:03:00.000Z',
@@ -431,6 +432,65 @@ describe('the Exception list row', () => {
     expect(html).toContain('••••');
     expect(html).toContain('Masked by the Population Source binding');
     expect(html).not.toContain('E-001');
+  });
+
+  it('keeps the original finding separate from a changed effective condition set', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ExceptionCard, {
+        exception: {
+          ...exceptionRow(),
+          conditionIds: ['C-A', 'C-B'],
+          effectiveConditionIds: ['C-B', 'C-C'],
+        },
+        evaluations: [
+          {
+            observationId: '019823ab-0000-7000-8000-0000000000b1',
+            conditionId: 'C-A',
+            origin: 'HUMAN',
+            value: 'COMPLIANT',
+            confirmation: null,
+            confidence: null,
+            rationale: 'A was removed by the human review.',
+            diagnostic: null,
+          },
+          {
+            observationId: '019823ab-0000-7000-8000-0000000000b1',
+            conditionId: 'C-B',
+            origin: 'RULE',
+            value: 'EXCEPTION',
+            confirmation: null,
+            confidence: null,
+            rationale: null,
+            diagnostic: null,
+          },
+          {
+            observationId: '019823ab-0000-7000-8000-0000000000b1',
+            conditionId: 'C-C',
+            origin: 'HUMAN',
+            value: 'EXCEPTION',
+            confirmation: null,
+            confidence: null,
+            rationale: 'C was added by the human review.',
+            diagnostic: null,
+          },
+        ],
+        conditionText: (conditionId) => `Condition ${conditionId}`,
+        masked: false,
+      }),
+    );
+    const currentStart = html.indexOf('Current effective Exception conditions');
+    const diagnosticsStart = html.indexOf('Original Exception diagnostics');
+    expect(currentStart).toBeGreaterThan(-1);
+    expect(diagnosticsStart).toBeGreaterThan(currentStart);
+    const original = html.slice(0, currentStart);
+    const current = html.slice(currentStart, diagnosticsStart);
+    expect(original).toContain('C-A');
+    expect(original).toContain('C-B');
+    expect(current).toContain('C-B');
+    expect(current).toContain('C-C');
+    expect(current).not.toContain('C-A');
+    expect(html).toContain('Original fingerprint');
+    expect(html).toContain('Original Exception diagnostics');
   });
 });
 

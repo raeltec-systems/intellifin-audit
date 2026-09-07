@@ -167,4 +167,37 @@ describe('Evaluation review surface', () => {
     expect(html).toContain('Agent-Judged evaluations await confirmation; the count is unavailable');
     expect(html).not.toContain('1 Agent-Judged evaluations await confirmation');
   });
+
+  it('shows a durable queued command and keeps both review controls unavailable', () => {
+    const html = render({ commandStatuses: [{
+      commandId: '019823ab-0000-7000-8000-000000000099',
+      observationId: OBSERVATION_ID,
+      conditionId: 'C2',
+      action: 'confirm',
+      expectedReviewRevision: 4,
+      status: 'PENDING',
+      refusalCode: null,
+      requestedAt: '2026-09-07T09:00:00.000Z',
+      processedAt: null,
+    }] });
+    expect(html).toContain('Review queued. The worker is processing this decision.');
+    expect(html).toContain('A review decision is already queued for this evaluation.');
+    expect((html.match(/aria-disabled="true"/g) ?? []).length).toBe(2);
+  });
+
+  it('renders a fixed refusal reason from the durable command projection', () => {
+    const html = render({ commandStatuses: [{
+      commandId: '019823ab-0000-7000-8000-000000000099',
+      observationId: OBSERVATION_ID,
+      conditionId: 'C2',
+      action: 'reject',
+      expectedReviewRevision: 4,
+      status: 'REFUSED',
+      refusalCode: 'unauthorized',
+      requestedAt: '2026-09-07T09:00:00.000Z',
+      processedAt: '2026-09-07T09:00:01.000Z',
+    }] });
+    expect(html).toContain('The review worker refused this command: You are not allowed to review this evaluation.');
+    expect(html).not.toContain('secret');
+  });
 });

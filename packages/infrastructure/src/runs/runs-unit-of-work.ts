@@ -12,6 +12,8 @@ import { evidencePackageContext } from './evidence-package-repository.js';
 import { runResultContext } from './result-repository.js';
 import { DrizzleRunRepository } from './run-repository.js';
 export const RUNS_QUEUE = 'runs';
+/** Human review commands use a separate consumer while sharing the pg-boss database. */
+export const EVALUATION_REVIEW_QUEUE = 'evaluation-reviews';
 export class PostgresRunsUnitOfWork implements AuditUnitOfWork<RunsUnitOfWorkContext> {
   constructor(private readonly db: Database, private readonly dependencies: PostgresAuditDependencies = {}) {}
   execute<T>(work: (context: RunsUnitOfWorkContext) => Promise<T>): Promise<T> {
@@ -77,4 +79,5 @@ export class PostgresRunCancellationRepository implements RunCancellationReposit
 export async function migrateRunsQueue(db: Database): Promise<void> {
   const queue = new PgBoss({ db: queueDatabase(db), migrate: false, createSchema: false, schedule: false, supervise: false });
   await queue.createQueue(RUNS_QUEUE, { retryLimit: 3, retryDelay: 5, expireInSeconds: 180 });
+  await queue.createQueue(EVALUATION_REVIEW_QUEUE, { retryLimit: 3, retryDelay: 5, expireInSeconds: 180 });
 }
