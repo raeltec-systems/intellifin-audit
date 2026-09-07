@@ -46,3 +46,11 @@ Checkpoint transport note: `162d030014a42e489638fe568f68475ad63418ae` accidental
 ## Positive authentication checkpoint
 
 The prior marker accepted arbitrary accounts and suffixes. The new exact-account unit regression fails against `8e3389e03de953b88bb9d14ed858b208f6803d7f`; repaired auth/browser/application tests pass (65 in the focused root run; 111 in the combined Northstar/action suite). Failed form submission discards the potentially secret-bearing page with context/browser close fallbacks, retaining provider cleanup identity. Authentication redirects must remain within the selected target, even if another destination is also configured. Real-browser regression adds fresh/valid-existing/stale/unrelated/invalid/wrong-account/suffix/cross-target/failed-submit cases. Local Chromium is unavailable; these browser tests await hosted CI and are not yet accepted.
+
+## Verified repair baseline
+
+`966e4780fa83d1e0c0a6c7b7fbc91a2f66135ab9` is pushed and all CI 34130364168 jobs pass: typecheck/boundaries/unit; PostgreSQL 18 fresh migration, schema drift, 392 integration tests (25 files), including real populated sealed upgrade and 10 real Chromium authentication cases; container build/startup guards; full accessibility and shell browser suite. This is the verified A/B/C repair baseline, not Epic4 acceptance.
+
+This further migration-regression checkpoint replaces placeholder evidence digests with actual synthetic artifact bytes and their SHA-256 digests and verifies those bytes after upgrade and repeat migration. The final-schema migrator still runs unchanged. Its hosted verification is pending. Next: complete4.4 capture and registration plus the4.6 model loop, then durable waits/review and golden/negative journeys.
+
+Remote acceptance blocker confirmed by read-only inspection: no local Solari credential; Railway production worker `84394c42-5018-4cb4-9a7a-707b2ca1fe4a` in project `ade2dc6b-9e91-4ecf-bba8-68638389125d`, environment `1ea4d58f-afab-498f-9dcd-a195e0009026`, has no `SOLARI_API_KEY`. OAuth returns variable names only. Existing Northstar domain is `northstar-production-b312.up.railway.app`; no infrastructure or variables were changed. Model key names exist in production but their values are not available to this checkout. No live-provider acceptance or deployment claimed.

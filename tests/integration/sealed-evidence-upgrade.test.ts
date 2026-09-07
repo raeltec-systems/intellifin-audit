@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,6 +44,23 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       expect(await runMigrations(historicalUrl, { migrationsFolder: await prefix('before', 31) })).toBe(31);
       sql = createSqlClient(historicalUrl, { max: 1 });
       const db = createDb(sql);
+      // The historical rows name real synthetic artifacts, with their real byte digests.
+      // The migrator owns metadata only; it must not replace the evidence these rows name.
+      const populationBytes = Buffer.from('employee_id,full_name\nE-SYNTH-1,Synthetic Leaver\n');
+      const envelopeBytes = Buffer.from('{"synthetic":true,"source":"historical-workbook"}');
+      const referenceBytes = Buffer.from('{"roles":[{"role":"reader","allowed":true}]}');
+      const populationKey = join(temporary, 'population.csv');
+      const envelopeKey = join(temporary, 'population-envelope.json');
+      const referenceKey = join(temporary, 'reference.json');
+      await writeFile(populationKey, populationBytes);
+      await writeFile(envelopeKey, envelopeBytes);
+      await writeFile(referenceKey, referenceBytes);
+      const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+      const assertOriginalBytes = async () => {
+        expect(await readFile(populationKey)).toEqual(populationBytes);
+        expect(await readFile(envelopeKey)).toEqual(envelopeBytes);
+        expect(await readFile(referenceKey)).toEqual(referenceBytes);
+      };
       const ids = new CryptoUuidV7Generator();
       const author = ids.next(), runId = ids.next(), referenceId = ids.next(), populationId = ids.next();
       const version = activeRunVersion(ids.next(), ids.next(), author);
@@ -56,9 +73,9 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
         await tx`INSERT INTO audit_run(run_id,request_token,correlation_id,procedure_id,version_id,version_number,procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
           VALUES(${runId},${ids.next()},${ids.next()},${version.procedureId},${version.versionId},1,'Synthetic historical Run','2026-08-01','2026-08-31','COMPLETED','STANDARD',${author},'synthetic-session','auditor','2026-09-01T09:00:00Z')`;
         await tx`INSERT INTO population_evidence(run_id,evidence_id,object_key,envelope_key,raw_digest,envelope_digest,size,state,required)
-          VALUES(${runId},${populationId},'synthetic/population','synthetic/envelope',${'a'.repeat(64)},${'b'.repeat(64)},7,'REGISTERED',true)`;
+          VALUES(${runId},${populationId},${populationKey},${envelopeKey},${digest(populationBytes)},${digest(envelopeBytes)},${populationBytes.length},'REGISTERED',true)`;
         await tx`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,state,required)
-          VALUES(${referenceId},${runId},'reference-source','synthetic-reference','synthetic/reference',${'c'.repeat(64)},9,'REGISTERED',true)`;
+          VALUES(${referenceId},${runId},'reference-source','synthetic-reference',${referenceKey},${digest(referenceBytes)},${referenceBytes.length},'REGISTERED',true)`;
         await tx`INSERT INTO run_session_step(run_id,step_id,ordinal,registration_id,display_name,action,state,attempts,evidence_id)
           VALUES(${runId},'reference-step',1,'synthetic-reference','Reference','extract-adapter','ACQUIRED',1,${referenceId})`;
         await tx`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,action,state,attempt,started_at,completed_at)
@@ -96,6 +113,7 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       await assertProtected();
       expect(await runMigrations(historicalUrl)).toBeGreaterThanOrEqual(32);
       await assertProtected();
+      await assertOriginalBytes();
       expect(await sql`SELECT to_jsonb(e)-'captured_at'-'capture_method'-'capture_time_source' AS value FROM run_evidence e WHERE run_id=${runId}`).toEqual(beforeEvidence);
       expect(await sql`SELECT to_jsonb(e)-'captured_at'-'capture_method'-'capture_time_source' AS value FROM population_evidence e WHERE run_id=${runId}`).toEqual(beforePopulation);
       expect(await sql`SELECT to_jsonb(r) AS value FROM run_result r WHERE run_id=${runId}`).toEqual(beforeResult);
@@ -117,6 +135,7 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       expect(await sql`SELECT to_jsonb(r) AS value FROM run_result r WHERE run_id=${runId}`).toEqual(beforeResult);
       expect(await sql`SELECT to_jsonb(p) AS value FROM run_evidence_package p WHERE run_id=${runId}`).toEqual(beforeSeal);
       await assertProtected();
+      await assertOriginalBytes();
     } finally {
       if (sql) await sql.end({ timeout: 5 });
       if (created) await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);
