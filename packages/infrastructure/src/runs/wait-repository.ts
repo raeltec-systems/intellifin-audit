@@ -1,8 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
-import { AWAITING_AUDITOR_TIMEOUT_MS } from '@intellifin/application';
+import {
+  AWAITING_AUDITOR_TIMEOUT_MS,
+  createEscalationNotification,
+  escalationNotificationRecipients,
+} from '@intellifin/application';
 import type {
   EscalationOption,
+  EscalationDetails,
   RunWait,
   WaitContext,
   WaitJob,
@@ -13,9 +18,10 @@ import type {
   RecoverableWait,
   VersionedRun,
 } from '@intellifin/application';
-import { DrizzleRoleRepository } from '../identity/role-repository.js';
+import { DrizzleNotificationRecipientReader, DrizzleRoleRepository } from '../identity/role-repository.js';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
+import { DrizzleNotificationWriter } from '../notifications/notification-repository.js';
 import { queueDatabase } from '../procedures/derivation-queue.js';
 import { withRunExecutionContext } from './adapter-execution-repository.js';
 
@@ -30,6 +36,9 @@ const WAKE_EXPIRE_SECONDS = 180;
 // application-owned open-wait unique index remains the authoritative guard; this slot is
 // defence in depth for a duplicate send during the four-hour wait window.
 const WAKE_SINGLETON_SECONDS = AWAITING_AUDITOR_TIMEOUT_MS / 1000;
+const DETAIL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
+const DETAIL_TEXT_LIMIT = 8192;
+const DETAIL_EVIDENCE_LIMIT = 100;
 
 type RawRow = Record<string, unknown>;
 
@@ -98,6 +107,57 @@ function parseWait(row: RawRow): RunWait | null {
     answerOptionId,
     actor,
   };
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  let parsed = value;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+}
+
+function detailIdentifier(value: unknown): string | null {
+  return typeof value === 'string' && DETAIL_IDENTIFIER.test(value) ? value : null;
+}
+
+function escalationEventMetadata(
+  value: unknown,
+  wait: RunWait,
+): { readonly stepId: string | null; readonly supportingEvidenceIds: readonly string[] | null } | null {
+  const payload = objectValue(value);
+  if (payload === null || payload.waitId !== wait.waitId || payload.kind !== wait.kind) return null;
+
+  const rawStepId = payload.stepId;
+  const stepId = rawStepId === undefined || rawStepId === null ? null : detailIdentifier(rawStepId);
+  if (rawStepId !== undefined && rawStepId !== null && stepId === null) return null;
+
+  const rawEvidenceIds = payload.supportingEvidenceIds;
+  if (rawEvidenceIds === undefined) return { stepId, supportingEvidenceIds: null };
+  if (!Array.isArray(rawEvidenceIds) || rawEvidenceIds.length > DETAIL_EVIDENCE_LIMIT) return null;
+  const supportingEvidenceIds = rawEvidenceIds.flatMap((id): string[] =>
+    typeof id === 'string' && isUuidText(id) ? [id.toLowerCase()] : [],
+  );
+  return supportingEvidenceIds.length === rawEvidenceIds.length
+    ? { stepId, supportingEvidenceIds }
+    : null;
+}
+
+function agentQuestion(value: unknown): string | null {
+  const response = objectValue(value);
+  const uncertainty = response === null ? null : objectValue(response.uncertainty);
+  if (response === null || response.schemaVersion !== 1 || uncertainty === null ||
+      (uncertainty.kind !== 'ambiguous' && uncertainty.kind !== 'insufficient-evidence')) return null;
+  const rationale = uncertainty.rationale;
+  return typeof rationale === 'string' && rationale.trim().length > 0 && rationale.length <= DETAIL_TEXT_LIMIT
+    ? rationale
+    : null;
 }
 
 async function readWait(tx: Transaction, runId: string, waitId?: string): Promise<RunWait | null> {
@@ -169,6 +229,62 @@ export class PostgresWaitRepository implements WaitRepository {
             if (addressed !== null) currentWait = addressed;
             return addressed;
           },
+          async readEscalationDetails(waitId: string): Promise<EscalationDetails | null> {
+            if (!isUuidText(waitId)) return null;
+            const normalizedWaitId = waitId.toLowerCase();
+            const addressed = currentWait;
+            // The detail read is for the one open wait already loaded with the Run lock.
+            // This prevents a caller from using the metadata port as a historical event
+            // search, and keeps a closed or cross-Run wait out of the Run Detail surface.
+            if (addressed === null || addressed.closedAt !== null ||
+                addressed.waitId !== normalizedWaitId || addressed.runId !== runId) return null;
+
+            const eventResult = await tx.execute(sql`
+              SELECT payload
+              FROM audit_events
+              WHERE aggregate_id = ${runId}
+                AND event_type = 'execution.escalation-raised'
+                AND actor_type = 'system'
+                AND actor_id = 'escalation-platform'
+                AND source = 'platform'
+                AND outcome = 'success'
+                AND payload ->> 'waitId' = ${normalizedWaitId}
+              ORDER BY sequence DESC
+              LIMIT 1
+            `);
+            const eventMetadata = escalationEventMetadata(resultRows(eventResult)[0]?.payload, addressed);
+
+            const workResult = await tx.execute(sql`
+              SELECT work_item_id::text AS work_item_id
+              FROM run_agent_work
+              WHERE run_id = ${runId} AND wait_id = ${normalizedWaitId}
+              LIMIT 1
+            `);
+            const rawWorkItemId = resultRows(workResult)[0]?.work_item_id;
+            const workItemId = typeof rawWorkItemId === 'string' && isUuidText(rawWorkItemId)
+              ? rawWorkItemId.toLowerCase()
+              : null;
+            let question: string | null = null;
+            if (workItemId !== null) {
+              const turnResult = await tx.execute(sql`
+                SELECT response
+                FROM run_agent_turn
+                WHERE run_id = ${runId}
+                  AND work_item_id = ${workItemId}
+                  AND status = 'COMPLETED'
+                ORDER BY sequence DESC
+                LIMIT 1
+              `);
+              question = agentQuestion(resultRows(turnResult)[0]?.response);
+            }
+
+            return {
+              stepId: eventMetadata?.stepId ?? null,
+              supportingEvidenceIds: eventMetadata?.supportingEvidenceIds ?? null,
+              workItemId,
+              agentQuestion: question,
+            };
+          },
           authorizationRoles: new DrizzleRoleRepository(tx),
           async saveRunState(state) {
             const current = currentRun;
@@ -203,6 +319,28 @@ export class PostgresWaitRepository implements WaitRepository {
             const changed = await tx.execute(sql`UPDATE audit_run SET state = 'AWAITING_AUDITOR', revision = revision + 1 WHERE run_id = ${runId} AND state = 'RUNNING' RETURNING revision`);
             const nextRevision = revisionValue(resultRows(changed)[0]?.revision);
             if (nextRevision === null) throw new Error('Run was not running while opening an Escalation');
+            // Notification rows belong to the same transaction as the wait insert and the
+            // RUNNING -> AWAITING_AUDITOR transition. The initiator covers a scheduled Run's
+            // Procedure author, while Identity supplies every current Audit Manager from this
+            // connection; the application helper deduplicates a Manager who initiated it.
+            const recipients = escalationNotificationRecipients(
+              current.initiatorId,
+              await new DrizzleNotificationRecipientReader(tx).auditManagerIds(),
+            );
+            const notifications = new DrizzleNotificationWriter(tx);
+            for (const recipientId of recipients) {
+              await notifications.enqueue(createEscalationNotification({
+                recipientId,
+                runId: wait.runId,
+                waitId: wait.waitId,
+                procedureId: current.procedureId,
+                versionId: current.versionId,
+                procedureName: current.procedureName,
+                versionNumber: current.versionNumber,
+                escalationKind: wait.kind,
+                deadline: wait.deadline,
+              }));
+            }
             await sendWake(queue, db, wait, wait.deadline);
             currentRun = { ...current, state: 'AWAITING_AUDITOR', revision: nextRevision };
             currentWait = wait;

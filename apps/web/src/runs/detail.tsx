@@ -8,9 +8,11 @@ import { getRuntime } from '../bootstrap';
 import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
-import { STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
+import { ESCALATION_PANEL_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
+import { EscalationPanel } from './EscalationPanel';
+import { readOpenEscalation } from './escalation-read';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { runLifecycleWord, utcStamp } from './labels';
 
@@ -107,7 +109,7 @@ export function RefreshBanner({
  * the authorization is: a page that forgot to call `openRun` would still be wrapped by a
  * layout that did, and "every tab authorizes for itself" would become a convention again.
  */
-export function RunDetailFrame({
+export async function RunDetailFrame({
   run,
   tab,
   readAt,
@@ -117,7 +119,10 @@ export function RunDetailFrame({
   readonly tab: RunTabSlug;
   readonly readAt: Date;
   readonly children: React.ReactNode;
-}): React.JSX.Element {
+}): Promise<React.JSX.Element> {
+  const escalation = run.state === 'AWAITING_AUDITOR'
+    ? await readOpenEscalation(run.runId)
+    : null;
   const lifecycle = runLifecycleWord(run.state);
   const here = runTabHref(run.runId, tab);
   const trail = [
@@ -152,10 +157,16 @@ export function RunDetailFrame({
       <RunLifecycleActions
         runId={run.runId}
         active={isActiveRunState(run.state)}
+        awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
         cancelPending={run.cancellation !== null}
         requestToken={new CryptoUuidV7Generator().next()}
         procedureName={run.procedureName}
       />
+      {run.state === 'AWAITING_AUDITOR' && escalation !== null
+        ? escalation.wait !== null && escalation.runRevision !== null
+          ? <EscalationPanel runId={run.runId} wait={escalation.wait} details={escalation.details} runRevision={escalation.runRevision} readAt={readAt.toISOString()} />
+          : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />
+        : null}
       {children}
     </div>
   );

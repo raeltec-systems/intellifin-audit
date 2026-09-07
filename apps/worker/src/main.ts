@@ -1,4 +1,4 @@
-import { acquirePopulation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, deliverNotifications, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
@@ -7,7 +7,7 @@ import {
   PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
   PostgresWorkspaceRepository, SystemClock,
-  DrizzleNotificationRepository, InAppNotificationSender,
+  DrizzleNotificationRepository, InAppNotificationSender, startNotificationWorker,
   createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
   createSqlClient,
@@ -65,8 +65,7 @@ async function main(): Promise<void> {
   queue.on('error', (error) => telemetry.captureError('Plan derivation queue failed', error, {}));
 
   let interval: NodeJS.Timeout | undefined;
-  let notificationInterval: NodeJS.Timeout | undefined;
-  let notificationDelivery: Promise<void> | undefined;
+  let stopNotificationDelivery: (() => Promise<void>) | undefined;
   let stopWaitRecovery: (() => Promise<void>) | undefined;
   let stopRecovery: (() => void) | undefined;
   let stopPopulationRecovery: (() => Promise<void>) | undefined;
@@ -80,8 +79,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     telemetry.info('Shutting down', { signal });
     if (interval) clearInterval(interval);
-    if (notificationInterval) clearInterval(notificationInterval);
-    await notificationDelivery;
+    await stopNotificationDelivery?.();
     stopRecovery?.();
     await stopWaitRecovery?.();
     await stopPopulationRecovery?.();
@@ -281,14 +279,10 @@ async function main(): Promise<void> {
   const loop = createHeartbeatLoop(db, host, telemetry);
   const notifications = new DrizzleNotificationRepository(db);
   const sender = new InAppNotificationSender(db);
-  const deliver = () => {
-    if (notificationDelivery) return;
-    notificationDelivery = deliverNotifications(notifications, sender)
-      .catch(error => telemetry.captureError('Notification delivery failed', error, {}))
-      .finally(() => { notificationDelivery = undefined; });
-  };
-  deliver();
-  notificationInterval = setInterval(deliver, 1000);
+  stopNotificationDelivery = startNotificationWorker(
+    notifications, sender,
+    error => telemetry.captureError('Notification delivery failed', error, {}),
+  );
   await loop.beat();
 
   // The interval is the process's keep-alive; SIGTERM clears it and the process ends.

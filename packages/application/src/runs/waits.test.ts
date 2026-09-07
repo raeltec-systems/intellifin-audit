@@ -74,6 +74,7 @@ class FakeWaitContext implements WaitContext {
 
   authorizationRoles = { findRole: async (): Promise<typeof this.role> => this.role };
   readWait = async (waitId: string): Promise<RunWait | null> => this.wait?.waitId === waitId ? this.wait : null;
+  readEscalationDetails = async (): Promise<null> => null;
   auditEvents = {
     append: async (draft: { eventType: string; payload: Record<string, unknown> }) => {
       this.sequence += 1;
@@ -235,6 +236,10 @@ describe('durable Escalation waits', () => {
     expect(result.wait.closedAt).toBeNull();
     expect(repository.context.run).toMatchObject({ state: 'AWAITING_AUDITOR', revision: 1 });
     expect(repository.context.events.map((event) => event.eventType)).toEqual(['execution.escalation-raised']);
+    expect(repository.context.events[0]?.payload).toMatchObject({
+      optionIds: ['candidate-1', 'candidate-2', ESCALATION_OPTION_IDS.markAmbiguous],
+      supportingEvidenceIds: ['01a06fd8-0000-7000-8000-0000000000a7'],
+    });
   });
 
   it('refuses a second open wait without replacing the first', async () => {

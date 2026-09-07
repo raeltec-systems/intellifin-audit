@@ -1,10 +1,12 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { cancelRun, initiateRun, rerunRun } from '@intellifin/application';
+import { ANSWER_ESCALATION_REFUSALS, answerEscalation, cancelRun, initiateRun, rerunRun, type AnswerEscalationResult } from '@intellifin/application';
 import { isExplicitPeriod } from '@intellifin/domain';
-import { CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunsUnitOfWork, SystemClock } from '@intellifin/infrastructure';
+import { CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunsUnitOfWork, PostgresWaitRepository, SystemClock } from '@intellifin/infrastructure';
 import { getRuntime } from '../../src/bootstrap';
+import { ESCALATION_PANEL_COPY } from '../../src/design/copy';
 import { currentCorrelationId, requireServerAction } from '../../src/server-session';
 
 export type InitiateRunActionResult = { ok: true; runId: string } | { ok: false; reason: string; existingRunId?: string; unknownOutcome?: boolean };
@@ -114,5 +116,74 @@ export async function rerunAction(request: unknown): Promise<InitiateRunActionRe
       runtime.telemetry.captureError('Rerun failed', error, { correlationId: await currentCorrelationId(), outcome: 'failure' });
     } catch { /* Runtime boot failures are reported by instrumentation. */ }
     return { ok: false, reason: RERUN_UNKNOWN, unknownOutcome: true };
+  }
+}
+
+export type AnswerEscalationActionResult =
+  | Extract<AnswerEscalationResult, { readonly ok: true }>
+  | { readonly ok: false; readonly reason: string; readonly code?: string; readonly timedOutAt?: string; readonly unknownOutcome?: boolean };
+
+const ANSWER_ESCALATION_UNKNOWN = ESCALATION_PANEL_COPY.unknown;
+const ANSWER_ESCALATION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ANSWER_ESCALATION_OPTION_ID = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
+const ANSWER_ESCALATION_MALFORMED = ANSWER_ESCALATION_REFUSALS.malformed;
+
+function validAnswerEscalationRequest(value: unknown): value is {
+  readonly runId: string;
+  readonly waitId: string;
+  readonly expectedRunRevision: number;
+  readonly answerOptionId: string;
+  readonly note?: string | null;
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fields = value as Record<string, unknown>;
+  const keys = Object.keys(fields);
+  if (keys.some((key) => !['runId', 'waitId', 'expectedRunRevision', 'answerOptionId', 'note'].includes(key))) return false;
+  if (keys.length < 4 || keys.length > 5 ||
+      typeof fields.runId !== 'string' || !ANSWER_ESCALATION_UUID.test(fields.runId) ||
+      typeof fields.waitId !== 'string' || !ANSWER_ESCALATION_UUID.test(fields.waitId) ||
+      typeof fields.expectedRunRevision !== 'number' || !Number.isSafeInteger(fields.expectedRunRevision) || fields.expectedRunRevision < 0 ||
+      typeof fields.answerOptionId !== 'string' || !ANSWER_ESCALATION_OPTION_ID.test(fields.answerOptionId)) return false;
+  return !Object.hasOwn(fields, 'note') || fields.note === null ||
+    (typeof fields.note === 'string' && fields.note.trim().length > 0 && fields.note.length <= 500);
+}
+
+/**
+ * Answer one open Escalation. This is a separate Server Action endpoint, so it authorizes
+ * before reading the request and then delegates all locking, revision checks, and audit
+ * writes to the application command. No question, Evidence value, or note is sent to an
+ * agent; the note is a command-side audit field only.
+ */
+export async function answerEscalationAction(request: unknown): Promise<AnswerEscalationActionResult> {
+  try {
+    const decision = await requireServerAction('escalation.answer');
+    if (!decision.allowed) return { ok: false, reason: decision.reason };
+    if (!validAnswerEscalationRequest(request)) return { ok: false, reason: ANSWER_ESCALATION_MALFORMED, code: 'malformed' };
+    const runtime = await getRuntime();
+    const result = await answerEscalation(
+      {
+        repository: new PostgresWaitRepository(runtime.db),
+        roles: new DrizzleRoleRepository(runtime.db),
+        unitOfWork: new PostgresRunsUnitOfWork(runtime.db),
+        ids: new CryptoUuidV7Generator(),
+        clock: new SystemClock(),
+      },
+      { session: decision.session, request },
+    );
+    if (result.ok) {
+      // Every tab is its own route; invalidate each concrete route after the transaction
+      // commits so a refresh cannot retain an open panel on a sibling tab.
+      for (const suffix of ['', '/evidence', '/exceptions', '/review', '/timeline']) {
+        revalidatePath(`/runs/${request.runId}${suffix}`);
+      }
+      revalidatePath('/notifications');
+    }
+    return result;
+  } catch (error) {
+    try {
+      const runtime = await getRuntime();
+      runtime.telemetry.captureError('Captured failure', error, { correlationId: await currentCorrelationId(), outcome: 'failure' });
+    } catch { /* Runtime boot failures are reported by instrumentation. */ }
+    return { ok: false, reason: ANSWER_ESCALATION_UNKNOWN, unknownOutcome: true };
   }
 }

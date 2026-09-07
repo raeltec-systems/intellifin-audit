@@ -720,11 +720,23 @@ export const notification = pgTable('notification', {
   kind: text('kind').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  runId: uuid('run_id').references(() => auditRun.runId),
+  waitId: uuid('wait_id').references(() => runWait.waitId),
+  escalationKind: text('escalation_kind'),
+  deadline: timestamp('deadline', { withTimezone: true }),
+  inAppOutcome: text('in_app_outcome'),
+  emailOutcome: text('email_outcome'),
+  emailOutcomeAt: timestamp('email_outcome_at', { withTimezone: true }),
 }, table => [
   index('notification_recipient_delivery_idx').on(table.recipientId, table.deliveredAt.desc(), table.sendKey),
   index('notification_pending_delivery_idx').on(table.createdAt, table.sendKey).where(sql`${table.deliveredAt} IS NULL`),
   check('notification_version_number', sql`${table.versionNumber} > 0`),
-  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected')`),
+  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected','escalation')`),
+  check('notification_escalation_context', sql`coalesce(
+    (${table.kind} = 'escalation' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NOT NULL AND ${table.escalationKind} IN ('choose-candidate','unnamed-value','retry-or-skip') AND ${table.deadline} IS NOT NULL)
+    OR (${table.kind} <> 'escalation' AND ${table.runId} IS NULL AND ${table.waitId} IS NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL AND ${table.inAppOutcome} IS NULL AND ${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL), false)`),
+  check('notification_in_app_outcome', sql`${table.inAppOutcome} IS NULL OR ${table.inAppOutcome} IN ('delivered','unconfigured','failed','superseded')`),
+  check('notification_email_outcome', sql`(${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL) OR (${table.emailOutcome} IS NOT NULL AND ${table.emailOutcome} IN ('delivered','unconfigured','failed','superseded') AND ${table.emailOutcomeAt} IS NOT NULL)`),
 ]);
 
 export type SchemaMetaRow = typeof schemaMeta.$inferSelect;

@@ -39,6 +39,7 @@ import {
   RUN_UNCHANGED_SENTENCE,
   registrationChangeWarning,
   runCanceledBy,
+  ESCALATION_PANEL_COPY,
 } from './copy';
 
 /**
@@ -377,5 +378,22 @@ describe('the Run lifecycle copy', () => {
     );
     expect(detail).toContain('runCanceledBy(');
     expect(detail).not.toContain('Canceled by ${');
+  });
+});
+
+describe('the Escalation panel copy', () => {
+  it("keeps the contract's pause, note and timeout wording verbatim", () => {
+    expect(experience).toContain(ESCALATION_PANEL_COPY.answerNoteLabel);
+    expect(experience).toContain(ESCALATION_PANEL_COPY.pauseUnavailable);
+    expect(experience).toContain(ESCALATION_PANEL_COPY.timeoutTemplate);
+  });
+
+  it('renders the paused action reason from the shared copy module', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../runs/RunLifecycleActions.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('ESCALATION_PANEL_COPY.pauseUnavailable');
+    expect(source).not.toContain('A Run waiting on an answer cannot be paused.');
   });
 });

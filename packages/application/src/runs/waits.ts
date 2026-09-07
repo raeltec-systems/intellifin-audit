@@ -85,6 +85,26 @@ export interface RunWait {
   readonly actor: string | null;
 }
 
+/**
+ * Safe metadata for the currently open Escalation.
+ *
+ * The wait row carries the answer vocabulary, while the immutable raise event carries
+ * the platform's Step and Evidence references. Agent work is joined only through the
+ * current wait and its current Work Item. The optional model text is exposed as an
+ * agent-generated question by the web surface and must remain untrusted there.
+ *
+ * This DTO names references only. It never includes Evidence bytes, object-store keys or
+ * credentials, so reading it cannot bypass the EvidenceStore boundary.
+ */
+export interface EscalationDetails {
+  readonly stepId: string | null;
+  /** `null` means the raise event did not declare references; an empty list is explicit. */
+  readonly supportingEvidenceIds: readonly string[] | null;
+  readonly workItemId: string | null;
+  /** The matching turn's bounded uncertainty rationale, if one exists. */
+  readonly agentQuestion: string | null;
+}
+
 export interface WaitJob {
   readonly schemaVersion: typeof WAIT_SCHEMA_VERSION;
   readonly runId: string;
@@ -111,6 +131,8 @@ export interface WaitContext extends RunResultContext {
   readonly wait: RunWait | null;
   /** Read the addressed wait under the same transaction, including an already-closed row. */
   readWait(waitId: string): Promise<RunWait | null>;
+  /** Read bounded Escalation provenance while the same Run transaction is held. */
+  readEscalationDetails(waitId: string): Promise<EscalationDetails | null>;
   /** Role lookup bound to the same transaction, for the second authorization check. */
   readonly authorizationRoles: RoleRepository;
   /** The frozen plan used when a timeout must complete the Run. */

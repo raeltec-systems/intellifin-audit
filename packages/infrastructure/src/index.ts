@@ -47,3 +47,5 @@ export * from './runs/workspace-reaper.js';
 
 export * from './runs/wait-repository.js';
 export * from './runs/wait-wake.js';
+
+export * from './notifications/notification-worker.js';

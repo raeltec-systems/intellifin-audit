@@ -1,3 +1,7 @@
+## 2026-09-07 — Escalation delivery and answer checkpoint
+
+Generation35 expands existing notification tracking rather than creating another queue. Lock order is audit_run then run_wait then notification/audit chain, matching wait creation/answer. Open waits drive the inbox independently of delivery. No email transport is configured: audit outcome is unconfigured, never sent. Run Detail reads the current wait and revision with matching Step/Evidence references; agent question and candidate text remain inert. Fixed labels come from application vocabulary. Full local typecheck and focused tests pass; hosted new journey/migration verification is pending and Epic4 remains incomplete.
+
 ## 2026-09-07 — Agent execution checkpoint decisions
 
 Provider-native worker keys compose the agent gateway independently of plan derivation MODEL_* settings. Missing keys do not authorize a script; absent deployment SHA is labelled unidentified-build. Browser actions share one absolute deadline across every phase. Search FormData inspection alone is insufficient: a page can mutate on submit, so an armed page route validates the first main-frame request before transmission and falls back to the existing workspace egress guard. Generation34 adds four explicitly inventoried operational tables; migration, populated upgrade and wait integrations passed CI34138046009, whose sole failure was the stale table inventory. These are incomplete Epic4 checkpoints, not release acceptance.

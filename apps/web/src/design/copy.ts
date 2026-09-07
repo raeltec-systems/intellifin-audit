@@ -421,3 +421,28 @@ export const MASKED_BY_BINDING = 'Masked by the Population Source binding';
  * difference between a Result an auditor can partly trust and a framework 500.
  */
 export const UNREADABLE_PUBLICATION = 'The published Result document could not be read.';
+
+/**
+ * The Run Detail Escalation panel's contract copy.
+ *
+ * The first three strings are quoted from EXPERIENCE.md's Awaiting Auditor and
+ * Escalation rows. The remaining strings state a bounded absence in the current wait
+ * schema: a wait carries its kind and answer options, but no model question, Step or
+ * supporting Evidence. Rendering that absence in words keeps the panel from inventing
+ * provenance while the schema remains deliberately small.
+ */
+export const ESCALATION_PANEL_COPY = {
+  answerNoteLabel: 'Recorded, not sent to the agent',
+  pauseUnavailable: 'A Run waiting on an answer cannot be paused.',
+  timeoutTemplate: 'This Escalation timed out at {time}; the Run is Inconclusive.',
+  unknown: 'The Escalation answer could not be confirmed. Reload the Run to see whether it was recorded.',
+  noAgentQuestion: 'No agent-generated question was recorded for this Escalation.',
+  noStep: 'Step was not recorded for this Escalation.',
+  noSupportingEvidence: 'Supporting Evidence was not recorded for this Escalation.',
+  unavailable: 'The open Escalation could not be read. Reload this Run before answering.',
+  questions: {
+    'choose-candidate': 'Choose one of the grounded candidates, or mark the record ambiguous.',
+    'unnamed-value': 'Choose how the platform should handle this unnamed value.',
+    'retry-or-skip': 'Choose whether the platform should retry this Work Item or skip it.',
+  },
+} as const;

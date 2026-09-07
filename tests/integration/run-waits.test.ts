@@ -13,7 +13,9 @@ import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
+  DrizzleNotificationRepository,
   DrizzleRoleRepository,
+  InAppNotificationSender,
   PostgresProceduresUnitOfWork,
   PostgresRunsUnitOfWork,
   SystemClock,
@@ -43,6 +45,7 @@ describe.skipIf(!url)('durable Escalation waits', () => {
   let db: Database;
   const ids = new CryptoUuidV7Generator();
   const author = ids.next();
+  const manager = ids.next();
   const procedureId = ids.next();
   const versionId = ids.next();
   const runIds: string[] = [];
@@ -60,7 +63,9 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     sql = createSqlClient(url!, { max: 8 });
     db = createDb(sql);
     await sql`INSERT INTO auth_user(id,name,email) VALUES (${author},'Wait test',${author + '@test.invalid'})`;
+    await sql`INSERT INTO auth_user(id,name,email) VALUES (${manager},'Wait manager',${manager + '@test.invalid'})`;
     await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`;
+    await sql`INSERT INTO user_role(user_id,role) VALUES (${manager},'audit-manager')`;
     const version = activeRunVersion(procedureId, versionId, author);
     await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
       await context.procedures.insertProcedure(version);
@@ -73,6 +78,7 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     try {
       for (const runId of runIds) {
         await sql`DELETE FROM pgboss.job WHERE name IN ('runs',${WAIT_QUEUE}) AND data->>'runId'=${runId}`;
+        await sql`DELETE FROM notification WHERE run_id=${runId}`;
         // A timeout may have written the terminal rows through CompleteRun. Every child
         // is removed before the Run so this teardown remains valid as the shared context
         // grows additional evidence tables in later stories.
@@ -102,6 +108,7 @@ describe.skipIf(!url)('durable Escalation waits', () => {
       await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM auth_user WHERE id=${author}`;
+      await sql`DELETE FROM auth_user WHERE id=${manager}`;
     } finally {
       await sql.end({ timeout: 5 });
     }
@@ -176,6 +183,29 @@ describe.skipIf(!url)('durable Escalation waits', () => {
       actor: null,
     });
     expect(wait!.options).toEqual(result.wait.options);
+
+    const notifications = await sql`
+      SELECT send_key,recipient_id,kind,run_id::text AS run_id,wait_id::text AS wait_id,
+        escalation_kind,deadline,delivered_at,email_outcome
+      FROM notification WHERE run_id=${runId} ORDER BY recipient_id
+    `;
+    expect(notifications).toHaveLength(2);
+    expect(notifications.map(row => row.recipient_id)).toEqual([author, manager].sort());
+    expect(notifications.every(row => row.kind === 'escalation' && row.run_id === runId && row.wait_id === result.wait.waitId && row.escalation_kind === 'choose-candidate' && row.delivered_at === null && row.email_outcome === null)).toBe(true);
+    expect(notifications.map(row => row.send_key).sort()).toEqual([
+      `escalation:${result.wait.waitId}:${author}`,
+      `escalation:${result.wait.waitId}:${manager}`,
+    ].sort());
+    // AD-20's current inbox is an open-wait query, so it remains visible before the worker
+    // consumes either delivery row.
+    const openNotifications = await new DrizzleNotificationRepository(db).openFor(session);
+    expect(openNotifications.filter((notice) => notice.runId === runId)).toMatchObject([{
+      recipientId: author,
+      runId,
+      waitId: result.wait.waitId,
+      kind: 'escalation',
+      escalationKind: 'choose-candidate',
+    }]);
 
     const jobs = await sql`
       SELECT data,start_after,singleton_key,state
@@ -256,6 +286,17 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     const [wait] = await sql`SELECT closed_at,closure_kind,answer_option_id,actor FROM run_wait WHERE wait_id=${raised.wait.waitId}`;
     expect(wait).toMatchObject({ closure_kind: 'answer', answer_option_id: ESCALATION_OPTION_IDS.markUnevaluated, actor: author });
     expect(await sql`SELECT id FROM pgboss.job WHERE name=${WAIT_QUEUE} AND data->>'waitId'=${raised.wait.waitId}`).toHaveLength(1);
+    // A delivery that loses the wait lock after the answer is acknowledged as superseded;
+    // it must not create a delivered in-app item or claim that email was sent.
+    const notifications = new DrizzleNotificationRepository(db);
+    const sender = new InAppNotificationSender(db);
+    for (const notice of (await notifications.pending(100)).filter(notice => notice.kind === 'escalation' && notice.runId === runId)) {
+      await sender.send(notice);
+    }
+    const [delivery] = await sql`SELECT delivered_at,in_app_outcome,email_outcome FROM notification WHERE run_id=${runId} AND wait_id=${raised.wait.waitId} AND recipient_id=${author}`;
+    expect(delivery).toMatchObject({ in_app_outcome: 'superseded', email_outcome: 'superseded' });
+    expect((await notifications.deliveredFor(session)).items.filter(notice => notice.kind === 'escalation' && notice.waitId === raised.wait.waitId)).toHaveLength(0);
+    expect((await notifications.openFor(session)).filter(notice => notice.runId === runId)).toHaveLength(0);
   });
 
   it('times out an open wait into Inconclusive, seals the Result, and skips a replayed wake', async () => {
@@ -327,4 +368,16 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     expect(await sql`SELECT closure_kind,actor FROM run_wait WHERE wait_id=${raised.wait.waitId}`).toMatchObject([{ closure_kind: 'answer', actor: author }]);
     expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'CANCELED' }]);
   });
+  it('removes open-wait metadata from a revoked initiating auditor while retaining manager access', async () => {
+    const runId = await startRun('2026-03-01', '2026-03-31');
+    expect((await raise(runId, 'unnamed-value')).ok).toBe(true);
+    const notifications = new DrizzleNotificationRepository(db);
+    expect((await notifications.openFor(session)).some(row => row.runId === runId)).toBe(true);
+    await sql`DELETE FROM user_role WHERE user_id=${author} AND role='auditor'`;
+    try {
+      expect(await notifications.openFor(session)).toEqual([]);
+      expect((await notifications.openFor({ userId: manager, sessionId: 'manager-notification-test' })).some(row => row.runId === runId)).toBe(true);
+    } finally { await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`; }
+  });
+
 });

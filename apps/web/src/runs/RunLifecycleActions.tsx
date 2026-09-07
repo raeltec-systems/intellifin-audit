@@ -4,14 +4,17 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { cancelRunAction, rerunAction } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
-import { RUN_UNCHANGED_SENTENCE } from '../design/copy';
+import { ESCALATION_PANEL_COPY, RUN_UNCHANGED_SENTENCE } from '../design/copy';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { UnavailableActions } from '../design/UnavailableActions';
 
 interface RunLifecycleActionsProps {
   readonly runId: string;
   /** Whether this Run is still active, decided by the domain on the server. */
   readonly active: boolean;
+  /** Awaiting Auditor has no pause transition; keep the action visible with its reason. */
+  readonly awaitingAuditor?: boolean;
   /** Already asked for, so the worker still has to reach its next boundary. */
   readonly cancelPending: boolean;
   /** A fresh idempotency token, minted per page render exactly as initiation's is. */
@@ -35,7 +38,7 @@ interface RunLifecycleActionsProps {
  * of the person, and a live region whose text does not change is not re-announced, so two
  * identical failures would be silent after the first.
  */
-export function RunLifecycleActions({ runId, active, cancelPending, requestToken, procedureName }: RunLifecycleActionsProps): React.JSX.Element {
+export function RunLifecycleActions({ runId, active, awaitingAuditor = false, cancelPending, requestToken, procedureName }: RunLifecycleActionsProps): React.JSX.Element {
   const router = useRouter();
   // Both controls open a focus-trapping confirmation dialog, which EXPERIENCE.md requires
   // of every mutating action and which cannot exist without script — so, like the
@@ -51,6 +54,9 @@ export function RunLifecycleActions({ runId, active, cancelPending, requestToken
   // A lost Server Action response is an UNKNOWN outcome: the transaction may have
   // committed. Further attempts are blocked and a reload is what inspects what was saved.
   const [unknown, setUnknown] = useState(false);
+  const unavailableActions = awaitingAuditor
+    ? [{ id: 'run-pause-unavailable', label: 'Pause', reason: ESCALATION_PANEL_COPY.pauseUnavailable }]
+    : [];
 
   const cancel = async (): Promise<void> => {
     setBusy(true); setMessage(null); setAttempt(value => value + 1);
@@ -94,11 +100,17 @@ export function RunLifecycleActions({ runId, active, cancelPending, requestToken
       {message.runId && <a href={`/runs/${message.runId}`}>Open the linked Run</a>}
     </div>}
     {unknown && <p><a href={`/runs/${runId}`}>Reload this Run</a></p>}
+    {awaitingAuditor ? <Button
+      variant="secondary"
+      disabledReason={ESCALATION_PANEL_COPY.pauseUnavailable}
+      disabledReasonId="run-pause-unavailable"
+    >Pause</Button> : null}
     {active
       ? <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
           {...(cancelPending ? { disabledReason: 'Cancellation is already requested. The Run stops at its next checkpoint.' } : unknown ? { disabledReason: 'The last response was lost. Reload this Run before trying again.' } : {})}>Cancel Run</Button>
       : <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
           {...(unknown ? { disabledReason: 'The last response was lost. Reload this Run before trying again.' } : {})}>Rerun</Button>}
+    <UnavailableActions actions={unavailableActions} headingLevel={3} />
     <ConfirmDialog open={confirming} weight="routine"
       title={active ? 'Cancel this Run?' : 'Start a new Run?'}
       consequence={active

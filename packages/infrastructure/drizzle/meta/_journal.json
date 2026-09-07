@@ -246,6 +246,13 @@
       "when": 1788791947593,
       "tag": "0034_lethal_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788795462662,
+      "tag": "0035_curvy_ravenous",
+      "breakpoints": true
     }
   ]
 }
