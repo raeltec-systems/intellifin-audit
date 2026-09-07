@@ -1247,3 +1247,8 @@ Generate unapplied expansions in journal order: generation38 adds bounded read-g
 ### Epic 4 exact authentication destination
 
 An in-scope HTTP origin does not authorize every password-form POST beneath it. Credential entry requires the exact query-free authentication_destination frozen in a web registration and its digest; validate the effective submitter/form action before filling credentials. Legacy registrations retain the original six-key digest when the optional field is absent, but credential-bearing execution then refuses before page I/O. Do not backfill a guessed endpoint into historical frozen versions. Configure a new registration/version or explicitly reseed synthetic development data only through the existing authorized flow. A public P4 target with a declared authentication destination must not take the public-access shortcut.
+
+
+### Epic 4 public ProdConsole landing navigation
+
+The seeded ProdConsole origin is its landing page, not the configuration table URL. Public access verifies the frozen structural landing surface; then the model selects an opaque approved in-scope link before the worker navigates and captures configuration evidence. Derive integration origins and labels from the actual catalog so deeper fixture URLs cannot hide a broken user path. Credential-free execution is restricted by the validated frozen P4/single-web contract, still requires EvidenceStore and Exception signing, and never resolves its legacy compatibility credential reference. Other plans keep the strict credential manifest gate.

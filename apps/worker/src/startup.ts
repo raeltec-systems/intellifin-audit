@@ -138,6 +138,41 @@ export function adapterExtraction(
 }
 
 /**
+ * Whether this worker can run the agent execution phase, and the capabilities it may
+ * hand to that phase.
+ *
+ * Agent execution and adapter extraction share the resolver and the Exception
+ * fingerprinter, but they do not share their availability rule. An adapter Target System
+ * needs a declared credential; P-4's public Target System deliberately does not. Keep the
+ * adapter guard above strict, and let the agent phase receive an empty manifest when the
+ * only eligible frozen plan is that credential-free public path. A credential-requiring
+ * frozen Target still fails closed when its resolver lookup is attempted.
+ */
+export function agentExecution(
+  config: AppConfig,
+):
+  | {
+      readonly enabled: true;
+      /** Empty is meaningful: it is the credential-free P-4 public capability. */
+      readonly credentials: ReadonlyMap<string, string>;
+      readonly exceptions: ExceptionFingerprinter;
+    }
+  | { readonly enabled: false; readonly reason: string } {
+  const credentials = credentialTokenManifest(config);
+  if (config.EXCEPTION_FINGERPRINT_KEY === undefined) {
+    return { enabled: false, reason: 'EXCEPTION_FINGERPRINT_KEY is not configured' };
+  }
+  return {
+    enabled: true,
+    credentials,
+    exceptions: createExceptionFingerprinter({
+      keyId: config.EXCEPTION_FINGERPRINT_KEY_ID,
+      key: config.EXCEPTION_FINGERPRINT_KEY,
+    }),
+  };
+}
+
+/**
  * Which browser this worker provisions an Agent Workspace with, and why.
  *
  * Never disabled. A workspace is not an optional duty the way population execution and

@@ -42,7 +42,7 @@ import type {
 } from './agent-ports.js';
 import type { AgentWorkCheckpoint, AgentWorkContext, AgentWorkRepository } from './agent-work-ports.js';
 import { executeAgentModelTurn } from './execute-agent-model-turn.js';
-import { executeProdConsolePage } from './execute-prodconsole-page.js';
+import { executeProdConsoleNavigation, executeProdConsolePage } from './execute-prodconsole-page.js';
 import { AGENT_PAGE_DECLARATION_EVENT, buildAgentPageDeclarationPayload } from './agent-page-declaration.js';
 import { applyAgentHumanDecision } from './agent-human-decision.js';
 import { freezeAgentCapture } from './agent-capture.js';
@@ -1221,6 +1221,99 @@ export async function executeAgentWorkItem(
       }
 
       if (plan.inputs.templateId === 'P-4') {
+        // The public bootstrap capture is only a landing page. The model must select
+        // the next page from its frozen in-scope link set before any page metadata or
+        // observations can be read. The selected destination is copied from the
+        // approved tool; no route is assembled from a fixture or a model string.
+        const navigation = await executeProdConsoleNavigation({
+          plan, target: entry.target, workItemId: item.workItemId,
+          stepExecutionId: execution.stepExecutionId, snapshot: current.snapshot,
+          sourceLocation: current.sourceLocation, checkpoint, gateway: dependencies.model,
+          guard: agentGuard, budget, commit: guarded,
+        });
+        if (navigation.kind === 'lost') return { retry: false };
+        checkpoint = navigation.checkpoint;
+        if (navigation.kind === 'limit') {
+          const cause = runLimit(stepExecutions, checkpoint, plan, dependencies.clock) ?? 'run-token-limit';
+          await stopRun(cause, cause); return { retry: false };
+        }
+        if (navigation.kind === 'uncertain') {
+          return persistWait({ item, execution, kind: 'retry-or-skip', options: FIXED_ESCALATION_OPTIONS['retry-or-skip'], diagnostic: 'insufficient-evidence', supportingEvidenceIds: [current.snapshot.evidenceId] });
+        }
+        if (navigation.kind === 'refused') {
+          if (navigation.diagnostic === 'model-action-not-approved' ||
+              navigation.diagnostic === 'model-action-duplicate' ||
+              navigation.diagnostic === 'model-action-parameters' ||
+              navigation.diagnostic === 'model-action-locator' ||
+              navigation.diagnostic === 'model-action-cell' ||
+              navigation.diagnostic.startsWith('navigation-')) {
+            await stopRun('model-invalid-action', 'action-denied');
+            return { retry: false };
+          }
+          const result = await persistRetry(item, execution, modelDiagnostic(navigation.diagnostic));
+          const outcome = retryOutcome(result); if (outcome !== null) return outcome;
+          continue;
+        }
+        if (navigation.kind !== 'selected') return { retry: false };
+        const navigationAction = await performToolAction(dependencies.browser, {
+          ref: workspace,
+          runId: run.runId,
+          stepExecutionId: execution.stepExecutionId,
+          workItemId: item.workItemId,
+          toolActionId: dependencies.ids.next(),
+          scope: { target: entry.target, scopeValues: stringScope(record) },
+          request: { action: 'navigate', destination: navigation.navigation.navigation.destination, parameters: [] },
+          credential: null,
+          requestedCapture: ['structural-snapshot', 'screenshot'],
+          startedAt: nowIso(dependencies.clock),
+          completedAt: () => nowIso(dependencies.clock),
+          timeoutMs: budget,
+          guard: agentGuard,
+        });
+        const savedNavigationAction = await guarded(async (context) => { await context.saveToolAction(navigationAction.action); });
+        if (!savedNavigationAction) return { retry: false };
+        if (!navigationAction.ok) {
+          const diagnostic = actionDiagnostic(navigationAction.diagnostic);
+          if (terminalSecurityCause(navigationAction.diagnostic) !== null) {
+            await stopRun(diagnostic, terminalSecurityCause(navigationAction.diagnostic)!);
+            return { retry: false };
+          }
+          const result = await persistRetry(item, execution, diagnostic);
+          const outcome = retryOutcome(result);
+          if (outcome !== null) return outcome;
+          continue;
+        }
+        let navigationCapture: Awaited<ReturnType<typeof freezeAgentCapture>>;
+        try {
+          navigationCapture = await freezeAgentCapture({
+            runId: run.runId,
+            targetSystem: entry.target.registrationId,
+            templateId: plan.inputs.templateId,
+            toolActionId: navigationAction.action.toolActionId,
+            sourceLocation: navigationAction.action.destination,
+            artifacts: navigationAction.artifacts,
+            store: dependencies.store,
+            guard: agentGuard,
+            budget,
+            now: () => nowIso(dependencies.clock),
+            commit: guarded,
+          });
+        } catch (error) {
+          const diagnostic = failureDiagnostic(error);
+          if (diagnostic === 'capture-integrity-failed') { await stopRun(diagnostic); return { retry: false }; }
+          const result = await persistRetry(item, execution, diagnostic);
+          const outcome = retryOutcome(result);
+          if (outcome !== null) return outcome;
+          continue;
+        }
+        if (navigationCapture === null) return { retry: false };
+        current = {
+          snapshot: navigationCapture.snapshot,
+          sourceLocation: navigationAction.action.destination,
+          screenshotEvidenceId: navigationCapture.screenshotEvidenceId,
+        };
+        item.evidenceId = navigationCapture.snapshot.evidenceId;
+
         const pageSnapshot = current.snapshot;
         const page = await executeProdConsolePage({
           plan, target: entry.target, records, workItemId: item.workItemId,

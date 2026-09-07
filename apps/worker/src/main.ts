@@ -1,4 +1,4 @@
-import { executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { canExecuteWithoutAuditCredentials, executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
@@ -24,7 +24,7 @@ import { HttpAdapterExtraction } from '@intellifin/infrastructure/extraction';
 import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentials';
 import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
 
-import { adapterExtraction, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
+import { adapterExtraction, agentExecution, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -148,6 +148,8 @@ async function main(): Promise<void> {
 
   const evidence = populationExecution(config);
   const credentials = adapterExtraction(config);
+  const agentCapability = agentExecution(config);
+  const executionCapability = credentials.enabled ? credentials : agentCapability;
   if (!credentials.enabled) telemetry.info('Adapter extraction disabled', { reason: credentials.reason });
   if (!evidence.enabled) telemetry.info('Population execution disabled', { reason: evidence.reason });
   // Disabling a capability must also stop the work that depends on it from being STARTED,
@@ -182,37 +184,50 @@ async function main(): Promise<void> {
     // worker is the only process AD-10 lets make an outbound call to a registered Target
     // System, and the only one that may hold an audit credential at all.
     const http = new HttpAdapterExtraction();
-    const adapter = credentials.enabled
+    const adapter = executionCapability.enabled
       ? { repository:adapterRepository, reference:http, extraction:http,
-          credentials:new ManifestCredentialResolver(credentials.credentials), store, clock, ids,
+          credentials:new ManifestCredentialResolver(executionCapability.credentials), store, clock, ids,
           // Story 3.7. The deployment's Exception fingerprint key, as a port that can USE
           // it — there is no field on it holding the key. There is no evaluation seam to
           // declare here and no corroboration seam either: both are built inside the stage
           // from the plan it is executing and the bytes it just froze, so a composition
           // root cannot register an adapter Observation as unjudged or unevaluated forever.
-          exceptions:credentials.exceptions }
+          exceptions:executionCapability.exceptions }
       : null;
     // One job carries a Run through both stages. An extraction retry is NOT propagated
     // to the queue: a redelivery re-verifies the population Evidence and can consume one
     // of that stage's four durable attempts, so a transient extraction failure would
     // spend the population's budget. It becomes a RETRY checkpoint instead, which the
     // extraction recovery sweep picks up.
-    // The agent execution phase (Story 4.2). Composed beside the adapter one and gated on
-    // the SAME credential manifest: a sign-in presents an audit credential, so a worker
-    // with no manifest cannot perform one and the phase is off by name rather than failing
-    // every Run closed with a diagnostic that reads like a Target System problem.
+    // Agent execution reuses the existing stage ports. The frozen public P-4 contract
+    // can run with an empty credential manifest; every other plan retains the strict
+    // adapter capability gate before authentication or extraction begins.
     const agentRepository = new PostgresAgentExecutionRepository(db);
-    const agent = credentials.enabled
+    const agent = executionCapability.enabled
       ? {
           repository: agentRepository,
           browser,
-          credentials: new ManifestCredentialResolver(credentials.credentials),
+          credentials: new ManifestCredentialResolver(executionCapability.credentials),
           clock,
           ids,
         }
       : null;
-    const signIn = async (job: PopulationJob, workspaceReplaced = false): Promise<{ proceed: boolean }> =>
-      agent === null ? { proceed: true } : await executeAgentSteps(agent, job, { forceReauthentication: workspaceReplaced });
+    const signIn = async (job: PopulationJob, workspaceReplaced = false): Promise<{ proceed: boolean }> => {
+      if (!credentials.enabled && agent !== null) {
+        // A missing audit credential manifest cannot disable an explicitly public P-4
+        // target. This narrow exception is derived from the validated frozen plan, never
+        // current registration state or retrieved page claims. All other plans retain
+        // the existing named configuration refusal, including recovery deliveries.
+        const publicPlan = await agentRepository.transaction(job.runId, async context =>
+          canExecuteWithoutAuditCredentials(await context.frozenPlan()));
+        if (!publicPlan) {
+          await stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured');
+          return { proceed: false };
+        }
+      }
+      return agent === null ? { proceed: true }
+        : executeAgentSteps(agent, job, { forceReauthentication: workspaceReplaced });
+    };
     const workRepository = new PostgresAgentWorkRepository(db);
     const work = adapter === null ? null : {
       repository: workRepository, browser, model: agentModel(config), store, clock, ids,

@@ -16,8 +16,10 @@ import type { AgentModelGateway } from './agent-ports.js';
 import {
   buildProdConsoleObservationBatch,
   buildProdConsoleWorkItem,
+  planProdConsoleNavigationTools,
   planProdConsoleTools,
   PROD_CONSOLE_LABELS,
+  selectProdConsoleNavigation,
   selectProdConsoleReads,
 } from './agent-prodconsole.js';
 
@@ -66,6 +68,7 @@ const STEP_EXECUTION_ID = '01990000-0000-7000-8000-00000000b401';
 const SNAPSHOT_ID = '01990000-0000-7000-8000-00000000c401';
 const SCREENSHOT_ID = '01990000-0000-7000-8000-00000000c402';
 const SOURCE = 'https://prodconsole.example.test/prodconsole/configuration';
+const LANDING_SOURCE = 'https://prodconsole.example.test/prodconsole';
 
 const NODES = [
   { group: 'metadata', role: 'datum', label: PROD_CONSOLE_LABELS.snapshotIdentifier, value: 'PC-SNAP-7', target: null },
@@ -106,6 +109,17 @@ function planner(overrides: { readonly nodes?: readonly unknown[]; readonly targ
   const target = overrides.target ?? TARGET;
   const plan = target === TARGET ? PLAN : ({ ...PLAN, inputs: { ...PLAN.inputs, targets: [target] } } as unknown as ExecutablePlan);
   return planProdConsoleTools({ plan, target, snapshot: snapshot(overrides.nodes ?? NODES), sourceLocation: SOURCE });
+}
+
+function navigationPlanner(nodes: readonly unknown[] = [
+  { group: 'page', role: 'link', label: 'Production configuration', value: 'Production configuration', target: SOURCE },
+]) {
+  return planProdConsoleNavigationTools({
+    plan: PLAN,
+    target: TARGET,
+    snapshot: snapshot(nodes),
+    sourceLocation: LANDING_SOURCE,
+  });
 }
 
 function proposal(tool: AgentApprovedTool): AgentActionProposal {
@@ -196,6 +210,71 @@ describe('planProdConsoleTools', () => {
     } as ProcedureTargetSnapshot;
     expect(planner({ target: noCount })).toBeNull();
     expect(planProdConsoleTools({ plan: PLAN, target: TARGET, snapshot: snapshot(), sourceLocation: 'https://elsewhere.test/configuration' })).toBeNull();
+  });
+});
+
+describe('P-4 landing navigation', () => {
+  it('offers and accepts the single in-scope link from the frozen landing snapshot', () => {
+    const planned = navigationPlanner();
+    expect(planned).not.toBeNull();
+    expect(planned!.candidateLinkCount).toBe(1);
+    expect(planned!.tools).toHaveLength(1);
+    expect(planned!.tools[0]).toMatchObject({
+      action: 'navigate',
+      destination: SOURCE,
+      locator: { substrate: 'web_tree', path: '$.nodes[0].value' },
+      parameterNames: [],
+    });
+    expect(selectProdConsoleNavigation({ planner: planned!, proposals: [proposal(planned!.tools[0]!)] })).toMatchObject({
+      accepted: true,
+      diagnostics: [],
+      navigation: { navigation: { destination: SOURCE } },
+    });
+  });
+
+  it('fails closed when the landing snapshot has no link', () => {
+    const planned = navigationPlanner([]);
+    expect(planned).not.toBeNull();
+    expect(selectProdConsoleNavigation({ planner: planned!, proposals: [] })).toMatchObject({
+      accepted: false,
+      navigation: null,
+      diagnostics: ['navigation-missing'],
+    });
+  });
+
+  it('fails closed when every link is outside the frozen origin', () => {
+    const planned = navigationPlanner([
+      { group: 'page', role: 'link', label: 'External', value: 'External', target: 'https://elsewhere.example.test/configuration' },
+    ]);
+    expect(planned).not.toBeNull();
+    expect(selectProdConsoleNavigation({ planner: planned!, proposals: [] })).toMatchObject({
+      accepted: false,
+      navigation: null,
+      diagnostics: ['navigation-unscoped'],
+    });
+  });
+
+  it('fails closed on ambiguous in-scope links before browser I/O', () => {
+    const planned = navigationPlanner([
+      { group: 'page', role: 'link', label: 'Configuration A', value: 'Configuration A', target: SOURCE },
+      { group: 'page', role: 'link', label: 'Configuration B', value: 'Configuration B', target: `${SOURCE}/backup` },
+    ]);
+    expect(planned).not.toBeNull();
+    expect(selectProdConsoleNavigation({ planner: planned!, proposals: [proposal(planned!.tools[0]!)] })).toMatchObject({
+      accepted: false,
+      navigation: null,
+      diagnostics: ['navigation-ambiguous'],
+    });
+  });
+
+  it('rejects a model-authored destination even when the opaque tool id is valid', () => {
+    const planned = navigationPlanner()!;
+    const forged = { ...proposal(planned.tools[0]!), destination: `${SOURCE}/forged` };
+    expect(selectProdConsoleNavigation({ planner: planned, proposals: [forged] })).toMatchObject({
+      accepted: false,
+      navigation: null,
+      diagnostics: ['model-action-not-approved'],
+    });
   });
 });
 

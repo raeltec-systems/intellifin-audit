@@ -71,9 +71,9 @@ import { PROD_CONSOLE_LABELS } from './prodconsole-labels.js';
  * than a habit.
  *
  * P-4's published ProdConsole is the one public Target System in this phase. Its access
- * proof uses a credential-free navigation plus a structural snapshot, with the frozen
- * registration labels and page metadata checked before success. The compatibility
- * credential reference remains in the plan shape but is never resolved.
+ * proof uses a credential-free navigation plus a structural landing snapshot with an
+ * approved in-scope link. The compatibility credential reference remains in the plan
+ * shape but is never resolved; page metadata is checked only after model navigation.
  *
  * Successful access hands the Run to reference acquisition and the separate investigation
  * phase. SIGNED_IN is the durable access-phase checkpoint; only session-established
@@ -195,7 +195,17 @@ function publicP4Target(
     requirement.agentTargets.length !== 1
   ) return null;
   const entry = requirement.agentTargets[0];
-  if (entry === undefined || entry.target.contract.kind !== 'web' || entry.target.contract.authentication_destination !== undefined) return null;
+  // P-4's public proof is a distinct frozen contract. A configured authentication
+  // destination means this registration requires the authenticated path; silently
+  // treating it as public would let a credentialless deployment skip that requirement.
+  // The vestigial credential reference remains in the frozen six-key contract for the
+  // seeded public system and is deliberately not used as the public-path discriminator.
+  if (
+    entry === undefined ||
+    entry.target.contract.kind !== 'web' ||
+    entry.target.contract.authentication_destination !== undefined ||
+    !entry.target.contract.permitted_actions.includes('navigate')
+  ) return null;
   const labels = entry.target.contract.attribute_label_patterns;
   if (!Array.isArray(labels) || labels.length < PUBLIC_P4_REQUIRED_LABELS.length || labels.length > 5) return null;
   const allowed = new Set<string>([...PUBLIC_P4_REQUIRED_LABELS, PUBLIC_P4_OPTIONAL_LABEL]);
@@ -205,23 +215,31 @@ function publicP4Target(
   return entry;
 }
 
-function publicValueText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+/**
+ * Whether a frozen plan can run with no audit credential manifest.
+ *
+ * This reuses the same workspace requirement and public P-4 classifier as the execution
+ * loop. The worker may compose an empty resolver only for this exact public contract; a
+ * configured-authentication Target System, extra target, adapter/desktop target, or
+ * malformed contract remains in the ordinary fail-closed path. The public contract keeps
+ * its required legacy credential reference as frozen metadata; that reference is never
+ * resolved.
+ */
+export function canExecuteWithoutAuditCredentials(plan: ExecutablePlan | null): boolean {
+  if (plan === null) return false;
+  const requirement = workspaceRequirement(plan);
+  if (requirement === null || requirement.unsupported !== null) return false;
+  return publicP4Target(plan, requirement) !== null;
 }
 
-function publicParameterCount(value: unknown): number | null {
-  if (typeof value === 'number') {
-    return Number.isSafeInteger(value) && value >= 0 ? value : null;
-  }
-  if (typeof value !== 'string' || !/^\d+$/u.test(value.trim())) return null;
-  const count = Number(value.trim());
-  return Number.isSafeInteger(count) && count >= 0 ? count : null;
-}
-
-/** Validate the bounded public-access postcondition; parameter reconciliation is later. */
+/**
+ * Validate the bounded public-access postcondition. P-4 access lands on a
+ * public navigation page; metadata and observations are proved only after the
+ * model selects an in-scope link from this frozen landing snapshot.
+ */
 function validPublicP4Snapshot(
   artifacts: readonly BrowserActionArtifact[],
-  labels: readonly string[],
+  allowedOrigins: readonly string[],
 ): boolean {
   if (artifacts.length !== 1) return false;
   const artifact = artifacts[0];
@@ -232,20 +250,13 @@ function validPublicP4Snapshot(
     bytes: artifact.bytes,
   });
   if (!parsed.ok || parsed.substrate !== 'web_tree') return false;
-  const nodes = parsed.document.nodes;
-  const nodesFor = (label: string) => nodes.filter((node) => node.role === 'datum' && node.label === label);
-  // Parameter and Value are row labels and can occur more than once. Metadata labels are
-  // page-level declarations and must occur once when registered.
-  if (nodesFor(PROD_CONSOLE_LABELS.parameter).length === 0 || nodesFor(PROD_CONSOLE_LABELS.value).length === 0) return false;
-  const identifier = nodesFor(PROD_CONSOLE_LABELS.snapshotIdentifier);
-  const count = nodesFor(PROD_CONSOLE_LABELS.expectedParameterCount);
-  if (identifier.length !== 1 || publicValueText(identifier[0]?.value) === null) return false;
-  if (count.length !== 1 || publicParameterCount(count[0]?.value) === null) return false;
-  if (labels.includes(PUBLIC_P4_OPTIONAL_LABEL)) {
-    const takenAt = nodesFor(PUBLIC_P4_OPTIONAL_LABEL);
-    if (takenAt.length !== 1 || publicValueText(takenAt[0]?.value) === null) return false;
-  }
-  return true;
+  // The public landing page only needs a structural tree and a link the
+  // model can select. A link must be resolved by the producer and lie inside
+  // the frozen origin; external or malformed targets are never offered.
+  return parsed.document.nodes.some((node) =>
+    node.role === 'link' && typeof node.target === 'string' &&
+    allowedOrigins.some((origin) => withinFrozenOrigin(origin, node.target)),
+  );
 }
 
 /**
@@ -1221,7 +1232,7 @@ async function runPublicAccessStep(
       if (outcome !== 'retry') return outcome;
       continue;
     }
-    if (!validPublicP4Snapshot(performed.artifacts, contract.attribute_label_patterns)) {
+    if (!validPublicP4Snapshot(performed.artifacts, contract.allowed_origins)) {
       const outcome = await fail('public-access-contract-failed', performed.action, true);
       if (outcome !== 'retry') return outcome;
       continue;

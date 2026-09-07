@@ -48,6 +48,9 @@ export type ProdConsoleDiagnostic =
   | 'unsupported-plan'
   | 'target-contract'
   | 'snapshot-unreadable'
+  | 'navigation-missing'
+  | 'navigation-ambiguous'
+  | 'navigation-unscoped'
   | 'model-action-not-approved'
   | 'model-action-duplicate'
   | 'model-action-parameters'
@@ -90,6 +93,44 @@ export interface ProdConsoleToolPlannerResult {
   readonly reads: readonly ProdConsoleApprovedRead[];
   /** Count of all Parameter datum nodes in the stored page, before model selection. */
   readonly pageParameterCount: number;
+}
+
+/** Input to the P-4 landing-page navigation planner. */
+export interface ProdConsoleNavigationPlannerInput {
+  readonly plan: ExecutablePlan;
+  readonly target: ProcedureTargetSnapshot;
+  readonly snapshot: StoredSnapshot;
+  /** The current page location, before the model chooses a published link. */
+  readonly sourceLocation: string;
+}
+
+/** One in-scope link that the model may select from the frozen landing page. */
+export interface ProdConsoleApprovedNavigation {
+  readonly tool: AgentApprovedTool;
+  readonly index: number;
+  readonly destination: string;
+}
+
+/** The landing page's approved navigation choices and link accounting. */
+export interface ProdConsoleNavigationPlannerResult {
+  readonly snapshot: StoredSnapshot;
+  readonly sourceLocation: string;
+  /** In-scope links only; external links are never offered as tools. */
+  readonly navigations: readonly ProdConsoleApprovedNavigation[];
+  readonly tools: readonly AgentApprovedTool[];
+  /** All semantic link nodes, including links rejected as out of scope. */
+  readonly candidateLinkCount: number;
+}
+
+export interface ProdConsoleSelectedNavigation {
+  readonly proposal: AgentActionProposal;
+  readonly navigation: ProdConsoleApprovedNavigation;
+}
+
+export interface ProdConsoleNavigationSelection {
+  readonly accepted: boolean;
+  readonly navigation: ProdConsoleSelectedNavigation | null;
+  readonly diagnostics: readonly ProdConsoleDiagnostic[];
 }
 
 /**
@@ -337,6 +378,47 @@ export function planProdConsoleTools(
   };
 }
 
+/**
+ * Offer only links resolved by the frozen landing-page web tree and inside the
+ * Target System's frozen origin. The link target is copied into an approved
+ * tool by the application; the model may select the tool but cannot author its
+ * destination. A landing page with no unique in-scope link remains unusable.
+ */
+export function planProdConsoleNavigationTools(
+  input: ProdConsoleNavigationPlannerInput,
+): ProdConsoleNavigationPlannerResult | null {
+  const valid = validP4Input(input.plan, input.target, input.snapshot, input.sourceLocation);
+  if (valid === null || !input.target.contract.permitted_actions.includes('navigate')) return null;
+  const parsed = readStructuralSnapshot(input.snapshot);
+  if (!parsed.ok || parsed.substrate !== 'web_tree') return null;
+
+  const navigations: ProdConsoleApprovedNavigation[] = [];
+  let candidateLinkCount = 0;
+  for (const [index, node] of parsed.document.nodes.entries()) {
+    if (node.role !== 'link') continue;
+    candidateLinkCount += 1;
+    if (typeof node.target !== 'string' || !withinFrozenOrigin(valid.destination, node.target)) continue;
+    const destination = parseFrozenLocation(node.target);
+    if (destination === null) continue;
+    const tool: AgentApprovedTool = {
+      toolId: `prodconsole-navigate-${String(index)}`,
+      action: 'navigate',
+      destination: `${destination.authority}${destination.path}`,
+      locator: { substrate: 'web_tree', path: webTreePath(index) },
+      description: 'Open the approved ProdConsole page link.',
+      parameterNames: [],
+    };
+    navigations.push({ tool, index, destination: tool.destination });
+  }
+  return {
+    snapshot: input.snapshot,
+    sourceLocation: valid.destination,
+    navigations,
+    tools: navigations.map((navigation) => navigation.tool),
+    candidateLinkCount,
+  };
+}
+
 function proposalShape(value: unknown): value is AgentActionProposal {
   if (!isObject(value) || !exactKeys(value, ['toolId', 'action', 'destination', 'locator', 'parameters'])) return false;
   if (!validText(value['toolId'])) return false;
@@ -349,6 +431,63 @@ function proposalShape(value: unknown): value is AgentActionProposal {
 
 function sameLocator(left: AgentLocator | null, right: AgentLocator | null): boolean {
   return left !== null && right !== null && left.substrate === right.substrate && left.path === right.path;
+}
+
+/**
+ * Resolve the model's one navigation choice against the landing page's exact
+ * approved link set. Zero, multiple, or entirely out-of-scope links are all
+ * refused before browser I/O, and every response field is checked against the
+ * selected frozen tool.
+ */
+export function selectProdConsoleNavigation(input: {
+  readonly planner: ProdConsoleNavigationPlannerResult;
+  readonly proposals: readonly AgentActionProposal[];
+}): ProdConsoleNavigationSelection {
+  const { planner } = input;
+  if (planner.tools.length === 0) {
+    return {
+      accepted: false,
+      navigation: null,
+      diagnostics: [planner.candidateLinkCount > 0 ? 'navigation-unscoped' : 'navigation-missing'],
+    };
+  }
+  if (planner.tools.length !== 1) {
+    return { accepted: false, navigation: null, diagnostics: ['navigation-ambiguous'] };
+  }
+  if (input.proposals.length === 0) {
+    return { accepted: false, navigation: null, diagnostics: ['navigation-missing'] };
+  }
+  if (input.proposals.length !== 1) {
+    return { accepted: false, navigation: null, diagnostics: ['navigation-ambiguous'] };
+  }
+  const proposal = input.proposals[0]!;
+  if (!proposalShape(proposal)) {
+    return { accepted: false, navigation: null, diagnostics: ['model-action-locator'] };
+  }
+  const navigation = planner.navigations[0]!;
+  if (
+    proposal.toolId !== navigation.tool.toolId ||
+    proposal.action !== 'navigate' ||
+    proposal.destination !== navigation.destination ||
+    proposal.parameters.length !== 0 ||
+    !sameLocator(proposal.locator, navigation.tool.locator)
+  ) {
+    return { accepted: false, navigation: null, diagnostics: ['model-action-not-approved'] };
+  }
+  const parsed = readStructuralSnapshot(planner.snapshot);
+  const locator = parseSnapshotLocator(navigation.tool.locator?.path);
+  const node = !parsed.ok || parsed.substrate !== 'web_tree' || locator === null
+    ? undefined
+    : parsed.document.nodes[locator.index];
+  if (
+    !parsed.ok || parsed.substrate !== 'web_tree' ||
+    locator === null || node === undefined || node.role !== 'link' ||
+    typeof node.target !== 'string' || !withinFrozenOrigin(planner.sourceLocation, node.target) ||
+    `${parseFrozenLocation(node.target)?.authority ?? ''}${parseFrozenLocation(node.target)?.path ?? ''}` !== navigation.destination
+  ) {
+    return { accepted: false, navigation: null, diagnostics: ['model-action-cell'] };
+  }
+  return { accepted: true, navigation: { proposal, navigation }, diagnostics: [] };
 }
 
 /**

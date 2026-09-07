@@ -100,17 +100,20 @@ const SYSTEMS_PATH = fileURLToPath(new URL('../../fixtures/northstar/datasets/sy
 
 interface TargetSystemCatalogueEntry {
   readonly id: string;
+  readonly origin_path: string;
   readonly attribute_label_patterns: readonly string[];
 }
 
 const systemsCatalogue = JSON.parse(readFileSync(SYSTEMS_PATH, 'utf8')) as {
   readonly target_systems: readonly TargetSystemCatalogueEntry[];
 };
-const prodConsoleAttributeLabels = (() => {
+const prodConsoleCatalogue = (() => {
   const entry = systemsCatalogue.target_systems.find((candidate) => candidate.id === 'prodconsole');
   if (entry === undefined) throw new Error('Northstar catalogue has no ProdConsole target system');
-  return entry.attribute_label_patterns;
+  return entry;
 })();
+const prodConsoleAttributeLabels = prodConsoleCatalogue.attribute_label_patterns;
+const prodConsoleOriginPath = prodConsoleCatalogue.origin_path;
 
 function expectedOutcome(value: string): string {
   return {
@@ -127,6 +130,7 @@ function bodyBuffer(body: string | Uint8Array): Buffer {
 
 describe('P-4 Northstar catalogue contract', () => {
   it('authorizes the served snapshot timestamp used to evaluate freshness', () => {
+    expect(prodConsoleOriginPath).toBe('/prodconsole');
     expect(prodConsoleAttributeLabels).toEqual([
       'Parameter',
       'Value',
@@ -274,7 +278,7 @@ describe.skipIf(!databaseUrl)('P-4 ProdConsole agent journey', () => {
       registrationId: ids.next(),
       displayName: 'ProdConsole',
       kind: 'web' as const,
-      allowedOrigins: [`${northstarOrigin}/prodconsole/configuration`],
+      allowedOrigins: [`${northstarOrigin}${prodConsoleOriginPath}`],
       applicationIdentity: '',
       // The published P-4 target is public. The reference remains a required frozen
       // registration field for compatibility with the v1 plan shape; the P-4 public access
@@ -383,11 +387,14 @@ describe.skipIf(!databaseUrl)('P-4 ProdConsole agent journey', () => {
         modelCalls.push(captured);
         // The model can see untrusted page text, including the seeded Description. It may
         // select only actual approved tools and locators; it never supplies a value.
+        const navigationTools = request.tools.filter(tool => tool.action === 'navigate');
         const actions = request.phase === 'evaluation'
           ? []
-          : request.tools
-            .filter(tool => tool.action === 'read-attribute' || tool.action === 'read-metadata')
-            .map(tool => ({ toolId: tool.toolId, action: tool.action, destination: tool.destination, locator: tool.locator, parameters: [] as const }));
+          : navigationTools.length > 0
+            ? [{ toolId: navigationTools[0]!.toolId, action: navigationTools[0]!.action, destination: navigationTools[0]!.destination, locator: navigationTools[0]!.locator, parameters: [] as const }]
+            : request.tools
+              .filter(tool => tool.action === 'read-attribute' || tool.action === 'read-metadata')
+              .map(tool => ({ toolId: tool.toolId, action: tool.action, destination: tool.destination, locator: tool.locator, parameters: [] as const }));
         captured.actions = actions;
         return {
           schemaVersion: 1,
@@ -424,6 +431,9 @@ describe.skipIf(!databaseUrl)('P-4 ProdConsole agent journey', () => {
     expect(seeded.modelCalls.length).toBeGreaterThan(0);
     expect(
       seeded.modelCalls.some((call) => call.tools.some((tool) => tool.description === 'Read the approved ProdConsole snapshot time.')),
+    ).toBe(true);
+    expect(
+      seeded.modelCalls.some((call) => call.actions?.some((action) => action.action === 'navigate')),
     ).toBe(true);
     for (const call of seeded.modelCalls) {
       for (const action of call.actions ?? []) {

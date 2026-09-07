@@ -25,7 +25,7 @@ import {
   WEB_TREE_MEDIA_TYPE,
 } from '@intellifin/domain';
 
-import { executeAgentSteps, performToolAction } from './execute-agent-steps.js';
+import { canExecuteWithoutAuditCredentials, executeAgentSteps, performToolAction } from './execute-agent-steps.js';
 import { NO_CREDENTIALS, guardedCredentials } from './credential-guard.js';
 import {
   BrowserActionError,
@@ -161,11 +161,7 @@ function publicPlan(labels: readonly string[] = PUBLIC_LABELS): ExecutablePlan {
 
 function publicArtifact(
   nodes: readonly Record<string, unknown>[] = [
-    { group: 'metadata', role: 'datum', label: 'Snapshot identifier', value: 'PC-SNAP-7', target: null },
-    { group: 'metadata', role: 'datum', label: 'Expected parameter count', value: '4', target: null },
-    { group: 'table:0:row:0', role: 'datum', label: 'Parameter', value: 'max_manual_approval_amount', target: null },
-    { group: 'table:0:row:0', role: 'datum', label: 'Value', value: '50000.00', target: null },
-    { group: 'metadata', role: 'datum', label: 'Snapshot taken at', value: '2026-08-31T22:00:00Z', target: null },
+    { group: 'page', role: 'link', label: 'Production configuration', value: 'Production configuration', target: `${ORIGIN}/configuration` },
   ],
 ): BrowserActionArtifact {
   return {
@@ -175,6 +171,95 @@ function publicArtifact(
     location: ORIGIN,
   };
 }
+
+describe('credentialless public P-4 eligibility', () => {
+  it('accepts the seeded single-web public contract with its retained decoy reference', () => {
+    // The registration contract keeps its required opaque credential reference for
+    // digest/plan compatibility. Public eligibility is keyed by the frozen P-4 contract
+    // and absent authentication destination, so this reference must never be resolved.
+    expect(canExecuteWithoutAuditCredentials(publicPlan())).toBe(true);
+  });
+
+  it('rejects an absent or unsupported frozen plan', () => {
+    expect(canExecuteWithoutAuditCredentials(null)).toBe(false);
+    expect(
+      canExecuteWithoutAuditCredentials({
+        ...publicPlan(),
+        schemaVersion: 2,
+      } as unknown as ExecutablePlan),
+    ).toBe(false);
+  });
+
+  it('rejects an extra frozen target', () => {
+    const plan = publicPlan();
+    const target = plan.inputs.targets[0]!;
+    expect(
+      canExecuteWithoutAuditCredentials({
+        ...plan,
+        inputs: {
+          ...plan.inputs,
+          targets: [
+            target,
+            { ...target, registrationId: '018f0000-0000-7000-8000-0000000001a2', displayName: 'Second Target' },
+          ],
+        },
+      } as unknown as ExecutablePlan),
+    ).toBe(false);
+  });
+
+  it('rejects a frozen adapter target', () => {
+    const plan = publicPlan();
+    const target = plan.inputs.targets[0]!;
+    expect(
+      canExecuteWithoutAuditCredentials({
+        ...plan,
+        inputs: {
+          ...plan.inputs,
+          targets: [{ ...target, contract: { ...target.contract, kind: 'api' } }],
+        },
+      } as unknown as ExecutablePlan),
+    ).toBe(false);
+  });
+
+  it('rejects a frozen desktop target', () => {
+    const plan = publicPlan();
+    const target = plan.inputs.targets[0]!;
+    expect(
+      canExecuteWithoutAuditCredentials({
+        ...plan,
+        inputs: {
+          ...plan.inputs,
+          targets: [{ ...target, contract: { ...target.contract, kind: 'desktop' } }],
+        },
+      } as unknown as ExecutablePlan),
+    ).toBe(false);
+  });
+
+  it('rejects a public contract with a configured authentication destination', () => {
+    const plan = publicPlan();
+    const target = plan.inputs.targets[0]!;
+    expect(
+      canExecuteWithoutAuditCredentials({
+        ...plan,
+        inputs: {
+          ...plan.inputs,
+          targets: [{
+            ...target,
+            contract: { ...target.contract, authentication_destination: `${ORIGIN}/sign-in` },
+          }],
+        },
+      } as unknown as ExecutablePlan),
+    ).toBe(false);
+  });
+
+  it('rejects a public contract missing one registered page label', () => {
+    expect(canExecuteWithoutAuditCredentials(publicPlan(PUBLIC_LABELS.slice(1)))).toBe(false);
+  });
+
+  it('rejects an unexpected registered page label', () => {
+    expect(canExecuteWithoutAuditCredentials(publicPlan([...PUBLIC_LABELS, 'Unexpected']))).toBe(false);
+  });
+});
 
 interface Store {
   run: RunRecord | null;
@@ -592,7 +677,7 @@ describe('the sign-in Session Step', () => {
 });
 
 describe('the public P-4 access proof', () => {
-  it('navigates without resolving the compatibility credential and validates the frozen page metadata', async () => {
+  it('navigates without resolving the compatibility credential and validates the public landing link', async () => {
     const state = store(publicPlan());
     const browser = new FakeBrowser({ result: { artifacts: [publicArtifact()] } });
     let resolutions = 0;
@@ -620,6 +705,24 @@ describe('the public P-4 access proof', () => {
     expect(state.checkpoint).toMatchObject({ status: 'SIGNED_IN' });
     expect(state.events.some((event) => event.payload['diagnostic'] === 'public-access-verified')).toBe(true);
     expect(state.events.some((event) => event.payload['diagnostic'] === 'session-established')).toBe(false);
+  });
+
+  it('rejects a public landing capture with no in-scope navigation link', async () => {
+    const state = store(publicPlan());
+    const browser = new FakeBrowser({ result: { artifacts: [publicArtifact([])] } });
+    expect(await executeAgentSteps(DEPS(state, browser), JOB)).toEqual({ retry: false, proceed: false });
+    expect(state.steps[0]).toMatchObject({ state: 'FAILED', diagnostic: 'public-access-contract-failed' });
+    expect(state.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'public-access-contract-failed' });
+  });
+
+  it('rejects a public landing capture whose only link is outside the frozen origin', async () => {
+    const state = store(publicPlan());
+    const browser = new FakeBrowser({ result: { artifacts: [publicArtifact([
+      { group: 'page', role: 'link', label: 'External', value: 'External', target: 'https://elsewhere.example.test/configuration' },
+    ])] } });
+    expect(await executeAgentSteps(DEPS(state, browser), JOB)).toEqual({ retry: false, proceed: false });
+    expect(state.steps[0]).toMatchObject({ state: 'FAILED', diagnostic: 'public-access-contract-failed' });
+    expect(state.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'public-access-contract-failed' });
   });
 
   it('fails closed on a password surface/capture contract failure without resolving credentials', async () => {

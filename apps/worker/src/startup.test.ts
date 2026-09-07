@@ -11,7 +11,7 @@ import {
 } from '@intellifin/infrastructure';
 import { AGENT_PROMPT_VERSION } from '@intellifin/infrastructure/agent-model';
 
-import { adapterExtraction, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
+import { adapterExtraction, agentExecution, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
 import { readFileSync } from 'node:fs';
 import type { AppConfig } from '@intellifin/infrastructure';
 
@@ -306,10 +306,50 @@ describe('adapterExtraction', () => {
     expect(main).toContain('const credentials = adapterExtraction(config);');
     expect(main).toMatch(/Adapter extraction disabled/);
     // Composed only where it is used, and never unconditionally refused.
-    expect(main).toContain('new ManifestCredentialResolver(credentials.credentials)');
-    expect(main).toContain('exceptions:credentials.exceptions');
+    expect(main).toContain('new ManifestCredentialResolver(executionCapability.credentials)');
+    expect(main).toContain('exceptions:executionCapability.exceptions');
+    expect(main).toContain('if (!credentials.enabled && agent !== null)');
+    expect(main).toContain('canExecuteWithoutAuditCredentials(await context.frozenPlan())');
+    expect(main).toContain("stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')");
     expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*CREDENTIAL_TOKENS/);
     expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
+  });
+});
+
+describe('agentExecution', () => {
+  it('enables the agent phase with an empty resolver map for credential-free P-4 access', () => {
+    const decision = agentExecution({
+      CREDENTIAL_TOKENS: '{}',
+      EXCEPTION_FINGERPRINT_KEY: 'exception-fingerprint-key-at-least-32',
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+    } as unknown as AppConfig);
+
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.credentials.size).toBe(0);
+    expect(decision.exceptions.keyId).toBe('k1');
+    expect(JSON.stringify(decision.exceptions)).toBe('{"keyId":"k1"}');
+  });
+
+  it('keeps the agent phase disabled without the Exception fingerprint key', () => {
+    expect(agentExecution({ CREDENTIAL_TOKENS: '{}' } as unknown as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'EXCEPTION_FINGERPRINT_KEY is not configured',
+    });
+  });
+
+  it('does not loosen the adapter extraction guard for the same empty manifest', () => {
+    const config = {
+      CREDENTIAL_TOKENS: '{}',
+      EXCEPTION_FINGERPRINT_KEY: 'exception-fingerprint-key-at-least-32',
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+    } as unknown as AppConfig;
+
+    expect(agentExecution(config).enabled).toBe(true);
+    expect(adapterExtraction(config)).toEqual({
+      enabled: false,
+      reason: 'CREDENTIAL_TOKENS declares no audit credential',
+    });
   });
 });
 
