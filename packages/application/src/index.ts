@@ -64,6 +64,7 @@ export * from './runs/cancel-run.js';
 export * from './runs/agent-ports.js';
 export * from './runs/agent-work-ports.js';
 export * from './runs/waits.js';
+export * from './runs/execute-agent-work-item.js';
 
 export * from './runs/agent-evaluation.js';
 export * from './runs/evaluation-review.js';

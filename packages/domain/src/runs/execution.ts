@@ -133,6 +133,8 @@ export interface PlanClassification {
   readonly references: readonly ClassifiedTarget[];
   /** `api` Targets: exactly one Work Item each, in authored order, after the references. */
   readonly adapters: readonly ClassifiedTarget[];
+  /** Web Targets handled after shared reference/adapter acquisition. */
+  readonly agents: readonly ClassifiedTarget[];
   /**
    * Why this plan cannot be executed by the adapter stage at all, or `null`.
    *
@@ -157,6 +159,7 @@ export function classifyPlanTargets(plan: ExecutablePlan): PlanClassification {
   const unsupported = (reason: string): PlanClassification => ({
     references: EMPTY,
     adapters: EMPTY,
+    agents: EMPTY,
     unsupported: reason,
   });
   if (plan.schemaVersion !== 1 || plan.compilerVersion !== '1') return unsupported('unsupported-plan-version');
@@ -169,8 +172,19 @@ export function classifyPlanTargets(plan: ExecutablePlan): PlanClassification {
 
   const references: ClassifiedTarget[] = [];
   const adapters: ClassifiedTarget[] = [];
+  const agents: ClassifiedTarget[] = [];
+  const signInIds = new Set<string>();
   for (const [index, target] of plan.inputs.targets.entries()) {
-    if (isAgentDrivenKind(target.contract.kind)) return unsupported('agent-driven-target');
+    if (target.contract.kind === 'desktop') return unsupported('agent-driven-target');
+    if (target.contract.kind === 'web') {
+      const signIn = plan.sessionSteps.find(candidate => candidate.action === 'sign-in' && candidate.targetSystemId === target.registrationId);
+      const work = plan.targetSystems.find(candidate => candidate.registrationId === target.registrationId);
+      const inspect = work?.planSteps.find(candidate => candidate.action === 'inspect-record');
+      if (!signIn || !inspect) return unsupported('unsupported-frozen-plan');
+      signInIds.add(signIn.id);
+      agents.push({ stepId: inspect.id, ordinal: index + 1, target });
+      continue;
+    }
     const step = plan.sessionSteps.find(
       (candidate) => candidate.action === 'extract-adapter' && candidate.targetSystemId === target.registrationId,
     );
@@ -184,10 +198,10 @@ export function classifyPlanTargets(plan: ExecutablePlan): PlanClassification {
   // this stage cannot account for is a plan it must not claim to have executed.
   const classifiedIds = new Set([...references, ...adapters].map((entry) => entry.stepId));
   for (const step of plan.sessionSteps) {
-    if (step.action === 'create-workspace' || step.id === population.stepId) continue;
+    if (step.action === 'create-workspace' || step.id === population.stepId || signInIds.has(step.id)) continue;
     if (!classifiedIds.has(step.id)) return unsupported('unsupported-frozen-plan');
   }
-  return { references, adapters, unsupported: null };
+  return { references, adapters, agents, unsupported: null };
 }
 
 /** The `versioned-file` Targets, in authored order. Acquired before any Work Item. */

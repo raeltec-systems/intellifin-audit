@@ -427,7 +427,7 @@ export function requiredTargetSystems(plan: ExecutablePlan | null): readonly str
   if (plan === null) return [];
   const classification = classifyPlanTargets(plan);
   if (classification.unsupported !== null) return [];
-  return classification.adapters.map((entry) => entry.target.registrationId);
+  return [...classification.adapters, ...classification.agents].map((entry) => entry.target.registrationId);
 }
 
 /**

@@ -861,7 +861,7 @@ export async function executeAdapterSteps(
       // transaction, over a context this stage already holds. There is no dependency to
       // inject and none to omit: `AdapterExecutionContext` extends `RunGateContext`, so a
       // Run cannot reach the end of its Work Items and skip §H.
-      await runRunLevelGate(context, {
+      if (classification.agents.length === 0) await runRunLevelGate(context, {
         run,
         plan,
         decidedAt: deps.clock.now().toISOString(),

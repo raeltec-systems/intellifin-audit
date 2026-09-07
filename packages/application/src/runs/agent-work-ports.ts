@@ -12,7 +12,7 @@ export interface AgentWorkCheckpoint {
   readonly attemptId: string;
   readonly workItemId: string | null;
   readonly waitId: string | null;
-  readonly pendingWait: { readonly kind: EscalationKind; readonly options: readonly EscalationOption[] } | null;
+  readonly pendingWait: { readonly kind: EscalationKind; readonly options: readonly EscalationOption[]; readonly retainedDecisionWaitIds?: readonly string[] } | null;
   readonly nextTurn: number;
   /** Actual provider usage; never replaced with a guessed zero after a paid call. */
   readonly tokens: number;
@@ -34,6 +34,8 @@ export interface AgentTurnRecord {
   readonly diagnostic: string | null;
 }
 
+export interface AgentWaitRaise { readonly runId: string; readonly waitId: string; readonly stepId: string; readonly supportingEvidenceIds: readonly string[] }
+
 export interface AgentWorkContext extends Omit<AdapterExecutionContext, 'checkpoint' | 'saveCheckpoint'> {
   checkpoint: AgentWorkCheckpoint | null;
   workspace: WorkspaceRef | null;
@@ -43,6 +45,10 @@ export interface AgentWorkContext extends Omit<AdapterExecutionContext, 'checkpo
   toolActions: readonly SanitizedToolAction[];
   captures: readonly { evidenceId: string; toolActionId: string; sourceLocation: string }[];
   wait: RunWait | null;
+  /** Immutable provenance of the wait currently attached to this checkpoint. */
+  waitRaise: AgentWaitRaise | null;
+  /** At most the candidate choice and unnamed-value acknowledgement retained for this item. */
+  retainedDecisions: readonly { readonly wait: RunWait; readonly raised: AgentWaitRaise }[];
   saveCheckpoint(checkpoint: AgentWorkCheckpoint, state: RunRecord['state']): Promise<void>;
   saveTurn(turn: AgentTurnRecord): Promise<void>;
   saveToolAction(action: SanitizedToolAction): Promise<void>;

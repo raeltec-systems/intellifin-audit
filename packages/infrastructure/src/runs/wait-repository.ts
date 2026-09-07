@@ -316,6 +316,23 @@ export class PostgresWaitRepository implements WaitRepository {
                 ? { outcome: 'missing', wait: null, run: current }
                 : { outcome: 'already-open', wait: existing, run: current };
             }
+            // The agent may crash immediately after this transaction commits. Bind its
+            // durable wait intent here, before any human can answer, so recovery never
+            // loses a decision in the gap before the caller receives raiseEscalation.
+            const pending = resultRows(await tx.execute(sql`
+              SELECT pending_wait FROM run_agent_work
+              WHERE run_id=${runId} AND status='WAITING' AND wait_id IS NULL AND pending_wait IS NOT NULL
+            `));
+            if (pending.length > 0) {
+              const bound = await tx.execute(sql`
+                UPDATE run_agent_work SET wait_id=${wait.waitId}
+                WHERE run_id=${runId} AND status='WAITING' AND wait_id IS NULL
+                  AND pending_wait->>'kind'=${wait.kind}
+                  AND pending_wait->'options'=${JSON.stringify(wait.options)}::jsonb
+                RETURNING run_id
+              `);
+              if (resultRows(bound).length !== 1) throw new Error('Escalation does not match the durable agent intent');
+            }
             const changed = await tx.execute(sql`UPDATE audit_run SET state = 'AWAITING_AUDITOR', revision = revision + 1 WHERE run_id = ${runId} AND state = 'RUNNING' RETURNING revision`);
             const nextRevision = revisionValue(resultRows(changed)[0]?.revision);
             if (nextRevision === null) throw new Error('Run was not running while opening an Escalation');

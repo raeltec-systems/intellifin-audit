@@ -869,13 +869,28 @@ describe('executeAdapterSteps', () => {
     expect(test.objects.get(key)).toBe(tampered);
   });
 
-  it('refuses an agent-driven plan rather than skipping the Target System', async () => {
+  it('refuses a web plan missing frozen sign-in and inspection steps', async () => {
     const web = target('reg-web', 'web', 'https://synthetic.invalid/loancore');
     const test = harness({ plan: plan([web]) });
     await executeAdapterSteps(test.deps, JOB);
     expect(test.repository.run.state).toBe('RUN_FAILED');
-    expect(test.repository.checkpoint?.diagnostic).toBe('agent-driven-target');
+    expect(test.repository.checkpoint?.diagnostic).toBe('unsupported-frozen-plan');
     expect(test.repository.items.size).toBe(0);
+  });
+
+  it('hands an executable web target to the agent stage without sealing an empty Gate', async () => {
+    const web = target('reg-web', 'web', 'https://synthetic.invalid/loancore');
+    const frozen = plan([web]);
+    const executable = { ...frozen,
+      sessionSteps: [frozen.sessionSteps[0]!, { id: 'session-login', action: 'sign-in' as const, targetSystemId: web.registrationId, text: 'Sign in' }],
+      targetSystems: [{ registrationId: web.registrationId, planSteps: [{ id: 'inspect-web', action: 'inspect-record' as const, targetSystemId: web.registrationId, text: 'Inspect' }] }],
+    } as ExecutablePlan;
+    const test = harness({ plan: executable });
+    await executeAdapterSteps(test.deps, JOB);
+    expect(test.repository.run.state).toBe('RUNNING');
+    expect(test.repository.checkpoint?.status).toBe('EXTRACTION_COMPLETE');
+    expect(test.repository.items.size).toBe(0);
+    expect(test.repository.gate).toHaveLength(0);
   });
 
   it('fails a Work Item whose credential answers about a different reference', async () => {

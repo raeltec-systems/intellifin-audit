@@ -760,10 +760,9 @@ interface SignInUnit {
  * second cycle — which exists to let a Run CONTINUE past a failed unit — has nothing to
  * buy here.
  *
- * The step is proved by the SESSION being established, and by nothing else. There is no
- * form to submit: every synthetic Northstar system refuses a POST at the system level, so
- * LoanCore authenticates a GET carrying the credential in a header and answers a session
- * cookie the workspace then holds.
+ * The step is proved by the approved authenticated-account postcondition. Credentials
+ * are entered only through the real target login form; the bounded authentication POST
+ * is distinct from prohibited writes to audited business records.
  */
 async function runSignInStep(
   deps: AgentExecutionDependencies,
@@ -912,9 +911,9 @@ async function runSignInStep(
       if (outcome !== 'retry') return outcome;
       continue;
     }
-    // The step is proved by the SESSION being established: the credential resolved through
-    // the port, a 200 where an unauthenticated GET answers 401, and a session the
-    // workspace now holds. Never by "a form submitted", which there is not one of.
+    // The browser port positively verifies the exact approved audit-account marker after
+    // real form authentication. Cookies, HTTP success and form submission alone do not
+    // satisfy this postcondition.
     if (!performed.session || performed.status === null || performed.status >= 300) {
       const outcome = await fail(
         performed.status === 401 || performed.status === 403 ? 'sign-in-denied' : 'sign-in-contract-failed',

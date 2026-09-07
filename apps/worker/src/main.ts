@@ -1,10 +1,10 @@
-import { acquirePopulation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
   ConfigError,
   PostgresWaitRepository, startWaitWorker, startWaitRecovery,
-  PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
+  PostgresAgentWorkRepository, PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
   PostgresWorkspaceRepository, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender, startNotificationWorker,
@@ -23,7 +23,7 @@ import { HttpAdapterExtraction } from '@intellifin/infrastructure/extraction';
 import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentials';
 import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
 
-import { adapterExtraction, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
+import { adapterExtraction, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks } from './startup.js';
 
 /**
  * The worker composition root (AD-1, AD-11).
@@ -198,6 +198,22 @@ async function main(): Promise<void> {
       : null;
     const signIn = async (job: PopulationJob): Promise<{ proceed: boolean }> =>
       agent === null ? { proceed: true } : await executeAgentSteps(agent, job);
+    const workRepository = new PostgresAgentWorkRepository(db);
+    const work = adapter === null ? null : {
+      repository: workRepository, browser, model: agentModel(config), store, clock, ids,
+      credentials: adapter.credentials, exceptions: adapter.exceptions,
+      waits: { raiseEscalation: (input: Parameters<typeof raiseEscalation>[1]) => raiseEscalation({ repository: waits, clock, ids }, input) },
+    };
+    const inspect = async (job: PopulationJob): Promise<{ retry: boolean }> => {
+      try {
+        return work === null
+          ? await stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')
+          : await executeAgentWorkItem(work, job);
+      } finally {
+        await releaseWorkspace(workspace, job.runId).catch(() =>
+          telemetry.captureError('Fatal worker error', new Error('Workspace release failed'), {}));
+      }
+    };
     const handle = async (job: PopulationJob): Promise<{ retry: boolean }> => {
       // The FROZEN plan decides whether this Run gets a workspace at all: `create-workspace`
       // is emitted first exactly when a selected Target System is web or desktop, so an
@@ -222,7 +238,7 @@ async function main(): Promise<void> {
         // would end a Run whose workspace and Target System were both healthy.
         if (!(await signIn(job)).proceed) return { retry: false };
         await executeAdapterSteps(adapter, job);
-        return { retry: false };
+        return inspect(job);
       } finally {
         // Released at the Run's end. `releaseWorkspace` takes the whole decision from the
         // durable row inside a transaction, so this is a no-op for a Run still in flight and
@@ -244,14 +260,19 @@ async function main(): Promise<void> {
       // would stay RUNNING for ever. With extraction off, the sweep stops it instead.
       const recover = adapter === null
         ? (job: PopulationJob) => stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')
-        : (job: PopulationJob) => executeAdapterSteps(adapter, job);
+        : async (job: PopulationJob) => {
+            if (!(await signIn(job)).proceed) return { retry: false };
+            await executeAdapterSteps(adapter, job);
+            return inspect(job);
+          };
       const stopAdapterRecovery = startPopulationRecovery(db,adapterRepository,recover,()=>telemetry.captureError('Fatal worker error',new Error('Adapter recovery failed'),{}));
       // And the agent phase's own, for the same reason one layer earlier: a sign-in that
       // wrote a RETRY checkpoint is deliberately not asking the queue for a redelivery,
       // because that would spend one of the population stage's four durable attempts.
-      const stopAgentRecovery = startPopulationRecovery(db,agentRepository,job=>signIn(job),()=>telemetry.captureError('Fatal worker error',new Error('Agent recovery failed'),{}));
+      const stopAgentRecovery = startPopulationRecovery(db,agentRepository,job=>recover(job),()=>telemetry.captureError('Fatal worker error',new Error('Agent recovery failed'),{}));
+      const stopWorkRecovery = startPopulationRecovery(db,workRepository,inspect,()=>telemetry.captureError('Fatal worker error',new Error('Agent work recovery failed'),{}));
       const stopPopulation = stopPopulationRecovery;
-      stopPopulationRecovery = async () => { await stopAgentRecovery(); await stopAdapterRecovery(); await stopPopulation(); };
+      stopPopulationRecovery = async () => { await stopWorkRecovery(); await stopAgentRecovery(); await stopAdapterRecovery(); await stopPopulation(); };
     }
     // The post-Run integrity check, given a caller at last (Story 3.5). `verifySealedPackage`
     // shipped with tests and nothing in the product calling it, so an object deleted or

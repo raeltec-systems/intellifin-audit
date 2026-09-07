@@ -1147,3 +1147,7 @@ Two mechanical lessons from doing it:
 ### Agent registration: unknown applicability is not a missing judgment
 
 When the frozen evaluator returns MISSING_OBSERVATION_FIELD for Agent-Judged applicability, preserve unknown as UNEVALUATED without a proposal. It is neither CONDITION_NOT_APPLICABLE nor permission for a guessed model conclusion. Registration rejects proposed or conclusive output for that state before writes.
+
+### Agent work resumption keeps human decisions until registration commits
+
+A closed wait is not consumed when a lease is claimed. Keep its exact wait id and original escalation/capture binding until the Observation transaction succeeds; chained candidate and unnamed-value decisions retain at most two explicit closed wait ids. Never rediscover a decision by guessing from history. A stored snapshot is Evidence, not proof that a reattached browser has that live page; ordinary retries re-navigate and search. Worker inspection recovery must also restore provider context and re-confirm authentication where process state was lost.

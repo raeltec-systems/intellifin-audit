@@ -17,6 +17,7 @@ import {
   referenceTargets,
   workspaceRequirement,
 } from './execution.js';
+import { requiredTargetSystems } from './gate.js';
 import type { ExecutablePlan } from '../procedures/executable-plan.js';
 import { registrationDigest, registrationDigestEnvelope, type TargetSystemKind } from '../registrations/target-system.js';
 import type { ProcedureTargetSnapshot } from '../procedures/target-draft.js';
@@ -137,11 +138,26 @@ describe('frozen-kind classification', () => {
     ]);
   });
 
-  it('refuses an agent-driven target rather than skipping it', () => {
-    expect(classifyPlanTargets(plan(['web'])).unsupported).toBe('agent-driven-target');
+  it('refuses incomplete web plans and unsupported desktop execution rather than skipping them', () => {
+    expect(classifyPlanTargets(plan(['web'])).unsupported).toBe('unsupported-frozen-plan');
     expect(classifyPlanTargets(plan(['desktop', 'api'])).unsupported).toBe('agent-driven-target');
     expect(referenceTargets(plan(['web']))).toEqual([]);
     expect(adapterTargets(plan(['web']))).toEqual([]);
+  });
+
+  it('accounts for a complete web target in the shared Gate coverage', () => {
+    const value = plan(['web']);
+    value.sessionSteps[1] = { ...value.sessionSteps[1]!, action: 'sign-in' };
+    value.targetSystems = [{ registrationId: 'reg-1', planSteps: [
+      { id: 'target-1-inspect', action: 'inspect-record', targetSystemId: 'reg-1', text: 'Inspect' },
+      { id: 'target-1-capture', action: 'capture-observation', targetSystemId: 'reg-1', text: 'Capture' },
+      { id: 'target-1-evaluate', action: 'evaluate-conditions', targetSystemId: 'reg-1', text: 'Evaluate' },
+    ] }];
+    const classified = classifyPlanTargets(value);
+    expect(classified.unsupported).toBeNull();
+    expect(classified.agents.map(entry => [entry.target.registrationId, entry.stepId])).toEqual([['reg-1','target-1-inspect']]);
+    expect(classified.adapters).toEqual([]);
+    expect(requiredTargetSystems(value)).toEqual(['reg-1']);
   });
 
   it('refuses a plan whose first Session Step is not population acquisition', () => {

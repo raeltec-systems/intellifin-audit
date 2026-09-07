@@ -49,5 +49,6 @@ export * from './runs/wait-repository.js';
 export * from './runs/wait-wake.js';
 
 export * from './notifications/notification-worker.js';
+export * from './runs/agent-work-repository.js';
 
 export { PostgresEvaluationReviewRepository } from './runs/evaluation-review-repository.js';
