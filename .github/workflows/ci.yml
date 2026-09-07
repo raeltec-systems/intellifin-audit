@@ -115,6 +115,11 @@ jobs:
             exit 1
           fi
 
+      # Agent integration tests launch Chromium as well as PostgreSQL. Browser binaries
+      # are job-local: installing them in the separate e2e job cannot satisfy this job.
+      - name: Install the agent integration browser
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Integration tests
         run: pnpm test:integration
 
