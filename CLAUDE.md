@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Engineering continuation — populated migration proof
+
+Generation 32 enriches historical evidence metadata under a release-only transaction with exclusive table locks and two named triggers temporarily suspended and restored. No runtime bypass exists. The upgrade regression uses the real generation-31 schema and sealed Runs, proves the unguarded backfill fails, proves rollback restores protection, and verifies old evidence/outcomes are unchanged after the real migrator succeeds.
+
 ## Engineering continuation — authentication proof
 
 Cookies are transport state, not authentication proof. The bounded synthetic sign-in contract requires a successful response, no password form, and the visible named signed-in account. Unknown UI is unconfirmed. The real-browser regression covers stale/unrelated cookies and a server issuing a cookie while still serving its login form.

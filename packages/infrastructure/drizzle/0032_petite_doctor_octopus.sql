@@ -56,6 +56,13 @@ ALTER TABLE "run_evidence" ADD COLUMN "captured_at" timestamp with time zone;-->
 ALTER TABLE "run_evidence" ADD COLUMN "capture_method" text;--> statement-breakpoint
 ALTER TABLE "run_evidence" ADD COLUMN "capture_time_source" text;--> statement-breakpoint
 
+-- Release-only metadata enrichment. Drizzle runs the migration inside one transaction.
+-- Exclusive locks prevent a concurrent application write while only these two named
+-- guards are suspended. Rollback restores the guards; no runtime bypass is introduced.
+LOCK TABLE "run_evidence", "population_evidence" IN ACCESS EXCLUSIVE MODE;--> statement-breakpoint
+ALTER TABLE "run_evidence" DISABLE TRIGGER "run_evidence_frozen_after_seal";--> statement-breakpoint
+ALTER TABLE "population_evidence" DISABLE TRIGGER "population_evidence_frozen_after_seal";--> statement-breakpoint
+
 -- The capture METHOD of every existing row is `adapter`, and that is structural rather than a
 -- guess: `run_evidence_kind` admits only `reference-source` and `adapter-extraction`, both of
 -- which are written exclusively by the adapter stage, and `population_evidence` has exactly
@@ -91,6 +98,9 @@ WHERE s."evidence_id" = e."evidence_id"
 -- population artifact was captured and no Step Execution produced it — that is the gap this
 -- generation closes going forward, and a number invented for it would be a fact nobody
 -- measured entering an immutable record. Those rows keep saying so, in words, on the surface.
+
+ALTER TABLE "run_evidence" ENABLE TRIGGER "run_evidence_frozen_after_seal";--> statement-breakpoint
+ALTER TABLE "population_evidence" ENABLE TRIGGER "population_evidence_frozen_after_seal";--> statement-breakpoint
 
 -- ------------------------------------------------------------ reconciliation counts ---
 ALTER TABLE "population_snapshot" ADD COLUMN "declared_count" integer;--> statement-breakpoint

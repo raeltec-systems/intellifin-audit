@@ -39,12 +39,12 @@ function log(level: 'info' | 'error', message: string, fields: Record<string, un
   else process.stdout.write(`${line}\n`);
 }
 
-export async function runMigrations(databaseUrl: string): Promise<number> {
+export async function runMigrations(databaseUrl: string, options: { readonly migrationsFolder?: string } = {}): Promise<number> {
   const sql = createSqlClient(databaseUrl, { max: 1 });
   try {
     const major = await assertPostgres18(sql);
     log('info', 'Connected', { postgresMajor: major });
-    await migrate(createDb(sql), { migrationsFolder: MIGRATIONS_FOLDER });
+    await migrate(createDb(sql), { migrationsFolder: options.migrationsFolder ?? MIGRATIONS_FOLDER });
     await migrateProceduresQueue(createDb(sql));
     await migrateRunsQueue(createDb(sql));
     const version = await readSchemaVersion(sql);
