@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Engineering continuation — transport and verification
+
+The temporary snapshot and branch-writing delivery workflows are removed. Commit source changes directly through normal Git/GitHub operations. CI success on a delivery-payload commit does not verify the later commit produced by that workflow: require checks on the actual candidate. The generated populated-upgrade regression at `94978c9` contained a literal newline inside a regex and failed root TypeScript checking before any database test could run.
+
 ## Engineering continuation — populated migration proof
 
 Generation 32 enriches historical evidence metadata under a release-only transaction with exclusive table locks and two named triggers temporarily suspended and restored. No runtime bypass exists. The upgrade regression uses the real generation-31 schema and sealed Runs, proves the unguarded backfill fails, proves rollback restores protection, and verifies old evidence/outcomes are unchanged after the real migrator succeeds.

@@ -80,8 +80,7 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       };
       await assertProtected();
       // Mutation: the old unguarded backfill must fail against REAL sealed records.
-      const withoutGuards = await prefix('mutation', 32, text => text.replace(/^ALTER TABLE .* (?:DISABLE|ENABLE) TRIGGER .*;--> statement-breakpoint
-/gm, ''));
+      const withoutGuards = await prefix('mutation', 32, text => text.replace(/^ALTER TABLE .* (?:DISABLE|ENABLE) TRIGGER .*;--> statement-breakpoint\n/gm, ''));
       await expect(runMigrations(historicalUrl, { migrationsFolder: withoutGuards })).rejects.toThrow(/is frozen/);
       await assertProtected();
       expect((await sql`SELECT max(version) AS version FROM schema_meta`)[0]?.version).toBe(31);
