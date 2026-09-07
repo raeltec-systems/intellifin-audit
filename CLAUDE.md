@@ -1,3 +1,7 @@
+## 2026-09-07 — Page-script write containment
+
+The browser context enforces read-only HTTP methods as well as destination scope. An action gate alone cannot stop retrieved page scripts issuing same-origin writes. Only the real form login may arm one exact credential-bearing main-frame POST; redirects, fetch/XHR, repeats and credentialless bodies cannot use that exception. It is revoked in finally and page disposal. Local browser tests establish state isolation only, not Solari process/network isolation.
+
 ## 2026-09-07 — Agent evaluation model phase
 
 Agent prompt version2 is independent of procedure derivation prompt version1. Evaluation requests bind a final frozen Observation identity and an allowed condition set; provider output cannot redirect that identity or invent conditions. Action-v1 requests remain supported. The Run token reservation includes the complete evaluation payload and condition text before I/O; omitting those fields would permit uncharged model work. Usage, fallback accounting and credential scanning use the existing durable turn path.

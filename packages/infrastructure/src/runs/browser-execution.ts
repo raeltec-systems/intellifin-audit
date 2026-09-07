@@ -7,6 +7,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Request,
   type Response,
   type Route,
 } from 'playwright-core';
@@ -157,6 +158,14 @@ function requestedCapture(action: BrowserToolAction): readonly string[] {
 }
 
 const BROWSER_CAPTURE_KINDS = new Set(['structural-snapshot', 'screenshot']);
+
+/** Methods a page may issue without a Tool Action: no request-body write surface. */
+const READ_ONLY_BROWSER_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/** The workspace route's method policy, kept pure for the unit boundary test. */
+export function isReadOnlyBrowserMethod(method: string): boolean {
+  return typeof method === 'string' && READ_ONLY_BROWSER_METHODS.has(method.toUpperCase());
+}
 
 type CaptureGuard = {
   readonly held: number;
@@ -325,6 +334,17 @@ export interface PlaywrightWorkspace extends WorkspaceHandle {
   readonly context: BrowserContext;
 }
 
+interface ArmedAuthenticationPost {
+  /** The page whose main frame is allowed to submit the form. */
+  readonly page: Page;
+  /** The form submitter's resolved action, including any target-owned query. */
+  readonly destination: string;
+  /** Used only to ask whether the in-flight body contains this credential. */
+  readonly credential: ResolvedCredential;
+  /** A login form may consume this exception exactly once. */
+  used: boolean;
+}
+
 interface LiveWorkspace {
   readonly ref: WorkspaceRef;
   readonly browser: Browser;
@@ -341,10 +361,59 @@ interface LiveWorkspace {
    * metadata. It never crosses the application boundary or enters an audit row.
    */
   lastResponse: Response | null;
+  /** A single, short-lived exception for the target's real credential form POST. */
+  authPost: ArmedAuthenticationPost | null;
   /** Downloads this workspace was offered. Offered, and never executed. */
   downloads: number;
   /** The workspace's compiled egress allowlist, so an action can ask it too. */
   readonly allowed: (destination: string) => boolean;
+}
+
+/** Compare the exact resolved authentication URL without retaining a query in a record. */
+function sameNavigationUrl(expected: string, actual: string): boolean {
+  try {
+    const expectedUrl = new URL(expected);
+    const actualUrl = new URL(actual);
+    expectedUrl.hash = '';
+    actualUrl.hash = '';
+    return expectedUrl.href === actualUrl.href;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Allow the one real form POST used by `signIn`, and nothing a page script can substitute.
+ *
+ * The context route has no DOM initiator information. The narrowest safe mechanism here is
+ * therefore a one-shot main-frame navigation to the form's resolved action, armed only while
+ * `signIn` is clicking, with a body that the opaque credential scanner proves contains the
+ * credential. Fetch/XHR, a different URL, a redirect replay, a second POST, or a body without
+ * the credential all fall through to the read-only refusal below.
+ */
+function isArmedAuthenticationPost(
+  live: LiveWorkspace | null,
+  request: Request,
+): boolean {
+  const armed = live?.authPost;
+  if (armed === null || armed === undefined || armed.used) return false;
+  try {
+    if (
+      request.method().toUpperCase() !== 'POST' ||
+      !request.isNavigationRequest() ||
+      request.resourceType() !== 'document' ||
+      request.frame() !== armed.page.mainFrame() ||
+      request.redirectedFrom() !== null ||
+      !sameNavigationUrl(armed.destination, request.url())
+    ) return false;
+    const body = request.postDataBuffer();
+    if (body === null || !armed.credential.discloses(body)) return false;
+    armed.used = true;
+    return true;
+  } catch {
+    // A provider object that cannot be inspected cannot prove this is the approved login.
+    return false;
+  }
 }
 
 export class PlaywrightBrowserExecution implements BrowserExecution {
@@ -429,7 +498,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       // `download` event still fires, which is what lets a Tool Action record that one was
       // offered — "handled per the conformance contract, never executed".
       const context = await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });
-      let live: LiveWorkspace;
+      let live: LiveWorkspace | null = null;
       const denials: WorkspaceDenial[] = [];
       let deniedTotal = 0;
       const deny = (destination: string, method: string, resourceType: string): void => {
@@ -439,13 +508,19 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         }
       };
       // Every request, by predicate rather than by glob: a glob is a second language for
-      // the same intent and `**/*` has its own opinions about what a path is.
+      // the same intent and `**/*` has its own opinions about what a path is. An allowed
+      // origin alone is not enough: page JavaScript can issue a same-origin POST, so the
+      // workspace permits only read methods unless the sign-in mechanism has armed its one
+      // exact, credential-bearing form submission.
       await context.route(
         () => true,
         async (route: Route) => {
           const request = route.request();
           const url = request.url();
-          if (allowed(url)) {
+          if (
+            allowed(url) &&
+            (isReadOnlyBrowserMethod(request.method()) || isArmedAuthenticationPost(live, request))
+          ) {
             await route.continue();
             return;
           }
@@ -474,7 +549,17 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         takeDenials: () => denials.splice(0, denials.length),
         denied: () => deniedTotal,
       };
-      live = { ref, browser, context, handle, page: null, lastResponse: null, downloads: 0, allowed };
+      live = {
+        ref,
+        browser,
+        context,
+        handle,
+        page: null,
+        lastResponse: null,
+        authPost: null,
+        downloads: 0,
+        allowed,
+      };
       this.live.set(workspaceId, live);
       return handle;
     } catch (error) {
@@ -806,6 +891,9 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     page: Page | null,
     timeoutMs: number = CLOSE_TIMEOUT_MS,
   ): Promise<void> {
+    // A page being discarded can no longer complete an armed form submission. Revoke the
+    // exception before any close attempt, so a late provider request cannot use it.
+    live.authPost = null;
     const active = page ?? live.page;
     if (active === null) return;
     // Make reuse impossible before asking Playwright to close anything. The workspace stays
@@ -1476,36 +1564,51 @@ async function signIn(
     deadline,
   );
 
-  // The FIRST non-redirect navigation response of the main frame after the submission.
-  // Filtering the redirects out is what makes this the answer the system settled on rather
-  // than the `303` it passed through on the way.
-  const settled = withActionDeadline(
-    () => page.waitForResponse(
-      (response) =>
-        response.request().isNavigationRequest() &&
-        response.frame() === page.mainFrame() &&
-        (response.status() < 300 || response.status() >= 400),
-      { timeout: timeoutForDeadline(deadline, timeoutMs) },
-    ),
-    deadline,
-  );
-  await withActionDeadline(
-    () => submitter.click({ timeout: timeoutForDeadline(deadline, timeoutMs) }),
-    deadline,
-  );
-  const response = await settled;
-  await withActionDeadline(
-    () => page.waitForLoadState('domcontentloaded', { timeout: timeoutForDeadline(deadline, timeoutMs) }),
-    deadline,
-  );
-  // The workspace is still inside its frozen allowlist. The interception should already
-  // have aborted anything else; this is the second lock on that door, checked here as well
-  // as by the caller because a sign-in is where a system most wants to send a browser
-  // somewhere new.
-  if (!live.allowed(page.url())) throw new BrowserActionError('scope');
-  if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
-  assertActionDeadline(deadline);
-  return response;
+  // Arm exactly one request for the form's effective action. The context route remains
+  // read-only until this point, and the allowance is revoked in `finally` even when the
+  // provider or the target fails to answer.
+  if (live.authPost !== null) throw new BrowserActionError('contract');
+  const authPost: ArmedAuthenticationPost = {
+    page,
+    destination: submitterDetails.formAction,
+    credential,
+    used: false,
+  };
+  live.authPost = authPost;
+  try {
+    // The FIRST non-redirect navigation response of the main frame after the submission.
+    // Filtering the redirects out is what makes this the answer the system settled on rather
+    // than the `303` it passed through on the way.
+    const settled = withActionDeadline(
+      () => page.waitForResponse(
+        (response) =>
+          response.request().isNavigationRequest() &&
+          response.frame() === page.mainFrame() &&
+          (response.status() < 300 || response.status() >= 400),
+        { timeout: timeoutForDeadline(deadline, timeoutMs) },
+      ),
+      deadline,
+    );
+    await withActionDeadline(
+      () => submitter.click({ timeout: timeoutForDeadline(deadline, timeoutMs) }),
+      deadline,
+    );
+    const response = await settled;
+    await withActionDeadline(
+      () => page.waitForLoadState('domcontentloaded', { timeout: timeoutForDeadline(deadline, timeoutMs) }),
+      deadline,
+    );
+    // The workspace is still inside its frozen allowlist. The interception should already
+    // have aborted anything else; this is the second lock on that door, checked here as well
+    // as by the caller because a sign-in is where a system most wants to send a browser
+    // somewhere new.
+    if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+    if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
+    assertActionDeadline(deadline);
+    return response;
+  } finally {
+    if (live.authPost === authPost) live.authPost = null;
+  }
 }
 
 /**

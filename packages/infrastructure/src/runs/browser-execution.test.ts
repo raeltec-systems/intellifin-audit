@@ -6,6 +6,7 @@ import {
   PlaywrightBrowserExecution,
   currentPageLocationMatches,
   egressPolicy,
+  isReadOnlyBrowserMethod,
   provisionFailure,
   safeDestination,
 } from './browser-execution.js';
@@ -77,6 +78,17 @@ describe('the frozen egress allowlist', () => {
     expect(() => egressPolicy({ allowedOrigins: ['not a url'] })).toThrow(
       expect.objectContaining({ code: 'policy' }),
     );
+  });
+});
+
+describe('the page egress method policy', () => {
+  it('allows only read methods without a Tool Action', () => {
+    expect(isReadOnlyBrowserMethod('GET')).toBe(true);
+    expect(isReadOnlyBrowserMethod('head')).toBe(true);
+    expect(isReadOnlyBrowserMethod('OPTIONS')).toBe(true);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'TRACE', 'CONNECT']) {
+      expect(isReadOnlyBrowserMethod(method)).toBe(false);
+    }
   });
 });
 
