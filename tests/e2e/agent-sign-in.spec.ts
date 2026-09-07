@@ -124,6 +124,8 @@ test.beforeAll(async () => {
       SERVICE_NAME: 'worker',
       MODEL_PROVIDER: '',
       MODEL_ID: '',
+      ANTHROPIC_API_KEY: '',
+      OPENAI_API_KEY: '',
       CREDENTIAL_TOKENS,
       EXCEPTION_FINGERPRINT_KEY,
       EXCEPTION_FINGERPRINT_KEY_ID,
@@ -168,6 +170,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM pgboss.job WHERE data->>'runId' = ANY(${ids_})`;
       // `run_tool_action` names a Step Execution with a real foreign key, so it goes first.
       await sql`DELETE FROM run_tool_action WHERE run_id = ANY(${ids_}::uuid[])`;
+      await sql`DELETE FROM run_agent_work WHERE run_id = ANY(${ids_}::uuid[])`;
       await sql`DELETE FROM run_observation_evaluation WHERE run_id = ANY(${ids_}::uuid[])`;
       await sql`DELETE FROM run_observation_check WHERE run_id = ANY(${ids_}::uuid[])`;
       await sql`DELETE FROM run_observation WHERE run_id = ANY(${ids_}::uuid[])`;
@@ -282,7 +285,7 @@ test.describe('the agent signs in to LoanCore', () => {
     expect(action).toMatchObject({ capture: 'SUPPRESSED', capture_suppression: 'credential-entry' });
 
     // The workspace the sign-in happened in. Its STATUS is deliberately not asserted: this
-    // Run goes on to be refused by the adapter stage and the worker releases the workspace
+    // Run goes on to be refused because P-2 browser investigation is unsupported, and releases the workspace
     // in its `finally`, so by the time this reads the row it may say OPEN or RELEASED. What
     // must be true is that the Run had one, and which guarantee it was.
     const [workspace] = await sql`SELECT status,mode,workspace_id FROM run_workspace WHERE run_id=${runId}`;
@@ -348,20 +351,21 @@ test.describe('the agent signs in to LoanCore', () => {
     expect(body).not.toContain(LOANCORE_CREDENTIAL);
   });
 
-  test('the Run then ends RUN_FAILED, because the record-level steps are Story 4.4', async () => {
-    // Named rather than hidden. Story 4.2 signs in and stops; the adapter stage still
-    // refuses a plan naming an agent-driven Target BY NAME, so this Run ends `RUN_FAILED`
-    // with the sign-in durably recorded before it. Asserting the DIAGNOSTIC is what stops
-    // a later regression turning this into a Run that failed for some other reason.
+  test('the Run fails explicitly because P-2 browser investigation is unsupported', async () => {
+    // The worker reaches investigation after real authentication. This P-2 browser
+    // fixture is outside the implemented P-1/P-4 investigation scope and must fail by
+    // name while preserving the real sign-in proof.
     runId = runId || String((await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId}`)[0]?.['run_id'] ?? '');
     expect(runId).not.toBe('');
     await expect
-      .poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, {
+      .poll(async () => (await sql`SELECT r.state, a.status AS sign_in, e.status AS extraction, w.status AS investigation, w.diagnostic FROM audit_run r LEFT JOIN run_agent_execution a USING(run_id) LEFT JOIN run_execution e USING(run_id) LEFT JOIN run_agent_work w USING(run_id) WHERE r.run_id=${runId}`)[0], {
         timeout: 120_000,
       })
-      .toBe('RUN_FAILED');
+      .toMatchObject({ state: 'RUN_FAILED', sign_in: 'SIGNED_IN', extraction: 'EXTRACTION_COMPLETE', investigation: 'TERMINAL', diagnostic: 'unsupported-frozen-plan' });
     const [stage] = await sql`SELECT status,diagnostic FROM run_execution WHERE run_id=${runId}`;
-    expect(stage).toMatchObject({ status: 'TERMINAL', diagnostic: 'agent-driven-target' });
+    expect(stage).toMatchObject({ status: 'EXTRACTION_COMPLETE', diagnostic: null });
+    const [investigation] = await sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${runId}`;
+    expect(investigation).toMatchObject({ status: 'TERMINAL', diagnostic: 'unsupported-frozen-plan' });
     // The sign-in survives the Run's failure: it is what this story delivered.
     const [step] = await sql`SELECT state FROM run_session_step WHERE run_id=${runId} AND action='sign-in'`;
     expect(step).toMatchObject({ state: 'ACQUIRED' });

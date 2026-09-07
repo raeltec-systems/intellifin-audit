@@ -725,14 +725,17 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state).toBe('RUN_FAILED');
   });
 
-  it('refuses an agent-driven plan rather than executing part of it', async () => {
+  it('leaves selected web targets for the agent without fabricating adapter observations', async () => {
     const seeded = await seed(['web']);
     await executeAdapterSteps(dependencies(seeded).deps, seeded.job);
-    // The population stage refuses such a plan first, so the Run never reaches RUNNING;
-    // the stage's own refusal is asserted on its claim guard rather than on a checkpoint.
+    // Web inspection belongs to the agent phase. Completing adapter extraction must
+    // neither fail this Run nor pretend to have observed the selected web target.
     const state = (await sql`SELECT state FROM audit_run WHERE run_id=${seeded.run.runId}`)[0]?.state;
-    expect(state).toBe('RUN_FAILED');
+    expect(state).toBe('RUNNING');
+    expect((await sql`SELECT status,diagnostic FROM run_execution WHERE run_id=${seeded.run.runId}`)[0]).toMatchObject({ status: 'EXTRACTION_COMPLETE', diagnostic: null });
     expect((await sql`SELECT count(*)::int AS count FROM run_work_item WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(0);
+    expect((await sql`SELECT count(*)::int AS count FROM run_observation WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(0);
+    expect((await sql`SELECT count(*)::int AS count FROM run_result WHERE run_id=${seeded.run.runId}`)[0]?.count).toBe(0);
   });
 
   it('refuses at the database what no command may store', async () => {

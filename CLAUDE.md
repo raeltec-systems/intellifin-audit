@@ -1192,3 +1192,8 @@ run_agent_work.work_item_id references run_work_item immediately. A first claim 
 ## P-4 page declaration and grounded batch (2026-09-07)
 
 A P-4 page is one Work Item, with one Observation per distinct frozen baseline key; duplicate baseline rows are retained for shared evaluation, and a missing page value has no fabricated grounding. The genuine model gateway chooses only offered snapshot locators; platform code reads their cells and registers through the shared corroborator/evaluator. A single immutable metadata-only declaration is written with that batch. The Run Gate binds it to registered Structural Snapshot, capture, performed Tool Action and Work Item, and compares actual SQL Observation count, captured page count and declared count through the existing declaredCountMatches predicate. A failed count or missing Observation never becomes Pass.
+
+
+## Historical stage assertions after agent wiring (2026-09-07)
+
+Adapter extraction now completes references and leaves web work for investigation; tests must assert zero fabricated adapter Observations rather than the removed agent-driven-target refusal. The sign-in-only P-2 browser fixture remains outside the implemented P-1/P-4 investigation scope and must fail with unsupported-frozen-plan after preserving authenticated access. Poll only safe durable stage/status/diagnostic columns when diagnosing stalls. Schema inventory fixtures follow the query's exact column-name order; never remove columns to repair an ordering mismatch.

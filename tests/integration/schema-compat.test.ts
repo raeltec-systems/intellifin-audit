@@ -166,11 +166,11 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     ],
     [
       'run_observation_evaluation',
-      ['agent_proposed_confidence', 'agent_proposed_rationale', 'agent_proposed_value', 'confirmation', 'confidence', 'condition_id', 'corroboration', 'coverage', 'diagnostic', 'evidence_ids', 'observation_id', 'origin', 'rationale', 'run_id', 'value'],
+      ['agent_proposed_confidence', 'agent_proposed_rationale', 'agent_proposed_value', 'condition_id', 'confidence', 'confirmation', 'corroboration', 'coverage', 'diagnostic', 'evidence_ids', 'observation_id', 'origin', 'rationale', 'run_id', 'value'],
     ],
     [
       'run_evaluation_review',
-      ['action', 'actor_id', 'condition_id', 'decided_at', 'decision_id', 'effective_confirmation', 'effective_origin', 'effective_value', 'observation_id', 'original_confirmation', 'original_confidence', 'original_evidence_ids', 'original_origin', 'original_rationale', 'original_value', 'rejection_rationale', 'replacement_value', 'review_revision', 'run_id'],
+      ['action', 'actor_id', 'condition_id', 'decided_at', 'decision_id', 'effective_confirmation', 'effective_origin', 'effective_value', 'observation_id', 'original_confidence', 'original_confirmation', 'original_evidence_ids', 'original_origin', 'original_rationale', 'original_value', 'rejection_rationale', 'replacement_value', 'review_revision', 'run_id'],
     ],
     [
       'run_result_review',
