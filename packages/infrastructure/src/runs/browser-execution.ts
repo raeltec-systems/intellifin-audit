@@ -26,7 +26,11 @@ import {
   type WorkspaceMode,
   type WorkspaceRef,
 } from '@intellifin/application';
-import { sanitizeDestination, withinFrozenOrigin, WEB_TREE_MEDIA_TYPE } from '@intellifin/domain';
+import {
+  sanitizeDestination,
+  withinFrozenOrigin,
+  WEB_TREE_MEDIA_TYPE,
+} from '@intellifin/domain';
 
 import { withinOrigin } from './origin-policy.js';
 import { hasAuthenticatedAccount } from './authentication-proof.js';
@@ -204,6 +208,63 @@ export function safeDestination(url: string): string {
 }
 
 /**
+ * A full, query-free location for binding an action to the current page.
+ *
+ * `safeDestination` is intentionally bounded for immutable audit rows. It cannot be used
+ * as the identity comparison here: two paths that differ after its bound would otherwise
+ * compare equal. URL parsing keeps the full path while discarding only query/fragment data.
+ */
+function comparableLocation(raw: string): string | null {
+  if (typeof raw !== 'string' || /[\s\u0000-\u001f\u007f]/u.test(raw)) return null;
+  try {
+    const parsed = new URL(raw);
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username !== '' ||
+      parsed.password !== ''
+    ) return null;
+    parsed.search = '';
+    parsed.hash = '';
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname || '/'}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a current browser page is the exact sanitized location an approved read selected.
+ *
+ * Query strings are intentionally ignored here: a search result keeps its population query
+ * in the live browser URL while the action log and gate carry only the query-free location.
+ * Anything unparseable, or any different authority/path, fails closed before the page is
+ * captured. The helper is pure so the location rule is unit-testable without a browser.
+ */
+export function currentPageLocationMatches(expected: string, actual: string): boolean {
+  const expectedLocation = comparableLocation(expected);
+  const actualLocation = comparableLocation(actual);
+  return (
+    expectedLocation !== null &&
+    actualLocation !== null &&
+    expectedLocation === actualLocation
+  );
+}
+
+/** A current-page read's approved destination is query-free by construction. */
+function isQueryFreeDestination(destination: string): boolean {
+  try {
+    const parsed = new URL(destination);
+    return (
+      parsed.search === '' &&
+      parsed.hash === '' &&
+      parsed.username === '' &&
+      parsed.password === ''
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The frozen egress allowlist, compiled once, as a predicate over a destination.
  *
  * The rule is `withinOrigin`'s — the same authority-plus-path-boundary rule the adapter
@@ -271,6 +332,15 @@ interface LiveWorkspace {
   readonly handle: PlaywrightWorkspace;
   /** The ONE page this workspace drives, made on the first Tool Action. */
   page: Page | null;
+  /**
+   * The most recent main-frame response for the live page.
+   *
+   * A `read-attribute` action reads the page already produced by a preceding search or
+   * navigation. Playwright has no response object for an action that deliberately does not
+   * navigate, so retain the provider response in process memory for truthful status/method
+   * metadata. It never crosses the application boundary or enters an audit row.
+   */
+  lastResponse: Response | null;
   /** Downloads this workspace was offered. Offered, and never executed. */
   downloads: number;
   /** The workspace's compiled egress allowlist, so an action can ask it too. */
@@ -404,7 +474,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         takeDenials: () => denials.splice(0, denials.length),
         denied: () => deniedTotal,
       };
-      live = { ref, browser, context, handle, page: null, downloads: 0, allowed };
+      live = { ref, browser, context, handle, page: null, lastResponse: null, downloads: 0, allowed };
       this.live.set(workspaceId, live);
       return handle;
     } catch (error) {
@@ -521,31 +591,72 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
 
     let page: Page | null = null;
     try {
-      page = await this.pageFor(live, deadline);
-      let response: Awaited<ReturnType<Page['goto']>> = await withActionDeadline(
-        () => page!.goto(action.destination, {
-          waitUntil: 'domcontentloaded',
-          timeout: timeoutForDeadline(deadline, timeout),
-        }),
-        deadline,
-      );
-      if (action.action === 'search') {
-        if (response === null) throw new BrowserActionError('contract');
-        if (!withinFrozenOrigin(action.destination, page.url())) {
+      const currentPageRead = action.action === 'read-attribute';
+      let response: Response | null = null;
+      if (currentPageRead) {
+        // `read-attribute` consumes the page selected by the preceding approved action. It
+        // must never reload the sanitized, query-free destination: doing so discards the
+        // actual GET search result whose snapshot grounds the read. Parameters and
+        // credentials are forbidden on this read arm; the application gate still decides
+        // the action and target before this mechanism is reached.
+        if (
+          action.credential !== null ||
+          (action.parameters !== undefined &&
+            (!Array.isArray(action.parameters) || action.parameters.length !== 0))
+        ) {
+          throw new BrowserActionError('contract');
+        }
+        if (!isQueryFreeDestination(action.destination)) {
+          // A read destination is an expected sanitized location, never a new query the
+          // model may invent. The live page's query is retained only inside the browser.
+          throw new BrowserActionError('contract');
+        }
+        page = live.page;
+        if (page === null || page.isClosed()) {
+          throw new BrowserActionError('unavailable');
+        }
+        if (
+          !currentPageLocationMatches(action.destination, page.url()) ||
+          !live.allowed(page.url())
+        ) {
+          // A page selected for another target, or a page whose path no longer matches the
+          // frozen action destination, is a scope failure. No content is captured from it.
           throw new BrowserActionError('scope');
         }
+        response = live.lastResponse;
+        if (response === null) {
+          // An attached page restored after a process restart has no response object that
+          // can truthfully describe how it arrived. Re-establish it through a fresh
+          // approved action rather than inventing status or method metadata.
+          throw new BrowserActionError('unavailable');
+        }
+      } else {
+        page = await this.pageFor(live, deadline);
         response = await withActionDeadline(
-          () => submitSearch(
-            live,
-            page!,
-            action.destination,
-            action.parameters ?? [],
-            timeout,
-            response!,
-            deadline,
-          ),
+          () => page!.goto(action.destination, {
+            waitUntil: 'domcontentloaded',
+            timeout: timeoutForDeadline(deadline, timeout),
+          }),
           deadline,
         );
+        if (action.action === 'search') {
+          if (response === null) throw new BrowserActionError('contract');
+          if (!withinFrozenOrigin(action.destination, page.url())) {
+            throw new BrowserActionError('scope');
+          }
+          response = await withActionDeadline(
+            () => submitSearch(
+              live,
+              page!,
+              action.destination,
+              action.parameters ?? [],
+              timeout,
+              response!,
+              deadline,
+            ),
+            deadline,
+          );
+        }
       }
       // The credential exists for the length of ONE submission and is dropped as soon as
       // the navigation it caused has settled. A workspace that kept it would present it on
@@ -590,6 +701,10 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         () => hasAuthenticatedAccount(page!, response!),
         deadline,
       );
+      // Keep the response only after every action-level check and capture has succeeded.
+      // A current-page read deliberately keeps the same response: it did not put a new
+      // request on the wire and therefore has no new response to retain.
+      if (!currentPageRead) live.lastResponse = response;
       assertActionDeadline(deadline);
       return {
         status: response.status(),
@@ -598,7 +713,7 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         // rather than assumed, because the immutable action log records what happened.
         method: originatingMethod(response),
         location,
-        redirected: response.request().redirectedFrom() !== null,
+        redirected: currentPageRead ? false : response.request().redirectedFrom() !== null,
         downloads: live.downloads,
         // Authentication is the approved target-specific postcondition on the live page and
         // response; a cookie alone is never treated as proof.
@@ -629,6 +744,12 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (live.page !== null && !live.page.isClosed()) {
       assertActionDeadline(deadline);
       return live.page;
+    }
+    if (live.page !== null) {
+      // A closed page cannot carry the response metadata used by a current-page read.
+      // Clear both together before making a replacement surface.
+      live.page = null;
+      live.lastResponse = null;
     }
     assertActionDeadline(deadline);
 
@@ -689,7 +810,10 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (active === null) return;
     // Make reuse impossible before asking Playwright to close anything. The workspace stays
     // in `this.live`, so its provider/run identity remains available to release().
-    if (live.page === active) live.page = null;
+    if (live.page === active) {
+      live.page = null;
+      live.lastResponse = null;
+    }
     const cleanupDeadline = Date.now() + Math.max(1, Math.min(timeoutMs, CLOSE_TIMEOUT_MS));
     const closeBounded = async (work: () => Promise<unknown>): Promise<void> => {
       const remaining = remainingActionTime(cleanupDeadline);

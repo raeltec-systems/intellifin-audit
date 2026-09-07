@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SolariError } from '@solarisdk/browser';
 import { NO_CREDENTIALS, WorkspaceProvisionError } from '@intellifin/application';
 
 import {
   PlaywrightBrowserExecution,
+  currentPageLocationMatches,
   egressPolicy,
   provisionFailure,
   safeDestination,
@@ -97,6 +98,35 @@ describe('what a denial is allowed to record', () => {
 
   it('is bounded, because a chain row cannot be taken back out', () => {
     expect(safeDestination(`https://elsewhere.invalid/${'a'.repeat(4000)}`).length).toBe(500);
+  });
+});
+
+describe('current-page read location binding', () => {
+  it('matches a query-bearing result to its sanitized approved location', () => {
+    expect(currentPageLocationMatches(
+      'https://synthetic.invalid/loancore/search',
+      'https://synthetic.invalid/loancore/search?employee_id=E-000105&name=Esther+Kabwe',
+    )).toBe(true);
+  });
+
+  it('rejects another path, authority, or an unparseable location', () => {
+    expect(currentPageLocationMatches(
+      'https://synthetic.invalid/loancore/search',
+      'https://synthetic.invalid/loancore/accounts',
+    )).toBe(false);
+    expect(currentPageLocationMatches(
+      'https://synthetic.invalid/loancore/search',
+      'https://other.invalid/loancore/search?employee_id=E-000105',
+    )).toBe(false);
+    expect(currentPageLocationMatches('::::', 'https://synthetic.invalid/loancore/search')).toBe(false);
+  });
+
+  it('does not let the bounded audit spelling collapse two long paths', () => {
+    const prefix = 'a'.repeat(600);
+    expect(currentPageLocationMatches(
+      `https://synthetic.invalid/loancore/${prefix}x`,
+      `https://synthetic.invalid/loancore/${prefix}y?employee_id=E-000105`,
+    )).toBe(false);
   });
 });
 
@@ -300,23 +330,24 @@ describe('LoanCore web-tree completion metadata', () => {
 
 describe('one absolute browser-action deadline', () => {
   it('expires pending browser work once and exposes no fresh phase timeout', async () => {
-    const deadline = Date.now() + 25;
-    let pendingTimer: ReturnType<typeof setTimeout> | undefined;
-    const work = new Promise<never>((_resolve, reject) => {
-      pendingTimer = setTimeout(() => reject(new Error('late browser response')), 250);
-    });
+    vi.useFakeTimers();
     try {
+      vi.setSystemTime(new Date('2026-09-07T00:00:00.000Z'));
+      const deadline = Date.now() + 25;
+      const work = new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('late browser response')), 250);
+      });
       let failure: unknown;
-      try {
-        await withActionDeadline(() => work, deadline);
-      } catch (error) {
+      const pending = withActionDeadline(() => work, deadline).catch((error: unknown) => {
         failure = error;
-      }
+      });
+      await vi.advanceTimersByTimeAsync(25);
+      await pending;
       expect(isActionDeadlineExceeded(failure)).toBe(true);
       expect(remainingActionTime(deadline)).toBe(0);
       expect(timeoutForDeadline(deadline, 10_000)).toBe(1);
     } finally {
-      if (pendingTimer !== undefined) clearTimeout(pendingTimer);
+      vi.useRealTimers();
     }
   });
 });

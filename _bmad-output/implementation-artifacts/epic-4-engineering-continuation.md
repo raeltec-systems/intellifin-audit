@@ -118,3 +118,7 @@ Full workspace/root-test typecheck passes locally.109 focused notification/escal
 ## Escalation checkpoint CI corrections
 
 b04e153acdfdaf24fba15a37c50935304cbef735 is pushed but not accepted. CI34140916737 passes container builds and generation35 fresh/populated/drift migration checks; 406 PostgreSQL tests pass, notification fixture setup fails before its two tests, boundaries detect a notification/wait import cycle, and the browser suite reports one provenance locator mismatch. This checkpoint extracts the shared kind vocabulary, fixes the explicit JSON fixture binding, and scopes the provenance assertion to the actual safety label without removing injection assertions. Local boundaries and 13 focused wait/notification tests pass; hosted verification remains pending. Epic4 remains incomplete; no merge.
+
+## Current-page read checkpoint
+
+d9b606307aaf27b1956a9e2bd66244f54c505394 is pushed. Its CI passes typecheck, boundaries and container checks; unit exposes native timer rounding (remaining deadline 1ms), browser exposes a second overly broad provenance-body locator. This checkpoint preserves real GET search results for read-attribute without reloading sanitized destinations, checks full untruncated authority/path and scope, and refuses missing response metadata after restart. 29 focused browser tests pass; the nine real-browser capture integrations remain pending hosted verification. Deadline assertions now use a controlled clock without loosening bounds. Not an accepted story or release candidate.

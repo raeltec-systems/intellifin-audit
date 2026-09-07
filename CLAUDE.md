@@ -1,3 +1,7 @@
+## 2026-09-07 — Preserve live search reads
+
+An approved read-attribute captures the current page only when its full query-free authority/path matches the selected destination and frozen scope. It must not reload a search URL after sanitization removes its query. Response metadata remains in memory; a restart without that response requires a fresh approved action, never invented HTTP metadata. Deadline unit checks use a controlled clock to avoid native timer rounding.
+
 ## 2026-09-07 — Escalation checkpoint CI corrections
 
 Closed escalation kind vocabulary lives in a dependency-free leaf shared by wait commands and notification ports; importing command modules from notification contracts creates an identity/notification cycle. Raw PostgreSQL test JSON arrays use explicit JSON.stringify plus jsonb casts, matching the test connection serialization. Untrusted question provenance assertions target the label element because the component appends platform safety guidance.

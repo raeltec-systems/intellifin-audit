@@ -127,6 +127,105 @@ describe.skipIf(!databaseUrl)('real browser web-tree capture', () => {
     }
   }, 60_000);
 
+  it('reads the live GET search result without reloading its query-free location', async () => {
+    const requests: RequestRecord[] = [];
+    const { server, origin } = await listen((request, response) => {
+      requests.push({ method: request.method ?? '', url: request.url ?? '' });
+      if (request.url?.startsWith('/target/search?')) {
+        html(response, `
+          <p id="result-summary">Showing 1 of 1 matching accounts.</p>
+          <table>
+            <tr><th>Employee ID</th><th>Status</th></tr>
+            <tr><td>E-000105</td><td>Disabled</td></tr>
+          </table>
+        `);
+        return;
+      }
+      html(response, `
+        <form method="get" action="/target/search">
+          <label for="employee-id">Employee ID</label>
+          <input id="employee-id" name="employee_id" type="text">
+          <button type="submit">Search</button>
+        </form>
+      `);
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'web-tree-current-page-read-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      const search = await browser.perform(
+        workspace.ref,
+        {
+          action: 'search',
+          destination: origin,
+          parameters: [{ name: 'employee_id', value: 'E-000105' }],
+          credential: null,
+          capture: ['structural-snapshot'],
+        },
+        10_000,
+        NO_CREDENTIALS,
+      );
+      expect(search.location).toBe(`${origin}/search`);
+
+      const read = await browser.perform(
+        workspace.ref,
+        {
+          action: 'read-attribute',
+          destination: `${origin}/search`,
+          parameters: [],
+          credential: null,
+          capture: ['structural-snapshot'],
+        },
+        10_000,
+        NO_CREDENTIALS,
+      );
+      expect(read).toMatchObject({ status: 200, method: 'GET', location: `${origin}/search`, redirected: false });
+      const snapshot = read.artifacts?.find((artifact) => artifact.kind === 'structural-snapshot');
+      expect(snapshot).toBeDefined();
+      const document = parseWebTree(new TextDecoder().decode(snapshot!.bytes));
+      expect(document?.nodes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ label: 'Employee ID', value: 'E-000105' }),
+        expect.objectContaining({ label: 'Status', value: 'Disabled' }),
+      ]));
+
+      // The read consumed the attached result page. It did not issue a second GET, and a
+      // destination selected for another page is refused before any content is captured.
+      expect(requests.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+        'GET /target',
+        'GET /target/search?employee_id=E-000105',
+      ]);
+      await expect(browser.perform(
+        workspace.ref,
+        {
+          action: 'read-attribute',
+          destination: `${origin}/other`,
+          parameters: [],
+          credential: null,
+          capture: [],
+        },
+        10_000,
+      )).rejects.toMatchObject({ code: 'scope' });
+      await expect(browser.perform(
+        workspace.ref,
+        {
+          action: 'read-attribute',
+          destination: `${origin}/search?forged=unapproved`,
+          parameters: [],
+          credential: null,
+          capture: [],
+        },
+        10_000,
+      )).rejects.toMatchObject({ code: 'contract' });
+      expect(requests).toHaveLength(2);
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
   it('refuses a non-empty hidden successful control before the GET leaves the browser', async () => {
     const requests: RequestRecord[] = [];
     const { server, origin } = await listen((request, response) => {
