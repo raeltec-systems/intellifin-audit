@@ -66,3 +66,7 @@ The web_tree parser, media type and corroboration are implemented for bounded gr
 ## Story4.4 artifact storage checkpoint (incomplete story)
 
 Generation33 adds structural-snapshot/screenshot kinds to the existing Evidence storage contract, retaining the existing sealing guards. Each kind has a distinct stable reservation/object key.29 focused artifact/schema-range tests pass; the migration was generated from the schema, with the explicit generation marker and build compatibility range added. The producer is not yet wired, so this checkpoint is not an accepted agent journey. Hosted fresh/populated/drift gates will test this generation.
+
+## Supported-substrate regression correction
+
+CI34132656180 on f3ba33e20e5dcee49623e73aba686ed60ab86e72 passes container and full browser/accessibility gates. Unit and PostgreSQL suites each fail one stale test expecting web_tree to be unsupported. The desktop_tree case now retains unsupported rejection coverage; malformed web_tree explicitly fails corroboration-unavailable without matched identity or attributes. Seven focused application tests pass locally. Hosted verification of this correction is pending; no story acceptance claimed.

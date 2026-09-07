@@ -86,10 +86,15 @@ describe('snapshotCorroboration', () => {
     expect(verdict!.attributes).toEqual([]);
   });
 
-  it('fails an agent substrate by name rather than passing it silently', async () => {
-    const port = snapshotCorroboration([{ ...json, substrate: 'web_tree' }]);
+  it('fails the deferred desktop substrate by name rather than passing it silently', async () => {
+    const port = snapshotCorroboration([{ ...json, substrate: 'desktop_tree' }]);
     const [verdict] = await port.corroborate([record()]);
     expect(verdict).toMatchObject({ outcome: 'FAIL', diagnostic: 'corroboration-unsupported' });
+  });
+
+  it('fails malformed web-tree bytes without claiming they were corroborated', async () => {
+    const [verdict] = await snapshotCorroboration([{ ...json, substrate: 'web_tree' }]).corroborate([record()]);
+    expect(verdict).toMatchObject({ outcome: 'FAIL', diagnostic: 'corroboration-unavailable', identity: null, attributes: [] });
   });
 
   it('contradicts a value the stored bytes do not hold', async () => {

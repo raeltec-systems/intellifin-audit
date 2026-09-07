@@ -1810,8 +1810,8 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
       },
       {
         corroboration: snapshotCorroboration([
-          // An agent capture this build cannot read. It must never report `matched`.
-          { evidenceId: context.extraction, substrate: 'web_tree', bytes: utf8Bytes(CORROBORATION_ACCOUNTS) },
+          // A deferred desktop capture this build cannot read. It must never report `matched`.
+          { evidenceId: context.extraction, substrate: 'desktop_tree', bytes: utf8Bytes(CORROBORATION_ACCOUNTS) },
         ]),
       },
     );
