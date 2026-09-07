@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Engineering continuation — workspace identity
+
+An existing workspace is identified by provider mode plus provider session ID. Never overwrite its mode from current worker configuration. A provider change must preserve the old cleanup reference and refuse continuation; a new Run can use the new provider. The regression covers both Solari-to-local and local-to-Solari restarts.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 # Working rules

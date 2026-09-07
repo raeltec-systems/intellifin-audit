@@ -311,7 +311,8 @@ export async function provisionWorkspace(
       stepId: prior?.stepId ?? requirement.stepId,
       workspaceId: prior?.workspaceId ?? null,
       expiresAt: prior?.expiresAt ?? null,
-      mode: deps.browser.mode,
+      // Existing identity includes its provider; deployment configuration cannot relabel it.
+      mode: prior?.workspaceId != null ? prior.mode : deps.browser.mode,
       startedAt: prior?.startedAt ?? now.toISOString(),
       attemptStartedAt: now.toISOString(),
       leaseUntil: new Date(
@@ -370,6 +371,10 @@ export async function provisionWorkspace(
   let handle: WorkspaceHandle | null = null;
   let diagnostic: WorkspaceDiagnostic = 'workspace-created';
   try {
+    // Keep the cleanup reference intact when this worker cannot operate its provider.
+    if (checkpoint.workspaceId !== null && checkpoint.mode !== deps.browser.mode) {
+      throw new WorkspaceProvisionError('policy');
+    }
     // Reattach FIRST, always, when an identity is already recorded: a resumed claim must
     // find the workspace it left rather than making a second one (AD-16). `attach`
     // answering `null` is expected rather than exceptional — a browser does not survive

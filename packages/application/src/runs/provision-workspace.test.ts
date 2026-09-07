@@ -311,6 +311,23 @@ const DEPS = (state: Store, browser: BrowserExecution) => ({
 });
 
 describe('provisionWorkspace', () => {
+  it.each([['solari', 'local'], ['local', 'solari']] as const)(
+    'preserves the persisted %s identity when a restarted worker selects %s',
+    async (originalMode, configuredMode) => {
+      const state = store(agentPlan());
+      const original = new FakeBrowser({ mode: originalMode, expiresAt: '2026-09-07T00:00:00.000Z' });
+      await provisionWorkspace(DEPS(state, original), JOB);
+      const identity = state.checkpoint!.workspaceId;
+      const restarted = new FakeBrowser({ mode: configuredMode });
+      expect(await provisionWorkspace(DEPS(state, restarted), JOB)).toEqual({ retry: false, provisioned: false });
+      expect(restarted.created).toEqual([]);
+      expect(restarted.attached).toEqual([]);
+      expect(restarted.released).toEqual([]);
+      expect(state.checkpoint).toMatchObject({ workspaceId: identity, mode: originalMode, status: 'FAILED', diagnostic: 'workspace-policy' });
+      expect(state.run?.state).toBe('RUN_FAILED');
+    },
+  );
+
   it('provisions nothing at all for an adapter-only Run', async () => {
     const state = store(adapterPlan());
     const browser = new FakeBrowser();
