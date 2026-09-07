@@ -106,8 +106,8 @@ describe.skipIf(!databaseUrl)('real browser web-tree capture', () => {
       const screenshot = artifacts.find((artifact) => artifact.kind === 'screenshot');
       expect(snapshot).toMatchObject({ mediaType: WEB_TREE_MEDIA_TYPE, location: `${origin}/search` });
       expect(screenshot).toMatchObject({ mediaType: 'image/png', location: `${origin}/search` });
-      expect(screenshot?.bytes.slice(0, 8)).toEqual(
-        Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      expect(Array.from(screenshot!.bytes.slice(0, 8))).toEqual(
+        [137, 80, 78, 71, 13, 10, 26, 10],
       );
 
       const document = parseWebTree(new TextDecoder().decode(snapshot!.bytes));

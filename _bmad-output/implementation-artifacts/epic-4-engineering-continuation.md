@@ -82,3 +82,7 @@ Real Anthropic/OpenAI SDK adapters implement ordered approved action proposals, 
 ## Durable execution and waits checkpoint (incomplete stories)
 
 Generation34 adds operational agent progress/turn/capture bindings, per-population Work Item identity, Run revisions and immutable typed waits. The adapter transaction context is extracted without changing its shared Observation/Evidence/Gate/Result writes. Wait creation atomically records Awaiting Auditor plus one delayed job; answer locks and compares the Run revision, leaves the original wake intact, and abort uses performCancellation. Worker starts the wait consumer and bounded recovery and drains recovery on shutdown; only the release migrator creates the queue. Nine command +three worker tests pass locally. Five PostgreSQL tests cover actual queue rows, partial SQL closure rejection, revision/closure races and timeout sealing; hosted acceptance pending. Model work-item loop, notifications and answer surface remain pending. No Epic4 story is accepted by this checkpoint.
+
+## Capture integration assertion correction
+
+CI34136780203 on31317cc2d5daf78cc143b4858cd278051fec3c97 passes typecheck/boundaries/unit. PostgreSQL runs396 integrations:395 pass, one new capture assertion compares Node Buffer with Uint8Array although the PNG signature bytes match exactly. This correction compares all eight byte values explicitly. It neither skips a check nor changes capture behavior. Candidate34 CI remains pending; full acceptance is not claimed.
