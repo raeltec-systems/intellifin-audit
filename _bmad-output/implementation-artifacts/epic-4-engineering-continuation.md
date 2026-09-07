@@ -90,3 +90,7 @@ CI34136780203 on31317cc2d5daf78cc143b4858cd278051fec3c97 passes typecheck/bounda
 ## Checkpoint composition correction
 
 CI34137578823 on a64d3078d2d0c2bb2f1941e3c9a73b6ef021dca4 fails infrastructure typecheck before migration/tests: the shared barrel included a notification sender export whose implementation remained uncommitted. This corrective checkpoint removes only that premature export; the notification implementation stays separate. Generation34 hosted verification remains pending.
+
+## Generation34 hosted verification and schema inventory correction
+
+CI34138046009 on a24c5d993551795e259827761f66b2564c09fbfb passes fresh migration, migration drift, populated/repeat upgrade, all five wait integrations, Chromium capture, unit/typecheck/boundaries and container builds. Integration total:400 passed, one failed: the exact public-table inventory omitted the four intentionally added generation34 tables. This correction explicitly lists run_agent_turn, run_agent_work, run_evidence_capture and run_wait; the exact equality gate remains. Hosted verification of this correction is pending. No story acceptance or merge is claimed.
