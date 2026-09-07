@@ -84,7 +84,7 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       // Drizzle wraps the PostgreSQL exception. Assert the server's cause and SQLSTATE,
       // not the wrapper's query text: a syntax or connection failure is not guard proof.
       await expect(runMigrations(historicalUrl, { migrationsFolder: withoutGuards })).rejects.toMatchObject({
-        cause: expect.objectContaining({ code: 'P0001', message: expect.stringMatching(/is frozen/) }),
+        cause: expect.objectContaining({ code: '23514', message: expect.stringMatching(/is frozen/) }),
       });
       await assertProtected();
       expect((await sql`SELECT max(version) AS version FROM schema_meta`)[0]?.version).toBe(31);
