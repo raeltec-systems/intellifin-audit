@@ -865,6 +865,14 @@ to be held to the rule the work is.
   deadlocked one agent for hours. Check once, wait a bounded time, check again, and proceed
   saying so — never an unbounded loop. Same root as the `pkill -f northstar` that killed its own
   shell.
+- **An `&&` chain that short-circuits reports a failure that never ran.** A background gate
+  spelled `source nvm.sh && nvm use && pnpm typecheck > log; echo "EXIT=$?" >> log` produced a
+  log containing one line — `EXIT=1` — because the first link failed in that shell and every
+  command after it was skipped. Read at a glance it says "typecheck failed"; what it means is
+  "typecheck did not run", and the harness reported exit 0 for the whole invocation because the
+  final `echo` succeeded. Separate setup from work with `;`, capture each step's own exit
+  status, and write the interpreter version into the log so a run that used the wrong Node or
+  no Node at all cannot look like a product result.
 - **A gate script needs every environment variable the app validates at STARTUP, not only the
   ones its tests read.** A browser gate that set `DATABASE_URL` but neither `SERVICE_NAME` nor
   `BETTER_AUTH_SECRET` failed with the web process printing `"Refusing to start"` and naming the

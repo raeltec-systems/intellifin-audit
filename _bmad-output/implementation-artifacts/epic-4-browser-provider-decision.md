@@ -8,12 +8,19 @@ status: 'final'
 
 # Epic 4 browser provider decision
 
-> **Revised the same day, after the owner said Solari is key.** An earlier version of this
-> document treated Solari and Playwright as alternatives and chose Playwright. That was wrong,
-> and the error is recorded here rather than deleted: I concluded the provider was unusable
-> because it was absent from this repository, without checking whether it was obtainable. The
-> packages are published and installable. **Solari is a managed remote browser that you drive
-> WITH Playwright**, so the two were never competing choices.
+> **Revised twice on 2026-09-06, and both errors are recorded here rather than deleted.**
+>
+> **First, after the owner said Solari is key.** An earlier version treated Solari and
+> Playwright as alternatives and chose Playwright. That was wrong: I concluded the provider was
+> unusable because it was absent from this repository, without checking whether it was
+> obtainable. The packages are published and installable. **Solari is a managed remote browser
+> that you drive WITH Playwright**, so the two were never competing choices.
+>
+> **Second, after the owner asked to separate configured mode from live validation.** This
+> document claimed the epic was "verified against" Solari when nothing had been — there was no
+> key at the time, and an intention was written as a result. It has since been validated live
+> against a public target, and the boundary of that proof is stated rather than glossed: see
+> "Live-provider validation, 2026-09-06".
 
 ## What Solari actually is
 
@@ -59,19 +66,22 @@ the guarantee is claimed:
 | Kept alive under a lease while a wait is open | Context held open in-process | Session held, survives a worker restart |
 
 **Local Chromium delivers the browser-state half and not the sandbox half.** Solari delivers
-both. So the epic is built for Solari and verified against it; the local mode exists for tests
-and is documented as the weaker guarantee rather than presented as equivalent.
+both. So the epic is BUILT for Solari, and the local mode is documented as the weaker guarantee
+rather than presented as equivalent — `run_workspace.mode` records which one each Run had.
 
-## What is needed, and what is not yet here
+**Built for is not the same as validated against, and the two are separated below.** An earlier
+version of this paragraph said the epic was "built for Solari and verified against it". Nothing
+had been verified against Solari when that was written: there was no key, and the sentence
+described an intention as though it were a result. What is now proven, and what is not, is in
+"Live-provider validation" below.
 
-- **`SOLARI_API_KEY`.** Not present. `.env` currently holds an Anthropic key and an OpenAI key
-  only. Until it arrives, the Solari path is written and unit-tested against the SDK's own
-  types but cannot be exercised end to end.
-- **Network reachability** to `getsolari.com` from this environment, through the agent proxy.
-  Untested until there is a key to test with.
-- A plan tier that permits the features used. `SolariError` carries a `FeatureRequiresPlan`
-  code, so a refusal is distinguishable from an outage and must be surfaced as such rather than
-  retried.
+## What was needed, and where each item landed
+
+| Needed | State |
+|---|---|
+| `SOLARI_API_KEY` | **Supplied** by the owner on 2026-09-06 and held in gitignored `.env`, mode 600. Never committed, never echoed |
+| Network reachability to `getsolari.com` from this container | **Reached**, through a test-only tunnel. The measurement and its boundary are below |
+| A plan tier permitting the features used | **Confirmed** for what this platform uses. `sessions.create({})` was accepted with no `FeatureRequiresPlan` or `PlanLimitExceeded` refusal |
 
 ## Consequences elsewhere
 
@@ -204,31 +214,132 @@ rather than consume its retry budget — the `credential-unresolved` rule from S
 `us-west`; `baseUrl` replaces it for a staging or self-hosted gateway. Neither is hard-coded —
 both are configuration read in a composition root, per AD-11.
 
-## How to verify the key when it arrives
+## Two different questions, and only one of them needs a probe
 
-There is deliberately **no `scripts/check-solari.mts`**. One was written and then deleted: the
-worker already answers the question through its real composition root, and a bespoke script
-would be a second, less faithful way to ask it — the shape this project rejects everywhere else.
+The owner's review asked to "distinguish configured Solari mode from live-provider validation".
+They are separate questions and this document previously answered only the first while sounding
+like it had answered both.
 
-```bash
-printf 'SOLARI_API_KEY=slr_live_...\n' >> .env && chmod 600 .env
+| Question | Answered by | What it can and cannot say |
+|---|---|---|
+| Which mode is this deployment CONFIGURED for? | The worker's own boot line | Faithful, because it is the real composition root every Run inherits. Says nothing about whether the provider works |
+| Does the configured provider ACTUALLY work? | `packages/infrastructure/scripts/probe-solari.mjs` | Creation, reachability, capture and release, measured. Says nothing about which mode a deployment is set to |
+
+### The configured mode
+
+Still the worker, and still deliberately not a script:
+
+```
+{"message":"Agent Workspace mode selected","mode":"solari","reason":"SOLARI_API_KEY is configured"}
 ```
 
-Then start the worker and read one line:
+`agentWorkspace(config)` in `apps/worker/src/startup.ts` emits it, and it is the same decision
+`run_workspace.mode` then records on every Run. **But a worker with a key logs `mode: solari`
+whether or not the gateway ever accepts that key**, so this line is not evidence the provider
+works. The earlier "there is deliberately no `scripts/check-solari.mts`" reasoning was sound for
+the mode question and was wrongly applied to the provider question.
 
-```
-{"message":"Agent Workspace mode selected","mode":"solari","reason":"..."}
-```
-
-`mode` is `solari` or `local`, and `reason` says why. That is emitted by `agentWorkspace(config)`
-in `apps/worker/src/startup.ts`, the same decision every Run then inherits and the same value
-`run_workspace.mode` records — so a green line here means the thing a Run will actually do,
-which is more than a standalone probe could prove.
-
-The key never appears in that line, or anywhere else: `WorkspaceRef` has no field for a key, a
+The key never appears in that line or anywhere else: `WorkspaceRef` has no field for a key, a
 token or an endpoint, so no checkpoint, payload, log field or error message has anywhere to pick
 one up from.
 
-If the key is refused rather than absent, the mapped `SolariError` code says which: an
-entitlement refusal is terminal and an outage is retried, and the table above says which is
-which.
+### The live provider
+
+`packages/infrastructure/scripts/probe-solari.mjs` — diagnostic only, on no shipped path,
+imported by nothing. It exercises the four things the review named and nothing else, under the
+options the platform actually ships (stealth, proxy and captcha off, no profile), because a
+probe run under different options would prove a configuration no Run ever uses.
+
+```bash
+cd packages/infrastructure && node scripts/probe-solari.mjs
+```
+
+It exits non-zero when any step fails, the release included — a harness that prints FAIL and
+exits 0 turns a failing check into an all-clear, which this repository has been bitten by once.
+
+## Live-provider validation, 2026-09-06
+
+Run against `api.getsolari.com` with the owner's `slr_live_…` key. Verbatim output, secret-free:
+
+```
+  ok  remote session created     id ip-10-0-10-40:7be139a8-…:1788724063527.5c1SE5gpjConFIQwPpx31w, 827 ms
+  ok  plan deadline              expiresAt 2026-09-06T20:47:43.527Z
+  ok  wire protocol connected    151.0.7922.34
+  ok  public target reachable    example.com -> 200 "Example Domain"
+  ok  screenshot captured        17202 bytes png
+  ok  DOM read captured          "Example Domain\n\nThis domain is for use i"
+  ??  synthetic on loopback      page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:4300/loancore
+  ok  session released           releaseAndWait confirmed
+  ok  client closed
+```
+
+| The review asked for | Proven by |
+|---|---|
+| Actual remote creation | A session id and an `expiresAt` returned by the gateway in 827 ms |
+| Target reachability | `example.com` answered **200** to a navigation made BY the remote browser |
+| Capture | A **17,202-byte PNG** and a DOM read, the two mechanisms Story 4.4 builds on |
+| Release | `releaseAndWait` confirmed, then `solari.close()` and a clean process exit |
+
+Chromium **151.0.7922.34** is the provider's build, not this container's — which is itself the
+evidence that the browser ran remotely.
+
+### The boundary: what this does NOT prove
+
+**A remote browser cannot reach the synthetic Northstar systems, because they are on this
+machine's loopback.** Measured, not assumed: `net::ERR_CONNECTION_REFUSED at
+http://localhost:4300/loancore`. That is a fact about where the fixture is served, not a defect
+in either the provider or the platform.
+
+What follows, stated plainly:
+
+- **The golden P-1 and P-4 journeys run on local Chromium**, and will until the synthetic
+  systems have an address reachable from outside this container. `[DEFERRED]` A Railway service
+  for Northstar has been named since Story 1.8 and is the thing that would close it.
+- **Local execution is NOT evidence that the Solari path works**, and is never cited as such.
+  The two guarantees differ, `run_workspace.mode` records which one a Run had, and this
+  document's isolation table is the statement of the difference.
+- **Live validation covers the provider path against a PUBLIC target only.** Creation,
+  reachability, capture and release are proven; a full Procedure Version executing end to end
+  through a Solari workspace is not, and is not claimed.
+- **`recording` was off for this probe**, matching the shipped default. The replay path is an
+  Epic 5 concern and the flag it needs is threaded through Story 4.1 already.
+
+### Reaching the gateway from this container
+
+Worth recording because it cost a wrong ask. This environment intercepts egress, and its
+allowlist governs **only** traffic through its CONNECT proxy — measured three ways:
+
+| From the SDK's own socket | Result |
+|---|---|
+| Raw socket, plain GET | `HTTP/1.1 403 Forbidden`, `x-deny-reason: host_not_allowed` |
+| Raw socket, WebSocket upgrade | `HTTP/1.1 403 Forbidden`, `x-deny-reason: host_not_allowed` |
+| Through the CONNECT proxy | **HTTP 401** — reached the gateway, refused for lack of a key |
+
+The TLS peer certificate reads `issuer: "Anthropic"`, `subject: "*.getsolari.com"`, which is the
+interception proxy terminating the handshake. The Solari SDK dials its wire-protocol socket
+directly and has no proxy support, so **no allowlist entry could ever have helped it** — I had
+asked the owner to allow the WebSocket host, which was the wrong ask, and the measurement is
+what replaced it.
+
+`packages/infrastructure/scripts/proxy-tunnel-preload.mjs` is the test-only bridge: a local TCP
+forwarder that opens a CONNECT tunnel per connection, with `tls.connect` patched to redirect the
+TCP endpoint only while `servername` stays the true host — so the handshake still terminates at
+`api.getsolari.com` and is still validated against its certificate.
+
+```bash
+cd packages/infrastructure
+TUNNEL_HOSTS=api.getsolari.com node --import ./scripts/proxy-tunnel-preload.mjs scripts/probe-solari.mjs
+```
+
+**It is not product code and is on no shipped path.** The worker composes the SDK directly and
+Railway has no interception proxy, so nothing in a deployment loads it — the same boundary as
+the test-only Anthropic HTTP preload the Story 2.7 browser proof already uses. An earlier version
+wrapped `tls.connect` and returned a synthetic socket, which broke `fetch`, because undici drives
+`tls.connect` itself; a redirect rather than a wrapper is why the caller still gets a real
+`TLSSocket`.
+
+## If the key is refused rather than absent
+
+The mapped `SolariError` code says which, and the table above says which are retried: an
+entitlement refusal is terminal and an outage is retried. An unrecognised code is terminal,
+because calling an unknown reason transient would spend the whole retry budget against a wall.

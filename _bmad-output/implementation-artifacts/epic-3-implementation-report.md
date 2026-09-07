@@ -2,11 +2,17 @@
 title: 'Epic 3 implementation report: adapter Runs end to end'
 type: 'report'
 created: '2026-09-05'
+revised: '2026-09-06'
 status: 'final'
 ---
 
 > **Final.** Every section describes behaviour that is delivered and independently verified
 > against a real database, a real worker and the real synthetic services.
+>
+> **Revised 2026-09-06 after the owner's review.** Section 8 asked for four decisions; the owner
+> took all of them and they are now built, not pending. Section 9 is the revised close-out the
+> review asked for: the exact branch and commit carrying each repair, the gates re-run after
+> each, and what is deliberately not claimed. **Nothing is merged.**
 
 ## 1. What an adapter Run now does, end to end
 
@@ -283,17 +289,122 @@ swapping the two populations breaks both.
 acquired Evidence; that seam is proven against the database rather than through the worker
 process.
 
-## 8. What the owner should decide
+## 8. What the owner decided, and where each decision landed
 
-Nothing blocks a merge. These are decisions I deliberately did not take alone.
+This section asked for four decisions. **The owner took all of them on 2026-09-06**, and each is
+now built rather than pending. Three needed storage and are one migration, **generation 32**,
+because they are one release.
 
-1. **Two review findings were left as they are**, because a test pins each as intended
-   behaviour and changing them is a contract decision. A redelivered job past the Run time
-   limit discards a population that was already acquired and verified; and replaying an
-   initiation token after a duplicate refusal redirects into the other auditor's Run.
-2. **No Evidence table records a capture time**, though the requirement asks for one on every
-   item. It is derived where a step froze the bytes, and stated as unrecorded for the
-   population artifact. A write-side fix belongs in a later story.
-3. **The independently declared record count is never persisted** — only its verdict. The
-   declaration itself is frozen in object storage, which the web may not read.
-4. **The desktop Target System stays deferred**, as it has since Epic 1.
+| The question as asked | The owner's decision | Where it landed |
+|---|---|---|
+| A redelivered job past the Run time limit **discards a population** already acquired and verified | Keep it. The limit is unchanged and the Run still ends Inconclusive, but with its Evidence | `stopAtRunLimit` in `acquire-population.ts` — no store read, no durable attempt spent, digests carried through verbatim |
+| Replaying an initiation token after a duplicate refusal **redirects into the other auditor's Run** | A token records a DECISION, not a Run | `run_initiation_request` (generation 32) and `docs/contracts/run-request-token-v1.md` |
+| **No Evidence table records a capture time**, though FR-31 asks for one on every item | Store it per artifact, never derive it | `captured_at`, `capture_method`, `capture_time_source` on both `run_evidence` and `population_evidence` |
+| **The declared record count is never persisted** — only its verdict | Show both numbers, each attributable to the artifact it came from | `declared_count` and `retrieved_count` on `population_snapshot`; the web still may not read object storage |
+| **The desktop Target System stays deferred** | Confirmed: Epic 7 | Unchanged. `epics.md` is authoritative; two planning artefacts disagree with it and are reported below, not edited |
+
+Two of those five carry a consequence worth stating plainly:
+
+- **Capture time was only honestly backfillable for one table.** `run_evidence` rows written
+  earlier take their instant from the Step Execution that froze the bytes and say so
+  (`capture_time_source = 'step-execution'`). `population_evidence` was NOT backfilled, because
+  no Step Execution produced that artifact; those rows keep saying **"Capture time was not
+  recorded."** There is deliberately no third value meaning "we made one up".
+- **`declared_count` was not backfilled either.** The declaration lives in object storage and
+  SQL cannot read it; defaulting it to the retrieved count would make every unreconciled
+  population look reconciled. `retrieved_count` WAS backfilled, and a CHECK pins it to
+  `included + excluded + indeterminate` on every row.
+
+### Still the owner's call, and deliberately not edited
+
+**The desktop deferral is recorded in three places and two of them are wrong.**
+`_bmad-output/planning-artifacts/.../epics.md` says **Epic 7** and is authoritative;
+`fixtures/northstar/datasets/systems.json` still says Epic 3; `deferred-work.md` does not
+mention it at all. These are planning artefacts, and the disagreement is the finding — so it is
+reported rather than silently reconciled.
+
+## 9. Revised close-out: which branch and commit carries each repair
+
+Added after the owner's review of 2026-09-06. **Nothing is merged.** Both branches are pushed
+and awaiting the review this section exists for.
+
+### Epic 3 defects — `codex/epic-3-adapter-runs`
+
+| Repair | Commit |
+|---|---|
+| All ten automated-review findings: `NoSuchBucket` read as tamper evidence, truncated coverage matrix, Runs queued with no consumer, Runs stranded mid-flight, an inexact Gate total, a bad cursor rendering an empty page, DELETE surviving a seal, a cancellation answered by silence, rerun replay, and the reaper read | `4fb496e` |
+| This report amended to record those ten | `665c5a3` |
+
+Gate on `4fb496e` against PostgreSQL 18: **2,749 unit · 340 integration · 124 browser**, no
+schema drift, both builds. CI green on all four jobs.
+
+### The five owner-review items — `codex/epic-4-agent-runs`
+
+| Item | Commit | State |
+|---|---|---|
+| 1. Reconcile Epic 4 with the repaired Epic 3 baseline | `6c3ebd6` | Done |
+| 2. The workspace replacement path losing its cleanup reference | `beb2825` | Done |
+| 3. Configured Solari mode vs live-provider validation | `604b7c3` (decision), and the write-up in this same change | Done — proven live, boundary stated |
+| 4. Revisit the LoanCore authentication decision | `604b7c3` (decision) + `c74c6c5` (implementation) | Done |
+| 5. The five report decisions above | `717da6f` | Done |
+
+Gates, each run in the main thread after the implementing agent's own run:
+
+| After | Unit | Integration | Browser |
+|---|---|---|---|
+| `6c3ebd6` | 2,946 | 364 | 133 |
+| `beb2825` | 2,949 | 365 | 133 |
+| `c74c6c5` | 3,009 | 368 | 134 |
+| `717da6f` | 3,027 | 381 | 134 |
+
+No schema drift and both builds clean at every row.
+
+### Item 1: the migration collision, and both paths proven
+
+Both branches claimed generation 27 for different changes — Epic 3's adds triggers only, Epic
+4's adds `run_workspace`. **Both changes are preserved.** Epic 3's keeps 27; Epic 4's three
+migrations moved up to 28, 29 and 30, which needed exactly one `prevId` rewrite because Epic 3's
+migration adds no table and so leaves the table set its successor diffed against unchanged.
+`SUPPORTED_SCHEMA_MIN` and `MAX` are both 30.
+
+The owner asked for proof of both paths, and both were run against real PostgreSQL 18:
+
+| Path | Result |
+|---|---|
+| **Fresh install** — empty database to 30 | Exactly 30 `schema_meta` rows, no duplicate generation |
+| **Upgrade** — a generation-26 database to 30 | Same end state |
+
+The two schemas are structurally identical: **392 columns, 575 constraints, 12 triggers**.
+Generation 26 is the honest upgrade start, because a database carrying Epic 4's pre-merge 27–29
+holds numbers the merge reassigns and no post-merge build can reproduce it. Production is at 14.
+
+### Item 3: what is proven live, and what is not
+
+Full detail is in `epic-4-browser-provider-decision.md`. In one table:
+
+| | Proven |
+|---|---|
+| Remote session creation | A session id and plan deadline from the gateway in 827 ms |
+| Target reachability | `example.com` answered 200 to a navigation made by the remote browser |
+| Capture | A 17,202-byte PNG and a DOM read |
+| Release | `releaseAndWait` confirmed, then a clean client close |
+
+**Not proven, and not claimed.** A remote browser cannot reach the synthetic Northstar systems,
+because they are served on this container's loopback — measured, `ERR_CONNECTION_REFUSED`. So
+the golden journeys run on local Chromium, live validation covers the provider against a public
+target only, and **local execution is never cited as evidence that the Solari path works**.
+
+### Gate runs that failed, and were repaired rather than smoothed over
+
+- The merge gate caught a guard asserting the composition root's decision as literal source,
+  which a reformat had broken. The source form was restored; the guard was not loosened.
+- The same run's other two failures were a test database still carrying the pre-merge
+  generations. The AD-15 startup guard refusing it was correct behaviour, and the database was
+  recreated from zero as CI does every run.
+
+### What this close-out does NOT cover
+
+- **Unfinished agent, live/replay and scheduling work is Epic 4 and later**, kept deliberately
+  out of the Epic 3 defect close-out. Stories 4.4 to 4.11 are specified and not implemented.
+- **Desktop execution stays deferred to Epic 7.**
+- **Neither branch is merged**, per the review.
