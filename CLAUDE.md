@@ -1,3 +1,7 @@
+## 2026-09-07 — Evaluation review surface
+
+Run Detail reads the fresh review revision and pending count under its explicit evaluation-review permission, renders machine rationale as untrusted text, and submits only fixed decision fields. Raw database exceptions may contain evidence/rationale parameters: telemetry receives a fixed error code and correlation id, never that exception. Browser injection checks scope executable-node absence to untrusted content containers; Next.js itself legitimately loads scripts outside them.
+
 ## 2026-09-07 — Human evaluation review storage
 
 Generation36 preserves original machine evaluations and nullable original proposals, then appends human decisions to an immutable ledger. Effective counts/findings overlay that ledger. The Result has a frozen ten-key wire/storage contract and generation25 permits only its final sealing update; AD21's answer revision therefore lives in adjacent run_result_review under the same Run→Result→review locks. Result.version changes only on final sealing. This is an implementation reconciliation, not a new owner decision. Pending UI counts must query effective evaluations, not the unchanged pending publication. Historical proposal fields stay NULL rather than fabricated; no retroactive matched-only check invalidates historical evaluations. New human Compliant decisions require covered, matched evidence.

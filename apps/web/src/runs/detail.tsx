@@ -2,7 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { isActiveRunState, type RunRecord } from '@intellifin/domain';
-import { CryptoUuidV7Generator, DrizzleRunRepository } from '@intellifin/infrastructure';
+import {
+  CryptoUuidV7Generator,
+  DrizzleRunDetailRepository,
+  DrizzleRunRepository,
+  type RunEvaluationRow,
+  type RunResultRow,
+} from '@intellifin/infrastructure';
 
 import { getRuntime } from '../bootstrap';
 import { Banner } from '../design/Banner';
@@ -12,6 +18,7 @@ import { ESCALATION_PANEL_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
 import { EscalationPanel } from './EscalationPanel';
+import { EvaluationReview } from './EvaluationReview';
 import { readOpenEscalation } from './escalation-read';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { runLifecycleWord, utcStamp } from './labels';
@@ -65,6 +72,47 @@ export async function openRun(id: string): Promise<RunAccess> {
   const run = await new DrizzleRunRepository(runtime.db).findRun(id);
   if (run === null) notFound();
   return { allowed: true, run, readAt: new Date() };
+}
+
+export interface EvaluationReviewRead {
+  readonly result: Pick<RunResultRow, 'outcome' | 'sealed' | 'version'> | null;
+  readonly evaluations: readonly RunEvaluationRow[];
+  readonly reviewRevision: number;
+  readonly pendingCount: number | null;
+}
+
+/**
+ * Read the review projection under its own action gate.
+ *
+ * `RunDetailFrame` already authorized the route to be opened. This second, component
+ * specific check is deliberate: review metadata and the mutable review revision are
+ * only supplied to roles that may review evaluations, and the revision is read fresh on
+ * every request. The browser receives no repository or database capability.
+ */
+export async function readEvaluationReview(runId: string): Promise<EvaluationReviewRead | null> {
+  const decision = await requireServerAction('evaluation.confirm');
+  if (!decision.allowed) return null;
+  const runtime = await getRuntime();
+  const detail = new DrizzleRunDetailRepository(runtime.db);
+  const [result, observations, reviewRevision, freshPendingCount] = await Promise.all([
+    detail.readResult(runId),
+    detail.readObservations(runId),
+    detail.readReviewRevision(runId),
+    detail.readPendingEvaluationCount(runId),
+  ]);
+  const evaluations = await detail.readEvaluations(runId, observations.rows.map((row) => row.observationId));
+  // The unsealed publication is intentionally unchanged after each review decision. The
+  // adjacent query counts the current effective rows, while an unreadable publication
+  // keeps the count unavailable rather than presenting a partial Result as complete.
+  const pendingCount = result?.publication === null || result?.publication === undefined
+    ? null
+    : freshPendingCount;
+  return {
+    result: result === null ? null : { outcome: result.outcome, sealed: result.sealed, version: result.version },
+    evaluations,
+    reviewRevision,
+    pendingCount,
+  };
 }
 
 /** What a role without the action sees: the gating table's sentence, and no Run fact. */
@@ -123,6 +171,9 @@ export async function RunDetailFrame({
   const escalation = run.state === 'AWAITING_AUDITOR'
     ? await readOpenEscalation(run.runId)
     : null;
+  const evaluationReview = tab === '' && run.state === 'COMPLETED'
+    ? await readEvaluationReview(run.runId)
+    : null;
   const lifecycle = runLifecycleWord(run.state);
   const here = runTabHref(run.runId, tab);
   const trail = [
@@ -167,6 +218,15 @@ export async function RunDetailFrame({
           ? <EscalationPanel runId={run.runId} wait={escalation.wait} details={escalation.details} runRevision={escalation.runRevision} readAt={readAt.toISOString()} />
           : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />
         : null}
+      {evaluationReview !== null ? (
+        <EvaluationReview
+          runId={run.runId}
+          result={evaluationReview.result}
+          evaluations={evaluationReview.evaluations}
+          reviewRevision={evaluationReview.reviewRevision}
+          pendingCount={evaluationReview.pendingCount}
+        />
+      ) : null}
       {children}
     </div>
   );

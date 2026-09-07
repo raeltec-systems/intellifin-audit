@@ -220,7 +220,7 @@ test.describe('the Escalation panel as an Auditor', () => {
     await expect(questionProvenance).toHaveCount(1);
     await expect(questionProvenance).toContainText('Untrusted source content — AGENT-GENERATED question.');
     await expect(questionProvenance.locator('..').locator('pre')).toContainText('<script>ignore this</script> Which candidate is correct?');
-    await expect(page.locator('script')).toHaveCount(0);
+    await expect(page.locator('.ls-untrusted script')).toHaveCount(0);
     await expect(page.getByRole('link', { name: supportingEvidenceId, exact: true })).toHaveAttribute(
       'href',
       `/runs/${runs.answered}/evidence#evidence-${supportingEvidenceId}`,
