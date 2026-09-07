@@ -1167,3 +1167,8 @@ Without a formaction attribute, the button property can report the document URL 
 ### Identify stalled integration modules without logging payloads
 
 CI's progress reporter names a test module before hooks start and after it finishes. A stuck browser/database hook otherwise leaves only the prior successful module in aggregate logs. Keep this instrumentation to file identities: raw SQL and test/target payloads are not diagnostic telemetry.
+
+
+## Explicit target scope in P-1 (2026-09-07)
+
+The owner's takeover instruction requires explicitly selected targets and defers desktop execution. Addendum C names LoanCore and LedgerDesk as defaults, not a mandate to expand the auditor's scope. targetBlockersFor now requires a nonempty explicit selection; contract validation and preservation of every selected target remain unchanged. Selecting a desktop still fails unsupported execution safely. Two canonical web-only P-1 regressions failed before repair and pass after it; 56 focused tests plus domain/root-test typechecks pass. Do not add a hidden desktop or mutate a compiled plan to make browser fixtures run.

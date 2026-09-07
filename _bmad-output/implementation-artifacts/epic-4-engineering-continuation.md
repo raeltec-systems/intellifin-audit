@@ -172,3 +172,10 @@ CI 34146625562 at 019bab52 verifies 135 browser cases including repaired review 
 ## Integration progress checkpoint
 
 Normal CI now reports each integration module before its hooks and after completion. The previous PostgreSQL job stayed silent for roughly ten minutes after four passing modules; default aggregate reporting did not identify the active module. The reporter prints only repository file identities, never queries, target content, credentials, or test payloads. Node syntax check passes; it changes no assertions, database behavior, timeout, or merge requirement. Browser form repair 4b94bb8c39d6546d595ee472d8c460dce65ecd52 is pushed with 47 browser/proof unit tests passing. Hosted final acceptance remains pending.
+
+
+## Explicit P-1 target scope repair
+
+At e324d360f117daa78cec613b07dc87955185ff34, CI34147564576 passes type/unit/boundaries, container builds, fresh/drift migrations through36 and423 PostgreSQL tests; eight tests fail. Five journey tests fail before execution because canonical P-1 validation adds mandatory desktop coverage to explicit web-only scope. Two schema inventory lists have ordering errors; one adapter test expects the obsolete pre-agent refusal. Browser CI passes138/139 including real login/credential containment; only its pre-investigation refusal assertion remains stale. Sealed-evidence populated upgrade, positive authentication, review ledger and isolation integrations pass.
+
+This repair follows the owner's explicit selected-target scope and addendum C's default-target wording. Web-only P-1 now compiles without inventing a desktop; all actually selected targets remain frozen and unsupported desktop execution is still refused. Two failing-before regressions now pass;56 focused target/template tests and domain/root-test typechecks pass. Checkpoint pushed; real journey rerun remains required. No release acceptance, merge or deployment.

@@ -162,13 +162,10 @@ describe('the completeness diagnostics', () => {
     ]);
   });
 
-  it('flags a missing selection, then missing P-1 web/desktop coverage', () => {
-    expect(targetBlockersFor('P-1', [])).toEqual([
-      'targets-missing',
-      'web-coverage-missing',
-      'desktop-coverage-missing',
-    ]);
-    expect(targetBlockersFor('P-1', [web])).toEqual(['desktop-coverage-missing']);
+  it('requires a selection without adding unselected template defaults to its scope', () => {
+    expect(targetBlockersFor('P-1', [])).toEqual(['targets-missing']);
+    expect(targetBlockersFor('P-1', [web])).toEqual([]);
+    expect(targetBlockersFor('P-1', [desktop])).toEqual([]);
     expect(targetBlockersFor('P-1', [web, desktop])).toEqual([]);
   });
 

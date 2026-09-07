@@ -326,8 +326,8 @@ export function validateInstructionSelection(
 /**
  * The Template's default Target Systems, offered to the auditor by name.
  *
- * The kinds are what drive the P-1 coverage diagnostic below. Selection is never
- * automatic — a registration is never minted from a Template, and an unavailable or
+ * These defaults are guidance, not mandatory additions to the selected scope.
+ * Selection is never automatic — a registration is never minted from a Template, and an unavailable or
  * ambiguous match is chosen explicitly — so these are guidance, not a stored selection.
  */
 export function defaultTargetsFor(
@@ -337,30 +337,15 @@ export function defaultTargetsFor(
 }
 
 /**
- * Completeness diagnostics for the selection, derived from the Template and the targets.
- *
- * `targets-missing` when nothing is selected; then, for a Template that names agent-driven
- * coverage (P-1 names web AND desktop), a `*-coverage-missing` diagnostic for each such
- * kind the selection does not cover. API and file systems are adapter-acquired and never
- * required here.
+ * A procedure must explicitly select at least one valid registered target. Snapshot
+ * validation checks registration contracts separately. Template defaults are guidance;
+ * requiring their kinds here would expand the auditor's chosen audit scope.
  */
 export function targetBlockersFor(
-  templateId: TemplateId,
+  _templateId: TemplateId,
   targets: readonly ProcedureTargetSnapshot[],
 ): readonly TargetBlocker[] {
-  const blockers: TargetBlocker[] = [];
-  if (targets.length === 0) blockers.push('targets-missing');
-  const selectedKinds = new Set(targets.map((target) => target.contract.kind));
-  const requiredKinds = new Set(
-    defaultTargetsFor(templateId)
-      .map((target) => target.kind)
-      .filter(isAgentDrivenKind),
-  );
-  if (requiredKinds.has('web') && !selectedKinds.has('web')) blockers.push('web-coverage-missing');
-  if (requiredKinds.has('desktop') && !selectedKinds.has('desktop')) {
-    blockers.push('desktop-coverage-missing');
-  }
-  return blockers;
+  return targets.length === 0 ? ['targets-missing'] : [];
 }
 
 /** The six fields a registration holds, as the reader hands them over. */

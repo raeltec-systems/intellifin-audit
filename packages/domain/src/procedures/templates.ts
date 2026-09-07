@@ -113,8 +113,8 @@ export interface ProcedureTemplate {
   readonly targetSystems: string;
   /**
    * The Target Systems this Template names, structured, for the Builder to OFFER by name.
-   * The kinds drive the P-1 web/desktop coverage diagnostic. A registration is never minted
-   * from these — an unavailable or ambiguous match is selected explicitly (FR-7).
+   * These are guidance, not mandatory additions to the auditor-selected scope. A registration
+   * is never minted from these — an unavailable or ambiguous match is selected explicitly (FR-7).
    */
   readonly defaultTargets: readonly { readonly name: string; readonly kind: TargetSystemKind }[];
   readonly workItemCoverage: string;
