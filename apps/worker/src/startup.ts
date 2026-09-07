@@ -13,6 +13,27 @@ import type { ExceptionFingerprinter } from '@intellifin/application';
 // Not from the barrel: the Agent Workspace implementation drives a real browser and holds
 // the provider API key. See packages/infrastructure/src/index.ts.
 import type { BrowserConnection } from '@intellifin/infrastructure/browser';
+import { createAgentModelGateway, DEFAULT_AGENT_ANTHROPIC_MODEL, DEFAULT_AGENT_OPENAI_MODEL } from '@intellifin/infrastructure/agent-model';
+import type { AgentModelGateway } from '@intellifin/application';
+
+/** No network request here. An absent provider disables this stage, never substitutes a script. */
+export function agentModel(config: AppConfig): AgentModelGateway | null {
+  const common = {
+    promptVersion: config.MODEL_PROMPT_VERSION,
+    buildVersion: config.RAILWAY_GIT_COMMIT_SHA ?? 'unidentified-build',
+    maxOutputTokens: config.MODEL_MAX_OUTPUT_TOKENS,
+  };
+  const anthropic = config.ANTHROPIC_API_KEY === undefined ? null : {
+    ...common, provider: 'anthropic' as const, apiKey: config.ANTHROPIC_API_KEY,
+    modelId: config.AGENT_ANTHROPIC_MODEL ?? DEFAULT_AGENT_ANTHROPIC_MODEL,
+  };
+  const openai = config.OPENAI_API_KEY === undefined ? null : {
+    ...common, provider: 'openai' as const, apiKey: config.OPENAI_API_KEY,
+    modelId: config.AGENT_OPENAI_MODEL ?? DEFAULT_AGENT_OPENAI_MODEL,
+  };
+  const primary = anthropic ?? openai;
+  return primary === null ? null : createAgentModelGateway({ primary, fallback: anthropic === null ? null : openai });
+}
 
 /**
  * The worker's startup and loop mechanics, separated from `main.ts` so both can be

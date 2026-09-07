@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  loadConfig,
   SUPPORTED_SCHEMA_MAX,
   SUPPORTED_SCHEMA_RANGE,
   UnsupportedDatabaseError,
@@ -9,7 +10,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 
-import { adapterExtraction, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
+import { adapterExtraction, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
 import { readFileSync } from 'node:fs';
 import type { AppConfig } from '@intellifin/infrastructure';
 
@@ -413,5 +414,24 @@ describe('a Run this deployment cannot execute', () => {
     expect(recovery).toContain("stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')");
     expect(recovery).toContain('executeAdapterSteps(adapter, job)');
     expect(recovery).toContain('startPopulationRecovery(db,adapterRepository,recover,');
+  });
+});
+
+
+describe('agent model composition', () => {
+  const base = { DATABASE_URL: 'postgres://u:p@localhost/intellifin_test', SERVICE_NAME: 'worker' };
+  it('has no script fallback when neither provider is configured', () => {
+    expect(agentModel(loadConfig(base))).toBeNull();
+  });
+  it('uses Anthropic primary and OpenAI fallback with secret-free identity', () => {
+    const gateway = agentModel(loadConfig({ ...base, ANTHROPIC_API_KEY: 'synthetic-anthropic-secret', OPENAI_API_KEY: 'synthetic-openai-secret', RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40) }));
+    expect(gateway?.identity).toMatchObject({ provider: 'anthropic', buildVersion: 'a'.repeat(40), promptVersion: '1' });
+    expect(gateway?.fallbackIdentity).toMatchObject({ provider: 'openai' });
+    expect(JSON.stringify([gateway?.identity, gateway?.fallbackIdentity])).not.toContain('secret');
+  });
+  it('supports one provider and truthfully labels an unidentified build', () => {
+    const gateway = agentModel(loadConfig({ ...base, OPENAI_API_KEY: 'synthetic-openai-secret', AGENT_OPENAI_MODEL: 'approved-model' }));
+    expect(gateway?.identity).toMatchObject({ provider: 'openai', modelId: 'approved-model', buildVersion: 'unidentified-build' });
+    expect(gateway?.fallbackIdentity).toBeNull();
   });
 });

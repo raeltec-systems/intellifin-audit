@@ -246,6 +246,12 @@ export const configSchema = z
     MODEL_PROMPT_VERSION: z.preprocess((value) => value === '' ? undefined : value, z.literal(SUPPORTED_MODEL_PROMPT_VERSION).default(SUPPORTED_MODEL_PROMPT_VERSION)),
     MODEL_MAX_OUTPUT_TOKENS: z.preprocess((value) => value === '' || value === undefined ? String(DEFAULT_MODEL_OUTPUT_TOKENS) : value, z.string().regex(/^[0-9]+$/).transform(Number).pipe(z.number().int().min(1024).max(MAX_CONFIGURED_MODEL_OUTPUT_TOKENS))),
     MODEL_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    /** Agent execution uses provider-native worker secrets, independently of plan derivation. */
+    ANTHROPIC_API_KEY: optionalNonEmpty(10_000),
+    OPENAI_API_KEY: optionalNonEmpty(10_000),
+    AGENT_ANTHROPIC_MODEL: optionalNonEmpty(300),
+    AGENT_OPENAI_MODEL: optionalNonEmpty(300),
+    RAILWAY_GIT_COMMIT_SHA: z.preprocess((value) => value === '' ? undefined : value, z.string().regex(/^[a-f0-9]{40}$/).optional()),
     /**
      * The managed browser provider for the Agent Workspace (Story 4.1, AD-4).
      *
@@ -294,6 +300,11 @@ export const configSchema = z
     ),
   })
   .superRefine((config, ctx) => {
+    if (config.NODE_ENV === 'production' && config.SERVICE_NAME !== 'worker') {
+      for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] as const) {
+        if (config[key] !== undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'must not be set on any process other than the worker' });
+      }
+    }
     if (config.MODEL_PROVIDER !== undefined) {
       if (!config.MODEL_ID) ctx.addIssue({ code: 'custom', path: ['MODEL_ID'], message: 'is required when MODEL_PROVIDER is configured' });
       if (config.SERVICE_NAME === 'worker' && !config.MODEL_API_KEY) ctx.addIssue({ code: 'custom', path: ['MODEL_API_KEY'], message: 'is required by the configured worker model' });
@@ -442,6 +453,11 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     MODEL_PROMPT_VERSION: env['MODEL_PROMPT_VERSION'],
     MODEL_API_KEY: env['MODEL_API_KEY'],
     MODEL_MAX_OUTPUT_TOKENS: env['MODEL_MAX_OUTPUT_TOKENS'],
+    ANTHROPIC_API_KEY: env['ANTHROPIC_API_KEY'],
+    OPENAI_API_KEY: env['OPENAI_API_KEY'],
+    AGENT_ANTHROPIC_MODEL: env['AGENT_ANTHROPIC_MODEL'],
+    AGENT_OPENAI_MODEL: env['AGENT_OPENAI_MODEL'],
+    RAILWAY_GIT_COMMIT_SHA: env['RAILWAY_GIT_COMMIT_SHA'],
     SOLARI_API_KEY: env['SOLARI_API_KEY'],
     SOLARI_REGION: env['SOLARI_REGION'],
     SOLARI_BASE_URL: env['SOLARI_BASE_URL'],

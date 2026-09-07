@@ -303,3 +303,23 @@ describe('private Evidence S3 configuration', () => {
     }
   });
 });
+
+describe('agent provider configuration', () => {
+  it('keeps provider keys worker-only in production without echoing them', () => {
+    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) {
+      const value = 'synthetic-provider-secret';
+      expect(loadConfig({ ...validEnv, SERVICE_NAME: 'worker', NODE_ENV: 'production', [key]: value })).toHaveProperty(key, value);
+      try {
+        loadConfig({ ...validEnv, NODE_ENV: 'production', [key]: value });
+        expect.unreachable();
+      } catch (error) {
+        expect(String(error)).toContain(key);
+        expect(String(error)).not.toContain(value);
+      }
+    }
+  });
+  it('retains a deployment commit only when it is a complete SHA', () => {
+    expect(loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40) }).RAILWAY_GIT_COMMIT_SHA).toBe('a'.repeat(40));
+    expect(() => loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'latest' })).toThrow(/RAILWAY_GIT_COMMIT_SHA/);
+  });
+});

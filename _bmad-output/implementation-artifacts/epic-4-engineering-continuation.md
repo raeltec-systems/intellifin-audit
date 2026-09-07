@@ -94,3 +94,7 @@ CI34137578823 on a64d3078d2d0c2bb2f1941e3c9a73b6ef021dca4 fails infrastructure t
 ## Generation34 hosted verification and schema inventory correction
 
 CI34138046009 on a24c5d993551795e259827761f66b2564c09fbfb passes fresh migration, migration drift, populated/repeat upgrade, all five wait integrations, Chromium capture, unit/typecheck/boundaries and container builds. Integration total:400 passed, one failed: the exact public-table inventory omitted the four intentionally added generation34 tables. This correction explicitly lists run_agent_turn, run_agent_work, run_evidence_capture and run_wait; the exact equality gate remains. Hosted verification of this correction is pending. No story acceptance or merge is claimed.
+
+## Worker model configuration checkpoint (incomplete agent flow)
+
+Optional provider-native keys now compose the worker-only Anthropic primary/OpenAI fallback (or one configured provider), independently of plan derivation configuration. Production non-worker processes reject these keys without echoing values. Model identity carries a validated deployment commit when supplied, otherwise the truthful unidentified-build label. No provider means no gateway, never a scripted fallback.66 focused configuration/startup tests and full workspace/root-test typecheck pass locally. No network model call was made; the actual work-item loop remains in progress.
