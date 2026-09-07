@@ -196,8 +196,8 @@ async function main(): Promise<void> {
           ids,
         }
       : null;
-    const signIn = async (job: PopulationJob): Promise<{ proceed: boolean }> =>
-      agent === null ? { proceed: true } : await executeAgentSteps(agent, job);
+    const signIn = async (job: PopulationJob, workspaceReplaced = false): Promise<{ proceed: boolean }> =>
+      agent === null ? { proceed: true } : await executeAgentSteps(agent, job, { forceReauthentication: workspaceReplaced });
     const workRepository = new PostgresAgentWorkRepository(db);
     const work = adapter === null ? null : {
       repository: workRepository, browser, model: agentModel(config), store, clock, ids,
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
         // the compiler froze. `proceed` is false while the agent phase is still working:
         // going on would hand the Run to a stage that refuses an agent plan by name and
         // would end a Run whose workspace and Target System were both healthy.
-        if (!(await signIn(job)).proceed) return { retry: false };
+        if (!(await signIn(job, provisioned.workspaceReplaced === true)).proceed) return { retry: false };
         await executeAdapterSteps(adapter, job);
         return inspect(job);
       } finally {
@@ -261,7 +261,12 @@ async function main(): Promise<void> {
       const recover = adapter === null
         ? (job: PopulationJob) => stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')
         : async (job: PopulationJob) => {
-            if (!(await signIn(job)).proceed) return { retry: false };
+            // A durable sign-in checkpoint cannot authenticate a replacement browser.
+            // Recover provider identity first; only confirmed release/expiry allows a
+            // replacement, which must repeat the approved access phase.
+            const provisioned = await provisionWorkspace(workspace, job);
+            if (provisioned.retry) return { retry: true };
+            if (!(await signIn(job, provisioned.workspaceReplaced === true)).proceed) return { retry: false };
             await executeAdapterSteps(adapter, job);
             return inspect(job);
           };
@@ -270,7 +275,7 @@ async function main(): Promise<void> {
       // wrote a RETRY checkpoint is deliberately not asking the queue for a redelivery,
       // because that would spend one of the population stage's four durable attempts.
       const stopAgentRecovery = startPopulationRecovery(db,agentRepository,job=>recover(job),()=>telemetry.captureError('Fatal worker error',new Error('Agent recovery failed'),{}));
-      const stopWorkRecovery = startPopulationRecovery(db,workRepository,inspect,()=>telemetry.captureError('Fatal worker error',new Error('Agent work recovery failed'),{}));
+      const stopWorkRecovery = startPopulationRecovery(db,workRepository,job=>recover(job),()=>telemetry.captureError('Fatal worker error',new Error('Agent work recovery failed'),{}));
       const stopPopulation = stopPopulationRecovery;
       stopPopulationRecovery = async () => { await stopWorkRecovery(); await stopAgentRecovery(); await stopAdapterRecovery(); await stopPopulation(); };
     }

@@ -413,7 +413,11 @@ describe('provisionWorkspace', () => {
     const browser = new FakeBrowser({ attachable: false });
     await provisionWorkspace(DEPS(state, browser), JOB);
     state.checkpoint = { ...state.checkpoint!, status: 'RETRY' };
-    await provisionWorkspace(DEPS(state, browser), JOB);
+    expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
+      retry: false,
+      provisioned: true,
+      workspaceReplaced: true,
+    });
     // Never a second workspace held at once: the stale one is given back first.
     expect(browser.released).toEqual([{ runId: RUN.runId, workspaceId: 'ws-1', mode: 'local' }]);
     expect(browser.created).toEqual(['ws-1', 'ws-2']);
@@ -506,6 +510,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: true,
+      workspaceReplaced: true,
     });
     // Nothing is attached to past the deadline, and the replacement is made regardless.
     expect(browser.attached).toEqual([]);

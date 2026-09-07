@@ -1172,3 +1172,8 @@ CI's progress reporter names a test module before hooks start and after it finis
 ## Explicit target scope in P-1 (2026-09-07)
 
 The owner's takeover instruction requires explicitly selected targets and defers desktop execution. Addendum C names LoanCore and LedgerDesk as defaults, not a mandate to expand the auditor's scope. targetBlockersFor now requires a nonempty explicit selection; contract validation and preservation of every selected target remain unchanged. Selecting a desktop still fails unsupported execution safely. Two canonical web-only P-1 regressions failed before repair and pass after it; 56 focused tests plus domain/root-test typechecks pass. Do not add a hidden desktop or mutate a compiled plan to make browser fixtures run.
+
+
+## Recovering a workspace's access phase (2026-09-07)
+
+Every work recovery now runs provisionWorkspace before sign-in, adapter/reference completion and investigation. A confirmed replacement returns workspaceReplaced and forces fresh positive authentication; unchanged-context redelivery retains the idempotent SIGNED_IN shortcut. Failed provider release preserves its cleanup reference. P-4's frozen public-page contract is verified using credential-free structural capture and public-access-verified, never session-established. SIGNED_IN remains the durable access-phase state, not a universal authentication claim. Exact required label constants live in one application leaf module.

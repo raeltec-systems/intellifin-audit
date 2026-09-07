@@ -3,9 +3,11 @@ import {
   captureStateFor,
   exhaustedRunLimit,
   isToolActionMethod,
+  readStructuralSnapshot,
   runStopFor,
   sanitizeDestination,
   sessionStepAttemptBudget,
+  WEB_TREE_MEDIA_TYPE,
   workspaceRequirement,
   type ClassifiedTarget,
   type ExecutablePlan,
@@ -34,10 +36,11 @@ import {
   type WorkspaceRef,
 } from './execution-ports.js';
 import type { PopulationJob } from './acquire-population.js';
-import { guardedCredentials, type CredentialGuard } from './credential-guard.js';
+import { NO_CREDENTIALS, guardedCredentials, type CredentialGuard } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 import { SECURITY_DENIED_EVENT } from './run-gate.js';
+import { PROD_CONSOLE_LABELS } from './prodconsole-labels.js';
 
 /**
  * The agent execution phase: sign in to every agent-driven Target System, and let nothing
@@ -66,11 +69,14 @@ import { SECURITY_DENIED_EVENT } from './run-gate.js';
  * reference. `FORBIDDEN_PAYLOAD_KEYS` in `audit-event.ts` is what makes that a rule rather
  * than a habit.
  *
- * **What this story does NOT do**: capture, register Observations, prove absence or raise
- * Escalations (Stories 4.4 to 4.7). So a Run whose sign-ins succeed goes on to the adapter
- * stage, which still refuses a plan naming an agent-driven Target BY NAME and ends the Run
- * `RUN_FAILED`. The sign-in is durably recorded before that happens, which is the point:
- * the Session Step is proved by the session being ESTABLISHED.
+ * P-4's published ProdConsole is the one public Target System in this phase. Its access
+ * proof uses a credential-free navigation plus a structural snapshot, with the frozen
+ * registration labels and page metadata checked before success. The compatibility
+ * credential reference remains in the plan shape but is never resolved.
+ *
+ * Successful access hands the Run to reference acquisition and the separate investigation
+ * phase. SIGNED_IN is the durable access-phase checkpoint; only session-established
+ * represents authenticated access, while public-access-verified names P-4's public proof.
  */
 
 export interface AgentExecutionDependencies {
@@ -79,6 +85,18 @@ export interface AgentExecutionDependencies {
   credentials: CredentialResolver;
   clock: Clock;
   ids: UuidV7Generator;
+}
+
+/**
+ * Per-invocation execution controls kept outside the queue payload.
+ *
+ * A replacement browser has no authenticated cookie state even when the previous
+ * workspace checkpoint says SIGNED_IN. Recovery uses this opt-in to run the same
+ * positive form-authentication path again; ordinary redelivery keeps the idempotent
+ * checkpoint shortcut.
+ */
+export interface AgentExecutionOptions {
+  readonly forceReauthentication?: boolean;
 }
 
 /** The closed diagnostic vocabulary. Never an error message, never a URL, never a value. */
@@ -102,6 +120,12 @@ export type AgentExecutionDiagnostic =
   | 'sign-in-denied'
   /** The action left, or was sent, outside the frozen origins. */
   | 'sign-in-scope-violation'
+  | 'public-access-attempt-started'
+  | 'public-access-verified'
+  | 'public-access-unavailable'
+  | 'public-access-denied'
+  | 'public-access-scope-violation'
+  | 'public-access-contract-failed'
   /** The gate refused the action before it left. The denial says which rule. */
   | 'action-not-permitted'
   | 'destination-refused'
@@ -149,6 +173,80 @@ const NO_ARGUMENTS: readonly ToolActionParameter[] = [];
  */
 const NO_CAPTURE: readonly BrowserCaptureKind[] = [];
 
+/** P-4's public page contract. The optional time label is allowed, never invented. */
+const PUBLIC_P4_REQUIRED_LABELS = [
+  PROD_CONSOLE_LABELS.parameter,
+  PROD_CONSOLE_LABELS.value,
+  PROD_CONSOLE_LABELS.snapshotIdentifier,
+  PROD_CONSOLE_LABELS.expectedParameterCount,
+] as const;
+const PUBLIC_P4_OPTIONAL_LABEL = PROD_CONSOLE_LABELS.snapshotTakenAt;
+const PUBLIC_P4_CAPTURE: readonly BrowserCaptureKind[] = ['structural-snapshot'];
+
+function publicP4Target(
+  plan: ExecutablePlan,
+  requirement: { readonly agentTargets: readonly ClassifiedTarget[]; readonly unsupported: string | null },
+): ClassifiedTarget | null {
+  if (
+    plan.inputs.templateId !== 'P-4' ||
+    requirement.unsupported !== null ||
+    plan.inputs.targets.length !== 1 ||
+    requirement.agentTargets.length !== 1
+  ) return null;
+  const entry = requirement.agentTargets[0];
+  if (entry === undefined || entry.target.contract.kind !== 'web') return null;
+  const labels = entry.target.contract.attribute_label_patterns;
+  if (!Array.isArray(labels) || labels.length < PUBLIC_P4_REQUIRED_LABELS.length || labels.length > 5) return null;
+  const allowed = new Set<string>([...PUBLIC_P4_REQUIRED_LABELS, PUBLIC_P4_OPTIONAL_LABEL]);
+  if (new Set(labels).size !== labels.length) return null;
+  if (!PUBLIC_P4_REQUIRED_LABELS.every((label) => labels.includes(label))) return null;
+  if (labels.some((label) => !allowed.has(label))) return null;
+  return entry;
+}
+
+function publicValueText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function publicParameterCount(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string' || !/^\d+$/u.test(value.trim())) return null;
+  const count = Number(value.trim());
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+/** Validate the bounded public-access postcondition; parameter reconciliation is later. */
+function validPublicP4Snapshot(
+  artifacts: readonly BrowserActionArtifact[],
+  labels: readonly string[],
+): boolean {
+  if (artifacts.length !== 1) return false;
+  const artifact = artifacts[0];
+  if (artifact === undefined || artifact.kind !== 'structural-snapshot' || artifact.mediaType !== WEB_TREE_MEDIA_TYPE) return false;
+  const parsed = readStructuralSnapshot({
+    evidenceId: 'public-access',
+    substrate: 'web_tree',
+    bytes: artifact.bytes,
+  });
+  if (!parsed.ok || parsed.substrate !== 'web_tree') return false;
+  const nodes = parsed.document.nodes;
+  const nodesFor = (label: string) => nodes.filter((node) => node.role === 'datum' && node.label === label);
+  // Parameter and Value are row labels and can occur more than once. Metadata labels are
+  // page-level declarations and must occur once when registered.
+  if (nodesFor(PROD_CONSOLE_LABELS.parameter).length === 0 || nodesFor(PROD_CONSOLE_LABELS.value).length === 0) return false;
+  const identifier = nodesFor(PROD_CONSOLE_LABELS.snapshotIdentifier);
+  const count = nodesFor(PROD_CONSOLE_LABELS.expectedParameterCount);
+  if (identifier.length !== 1 || publicValueText(identifier[0]?.value) === null) return false;
+  if (count.length !== 1 || publicParameterCount(count[0]?.value) === null) return false;
+  if (labels.includes(PUBLIC_P4_OPTIONAL_LABEL)) {
+    const takenAt = nodesFor(PUBLIC_P4_OPTIONAL_LABEL);
+    if (takenAt.length !== 1 || publicValueText(takenAt[0]?.value) === null) return false;
+  }
+  return true;
+}
+
 /**
  * How a GATE denial is recorded, exhaustive by type.
  *
@@ -191,10 +289,12 @@ export function agentStopCauseFor(
 ): 'action-denied' | 'scope-violation' | RunLimitCause | null {
   switch (diagnostic) {
     case 'sign-in-denied':
+    case 'public-access-denied':
     case 'action-not-permitted':
     case 'parameter-out-of-scope':
       return 'action-denied';
     case 'sign-in-scope-violation':
+    case 'public-access-scope-violation':
     case 'origin-not-allowed':
     case 'destination-refused':
       return 'scope-violation';
@@ -449,6 +549,7 @@ export async function performToolAction(
 export async function executeAgentSteps(
   dependencies: AgentExecutionDependencies,
   job: PopulationJob,
+  options: AgentExecutionOptions = {},
 ): Promise<{ retry: boolean; proceed: boolean }> {
   // Every credential this stage resolves is held by `guard`, because the stage resolves
   // through the WRAPPED resolver and never through the one it was handed (Story 4.3).
@@ -456,6 +557,7 @@ export async function executeAgentSteps(
   // records can carry a credential the Run has presented.
   const { credentials, guard } = guardedCredentials(dependencies.credentials);
   const deps: AgentExecutionDependencies = { ...dependencies, credentials };
+  const forceReauthentication = options.forceReauthentication === true;
   const claim = await deps.repository.transaction(job.runId, async (context) => {
     const run = context.run;
     if (!run || run.correlationId !== job.correlationId || job.schemaVersion !== 1) return null;
@@ -483,10 +585,19 @@ export async function executeAgentSteps(
     // No agent-driven Target: no `sign-in` step, nothing to do, and no row written. An
     // adapter-only Run must be unchanged by this story, so it PROCEEDS rather than stops.
     if (plan === null || requirement === null) return { proceed: true } as const;
+    // P-4's public contract is deliberately checked from the frozen plan before any
+    // checkpoint shortcut or credential lookup. A malformed registration cannot fall
+    // through to the credentialed path, and an extra target would make the public proof
+    // ambiguous.
+    const publicTarget = publicP4Target(plan, requirement);
+    const publicContractInvalid = plan.inputs.templateId === 'P-4' && requirement.unsupported === null && publicTarget === null;
+
     // Already signed in. The phase is idempotent by its checkpoint: a redelivery after a
     // successful sign-in reattaches to the workspace and carries on rather than signing in
-    // again, which is AD-16's whole point.
-    if (prior?.status === 'SIGNED_IN') return { proceed: true } as const;
+    // again, which is AD-16's whole point. A replacement browser is the one deliberate
+    // exception: its cookie/session state is new, so recovery opts into the normal positive
+    // form-authentication path below instead of trusting the old checkpoint.
+    if (prior?.status === 'SIGNED_IN' && !forceReauthentication) return { proceed: true } as const;
 
     const checkpoint: AgentExecutionCheckpoint = {
       revision: (prior?.revision ?? 0) + 1,
@@ -503,7 +614,9 @@ export async function executeAgentSteps(
     };
     const budget = sessionStepAttemptBudget(plan.limits);
     const failed: AgentExecutionDiagnostic | null =
-      requirement.unsupported !== null
+      publicContractInvalid
+        ? 'public-access-contract-failed'
+        : requirement.unsupported !== null
         ? 'unsupported-frozen-plan'
         : // A workspace is a precondition of every action this phase takes. It is
           // provisioned by the stage before this one, whose failure already ends the Run,
@@ -531,17 +644,21 @@ export async function executeAgentSteps(
     const steps: SessionStepRecord[] = requirement.agentTargets.map((entry) => {
       const existing = context.sessionSteps.find((row) => row.stepId === entry.stepId);
       return (
-        existing ?? {
-          stepId: entry.stepId,
-          ordinal: entry.ordinal,
-          registrationId: entry.target.registrationId,
-          displayName: entry.target.displayName,
-          action: 'sign-in' as const,
-          state: 'PENDING' as const,
-          attempts: 0,
-          diagnostic: null,
-          evidenceId: null,
-        }
+        existing === undefined
+          ? {
+              stepId: entry.stepId,
+              ordinal: entry.ordinal,
+              registrationId: entry.target.registrationId,
+              displayName: entry.target.displayName,
+              action: 'sign-in' as const,
+              state: 'PENDING' as const,
+              attempts: 0,
+              diagnostic: null,
+              evidenceId: null,
+            }
+          : forceReauthentication && existing.state === 'ACQUIRED'
+            ? { ...existing, state: 'PENDING' as const, diagnostic: null }
+            : existing
       );
     });
     await context.saveCheckpoint(checkpoint, 'RUNNING');
@@ -556,6 +673,7 @@ export async function executeAgentSteps(
       run,
       steps,
       targets: requirement.agentTargets,
+      publicAccess: publicTarget !== null,
       ref: {
         runId: run.runId,
         workspaceId: context.workspace!.workspaceId,
@@ -567,7 +685,7 @@ export async function executeAgentSteps(
   if (claim === null) return { retry: false, proceed: false };
   if (claim.proceed) return { retry: false, proceed: true };
 
-  const { checkpoint, plan, run, steps, targets, ref } = claim;
+  const { checkpoint, plan, run, steps, targets, ref, publicAccess } = claim;
   const runDeadline = Date.parse(checkpoint.runStartedAt) + plan.limits.runTimeoutSeconds * 1000;
   const stepTimeoutMs = plan.limits.stepTimeoutSeconds * 1000;
   let stepExecutions = claim.stepExecutions;
@@ -684,7 +802,7 @@ export async function executeAgentSteps(
       await stopRun(LIMIT_DIAGNOSTIC[spent], decision.state, { stepId: step.stepId });
       return { retry: false, proceed: false };
     }
-    const outcome = await runSignInStep(deps, {
+    const outcome = await (publicAccess ? runPublicAccessStep : runSignInStep)(deps, {
       checkpoint,
       plan,
       entry,
@@ -718,7 +836,7 @@ export async function executeAgentSteps(
   const committed = await guarded(async (context) => {
     const next = { ...checkpoint, status: 'SIGNED_IN' as const, diagnostic: null };
     await context.saveCheckpoint(next, 'RUNNING');
-    await event(context, 'agent-sign-in-complete', 'RUNNING', next, {});
+    await event(context, publicAccess ? 'public-access-verified' : 'agent-sign-in-complete', 'RUNNING', next, {});
   });
   return { retry: false, proceed: committed };
   } catch {
@@ -956,6 +1074,164 @@ async function runSignInStep(
   step.diagnostic = step.diagnostic ?? 'sign-in-unavailable';
   // Reached only when a resumed step already holds a spent budget in a non-terminal state.
   // Persist what is being claimed rather than reporting it and writing nothing.
+  await unit.guarded(async (context) => {
+    await context.saveSessionStep(step);
+  });
+  return 'failed';
+}
+
+function publicFailureDiagnostic(diagnostic: AgentExecutionDiagnostic): AgentExecutionDiagnostic {
+  switch (diagnostic) {
+    case 'sign-in-unavailable': return 'public-access-unavailable';
+    case 'sign-in-denied': return 'public-access-denied';
+    case 'sign-in-scope-violation': return 'public-access-scope-violation';
+    case 'sign-in-contract-failed': return 'public-access-contract-failed';
+    default: return diagnostic;
+  }
+}
+
+/**
+ * Prove the public P-4 page is reachable and structurally declares the registered fields.
+ *
+ * This is intentionally a sibling of `runSignInStep`: the frozen Session Step remains
+ * `sign-in` for plan compatibility, while the operational postcondition is public access.
+ * No resolver call, credential reference, or authenticated-session claim belongs here.
+ */
+async function runPublicAccessStep(
+  deps: AgentExecutionDependencies,
+  unit: SignInUnit,
+): Promise<'acquired' | 'failed' | 'lost' | 'limit'> {
+  const { step, entry, checkpoint, plan } = unit;
+  const budgetAttempts = sessionStepAttemptBudget(plan.limits);
+  const contract = entry.target.contract;
+  const scope: ToolActionScope = { target: entry.target, scopeValues: NO_PARAMETERS };
+
+  while (step.attempts < budgetAttempts) {
+    if (unit.limitReached() !== null) return 'limit';
+    step.attempts += 1;
+    const execution = unit.startStepExecution(entry.stepId, step.attempts);
+    step.state = 'IN_PROGRESS';
+    step.diagnostic = null;
+    const reserved = await unit.guarded(async (context) => {
+      await context.saveCheckpoint(checkpoint, 'RUNNING');
+      await context.saveSessionStep(step);
+      await context.saveStepExecution(execution);
+      await event(context, 'public-access-attempt-started', 'RUNNING', checkpoint, {
+        stepId: step.stepId,
+        registrationId: step.registrationId,
+        stepExecutionId: execution.stepExecutionId,
+        attempt: step.attempts,
+      });
+    });
+    if (!reserved) return 'lost';
+
+    const fail = async (
+      diagnostic: AgentExecutionDiagnostic,
+      action: SanitizedToolAction | null,
+      terminal: boolean,
+    ): Promise<'failed' | 'retry' | 'lost'> => {
+      const exhausted = terminal || step.attempts >= budgetAttempts;
+      step.state = exhausted ? 'FAILED' : 'PENDING';
+      step.diagnostic = diagnostic;
+      const committed = await unit.guarded(async (context) => {
+        if (action !== null) await context.saveToolAction(action);
+        await context.saveSessionStep(step);
+        await context.saveStepExecution({
+          ...execution,
+          state: 'FAILED',
+          completedAt: deps.clock.now().toISOString(),
+          diagnostic,
+        });
+        await event(
+          context,
+          diagnostic,
+          'RUNNING',
+          checkpoint,
+          {
+            stepId: step.stepId,
+            registrationId: step.registrationId,
+            stepExecutionId: execution.stepExecutionId,
+            attempt: step.attempts,
+            ...(action === null
+              ? {}
+              : {
+                  toolActionId: action.toolActionId,
+                  destination: action.destination,
+                  action: action.action,
+                }),
+          },
+          'failure',
+        );
+      });
+      if (!committed) return 'lost';
+      return exhausted ? 'failed' : 'retry';
+    };
+
+    if (contract.kind !== 'web') {
+      const outcome = await fail('public-access-contract-failed', null, true);
+      if (outcome !== 'retry') return outcome;
+      continue;
+    }
+    const destination = contract.allowed_origins[0] ?? '';
+    const performed = await performToolAction(deps.browser, {
+      ref: unit.ref,
+      runId: unit.ref.runId,
+      stepExecutionId: execution.stepExecutionId,
+      workItemId: null,
+      toolActionId: deps.ids.next(),
+      scope,
+      request: { action: SIGN_IN_TOOL_ACTION, destination, parameters: NO_ARGUMENTS },
+      credential: null,
+      requestedCapture: PUBLIC_P4_CAPTURE,
+      startedAt: deps.clock.now().toISOString(),
+      completedAt: () => deps.clock.now().toISOString(),
+      timeoutMs: unit.budget,
+      // Public access has no credential to redact, and explicitly names the empty guard so
+      // a provider cannot turn this page proof into an implicit credential-bearing capture.
+      guard: NO_CREDENTIALS,
+    });
+    if (!performed.ok) {
+      const diagnostic = publicFailureDiagnostic(performed.diagnostic);
+      const terminal = diagnostic === 'public-access-contract-failed' || agentStopCauseFor(diagnostic) !== null;
+      const outcome = await fail(diagnostic, performed.action, terminal);
+      if (outcome !== 'retry') return outcome;
+      continue;
+    }
+    const statusDiagnostic =
+      performed.status === 401 || performed.status === 403
+        ? 'public-access-denied' as const
+        : performed.status === null || performed.status >= 500
+          ? 'public-access-unavailable' as const
+          : performed.status < 200 || performed.status >= 300
+            ? 'public-access-contract-failed' as const
+            : null;
+    if (statusDiagnostic !== null) {
+      const outcome = await fail(statusDiagnostic, performed.action, statusDiagnostic !== 'public-access-unavailable');
+      if (outcome !== 'retry') return outcome;
+      continue;
+    }
+    if (!validPublicP4Snapshot(performed.artifacts, contract.attribute_label_patterns)) {
+      const outcome = await fail('public-access-contract-failed', performed.action, true);
+      if (outcome !== 'retry') return outcome;
+      continue;
+    }
+
+    step.state = 'ACQUIRED';
+    step.diagnostic = null;
+    const committed = await unit.guarded(async (context) => {
+      await context.saveToolAction(performed.action);
+      await context.saveSessionStep(step);
+      await context.saveStepExecution({
+        ...execution,
+        state: 'SUCCEEDED',
+        completedAt: deps.clock.now().toISOString(),
+      });
+    });
+    return committed ? 'acquired' : 'lost';
+  }
+
+  step.state = 'FAILED';
+  step.diagnostic = step.diagnostic ?? 'public-access-unavailable';
   await unit.guarded(async (context) => {
     await context.saveSessionStep(step);
   });

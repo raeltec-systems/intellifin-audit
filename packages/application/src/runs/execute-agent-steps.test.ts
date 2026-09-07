@@ -22,6 +22,7 @@ import {
   type RunResultFindings,
   type SanitizedToolAction,
   type RunCancellationRequest,
+  WEB_TREE_MEDIA_TYPE,
 } from '@intellifin/domain';
 
 import { executeAgentSteps, performToolAction } from './execute-agent-steps.js';
@@ -32,6 +33,7 @@ import {
   type AgentExecutionContext,
   type AgentExecutionRepository,
   type BrowserActionResult,
+  type BrowserActionArtifact,
   type BrowserExecution,
   type BrowserToolAction,
   type CredentialResolver,
@@ -126,6 +128,48 @@ function planFor(kind: 'web' | 'api' | 'desktop'): ExecutablePlan {
   });
   if (!derived.ok) throw new Error(derived.reason);
   return derived.plan;
+}
+
+const PUBLIC_LABELS = [
+  'Parameter',
+  'Value',
+  'Snapshot identifier',
+  'Expected parameter count',
+  'Snapshot taken at',
+] as const;
+
+/** Keep the execution fixture small while changing only the frozen P-4 target contract. */
+function publicPlan(labels: readonly string[] = PUBLIC_LABELS): ExecutablePlan {
+  const base = planFor('web');
+  const target = base.inputs.targets[0]!;
+  return {
+    ...base,
+    inputs: {
+      ...base.inputs,
+      templateId: 'P-4',
+      targets: [{
+        ...target,
+        contract: { ...target.contract, attribute_label_patterns: labels },
+      }],
+    },
+  } as ExecutablePlan;
+}
+
+function publicArtifact(
+  nodes: readonly Record<string, unknown>[] = [
+    { group: 'metadata', role: 'datum', label: 'Snapshot identifier', value: 'PC-SNAP-7', target: null },
+    { group: 'metadata', role: 'datum', label: 'Expected parameter count', value: '4', target: null },
+    { group: 'table:0:row:0', role: 'datum', label: 'Parameter', value: 'max_manual_approval_amount', target: null },
+    { group: 'table:0:row:0', role: 'datum', label: 'Value', value: '50000.00', target: null },
+    { group: 'metadata', role: 'datum', label: 'Snapshot taken at', value: '2026-08-31T22:00:00Z', target: null },
+  ],
+): BrowserActionArtifact {
+  return {
+    kind: 'structural-snapshot',
+    bytes: utf8Bytes(JSON.stringify({ schemaVersion: 1, nodes })),
+    mediaType: WEB_TREE_MEDIA_TYPE,
+    location: ORIGIN,
+  };
 }
 
 interface Store {
@@ -482,6 +526,125 @@ describe('the sign-in Session Step', () => {
     });
     expect(browser.performed).toHaveLength(1);
     expect(state.actions).toHaveLength(1);
+  });
+
+  it('forces a fresh positive sign-in after a workspace replacement while preserving history', async () => {
+    const state = store(planFor('web'));
+    const browser = new FakeBrowser();
+    await executeAgentSteps(DEPS(state, browser), JOB);
+    const firstExecutionId = state.executions[0]?.stepExecutionId;
+
+    expect(
+      await executeAgentSteps(DEPS(state, browser), JOB, { forceReauthentication: true }),
+    ).toEqual({ retry: false, proceed: true });
+
+    expect(browser.performed).toHaveLength(2);
+    expect(browser.entered).toEqual([TOKEN, TOKEN]);
+    expect(state.steps[0]).toMatchObject({ state: 'ACQUIRED', attempts: 2, diagnostic: null });
+    expect(state.executions).toHaveLength(2);
+    expect(state.executions[0]).toMatchObject({
+      stepExecutionId: firstExecutionId,
+      attempt: 1,
+      state: 'SUCCEEDED',
+    });
+    expect(state.executions[1]).toMatchObject({ attempt: 2, state: 'SUCCEEDED' });
+    expect(state.actions).toHaveLength(2);
+    expect(state.checkpoint).toMatchObject({ status: 'SIGNED_IN', attempts: 2 });
+  });
+
+  it('does not trust SIGNED_IN when forced reauthentication is refused', async () => {
+    const state = store(planFor('web'));
+    await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
+    const browser = new FakeBrowser({ result: { status: 401, session: false } });
+
+    expect(
+      await executeAgentSteps(DEPS(state, browser), JOB, { forceReauthentication: true }),
+    ).toEqual({ retry: false, proceed: false });
+    expect(browser.performed).toHaveLength(1);
+    expect(browser.entered).toEqual([TOKEN]);
+    expect(state.steps[0]).toMatchObject({
+      state: 'FAILED',
+      attempts: 2,
+      diagnostic: 'sign-in-denied',
+    });
+    expect(state.checkpoint).toMatchObject({ status: 'TERMINAL' });
+    expect(state.run?.state).toBe('RUN_FAILED');
+  });
+});
+
+describe('the public P-4 access proof', () => {
+  it('navigates without resolving the compatibility credential and validates the frozen page metadata', async () => {
+    const state = store(publicPlan());
+    const browser = new FakeBrowser({ result: { artifacts: [publicArtifact()] } });
+    let resolutions = 0;
+    const credentials = resolver({
+      resolve: async (reference) => {
+        resolutions += 1;
+        return credential(reference);
+      },
+    });
+
+    expect(await executeAgentSteps(DEPS(state, browser, credentials), JOB)).toEqual({
+      retry: false,
+      proceed: true,
+    });
+    expect(resolutions).toBe(0);
+    expect(browser.performed).toHaveLength(1);
+    expect(browser.performed[0]).toMatchObject({
+      action: 'navigate',
+      destination: ORIGIN,
+      credential: null,
+      capture: ['structural-snapshot'],
+    });
+    expect(state.actions[0]).toMatchObject({ capture: 'PERMITTED', captureSuppression: null });
+    expect(state.steps[0]).toMatchObject({ action: 'sign-in', state: 'ACQUIRED' });
+    expect(state.checkpoint).toMatchObject({ status: 'SIGNED_IN' });
+    expect(state.events.some((event) => event.payload['diagnostic'] === 'public-access-verified')).toBe(true);
+    expect(state.events.some((event) => event.payload['diagnostic'] === 'session-established')).toBe(false);
+  });
+
+  it('fails closed on a password surface/capture contract failure without resolving credentials', async () => {
+    const state = store(publicPlan());
+    const browser = new FakeBrowser({ fail: new BrowserActionError('contract') });
+    let resolutions = 0;
+    const credentials = resolver({
+      resolve: async (reference) => {
+        resolutions += 1;
+        return credential(reference);
+      },
+    });
+
+    expect(await executeAgentSteps(DEPS(state, browser, credentials), JOB)).toEqual({
+      retry: false,
+      proceed: false,
+    });
+    expect(resolutions).toBe(0);
+    expect(browser.performed[0]).toMatchObject({ credential: null, capture: ['structural-snapshot'] });
+    expect(state.steps[0]).toMatchObject({ state: 'FAILED', diagnostic: 'public-access-contract-failed' });
+    expect(state.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'public-access-contract-failed' });
+    expect(state.events.some((event) => event.payload['diagnostic'] === 'public-access-verified')).toBe(false);
+    expect(state.events.some((event) => event.payload['diagnostic'] === 'session-established')).toBe(false);
+  });
+
+  it('rejects an unexpected registered label before opening a public page', async () => {
+    const state = store(publicPlan([...PUBLIC_LABELS, 'Unexpected']));
+    const browser = new FakeBrowser();
+    let resolutions = 0;
+    const credentials = resolver({
+      resolve: async (reference) => {
+        resolutions += 1;
+        return credential(reference);
+      },
+    });
+
+    expect(await executeAgentSteps(DEPS(state, browser, credentials), JOB)).toEqual({
+      retry: false,
+      proceed: false,
+    });
+    expect(resolutions).toBe(0);
+    expect(browser.performed).toEqual([]);
+    expect(state.steps).toEqual([]);
+    expect(state.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'public-access-contract-failed' });
   });
 });
 

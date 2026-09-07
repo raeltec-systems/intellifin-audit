@@ -55,6 +55,19 @@ export interface WorkspaceDependencies {
   ids: UuidV7Generator;
 }
 
+/**
+ * The result of the workspace claim. The replacement marker is deliberately optional:
+ * callers that only need to know whether the claim succeeded keep the original two-key
+ * result, while recovery can distinguish a fresh browser identity from a live reattach.
+ * It is present only after an already durable identity was released (or had expired) and
+ * the replacement was committed to the Run.
+ */
+export interface ProvisionWorkspaceResult {
+  readonly retry: boolean;
+  readonly provisioned: boolean;
+  readonly workspaceReplaced?: true;
+}
+
 /** The closed diagnostic vocabulary. Never an error message, never a URL, never a value. */
 export type WorkspaceDiagnostic =
   | 'unsupported-frozen-plan'
@@ -259,7 +272,7 @@ function runIsOver(state: RunRecord['state']): boolean {
 export async function provisionWorkspace(
   deps: WorkspaceDependencies,
   job: PopulationJob,
-): Promise<{ retry: boolean; provisioned: boolean }> {
+): Promise<ProvisionWorkspaceResult> {
   const claim = await deps.repository.transaction(job.runId, async (context) => {
     const run = context.run;
     if (!run || run.correlationId !== job.correlationId || job.schemaVersion !== 1) return null;
@@ -369,6 +382,11 @@ export async function provisionWorkspace(
     });
 
   let handle: WorkspaceHandle | null = null;
+  // Set only after a durable identity was found to be unavailable and its release path
+  // completed. A failed release, failed create, or lost guarded commit must never tell the
+  // caller that a replacement exists: in each case the durable row still names the old
+  // identity (or no new identity at all).
+  let workspaceReplaced = false;
   let diagnostic: WorkspaceDiagnostic = 'workspace-created';
   try {
     // Keep the cleanup reference intact when this worker cannot operate its provider.
@@ -432,6 +450,7 @@ export async function provisionWorkspace(
             throw new StaleReleaseFailed();
           }
         }
+        workspaceReplaced = true;
       } else {
         diagnostic = 'workspace-reattached';
       }
@@ -527,7 +546,9 @@ export async function provisionWorkspace(
     await deps.browser.release(handle.ref, stepTimeoutMs).catch(() => undefined);
     return { retry: false, provisioned: false };
   }
-  return { retry: false, provisioned: true };
+  return workspaceReplaced
+    ? { retry: false, provisioned: true, workspaceReplaced: true }
+    : { retry: false, provisioned: true };
 }
 
 /**
