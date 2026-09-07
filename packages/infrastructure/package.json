@@ -45,6 +45,10 @@
     "./browser": {
       "types": "./src/runs/browser-execution.ts",
       "default": "./dist/runs/browser-execution.js"
+    },
+    "./agent-model": {
+      "types": "./src/runs/agent-model-gateway.ts",
+      "default": "./dist/runs/agent-model-gateway.js"
     }
   },
   "files": [

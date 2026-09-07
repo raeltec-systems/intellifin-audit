@@ -147,6 +147,17 @@ const CASES: readonly Case[] = [
     requires: 'packages/infrastructure/dist/runs/browser-execution.js',
   },
   {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/src/runs/agent-model-gateway.js',
+    rule: 'no-agent-model-in-web',
+  },
+  {
+    plantIn: 'apps/web/src',
+    imports: '../../../../packages/infrastructure/dist/runs/agent-model-gateway.js',
+    rule: 'no-agent-model-in-web',
+    requires: 'packages/infrastructure/dist/runs/agent-model-gateway.js',
+  },
+  {
     // The Playwright client is a vendor exactly as the provider SDK is: the port is
     // structural, so no `Page`, `Browser` or `Route` type may reach business code.
     plantIn: 'packages/application/src',

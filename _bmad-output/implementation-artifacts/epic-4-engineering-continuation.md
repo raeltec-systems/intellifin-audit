@@ -74,3 +74,7 @@ CI34132656180 on f3ba33e20e5dcee49623e73aba686ed60ab86e72 passes container and f
 ## Verified generation33 and browser capture checkpoint
 
 026833c1104e8b638b3944114039110f9a157d0c is pushed and all four CI34134813593 jobs pass, including fresh/populated migrations through33, drift, PostgreSQL integrations, container guards, browser/accessibility. The next capture checkpoint adds real bounded GET form search and guarded platform web_tree/PNG production; browser unit25 and action-gate31 tests pass locally, full typecheck passes. Four new real Chromium capture integrations await hosted CI. This is a capture mechanism checkpoint, not accepted4.4: actual worker Observation registration and authorized inspector artifact access remain unfinished.
+
+## Story4.6 model gateway checkpoint (incomplete story)
+
+Real Anthropic/OpenAI SDK adapters implement ordered approved action proposals, structured uncertainty, cancellation/deadlines, sanitized operational failures, measured usage and bounded fallback. Usage already spent by a primary provider is retained; unaccounted attempts are explicit.24 gateway +2 port tests pass; source/build boundary negative tests pass26. Full workspace typecheck passes with the pending worktree. No live model call was made: production key values are unavailable locally. The durable Run ledger and actual loop are not included in this gateway checkpoint and4.6 is not accepted.

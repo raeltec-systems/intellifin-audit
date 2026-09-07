@@ -26,6 +26,7 @@ export default defineConfig({
       '@intellifin/infrastructure/evidence': sub('infrastructure/src/evidence/s3-evidence-store'),
       '@intellifin/infrastructure/extraction': sub('infrastructure/src/runs/adapter-extraction-http'),
       '@intellifin/infrastructure/credentials': sub('infrastructure/src/runs/credential-resolver'),
+      '@intellifin/infrastructure/agent-model': sub('infrastructure/src/runs/agent-model-gateway'),
       '@intellifin/infrastructure/browser': sub('infrastructure/src/runs/browser-execution'),
       '@intellifin/infrastructure': pkg('infrastructure'),
     },

@@ -180,6 +180,13 @@ module.exports = {
       to: { path: '^packages/infrastructure/(src|dist)/runs/browser-execution', reachable: true },
     },
     {
+      name: 'no-agent-model-in-web',
+      comment: 'Story4.6: the execution model gateway belongs only to worker composition.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/agent-model-gateway', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +
