@@ -38,6 +38,8 @@ export const EVIDENCE_ARTIFACT_KINDS = [
   'population',
   'reference-source',
   'adapter-extraction',
+  'structural-snapshot',
+  'screenshot',
 ] as const;
 export type EvidenceArtifactKind = (typeof EVIDENCE_ARTIFACT_KINDS)[number];
 
@@ -311,6 +313,10 @@ export function evidenceObjectKeys(reservation: EvidenceReservation): readonly s
       return [`reference/${reservation.runId}/${reservation.scope}`];
     case 'adapter-extraction':
       return [`extraction/${reservation.runId}/${reservation.scope}`];
+    case 'structural-snapshot':
+      return [`snapshot/${reservation.runId}/${reservation.scope}`];
+    case 'screenshot':
+      return [`screenshot/${reservation.runId}/${reservation.scope}`];
   }
 }
 

@@ -232,6 +232,13 @@
       "when": 1788731033318,
       "tag": "0032_petite_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788789991696,
+      "tag": "0033_ancient_karen_page",
+      "breakpoints": true
     }
   ]
 }

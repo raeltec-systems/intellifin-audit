@@ -268,6 +268,8 @@ const ARTIFACT_KIND_WORDS: Readonly<Record<string, string>> = {
   population: 'Population',
   'reference-source': 'Reference Source',
   'adapter-extraction': 'Adapter extraction',
+  'structural-snapshot': 'Structural snapshot',
+  screenshot: 'Screenshot',
 };
 
 function artifactKindWord(kind: string): string {

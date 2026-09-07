@@ -62,3 +62,7 @@ Identity/value grounding split now refuses the entire Observation batch through 
 ## Story4.4 structural substrate checkpoint (incomplete story)
 
 The web_tree parser, media type and corroboration are implemented for bounded grouped semantic nodes, with controls distinct from data cells. Optional completion metadata requires a producer-specific postcondition; no declared count is inferred from node count. Independent Python golden fixture plus parser/corroboration negatives pass24 focused tests. Domain typecheck/build pass. Desktop remains explicitly unsupported. Capture, persistent work-item execution and inspector wiring are still in progress;4.4 is not accepted.
+
+## Story4.4 artifact storage checkpoint (incomplete story)
+
+Generation33 adds structural-snapshot/screenshot kinds to the existing Evidence storage contract, retaining the existing sealing guards. Each kind has a distinct stable reservation/object key.29 focused artifact/schema-range tests pass; the migration was generated from the schema, with the explicit generation marker and build compatibility range added. The producer is not yet wired, so this checkpoint is not an accepted agent journey. Hosted fresh/populated/drift gates will test this generation.

@@ -62,6 +62,8 @@ const NOT_REGISTERED: Readonly<Record<string, string>> = {
   population: 'Not registered; acquisition stopped.',
   'reference-source': 'Not registered; acquisition stopped.',
   'adapter-extraction': 'Not registered; extraction stopped.',
+  'structural-snapshot': 'Not registered; capture stopped.',
+  screenshot: 'Not registered; capture stopped.',
 };
 
 function notRegistered(kind: string, state: string): string {

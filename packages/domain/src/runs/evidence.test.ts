@@ -311,6 +311,8 @@ describe('the artifact vocabulary', () => {
       'population',
       'reference-source',
       'adapter-extraction',
+      'structural-snapshot',
+      'screenshot',
     ]);
   });
 });
@@ -327,5 +329,17 @@ describe('the reservation is where an unusable frozen step id is caught', () => 
     expect(() => evidenceIdempotencyKey({ runId: RUN, kind: 'reference-source', scope: '' })).toThrow(
       EvidenceReservationError,
     );
+  });
+});
+
+describe('agent capture reservations', () => {
+  it('keeps snapshot and screenshot identities distinct and stable for the reading action', () => {
+    const scope = 'reading-action-1';
+    const snapshot = { runId: RUN, kind: 'structural-snapshot' as const, scope };
+    const screenshot = { runId: RUN, kind: 'screenshot' as const, scope };
+    expect(evidenceIdFor(snapshot)).toBe(evidenceIdFor({ ...snapshot }));
+    expect(evidenceIdFor(snapshot)).not.toBe(evidenceIdFor(screenshot));
+    expect(evidenceObjectKeys(snapshot)).toEqual([`snapshot/${RUN}/${scope}`]);
+    expect(evidenceObjectKeys(screenshot)).toEqual([`screenshot/${RUN}/${scope}`]);
   });
 });

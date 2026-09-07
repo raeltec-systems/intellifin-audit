@@ -1036,7 +1036,7 @@ export const runEvidence = pgTable('run_evidence', {
   captureMethod: text('capture_method'),
   captureTimeSource: text('capture_time_source'),
 }, t=>[
-  check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction')`),
+  check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction','structural-snapshot','screenshot')`),
   check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
   check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
   check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),
