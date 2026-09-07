@@ -1,3 +1,7 @@
+## 2026-09-07 — Agent evaluation model phase
+
+Agent prompt version2 is independent of procedure derivation prompt version1. Evaluation requests bind a final frozen Observation identity and an allowed condition set; provider output cannot redirect that identity or invent conditions. Action-v1 requests remain supported. The Run token reservation includes the complete evaluation payload and condition text before I/O; omitting those fields would permit uncharged model work. Usage, fallback accounting and credential scanning use the existing durable turn path.
+
 ## 2026-09-07 — Evaluation review surface
 
 Run Detail reads the fresh review revision and pending count under its explicit evaluation-review permission, renders machine rationale as untrusted text, and submits only fixed decision fields. Raw database exceptions may contain evidence/rationale parameters: telemetry receives a fixed error code and correlation id, never that exception. Browser injection checks scope executable-node absence to untrusted content containers; Next.js itself legitimately loads scripts outside them.

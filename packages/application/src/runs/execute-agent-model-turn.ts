@@ -7,7 +7,18 @@ import type { CredentialGuard } from './credential-guard.js';
 export function agentTurnReservation(request: AgentModelRequest, gateway: AgentModelGateway): { perAttempt: number; total: number } {
   // A UTF-8 byte is a conservative bound for one input token. The fixed allowance covers
   // the adapter's system prompt and provider framing. Output is explicitly capped by SDK.
-  const inputBytes = utf8Bytes(JSON.stringify({ objective: request.objective, retrieved: request.retrieved, tools: request.tools })).length;
+  // Keep this envelope in lockstep with the infrastructure gateway's provider prompt. In
+  // particular, a post-capture evaluation carries the final Observation and frozen
+  // condition text; omitting those fields here would under-reserve the Run before I/O.
+  const envelope: Record<string, unknown> = {
+    schemaVersion: request.schemaVersion,
+    phase: request.phase ?? 'actions',
+    objective: request.objective,
+    retrieved: request.retrieved,
+    tools: request.tools,
+  };
+  if (request.phase === 'evaluation') envelope['evaluation'] = request.evaluation;
+  const inputBytes = utf8Bytes(JSON.stringify(envelope)).length;
   const output = Math.max(gateway.identity.configuration.maxOutputTokens, gateway.fallbackIdentity?.configuration.maxOutputTokens ?? 0);
   const perAttempt = inputBytes + output + 8192;
   return { perAttempt, total: perAttempt * (gateway.fallbackIdentity == null ? 1 : 2) };

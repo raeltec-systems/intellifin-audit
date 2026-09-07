@@ -1,7 +1,18 @@
-import type { PermittedReadAction, ToolActionParameter } from '@intellifin/domain';
+import type { EvaluationValue, PermittedReadAction, ToolActionParameter } from '@intellifin/domain';
+import type { AgentJudgedProposal } from './agent-evaluation.js';
+
+// Re-export the registration-facing shape from the model port so infrastructure can
+// construct the normalized response without importing an application implementation
+// module. The model gateway fills observationId from the frozen evaluation request; the
+// provider never gets to choose that identity.
+export type { AgentJudgedProposal } from './agent-evaluation.js';
 
 /** The version of the bounded model-to-agent proposal contract. */
 export const AGENT_MODEL_CONTRACT_VERSION = 1 as const;
+
+/** A turn is either an action proposal or a post-capture condition evaluation. */
+export const AGENT_MODEL_PHASES = ['actions', 'evaluation'] as const;
+export type AgentModelPhase = (typeof AGENT_MODEL_PHASES)[number];
 
 /** The only uncertainty states a model may report. Provider failures are errors, not uncertainty. */
 export const AGENT_UNCERTAINTY_KINDS = ['none', 'ambiguous', 'insufficient-evidence'] as const;
@@ -40,6 +51,26 @@ export interface AgentRetrievedContent {
   readonly text: string;
 }
 
+/** One frozen Agent-Judged condition offered to the evaluation turn as inert data. */
+export interface AgentEvaluationCondition {
+  readonly conditionId: string;
+  /** Frozen condition wording; the model cannot compile or alter it. */
+  readonly text: string;
+}
+
+/**
+ * The final frozen Observation and the Agent-Judged conditions a model may address.
+ *
+ * This is carried as data in the provider envelope. It is not a command, and it contains
+ * no credential capability; the caller is responsible for applying the Procedure Version's
+ * model-data policy before populating the inert Observation text.
+ */
+export interface AgentEvaluationInput {
+  readonly observationId: string;
+  readonly observation: AgentRetrievedContent;
+  readonly conditions: readonly AgentEvaluationCondition[];
+}
+
 /**
  * Host-neutral cancellation seam. An AbortSignal satisfies the required `aborted` member;
  * composition roots may additionally provide `subscribe` so the adapter can abort in-flight
@@ -53,9 +84,13 @@ export interface AgentCancellationSignal {
 /** Request supplied by the bounded loop for one model proposal turn. */
 export interface AgentModelRequest {
   readonly schemaVersion: typeof AGENT_MODEL_CONTRACT_VERSION;
+  /** Omitted means the existing action-proposal turn. */
+  readonly phase?: AgentModelPhase;
   readonly objective: string;
   readonly retrieved: readonly AgentRetrievedContent[];
   readonly tools: readonly AgentApprovedTool[];
+  /** Required only when `phase` is `evaluation`; actions use no evaluation payload. */
+  readonly evaluation?: AgentEvaluationInput;
   /** Per-provider call deadline. The loop owns the larger Run deadline. */
   readonly timeoutMs: number;
   readonly signal?: AgentCancellationSignal;
@@ -103,10 +138,14 @@ export interface AgentTokenUsage {
 /** The sanitized result consumed by the bounded loop and persisted by its caller. */
 export interface AgentModelResponse {
   readonly schemaVersion: typeof AGENT_MODEL_CONTRACT_VERSION;
+  /** Gateway-normalized phase; legacy action responses may omit it at construction sites. */
+  readonly phase?: AgentModelPhase;
   /** The route actually serving this response, including fallback responses. */
   readonly route: AgentModelProvider;
   readonly model: AgentModelIdentity;
   readonly actions: readonly AgentActionProposal[];
+  /** Present only for an evaluation response; observationId is injected from the request. */
+  readonly agentProposals?: readonly AgentJudgedProposal[];
   readonly uncertainty: AgentUncertainty;
   readonly usage: AgentTokenUsage;
   /** Number of provider attempts whose token usage was unavailable to the gateway. */

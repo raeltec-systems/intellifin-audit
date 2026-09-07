@@ -5,6 +5,7 @@ import {
   AgentModelGatewayError,
   isAgentModelGatewayError,
   type AgentApprovedTool,
+  type AgentEvaluationInput,
   type AgentModelRequest,
   type AgentModelResponse,
 } from './agent-ports.js';
@@ -55,6 +56,55 @@ describe('agent model port contract', () => {
     expect(request.tools[0]?.action).toBe('search');
     expect(response.actions[0]?.locator?.path).toBe('$.nodes[2].value');
     expect(response.actions[0]?.parameters[0]?.name).toBe('employee_id');
+  });
+
+  it('supports an explicit post-capture evaluation turn without changing the action default', () => {
+    const evaluation: AgentEvaluationInput = {
+      observationId: 'observation-1',
+      observation: { source: 'snapshot:final', text: '{"found":"true","roles":["LOAN_ADMIN"]}' },
+      conditions: [{ conditionId: 'C2', text: 'Evaluate whether the captured role evidence is privileged.' }],
+    };
+    const request: AgentModelRequest = {
+      schemaVersion: AGENT_MODEL_CONTRACT_VERSION,
+      phase: 'evaluation',
+      objective: 'Evaluate the supplied frozen Observation.',
+      retrieved: [],
+      tools: [],
+      evaluation,
+      timeoutMs: 1_000,
+    };
+    const response: AgentModelResponse = {
+      schemaVersion: AGENT_MODEL_CONTRACT_VERSION,
+      phase: 'evaluation',
+      route: 'anthropic',
+      model: {
+        provider: 'anthropic',
+        modelId: 'claude-sonnet-5',
+        promptVersion: '1',
+        buildVersion: 'test-build',
+        configuration: {
+          responseFormat: 'agent-action-proposal-v1',
+          maxOutputTokens: 16_000,
+          temperature: 0,
+          maxActions: 32,
+        },
+      },
+      actions: [],
+      agentProposals: [{
+        observationId: evaluation.observationId,
+        conditionId: 'C2',
+        value: 'EXCEPTION',
+        confidence: '0.80',
+        rationale: 'The frozen role evidence is privileged.',
+      }],
+      uncertainty: { kind: 'none', rationale: null },
+      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+    };
+    expect(request.phase).toBe('evaluation');
+    expect(request.evaluation?.conditions[0]?.conditionId).toBe('C2');
+    expect(response.phase).toBe('evaluation');
+    expect(response.agentProposals?.[0]?.observationId).toBe(evaluation.observationId);
+    expect(response.actions).toEqual([]);
   });
 
   it('uses fixed sanitized messages for every operational failure', () => {

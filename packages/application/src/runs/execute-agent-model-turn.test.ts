@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ExecutablePlan } from '@intellifin/domain';
-import { AgentModelGatewayError, type AgentModelGateway, type AgentModelResponse } from './agent-ports.js';
+import { AgentModelGatewayError, type AgentModelGateway, type AgentModelRequest, type AgentModelResponse } from './agent-ports.js';
 import { agentTurnReservation, executeAgentModelTurn } from './execute-agent-model-turn.js';
 import type { AgentWorkCheckpoint, AgentWorkContext, AgentTurnRecord } from './agent-work-ports.js';
 import { NO_CREDENTIALS } from './credential-guard.js';
@@ -25,6 +25,38 @@ describe('durable agent token accounting', () => {
     const h = harness(); h.input.checkpoint = { ...h.input.checkpoint, tokens: 999999 };
     expect(await executeAgentModelTurn(h.input)).toEqual({ kind: 'limit' });
     expect(h.input.gateway.propose).not.toHaveBeenCalled(); expect(h.turns).toEqual([]);
+  });
+  it('reserves the final evaluation Observation before refusing a token cap, without provider I/O', async () => {
+    const h = harness();
+    const evaluationRequest: AgentModelRequest = {
+      schemaVersion: 1,
+      phase: 'evaluation',
+      objective: 'Evaluate the frozen Observation against the supplied conditions.',
+      retrieved: [],
+      tools: [],
+      evaluation: {
+        observationId: 'observation-1',
+        observation: {
+          source: 'snapshot:evidence-1',
+          text: 'final-observation '.repeat(2_500),
+        },
+        conditions: [{ conditionId: 'C2', text: 'The frozen role condition applies.' }],
+      },
+      timeoutMs: 1_000,
+    };
+    const actionReserve = agentTurnReservation(h.input.request, h.input.gateway);
+    const evaluationReserve = agentTurnReservation(evaluationRequest, h.input.gateway);
+    expect(evaluationReserve.total).toBeGreaterThan(actionReserve.total);
+
+    const out = await executeAgentModelTurn({
+      ...h.input,
+      request: evaluationRequest,
+      plan: { limits: { runTokens: h.input.checkpoint.tokens + evaluationReserve.total - 1 } } as ExecutablePlan,
+    });
+    expect(out).toEqual({ kind: 'limit' });
+    expect(h.input.gateway.propose).not.toHaveBeenCalled();
+    expect(h.turns).toEqual([]);
+    expect(h.checkpoints).toEqual([]);
   });
   it('keeps a reservation when transport failure leaves consumption unknown', async () => {
     const h = harness(); h.input.gateway.propose = async () => { throw new AgentModelGatewayError('unavailable'); };

@@ -6,6 +6,7 @@ import type {
 } from '@intellifin/application';
 import { AgentModelGatewayError } from '@intellifin/application';
 import {
+  AGENT_PROMPT_VERSION,
   AGENT_MODEL_SYSTEM_PROMPT,
   AnthropicAgentModelGateway,
   FallbackAgentModelGateway,
@@ -47,6 +48,37 @@ const REQUEST: AgentModelRequest = {
 
 const PROPOSAL = JSON.stringify({
   actions: [{ toolId: 'search-account', parameters: [{ name: 'employee_id', value: 'EMP-1' }] }],
+  uncertainty: { kind: 'none', rationale: null },
+});
+
+const EVALUATION_REQUEST: AgentModelRequest = {
+  schemaVersion: 1,
+  phase: 'evaluation',
+  objective: 'Evaluate the final frozen Observation against the supplied condition.',
+  retrieved: [],
+  tools: [],
+  evaluation: {
+    observationId: 'observation-1',
+    observation: {
+      source: 'snapshot:final',
+      text: '{"found":"true","account_status":"disabled","roles":["LOAN_ADMIN"]}',
+    },
+    conditions: [{
+      conditionId: 'C2',
+      text: 'Evaluate whether the captured roles are privileged.',
+    }],
+  },
+  timeoutMs: 1_000,
+};
+
+const EVALUATION_PROPOSAL = JSON.stringify({
+  phase: 'evaluation',
+  proposals: [{
+    conditionId: 'C2',
+    value: 'EXCEPTION',
+    confidence: '0.80',
+    rationale: 'The frozen role evidence is privileged.',
+  }],
   uncertainty: { kind: 'none', rationale: null },
 });
 
@@ -110,11 +142,30 @@ function providerFetch(
 function gateway(provider: ProviderName, fetch: AgentModelFetch, maxActions = 32): AgentModelGateway {
   const options = {
     modelId: modelId(provider),
-    promptVersion: '1',
+    promptVersion: AGENT_PROMPT_VERSION,
     buildVersion: 'test-build',
     apiKey: 'synthetic-api-key',
     maxOutputTokens: 16_000,
     maxActions,
+    fetch,
+  };
+  return provider === 'anthropic'
+    ? new AnthropicAgentModelGateway(options)
+    : new OpenAIAgentModelGateway(options);
+}
+
+function gatewayWithPromptVersion(
+  provider: ProviderName,
+  fetch: AgentModelFetch,
+  promptVersion: string,
+): AgentModelGateway {
+  const options = {
+    modelId: modelId(provider),
+    promptVersion,
+    buildVersion: 'test-build',
+    apiKey: 'synthetic-api-key',
+    maxOutputTokens: 16_000,
+    maxActions: 32,
     fetch,
   };
   return provider === 'anthropic'
@@ -140,7 +191,7 @@ describe.each([
     expect(result.model).toMatchObject({
       provider,
       modelId: modelId(provider),
-      promptVersion: '1',
+      promptVersion: AGENT_PROMPT_VERSION,
       buildVersion: 'test-build',
     });
     expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
@@ -171,6 +222,108 @@ describe.each([
     expect(body.system ?? (body.input as unknown[]).find((entry) => (entry as { role?: string }).role === 'system')).toBeTruthy();
     expect(JSON.stringify(body)).not.toContain('synthetic-api-key');
     expect(AGENT_MODEL_SYSTEM_PROMPT).toContain('untrusted');
+  });
+
+  it('keeps the phase-omitted action v1 wire request compatible under the agent prompt identity', async () => {
+    const result = await gateway(provider, providerFetch(provider, PROPOSAL)).propose(REQUEST);
+    expect(REQUEST.phase).toBeUndefined();
+    expect(result.phase).toBe('actions');
+  });
+
+  it('parses a post-capture evaluation response and binds proposals to the frozen Observation', async () => {
+    const calls: Request[] = [];
+    const result = await gateway(provider, providerFetch(provider, EVALUATION_PROPOSAL, 200, calls)).propose(EVALUATION_REQUEST);
+
+    expect(result.phase).toBe('evaluation');
+    expect(result.actions).toEqual([]);
+    expect(result.agentProposals).toEqual([{
+      observationId: EVALUATION_REQUEST.evaluation!.observationId,
+      conditionId: 'C2',
+      value: 'EXCEPTION',
+      confidence: '0.80',
+      rationale: 'The frozen role evidence is privileged.',
+    }]);
+    expect(result.uncertainty).toEqual({ kind: 'none', rationale: null });
+
+    const body = await requestBody(calls[0]!);
+    const prompt = provider === 'anthropic'
+      ? (body.messages as Array<{ content: Array<{ text: string }> }>)[0]!.content[0]!.text
+      : ((body.input as Array<{ role: string; content: Array<{ text: string }> }>).find((entry) => entry.role === 'user')!.content[0]!.text);
+    const envelope = JSON.parse(prompt) as {
+      phase: string;
+      tools: unknown[];
+      evaluation: { observationId: string; observation: { text: string }; conditions: Array<{ conditionId: string; text: string }> };
+    };
+    expect(envelope.phase).toBe('evaluation');
+    expect(envelope.tools).toEqual([]);
+    expect(envelope.evaluation).toEqual(EVALUATION_REQUEST.evaluation);
+    expect(JSON.stringify(body)).not.toContain('synthetic-api-key');
+  });
+
+  it.each([
+    {
+      name: 'unknown condition',
+      response: {
+        phase: 'evaluation',
+        proposals: [{ conditionId: 'C3', value: 'EXCEPTION', confidence: '0.80', rationale: 'bounded' }],
+        uncertainty: { kind: 'none', rationale: null },
+      },
+    },
+    {
+      name: 'duplicate condition',
+      response: {
+        phase: 'evaluation',
+        proposals: [
+          { conditionId: 'C2', value: 'EXCEPTION', confidence: '0.80', rationale: 'first' },
+          { conditionId: 'C2', value: 'COMPLIANT', confidence: '0.95', rationale: 'second' },
+        ],
+        uncertainty: { kind: 'none', rationale: null },
+      },
+    },
+    {
+      name: 'extra proposal field',
+      response: {
+        phase: 'evaluation',
+        proposals: [{ conditionId: 'C2', value: 'EXCEPTION', confidence: '0.80', rationale: 'bounded', observationId: 'forged' }],
+        uncertainty: { kind: 'none', rationale: null },
+      },
+    },
+    {
+      name: 'out-of-range confidence',
+      response: {
+        phase: 'evaluation',
+        proposals: [{ conditionId: 'C2', value: 'EXCEPTION', confidence: '1.5', rationale: 'bounded' }],
+        uncertainty: { kind: 'none', rationale: null },
+      },
+    },
+  ])('rejects evaluation response with $name against the request condition set', async ({ response }) => {
+    await expect(
+      gateway(provider, providerFetch(provider, JSON.stringify(response))).propose(EVALUATION_REQUEST),
+    ).rejects.toMatchObject({ code: 'invalid-response', usage: { totalTokens: 30 } });
+  });
+
+  it('requires response phase identity and rejects an evaluation response on the legacy action request', async () => {
+    const actionShaped = JSON.stringify({
+      phase: 'actions',
+      actions: [],
+      uncertainty: { kind: 'none', rationale: null },
+    });
+    await expect(gateway(provider, providerFetch(provider, actionShaped)).propose(EVALUATION_REQUEST)).rejects.toMatchObject({
+      code: 'invalid-response',
+    });
+    await expect(gateway(provider, providerFetch(provider, EVALUATION_PROPOSAL)).propose(REQUEST)).rejects.toMatchObject({
+      code: 'invalid-response',
+    });
+  });
+
+  it('rejects malformed evaluation request context before provider I/O', async () => {
+    const fetch = vi.fn(providerFetch(provider, EVALUATION_PROPOSAL));
+    const badRequest = {
+      ...EVALUATION_REQUEST,
+      tools: [REQUEST.tools[0]!],
+    } as unknown as AgentModelRequest;
+    await expect(gateway(provider, fetch).propose(badRequest)).rejects.toMatchObject({ code: 'invalid-request' });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('keeps provider usage and route identity on an invalid model response', async () => {
@@ -244,11 +397,19 @@ describe.each([
 });
 
 describe('agent model cancellation and fallback', () => {
+  it.each(['anthropic', 'openai'] as const)('refuses unknown agent prompt provenance for %s before provider I/O', (provider) => {
+    const fetch = vi.fn(providerFetch(provider, PROPOSAL));
+    expect(() => gatewayWithPromptVersion(provider, fetch, 'future-agent-prompt')).toThrow(
+      'The agent model is not configured for this build.',
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('rejects a provider route outside the frozen adapter set', () => {
     const options = {
       provider: 'vertex',
       modelId: 'model',
-      promptVersion: '1',
+      promptVersion: AGENT_PROMPT_VERSION,
       buildVersion: 'test-build',
       apiKey: 'synthetic-api-key',
     } as unknown as AgentModelProviderOptions;
@@ -412,7 +573,7 @@ describe('agent model cancellation and fallback', () => {
     const primaryIdentity: AgentModelIdentity = {
       provider: 'anthropic',
       modelId: 'claude-sonnet-5',
-      promptVersion: '1',
+      promptVersion: AGENT_PROMPT_VERSION,
       buildVersion: 'test-build',
       configuration: {
         responseFormat: 'agent-action-proposal-v1',

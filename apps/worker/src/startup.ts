@@ -13,13 +13,16 @@ import type { ExceptionFingerprinter } from '@intellifin/application';
 // Not from the barrel: the Agent Workspace implementation drives a real browser and holds
 // the provider API key. See packages/infrastructure/src/index.ts.
 import type { BrowserConnection } from '@intellifin/infrastructure/browser';
-import { createAgentModelGateway, DEFAULT_AGENT_ANTHROPIC_MODEL, DEFAULT_AGENT_OPENAI_MODEL } from '@intellifin/infrastructure/agent-model';
+import { AGENT_PROMPT_VERSION, createAgentModelGateway, DEFAULT_AGENT_ANTHROPIC_MODEL, DEFAULT_AGENT_OPENAI_MODEL } from '@intellifin/infrastructure/agent-model';
 import type { AgentModelGateway } from '@intellifin/application';
 
 /** No network request here. An absent provider disables this stage, never substitutes a script. */
 export function agentModel(config: AppConfig): AgentModelGateway | null {
   const common = {
-    promptVersion: config.MODEL_PROMPT_VERSION,
+    // Agent execution has its own checked-in system prompt and phase contract. The
+    // procedure derivation prompt version remains a separate global configuration and
+    // must not be copied into this identity.
+    promptVersion: AGENT_PROMPT_VERSION,
     buildVersion: config.RAILWAY_GIT_COMMIT_SHA ?? 'unidentified-build',
     maxOutputTokens: config.MODEL_MAX_OUTPUT_TOKENS,
   };

@@ -9,6 +9,7 @@ import {
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
+import { AGENT_PROMPT_VERSION } from '@intellifin/infrastructure/agent-model';
 
 import { adapterExtraction, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
 import { readFileSync } from 'node:fs';
@@ -425,7 +426,8 @@ describe('agent model composition', () => {
   });
   it('uses Anthropic primary and OpenAI fallback with secret-free identity', () => {
     const gateway = agentModel(loadConfig({ ...base, ANTHROPIC_API_KEY: 'synthetic-anthropic-secret', OPENAI_API_KEY: 'synthetic-openai-secret', RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40) }));
-    expect(gateway?.identity).toMatchObject({ provider: 'anthropic', buildVersion: 'a'.repeat(40), promptVersion: '1' });
+    expect(gateway?.identity).toMatchObject({ provider: 'anthropic', buildVersion: 'a'.repeat(40), promptVersion: AGENT_PROMPT_VERSION });
+    expect(gateway?.identity.promptVersion).not.toBe(loadConfig(base).MODEL_PROMPT_VERSION);
     expect(gateway?.fallbackIdentity).toMatchObject({ provider: 'openai' });
     expect(JSON.stringify([gateway?.identity, gateway?.fallbackIdentity])).not.toContain('secret');
   });
