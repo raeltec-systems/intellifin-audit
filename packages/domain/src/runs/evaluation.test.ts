@@ -3,6 +3,7 @@ import {
   CONDITION_NOT_APPLICABLE,
   NO_ROLE_EXPANSION,
   UNSUPPORTABLE_COMPLIANT,
+  complianceBaselineEntries,
   evaluateObservationRecord,
   exceptionFingerprint,
   exceptionFingerprintText,
@@ -10,6 +11,7 @@ import {
   isAgentJudgedEvaluationProposal,
   observationEvidenceFacts,
   observationRuleValues,
+  observationTimeWithinPeriod,
   readRoleExpansion,
   roleExpansionFrom,
   type RecordEvaluationInput,
@@ -102,6 +104,51 @@ function approvalInput(amount: string, overrides: Partial<RecordEvaluationInput>
 const P3 = initialDraftCompliance('P-3');
 const P2 = initialDraftCompliance('P-2');
 const P1 = initialDraftCompliance('P-1');
+const P4 = initialDraftCompliance('P-4');
+const P4_PERIOD = { from: '2026-08-01', to: '2026-08-31' } as const;
+
+const P4_BASELINE = {
+  parameter: 'max_manual_approval_amount',
+  value: '50000.00',
+  effectiveFrom: '2026-01-01T00:00:00+02:00',
+  effectiveTo: null,
+  disposition: 'approved' as const,
+};
+
+function p4Record(
+  key: string,
+  observedValue: string,
+  observationTime: string | null = '2026-08-31T22:00:00+00:00',
+): ObservationRecord {
+  return {
+    ...record(key, [
+      attribute('observed_value', observedValue),
+      ...(observationTime === null ? [] : [attribute('observation_time', observationTime)]),
+    ]),
+    targetSystem: 'prodconsole',
+    identity: attribute('parameter', key),
+  };
+}
+
+function p4Input(
+  key = P4_BASELINE.parameter,
+  observedValue = P4_BASELINE.value,
+  observationTime: string | null = '2026-08-31T22:00:00+00:00',
+): RecordEvaluationInput {
+  return {
+    record: p4Record(key, observedValue, observationTime),
+    coverage: 'COVERED',
+    corroboration: 'MATCHED',
+    checks: PASSING,
+    populationValues: {
+      parameter: key,
+      approved_value: P4_BASELINE.value,
+      effective_time: P4_BASELINE.effectiveFrom,
+      disposition: P4_BASELINE.disposition,
+    },
+    period: P4_PERIOD,
+  };
+}
 
 function p1Input(found: 'true' | 'false' = 'true'): RecordEvaluationInput {
   const base = record('EMP-1', [
@@ -418,6 +465,116 @@ describe('evaluateObservationRecord', () => {
     }
     // And the constant it would record is the one this module exports.
     expect(UNSUPPORTABLE_COMPLIANT).toBe('record coverage or corroboration cannot support COMPLIANT');
+  });
+});
+
+describe('P-4 baseline evaluation', () => {
+  it('passes a fresh observation when its value equals the effective baseline', () => {
+    const outcome = evaluateObservationRecord('P-4', P4, p4Input(), {
+      roleExpansion: NO_ROLE_EXPANSION,
+      baselines: [P4_BASELINE],
+    });
+    expect(outcome.value).toBe('COMPLIANT');
+    expect(outcome.evaluations[0]).toMatchObject({
+      conditionId: 'C1',
+      origin: 'RULE',
+      value: 'COMPLIANT',
+      diagnostic: null,
+    });
+  });
+
+  it('reports a value difference as an Exception through the compiler', () => {
+    const outcome = evaluateObservationRecord('P-4', P4, p4Input(
+      P4_BASELINE.parameter,
+      '50000.01',
+    ), {
+      roleExpansion: NO_ROLE_EXPANSION,
+      baselines: [P4_BASELINE],
+    });
+    expect(outcome.value).toBe('EXCEPTION');
+    expect(outcome.evaluations[0]!.value).toBe('EXCEPTION');
+  });
+
+  it.each([
+    ['missing', null],
+    ['before the Period', '2026-07-31T23:59:59Z'],
+    ['after the Period', '2026-09-01T00:00:00Z'],
+    ['invalid', '2026-02-30T00:00:00Z'],
+  ] as const)('makes a %s observation timestamp Unevaluated', (_label, observationTime) => {
+    const outcome = evaluateObservationRecord('P-4', P4, p4Input(
+      P4_BASELINE.parameter,
+      P4_BASELINE.value,
+      observationTime,
+    ), {
+      roleExpansion: NO_ROLE_EXPANSION,
+      baselines: [P4_BASELINE],
+    });
+    expect(outcome.value).toBe('UNEVALUATED');
+    expect(outcome.evaluations[0]!.value).toBe('UNEVALUATED');
+  });
+
+  it('uses observation_time rather than capture observedAt for freshness', () => {
+    const capturedBeforePeriod = {
+      ...p4Input(),
+      record: { ...p4Input().record, observedAt: '2026-01-01T00:00:00.000Z' },
+    };
+    const outcome = evaluateObservationRecord('P-4', P4, capturedBeforePeriod, {
+      roleExpansion: NO_ROLE_EXPANSION,
+      baselines: [P4_BASELINE],
+    });
+    expect(outcome.value).toBe('COMPLIANT');
+  });
+
+  it('keeps duplicate baseline rows in order so the compiler refuses multiple effective rows', () => {
+    const rows = [
+      {
+        parameter: P4_BASELINE.parameter,
+        approved_value: '15',
+        effective_time: '2026-01-01T00:00:00Z',
+        disposition: 'approved',
+      },
+      {
+        parameter: P4_BASELINE.parameter,
+        approved_value: '20',
+        effective_time: '2026-08-15T00:00:00Z',
+        disposition: 'approved',
+      },
+    ] as const;
+    const baselines = complianceBaselineEntries(rows);
+    expect(baselines).toHaveLength(2);
+    expect(baselines?.map((entry) => entry.value)).toEqual(['15', '20']);
+    const outcome = evaluateObservationRecord('P-4', P4, {
+      ...p4Input(P4_BASELINE.parameter, '60'),
+      // Keep the population join singular in this direct domain test; the duplicate
+      // ambiguity being exercised is the baseline list consumed by C1.
+      populationValues: { ...p4Input().populationValues!, approved_value: '15' },
+    }, {
+      roleExpansion: NO_ROLE_EXPANSION,
+      baselines,
+    });
+    expect(outcome.value).toBe('UNEVALUATED');
+    expect(outcome.evaluations[0]!.diagnostic).toContain('multiple effective baselines apply');
+  });
+
+  it('does not pass a missing or malformed frozen baseline', () => {
+    expect(complianceBaselineEntries([])).toBeNull();
+    expect(complianceBaselineEntries([{
+      parameter: P4_BASELINE.parameter,
+      approved_value: P4_BASELINE.value,
+      effective_time: 'not-a-time',
+      disposition: 'approved',
+    }])).toBeNull();
+    const outcome = evaluateObservationRecord('P-4', P4, p4Input(), {
+      roleExpansion: NO_ROLE_EXPANSION,
+      baselines: null,
+    });
+    expect(outcome.value).toBe('UNEVALUATED');
+    expect(outcome.evaluations[0]!.diagnostic).toContain('missing effective baseline');
+  });
+
+  it('normalizes offset timestamps before comparing their UTC date to the Period', () => {
+    expect(observationTimeWithinPeriod('2026-07-31T23:30:00-02:00', P4_PERIOD)).toBe(true);
+    expect(observationTimeWithinPeriod('2026-09-01T00:30:00+00:00', P4_PERIOD)).toBe(false);
   });
 });
 

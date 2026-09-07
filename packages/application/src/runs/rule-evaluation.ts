@@ -1,10 +1,12 @@
 import {
   adapterLookupColumn,
+  complianceBaselineEntries,
   evaluableTemplateId,
   evaluateObservationRecord,
   roleExpansionFrom,
   NO_ROLE_EXPANSION,
   type ExecutablePlan,
+  type ExplicitPeriod,
   type JsonValue,
   type ReferenceArtifact,
   type RoleExpansion,
@@ -47,6 +49,8 @@ export interface RuleEvaluationInputs {
   readonly records: readonly PopulationRecord[];
   /** Every Reference Source artifact this Run froze, as bytes and media type. */
   readonly references: readonly ReferenceArtifact[];
+  /** The Run's frozen Period, required to establish P-4 observation freshness. */
+  readonly period?: ExplicitPeriod | null;
 }
 
 /**
@@ -83,6 +87,12 @@ export function ruleEvaluation(inputs: RuleEvaluationInputs): ObservationEvaluat
   const templateId = evaluableTemplateId(inputs.plan.inputs.templateId);
   const column = templateId === null ? null : adapterLookupColumn(templateId);
   const population = column === null ? new Map<string, null>() : indexPopulation(column, inputs.records);
+  // P-4's ConfigRegistry rows are the frozen baseline Reference Data for every page
+  // Observation. Keep the source order and every row so duplicate effective versions reach
+  // the compiler as an ambiguity; no first/last-wins lookup is allowed here.
+  const baselines = templateId === 'P-4'
+    ? complianceBaselineEntries(inputs.records.map((record) => record.values))
+    : undefined;
   // Parsed ONCE for the whole batch, not once per Observation: one adapter Work Item
   // registers an Observation per included population record and each of them expands the
   // same policy file.
@@ -117,8 +127,9 @@ export function ruleEvaluation(inputs: RuleEvaluationInputs): ObservationEvaluat
                   // A record key the included population does not carry at all is as
                   // unresolvable as one it carries twice.
                   populationValues: population.get(key) ?? null,
+                  period: inputs.period,
                 },
-                { roleExpansion },
+                { roleExpansion, ...(templateId === 'P-4' ? { baselines } : {}) },
               );
               return { observationId: subject.record.observationId, evaluations };
             }),

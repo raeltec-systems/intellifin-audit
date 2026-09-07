@@ -9,12 +9,14 @@ import { compareComplianceDecimals, isComplianceConfidence } from '../procedures
 import type { ComplianceObservation, ComplianceRecordEvaluation } from '../procedures/plan-compiler.js';
 import type { DraftComplianceFields } from '../procedures/compliance-draft.js';
 import { isTemplateId, type TemplateId } from '../procedures/templates.js';
+import { isExplicitPeriod, type ExplicitPeriod } from '../procedures/population-draft.js';
 import { decodePopulationUtf8, parsePopulationCsv } from './population.js';
 import {
   OBSERVATION_LIMITS,
   canBeCompliant,
   corroborationAllowsCompliant,
   normalizeObservationValue,
+  normalizeObservedAt,
   type EvaluationValue,
   type ObservationAttribute,
   type ObservationCheckResult,
@@ -211,6 +213,8 @@ export interface RecordEvaluationInput {
   readonly corroboration: ObservationCorroborationState;
   readonly checks: readonly ObservationCheckResult[];
   readonly populationValues: Readonly<Record<string, JsonValue>> | null;
+  /** The Run's frozen explicit Period, used only by the P-4 baseline freshness rule. */
+  readonly period?: ExplicitPeriod | null;
 }
 
 /**
@@ -266,8 +270,62 @@ export function isAgentJudgedEvaluationProposal(
 }
 
 /** The frozen reference data the compiled rules of this Template may consult. */
+export interface ComplianceBaselineEntry {
+  readonly parameter: string;
+  readonly value: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly disposition: 'approved' | 'prohibited';
+}
+
 export interface RecordEvaluationReference {
   readonly roleExpansion: RoleExpansion;
+  /** P-4's validated baseline rows, retained as a LIST so duplicate versions stay visible. */
+  readonly baselines?: readonly ComplianceBaselineEntry[] | null;
+}
+
+/**
+ * Convert the frozen ConfigRegistry row shape into the compiler's baseline shape.
+ *
+ * The population source has one effective-from instant and no end instant. Each row stays
+ * open ended here deliberately: two rows for one parameter are an ambiguity the frozen
+ * baseline rule resolves to UNEVALUATED, rather than a reason to choose a first/last row.
+ * Invalid rows invalidate the complete baseline input so no malformed source value reaches
+ * the compiler as if it were an approved fact.
+ */
+export function complianceBaselineEntries(
+  rows: readonly Readonly<Record<string, JsonValue>>[],
+): readonly ComplianceBaselineEntry[] | null {
+  if (rows.length === 0) return null;
+  const entries: ComplianceBaselineEntry[] = [];
+  for (const row of rows) {
+    const parameter = row['parameter'];
+    const value = row['approved_value'];
+    const effectiveFrom = row['effective_time'];
+    const disposition = row['disposition'];
+    if (
+      typeof parameter !== 'string' || parameter.length === 0 ||
+      typeof value !== 'string' ||
+      typeof effectiveFrom !== 'string' || normalizeObservedAt(effectiveFrom) === null ||
+      (disposition !== 'approved' && disposition !== 'prohibited')
+    ) {
+      return null;
+    }
+    entries.push({ parameter, value, effectiveFrom, effectiveTo: null, disposition });
+  }
+  return entries;
+}
+
+/** Whether the P-4 Observation's declared timestamp is an instant inside the Run Period. */
+export function observationTimeWithinPeriod(
+  value: unknown,
+  period: ExplicitPeriod | null | undefined,
+): boolean {
+  if (!isExplicitPeriod(period)) return false;
+  const normalized = normalizeObservedAt(value);
+  if (normalized === null) return false;
+  const date = normalized.observedAt.slice(0, 10);
+  return date >= period.from && date <= period.to;
 }
 
 export interface RecordEvaluation {
@@ -387,10 +445,23 @@ export function evaluateObservationRecord(
   reference: RecordEvaluationReference,
   agentProposals: AgentJudgedEvaluationProposals = {},
 ): RecordEvaluation {
+  const values = observationRuleValues(templateId, input.record, input.populationValues);
   const observation: ComplianceObservation = {
-    values: observationRuleValues(templateId, input.record, input.populationValues),
+    values,
     evidence: observationEvidenceFacts(input),
     roleMatrix: reference.roleExpansion,
+    ...(templateId === 'P-4'
+      ? {
+          // The P-4 compiler requires an explicit freshness answer. It is derived from
+          // the declared Observation field and the frozen Run Period; record.observedAt
+          // is capture provenance and must never stand in for the page's publication time.
+          stale: !observationTimeWithinPeriod(values['observation_time'], input.period),
+          // The compiler's optional field uses absence for a missing/invalid source. The
+          // reference seam may also carry explicit null so callers cannot accidentally
+          // distinguish invalid data from an omitted baseline and pick a fallback.
+          baselines: reference.baselines ?? undefined,
+        }
+      : {}),
   };
   // The compiler remains the only rules engine. It receives only the value/confidence part
   // of each already validated proposal; this module adds the audit-facing rationale and

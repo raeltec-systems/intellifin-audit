@@ -1177,3 +1177,8 @@ The owner's takeover instruction requires explicitly selected targets and defers
 ## Recovering a workspace's access phase (2026-09-07)
 
 Every work recovery now runs provisionWorkspace before sign-in, adapter/reference completion and investigation. A confirmed replacement returns workspaceReplaced and forces fresh positive authentication; unchanged-context redelivery retains the idempotent SIGNED_IN shortcut. Failed provider release preserves its cleanup reference. P-4's frozen public-page contract is verified using credential-free structural capture and public-access-verified, never session-established. SIGNED_IN remains the durable access-phase state, not a universal authentication claim. Exact required label constants live in one application leaf module.
+
+
+## P-4 uses the shared rule evaluator (2026-09-07)
+
+The agent producer must pass every frozen included compliance-baseline row, including duplicates, and the explicit Run period to ruleEvaluation. The existing domain compiler evaluates these same baselines; duplicate/missing baseline entries and absent, invalid or out-of-period snapshot times remain UNEVALUATED. Never replace the shared evaluator with a producer-specific expected-value comparison or use wall-clock freshness instead of the Run's period.
