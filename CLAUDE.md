@@ -1217,3 +1217,8 @@ Whole-Run teardown in isolated CI must remove Result/package before protected ca
 ## Agent capture completeness and integrity
 
 Agent Observation registration verifies both structural snapshot and screenshot are registered against the same immutable capture action and target. A screenshot transport failure can retain a grounded Observation, but required-evidence fails and conclusions stay UNEVALUATED; human recovery retains the original capture binding. Only typed transport failure permits partial capture. Integrity mismatch terminates RUN_FAILED immediately; unknown failures never become partial success. Keep the during/after Run distinction in evidence-package-v1: a later sealed-package integrity finding flags the audit trail without rewriting the Run or seal.
+
+
+## Rejected model proposals are auditable
+
+A provider response rejected by the strict gateway must not disappear into ordinary retry telemetry. Agent work records a fixed security.action-denied event with Run/Work Item/Step Execution IDs when retrying malformed proposals, without retaining rejected JSON. Keep Story4.6's malformed-response retry budget. A successful port response naming an unknown tool is a terminal denied action, never an attempted browser interaction.

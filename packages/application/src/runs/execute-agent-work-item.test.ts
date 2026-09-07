@@ -13,7 +13,7 @@ import {
   type ToolActionParameter,
 } from '@intellifin/domain';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
-import type { AgentModelGateway, AgentModelRequest, AgentModelResponse } from './agent-ports.js';
+import { AgentModelGatewayError, type AgentModelGateway, type AgentModelRequest, type AgentModelResponse } from './agent-ports.js';
 import type {
   AdapterEvidenceRecord,
   BrowserActionResult,
@@ -316,6 +316,21 @@ function browserFor(repository: FakeRepository, nodes: readonly unknown[] = SNAP
 
 describe('executeAgentWorkItem', () => {
   afterEach(() => vi.restoreAllMocks());
+  it.each(['unknown-tool', 'provider-invalid-response'] as const)('logs a security denial for %s without performing its action', async kind => {
+    vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    const model: AgentModelGateway = { identity: identity(), propose: async () => {
+      if (kind === 'provider-invalid-response') throw new AgentModelGatewayError('invalid-response', { inputTokens: 10, outputTokens: 4, totalTokens: 14 }, identity(), 'anthropic');
+      return response('unapproved-payrollvault-tool');
+    } };
+    const browser = browserFor(repository); const perform = vi.spyOn(browser, 'perform');
+    const result = await executeAgentWorkItem(deps(repository, browser, model, durableWaitPort(repository)), JOB);
+    expect(perform).toHaveBeenCalledTimes(1); // Approved bootstrap only.
+    expect(repository.eventOrder).toContain('event:security.action-denied');
+    expect(repository.observations).toHaveLength(0);
+    expect(result.retry).toBe(kind === 'provider-invalid-response');
+  });
+
   it('keeps grounded findings unevaluated when required screenshot capture is missing', async () => {
     vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
     const repository = new FakeRepository();

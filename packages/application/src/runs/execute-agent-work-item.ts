@@ -727,6 +727,20 @@ export async function executeAgentWorkItem(
     execution: StepExecutionRecord,
     diagnostic: AgentWorkDiagnostic,
   ): Promise<'retry' | 'wait' | 'lost'> => {
+    // A malformed provider proposal is refused before a browser action exists. Keep
+    // the specified bounded retry, but retain an ID-only security denial in the same
+    // transaction as that retry/wait. Never persist the rejected model content.
+    const auditModelRefusal = async (context: AgentWorkContext): Promise<void> => {
+      if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;
+      const denied = await context.auditEvents.append({
+        actor: { type: 'system', id: 'agent-worker' }, eventType: SECURITY_DENIED_EVENT,
+        source: 'worker', outcome: 'denied', aggregateId: run.runId,
+        correlationId: run.correlationId, sessionId: run.sessionId,
+        payload: { cause: 'action-denied', diagnostic, workItemId: item.workItemId,
+          stepExecutionId: execution.stepExecutionId },
+      });
+      await context.notifyTimeline(denied.sequence);
+    };
     const attemptsPerCycle = plan.limits.retriesPerStep + 1;
     const exhausted = item.attempts % attemptsPerCycle === 0;
     const maxAttempts = attemptsPerCycle * 2;
@@ -758,6 +772,7 @@ export async function executeAgentWorkItem(
         await context.saveStepExecution({ ...execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic });
         await context.saveCheckpoint(next, 'RUNNING');
         await appendEvent(context, run, diagnostic, 'RUNNING', next, { stepExecutionId: execution.stepExecutionId }, 'failure');
+        await auditModelRefusal(context);
       });
       if (!saved) return 'lost';
       checkpoint = next;
@@ -792,6 +807,7 @@ export async function executeAgentWorkItem(
       await context.saveStepExecution({ ...execution, state: 'FAILED', completedAt: nowIso(dependencies.clock), diagnostic });
       await context.saveCheckpoint(next, 'RUNNING');
       await appendEvent(context, run, diagnostic, 'RUNNING', next, { stepExecutionId: execution.stepExecutionId }, 'failure');
+      await auditModelRefusal(context);
     });
     if (!saved) return 'lost';
     checkpoint = next;
@@ -1391,10 +1407,8 @@ export async function executeAgentWorkItem(
           return { retry: false };
         }
         if (selected === null) {
-          const result = await persistRetry(item, execution, 'model-invalid-action');
-          const outcome = retryOutcome(result);
-          if (outcome !== null) return outcome;
-          break;
+          await stopRun('model-invalid-action', 'action-denied');
+          return { retry: false };
         }
         const actionBoundary = await cancellationBoundary();
         if (actionBoundary !== 'continue') return { retry: false };
