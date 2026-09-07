@@ -163,6 +163,7 @@ class FakeRepository implements AgentWorkRepository {
   waits: RunWait[] = [];
   waitRaises: NonNullable<AgentWorkContext['waitRaise']>[] = [];
   failObservationWrite = false;
+  enforceWorkItemForeignKey = false;
   plan: ExecutablePlan = PLAN;
   records: readonly PopulationRecord[] = [RECORD];
   afterObservationSave: (() => void) | null = null;
@@ -206,6 +207,7 @@ class FakeRepository implements AgentWorkRepository {
       async includedRecords() { return records; },
       async readStepExecutionCount() { return executions.length; },
       saveCheckpoint: async (checkpoint: AgentWorkCheckpoint, state: RunRecord['state']) => {
+        if (this.enforceWorkItemForeignKey && checkpoint.workItemId !== null && !this.workItems.some(item => item.workItemId === checkpoint.workItemId)) throw new Error('Immediate agent checkpoint Work Item foreign key violation');
         this.checkpoint = { ...checkpoint };
         this.run = { ...this.run, state };
       },
@@ -311,6 +313,15 @@ function browserFor(repository: FakeRepository, nodes: readonly unknown[] = SNAP
 
 describe('executeAgentWorkItem', () => {
   afterEach(() => vi.restoreAllMocks());
+  it('inserts the new Work Item before the checkpoint references it on the first claim', async () => {
+    vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository(); repository.enforceWorkItemForeignKey = true;
+    const base = deps(repository, browserFor(repository), evaluationModel(), durableWaitPort(repository));
+    await expect(executeAgentWorkItem({ ...base, model: null }, JOB)).resolves.toEqual({ retry: false });
+    expect(repository.workItems).toHaveLength(1);
+    expect(repository.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'model-not-configured' });
+    expect(repository.run.state).toBe('RUN_FAILED');
+  });
   it('captures the bootstrap page first and resolves the proposed tool to frozen search parameters', async () => {
     const repository = new FakeRepository();
     const browser = browserFor(repository);

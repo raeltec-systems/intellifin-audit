@@ -191,3 +191,8 @@ After confirmed workspace replacement, normal and recovery worker paths now repe
 ## P-4 shared evaluation checkpoint
 
 The shared domain/application rule evaluator now accepts validated compliance baselines from frozen population rows and the Run period. Duplicate baseline keys remain duplicated and therefore unresolved; missing/invalid/out-of-period observation times remain UNEVALUATED. The actual P-4 producer exposed the missing baseline/freshness input before repair.67 focused evaluator/registration tests pass; the connected P-4 loop's normal, duplicate, missing and prohibited cases pass locally with model/browser fixtures and remain a separate pending checkpoint. Full candidate worktree typecheck passes. Parent c996a75eb870fbb8d42ab3d308ad1069b9d6ccd2 is pushed. This shared-evaluator checkpoint is pushed, not whole-story acceptance.
+
+
+## First investigation claim foreign-key repair
+
+A first agent claim saved run_agent_work.work_item_id before inserting the referenced Work Item. PostgreSQL's immediate FK rolls back that claim, explaining the authenticated but stalled worker fixture. The repair changes only write order inside the existing transaction. A focused FK regression fails before repair and passes after;19 loop tests pass in the candidate worktree (including the separately uncommitted P-4 case). Static checks currently await concurrent authentication-contract edits; no exact-candidate typecheck acceptance is claimed. Parent72e9afbdf86b3dc7ad8a722fd3e309e8f0dbebba is pushed. This repair checkpoint is pushed; hosted journey retest remains required.

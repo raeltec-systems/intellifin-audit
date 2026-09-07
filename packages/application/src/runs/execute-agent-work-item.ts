@@ -617,8 +617,10 @@ export async function executeAgentWorkItem(
     };
     const next = workItems.find((item) => !isTerminalWorkItem(item));
     current = { ...current, workItemId: next?.workItemId ?? null };
-    await context.saveCheckpoint(current, 'RUNNING');
+    // The checkpoint has an immediate foreign key to its next Work Item. Both writes
+    // share this transaction; persist the referenced rows before publishing the claim.
     for (const item of workItems) await context.saveWorkItem(item);
+    await context.saveCheckpoint(current, 'RUNNING');
     return {
       checkpoint: current,
       plan,

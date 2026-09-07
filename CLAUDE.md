@@ -1182,3 +1182,8 @@ Every work recovery now runs provisionWorkspace before sign-in, adapter/referenc
 ## P-4 uses the shared rule evaluator (2026-09-07)
 
 The agent producer must pass every frozen included compliance-baseline row, including duplicates, and the explicit Run period to ruleEvaluation. The existing domain compiler evaluates these same baselines; duplicate/missing baseline entries and absent, invalid or out-of-period snapshot times remain UNEVALUATED. Never replace the shared evaluator with a producer-specific expected-value comparison or use wall-clock freshness instead of the Run's period.
+
+
+## Immediate agent-work foreign key (2026-09-07)
+
+run_agent_work.work_item_id references run_work_item immediately. A first claim must insert its Work Items before saving the checkpoint that references the next item, within the same transaction. The reverse order throws in PostgreSQL and rolls back to RUNNING; a permissive in-memory repository hid it. The focused repository now optionally enforces that real constraint and reproduces the failure before repair. No deferred foreign key or relaxed database constraint is needed.
