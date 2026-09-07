@@ -101,13 +101,22 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       expect(await sql`SELECT to_jsonb(r) AS value FROM run_result r WHERE run_id=${runId}`).toEqual(beforeResult);
       expect(await sql`SELECT to_jsonb(p) AS value FROM run_evidence_package p WHERE run_id=${runId}`).toEqual(beforeSeal);
       const provenance = (await sql`SELECT captured_at,capture_time_source FROM run_evidence WHERE run_id=${runId}`)[0]!;
-      expect(provenance.captured_at.toISOString()).toBe('2026-09-01T09:01:20.000Z');
+      expect(new Date(provenance.captured_at).toISOString()).toBe('2026-09-01T09:01:20.000Z');
       expect(provenance.capture_time_source).toBe('step-execution');
       expect((await sql`SELECT captured_at FROM population_evidence WHERE run_id=${runId}`)[0]?.captured_at).toBeNull();
       expect((await sql`SELECT declared_count,retrieved_count FROM population_snapshot WHERE run_id=${runId}`)[0]).toMatchObject({ declared_count: null, retrieved_count: 1 });
       await expect(sql`DELETE FROM population_evidence WHERE run_id=${runId}`).rejects.toThrow(/is frozen/);
       await expect(sql`UPDATE run_result SET outcome='CONTROL_FAILURE' WHERE run_id=${runId}`).rejects.toThrow(/immutable/);
+      const afterEvidence = await sql`SELECT to_jsonb(e) AS value FROM run_evidence e WHERE run_id=${runId}`;
+      const afterPopulation = await sql`SELECT to_jsonb(e) AS value FROM population_evidence e WHERE run_id=${runId}`;
+      const afterSnapshot = await sql`SELECT to_jsonb(s) AS value FROM population_snapshot s WHERE run_id=${runId}`;
       expect(await runMigrations(historicalUrl)).toBeGreaterThanOrEqual(32);
+      expect(await sql`SELECT to_jsonb(e) AS value FROM run_evidence e WHERE run_id=${runId}`).toEqual(afterEvidence);
+      expect(await sql`SELECT to_jsonb(e) AS value FROM population_evidence e WHERE run_id=${runId}`).toEqual(afterPopulation);
+      expect(await sql`SELECT to_jsonb(s) AS value FROM population_snapshot s WHERE run_id=${runId}`).toEqual(afterSnapshot);
+      expect(await sql`SELECT to_jsonb(r) AS value FROM run_result r WHERE run_id=${runId}`).toEqual(beforeResult);
+      expect(await sql`SELECT to_jsonb(p) AS value FROM run_evidence_package p WHERE run_id=${runId}`).toEqual(beforeSeal);
+      await assertProtected();
     } finally {
       if (sql) await sql.end({ timeout: 5 });
       if (created) await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);
