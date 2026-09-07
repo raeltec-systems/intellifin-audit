@@ -63,6 +63,7 @@ const RUN: RunRecord = {
 const WORK_ITEM = '01920000-0000-7000-8000-00000000a001';
 const STEP_EXECUTION = '01920000-0000-7000-8000-00000000b001';
 const EVIDENCE = '01920000-0000-7000-8000-00000000c001';
+const OTHER_EVIDENCE = '01920000-0000-7000-8000-00000000c002';
 const TARGET = 'accessgate';
 const OBSERVED_AT = '2026-09-05T10:00:00.000Z';
 
@@ -374,6 +375,32 @@ describe('registerObservations', () => {
       expect(await refusal(() => registerObservations(context, offered, SEAMS))).toBe(expected);
       expect(context.wroteNothing()).toBe(true);
     }
+  });
+
+  it('refuses the entire batch when identity and values use different Evidence snapshots', async () => {
+    // This includes a valid first item so the assertion catches any implementation that
+    // starts registration before validating every Observation. The declared value is
+    // intentionally named `identity`: the dedicated record.identity slot is the match
+    // attribute selected from the frozen plan, regardless of declared attribute names.
+    const split = found('AG-1002');
+    const splitRecord: ObservationRecord = {
+      ...split,
+      attributes: [
+        {
+          ...split.attributes[0]!,
+          name: 'identity',
+          grounding: { ...split.attributes[0]!.grounding!, evidenceId: OTHER_EVIDENCE },
+        },
+      ],
+      evidenceIds: [EVIDENCE, OTHER_EVIDENCE],
+    };
+    const context = new FakeContext();
+    expect(
+      await refusal(() =>
+        registerObservations(context, batch([item(found('AG-1001')), item(splitRecord)]), SEAMS),
+      ),
+    ).toBe('identity-grounding-split');
+    expect(context.wroteNothing()).toBe(true);
   });
 
   it('registers nothing and appends no event when the same batch is delivered twice', async () => {

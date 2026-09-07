@@ -1,3 +1,4 @@
+<!-- Story4.4: identity and grounded declared attributes must name one Structural Snapshot. Registration refuses the entire batch on identity-grounding-split before corroboration or writes; the frozen13-key Observation schema is unchanged. -->
 <!-- Authentication: require the exact approved target/account postcondition, bind redirects to the action's selected target, and discard secret-bearing pages after submission failure while preserving provider cleanup identity. -->
 <!-- Workspace cleanup: a persisted Solari hard expiry is distinct from confirmed release; never discard an unexpired provider identity after a configuration mismatch or provider error. -->
 <!-- Engineering continuation: raw postgres.js timestamp-without-time-zone values may be strings; normalize dates in migration assertions. Drizzle wraps server errors in cause; sealed guards use SQLSTATE 23514. -->

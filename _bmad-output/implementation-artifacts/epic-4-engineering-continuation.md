@@ -54,3 +54,7 @@ The prior marker accepted arbitrary accounts and suffixes. The new exact-account
 This further migration-regression checkpoint replaces placeholder evidence digests with actual synthetic artifact bytes and their SHA-256 digests and verifies those bytes after upgrade and repeat migration. The final-schema migrator still runs unchanged. Its hosted verification is pending. Next: complete4.4 capture and registration plus the4.6 model loop, then durable waits/review and golden/negative journeys.
 
 Remote acceptance blocker confirmed by read-only inspection: no local Solari credential; Railway production worker `84394c42-5018-4cb4-9a7a-707b2ca1fe4a` in project `ade2dc6b-9e91-4ecf-bba8-68638389125d`, environment `1ea4d58f-afab-498f-9dcd-a195e0009026`, has no `SOLARI_API_KEY`. OAuth returns variable names only. Existing Northstar domain is `northstar-production-b312.up.railway.app`; no infrastructure or variables were changed. Model key names exist in production but their values are not available to this checkout. No live-provider acceptance or deployment claimed.
+
+## Story4.4 registration checkpoint (incomplete story)
+
+Identity/value grounding split now refuses the entire Observation batch through the existing registration command. Removing that guard causes the new regression to fail; restoring it passes all81 focused domain/application Observation tests. The13-key wire schema and digest contract remain unchanged. This checkpoint is locally tested; hosted CI and actual capture/worker/persistence/UI journey remain required.4.4 is not complete.

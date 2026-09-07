@@ -215,6 +215,25 @@ export function isObservationRecord(value: unknown): value is ObservationRecord 
   return grounded.every((attribute) => linked.has(attribute.grounding!.evidenceId));
 }
 
+/**
+ * Whether a found Observation mixes the identity's snapshot with a declared value's
+ * snapshot. The identity is the dedicated B.1 `identity` slot, whose attribute name is
+ * selected from the frozen plan's lookup column by the producer; a declared attribute
+ * may therefore have any name, including `identity`, without changing this decision.
+ *
+ * Only grounded declared attributes participate. An ungrounded attribute is reported by
+ * the existing `attribute-ungrounded` required-evidence check, while an identity with no
+ * grounding is rejected by `isObservationRecord` for a found Observation.
+ */
+export function hasIdentityGroundingSplit(record: ObservationRecord): boolean {
+  const identityEvidenceId = record.identity?.grounding?.evidenceId;
+  if (identityEvidenceId === undefined) return false;
+  return record.attributes.some(
+    (attribute) =>
+      attribute.grounding !== null && attribute.grounding.evidenceId !== identityEvidenceId,
+  );
+}
+
 /* ------------------------------------------------------------------ Story 3.4 --- */
 
 /**
@@ -599,6 +618,7 @@ export const OBSERVATION_CHECK_DIAGNOSTICS = [
   'corroboration-label-drift',
   'corroboration-unavailable',
   'corroboration-unsupported',
+  'identity-grounding-split',
 ] as const;
 export type ObservationCheckDiagnostic = (typeof OBSERVATION_CHECK_DIAGNOSTICS)[number];
 
@@ -639,8 +659,9 @@ export interface ObservationCheckInput {
  * Run every §H check that one Observation can answer alone, in vocabulary order.
  *
  * A failing check is RECORDED, never a refusal: an Observation that fails a check is a
- * finding the Run-level Gate (Story 3.8) turns into `INCONCLUSIVE`. Only a wire-schema
- * violation refuses, because a record that is not in the schema has no meaning to record.
+ * finding the Run-level Gate (Story 3.8) turns into `INCONCLUSIVE`. Registration has one
+ * additional batch-level invariant: it refuses an identity-grounding split before this
+ * check can be stored, because the mixed snapshots invalidate the whole Observation.
  */
 export function observationChecks(input: ObservationCheckInput): readonly ObservationCheckResult[] {
   const record = input.record;
@@ -700,6 +721,8 @@ export function observationChecks(input: ObservationCheckInput): readonly Observ
       ? 'evidence-unregistered'
       : grounded.some((grounding) => !linked.has(grounding.evidenceId))
         ? 'grounding-unlinked'
+        : hasIdentityGroundingSplit(record)
+          ? 'identity-grounding-split'
         : record.attributes.some((attribute) => attribute.grounding === null)
           ? 'attribute-ungrounded'
           : null,

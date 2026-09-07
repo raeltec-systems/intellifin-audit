@@ -15,6 +15,7 @@ import {
   isObservationGrounding,
   isObservationInstant,
   isObservationRecord,
+  hasIdentityGroundingSplit,
   judgeAbsence,
   normalizeObservedAt,
   observationChecks,
@@ -372,6 +373,36 @@ describe('the per-Observation checks', () => {
     } as ObservationRecord;
     expect(outcome(run({ record: ungrounded }), 'required-evidence')).toEqual({
       check: 'required-evidence', outcome: 'FAIL', diagnostic: 'attribute-ungrounded',
+    });
+  });
+
+  it('requires the identity and declared grounded attributes to share one Evidence snapshot', () => {
+    // The identity is selected from the frozen plan's lookup column and occupies its own
+    // slot. A declared field may be named `identity`; its name must never decide which
+    // grounding is the match node.
+    const sameSnapshot = {
+      ...FOUND,
+      identity: { ...FOUND.identity!, name: 'employee_id' },
+      attributes: [{ ...FOUND.attributes[0]!, name: 'identity' }],
+    } as ObservationRecord;
+    expect(hasIdentityGroundingSplit(sameSnapshot)).toBe(false);
+
+    const split = {
+      ...sameSnapshot,
+      attributes: [
+        {
+          ...sameSnapshot.attributes[0]!,
+          grounding: { ...sameSnapshot.attributes[0]!.grounding!, evidenceId: 'evidence-2' },
+        },
+      ],
+      evidenceIds: ['evidence-1', 'evidence-2'],
+    } as ObservationRecord;
+    expect(isObservationRecord(split)).toBe(true);
+    expect(hasIdentityGroundingSplit(split)).toBe(true);
+    expect(
+      outcome(run({ record: split, registeredEvidenceIds: ['evidence-1', 'evidence-2'] }), 'required-evidence'),
+    ).toEqual({
+      check: 'required-evidence', outcome: 'FAIL', diagnostic: 'identity-grounding-split',
     });
   });
 

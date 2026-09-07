@@ -6,6 +6,7 @@ import {
   isObservationEvaluation,
   isRaisedException,
   isObservationRecord,
+  hasIdentityGroundingSplit,
   normalizeObservedAt,
   observationBatchDigest,
   observationChecks,
@@ -87,7 +88,8 @@ export type ObservationRegistrationRefusal =
   | 'corroboration-conflict'
   | 'exception-shape'
   | 'digest-mismatch'
-  | 'observation-integrity';
+  | 'observation-integrity'
+  | 'identity-grounding-split';
 
 export class ObservationRegistrationError extends Error {
   override readonly name = 'ObservationRegistrationError';
@@ -247,6 +249,11 @@ export async function registerObservations(
     const normalized = normalizeObservedAt(item.observedAtSource);
     if (normalized === null || normalized.observedAt !== record.observedAt) refuse('capture-time');
     if (item.absence !== null && record.found !== 'false') refuse('absence-proof-shape');
+    // The identity is the dedicated B.1 slot (selected from the frozen plan's lookup
+    // column), while every entry in `attributes` is a declared value. They all must come
+    // from one Structural Snapshot. Refuse before reading Evidence or calling a seam so
+    // this is an atomic batch refusal with no observable registration side effect.
+    if (hasIdentityGroundingSplit(record)) refuse('identity-grounding-split');
   }
 
   // ----------------------------------------------------- Evidence, then corroboration
