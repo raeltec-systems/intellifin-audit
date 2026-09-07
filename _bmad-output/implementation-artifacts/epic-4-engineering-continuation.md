@@ -122,3 +122,7 @@ b04e153acdfdaf24fba15a37c50935304cbef735 is pushed but not accepted. CI341409167
 ## Current-page read checkpoint
 
 d9b606307aaf27b1956a9e2bd66244f54c505394 is pushed. Its CI passes typecheck, boundaries and container checks; unit exposes native timer rounding (remaining deadline 1ms), browser exposes a second overly broad provenance-body locator. This checkpoint preserves real GET search results for read-attribute without reloading sanitized destinations, checks full untruncated authority/path and scope, and refuses missing response metadata after restart. 29 focused browser tests pass; the nine real-browser capture integrations remain pending hosted verification. Deadline assertions now use a controlled clock without loosening bounds. Not an accepted story or release candidate.
+
+## Escalation question body selector correction
+
+The real browser rendered the question plus both candidate labels as separate inert pre elements. The regression now scopes the expected literal script text to the question's provenance container, retaining the zero executable scripts assertion. Previous CI reached this assertion after successfully checking question provenance. Hosted retest remains required; no assertion was removed.

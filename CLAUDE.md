@@ -1,3 +1,4 @@
+<!-- Escalation browser regression: scope the inert question body through its provenance container. A Run with candidate options intentionally has several pre elements, so a page-wide pre selector is ambiguous. -->
 ## 2026-09-07 — Preserve live search reads
 
 An approved read-attribute captures the current page only when its full query-free authority/path matches the selected destination and frozen scope. It must not reload a search URL after sanitization removes its query. Response metadata remains in memory; a restart without that response requires a fresh approved action, never invented HTTP metadata. Deadline unit checks use a controlled clock to avoid native timer rounding.
