@@ -1,5 +1,5 @@
 import { describe,it,expect } from 'vitest';
-import { decodePopulationUtf8, includePopulation,parsePopulationCsv,populationUtcDate,reconcilePopulation } from './population.js';
+import { declaredCountMatches, decodePopulationUtf8, includePopulation,parsePopulationCsv,populationUtcDate,reconcilePopulation } from './population.js';
 import { bindingDigest,bindingDigestEnvelope } from '../sources/population-source.js';
 import { sha256Hex,utf8Bytes } from '../sha256.js';
 import { canonicalJson } from '../canonical-json.js';
@@ -12,6 +12,15 @@ function reconcile(text:string,patch:Record<string,unknown>={},zeroRecordPass=fa
  return reconcilePopulation({bytes:utf8Bytes(text),mediaType:'text/csv',declaration,source,period,rule,zeroRecordPass,initiatedAt:'2026-09-05T00:00:00.000Z'});
 }
 describe('deterministic population',()=>{
+ it('uses one closed predicate for declared and retrieved counts',()=>{
+  expect(declaredCountMatches(4,4)).toBe(true);
+  expect(declaredCountMatches(4,5)).toBe(false);
+  expect(declaredCountMatches(5,4)).toBe(false);
+  expect(declaredCountMatches(null,0)).toBe(false);
+  expect(declaredCountMatches(1.5,1)).toBe(false);
+  expect(declaredCountMatches(-1,0)).toBe(false);
+  expect(declaredCountMatches(Number.MAX_SAFE_INTEGER + 1, Number.MAX_SAFE_INTEGER + 1)).toBe(false);
+ });
  it('preserves quoted raw strings, duplicate rows and source order',()=>{ expect(parsePopulationCsv('id,note\r\n001,"a,b\r\nc"\r\n001,"a,b\r\nc"\r\n')).toEqual([{id:'001',note:'a,b\r\nc'},{id:'001',note:'a,b\r\nc'}]); });
  it.each(['a,a\n1,2\n','a,b\n1\n','a\n"unterminated','a\n"closed"oops\n','a\nabc"x\n'])('rejects malformed CSV %s',text=>expect(()=>parsePopulationCsv(text)).toThrow());
  it('evaluates all predicates; invalid values dominate false predicates',()=>{

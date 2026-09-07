@@ -1,4 +1,9 @@
 import type { AgentJudgedEvaluationRow } from '@intellifin/application';
+import {
+  AGENT_PAGE_DECLARATION_EVENT,
+  parseAgentPageDeclaration,
+  type AgentPageDeclarationFacts,
+} from '@intellifin/application';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   AdapterEvidenceRecord,
@@ -35,11 +40,13 @@ import {
 } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import {
+  auditEvents,
   auditRun,
   populationExecution,
   populationRow,
   populationSnapshot,
   runEvidence,
+  runEvidenceCapture,
   runAgentExecution,
   runEvidenceIntegrity,
   runGateCheck,
@@ -48,6 +55,7 @@ import {
   runObservation,
   runObservationCheck,
   runObservationEvaluation,
+  runToolAction,
   runSessionStep,
   runStepExecution,
   runWorkItem,
@@ -207,12 +215,141 @@ export async function withRunExecutionContext<T>(
       } satisfies PopulationCheckpoint)
     : null;
 
+  const resultContext = runResultContext(tx, runId);
+
   return work({
     run,
     population,
     ...evidencePackageContext(tx, runId),
     // The Gate's and the Result's shared reads: one implementation, both stages.
-    ...runResultContext(tx, runId),
+    ...resultContext,
+    /**
+     * Read the agent page declaration only after binding it to durable Evidence and the
+     * action that captured that Evidence. The event's count is a claim; the Gate receives
+     * the SQL count of registered Observations beside it and reconciles the two.
+     */
+    async readPopulationFacts(): Promise<RunGatePopulationFacts | null> {
+      const facts = await resultContext.readPopulationFacts();
+      if (facts === null) return null;
+
+      // A P-4 declaration is a single immutable event for this Run. LIMIT 2 detects both
+      // absence and duplicate/conflicting declarations without loading an unbounded chain.
+      const events = await tx
+        .select({ payload: auditEvents.payload })
+        .from(auditEvents)
+        .where(
+          and(
+            eq(auditEvents.aggregateId, runId),
+            eq(auditEvents.eventType, AGENT_PAGE_DECLARATION_EVENT),
+          ),
+        )
+        .limit(2);
+      if (events.length !== 1) return { ...facts, agentPageDeclaration: null };
+
+      const declaration = parseAgentPageDeclaration(events[0]!.payload);
+      // UUID columns reject arbitrary page text with a database 22P02 error. Refuse the
+      // event before any typed comparison so malformed model content becomes a Gate fact.
+      if (
+        declaration === null ||
+        !isUuidText(declaration.workItemId) ||
+        !isUuidText(declaration.stepExecutionId) ||
+        !isUuidText(declaration.snapshotEvidenceId)
+      ) {
+        return { ...facts, agentPageDeclaration: null };
+      }
+
+      const binding = (
+        await tx
+          .select({
+            evidenceId: runEvidence.evidenceId,
+            toolActionId: runEvidenceCapture.toolActionId,
+            workItemId: runToolAction.workItemId,
+            stepExecutionId: runToolAction.stepExecutionId,
+          })
+          .from(runEvidence)
+          .innerJoin(
+            runEvidenceCapture,
+            and(
+              eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId),
+              eq(runEvidenceCapture.runId, runId),
+            ),
+          )
+          .innerJoin(
+            runToolAction,
+            and(
+              eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId),
+              eq(runToolAction.runId, runId),
+              eq(runToolAction.workItemId, declaration.workItemId),
+              eq(runToolAction.stepExecutionId, declaration.stepExecutionId),
+              eq(runToolAction.targetSystem, declaration.targetSystem),
+              eq(runToolAction.surface, 'agent'),
+              eq(runToolAction.outcome, 'performed'),
+              eq(runToolAction.capture, 'PERMITTED'),
+              eq(runEvidenceCapture.sourceLocation, runToolAction.destination),
+            ),
+          )
+          .innerJoin(
+            runStepExecution,
+            and(
+              eq(runStepExecution.stepExecutionId, declaration.stepExecutionId),
+              eq(runStepExecution.runId, runId),
+              eq(runStepExecution.workItemId, declaration.workItemId),
+            ),
+          )
+          .innerJoin(
+            runWorkItem,
+            and(
+              eq(runWorkItem.workItemId, declaration.workItemId),
+              eq(runWorkItem.runId, runId),
+              eq(runWorkItem.registrationId, declaration.targetSystem),
+            ),
+          )
+          .where(
+            and(
+              eq(runEvidence.evidenceId, declaration.snapshotEvidenceId),
+              eq(runEvidence.runId, runId),
+              eq(runEvidence.kind, 'structural-snapshot'),
+              eq(runEvidence.registrationId, declaration.targetSystem),
+              eq(runEvidence.state, 'REGISTERED'),
+            ),
+          )
+          .limit(2)
+      )[0];
+      if (binding === undefined || binding.workItemId === null) {
+        return { ...facts, agentPageDeclaration: null };
+      }
+
+      const counted = await tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(runObservation)
+        .where(
+          and(
+            eq(runObservation.runId, runId),
+            eq(runObservation.workItemId, declaration.workItemId),
+            eq(runObservation.targetSystem, declaration.targetSystem),
+          ),
+        );
+      const registeredObservationCount = counted[0]?.total;
+      if (
+        registeredObservationCount === undefined ||
+        !Number.isSafeInteger(registeredObservationCount) ||
+        registeredObservationCount < 0
+      ) {
+        return { ...facts, agentPageDeclaration: null };
+      }
+
+      const agentPageDeclaration: AgentPageDeclarationFacts = {
+        declaration,
+        registeredObservationCount,
+        binding: {
+          evidenceId: binding.evidenceId,
+          toolActionId: binding.toolActionId,
+          workItemId: binding.workItemId,
+          stepExecutionId: binding.stepExecutionId,
+        },
+      };
+      return { ...facts, agentPageDeclaration };
+    },
     checkpoint: stage
       ? {
           revision: stage.revision,

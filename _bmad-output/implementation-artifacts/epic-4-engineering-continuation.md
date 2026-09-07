@@ -196,3 +196,10 @@ The shared domain/application rule evaluator now accepts validated compliance ba
 ## First investigation claim foreign-key repair
 
 A first agent claim saved run_agent_work.work_item_id before inserting the referenced Work Item. PostgreSQL's immediate FK rolls back that claim, explaining the authenticated but stalled worker fixture. The repair changes only write order inside the existing transaction. A focused FK regression fails before repair and passes after;19 loop tests pass in the candidate worktree (including the separately uncommitted P-4 case). Static checks currently await concurrent authentication-contract edits; no exact-candidate typecheck acceptance is claimed. Parent72e9afbdf86b3dc7ad8a722fd3e309e8f0dbebba is pushed. This repair checkpoint is pushed; hosted journey retest remains required.
+
+
+## Connected P-4 checkpoint (Story4.10 acceptance pending)
+
+The worker's P-4 branch now uses model-directed approved snapshot reads, one page Work Item, shared registration/corroboration/rule evaluation, immutable page declaration and existing Run Gate/Result. It preserves duplicate frozen baselines and emits honestly uninspected missing parameters. Page count and identifier bind to the actual registered capture; SQL supplies the registered Observation count independently of the event claim. The original population reconciliation remains intact.
+
+186 focused population/evaluation/declaration/producer/access/loop tests passed before the separate first-claim FK repair;19 loop tests passed afterward. The real PostgreSQL/local Chromium golden P-4 journey is included and awaits hosted execution; it uses an explicitly labeled model proposal stub, actual Northstar page/source and real application/repositories. It is not live-model or Solari acceptance. Concurrent authentication-contract edits currently block an exact full-tree static claim. Parent b8e66c607c6317634c36f25d83ddb3e191782bde is pushed; this incomplete story checkpoint is pushed. Next: hosted golden/found/absence journeys and remaining authorization/inspector/review repairs.

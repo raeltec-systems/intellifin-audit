@@ -139,12 +139,12 @@ function row(results: readonly GateCheckResult[], check: string): GateCheckResul
 }
 
 /** A plan carrying `n` frozen compiled conditions, and nothing else this Gate reads. */
-function plan(conditions: number): ExecutablePlan {
+function plan(conditions: number, templateId: 'P-2' | 'P-4' = 'P-2'): ExecutablePlan {
   return {
     schemaVersion: 1,
     compilerVersion: '1',
     inputs: {
-      templateId: 'P-2',
+      templateId,
       complianceConditions: Array.from({ length: conditions }, (_, index) => ({
         conditionId: `C${String(index + 1)}`,
       })),
@@ -192,5 +192,24 @@ describe('runRunLevelGate', () => {
     expect(context.state).toBe('INCONCLUSIVE');
     // And the Run is still sealed at that terminal transition, as every other one is.
     expect(context.seal?.runState).toBe('INCONCLUSIVE');
+  });
+
+  it('routes a missing P-4 page declaration through the existing population §H rows', async () => {
+    const context = new FakeGate();
+    const outcome = await runRunLevelGate(context, {
+      run: RUN,
+      plan: plan(0, 'P-4'),
+      decidedAt: DECIDED_AT,
+    });
+    const population = row(outcome.results, 'population-acquisition');
+    expect(population.outcome).toBe('FAIL');
+    expect(population.diagnostics).toEqual(['declaration-absent']);
+    expect(row(outcome.results, 'count-reconciliation-file')).toMatchObject({
+      outcome: 'FAIL',
+      diagnostics: ['declared-count-mismatch'],
+    });
+    expect(outcome.decision.state).toBe('INCONCLUSIVE');
+    // The page claim is an additional fact; the source snapshot's checks were not edited.
+    expect(CLEAN_POPULATION.checks.every((check) => check.passed)).toBe(true);
   });
 });

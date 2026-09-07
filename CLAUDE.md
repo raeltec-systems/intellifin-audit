@@ -1187,3 +1187,8 @@ The agent producer must pass every frozen included compliance-baseline row, incl
 ## Immediate agent-work foreign key (2026-09-07)
 
 run_agent_work.work_item_id references run_work_item immediately. A first claim must insert its Work Items before saving the checkpoint that references the next item, within the same transaction. The reverse order throws in PostgreSQL and rolls back to RUNNING; a permissive in-memory repository hid it. The focused repository now optionally enforces that real constraint and reproduces the failure before repair. No deferred foreign key or relaxed database constraint is needed.
+
+
+## P-4 page declaration and grounded batch (2026-09-07)
+
+A P-4 page is one Work Item, with one Observation per distinct frozen baseline key; duplicate baseline rows are retained for shared evaluation, and a missing page value has no fabricated grounding. The genuine model gateway chooses only offered snapshot locators; platform code reads their cells and registers through the shared corroborator/evaluator. A single immutable metadata-only declaration is written with that batch. The Run Gate binds it to registered Structural Snapshot, capture, performed Tool Action and Work Item, and compares actual SQL Observation count, captured page count and declared count through the existing declaredCountMatches predicate. A failed count or missing Observation never becomes Pass.

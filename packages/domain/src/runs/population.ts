@@ -54,6 +54,22 @@ export interface PopulationCheck { name: PopulationCheckName; passed: boolean }
 export function isPopulationCheckName(value: unknown): value is PopulationCheckName {
   return typeof value === 'string' && (POPULATION_CHECK_NAMES as readonly string[]).includes(value);
 }
+
+/**
+ * Compare an independently declared population count with the rows actually read.
+ *
+ * The declaration is untrusted input, so both sides have to be a non-negative safe
+ * integer before equality means anything.  This is the one predicate used by the
+ * population reconciler and by agent page declarations; keeping it here makes the
+ * Run-level Gate's `declared-count` row one rule rather than two near-identical ones.
+ */
+export function declaredCountMatches(declared: unknown, retrieved: unknown): boolean {
+  return Number.isSafeInteger(declared) &&
+    Number.isSafeInteger(retrieved) &&
+    (declared as number) >= 0 &&
+    (retrieved as number) >= 0 &&
+    declared === retrieved;
+}
 /**
  * The checks whose failure does NOT stop the Run at acquisition.
  *
@@ -221,7 +237,7 @@ export function reconcilePopulation(input: { bytes: Uint8Array; mediaType: strin
   const csv = input.source.contract.kind === 'versioned-file';
   check('declaration',d['schema_version'] === 1 && d['representation'] === (csv ? 'csv-raw-v1' : 'population-rows-v1'));
   check('response-contract',csv || (metadata['schema_version'] === d['schema_version'] && metadata['representation'] === d['representation'] && Array.isArray(metadata['schema']) && JSON.stringify(metadata['schema']) === JSON.stringify(d['schema'])));
-  check('declared-count',Number.isSafeInteger(d['count']) && d['count'] === rawRows.length);
+  check('declared-count',declaredCountMatches(d['count'], rawRows.length));
   check('declared-digest',d['sha256'] === (csv ? rawDigest : rowsDigest));
   check('declared-schema',Array.isArray(d['schema']) && JSON.stringify(d['schema']) === JSON.stringify(input.source.contract.declared_schema) && (csv ? JSON.stringify(csvHeaders)===JSON.stringify(d['schema']) : true) && rawRows.every(row => Object.keys(row).length===input.source.contract.declared_schema.length && input.source.contract.declared_schema.every(k => Object.hasOwn(row,k))));
   check('declared-period',isExplicitPeriod(d['effective_period']) && d['effective_period'].from <= input.period.from && d['effective_period'].to >= input.period.to && (csv || (isExplicitPeriod(metadata['effective_period']) && metadata['effective_period'].from===d['effective_period'].from && metadata['effective_period'].to===d['effective_period'].to)));

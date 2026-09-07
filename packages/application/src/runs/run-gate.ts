@@ -24,6 +24,11 @@ import type {
   GateFactTally,
   RunGateContext,
 } from './execution-ports.js';
+import {
+  agentPageDeclarationChecks,
+  p4PageTargetSystem,
+  requiresP4PageDeclaration,
+} from './agent-page-declaration.js';
 import { completeRun } from './complete-run.js';
 
 /**
@@ -157,6 +162,21 @@ export async function runRunLevelGate(
   const populationFacts = await context.readPopulationFacts();
   const rows: readonly PopulationGateRow[] =
     populationFacts === null ? [] : await context.readPopulationRows();
+  // The page declaration is a separate producer fact. It is appended to the existing
+  // population check list only for P-4, without replacing the source declaration/count or
+  // inventing a second Gate engine. A missing page fact is therefore two ordinary §H
+  // failures: declaration-absent and declared-count-mismatch.
+  const populationChecks = populationFacts === null
+    ? null
+    : [
+        ...populationFacts.checks,
+        ...(requiresP4PageDeclaration(plan)
+          ? agentPageDeclarationChecks(
+              populationFacts.agentPageDeclaration,
+              p4PageTargetSystem(plan),
+            )
+          : []),
+      ];
 
   const findings: GateFindingTally[] = [];
 
@@ -244,7 +264,7 @@ export async function runRunLevelGate(
   );
 
   const results = runGateChecks({
-    populationChecks: populationFacts?.checks ?? null,
+    populationChecks,
     population:
       populationFacts === null
         ? null

@@ -38,6 +38,26 @@ import type {
   WorkItemState,
 } from '@intellifin/domain';
 import type { AuditEventWriter } from '../audit/ports.js';
+import type { AgentPageDeclarationFacts } from './agent-page-declaration.js';
+
+// Re-export the page declaration seam through the existing execution-ports barrel. The
+// infrastructure adapter already depends on this public application entrypoint, while the
+// validator itself remains a separate, fixture-free module.
+export {
+  AGENT_PAGE_DECLARATION_EVENT,
+  AGENT_PAGE_DECLARATION_SCHEMA_VERSION,
+  agentPageDeclarationChecks,
+  buildAgentPageDeclaration,
+  buildAgentPageDeclarationPayload,
+  parseAgentPageDeclaration,
+  p4PageTargetSystem,
+  requiresP4PageDeclaration,
+} from './agent-page-declaration.js';
+export type {
+  AgentPageDeclaration,
+  AgentPageDeclarationFacts,
+  AgentPageDeclarationInput,
+} from './agent-page-declaration.js';
 
 export interface PopulationAcquisitionPort {
   acquire(
@@ -762,6 +782,12 @@ export interface RunGatePopulationFacts {
   readonly unexplained: readonly number[];
   /** The snapshot's declared generation time, or `null` when none was recorded. */
   readonly generatedAt: string | null;
+  /**
+   * The P-4 agent page declaration after infrastructure binds it to registered Evidence,
+   * its capture action and the actual Observation count. This is separate from the source
+   * population facts: the page's claim must never overwrite the source declaration/count.
+   */
+  readonly agentPageDeclaration?: AgentPageDeclarationFacts | null;
 }
 
 /** One §H Gate row as it is stored and read back. */

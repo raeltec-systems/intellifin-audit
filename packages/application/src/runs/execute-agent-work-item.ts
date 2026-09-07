@@ -42,6 +42,8 @@ import type {
 } from './agent-ports.js';
 import type { AgentWorkCheckpoint, AgentWorkContext, AgentWorkRepository } from './agent-work-ports.js';
 import { executeAgentModelTurn } from './execute-agent-model-turn.js';
+import { executeProdConsolePage } from './execute-prodconsole-page.js';
+import { AGENT_PAGE_DECLARATION_EVENT, buildAgentPageDeclarationPayload } from './agent-page-declaration.js';
 import { applyAgentHumanDecision } from './agent-human-decision.js';
 import { freezeAgentCapture } from './agent-capture.js';
 import { buildAbsentAgentObservation, buildFoundAgentObservation, type AgentFieldSelection } from './agent-observation.js';
@@ -75,7 +77,7 @@ export interface AgentWorkWaits {
   raiseEscalation(input: RaiseEscalationInput): Promise<RaiseEscalationResult>;
 }
 
-/** Dependencies for the P-1 web work-item stage. */
+/** Dependencies for the supported P-1/P-4 web work-item stage. */
 export interface AgentWorkDependencies {
   readonly repository: AgentWorkRepository;
   readonly browser: BrowserExecution;
@@ -467,7 +469,9 @@ export async function executeAgentWorkItem(
       return null;
     }
     const classification = classifyPlanTargets(plan);
-    if (classification.unsupported !== null || classification.agents.some((entry) => entry.target.contract.kind !== 'web')) {
+    if (classification.unsupported !== null || classification.agents.some((entry) => entry.target.contract.kind !== 'web') ||
+        !['P-1', 'P-4'].includes(plan.inputs.templateId) ||
+        (plan.inputs.templateId === 'P-4' && classification.agents.length !== 1)) {
       const checkpoint: AgentWorkCheckpoint = {
         revision: (prior?.revision ?? 0) + 1,
         status: 'TERMINAL',
@@ -511,10 +515,10 @@ export async function executeAgentWorkItem(
       return null;
     }
     const records = await context.includedRecords();
-    const primary = adapterLookupColumn(TEMPLATE_ID);
+    const primary = adapterLookupColumn(plan.inputs.templateId);
     if (primary === null) return null;
     const seen = new Set<string>();
-    for (const record of records) {
+    for (const record of plan.inputs.templateId === 'P-4' ? [] : records) {
       const value = record.values[primary];
       if (typeof value !== 'string' || value.length === 0 || seen.has(value)) {
         const checkpoint: AgentWorkCheckpoint = {
@@ -541,10 +545,15 @@ export async function executeAgentWorkItem(
     }
 
     const created: WorkItemRecord[] = [];
+    // P-4 reads one page for the entire baseline. Duplicate baseline rows stay in records
+    // for the existing evaluator to resolve as ambiguous; they never create duplicate items.
+    const workSubjects: readonly PopulationRecord[] = plan.inputs.templateId === 'P-4'
+      ? [{ ordinal: 1, values: {} }]
+      : [...records].sort((left, right) => left.ordinal - right.ordinal);
     for (const entry of classification.agents) {
-      for (const record of [...records].sort((left, right) => left.ordinal - right.ordinal)) {
-        const subjectKey = record.values[primary];
-        if (typeof subjectKey !== 'string' || subjectKey.length === 0) continue;
+      for (const record of workSubjects) {
+        const subjectKey = plan.inputs.templateId === 'P-4' ? null : record.values[primary];
+        if (subjectKey !== null && (typeof subjectKey !== 'string' || subjectKey.length === 0)) continue;
         const ordinal = created.length + 1;
         const existing = context.workItems.find((item) => item.stepId === entry.stepId && item.subjectKey === subjectKey);
         const item = existing ? { ...existing, ordinal } : {
@@ -990,6 +999,10 @@ export async function executeAgentWorkItem(
   // objects and the values never enter this stage.
   const { credentials: guardedResolver, guard: agentGuard } = guardedCredentials(dependencies.credentials);
   const resolveFrozenCredentials = async (): Promise<void> => {
+    // The preceding access stage verifies the supported P-4 public page contract. Its
+    // frozen v1 credential reference is not presented or resolved for an unauthenticated
+    // read; the explicit empty guard remains mandatory for browser capture/model calls.
+    if (plan.inputs.templateId === 'P-4') return;
     const references = new Set<string>();
     for (const entry of plan.credentialReferences) {
       if (typeof entry.credentialRef !== 'string' || entry.credentialRef.length === 0) throw new AgentCredentialError();
@@ -1009,6 +1022,7 @@ export async function executeAgentWorkItem(
   const items = claim.items.map((item) => ({ ...item }));
   const targetForItem = (item: WorkItemRecord): ClassifiedTarget | null => targets.find((entry) => entry.stepId === item.stepId) ?? null;
   const recordForItem = (item: WorkItemRecord): PopulationRecord | null => {
+    if (plan.inputs.templateId === 'P-4') return { ordinal: 1, values: {} };
     const primary = adapterLookupColumn(TEMPLATE_ID);
     return primary === null ? null : records.find((record) => record.values[primary] === item.subjectKey) ?? null;
   };
@@ -1055,6 +1069,19 @@ export async function executeAgentWorkItem(
       item.state = 'IN_PROGRESS'; item.diagnostic = null;
 
       if (humanDecision !== null && humanDecision.checkpoint.workItemId === item.workItemId) {
+        if (plan.inputs.templateId === 'P-4') {
+          // A page-level skip never manufactures parameter observations from an answer.
+          if (humanDecision.wait.kind !== 'retry-or-skip' || humanDecision.wait.answerOptionId !== ESCALATION_OPTION_IDS.skip) {
+            await stopRun('human-decision-refused', 'session-step-failed'); return { retry: false };
+          }
+          item.state = 'UNINSPECTED'; item.diagnostic = 'insufficient-evidence';
+          if (!await guarded(async context => {
+            await context.saveWorkItem(item);
+            await context.saveStepExecution({ ...execution, state: 'SUCCEEDED', completedAt: nowIso(dependencies.clock), diagnostic: item.diagnostic });
+            await context.saveCheckpoint({ ...checkpoint, waitId: null, pendingWait: null }, 'RUNNING');
+          })) return { retry: false };
+          checkpoint = { ...checkpoint, waitId: null, pendingWait: null }; humanDecision = null; continue;
+        }
         const raisedIds = humanDecision.raised.supportingEvidenceIds;
         const binding = claim.captures.find(capture => raisedIds.includes(capture.evidenceId) &&
           claim.evidence.some(evidence => evidence.evidenceId === capture.evidenceId && evidence.kind === 'structural-snapshot') &&
@@ -1169,6 +1196,68 @@ export async function executeAgentWorkItem(
         if (capture === null) return { retry: false };
         current = { snapshot: capture.snapshot, sourceLocation: performed.action.destination, screenshotEvidenceId: capture.screenshotEvidenceId };
         item.evidenceId = capture.snapshot.evidenceId;
+      }
+
+      if (plan.inputs.templateId === 'P-4') {
+        const pageSnapshot = current.snapshot;
+        const page = await executeProdConsolePage({
+          plan, target: entry.target, records, workItemId: item.workItemId,
+          stepExecutionId: execution.stepExecutionId, snapshot: current.snapshot,
+          sourceLocation: current.sourceLocation, screenshotEvidenceId: current.screenshotEvidenceId,
+          observedAt: nowIso(dependencies.clock), checkpoint, gateway: dependencies.model,
+          guard: agentGuard, budget, commit: guarded,
+        });
+        if (page.kind === 'lost') return { retry: false };
+        checkpoint = page.checkpoint;
+        if (page.kind === 'limit') {
+          const cause = runLimit(stepExecutions, checkpoint, plan, dependencies.clock) ?? 'run-token-limit';
+          await stopRun(cause, cause); return { retry: false };
+        }
+        if (page.kind === 'uncertain') return persistWait({ item, execution, kind: 'retry-or-skip', options: FIXED_ESCALATION_OPTIONS['retry-or-skip'], diagnostic: 'insufficient-evidence', supportingEvidenceIds: [current.snapshot.evidenceId] });
+        if (page.kind === 'refused') {
+          if (page.diagnostic === 'model-invalid-action') { await stopRun('model-invalid-action', 'action-denied'); return { retry: false }; }
+          const result = await persistRetry(item, execution, modelDiagnostic(page.diagnostic));
+          const outcome = retryOutcome(result); if (outcome !== null) return outcome; continue;
+        }
+        if (page.kind !== 'read') return { retry: false };
+        const payload = buildAgentPageDeclarationPayload({
+          targetSystem: item.registrationId, workItemId: item.workItemId,
+          stepExecutionId: execution.stepExecutionId, snapshotEvidenceId: current.snapshot.evidenceId,
+          snapshotIdentifier: page.batch.metadata.snapshotIdentifier,
+          snapshotIdentifierLocator: page.batch.metadata.snapshotIdentifierLocator,
+          expectedParameterCount: page.batch.metadata.expectedParameterCount,
+          expectedParameterCountLocator: page.batch.metadata.expectedParameterCountLocator,
+          pageParameterCount: page.batch.count.pageParameterCount,
+          registeredObservations: page.batch.items.length,
+        });
+        if (payload === null) {
+          const result = await persistRetry(item, execution, 'observation-registration-refused');
+          const outcome = retryOutcome(result); if (outcome !== null) return outcome; continue;
+        }
+        let limited = false;
+        try {
+          const saved = await guarded(async context => {
+            if (await stopAtFinalLimit(context)) { limited = true; return; }
+            await registerObservations(context, { run, workItemId: item.workItemId,
+              stepExecutionId: execution.stepExecutionId, targetSystem: item.registrationId,
+              templateId: plan.inputs.templateId, runStartedAt: checkpoint.runStartedAt,
+              registeredAt: nowIso(dependencies.clock), items: page.batch.items,
+            }, { corroboration: snapshotCorroboration([pageSnapshot]),
+              evaluation: ruleEvaluation({ plan, records, references: [], period: run.period }), exceptions: dependencies.exceptions });
+            const declared = await context.auditEvents.append({ actor: { type: 'system', id: 'agent-worker' },
+              eventType: AGENT_PAGE_DECLARATION_EVENT, source: 'worker', outcome: 'success',
+              aggregateId: run.runId, correlationId: run.correlationId, sessionId: run.sessionId, payload });
+            await context.notifyTimeline(declared.sequence);
+            await context.saveWorkItem({ ...item, state: 'OBSERVED', observations: page.batch.items.length, evidenceId: pageSnapshot.evidenceId, diagnostic: null });
+            await context.saveStepExecution({ ...execution, state: 'SUCCEEDED', completedAt: nowIso(dependencies.clock), diagnostic: null });
+          });
+          if (!saved || limited) return { retry: false };
+          item.state = 'OBSERVED'; item.observations = page.batch.items.length; item.diagnostic = null;
+        } catch {
+          const result = await persistRetry(item, execution, 'observation-registration-refused');
+          const outcome = retryOutcome(result); if (outcome !== null) return outcome;
+        }
+        continue;
       }
 
       let actionsConsumed = 0;
