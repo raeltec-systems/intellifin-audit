@@ -32,7 +32,7 @@ import {
   type PopulationGateRow,
   type RaisedException,
 } from '@intellifin/domain';
-import type { Database } from '../db/client.js';
+import type { Database, Transaction } from '../db/client.js';
 import {
   auditRun,
   populationExecution,
@@ -83,619 +83,7 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
     runId: string,
     work: (context: AdapterExecutionContext) => Promise<T>,
   ): Promise<T> {
-    if (!isUuidText(runId)) throw new Error('Invalid Run identity');
-    return this.db.transaction(async (tx) => {
-      await tx.select({ id: auditRun.runId }).from(auditRun).where(eq(auditRun.runId, runId)).for('update');
-      const run = await new DrizzleRunRepository(tx).findRun(runId);
-      const progress = (
-        await tx.select().from(populationExecution).where(eq(populationExecution.runId, runId))
-      )[0];
-      const stage = (await tx.select().from(runExecution).where(eq(runExecution.runId, runId)))[0];
-      const steps = await tx
-        .select()
-        .from(runSessionStep)
-        .where(eq(runSessionStep.runId, runId))
-        .orderBy(asc(runSessionStep.ordinal));
-      const items = await tx
-        .select()
-        .from(runWorkItem)
-        .where(eq(runWorkItem.runId, runId))
-        .orderBy(asc(runWorkItem.ordinal));
-      const evidence = await tx.select().from(runEvidence).where(eq(runEvidence.runId, runId));
-
-      // `population_execution` and `population_evidence` are the population stage's rows;
-      // only its status and its start time matter here, and the start time is the Run
-      // deadline this stage inherits rather than restarting.
-      const population: PopulationCheckpoint | null = progress
-        ? ({
-            stepId: progress.stepId,
-            attemptId: progress.attemptId,
-            revision: progress.revision,
-            status: progress.status as PopulationCheckpoint['status'],
-            attempts: progress.attempts,
-            startedAt: progress.startedAt.toISOString(),
-            attemptStartedAt: progress.attemptStartedAt.toISOString(),
-            leaseUntil: progress.leaseUntil.toISOString(),
-            diagnostic: progress.diagnostic,
-            evidenceId: '',
-            objectKey: '',
-            envelopeKey: '',
-            rawDigest: null,
-            envelopeDigest: null,
-            size: null,
-            evidenceRequired: true,
-            capturedAt: null,
-            captureMethod: null,
-            captureTimeSource: null,
-          } satisfies PopulationCheckpoint)
-        : null;
-
-      return work({
-        run,
-        population,
-        ...evidencePackageContext(tx, runId),
-        // The Gate's and the Result's shared reads: one implementation, both stages.
-        ...runResultContext(tx, runId),
-        checkpoint: stage
-          ? {
-              revision: stage.revision,
-              status: stage.status as AdapterExecutionCheckpoint['status'],
-              attempts: stage.attempts,
-              runStartedAt: stage.runStartedAt.toISOString(),
-              startedAt: stage.startedAt.toISOString(),
-              attemptStartedAt: stage.attemptStartedAt.toISOString(),
-              leaseUntil: stage.leaseUntil.toISOString(),
-              attemptId: stage.attemptId,
-              diagnostic: stage.diagnostic,
-            }
-          : null,
-        sessionSteps: steps.map(
-          (row): SessionStepRecord => ({
-            stepId: row.stepId,
-            ordinal: row.ordinal,
-            registrationId: row.registrationId,
-            displayName: row.displayName,
-            action: row.action as SessionStepRecord['action'],
-            state: row.state as SessionStepRecord['state'],
-            attempts: row.attempts,
-            diagnostic: row.diagnostic,
-            evidenceId: row.evidenceId,
-          }),
-        ),
-        workItems: items.map(
-          (row): WorkItemRecord => ({
-            workItemId: row.workItemId,
-            stepId: row.stepId,
-            ordinal: row.ordinal,
-            registrationId: row.registrationId,
-            displayName: row.displayName,
-            state: row.state as WorkItemRecord['state'],
-            attempts: row.attempts,
-            cycles: row.cycles,
-            diagnostic: row.diagnostic,
-            evidenceId: row.evidenceId,
-            observations: row.observations,
-          }),
-        ),
-        evidence: evidence.map(
-          (row): AdapterEvidenceRecord => ({
-            evidenceId: row.evidenceId,
-            kind: row.kind as AdapterEvidenceRecord['kind'],
-            registrationId: row.registrationId,
-            objectKey: row.objectKey,
-            mediaType: row.mediaType,
-            digest: row.digest,
-            size: row.size,
-            required: row.required,
-            state: row.state as AdapterEvidenceRecord['state'],
-            capturedAt: row.capturedAt === null ? null : row.capturedAt.toISOString(),
-            captureMethod: isEvidenceCaptureMethod(row.captureMethod) ? row.captureMethod : null,
-            captureTimeSource: isEvidenceCaptureTimeSource(row.captureTimeSource) ? row.captureTimeSource : null,
-          }),
-        ),
-        auditEvents: createAuditEventWriter(tx, new SystemClock(), new CryptoUuidV7Generator()),
-        frozenPlan: () =>
-          run
-            ? new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId)
-            : Promise.resolve(null),
-        async includedRecords(): Promise<readonly PopulationRecord[]> {
-          const rows = await tx
-            .select({ ordinal: populationRow.ordinal, values: populationRow.values })
-            .from(populationRow)
-            .where(and(eq(populationRow.runId, runId), eq(populationRow.disposition, 'included')))
-            .orderBy(asc(populationRow.ordinal))
-            .limit(POPULATION_LIMITS.rows);
-          return rows;
-        },
-        async saveCheckpoint(checkpoint, state) {
-          const values = {
-            runId,
-            revision: checkpoint.revision,
-            status: checkpoint.status,
-            attempts: checkpoint.attempts,
-            runStartedAt: new Date(checkpoint.runStartedAt),
-            startedAt: new Date(checkpoint.startedAt),
-            attemptStartedAt: new Date(checkpoint.attemptStartedAt),
-            leaseUntil: new Date(checkpoint.leaseUntil),
-            attemptId: checkpoint.attemptId,
-            diagnostic: checkpoint.diagnostic,
-          };
-          await tx
-            .insert(runExecution)
-            .values(values)
-            .onConflictDoUpdate({ target: runExecution.runId, set: values });
-          await tx.update(auditRun).set({ state }).where(eq(auditRun.runId, runId));
-        },
-        async saveEvidence(record) {
-          const { capturedAt, ...rest } = record;
-          const capture = { capturedAt: capturedAt === null ? null : new Date(capturedAt) };
-          await tx
-            .insert(runEvidence)
-            .values({ ...rest, ...capture, runId })
-            .onConflictDoUpdate({
-              target: runEvidence.evidenceId,
-              set: {
-                mediaType: record.mediaType,
-                digest: record.digest,
-                size: record.size,
-                required: record.required,
-                state: record.state,
-                // Generation 32. Carried on every save so a record that becomes REGISTERED
-                // on a later attempt gets its provenance, and one that already had it keeps
-                // exactly the instant it was captured at.
-                ...capture,
-                captureMethod: record.captureMethod,
-                captureTimeSource: record.captureTimeSource,
-              },
-            });
-        },
-        async saveSessionStep(step) {
-          const values = { ...step, runId };
-          await tx
-            .insert(runSessionStep)
-            .values(values)
-            .onConflictDoUpdate({
-              target: [runSessionStep.runId, runSessionStep.stepId],
-              set: {
-                state: step.state,
-                attempts: step.attempts,
-                diagnostic: step.diagnostic,
-                evidenceId: step.evidenceId,
-              },
-            });
-        },
-        async saveWorkItem(item) {
-          const values = { ...item, runId };
-          await tx
-            .insert(runWorkItem)
-            .values(values)
-            .onConflictDoUpdate({
-              target: runWorkItem.workItemId,
-              set: {
-                state: item.state,
-                attempts: item.attempts,
-                cycles: item.cycles,
-                diagnostic: item.diagnostic,
-                evidenceId: item.evidenceId,
-                observations: item.observations,
-              },
-            });
-        },
-        async saveStepExecution(execution: StepExecutionRecord) {
-          const values = {
-            ...execution,
-            runId,
-            action: execution.action,
-            startedAt: new Date(execution.startedAt),
-            completedAt: execution.completedAt === null ? null : new Date(execution.completedAt),
-          };
-          await tx
-            .insert(runStepExecution)
-            .values(values)
-            .onConflictDoUpdate({
-              target: runStepExecution.stepExecutionId,
-              set: {
-                state: execution.state,
-                completedAt: values.completedAt,
-                diagnostic: execution.diagnostic,
-              },
-            });
-        },
-        async readObservations(
-          workItemId: string,
-          populationRecordKeys: readonly string[],
-        ): Promise<readonly StoredObservation[]> {
-          if (!isUuidText(workItemId) || populationRecordKeys.length === 0) return [];
-          const rows: StoredObservation[] = [];
-          // Chunked for the same reason the insert is: one statement should not carry a
-          // hundred thousand bound parameters.
-          for (let offset = 0; offset < populationRecordKeys.length; offset += OBSERVATION_CHUNK) {
-            const slice = populationRecordKeys.slice(offset, offset + OBSERVATION_CHUNK);
-            const found = await tx
-              .select()
-              .from(runObservation)
-              .where(
-                and(
-                  eq(runObservation.workItemId, workItemId),
-                  inArray(runObservation.populationRecordKey, slice),
-                ),
-              );
-            for (const row of found) {
-              rows.push({
-                observationId: row.observationId,
-                populationRecordKey: row.populationRecordKey,
-                digest: row.digest,
-                coverage: row.coverage as StoredObservation['coverage'],
-                // §B's retained capture time, as the COLUMN holds it now. It is outside
-                // the hashed envelope, so an edit to it leaves the digest matching and
-                // nothing else read here could show one; registration re-derives it
-                // against the row's own `observedAt`.
-                observedAtSource: row.observedAtSource,
-                // The wire record as the COLUMNS hold it now, so the caller can recompute
-                // its digest and see an edit the digest column cannot show on its own.
-                record: {
-                  schemaVersion: row.schemaVersion,
-                  observationId: row.observationId,
-                  workItemId: row.workItemId,
-                  populationRecordKey: row.populationRecordKey,
-                  targetSystem: row.targetSystem,
-                  found: row.found,
-                  observedAt: row.observedAt.toISOString(),
-                  stepExecutionId: row.stepExecutionId,
-                  captureMethod: row.captureMethod,
-                  matchOrigin: row.matchOrigin,
-                  identity: row.identity,
-                  attributes: row.attributes,
-                  evidenceIds: row.evidenceIds,
-                },
-              });
-            }
-          }
-          return rows;
-        },
-        async readEvidenceStates(evidenceIds: readonly string[]): Promise<readonly EvidenceState[]> {
-          const ids = evidenceIds.filter((id) => isUuidText(id));
-          if (ids.length === 0) return [];
-          const rows = await tx
-            .select({ evidenceId: runEvidence.evidenceId, state: runEvidence.state })
-            .from(runEvidence)
-            .where(inArray(runEvidence.evidenceId, ids));
-          return rows.map((row) => ({
-            evidenceId: row.evidenceId,
-            state: row.state as EvidenceState['state'],
-          }));
-        },
-        async saveObservations(rows: readonly RegisteredObservation[]) {
-          // `DO NOTHING` on (work_item_id, population_record_key): a redelivered job that
-          // reaches this line again writes no second Observation for the same record.
-          // Order is preserved — the slices are taken in order and each insert keeps it —
-          // so a batch too large for one statement is still one atomic, ordered batch.
-          for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
-            const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
-              observationId: row.record.observationId,
-              runId,
-              workItemId: row.record.workItemId,
-              schemaVersion: row.record.schemaVersion,
-              populationRecordKey: row.record.populationRecordKey,
-              targetSystem: row.record.targetSystem,
-              found: row.record.found,
-              observedAt: new Date(row.record.observedAt),
-              stepExecutionId: row.record.stepExecutionId,
-              captureMethod: row.record.captureMethod,
-              matchOrigin: row.record.matchOrigin,
-              identity: row.record.identity,
-              attributes: [...row.record.attributes],
-              evidenceIds: [...row.record.evidenceIds],
-              digest: row.digest,
-              coverage: row.coverage,
-              corroboration: row.corroboration,
-              observedAtSource: row.observedAtSource,
-            }));
-            if (batch.length > 0) {
-              await tx
-                .insert(runObservation)
-                .values(batch)
-                .onConflictDoNothing({
-                  target: [runObservation.workItemId, runObservation.populationRecordKey],
-                });
-            }
-          }
-        },
-        async saveObservationChecks(rows: readonly ObservationCheckRow[]) {
-          for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
-            const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
-              observationId: row.observationId,
-              runId,
-              checkName: row.check,
-              outcome: row.outcome,
-              diagnostic: row.diagnostic,
-            }));
-            if (batch.length > 0) {
-              await tx
-                .insert(runObservationCheck)
-                .values(batch)
-                .onConflictDoNothing({
-                  target: [runObservationCheck.observationId, runObservationCheck.checkName],
-                });
-            }
-          }
-        },
-        async saveObservationEvaluations(rows: readonly ObservationEvaluationRow[]) {
-          for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
-            const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
-              observationId: row.observationId,
-              coverage: row.coverage,
-              corroboration: row.corroboration,
-              runId,
-              conditionId: row.evaluation.conditionId,
-              origin: row.evaluation.origin,
-              value: row.evaluation.value,
-              confirmation: row.evaluation.confirmation,
-              confidence: row.evaluation.confidence,
-              rationale: row.evaluation.rationale,
-              diagnostic: row.evaluation.diagnostic,
-              evidenceIds: [...row.evaluation.evidenceIds],
-            }));
-            if (batch.length > 0) {
-              await tx
-                .insert(runObservationEvaluation)
-                .values(batch)
-                .onConflictDoNothing({
-                  target: [
-                    runObservationEvaluation.observationId,
-                    runObservationEvaluation.conditionId,
-                  ],
-                });
-            }
-          }
-        },
-        async saveExceptions(rows: readonly RaisedException[]) {
-          for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
-            const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
-              exceptionId: row.exceptionId,
-              runId,
-              observationId: row.observationId,
-              workItemId: row.workItemId,
-              targetSystem: row.targetSystem,
-              populationRecordKey: row.populationRecordKey,
-              conditionIds: [...row.conditionIds],
-              diagnostics: [...row.diagnostics],
-              fingerprint: row.fingerprint,
-              fingerprintKeyId: row.fingerprintKeyId,
-              raisedAt: new Date(row.raisedAt),
-            }));
-            if (batch.length > 0) {
-              // `DO NOTHING` on the Observation: the first Exception recorded for a record
-              // stands and a redelivery adds nothing. There is no update path at all —
-              // generation 23 refuses one below the command, in a trigger.
-              await tx
-                .insert(runException)
-                .values(batch)
-                .onConflictDoNothing({ target: runException.observationId });
-            }
-          }
-        },
-        async notifyTimeline(sequence: number) {
-          await tx.execute(
-            sql`SELECT pg_notify('run_timeline',${JSON.stringify({ runId, sequence })})`,
-          );
-        },
-
-        /* ------------------------------------------------------------ Story 3.8 --- */
-
-        async readStepExecutionCount(): Promise<number> {
-          const rows = await tx
-            .select({ total: sql<number>`count(*)::int` })
-            .from(runStepExecution)
-            .where(eq(runStepExecution.runId, runId));
-          return rows[0]?.total ?? 0;
-        },
-
-        async saveGateChecks(rows: readonly GateCheckRow[]) {
-          if (rows.length === 0) return;
-          const decidedAt = new Date();
-          // `DO NOTHING`: the FIRST Gate wins, and a Gate failure is never repaired by
-          // re-running a check. Generation 24 refuses an UPDATE below the command as well.
-          await tx
-            .insert(runGateCheck)
-            .values(
-              rows.map((row) => ({
-                runId,
-                checkName: row.check,
-                outcome: row.outcome,
-                diagnostics: [...row.diagnostics],
-                targetSystems: [...row.targetSystems],
-                workItems: [...row.workItems],
-                records: [...row.records],
-                total: row.total,
-                decidedAt,
-              })),
-            )
-            .onConflictDoNothing({ target: [runGateCheck.runId, runGateCheck.checkName] });
-        },
-
-        async readFailedObservationChecks() {
-          // The EXACT total per check name, and a bounded sample of the identities the
-          // Result names. Two statements rather than one, because an exact count and a
-          // bounded sample are two different questions and `LIMIT` answers only the second.
-          const totals = await tx
-            .select({ check: runObservationCheck.checkName, total: sql<number>`count(*)::int` })
-            .from(runObservationCheck)
-            .where(
-              and(
-                eq(runObservationCheck.runId, runId),
-                eq(runObservationCheck.outcome, 'FAIL'),
-              ),
-            )
-            .groupBy(runObservationCheck.checkName);
-          const tallies: Partial<Record<ObservationCheckName, GateFactTally>> = {};
-          for (const row of totals) {
-            const samples = await tx
-              .select({
-                targetSystem: runObservation.targetSystem,
-                workItemId: runObservation.workItemId,
-                record: runObservation.populationRecordKey,
-              })
-              .from(runObservationCheck)
-              .innerJoin(
-                runObservation,
-                eq(runObservation.observationId, runObservationCheck.observationId),
-              )
-              .where(
-                and(
-                  eq(runObservationCheck.runId, runId),
-                  eq(runObservationCheck.outcome, 'FAIL'),
-                  eq(runObservationCheck.checkName, row.check),
-                ),
-              )
-              .orderBy(asc(runObservation.populationRecordKey))
-              .limit(GATE_AFFECTED_LIMIT);
-            tallies[row.check as ObservationCheckName] = { total: row.total, sample: samples };
-          }
-          return tallies;
-        },
-
-        async readConditionGaps(expected: number): Promise<GateFactTally> {
-          if (expected <= 0) return { total: 0, sample: [] };
-          // An Observation with fewer evaluations than the version froze conditions has a
-          // condition nobody decided. Counted in SQL rather than by loading every
-          // evaluation: a Run can hold a hundred thousand Observations.
-          //
-          // TWO statements, exactly as `readFailedObservationChecks` and `readUnnamedValues`
-          // do it, because an EXACT total and a bounded sample are two different questions
-          // and `LIMIT` answers only the second. This read used to take `rows.length` after
-          // a `LIMIT`, so a Run with more gaps than the cap reported the cap as its total —
-          // a §H row whose count is not a count, on a Result and inside an immutable event.
-          // Built per statement rather than shared: one aliased subquery object bound into
-          // two different queries is a drizzle detail, and this costs nothing.
-          const evaluated = () =>
-            tx
-              .select({
-                observationId: runObservationEvaluation.observationId,
-                total: sql<number>`count(*)::int`.as('evaluated'),
-              })
-              .from(runObservationEvaluation)
-              .where(eq(runObservationEvaluation.runId, runId))
-              .groupBy(runObservationEvaluation.observationId)
-              .as('gaps');
-          const counting = evaluated();
-          const totals = await tx
-            .select({ total: sql<number>`count(*)::int` })
-            .from(runObservation)
-            .leftJoin(counting, eq(counting.observationId, runObservation.observationId))
-            .where(sql`${runObservation.runId}=${runId} AND coalesce(${counting.total},0) < ${expected}`);
-          const total = totals[0]?.total ?? 0;
-          if (total === 0) return { total: 0, sample: [] };
-          const sampling = evaluated();
-          const rows = await tx
-            .select({
-              targetSystem: runObservation.targetSystem,
-              workItemId: runObservation.workItemId,
-              record: runObservation.populationRecordKey,
-            })
-            .from(runObservation)
-            .leftJoin(sampling, eq(sampling.observationId, runObservation.observationId))
-            .where(sql`${runObservation.runId}=${runId} AND coalesce(${sampling.total},0) < ${expected}`)
-            .orderBy(asc(runObservation.populationRecordKey))
-            .limit(GATE_AFFECTED_LIMIT);
-          return { total, sample: rows };
-        },
-
-        async readUnnamedValues(): Promise<GateFactTally> {
-          // §B's own sentence, imported rather than retyped: "when a compiled condition
-          // meets an attribute value outside the set it names, the condition evaluates
-          // Unevaluated with diagnostic `rule does not name value <v>`". A value the
-          // condition names and could NOT read is a different defect on a different §H row
-          // — `missing or invalid Observation field <x>` — and matching that here would put
-          // every ambiguous record on the unnamed-value row as well.
-          const pattern = `%${RULE_DOES_NOT_NAME_VALUE}%`;
-          const totals = await tx
-            .select({ total: sql<number>`count(*)::int` })
-            .from(runObservationEvaluation)
-            .where(
-              sql`${runObservationEvaluation.runId}=${runId} AND ${runObservationEvaluation.diagnostic} LIKE ${pattern}`,
-            );
-          const total = totals[0]?.total ?? 0;
-          if (total === 0) return { total: 0, sample: [] };
-          const rows = await tx
-            .select({
-              targetSystem: runObservation.targetSystem,
-              workItemId: runObservation.workItemId,
-              record: runObservation.populationRecordKey,
-            })
-            .from(runObservationEvaluation)
-            .innerJoin(
-              runObservation,
-              eq(runObservation.observationId, runObservationEvaluation.observationId),
-            )
-            .where(
-              sql`${runObservationEvaluation.runId}=${runId} AND ${runObservationEvaluation.diagnostic} LIKE ${pattern}`,
-            )
-            .orderBy(asc(runObservation.populationRecordKey))
-            .limit(GATE_AFFECTED_LIMIT);
-          return { total, sample: rows };
-        },
-
-        async readIncompleteExtractions(): Promise<readonly GateFactSample[]> {
-          const rows = await tx
-            .select({
-              targetSystem: runWorkItem.registrationId,
-              workItemId: runWorkItem.workItemId,
-            })
-            .from(runWorkItem)
-            .where(
-              sql`${runWorkItem.runId}=${runId} AND ${runWorkItem.diagnostic} LIKE '%extraction-incomplete%'`,
-            )
-            .limit(GATE_AFFECTED_LIMIT);
-          return rows.map((row) => ({ ...row, record: null }));
-        },
-
-        async readAccessFailures() {
-          const failed = await tx
-            .select({ targetSystem: runSessionStep.registrationId })
-            .from(runSessionStep)
-            .where(and(eq(runSessionStep.runId, runId), eq(runSessionStep.state, 'FAILED')))
-            .limit(GATE_AFFECTED_LIMIT);
-          const denied = await tx
-            .select({
-              targetSystem: runWorkItem.registrationId,
-              workItemId: runWorkItem.workItemId,
-            })
-            .from(runWorkItem)
-            .where(
-              sql`${runWorkItem.runId}=${runId} AND (${runWorkItem.diagnostic} = 'extraction-denied' OR ${runWorkItem.diagnostic} = 'extraction-scope-violation')`,
-            )
-            .limit(GATE_AFFECTED_LIMIT);
-          const deniedSteps = await tx
-            .select({ targetSystem: runSessionStep.registrationId })
-            .from(runSessionStep)
-            .where(
-              sql`${runSessionStep.runId}=${runId} AND (${runSessionStep.diagnostic} = 'reference-denied' OR ${runSessionStep.diagnostic} = 'reference-scope-violation')`,
-            )
-            .limit(GATE_AFFECTED_LIMIT);
-          return {
-            failedSessionSteps: failed.map((row) => ({ ...row, workItemId: null, record: null })),
-            denied: [
-              ...denied.map((row) => ({ ...row, record: null })),
-              ...deniedSteps.map((row) => ({ ...row, workItemId: null, record: null })),
-            ],
-          };
-        },
-
-        async readIntegrityFindings(): Promise<readonly GateFactSample[]> {
-          const rows = await tx
-            .select({ evidenceId: runEvidenceIntegrity.evidenceId })
-            .from(runEvidenceIntegrity)
-            .where(eq(runEvidenceIntegrity.runId, runId))
-            .limit(GATE_AFFECTED_LIMIT);
-          return rows.map((row) => ({
-            targetSystem: null,
-            workItemId: null,
-            record: row.evidenceId,
-          }));
-        },
-      });
-    });
+    return this.db.transaction(tx => withRunExecutionContext(tx, runId, work));
   }
 
   /**
@@ -761,4 +149,627 @@ export class PostgresAdapterExecutionRepository implements AdapterExecutionRepos
       workItems: items.map((row) => ({ ...row, evidence: byId.get(row.evidenceId ?? '') ?? null })),
     };
   }
+}
+
+/** Shared transactional Observation, Evidence, Gate and Result context for every producer.
+ * The caller supplies the transaction; all producers take the same Run lock and use these
+ * exact writes. Agent execution can add its own checkpoint without duplicating audit rules.
+ */
+export async function withRunExecutionContext<T>(
+  tx: Transaction,
+  runId: string,
+  work: (context: AdapterExecutionContext) => Promise<T>,
+): Promise<T> {
+  if (!isUuidText(runId)) throw new Error('Invalid Run identity');
+  await tx.select({ id: auditRun.runId }).from(auditRun).where(eq(auditRun.runId, runId)).for('update');
+  const run = await new DrizzleRunRepository(tx).findRun(runId);
+  const progress = (
+    await tx.select().from(populationExecution).where(eq(populationExecution.runId, runId))
+  )[0];
+  const stage = (await tx.select().from(runExecution).where(eq(runExecution.runId, runId)))[0];
+  const steps = await tx
+    .select()
+    .from(runSessionStep)
+    .where(eq(runSessionStep.runId, runId))
+    .orderBy(asc(runSessionStep.ordinal));
+  const items = await tx
+    .select()
+    .from(runWorkItem)
+    .where(eq(runWorkItem.runId, runId))
+    .orderBy(asc(runWorkItem.ordinal));
+  const evidence = await tx.select().from(runEvidence).where(eq(runEvidence.runId, runId));
+
+  // `population_execution` and `population_evidence` are the population stage's rows;
+  // only its status and its start time matter here, and the start time is the Run
+  // deadline this stage inherits rather than restarting.
+  const population: PopulationCheckpoint | null = progress
+    ? ({
+        stepId: progress.stepId,
+        attemptId: progress.attemptId,
+        revision: progress.revision,
+        status: progress.status as PopulationCheckpoint['status'],
+        attempts: progress.attempts,
+        startedAt: progress.startedAt.toISOString(),
+        attemptStartedAt: progress.attemptStartedAt.toISOString(),
+        leaseUntil: progress.leaseUntil.toISOString(),
+        diagnostic: progress.diagnostic,
+        evidenceId: '',
+        objectKey: '',
+        envelopeKey: '',
+        rawDigest: null,
+        envelopeDigest: null,
+        size: null,
+        evidenceRequired: true,
+        capturedAt: null,
+        captureMethod: null,
+        captureTimeSource: null,
+      } satisfies PopulationCheckpoint)
+    : null;
+
+  return work({
+    run,
+    population,
+    ...evidencePackageContext(tx, runId),
+    // The Gate's and the Result's shared reads: one implementation, both stages.
+    ...runResultContext(tx, runId),
+    checkpoint: stage
+      ? {
+          revision: stage.revision,
+          status: stage.status as AdapterExecutionCheckpoint['status'],
+          attempts: stage.attempts,
+          runStartedAt: stage.runStartedAt.toISOString(),
+          startedAt: stage.startedAt.toISOString(),
+          attemptStartedAt: stage.attemptStartedAt.toISOString(),
+          leaseUntil: stage.leaseUntil.toISOString(),
+          attemptId: stage.attemptId,
+          diagnostic: stage.diagnostic,
+        }
+      : null,
+    sessionSteps: steps.map(
+      (row): SessionStepRecord => ({
+        stepId: row.stepId,
+        ordinal: row.ordinal,
+        registrationId: row.registrationId,
+        displayName: row.displayName,
+        action: row.action as SessionStepRecord['action'],
+        state: row.state as SessionStepRecord['state'],
+        attempts: row.attempts,
+        diagnostic: row.diagnostic,
+        evidenceId: row.evidenceId,
+      }),
+    ),
+    workItems: items.map(
+      (row): WorkItemRecord => ({
+        workItemId: row.workItemId,
+        subjectKey: row.subjectKey,
+        stepId: row.stepId,
+        ordinal: row.ordinal,
+        registrationId: row.registrationId,
+        displayName: row.displayName,
+        state: row.state as WorkItemRecord['state'],
+        attempts: row.attempts,
+        cycles: row.cycles,
+        diagnostic: row.diagnostic,
+        evidenceId: row.evidenceId,
+        observations: row.observations,
+      }),
+    ),
+    evidence: evidence.map(
+      (row): AdapterEvidenceRecord => ({
+        evidenceId: row.evidenceId,
+        kind: row.kind as AdapterEvidenceRecord['kind'],
+        registrationId: row.registrationId,
+        objectKey: row.objectKey,
+        mediaType: row.mediaType,
+        digest: row.digest,
+        size: row.size,
+        required: row.required,
+        state: row.state as AdapterEvidenceRecord['state'],
+        capturedAt: row.capturedAt === null ? null : row.capturedAt.toISOString(),
+        captureMethod: isEvidenceCaptureMethod(row.captureMethod) ? row.captureMethod : null,
+        captureTimeSource: isEvidenceCaptureTimeSource(row.captureTimeSource) ? row.captureTimeSource : null,
+      }),
+    ),
+    auditEvents: createAuditEventWriter(tx, new SystemClock(), new CryptoUuidV7Generator()),
+    frozenPlan: () =>
+      run
+        ? new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId)
+        : Promise.resolve(null),
+    async includedRecords(): Promise<readonly PopulationRecord[]> {
+      const rows = await tx
+        .select({ ordinal: populationRow.ordinal, values: populationRow.values })
+        .from(populationRow)
+        .where(and(eq(populationRow.runId, runId), eq(populationRow.disposition, 'included')))
+        .orderBy(asc(populationRow.ordinal))
+        .limit(POPULATION_LIMITS.rows);
+      return rows;
+    },
+    async saveCheckpoint(checkpoint, state) {
+      const values = {
+        runId,
+        revision: checkpoint.revision,
+        status: checkpoint.status,
+        attempts: checkpoint.attempts,
+        runStartedAt: new Date(checkpoint.runStartedAt),
+        startedAt: new Date(checkpoint.startedAt),
+        attemptStartedAt: new Date(checkpoint.attemptStartedAt),
+        leaseUntil: new Date(checkpoint.leaseUntil),
+        attemptId: checkpoint.attemptId,
+        diagnostic: checkpoint.diagnostic,
+      };
+      await tx
+        .insert(runExecution)
+        .values(values)
+        .onConflictDoUpdate({ target: runExecution.runId, set: values });
+      await tx.update(auditRun).set({ state }).where(eq(auditRun.runId, runId));
+    },
+    async saveEvidence(record) {
+      const { capturedAt, ...rest } = record;
+      const capture = { capturedAt: capturedAt === null ? null : new Date(capturedAt) };
+      await tx
+        .insert(runEvidence)
+        .values({ ...rest, ...capture, runId })
+        .onConflictDoUpdate({
+          target: runEvidence.evidenceId,
+          set: {
+            mediaType: record.mediaType,
+            digest: record.digest,
+            size: record.size,
+            required: record.required,
+            state: record.state,
+            // Generation 32. Carried on every save so a record that becomes REGISTERED
+            // on a later attempt gets its provenance, and one that already had it keeps
+            // exactly the instant it was captured at.
+            ...capture,
+            captureMethod: record.captureMethod,
+            captureTimeSource: record.captureTimeSource,
+          },
+        });
+    },
+    async saveSessionStep(step) {
+      const values = { ...step, runId };
+      await tx
+        .insert(runSessionStep)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [runSessionStep.runId, runSessionStep.stepId],
+          set: {
+            state: step.state,
+            attempts: step.attempts,
+            diagnostic: step.diagnostic,
+            evidenceId: step.evidenceId,
+          },
+        });
+    },
+    async saveWorkItem(item) {
+      const values = { ...item, runId };
+      await tx
+        .insert(runWorkItem)
+        .values(values)
+        .onConflictDoUpdate({
+          target: runWorkItem.workItemId,
+          set: {
+            state: item.state,
+            attempts: item.attempts,
+            cycles: item.cycles,
+            diagnostic: item.diagnostic,
+            evidenceId: item.evidenceId,
+            observations: item.observations,
+          },
+        });
+    },
+    async saveStepExecution(execution: StepExecutionRecord) {
+      const values = {
+        ...execution,
+        runId,
+        action: execution.action,
+        startedAt: new Date(execution.startedAt),
+        completedAt: execution.completedAt === null ? null : new Date(execution.completedAt),
+      };
+      await tx
+        .insert(runStepExecution)
+        .values(values)
+        .onConflictDoUpdate({
+          target: runStepExecution.stepExecutionId,
+          set: {
+            state: execution.state,
+            completedAt: values.completedAt,
+            diagnostic: execution.diagnostic,
+          },
+        });
+    },
+    async readObservations(
+      workItemId: string,
+      populationRecordKeys: readonly string[],
+    ): Promise<readonly StoredObservation[]> {
+      if (!isUuidText(workItemId) || populationRecordKeys.length === 0) return [];
+      const rows: StoredObservation[] = [];
+      // Chunked for the same reason the insert is: one statement should not carry a
+      // hundred thousand bound parameters.
+      for (let offset = 0; offset < populationRecordKeys.length; offset += OBSERVATION_CHUNK) {
+        const slice = populationRecordKeys.slice(offset, offset + OBSERVATION_CHUNK);
+        const found = await tx
+          .select()
+          .from(runObservation)
+          .where(
+            and(
+              eq(runObservation.workItemId, workItemId),
+              inArray(runObservation.populationRecordKey, slice),
+            ),
+          );
+        for (const row of found) {
+          rows.push({
+            observationId: row.observationId,
+            populationRecordKey: row.populationRecordKey,
+            digest: row.digest,
+            coverage: row.coverage as StoredObservation['coverage'],
+            // §B's retained capture time, as the COLUMN holds it now. It is outside
+            // the hashed envelope, so an edit to it leaves the digest matching and
+            // nothing else read here could show one; registration re-derives it
+            // against the row's own `observedAt`.
+            observedAtSource: row.observedAtSource,
+            // The wire record as the COLUMNS hold it now, so the caller can recompute
+            // its digest and see an edit the digest column cannot show on its own.
+            record: {
+              schemaVersion: row.schemaVersion,
+              observationId: row.observationId,
+              workItemId: row.workItemId,
+              populationRecordKey: row.populationRecordKey,
+              targetSystem: row.targetSystem,
+              found: row.found,
+              observedAt: row.observedAt.toISOString(),
+              stepExecutionId: row.stepExecutionId,
+              captureMethod: row.captureMethod,
+              matchOrigin: row.matchOrigin,
+              identity: row.identity,
+              attributes: row.attributes,
+              evidenceIds: row.evidenceIds,
+            },
+          });
+        }
+      }
+      return rows;
+    },
+    async readEvidenceStates(evidenceIds: readonly string[]): Promise<readonly EvidenceState[]> {
+      const ids = evidenceIds.filter((id) => isUuidText(id));
+      if (ids.length === 0) return [];
+      const rows = await tx
+        .select({ evidenceId: runEvidence.evidenceId, state: runEvidence.state })
+        .from(runEvidence)
+        .where(inArray(runEvidence.evidenceId, ids));
+      return rows.map((row) => ({
+        evidenceId: row.evidenceId,
+        state: row.state as EvidenceState['state'],
+      }));
+    },
+    async saveObservations(rows: readonly RegisteredObservation[]) {
+      // `DO NOTHING` on (work_item_id, population_record_key): a redelivered job that
+      // reaches this line again writes no second Observation for the same record.
+      // Order is preserved — the slices are taken in order and each insert keeps it —
+      // so a batch too large for one statement is still one atomic, ordered batch.
+      for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
+        const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
+          observationId: row.record.observationId,
+          runId,
+          workItemId: row.record.workItemId,
+          schemaVersion: row.record.schemaVersion,
+          populationRecordKey: row.record.populationRecordKey,
+          targetSystem: row.record.targetSystem,
+          found: row.record.found,
+          observedAt: new Date(row.record.observedAt),
+          stepExecutionId: row.record.stepExecutionId,
+          captureMethod: row.record.captureMethod,
+          matchOrigin: row.record.matchOrigin,
+          identity: row.record.identity,
+          attributes: [...row.record.attributes],
+          evidenceIds: [...row.record.evidenceIds],
+          digest: row.digest,
+          coverage: row.coverage,
+          corroboration: row.corroboration,
+          observedAtSource: row.observedAtSource,
+        }));
+        if (batch.length > 0) {
+          await tx
+            .insert(runObservation)
+            .values(batch)
+            .onConflictDoNothing({
+              target: [runObservation.workItemId, runObservation.populationRecordKey],
+            });
+        }
+      }
+    },
+    async saveObservationChecks(rows: readonly ObservationCheckRow[]) {
+      for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
+        const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
+          observationId: row.observationId,
+          runId,
+          checkName: row.check,
+          outcome: row.outcome,
+          diagnostic: row.diagnostic,
+        }));
+        if (batch.length > 0) {
+          await tx
+            .insert(runObservationCheck)
+            .values(batch)
+            .onConflictDoNothing({
+              target: [runObservationCheck.observationId, runObservationCheck.checkName],
+            });
+        }
+      }
+    },
+    async saveObservationEvaluations(rows: readonly ObservationEvaluationRow[]) {
+      for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
+        const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
+          observationId: row.observationId,
+          coverage: row.coverage,
+          corroboration: row.corroboration,
+          runId,
+          conditionId: row.evaluation.conditionId,
+          origin: row.evaluation.origin,
+          value: row.evaluation.value,
+          confirmation: row.evaluation.confirmation,
+          confidence: row.evaluation.confidence,
+          rationale: row.evaluation.rationale,
+          diagnostic: row.evaluation.diagnostic,
+          evidenceIds: [...row.evaluation.evidenceIds],
+        }));
+        if (batch.length > 0) {
+          await tx
+            .insert(runObservationEvaluation)
+            .values(batch)
+            .onConflictDoNothing({
+              target: [
+                runObservationEvaluation.observationId,
+                runObservationEvaluation.conditionId,
+              ],
+            });
+        }
+      }
+    },
+    async saveExceptions(rows: readonly RaisedException[]) {
+      for (let offset = 0; offset < rows.length; offset += OBSERVATION_CHUNK) {
+        const batch = rows.slice(offset, offset + OBSERVATION_CHUNK).map((row) => ({
+          exceptionId: row.exceptionId,
+          runId,
+          observationId: row.observationId,
+          workItemId: row.workItemId,
+          targetSystem: row.targetSystem,
+          populationRecordKey: row.populationRecordKey,
+          conditionIds: [...row.conditionIds],
+          diagnostics: [...row.diagnostics],
+          fingerprint: row.fingerprint,
+          fingerprintKeyId: row.fingerprintKeyId,
+          raisedAt: new Date(row.raisedAt),
+        }));
+        if (batch.length > 0) {
+          // `DO NOTHING` on the Observation: the first Exception recorded for a record
+          // stands and a redelivery adds nothing. There is no update path at all —
+          // generation 23 refuses one below the command, in a trigger.
+          await tx
+            .insert(runException)
+            .values(batch)
+            .onConflictDoNothing({ target: runException.observationId });
+        }
+      }
+    },
+    async notifyTimeline(sequence: number) {
+      await tx.execute(
+        sql`SELECT pg_notify('run_timeline',${JSON.stringify({ runId, sequence })})`,
+      );
+    },
+
+    /* ------------------------------------------------------------ Story 3.8 --- */
+
+    async readStepExecutionCount(): Promise<number> {
+      const rows = await tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(runStepExecution)
+        .where(eq(runStepExecution.runId, runId));
+      return rows[0]?.total ?? 0;
+    },
+
+    async saveGateChecks(rows: readonly GateCheckRow[]) {
+      if (rows.length === 0) return;
+      const decidedAt = new Date();
+      // `DO NOTHING`: the FIRST Gate wins, and a Gate failure is never repaired by
+      // re-running a check. Generation 24 refuses an UPDATE below the command as well.
+      await tx
+        .insert(runGateCheck)
+        .values(
+          rows.map((row) => ({
+            runId,
+            checkName: row.check,
+            outcome: row.outcome,
+            diagnostics: [...row.diagnostics],
+            targetSystems: [...row.targetSystems],
+            workItems: [...row.workItems],
+            records: [...row.records],
+            total: row.total,
+            decidedAt,
+          })),
+        )
+        .onConflictDoNothing({ target: [runGateCheck.runId, runGateCheck.checkName] });
+    },
+
+    async readFailedObservationChecks() {
+      // The EXACT total per check name, and a bounded sample of the identities the
+      // Result names. Two statements rather than one, because an exact count and a
+      // bounded sample are two different questions and `LIMIT` answers only the second.
+      const totals = await tx
+        .select({ check: runObservationCheck.checkName, total: sql<number>`count(*)::int` })
+        .from(runObservationCheck)
+        .where(
+          and(
+            eq(runObservationCheck.runId, runId),
+            eq(runObservationCheck.outcome, 'FAIL'),
+          ),
+        )
+        .groupBy(runObservationCheck.checkName);
+      const tallies: Partial<Record<ObservationCheckName, GateFactTally>> = {};
+      for (const row of totals) {
+        const samples = await tx
+          .select({
+            targetSystem: runObservation.targetSystem,
+            workItemId: runObservation.workItemId,
+            record: runObservation.populationRecordKey,
+          })
+          .from(runObservationCheck)
+          .innerJoin(
+            runObservation,
+            eq(runObservation.observationId, runObservationCheck.observationId),
+          )
+          .where(
+            and(
+              eq(runObservationCheck.runId, runId),
+              eq(runObservationCheck.outcome, 'FAIL'),
+              eq(runObservationCheck.checkName, row.check),
+            ),
+          )
+          .orderBy(asc(runObservation.populationRecordKey))
+          .limit(GATE_AFFECTED_LIMIT);
+        tallies[row.check as ObservationCheckName] = { total: row.total, sample: samples };
+      }
+      return tallies;
+    },
+
+    async readConditionGaps(expected: number): Promise<GateFactTally> {
+      if (expected <= 0) return { total: 0, sample: [] };
+      // An Observation with fewer evaluations than the version froze conditions has a
+      // condition nobody decided. Counted in SQL rather than by loading every
+      // evaluation: a Run can hold a hundred thousand Observations.
+      //
+      // TWO statements, exactly as `readFailedObservationChecks` and `readUnnamedValues`
+      // do it, because an EXACT total and a bounded sample are two different questions
+      // and `LIMIT` answers only the second. This read used to take `rows.length` after
+      // a `LIMIT`, so a Run with more gaps than the cap reported the cap as its total —
+      // a §H row whose count is not a count, on a Result and inside an immutable event.
+      // Built per statement rather than shared: one aliased subquery object bound into
+      // two different queries is a drizzle detail, and this costs nothing.
+      const evaluated = () =>
+        tx
+          .select({
+            observationId: runObservationEvaluation.observationId,
+            total: sql<number>`count(*)::int`.as('evaluated'),
+          })
+          .from(runObservationEvaluation)
+          .where(eq(runObservationEvaluation.runId, runId))
+          .groupBy(runObservationEvaluation.observationId)
+          .as('gaps');
+      const counting = evaluated();
+      const totals = await tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(runObservation)
+        .leftJoin(counting, eq(counting.observationId, runObservation.observationId))
+        .where(sql`${runObservation.runId}=${runId} AND coalesce(${counting.total},0) < ${expected}`);
+      const total = totals[0]?.total ?? 0;
+      if (total === 0) return { total: 0, sample: [] };
+      const sampling = evaluated();
+      const rows = await tx
+        .select({
+          targetSystem: runObservation.targetSystem,
+          workItemId: runObservation.workItemId,
+          record: runObservation.populationRecordKey,
+        })
+        .from(runObservation)
+        .leftJoin(sampling, eq(sampling.observationId, runObservation.observationId))
+        .where(sql`${runObservation.runId}=${runId} AND coalesce(${sampling.total},0) < ${expected}`)
+        .orderBy(asc(runObservation.populationRecordKey))
+        .limit(GATE_AFFECTED_LIMIT);
+      return { total, sample: rows };
+    },
+
+    async readUnnamedValues(): Promise<GateFactTally> {
+      // §B's own sentence, imported rather than retyped: "when a compiled condition
+      // meets an attribute value outside the set it names, the condition evaluates
+      // Unevaluated with diagnostic `rule does not name value <v>`". A value the
+      // condition names and could NOT read is a different defect on a different §H row
+      // — `missing or invalid Observation field <x>` — and matching that here would put
+      // every ambiguous record on the unnamed-value row as well.
+      const pattern = `%${RULE_DOES_NOT_NAME_VALUE}%`;
+      const totals = await tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(runObservationEvaluation)
+        .where(
+          sql`${runObservationEvaluation.runId}=${runId} AND ${runObservationEvaluation.diagnostic} LIKE ${pattern}`,
+        );
+      const total = totals[0]?.total ?? 0;
+      if (total === 0) return { total: 0, sample: [] };
+      const rows = await tx
+        .select({
+          targetSystem: runObservation.targetSystem,
+          workItemId: runObservation.workItemId,
+          record: runObservation.populationRecordKey,
+        })
+        .from(runObservationEvaluation)
+        .innerJoin(
+          runObservation,
+          eq(runObservation.observationId, runObservationEvaluation.observationId),
+        )
+        .where(
+          sql`${runObservationEvaluation.runId}=${runId} AND ${runObservationEvaluation.diagnostic} LIKE ${pattern}`,
+        )
+        .orderBy(asc(runObservation.populationRecordKey))
+        .limit(GATE_AFFECTED_LIMIT);
+      return { total, sample: rows };
+    },
+
+    async readIncompleteExtractions(): Promise<readonly GateFactSample[]> {
+      const rows = await tx
+        .select({
+          targetSystem: runWorkItem.registrationId,
+          workItemId: runWorkItem.workItemId,
+        })
+        .from(runWorkItem)
+        .where(
+          sql`${runWorkItem.runId}=${runId} AND ${runWorkItem.diagnostic} LIKE '%extraction-incomplete%'`,
+        )
+        .limit(GATE_AFFECTED_LIMIT);
+      return rows.map((row) => ({ ...row, record: null }));
+    },
+
+    async readAccessFailures() {
+      const failed = await tx
+        .select({ targetSystem: runSessionStep.registrationId })
+        .from(runSessionStep)
+        .where(and(eq(runSessionStep.runId, runId), eq(runSessionStep.state, 'FAILED')))
+        .limit(GATE_AFFECTED_LIMIT);
+      const denied = await tx
+        .select({
+          targetSystem: runWorkItem.registrationId,
+          workItemId: runWorkItem.workItemId,
+        })
+        .from(runWorkItem)
+        .where(
+          sql`${runWorkItem.runId}=${runId} AND (${runWorkItem.diagnostic} = 'extraction-denied' OR ${runWorkItem.diagnostic} = 'extraction-scope-violation')`,
+        )
+        .limit(GATE_AFFECTED_LIMIT);
+      const deniedSteps = await tx
+        .select({ targetSystem: runSessionStep.registrationId })
+        .from(runSessionStep)
+        .where(
+          sql`${runSessionStep.runId}=${runId} AND (${runSessionStep.diagnostic} = 'reference-denied' OR ${runSessionStep.diagnostic} = 'reference-scope-violation')`,
+        )
+        .limit(GATE_AFFECTED_LIMIT);
+      return {
+        failedSessionSteps: failed.map((row) => ({ ...row, workItemId: null, record: null })),
+        denied: [
+          ...denied.map((row) => ({ ...row, record: null })),
+          ...deniedSteps.map((row) => ({ ...row, workItemId: null, record: null })),
+        ],
+      };
+    },
+
+    async readIntegrityFindings(): Promise<readonly GateFactSample[]> {
+      const rows = await tx
+        .select({ evidenceId: runEvidenceIntegrity.evidenceId })
+        .from(runEvidenceIntegrity)
+        .where(eq(runEvidenceIntegrity.runId, runId))
+        .limit(GATE_AFFECTED_LIMIT);
+      return rows.map((row) => ({
+        targetSystem: null,
+        workItemId: null,
+        record: row.evidenceId,
+      }));
+    },
+  });
 }

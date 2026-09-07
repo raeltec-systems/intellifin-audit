@@ -3,6 +3,7 @@ import { hostname } from 'node:os';
 
 import {
   ConfigError,
+  PostgresWaitRepository, startWaitWorker, startWaitRecovery,
   PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
   PostgresWorkspaceRepository, SystemClock,
@@ -66,6 +67,7 @@ async function main(): Promise<void> {
   let interval: NodeJS.Timeout | undefined;
   let notificationInterval: NodeJS.Timeout | undefined;
   let notificationDelivery: Promise<void> | undefined;
+  let stopWaitRecovery: (() => Promise<void>) | undefined;
   let stopRecovery: (() => void) | undefined;
   let stopPopulationRecovery: (() => Promise<void>) | undefined;
   let stopIntegritySweep: (() => Promise<void>) | undefined;
@@ -81,6 +83,7 @@ async function main(): Promise<void> {
     if (notificationInterval) clearInterval(notificationInterval);
     await notificationDelivery;
     stopRecovery?.();
+    await stopWaitRecovery?.();
     await stopPopulationRecovery?.();
     await stopIntegritySweep?.();
     await stopWorkspaceReaper?.();
@@ -153,6 +156,9 @@ async function main(): Promise<void> {
   // a capability that is "off", it is a Run that never moves and never says why.
   const populationRepository = new PostgresPopulationRepository(db);
   const clock = new SystemClock();
+  const waits = new PostgresWaitRepository(db);
+  await startWaitWorker(queue, waits, clock);
+  stopWaitRecovery = startWaitRecovery(waits, clock, () => telemetry.error('Wait recovery failed'));
   const stoppable = { repository: populationRepository, clock };
   if (evidence.enabled) {
     const store = createS3EvidenceStore(evidence.config);

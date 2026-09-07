@@ -62,3 +62,5 @@ export * from './runs/run-gate.js';
 export * from './runs/complete-run.js';
 export * from './runs/cancel-run.js';
 export * from './runs/agent-ports.js';
+export * from './runs/agent-work-ports.js';
+export * from './runs/waits.js';

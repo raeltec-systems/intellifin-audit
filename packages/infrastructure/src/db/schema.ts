@@ -1,4 +1,4 @@
-import type { PlanDerivationFields } from '@intellifin/application';
+import type { PlanDerivationFields, AgentModelIdentity, AgentModelResponse, EscalationOption, AgentWorkCheckpoint } from '@intellifin/application';
 import type { VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
 import { sql } from 'drizzle-orm';
 import {
@@ -763,6 +763,7 @@ export const procedureSuccession = pgTable('procedure_succession', {
 ]);
 
 export const auditRun = pgTable('audit_run', {
+  revision: integer('revision').notNull().default(0),
   requestToken: uuid('request_token').notNull(),
   runId: uuid('run_id').primaryKey(), correlationId: uuid('correlation_id').notNull(),
   procedureId: uuid('procedure_id').notNull().references(() => procedure.procedureId),
@@ -1132,12 +1133,13 @@ export const runWorkItem = pgTable('run_work_item', {
   workItemId: uuid('work_item_id').primaryKey(),
   runId: uuid('run_id').notNull().references(() => auditRun.runId),
   stepId: text('step_id').notNull(), ordinal: integer('ordinal').notNull(),
+  subjectKey: text('subject_key'),
   registrationId: text('registration_id').notNull(), displayName: text('display_name').notNull(),
   state: text('state').notNull(), attempts: integer('attempts').notNull(), cycles: integer('cycles').notNull(),
   diagnostic: text('diagnostic'), evidenceId: uuid('evidence_id').references(() => runEvidence.evidenceId),
   observations: integer('observations').notNull(),
 }, t=>[
-  uniqueIndex('run_work_item_run_step').on(t.runId,t.stepId),
+  uniqueIndex('run_work_item_run_step').on(t.runId,t.stepId,sql`coalesce(${t.subjectKey},'')`),
   check('run_work_item_state',sql`${t.state} IN ('PENDING','IN_PROGRESS','AWAITING','OBSERVED','UNINSPECTED','AMBIGUOUS','FAILED')`),
   // Two bounded retry cycles: the frozen NFR-8 cycle and the owner's automatic second.
   check('run_work_item_counts',sql`${t.ordinal}>0 AND ${t.attempts}>=0 AND ${t.cycles}>=0 AND ${t.cycles}<=2 AND ${t.observations}>=0`),
@@ -1508,4 +1510,61 @@ export const runResult = pgTable('run_result', {
   check('run_result_pass_requires_gate',sql`${t.outcome} <> 'PASS' OR ${t.gatePassed}`),
   check('run_result_scope',sql`${t.scope} IS NULL OR length(${t.scope}) <= 10000`),
   check('run_result_publication',sql`coalesce(jsonb_typeof(${t.publication})='object',false)`),
+]);
+
+/** Agent work progress extends the shared audit engine; no duplicate Observation tables. */
+export const runAgentWork = pgTable('run_agent_work', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull(), status: text('status').notNull(),
+  runStartedAt: timestamp('run_started_at',{withTimezone:true}).notNull(),
+  leaseUntil: timestamp('lease_until',{withTimezone:true}).notNull(),
+  attemptId: uuid('attempt_id').notNull(),
+  workItemId: uuid('work_item_id').references(() => runWorkItem.workItemId),
+  waitId: uuid('wait_id'),
+  pendingWait: jsonb('pending_wait').$type<AgentWorkCheckpoint['pendingWait']>(),
+  nextTurn: integer('next_turn').notNull(), tokens: integer('tokens').notNull(),
+  reservedTokens: integer('reserved_tokens').notNull(),
+  model: jsonb('model').$type<AgentModelIdentity>(), diagnostic: text('diagnostic'),
+}, t => [
+  check('run_agent_work_status',sql`${t.status} IN ('EXECUTING','RETRY','WAITING','COMPLETE','TERMINAL')`),
+  check('run_agent_work_counts',sql`${t.revision}>0 AND ${t.nextTurn}>0 AND ${t.tokens}>=0 AND ${t.reservedTokens}>=0`),
+]);
+
+export const runAgentTurn = pgTable('run_agent_turn', {
+  runId: uuid('run_id').notNull().references(() => auditRun.runId,{onDelete:'cascade'}),
+  sequence: integer('sequence').notNull(),
+  workItemId: uuid('work_item_id').notNull().references(() => runWorkItem.workItemId),
+  stepExecutionId: uuid('step_execution_id').notNull().references(() => runStepExecution.stepExecutionId),
+  snapshotEvidenceId: uuid('snapshot_evidence_id').notNull().references(() => runEvidence.evidenceId),
+  status: text('status').notNull(), reservedTokens: integer('reserved_tokens').notNull(),
+  response: jsonb('response').$type<AgentModelResponse>(), diagnostic: text('diagnostic'),
+}, t => [
+  primaryKey({columns:[t.runId,t.sequence]}),
+  check('run_agent_turn_status',sql`${t.status} IN ('RESERVED','COMPLETED','FAILED')`),
+  check('run_agent_turn_counts',sql`${t.sequence}>0 AND ${t.reservedTokens}>0`),
+  check('run_agent_turn_response',sql`(${t.status}='COMPLETED')=(${t.response} IS NOT NULL)`),
+]);
+
+/** Capture provenance is shared Evidence metadata, with links to the actual reading action. */
+export const runEvidenceCapture = pgTable('run_evidence_capture', {
+  evidenceId: uuid('evidence_id').primaryKey().references(() => runEvidence.evidenceId),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  toolActionId: uuid('tool_action_id').notNull().references(() => runToolAction.toolActionId),
+  sourceLocation: text('source_location').notNull(),
+});
+
+/** A kind-agnostic durable wait. The partial index permits only one open wait per Run. */
+export const runWait = pgTable('run_wait', {
+  waitId: uuid('wait_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  kind: text('kind').notNull(), options: jsonb('options').notNull().$type<readonly EscalationOption[]>(),
+  deadline: timestamp('deadline',{withTimezone:true}).notNull(),
+  closedAt: timestamp('closed_at',{withTimezone:true}), closureKind: text('closure_kind'),
+  answerOptionId: text('answer_option_id'), actor: text('actor'),
+}, t => [
+  uniqueIndex('run_wait_one_open').on(t.runId).where(sql`${t.closedAt} IS NULL`),
+  index('run_wait_deadline').on(t.deadline).where(sql`${t.closedAt} IS NULL`),
+  check('run_wait_kind',sql`${t.kind} IN ('choose-candidate','unnamed-value','retry-or-skip')`),
+  check('run_wait_options',sql`jsonb_typeof(${t.options})='array' AND jsonb_array_length(${t.options})>0`),
+  check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT NULL AND ${t.closureKind}='answer' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT NULL AND ${t.actor} IS NOT NULL AND ${t.closureKind}='timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor}='wait-wake')`),
 ]);

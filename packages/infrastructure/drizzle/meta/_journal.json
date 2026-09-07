@@ -239,6 +239,13 @@
       "when": 1788789991696,
       "tag": "0033_ancient_karen_page",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788791947593,
+      "tag": "0034_lethal_romulus",
+      "breakpoints": true
     }
   ]
 }

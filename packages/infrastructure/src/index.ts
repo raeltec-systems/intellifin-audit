@@ -11,6 +11,7 @@ export * from './registrations/index.js';
 export * from './sources/index.js';
 export * from './telemetry/index.js';
 export * from './notifications/notification-repository.js';
+export * from './notifications/email-notification-sender.js';
 export * from './runs/run-repository.js';
 export * from './runs/run-list-repository.js';
 export * from './runs/run-detail-repository.js';
@@ -44,3 +45,6 @@ export * from './runs/workspace-reaper.js';
 // Story 4.1 adds ./browser: the Agent Workspace implementation drives a real browser and
 // holds the provider API key, which is a capability the web must never be able to reach.
 // `no-browser-execution-in-web` fails the build on any import from apps/web.
+
+export * from './runs/wait-repository.js';
+export * from './runs/wait-wake.js';
