@@ -1,0 +1,65 @@
+name: Engineering workspace handoff
+
+# Temporary, read-only handoff for the owner's authorized Epic 4 continuation.
+# No environment data, credentials, repository settings or deployment is exported.
+# Remove this workflow before release; archives expire after one day.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/engineering-snapshot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.head_ref == 'codex/epic-4-agent-runs' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+      - name: Install pinned development dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Archive tracked Git objects and installed tools only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/handoff"
+          git bundle create "$RUNNER_TEMP/handoff/source.bundle" --all
+          find . -type d -name node_modules -prune -print0 > "$RUNNER_TEMP/dependency-dirs"
+          tar --null -T "$RUNNER_TEMP/dependency-dirs" -czf "$RUNNER_TEMP/handoff/dependencies.tgz"
+          cp "$(command -v node)" "$RUNNER_TEMP/handoff/node"
+          gzip "$RUNNER_TEMP/handoff/node"
+          npm pack pnpm@11.25.0 --pack-destination "$RUNNER_TEMP/handoff"
+          sha256sum "$RUNNER_TEMP/handoff/"* > "$RUNNER_TEMP/handoff/SHA256SUMS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engineering-source
+          path: ${{ runner.temp }}/handoff/source.bundle
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engineering-dependencies
+          path: ${{ runner.temp }}/handoff/dependencies.tgz
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engineering-runtime
+          path: |
+            ${{ runner.temp }}/handoff/node.gz
+            ${{ runner.temp }}/handoff/pnpm-*.tgz
+            ${{ runner.temp }}/handoff/SHA256SUMS
+          retention-days: 1
+          if-no-files-found: error
