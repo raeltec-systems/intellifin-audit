@@ -82,6 +82,7 @@ export function RegistrationForm({
   const nameId = useId();
   const kindId = useId();
   const originsId = useId();
+  const authenticationDestinationId = useId();
   const identityId = useId();
   const credentialId = useId();
   const actionsId = useId();
@@ -93,6 +94,9 @@ export function RegistrationForm({
   const [displayName, setDisplayName] = useState(registration?.displayName ?? '');
   const [kind, setKind] = useState<string>(registration?.kind ?? FIRST_KIND);
   const [origins, setOrigins] = useState(listToLines(registration?.allowedOrigins ?? []));
+  const [authenticationDestination, setAuthenticationDestination] = useState(
+    registration?.authenticationDestination ?? '',
+  );
   const [applicationIdentity, setApplicationIdentity] = useState(
     registration?.applicationIdentity ?? '',
   );
@@ -135,6 +139,9 @@ export function RegistrationForm({
       permittedActions: actions,
       attributeLabelPatterns: linesToList(patterns),
       secondaryKey,
+      ...(kind === 'web' && authenticationDestination.trim() !== ''
+        ? { authenticationDestination }
+        : {}),
       note,
       status,
     };
@@ -162,6 +169,7 @@ export function RegistrationForm({
       if (result.ok && !editing) {
         setDisplayName('');
         setOrigins('');
+        setAuthenticationDestination('');
         setApplicationIdentity('');
         setCredentialRef('');
         setActions([]);
@@ -195,7 +203,20 @@ export function RegistrationForm({
    * appear; the moment one does, this sentence is already here.
    */
   let changesConfiguration = false;
-  try { changesConfiguration = registration !== null && registrationDigest({ kind: kind as import('@intellifin/domain').TargetSystemKind, allowedOrigins: linesToList(origins), applicationIdentity, credentialRef, permittedActions: actions as import('@intellifin/domain').PermittedReadAction[], attributeLabelPatterns: linesToList(patterns), secondaryKey }) !== registration.digest; } catch { /* invalid fields are refused by the command */ }
+  try {
+    changesConfiguration = registration !== null && registrationDigest({
+      kind: kind as import('@intellifin/domain').TargetSystemKind,
+      allowedOrigins: linesToList(origins),
+      applicationIdentity,
+      credentialRef,
+      permittedActions: actions as import('@intellifin/domain').PermittedReadAction[],
+      attributeLabelPatterns: linesToList(patterns),
+      secondaryKey,
+      ...(kind === 'web' && authenticationDestination.trim() !== ''
+        ? { authenticationDestination }
+        : {}),
+    }) !== registration.digest;
+  } catch { /* invalid fields are refused by the command */ }
   const referencesWarning =
     changesConfiguration && referencingProcedures > 0 ? ` ${registrationChangeWarning(referencingProcedures)}` : '';
 
@@ -278,6 +299,28 @@ export function RegistrationForm({
               </p>
             </div>
           )}
+
+          {kind === 'web' ? (
+            <div className="ls-dialog__field">
+              <label htmlFor={authenticationDestinationId}>
+                Authentication destination (optional)
+              </label>
+              <input
+                className="ls-input"
+                id={authenticationDestinationId}
+                name="authenticationDestination"
+                type="url"
+                autoComplete="off"
+                aria-describedby={`${authenticationDestinationId}-hint`}
+                value={authenticationDestination}
+                onChange={(event) => setAuthenticationDestination(event.target.value)}
+              />
+              <p className="ls-caption" id={`${authenticationDestinationId}-hint`}>
+                Exact query-free HTTPS or HTTP form action inside an allowed origin. An
+                empty value keeps legacy compatibility; credential use then fails closed.
+              </p>
+            </div>
+          ) : null}
 
           <div className="ls-dialog__field">
             <label htmlFor={credentialId}>Credential reference</label>

@@ -274,6 +274,34 @@ function isQueryFreeDestination(destination: string): boolean {
 }
 
 /**
+ * A configured authentication endpoint is a full HTTP(S) URL with no query, fragment or
+ * URL credentials. The query-free rule prevents a signed or record URL from becoming part
+ * of the frozen contract and gives the form guard one exact request target to compare with
+ * the browser's resolved action.
+ */
+function isValidAuthenticationDestination(value: unknown): value is string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2048 ||
+    /[\s\u0000-\u001f\u007f]/u.test(value) ||
+    !isQueryFreeDestination(value)
+  ) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Read the optional caller-supplied frozen authentication endpoint without trusting its type. */
+function requestedAuthenticationDestination(action: BrowserToolAction): unknown {
+  return (action as BrowserToolAction & { readonly authenticationDestination?: unknown })
+    .authenticationDestination;
+}
+
+/**
  * The frozen egress allowlist, compiled once, as a predicate over a destination.
  *
  * The rule is `withinOrigin`'s — the same authority-plus-path-boundary rule the adapter
@@ -661,6 +689,9 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (action.action === 'search' && action.credential !== null) {
       throw new BrowserActionError('contract');
     }
+    const requestedAuthentication =
+      action.credential === null ? null : requestedAuthenticationDestination(action);
+    let authenticationDestination: string | null = null;
     const live = this.live.get(ref.workspaceId);
     // A workspace belongs to ONE Run and to one mode, exactly as `attach` requires.
     if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode) {
@@ -669,6 +700,19 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     if (!live.browser.isConnected()) {
       this.live.delete(ref.workspaceId);
       throw new BrowserActionError('unavailable');
+    }
+    // A configured endpoint outside this action's frozen target is a scope violation even if
+    // the workspace union allowlist contains it.
+    if (action.credential !== null) {
+      if (!isValidAuthenticationDestination(requestedAuthentication)) {
+        // A legacy target may omit the endpoint. Refuse credential use rather than selecting a
+        // form action from retrieved page content.
+        throw new BrowserActionError('contract');
+      }
+      authenticationDestination = requestedAuthentication;
+      if (!withinFrozenOrigin(action.destination, authenticationDestination)) {
+        throw new BrowserActionError('scope');
+      }
     }
     const timeout = Math.max(1, Math.min(timeoutMs, 600_000));
     const deadline = Date.now() + timeout;
@@ -747,8 +791,18 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       // the navigation it caused has settled. A workspace that kept it would present it on
       // every later request of the Run, which is the opposite of just in time.
       if (action.credential !== null && response !== null) {
+        if (authenticationDestination === null) throw new BrowserActionError('contract');
         response = await withActionDeadline(
-          () => signIn(live, page!, action.destination, action.credential, timeout, response!, deadline),
+          () => signIn(
+            live,
+            page!,
+            action.destination,
+            authenticationDestination,
+            action.credential,
+            timeout,
+            response!,
+            deadline,
+          ),
           deadline,
         );
       }
@@ -1490,21 +1544,22 @@ async function captureArtifacts(
  * serves its sign-in form. Nothing here guesses a path, follows a link or reads a location
  * out of the page: the destination is the one the Procedure Version froze and the gate
  * already authorized, and the only thing taken from the document is the form's own
- * declaration of where it posts, which is then checked against that same frozen origin.
+ * declaration of where it posts, which is then checked against the exact authentication
+ * destination frozen with that registration.
  *
  * **A stated mechanism contract, not a heuristic.** Exactly one `<form>` carrying exactly
  * one `<input type="password">` and exactly one submit control; the form must declare
- * `POST`; its action, and the submitter's own `formaction`, must be inside the
- * destination's own frozen origin. Anything else is refused rather than guessed at — a
+ * `POST`; its action must remain inside the Target's frozen origin, and the submitter's
+ * effective action must equal the exact configured authentication URL. A submitter override
+ * is therefore allowed only when it names that exact URL. Anything else is refused rather than guessed at — a
  * mechanism that picked one of several forms would be choosing, on a page a Target System
  * controls, where a credential goes.
  *
- * The origin check is what the interception's header injection used to do, and it is why
- * that injection could be removed rather than left unreachable: a plan naming two web
- * Target Systems has BOTH their origins in the workspace allowlist, so a form on one
- * system's page pointing at the other's origin would hand it the first one's credential.
- * `withinFrozenOrigin` is the same authority-plus-path-boundary rule the gate applies, so
- * there is one answer to "inside the frozen origin" and not two.
+ * The exact endpoint check is stronger than the workspace origin allowlist: a plan naming
+ * two web Target Systems has BOTH origins in the workspace union, but a form on one system
+ * must still be unable to choose a business-write path under its own origin. The configured
+ * URL is checked against the target's frozen origin as well, so the browser and gate retain
+ * one answer to "inside the frozen target".
  *
  * The value exists in `enterCredential` and nowhere else — the same just-in-time shape the
  * header presentation had, one presentation along.
@@ -1513,6 +1568,7 @@ async function signIn(
   live: LiveWorkspace,
   page: Page,
   destination: string,
+  authenticationDestination: string,
   credential: ResolvedCredential,
   timeoutMs: number,
   landed: Response,
@@ -1522,6 +1578,12 @@ async function signIn(
   // A redirect into another configured Target System cannot establish this action's target
   // session, even if that other page happens to carry the approved account marker.
   if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
+  if (
+    !isValidAuthenticationDestination(authenticationDestination) ||
+    !withinFrozenOrigin(destination, authenticationDestination)
+  ) {
+    throw new BrowserActionError('contract');
+  }
 
   // Already signed in: the system answered the navigation and the workspace holds a session
   // for this origin, so there is nothing to enter and nothing to submit. The IDEMPOTENT
@@ -1568,8 +1630,17 @@ async function signIn(
   }
   if (formMethod.toUpperCase() !== 'POST') throw new BrowserActionError('scope');
   if (submitterDetails.formMethod.toUpperCase() !== 'POST') throw new BrowserActionError('scope');
-  if (!withinFrozenOrigin(destination, formAction)) throw new BrowserActionError('scope');
-  if (!withinFrozenOrigin(destination, submitterDetails.formAction)) throw new BrowserActionError('scope');
+  // The page may declare a same-origin business endpoint, so origin membership alone is
+  // insufficient for the EFFECTIVE submitter action. Keep the form itself inside the frozen
+  // target, then require the action this selected submitter will actually use to equal the
+  // immutable configured endpoint. This preserves a submitter override when (and only when)
+  // it is that endpoint; without an override, `resolvedSubmitter` inherits formAction.
+  if (!withinFrozenOrigin(destination, formAction)) {
+    throw new BrowserActionError('scope');
+  }
+  if (!sameNavigationUrl(authenticationDestination, submitterDetails.formAction)) {
+    throw new BrowserActionError('scope');
+  }
 
   await withActionDeadline(
     () => enterCredential(credential, fields.first(), timeoutForDeadline(deadline, timeoutMs), deadline),
@@ -1582,7 +1653,7 @@ async function signIn(
   if (live.authPost !== null) throw new BrowserActionError('contract');
   const authPost: ArmedAuthenticationPost = {
     page,
-    destination: submitterDetails.formAction,
+    destination: authenticationDestination,
     credential,
     used: false,
   };

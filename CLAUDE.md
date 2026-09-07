@@ -1242,3 +1242,8 @@ Human review commands use a dedicated pg-boss queue and a durable PENDING/SUCCEE
 ### Epic 4 evidence read grant migration compatibility
 
 Generate unapplied expansions in journal order: generation38 adds bounded read-grant metadata; generation39 adds the optional frozen authentication destination. Keep snapshot prevId links consistent and generate39 from38, not37. An issued grant is revocable, not immutable terminal history: issued→denied/expired clears its capability under the completion constraint; denied/expired stay immutable and request identity/deadlines never change. Revocation must remain possible even if the Evidence is no longer readable.
+
+
+### Epic 4 exact authentication destination
+
+An in-scope HTTP origin does not authorize every password-form POST beneath it. Credential entry requires the exact query-free authentication_destination frozen in a web registration and its digest; validate the effective submitter/form action before filling credentials. Legacy registrations retain the original six-key digest when the optional field is absent, but credential-bearing execution then refuses before page I/O. Do not backfill a guessed endpoint into historical frozen versions. Configure a new registration/version or explicitly reseed synthetic development data only through the existing authorized flow. A public P4 target with a declared authentication destination must not take the public-access shortcut.

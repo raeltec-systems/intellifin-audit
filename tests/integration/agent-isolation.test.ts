@@ -68,7 +68,7 @@ describe.skipIf(!available)('local browser cross-Run isolation and hostile-page 
       const b = await f.browser.create({ runId: 'isolation-run-b', policy: { allowedOrigins: [f.origin] }, timeoutMs: 10_000 });
       expect(a.ref.workspaceId).not.toBe(b.ref.workspaceId); expect(a.ref.mode).toBe('local');
       const credentialA = await f.held.credentials.resolve(REF_A, 1000);
-      const loggedA = await f.browser.perform(a.ref, { action: 'navigate', destination: f.origin, credential: credentialA }, 10_000);
+      const loggedA = await f.browser.perform(a.ref, { action: 'navigate', destination: f.origin, authenticationDestination: `${f.origin}/sign-in`, credential: credentialA }, 10_000);
       expect(loggedA.session).toBe(true); expect(loggedA.artifacts ?? []).toHaveLength(0);
       await f.browser.perform(b.ref, { action: 'navigate', destination: f.origin, credential: null, capture: [] }, 10_000);
       const pageB = b.context.pages()[0]!;
@@ -76,7 +76,7 @@ describe.skipIf(!available)('local browser cross-Run isolation and hostile-page 
       expect(await pageB.evaluate(() => ({ local: localStorage.getItem('audit-account'), session: sessionStorage.getItem('audit-account') }))).toEqual({ local: null, session: null });
       expect(await b.context.cookies()).toEqual([]);
       const credentialB = await f.held.credentials.resolve(REF_B, 1000);
-      expect((await f.browser.perform(b.ref, { action: 'navigate', destination: f.origin, credential: credentialB }, 10_000)).session).toBe(true);
+      expect((await f.browser.perform(b.ref, { action: 'navigate', destination: f.origin, authenticationDestination: `${f.origin}/sign-in`, credential: credentialB }, 10_000)).session).toBe(true);
       const pageA = a.context.pages()[0]!;
       expect(await pageA.evaluate(() => ({ local: localStorage.getItem('audit-account'), session: sessionStorage.getItem('audit-account') }))).toEqual({ local: 'audit-a', session: 'audit-a' });
       expect(await pageB.evaluate(() => ({ local: localStorage.getItem('audit-account'), session: sessionStorage.getItem('audit-account') }))).toEqual({ local: 'audit-b', session: 'audit-b' });
@@ -110,7 +110,7 @@ describe.skipIf(!available)('local browser cross-Run isolation and hostile-page 
     try {
       const workspace = await f.browser.create({ runId: 'hostile-page-run', policy: { allowedOrigins: [f.origin] }, timeoutMs: 10_000 });
       const credential = await f.held.credentials.resolve(REF_A, 1000);
-      expect((await f.browser.perform(workspace.ref, { action: 'navigate', destination: f.origin, credential }, 10_000)).session).toBe(true);
+      expect((await f.browser.perform(workspace.ref, { action: 'navigate', destination: f.origin, authenticationDestination: `${f.origin}/sign-in`, credential }, 10_000)).session).toBe(true);
       await f.browser.perform(workspace.ref, { action: 'navigate', destination: f.origin + '/hostile', credential: null, capture: [] }, 10_000).catch(() => null);
       await workspace.context.pages()[0]!.waitForFunction(() => document.body.dataset['attackComplete'] === 'yes', null, { timeout: 5000 });
       expect(f.requests.filter(request => request.path === '/target/sign-in' && request.method === 'POST')).toHaveLength(1);
@@ -123,7 +123,7 @@ describe.skipIf(!available)('local browser cross-Run isolation and hostile-page 
     try {
       const workspace = await f.browser.create({ runId: 'reflected-secret-run', policy: { allowedOrigins: [f.origin] }, timeoutMs: 10_000 });
       const credential = await f.held.credentials.resolve(REF_A, 1000);
-      expect((await f.browser.perform(workspace.ref, { action: 'navigate', destination: f.origin, credential }, 10_000)).session).toBe(true);
+      expect((await f.browser.perform(workspace.ref, { action: 'navigate', destination: f.origin, authenticationDestination: `${f.origin}/sign-in`, credential }, 10_000)).session).toBe(true);
       const screenshot = vi.spyOn(workspace.context.pages()[0]!, 'screenshot');
       await expect(f.browser.perform(workspace.ref, { action: 'navigate', destination: f.origin + '/reflected-secret', credential: null, capture: ['structural-snapshot','screenshot'] }, 10_000, f.held.guard)).rejects.toMatchObject({ code: 'contract' });
       expect(screenshot).not.toHaveBeenCalled(); screenshot.mockRestore(); expect(f.writes()).toBe(0);

@@ -76,6 +76,8 @@ interface TargetSystemDeclaration {
   readonly display_name: string;
   readonly kind: string;
   readonly origin_path: string;
+  /** Exact query-free form action for credential entry, when the catalogue configures one. */
+  readonly authentication_destination_path?: string;
   readonly permitted_actions: readonly string[];
   readonly attribute_label_patterns: readonly string[];
   readonly secondary_key: string;
@@ -228,7 +230,14 @@ async function main(): Promise<void> {
     // running a seed script twice.
     const existingSystems = new Map(
       (await new DrizzleRegistrationRepository(db).listRegistrations()).map(
-        (registration) => [registration.displayName, registration.allowedOrigins] as const,
+        (registration) =>
+          [
+            registration.displayName,
+            {
+              allowedOrigins: registration.allowedOrigins,
+              authenticationDestination: registration.authenticationDestination,
+            },
+          ] as const,
       ),
     );
     const existingBindings = new Set(
@@ -242,16 +251,25 @@ async function main(): Promise<void> {
       const already = existingSystems.get(system.display_name);
       if (already !== undefined) {
         const wanted = [origin(base, system.origin_path)];
+        const wantedAuthenticationDestination =
+          system.authentication_destination_path === undefined
+            ? undefined
+            : origin(base, system.authentication_destination_path);
         const same =
-          already.length === wanted.length && wanted.every((value) => already.includes(value));
+          already.allowedOrigins.length === wanted.length &&
+          wanted.every((value) => already.allowedOrigins.includes(value)) &&
+          already.authenticationDestination === wantedAuthenticationDestination;
         say(
           same
             ? `target system "${system.display_name}" already registered; leaving it alone`
             : `target system "${system.display_name}" already registered, but it points at ` +
-                `${already.join(', ') || '(no origin)'} and this run wanted ` +
-                `${wanted.join(', ')}. Left alone: changing an origin is a ` +
-                `digest change and mints a draft for every Procedure that froze it. Change it ` +
-                `on the Administration surface, or retire this one and register a new system.`,
+                `${already.allowedOrigins.join(', ') || '(no origin)'} ` +
+                `(authentication ${already.authenticationDestination ?? '(not configured)'}) ` +
+                `and this run wanted ${wanted.join(', ')} ` +
+                `(authentication ${wantedAuthenticationDestination ?? '(not configured)'}). ` +
+                `Left alone: changing an origin or authentication destination is a digest ` +
+                `change and mints a draft for every Procedure that froze it. Change it on the ` +
+                `Administration surface, or retire this one and register a new system.`,
         );
         continue;
       }
@@ -269,6 +287,9 @@ async function main(): Promise<void> {
         permittedActions: actions,
         attributeLabelPatterns: [...system.attribute_label_patterns],
         secondaryKey: system.secondary_key,
+        ...(system.authentication_destination_path === undefined
+          ? {}
+          : { authenticationDestination: origin(base, system.authentication_destination_path) }),
         note: system.note,
         status: 'active',
       };

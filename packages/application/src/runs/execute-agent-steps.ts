@@ -8,6 +8,7 @@ import {
   sanitizeDestination,
   sessionStepAttemptBudget,
   WEB_TREE_MEDIA_TYPE,
+  withinFrozenOrigin,
   workspaceRequirement,
   type ClassifiedTarget,
   type ExecutablePlan,
@@ -194,7 +195,7 @@ function publicP4Target(
     requirement.agentTargets.length !== 1
   ) return null;
   const entry = requirement.agentTargets[0];
-  if (entry === undefined || entry.target.contract.kind !== 'web') return null;
+  if (entry === undefined || entry.target.contract.kind !== 'web' || entry.target.contract.authentication_destination !== undefined) return null;
   const labels = entry.target.contract.attribute_label_patterns;
   if (!Array.isArray(labels) || labels.length < PUBLIC_P4_REQUIRED_LABELS.length || labels.length > 5) return null;
   const allowed = new Set<string>([...PUBLIC_P4_REQUIRED_LABELS, PUBLIC_P4_OPTIONAL_LABEL]);
@@ -377,6 +378,8 @@ export async function performToolAction(
     readonly scope: ToolActionScope;
     readonly request: ToolActionRequest;
     readonly credential: ResolvedCredential | null;
+    /** Exact query-free login form action from the frozen registration, when configured. */
+    readonly authenticationDestination?: string;
     readonly requestedCapture?: readonly BrowserCaptureKind[];
     readonly startedAt: string;
     readonly completedAt: () => string;
@@ -461,6 +464,7 @@ export async function performToolAction(
             action: decision.action,
             destination: decision.destination,
             credential: input.credential,
+            authenticationDestination: input.authenticationDestination,
           },
       input.timeoutMs(),
       input.guard,
@@ -996,11 +1000,17 @@ async function runSignInStep(
       continue;
     }
 
-    // The frozen origin IS the sign-in destination. It is not derived from a path this
-    // code guessed and not read out of anything the system said: `allowed_origins` is a
-    // normalized set, so "the first" is deterministic for one frozen contract — the same
-    // rule `targetOrigin` applies on the adapter path.
-    const destination = contract.allowed_origins[0] ?? '';
+    // The request destination remains a frozen allowed origin. When the registration has
+    // an exact authentication form action, choose the origin that contains it so a
+    // multi-origin contract cannot silently attempt login against a different origin.
+    // The endpoint itself is passed separately and is never derived from page content.
+    const authenticationDestination = contract.authentication_destination;
+    const destination =
+      authenticationDestination === undefined
+        ? contract.allowed_origins[0] ?? ''
+        : contract.allowed_origins.find((origin) =>
+            withinFrozenOrigin(origin, authenticationDestination),
+          ) ?? '';
     const request: ToolActionRequest = {
       action: SIGN_IN_TOOL_ACTION,
       destination,
@@ -1016,6 +1026,7 @@ async function runSignInStep(
       scope,
       request,
       credential,
+      authenticationDestination,
       startedAt,
       completedAt: () => deps.clock.now().toISOString(),
       timeoutMs: unit.budget,

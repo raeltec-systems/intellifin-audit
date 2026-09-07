@@ -55,6 +55,7 @@ const MAX = {
   credentialRef: 400,
   applicationIdentity: 400,
   secondaryKey: 200,
+  authenticationDestination: 2048,
   note: 2000,
   listItems: 100,
   listItem: 400,
@@ -83,7 +84,7 @@ function boundedList(value: unknown, maxItems: number, maxItem: number): value i
   );
 }
 
-/** What a form posts. Every field is a string or a list of strings; nothing is optional. */
+/** What a form posts. Every field is a string or a list of strings; the auth endpoint is optional for legacy rows. */
 export interface RegistrationFormFields {
   readonly displayName: string;
   readonly kind: string;
@@ -93,6 +94,7 @@ export interface RegistrationFormFields {
   readonly permittedActions: readonly string[];
   readonly attributeLabelPatterns: readonly string[];
   readonly secondaryKey: string;
+  readonly authenticationDestination?: string;
   readonly note: string;
   readonly status: string;
 }
@@ -112,6 +114,8 @@ function isRegistrationFormFields(input: unknown): input is RegistrationFormFiel
     boundedList(fields['permittedActions'], MAX.listItems, MAX.listItem) &&
     boundedList(fields['attributeLabelPatterns'], MAX.listItems, MAX.listItem) &&
     boundedString(fields['secondaryKey'], MAX.secondaryKey) &&
+    (fields['authenticationDestination'] === undefined ||
+      boundedString(fields['authenticationDestination'], MAX.authenticationDestination)) &&
     boundedString(fields['note'], MAX.note) &&
     boundedString(fields['status'], MAX.vocabulary)
   );
@@ -138,6 +142,9 @@ function toRegistrationFields(fields: RegistrationFormFields): RegistrationField
     permittedActions: fields.permittedActions,
     attributeLabelPatterns: fields.attributeLabelPatterns,
     secondaryKey: fields.secondaryKey,
+    ...(fields.authenticationDestination === undefined
+      ? {}
+      : { authenticationDestination: fields.authenticationDestination }),
     note: fields.note,
     status: fields.status,
   };

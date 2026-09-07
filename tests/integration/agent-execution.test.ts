@@ -218,6 +218,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
       permittedActions: ['navigate', 'search', 'read-attribute'] as const,
       attributeLabelPatterns: ['Account'],
       secondaryKey: '',
+      authenticationDestination: `${origin}/sign-in`,
     };
     const inputs = {
       ...initialDraftPopulation('P-2'),
@@ -538,6 +539,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
       {
         action: 'navigate',
         destination: target.contract.allowed_origins[0]!,
+        authenticationDestination: target.contract.authentication_destination!,
         credential: await new ManifestCredentialResolver(new Map([[CREDENTIAL_REF, TOKEN]])).resolve(
           CREDENTIAL_REF,
           10_000,

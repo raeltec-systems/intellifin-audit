@@ -30,6 +30,7 @@ import {
  */
 
 const ORIGIN = 'https://synthetic.invalid/loancore';
+const AUTHENTICATION_DESTINATION = 'http://localhost:4300/loancore/sign-in';
 
 describe('the frozen egress allowlist', () => {
   const allowed = egressPolicy({ allowedOrigins: [ORIGIN] });
@@ -225,7 +226,7 @@ describe('capture during credential use', () => {
       await expect(
         execution.perform(
           ref,
-          { action: 'navigate', destination: 'http://localhost:4300/loancore', credential, capture } as never,
+          { action: 'navigate', destination: 'http://localhost:4300/loancore', authenticationDestination: AUTHENTICATION_DESTINATION, credential, capture } as never,
           1000,
         ),
       ).rejects.toMatchObject({ code: 'contract' });
@@ -239,7 +240,7 @@ describe('capture during credential use', () => {
     await expect(
       execution.perform(
         ref,
-        { action: 'navigate', destination: 'http://localhost:4300/loancore', credential },
+        { action: 'navigate', destination: 'http://localhost:4300/loancore', authenticationDestination: AUTHENTICATION_DESTINATION, credential },
         1000,
       ),
     ).rejects.toMatchObject({ code: 'unavailable' });
@@ -247,7 +248,7 @@ describe('capture during credential use', () => {
     await expect(
       execution.perform(
         ref,
-        { action: 'navigate', destination: 'http://localhost:4300/loancore', credential, capture: [] } as never,
+        { action: 'navigate', destination: 'http://localhost:4300/loancore', authenticationDestination: AUTHENTICATION_DESTINATION, credential, capture: [] } as never,
         1000,
       ),
     ).rejects.toMatchObject({ code: 'unavailable' });

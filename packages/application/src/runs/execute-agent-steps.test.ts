@@ -84,7 +84,10 @@ const RUN: RunRecord = {
 const JOB = { schemaVersion: 1 as const, runId: RUN.runId, correlationId: RUN.correlationId };
 
 /** A real compiler-1 plan, derived rather than hand-built. */
-function planFor(kind: 'web' | 'api' | 'desktop'): ExecutablePlan {
+function planFor(
+  kind: 'web' | 'api' | 'desktop',
+  authenticationDestination?: string,
+): ExecutablePlan {
   const registration = {
     registrationId: '018f0000-0000-7000-8000-0000000001a1',
     displayName: 'LoanCore',
@@ -98,6 +101,7 @@ function planFor(kind: 'web' | 'api' | 'desktop'): ExecutablePlan {
         : (['navigate', 'search', 'open-record', 'read-attribute'] as const),
     attributeLabelPatterns: ['Status', 'Username'],
     secondaryKey: 'Full name',
+    ...(authenticationDestination === undefined ? {} : { authenticationDestination }),
   };
   const source = {
     kind: 'versioned-file' as const,
@@ -435,6 +439,21 @@ describe('the sign-in Session Step', () => {
     // The credential reaches the WIRE and nowhere else: the port is what types it into the
     // Target System's own sign-in form.
     expect(browser.entered).toEqual([TOKEN]);
+  });
+
+  it('passes the exact frozen authentication destination to the browser caller', async () => {
+    const state = store(planFor('web', `${ORIGIN}/sign-in`));
+    const browser = new FakeBrowser();
+
+    await expect(executeAgentSteps(DEPS(state, browser), JOB)).resolves.toEqual({
+      retry: false,
+      proceed: true,
+    });
+    expect(browser.performed[0]).toMatchObject({
+      action: 'navigate',
+      destination: ORIGIN,
+      authenticationDestination: `${ORIGIN}/sign-in`,
+    });
   });
 
   it('records the action in the shared sanitized log, with no credential in it', async () => {

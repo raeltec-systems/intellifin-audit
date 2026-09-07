@@ -326,6 +326,8 @@ export const targetSystemRegistration = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     secondaryKey: text('secondary_key').notNull().default(''),
+    /** Exact query-free HTTP(S) form action for credential entry, when configured. */
+    authenticationDestination: text('authentication_destination'),
     note: text('note').notNull().default(''),
     status: text('status').notNull().default('active'),
     /** The AD-2 digest, lower-case SHA-256 hex. */
@@ -364,6 +366,17 @@ export const targetSystemRegistration = pgTable(
       'target_system_registration_actions_present',
       sql`cardinality(${table.permittedActions}) >= 1
         AND array_position(${table.permittedActions}, NULL) IS NULL`,
+    ),
+    /** A direct SQL writer must not bypass the frozen endpoint's basic shape contract. */
+    check(
+      'target_system_registration_authentication_destination_shape',
+      sql`${table.authenticationDestination} IS NULL OR (
+        ${table.kind} = 'web'
+        AND
+        length(${table.authenticationDestination}) BETWEEN 1 AND 2048
+        AND btrim(${table.authenticationDestination}) = ${table.authenticationDestination}
+        AND ${table.authenticationDestination} ~* '^https?://[^[:space:]?#@]+$'
+      )`,
     ),
     check('target_system_registration_digest_format', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
   ],

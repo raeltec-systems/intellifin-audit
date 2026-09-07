@@ -1,5 +1,6 @@
 import { canonicalJson, type JsonValue } from '../canonical-json.js';
 import { sha256Hex } from '../sha256.js';
+import { parseFrozenLocation, withinFrozenOrigin } from '../runs/frozen-location.js';
 
 /**
  * Target System registrations: the kinds, the read-only action vocabulary, and the
@@ -77,14 +78,21 @@ export const MUTATING_VERBS = [
   'send',
 ] as const;
 
-/** The six-key envelope, exactly as it is canonicalized and hashed. */
+/**
+ * The legacy six-key envelope, plus the optional exact form destination used by a web
+ * Target System's credential flow.
+ *
+ * The optional member is deliberately omitted for old registrations. That keeps old
+ * snapshots and their six-key digests readable, while a configured authentication
+ * destination becomes part of the digest and therefore cannot drift without minting a
+ * new frozen contract.
+ */
 export interface RegistrationDigestEnvelope {
   /**
    * The locator slot. Allowlisted origins for a `web`, `api` or `versioned-file`
    * system; the application identity, as a one-element list, for a `desktop` one.
-   * There is one slot and not two so that the envelope has the same six keys for
-   * every kind — a key set that varied by kind would make "exactly these keys" a
-   * statement with four different meanings.
+   * There is one slot and not two so that the legacy envelope has the same six keys for
+   * every kind — the optional authentication member is meaningful only for web systems.
    */
   readonly allowed_origins: readonly string[];
   readonly attribute_label_patterns: readonly string[];
@@ -93,9 +101,11 @@ export interface RegistrationDigestEnvelope {
   readonly permitted_actions: readonly PermittedReadAction[];
   /** `null` when the system has no secondary key. Absent is a value, not a missing key. */
   readonly secondary_key: string | null;
+  /** Exact, query-free HTTP(S) form action for credential entry, when configured. */
+  readonly authentication_destination?: string;
 }
 
-/** The six digest-bearing fields, as a registration holds them. */
+/** The digest-bearing fields, as a registration holds them. */
 export interface RegistrationDigestInput {
   readonly kind: TargetSystemKind;
   /** Allowlisted origins. Empty for a `desktop` system. */
@@ -108,6 +118,39 @@ export interface RegistrationDigestInput {
   readonly attributeLabelPatterns: readonly string[];
   /** The empty string means "no secondary key" and canonicalizes to `null`. */
   readonly secondaryKey: string;
+  /**
+   * Exact query-free HTTP(S) form action for credential entry. Omitted for legacy
+   * registrations that have no configured authentication contract.
+   */
+  readonly authenticationDestination?: string;
+}
+
+/**
+ * Validate the immutable form endpoint used by a web Target System's credential flow.
+ *
+ * This lives beside the digest projection so authoring, persistence and the frozen
+ * Procedure snapshot apply one rule. The browser performs the same check at its host
+ * boundary; this function intentionally uses only the domain's string location parser.
+ * An omitted value is valid for legacy registrations, whose credential use must then be
+ * refused by the browser rather than guessed from page content.
+ */
+export function isValidAuthenticationDestination(
+  value: unknown,
+  scope: Pick<RegistrationDigestInput, 'kind' | 'allowedOrigins'>,
+): value is string {
+  if (
+    scope.kind !== 'web' ||
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2048 ||
+    value.trim() !== value ||
+    value.includes('?') ||
+    value.includes('#')
+  ) {
+    return false;
+  }
+  const parsed = parseFrozenLocation(value);
+  return parsed !== null && scope.allowedOrigins.some((origin) => withinFrozenOrigin(origin, value));
 }
 
 /**
@@ -124,7 +167,8 @@ function normalizedSet(values: readonly string[]): readonly string[] {
 }
 
 /**
- * Project a registration onto the exact six keys AD-2 names.
+ * Project a registration onto the legacy six keys AD-2 names, and include the optional
+ * authentication member when the registration has one configured.
  *
  * Explicit, key by key, in the same style as `canonicalizeAuditEvent`: a spread of the
  * input would carry the display name, the id, the timestamps and anything a later story
@@ -134,7 +178,7 @@ export function registrationDigestEnvelope(
   input: RegistrationDigestInput,
 ): RegistrationDigestEnvelope {
   const secondaryKey = input.secondaryKey.trim();
-  return {
+  const envelope = {
     allowed_origins:
       input.kind === 'desktop'
         ? normalizedSet([input.applicationIdentity])
@@ -145,6 +189,13 @@ export function registrationDigestEnvelope(
     permitted_actions: normalizedSet(input.permittedActions) as readonly PermittedReadAction[],
     secondary_key: secondaryKey === '' ? null : secondaryKey,
   };
+  // Keep the six-key legacy shape when the registration has no authentication contract.
+  // A configured destination is capability-bearing, so it is included in the digest rather
+  // than carried beside it where a registration change could leave an old Procedure version
+  // trusting a different endpoint.
+  return input.authenticationDestination === undefined
+    ? envelope
+    : { ...envelope, authentication_destination: input.authenticationDestination.trim() };
 }
 
 /** The RFC 8785 text that is hashed. Exposed so a fixture can pin the bytes, not only the digest. */
@@ -153,8 +204,9 @@ export function registrationCanonicalText(input: RegistrationDigestInput): strin
 }
 
 /**
- * The AD-2 registration digest: SHA-256 over the RFC 8785 canonical JSON of the six-key
- * envelope, lower-case hex.
+ * The AD-2 registration digest: SHA-256 over the RFC 8785 canonical JSON of the legacy
+ * six-key envelope, or that envelope plus a configured authentication destination, lower-case
+ * hex.
  *
  * Checked against `tests/fixtures/registration-digest-golden.json`, which was produced
  * by Python `rfc8785` + `hashlib.sha256` and not by this function.

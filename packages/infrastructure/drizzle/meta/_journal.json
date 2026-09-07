@@ -274,6 +274,13 @@
       "when": 1788807848655,
       "tag": "0038_evidence_read_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788807889805,
+      "tag": "0039_authentication_destination",
+      "breakpoints": true
     }
   ]
 }

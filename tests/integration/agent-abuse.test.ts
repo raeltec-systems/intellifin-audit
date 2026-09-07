@@ -36,7 +36,7 @@ async function authenticatedFixture(text: string) {
   try {
     const workspace = await browser.create({ runId: 'golden-abuse-run', policy: { allowedOrigins: [origin] }, timeoutMs: 10000 });
     const credential = await held.credentials.resolve('cred://synthetic/abuse', 1000);
-    expect((await browser.perform(workspace.ref, { action: 'navigate', destination: origin, credential }, 10000)).session).toBe(true);
+    expect((await browser.perform(workspace.ref, { action: 'navigate', destination: origin, authenticationDestination: `${origin}/sign-in`, credential }, 10000)).session).toBe(true);
     return { browser, workspace, origin, held, close };
   } catch (error) { await close(); throw error; }
 }

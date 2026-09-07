@@ -48,7 +48,13 @@ describe('actual browser authentication confirmation', () => {
         await workspace.context.addCookies([{ name: mode === 'unrelated' ? 'preferences' : 'session', value: mode === 'existing-session' ? 'granted' : 'stale', url: origin }]);
       }
       const credential = await new ManifestCredentialResolver(new Map([[credentialRef, token]])).resolve(credentialRef, 1000);
-      const action = { action: 'navigate' as const, destination: origin, parameters: [], credential };
+      const action = {
+        action: 'navigate' as const,
+        destination: origin,
+        authenticationDestination: `${origin}/sign-in`,
+        parameters: [],
+        credential,
+      };
       const result = await browser.perform(workspace.ref, action, 10000);
       const authenticated = mode === 'fresh' || mode === 'existing-session' || mode === 'unrelated' || mode === 'stale';
       expect(submissions).toBe(mode === 'existing-session' ? 0 : 1);
@@ -93,7 +99,13 @@ describe('actual browser authentication confirmation', () => {
     try {
       const workspace = await browser.create({ runId: 'authentication-failure-test', policy: { allowedOrigins: [origin] }, timeoutMs: 10000 });
       const credential = await new ManifestCredentialResolver(new Map([[credentialRef, token]])).resolve(credentialRef, 1000);
-      const action = { action: 'navigate' as const, destination: origin, parameters: [], credential };
+      const action = {
+        action: 'navigate' as const,
+        destination: origin,
+        authenticationDestination: `${origin}/sign-in`,
+        parameters: [],
+        credential,
+      };
       await expect(browser.perform(workspace.ref, action, 1000)).rejects.toMatchObject({ code: 'unavailable' });
       expect(new URLSearchParams(submissionBody).get('credential')).toBe(token);
 
@@ -146,7 +158,13 @@ describe('actual browser authentication confirmation', () => {
     try {
       const workspace = await browser.create({ runId: 'authentication-redirect-test', policy: { allowedOrigins: [targetA, targetB] }, timeoutMs: 10000 });
       const credential = await new ManifestCredentialResolver(new Map([[credentialRef, token]])).resolve(credentialRef, 1000);
-      const action = { action: 'navigate' as const, destination: targetA, parameters: [], credential };
+      const action = {
+        action: 'navigate' as const,
+        destination: targetA,
+        authenticationDestination: `${targetA}/sign-in`,
+        parameters: [],
+        credential,
+      };
       await expect(browser.perform(workspace.ref, action, 1000)).rejects.toMatchObject({ code: 'scope' });
       expect(submissions).toBe(1);
     } finally {

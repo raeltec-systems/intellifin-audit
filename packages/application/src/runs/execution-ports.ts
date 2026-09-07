@@ -1204,6 +1204,15 @@ interface BrowserToolActionBase {
   /** An absolute destination the gate has already proved is inside the frozen origins. */
   readonly destination: string;
   /**
+   * The exact form action frozen by the registration for credential entry.
+   *
+   * It is optional in the structural port so legacy callers still typecheck, but a
+   * credential-bearing action is refused by the browser provider when it is absent.
+   * Keeping it alongside the gated destination means the adapter never has to infer a
+   * login endpoint from page content.
+   */
+  readonly authenticationDestination?: string;
+  /**
    * Values the application gate already proved are in the Run's frozen population scope.
    * Search is the only action that consumes them; optional keeps existing parameterless
    * callers source-compatible while the browser mechanism refuses a search without one.

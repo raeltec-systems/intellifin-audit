@@ -21,6 +21,7 @@
       "display_name": "LoanCore",
       "kind": "web",
       "origin_path": "/loancore",
+      "authentication_destination_path": "/loancore/sign-in",
       "permitted_actions": ["navigate", "search", "open-record", "read-attribute", "capture-screenshot"],
       "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name"],
       "secondary_key": "Full name",

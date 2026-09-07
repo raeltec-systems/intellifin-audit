@@ -3,6 +3,7 @@ import {
   MUTATING_VERBS,
   isPermittedReadAction,
   isTargetSystemKind,
+  isValidAuthenticationDestination,
   registrationDigest,
   registrationDigestEnvelope,
   type PermittedReadAction,
@@ -16,14 +17,15 @@ import { findProcedureTemplate, type TemplateId } from './templates.js';
  * Target System selection and per-system Audit Instructions for a Draft Procedure
  * Version (FR-7, FR-8, AD-2).
  *
- * A Procedure Version freezes, per selected Target System, the exact six-field contract
+ * A Procedure Version freezes, per selected Target System, the legacy six-field contract
  * the registration digest is taken over — its kind, its allowed origins (or the desktop
  * application identity in that same slot), its credential reference, its permitted read
- * actions, its attribute label patterns and its secondary key — together with the
- * registration's id, its display name and its stored digest. The freezing mechanism is
- * Story 1.6's `registrationDigestEnvelope`/`registrationDigest`, imported and NOT
- * recomputed here, the same way `population-draft.ts` reuses the binding digest: a second
- * implementation would eventually disagree with the one this codebase already has.
+ * actions, its attribute label patterns and its secondary key — and the optional exact
+ * authentication destination when configured. It also freezes the registration's id, its
+ * display name and its stored digest. The freezing mechanism is Story 1.6's
+ * `registrationDigestEnvelope`/`registrationDigest`, imported and NOT recomputed here, the
+ * same way `population-draft.ts` reuses the binding digest: a second implementation would
+ * eventually disagree with the one this codebase already has.
  *
  * The scope-widening check is FR-8's authoring-time advisory. It is a PURE domain
  * function: given the instruction text and the systems the Draft has selected, it names
@@ -53,7 +55,8 @@ export const TARGET_DRAFT_LIMITS = {
 /**
  * A frozen snapshot of one selected Target System registration.
  *
- * `contract` is the exact six-key envelope AD-2 hashes — including `credential_ref`, which
+ * `contract` is the exact legacy six-key envelope AD-2 hashes, plus the optional exact
+ * authentication destination when one is configured — including `credential_ref`, which
  * the version freezes and the surface displays but which no audit payload ever carries.
  * `digest` is the value the registration stored; `isProcedureTargetSnapshot` recomputes it
  * from `contract` and refuses a snapshot whose two halves disagree.
@@ -150,10 +153,13 @@ function inputFromEnvelope(envelope: RegistrationDigestEnvelope): RegistrationDi
     permittedActions: envelope.permitted_actions,
     attributeLabelPatterns: envelope.attribute_label_patterns,
     secondaryKey: envelope.secondary_key ?? '',
+    ...(envelope.authentication_destination === undefined
+      ? {}
+      : { authenticationDestination: envelope.authentication_destination }),
   };
 }
 
-/** `true` when `value` is a well-formed six-key envelope whose stored digest matches it. */
+/** `true` when `value` is a well-formed frozen contract whose stored digest matches it. */
 export function isProcedureTargetSnapshot(value: unknown): value is ProcedureTargetSnapshot {
   if (
     !object(value) ||
@@ -169,16 +175,24 @@ export function isProcedureTargetSnapshot(value: unknown): value is ProcedureTar
     return false;
   }
   const contract = value['contract'];
+  const digestKeys = [
+    'allowed_origins',
+    'attribute_label_patterns',
+    'credential_ref',
+    'kind',
+    'permitted_actions',
+    'secondary_key',
+  ] as const;
+  const hasAuthenticationDestination =
+    object(contract) && Object.hasOwn(contract, 'authentication_destination');
   if (
     !object(contract) ||
-    !exact(contract, [
-      'allowed_origins',
-      'attribute_label_patterns',
-      'credential_ref',
-      'kind',
-      'permitted_actions',
-      'secondary_key',
-    ]) ||
+    !exact(
+      contract,
+      hasAuthenticationDestination
+        ? [...digestKeys, 'authentication_destination']
+        : digestKeys,
+    ) ||
     !isTargetSystemKind(contract['kind']) ||
     typeof contract['credential_ref'] !== 'string' ||
     !(contract['secondary_key'] === null || typeof contract['secondary_key'] === 'string') ||
@@ -190,6 +204,18 @@ export function isProcedureTargetSnapshot(value: unknown): value is ProcedureTar
     contract['credential_ref'].trim() === '' ||
     contract['allowed_origins'].length === 0 ||
     (contract['kind'] === 'desktop' && contract['allowed_origins'].length !== 1)
+  ) {
+    return false;
+  }
+  if (
+    hasAuthenticationDestination &&
+    !isValidAuthenticationDestination(
+      contract['authentication_destination'],
+      {
+        kind: contract['kind'] as TargetSystemKind,
+        allowedOrigins: contract['allowed_origins'] as readonly string[],
+      },
+    )
   ) {
     return false;
   }
@@ -348,7 +374,7 @@ export function targetBlockersFor(
   return targets.length === 0 ? ['targets-missing'] : [];
 }
 
-/** The six fields a registration holds, as the reader hands them over. */
+/** The digest fields and optional authentication destination, as the reader hands them over. */
 export interface RegistrationSixFields {
   readonly registrationId: string;
   readonly displayName: string;
@@ -359,6 +385,8 @@ export interface RegistrationSixFields {
   readonly permittedActions: readonly PermittedReadAction[];
   readonly attributeLabelPatterns: readonly string[];
   readonly secondaryKey: string;
+  /** Exact query-free HTTP(S) form action, when this web registration has one configured. */
+  readonly authenticationDestination?: string;
   readonly digest: string;
 }
 
@@ -377,6 +405,9 @@ export function snapshotFromRegistration(record: RegistrationSixFields): Procedu
     permittedActions: record.permittedActions,
     attributeLabelPatterns: record.attributeLabelPatterns,
     secondaryKey: record.secondaryKey,
+    ...(record.authenticationDestination === undefined
+      ? {}
+      : { authenticationDestination: record.authenticationDestination }),
   };
   return {
     registrationId: record.registrationId,

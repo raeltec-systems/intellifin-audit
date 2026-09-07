@@ -88,7 +88,7 @@ export interface RegistrationConnectivity {
   readonly observedAt: string | null;
 }
 
-/** The six digest-bearing fields plus everything the surface shows. */
+/** The digest-bearing fields plus everything the surface shows. */
 export interface TargetSystemRegistration {
   readonly registrationId: string;
   readonly displayName: string;
@@ -102,6 +102,8 @@ export interface TargetSystemRegistration {
   readonly attributeLabelPatterns: readonly string[];
   /** The empty string means the system has no secondary key. */
   readonly secondaryKey: string;
+  /** Exact query-free HTTP(S) form action for credential entry, when configured. */
+  readonly authenticationDestination?: string;
   /** Not digest-bearing: an operator note changes nothing about what may be read. */
   readonly note: string;
   readonly status: RegistrationStatus;
@@ -139,6 +141,8 @@ export interface RegistrationRecord {
   readonly permittedActions: readonly PermittedReadAction[];
   readonly attributeLabelPatterns: readonly string[];
   readonly secondaryKey: string;
+  /** Exact query-free HTTP(S) form action for credential entry, when configured. */
+  readonly authenticationDestination?: string;
   readonly note: string;
   readonly status: RegistrationStatus;
   readonly digest: string;

@@ -127,9 +127,15 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
 
   async function rowFor(registrationId: string) {
     const rows = await sql<
-      { digest: string; display_name: string; permitted_actions: string[]; status: string }[]
+      {
+        digest: string;
+        display_name: string;
+        permitted_actions: string[];
+        status: string;
+        authentication_destination: string | null;
+      }[]
     >`
-      SELECT digest, display_name, permitted_actions, status
+      SELECT digest, display_name, permitted_actions, status, authentication_destination
       FROM target_system_registration WHERE registration_id = ${registrationId}
     `;
     return rows[0] ?? null;
@@ -237,6 +243,34 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
     });
     // The chain must not carry anything credential-shaped, ever: it is immutable.
     expect(JSON.stringify(events[0]?.payload)).not.toContain(READ_ONLY_REF);
+  });
+
+  it('round trips the configured authentication destination through the row and repository', async () => {
+    const authenticationDestination = 'https://northstar.synthetic.invalid/sign-in';
+    const outcome = await register(
+      { authenticationDestination },
+      `${prefix}configured-authentication-destination`,
+    );
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const row = await rowFor(outcome.registrationId);
+    expect(row?.authentication_destination).toBe(authenticationDestination);
+    expect(new DrizzleRegistrationRepository(db).findRegistration(outcome.registrationId)).resolves.toMatchObject({
+      authenticationDestination,
+    });
+    expect(row?.digest).toBe(
+      registrationDigest({
+        kind: 'web',
+        allowedOrigins: ['https://northstar.synthetic.invalid'],
+        applicationIdentity: '',
+        credentialRef: READ_ONLY_REF,
+        permittedActions: ['navigate', 'read-attribute'],
+        attributeLabelPatterns: ['Invoice *'],
+        secondaryKey: '',
+        authenticationDestination,
+      }),
+    );
   });
 
   it('gives all four kinds different digests, and reads them all back', async () => {
@@ -509,6 +543,18 @@ describe.skipIf(!databaseUrl)('Target System registrations against PostgreSQL 18
                   ${READ_ONLY_REF}, ARRAY['navigate'], ${digest})
         `,
       ).rejects.toThrow(/target_system_registration_kind_vocabulary/);
+    });
+
+    it('rejects a credential destination with a query or fragment', async () => {
+      await expect(
+        sql`
+          INSERT INTO target_system_registration
+            (registration_id, display_name, kind, allowed_origins, credential_ref,
+             permitted_actions, authentication_destination, digest)
+          VALUES (${id}, ${`${prefix}Raw`}, 'web', ARRAY['https://x.invalid'],
+                  ${READ_ONLY_REF}, ARRAY['navigate'], 'https://x.invalid/sign-in?next=write', ${digest})
+        `,
+      ).rejects.toThrow(/target_system_registration_authentication_destination_shape/);
     });
   });
 

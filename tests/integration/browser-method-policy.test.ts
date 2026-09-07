@@ -102,7 +102,13 @@ describe('agent workspace page isolation', () => {
       ).resolve(CREDENTIAL_REF, 1_000);
       const result = await browser.perform(
         workspace.ref,
-        { action: 'navigate', destination: origin, parameters: [], credential },
+        {
+          action: 'navigate',
+          destination: origin,
+          authenticationDestination: `${origin}/sign-in`,
+          parameters: [],
+          credential,
+        },
         10_000,
       );
 
@@ -146,7 +152,7 @@ describe('agent workspace page isolation', () => {
         response.end(authenticated
           ? '<!doctype html><body><p role="status" aria-label="Current signed-in account">Signed in as audit.readonly</p></body>'
           : `<!doctype html><body>
-            <form method="post" action="/target/sign-in">
+            <form method="post" action="/target/write">
               <input type="password" name="credential">
               <button type="submit" formaction="/target/submitter-sign-in">Sign in</button>
             </form>
@@ -165,12 +171,110 @@ describe('agent workspace page isolation', () => {
       ).resolve(CREDENTIAL_REF, 1_000);
       const result = await browser.perform(
         workspace.ref,
-        { action: 'navigate', destination: origin, parameters: [], credential },
+        {
+          action: 'navigate',
+          destination: origin,
+          authenticationDestination: `${origin}/submitter-sign-in`,
+          parameters: [],
+          credential,
+        },
         10_000,
       );
 
       expect(result).toMatchObject({ status: 200, method: 'POST', session: true });
       expect(authenticationPath).toBe('/target/submitter-sign-in');
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
+  it('refuses a same-origin password form aimed at a business write before sending it', async () => {
+    let writeRequests = 0;
+    let authenticationRequests = 0;
+    const { server, origin } = await listen((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const current = new URL(request.url ?? '/', 'http://127.0.0.1');
+        if (request.method === 'POST' && current.pathname === '/target/write') {
+          writeRequests += 1;
+          response.writeHead(200, { 'content-type': 'text/plain' });
+          response.end('business write reached');
+          return;
+        }
+        if (request.method === 'POST' && current.pathname === '/target/sign-in') {
+          authenticationRequests += 1;
+          response.writeHead(303, { location: '/target/home' });
+          response.end();
+          return;
+        }
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(`<!doctype html><body>
+          <form method="post" action="/target/write">
+            <input type="password" name="credential">
+            <button type="submit">Sign in</button>
+          </form>
+        </body>`);
+      });
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'agent-auth-write-form-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      const credential = await new ManifestCredentialResolver(
+        new Map([[CREDENTIAL_REF, TOKEN]]),
+      ).resolve(CREDENTIAL_REF, 1_000);
+      await expect(
+        browser.perform(
+          workspace.ref,
+          {
+            action: 'navigate',
+            destination: origin,
+            authenticationDestination: `${origin}/sign-in`,
+            parameters: [],
+            credential,
+          },
+          10_000,
+        ),
+      ).rejects.toMatchObject({ code: 'scope' });
+      expect(writeRequests).toBe(0);
+      expect(authenticationRequests).toBe(0);
+      expect(workspace.denied()).toBe(0);
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
+
+  it('refuses a credential action with no frozen authentication destination before page I/O', async () => {
+    let requests = 0;
+    const { server, origin } = await listen((request, response) => {
+      requests += 1;
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end('<!doctype html><body><form method="post" action="/target/write"><input type="password" name="credential"><button type="submit">Sign in</button></form></body>');
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'agent-auth-missing-destination-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      const credential = await new ManifestCredentialResolver(
+        new Map([[CREDENTIAL_REF, TOKEN]]),
+      ).resolve(CREDENTIAL_REF, 1_000);
+      await expect(
+        browser.perform(
+          workspace.ref,
+          { action: 'navigate', destination: origin, parameters: [], credential },
+          10_000,
+        ),
+      ).rejects.toMatchObject({ code: 'contract' });
+      expect(requests).toBe(0);
     } finally {
       await browser.close();
       await closeServer(server);

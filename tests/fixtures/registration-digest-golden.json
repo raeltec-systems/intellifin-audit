@@ -1,10 +1,55 @@
 {
-  "producer": "Python 3.11.15 + rfc8785 0.1.4 + hashlib.sha256",
+  "producer": "Python 3.12.13 + rfc8785 0.1.4 + hashlib.sha256",
   "producedBy": "scripts/make-registration-digest-golden.py",
   "regenerateWith": "uv run scripts/make-registration-digest-golden.py",
-  "why": "AD-2 digest vectors, produced by an implementation that is NOT the code under test. packages/domain/src/registrations/target-system.ts is checked against these bytes; a fixture produced by that module would prove only that it equals itself. The envelopes in the generator are written out by hand, so the projection from a registration to its six hashed keys is checked too, not just the hash of an envelope this repository derived.",
-  "algorithm": "digest = SHA-256( RFC 8785 canonical JSON of the six-key envelope ), lower-case hex. No previous-hash prefix: that belongs to the audit chain, not to this digest.",
+  "why": "AD-2 digest vectors, produced by an implementation that is NOT the code under test. packages/domain/src/registrations/target-system.ts is checked against these bytes; a fixture produced by that module would prove only that it equals itself. The envelopes in the generator are written out by hand, so the projection from a registration to its legacy six hashed keys and optional authentication destination is checked too, not just the hash of an envelope this repository derived.",
+  "algorithm": "digest = SHA-256( RFC 8785 canonical JSON of the legacy six-key envelope, optionally plus authentication_destination ), lower-case hex. No previous-hash prefix: that belongs to the audit chain, not to this digest.",
   "vectors": [
+    {
+      "name": "web-configured-authentication-destination",
+      "note": "A web system with an explicitly configured, query-free authentication destination. The destination is an additional digest-bearing capability, while legacy systems continue to use the six-key envelope.",
+      "input": {
+        "kind": "web",
+        "allowedOrigins": [
+          "https://northstar.synthetic.invalid/loancore"
+        ],
+        "applicationIdentity": "",
+        "credentialRef": "cred://synthetic/northstar-readonly",
+        "permittedActions": [
+          "navigate",
+          "search",
+          "read-attribute"
+        ],
+        "attributeLabelPatterns": [
+          "Status",
+          "Username",
+          "Roles"
+        ],
+        "secondaryKey": "Full name",
+        "authenticationDestination": "https://northstar.synthetic.invalid/loancore/sign-in"
+      },
+      "envelope": {
+        "allowed_origins": [
+          "https://northstar.synthetic.invalid/loancore"
+        ],
+        "attribute_label_patterns": [
+          "Roles",
+          "Status",
+          "Username"
+        ],
+        "authentication_destination": "https://northstar.synthetic.invalid/loancore/sign-in",
+        "credential_ref": "cred://synthetic/northstar-readonly",
+        "kind": "web",
+        "permitted_actions": [
+          "navigate",
+          "read-attribute",
+          "search"
+        ],
+        "secondary_key": "Full name"
+      },
+      "canonicalText": "{\"allowed_origins\":[\"https://northstar.synthetic.invalid/loancore\"],\"attribute_label_patterns\":[\"Roles\",\"Status\",\"Username\"],\"authentication_destination\":\"https://northstar.synthetic.invalid/loancore/sign-in\",\"credential_ref\":\"cred://synthetic/northstar-readonly\",\"kind\":\"web\",\"permitted_actions\":[\"navigate\",\"read-attribute\",\"search\"],\"secondary_key\":\"Full name\"}",
+      "digest": "59a39b66ce07a3df914d6d6de307998461abf02de065cff75b45f30660b8b83b"
+    },
     {
       "name": "web-two-origins",
       "note": "A web system. Origins are a set: they are given here out of order and with a duplicate, and the envelope holds them sorted and deduplicated.",

@@ -67,6 +67,7 @@ const LOANCORE = {
   permittedActions: ['navigate', 'search', 'open-record', 'read-attribute', 'capture-screenshot'] as const,
   attributeLabelPatterns: ['Status', 'Username', 'Roles', 'Employee ID', 'Full name'],
   secondaryKey: 'Full name',
+  authenticationDestination: `${NORTHSTAR_BASE_URL}/loancore/sign-in`,
 };
 
 function inputs(): FrozenPlanInputs {
