@@ -1222,3 +1222,8 @@ Agent Observation registration verifies both structural snapshot and screenshot 
 ## Rejected model proposals are auditable
 
 A provider response rejected by the strict gateway must not disappear into ordinary retry telemetry. Agent work records a fixed security.action-denied event with Run/Work Item/Step Execution IDs when retrying malformed proposals, without retaining rejected JSON. Keep Story4.6's malformed-response retry budget. A successful port response naming an unknown tool is a terminal denied action, never an attempted browser interaction.
+
+
+## Executable agent mutation evidence
+
+Run destructive guard mutations only in a clean detached linked worktree, never in an engineering branch. The mutation harness requires an assertion-passing baseline and an actual failing assertion after each guard removal, restores each source in finally, and rejects source-anchor drift, import failures and skipped tests. Keep real provider, intercepted-provider, SSR, local Chromium and Solari evidence distinct. A surviving SSR preselection mutation means browser coverage is still required, not that the product guard may be assumed verified.

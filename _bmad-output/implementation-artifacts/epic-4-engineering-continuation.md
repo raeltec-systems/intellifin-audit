@@ -241,3 +241,10 @@ This checkpoint repairs screenshot transport degradation through the shared Obse
 ## Rejected-model security audit checkpoint
 
 Two regressions reproduced missing security.action-denied events: a typed response selecting an unknown tool and the real gateway's invalid-response error. The former now stops before execution; the latter retains the specified bounded retry while writing an ID-only security denial transactionally.23 agent-loop tests pass, including both regressions; diff check passes. No rejected content or destination is logged. Parent7206a83d57b5782d69ba5992f0c9098bd20c61d3 is pushed and its CI34150880550 migration/integration, static/unit and container jobs pass (browser job pending at recording). This checkpoint is pushed; full4.11 mutation acceptance and final candidate verification remain incomplete.
+
+
+## Mutation-test delivery checkpoint (incomplete Story4.11)
+
+Runtime baseline10b7d563179a78bcebda9a07873766baec80b0d4 passed all four hosted CI jobs in34151306483. The isolated mutation log records ten actually-killed guards,21 selected assertions, exact source/test hashes and red failures. New golden unit/SSR suites pass14tests locally. Both hero injectionstrings and allthree seeded widening instructions are read from fixture artifacts. The surviving SSR preselection trial and missing real-worker/browser coverage are explicitly retained.
+
+This checkpoint adds six real local-Chromium abuse/capture/cleanup cases and a normal CI mutation step in a separate detached worktree. The existing PostgreSQL job installs Chromium, runs integration tests, then runs the selected unit+browser mutation harness and uploads its secret-free report. Browser mutations are not yet verified; this is an incomplete checkpoint, not4.11 acceptance. No delivery/branch-modification automation is reintroduced. Parent10b7d563179a78bcebda9a07873766baec80b0d4 is pushed; this checkpoint is pushed. Next: run the hosted mutation gate, finish hydration/worker abuse cases, and integrate review/inspector/auth migrations37–39 before final verification.
