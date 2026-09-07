@@ -475,11 +475,20 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
         response = await signIn(live, page, action.destination, action.credential, timeout, response);
       }
     } catch (error) {
+      // A submission can fail after `fill` but before navigation replaces the form. The page
+      // is then a live secret-bearing surface, so do not leave it available to a later action
+      // or capture. Keep the LiveWorkspace entry: release still needs its exact identity.
+      if (action.credential !== null) await this.discardCredentialPage(live, page, timeout);
       throw actionFailure(error, live.handle.denied() > before);
     }
     // `null` is a same-document navigation, which is not something this platform asked
     // for and not something it can record a status for.
     if (response === null) throw new BrowserActionError('contract');
+    // The workspace may contain several configured Target Systems. Authentication proved by
+    // a redirect into another allowed system is not authentication for this action's target.
+    if (action.credential !== null && !withinFrozenOrigin(action.destination, page.url())) {
+      throw new BrowserActionError('scope');
+    }
     // Where the navigation ENDED, against the frozen allowlist rather than against the
     // destination: a same-origin redirect is legitimate and lands somewhere the action did
     // not name. The interception should already have aborted anything else; this is the
@@ -525,6 +534,48 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
     });
     live.page = page;
     return page;
+  }
+
+  /**
+   * Remove the one page that may have received a credential before a submission failed.
+   *
+   * `live.page = null` happens first so even a close that stops answering cannot make the
+   * page the next action's surface. Closing the page is the normal path; closing the context
+   * and then the browser are fail-closed fallbacks if the page is unresponsive. The workspace
+   * remains in `this.live` so its Run/provider identity can still be released.
+   */
+  private async discardCredentialPage(live: LiveWorkspace, page: Page, timeoutMs: number): Promise<void> {
+    if (live.page === page) live.page = null;
+    const timeout = Math.max(1, Math.min(timeoutMs, CLOSE_TIMEOUT_MS));
+    try {
+      await withTimeout(page.close(), timeout);
+    } catch {
+      // The page may already be disconnected. The context/browser fallbacks below still
+      // have to run, and cleanup must never replace the original action failure.
+    }
+    let closed = false;
+    try {
+      closed = page.isClosed();
+    } catch {
+      closed = true;
+    }
+    if (closed) return;
+    try {
+      await withTimeout(live.context.close(), timeout);
+    } catch {
+      // Fall through to the browser close if the context cannot answer.
+    }
+    try {
+      closed = page.isClosed();
+    } catch {
+      closed = true;
+    }
+    if (closed) return;
+    try {
+      await withTimeout(live.browser.close(), timeout);
+    } catch {
+      // Keep the workspace identity for release even when the provider is already gone.
+    }
   }
 
   /**
@@ -608,6 +659,10 @@ async function signIn(
   timeoutMs: number,
   landed: Response,
 ): Promise<Response> {
+  // A redirect into another configured Target System cannot establish this action's target
+  // session, even if that other page happens to carry the approved account marker.
+  if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
+
   // Already signed in: the system answered the navigation and the workspace holds a session
   // for this origin, so there is nothing to enter and nothing to submit. The IDEMPOTENT
   // branch, and it is reachable — a database failure between a successful sign-in and its
@@ -662,6 +717,7 @@ async function signIn(
   // as by the caller because a sign-in is where a system most wants to send a browser
   // somewhere new.
   if (!live.allowed(page.url())) throw new BrowserActionError('scope');
+  if (!withinFrozenOrigin(destination, page.url())) throw new BrowserActionError('scope');
   return response;
 }
 
