@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   initialDraftCompliance,
+  initialDraftEvidence,
   registrationDigest,
   registrationDigestEnvelope,
   utf8Bytes,
@@ -62,6 +63,7 @@ const PLAN = {
     templateId: 'P-1',
     controlName: 'LoanCore account review',
     ...initialDraftCompliance('P-1'),
+    ...initialDraftEvidence('P-1'),
     targets: [TARGET],
     instructions: [{ registrationId: TARGET.registrationId, text: 'Inspect the approved account.' }],
   },
@@ -160,6 +162,7 @@ class FakeRepository implements AgentWorkRepository {
   eventOrder: string[] = [];
   observations: RegisteredObservation[] = [];
   evaluations: ObservationEvaluationRow[] = [];
+  observationChecks: Parameters<AgentWorkContext['saveObservationChecks']>[0][number][] = [];
   waits: RunWait[] = [];
   waitRaises: NonNullable<AgentWorkContext['waitRaise']>[] = [];
   failObservationWrite = false;
@@ -194,13 +197,13 @@ class FakeRepository implements AgentWorkRepository {
         const wait = this.waits.find(row => row.waitId === id), raised = this.waitRaises.find(row => row.waitId === id);
         return wait && raised ? [{ wait, raised }] : [];
       }),
-      readEvidenceStates: async (ids: readonly string[]) => this.evidence.filter(row => ids.includes(row.evidenceId)).map(row => ({ evidenceId: row.evidenceId, state: row.state })),
+      readEvidenceStates: async (ids: readonly string[]) => this.evidence.filter(row => ids.includes(row.evidenceId)).map(row => { const capture = this.captures.find(capture => capture.evidenceId === row.evidenceId); const action = this.actions.find(action => action.toolActionId === capture?.toolActionId); return { evidenceId: row.evidenceId, state: row.state, kind: row.kind, registrationId: row.registrationId, stepExecutionId: action?.stepExecutionId, toolActionId: capture?.toolActionId }; }),
       readObservations: async (_item: string, keys: readonly string[]) => this.observations.filter(row => keys.includes(row.record.populationRecordKey)).map(row => ({ ...row, observationId: row.record.observationId, populationRecordKey: row.record.populationRecordKey })),
       saveObservations: async (rows: readonly RegisteredObservation[]) => {
         if (this.failObservationWrite) { this.failObservationWrite = false; throw new Error('simulated transaction failure before Observation insert'); }
         this.observations.push(...rows); this.afterObservationSave?.();
       },
-      saveObservationChecks: async () => undefined,
+      saveObservationChecks: async (rows: Parameters<AgentWorkContext['saveObservationChecks']>[0]) => { this.observationChecks.push(...rows); },
       saveObservationEvaluations: async (rows: readonly ObservationEvaluationRow[]) => { this.evaluations.push(...rows); },
       saveExceptions: async () => undefined,
       frozenPlan: async () => this.plan,
@@ -305,7 +308,7 @@ function browserFor(repository: FakeRepository, nodes: readonly unknown[] = SNAP
         redirected: false,
         downloads: 0,
         session: true,
-        artifacts: [{ kind: 'structural-snapshot', bytes: snapshot(id, nodes).bytes, mediaType: WEB_TREE_MEDIA_TYPE, location: action.destination }],
+        artifacts: [{ kind: 'structural-snapshot', bytes: snapshot(id, nodes).bytes, mediaType: WEB_TREE_MEDIA_TYPE, location: action.destination }, { kind: 'screenshot', bytes: new Uint8Array([137, 80, 78, 71]), mediaType: 'image/png', location: action.destination }],
       };
     },
   };
@@ -313,6 +316,30 @@ function browserFor(repository: FakeRepository, nodes: readonly unknown[] = SNAP
 
 describe('executeAgentWorkItem', () => {
   afterEach(() => vi.restoreAllMocks());
+  it('keeps grounded findings unevaluated when required screenshot capture is missing', async () => {
+    vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    const browser = browserFor(repository, FOUND_CANDIDATES.slice(5)); const perform = browser.perform;
+    browser.perform = async (...args) => { const result = await perform(...args); return { ...result, artifacts: (result.artifacts ?? []).filter(artifact => artifact.kind !== 'screenshot') }; };
+    await executeAgentWorkItem(deps(repository, browser, evaluationModel(), durableWaitPort(repository)), JOB);
+    expect(repository.observations).toHaveLength(1);
+    expect(repository.observations[0]?.corroboration).toBe('MATCHED');
+    expect(repository.observationChecks).toContainEqual(expect.objectContaining({ check: 'required-evidence', outcome: 'FAIL', diagnostic: 'required-capture-missing' }));
+    expect(repository.evaluations.some(row => row.evaluation.value === 'UNEVALUATED')).toBe(true);
+    expect(repository.evaluations.some(row => row.evaluation.value === 'COMPLIANT')).toBe(false);
+  });
+  it('terminates on screenshot integrity mismatch without retrying capture or registering an Observation', async () => {
+    vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    const dependencies = deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), evaluationModel(), durableWaitPort(repository));
+    const read = dependencies.store.read;
+    dependencies.store.read = async (...args) => { const value = await read(...args); return value?.[0] === 137 ? new Uint8Array([0]) : value; };
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
+    expect(repository.run.state).toBe('RUN_FAILED');
+    expect(repository.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'capture-integrity-failed' });
+    expect(repository.observations).toHaveLength(0); expect(repository.waits).toHaveLength(0);
+    expect(repository.workItems[0]?.attempts).toBe(1);
+  });
   it('inserts the new Work Item before the checkpoint references it on the first claim', async () => {
     vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
     const repository = new FakeRepository(); repository.enforceWorkItemForeignKey = true;
@@ -518,12 +545,14 @@ describe('agent work consumes durable human decisions with original capture', ()
     await executeAgentWorkItem(dependencies, JOB);
     expect(repository.waits[0]?.kind).toBe('choose-candidate');
     const originalEvidence = repository.waitRaises[0]!.supportingEvidenceIds[0]!;
+    const originalAction = repository.captures.find(row => row.evidenceId === originalEvidence)!.toolActionId;
+    const originalScreenshot = repository.captures.find(row => row.toolActionId === originalAction && repository.evidence.some(evidence => evidence.evidenceId === row.evidenceId && evidence.kind === 'screenshot'))!.evidenceId;
     answerLast(repository, 'candidate-5');
     perform.mockClear();
     expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
     expect(perform).not.toHaveBeenCalled();
     expect(repository.observations).toHaveLength(1);
-    expect(repository.observations[0]!.record).toMatchObject({ found: 'true', matchOrigin: 'human-matched', evidenceIds: [originalEvidence], attributes: expect.arrayContaining([expect.objectContaining({ name: 'account_status', normalizedValue: 'disabled' })]) });
+    expect(repository.observations[0]!.record).toMatchObject({ found: 'true', matchOrigin: 'human-matched', evidenceIds: [originalEvidence, originalScreenshot], attributes: expect.arrayContaining([expect.objectContaining({ name: 'account_status', normalizedValue: 'disabled' })]) });
     expect(repository.checkpoint).toMatchObject({ waitId: null, pendingWait: null, status: 'COMPLETE' });
   });
   it('keeps the closed choice when registration fails, then a fresh context consumes it exactly once', async () => {

@@ -324,6 +324,10 @@ describe('the per-Observation checks', () => {
   const outcome = (results: readonly ObservationCheckResult[], name: string) =>
     results.find((entry) => entry.check === name) ?? null;
 
+  it('fails required evidence when a required screenshot is absent despite a grounded snapshot', () => {
+    expect(outcome(run({ record: FOUND, requiredCaptureKinds: ['structural-snapshot', 'screenshot'], registeredCaptureKinds: ['structural-snapshot'] }), 'required-evidence')).toEqual({ check: 'required-evidence', outcome: 'FAIL', diagnostic: 'required-capture-missing' });
+    expect(outcome(run({ record: FOUND, requiredCaptureKinds: ['structural-snapshot', 'screenshot'], registeredCaptureKinds: ['structural-snapshot', 'screenshot'] }), 'required-evidence')?.outcome).toBe('PASS');
+  });
   it('passes everything for a grounded, fresh, resolved match', () => {
     const results = run({ record: FOUND });
     expect(results.every((entry) => entry.outcome === 'PASS')).toBe(true);

@@ -608,6 +608,7 @@ export const OBSERVATION_CHECK_DIAGNOSTICS = [
   'ambiguous-match',
   'attribute-ungrounded',
   'evidence-unregistered',
+  'required-capture-missing',
   'capture-before-run',
   'capture-after-registration',
   'grounding-unlinked',
@@ -643,6 +644,9 @@ export function isObservationCheckResult(value: unknown): value is ObservationCh
 }
 
 export interface ObservationCheckInput {
+  readonly requiredCaptureKinds?: readonly ('structural-snapshot' | 'screenshot')[];
+  /** Trusted registered captures linked to this Observation, target and execution. */
+  readonly registeredCaptureKinds?: readonly ('structural-snapshot' | 'screenshot')[];
   readonly record: ObservationRecord;
   readonly absence: ObservationAbsenceProof | null;
   /** The declared search keys with the population record's normalized value for each. */
@@ -717,7 +721,9 @@ export function observationChecks(input: ObservationCheckInput): readonly Observ
   // so it is not decidable here; per-record coverage is the Run-level Gate's question.
   push(
     'required-evidence',
-    record.evidenceIds.some((id) => !registered.has(id))
+    input.requiredCaptureKinds?.some(kind => !input.registeredCaptureKinds?.includes(kind))
+      ? 'required-capture-missing'
+      : record.evidenceIds.some((id) => !registered.has(id))
       ? 'evidence-unregistered'
       : grounded.some((grounding) => !linked.has(grounding.evidenceId))
         ? 'grounding-unlinked'

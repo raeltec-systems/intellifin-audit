@@ -1212,3 +1212,8 @@ An explicitly prohibited baseline parameter has no approved comparison value. po
 ## Disposable journey fixture cleanup and release prerequisites (2026-09-07)
 
 Whole-Run teardown in isolated CI must remove Result/package before protected capture metadata, and Observations before permanent Exception rows; never disable protection triggers for cleanup. run_evidence stores digest, while raw_digest belongs to population_evidence. Railway production worker configuration inspection on 2026-09-07 found no SOLARI_API_KEY, EVIDENCE_S3_* configuration, CREDENTIAL_TOKENS or EXCEPTION_FINGERPRINT_KEY. OAuth reveals names only, not provider values. No infrastructure or variables were changed. The existing Northstar public domain is configured, but this environment's HTTP reader refused it; reachability from Solari remains unverified.
+
+
+## Agent capture completeness and integrity
+
+Agent Observation registration verifies both structural snapshot and screenshot are registered against the same immutable capture action and target. A screenshot transport failure can retain a grounded Observation, but required-evidence fails and conclusions stay UNEVALUATED; human recovery retains the original capture binding. Only typed transport failure permits partial capture. Integrity mismatch terminates RUN_FAILED immediately; unknown failures never become partial success. Keep the during/after Run distinction in evidence-package-v1: a later sealed-package integrity finding flags the audit trail without rewriting the Run or seal.

@@ -572,13 +572,13 @@ export async function withRunExecutionContext<T>(
       const ids = evidenceIds.filter((id) => isUuidText(id));
       if (ids.length === 0) return [];
       const rows = await tx
-        .select({ evidenceId: runEvidence.evidenceId, state: runEvidence.state })
+        .select({ evidenceId: runEvidence.evidenceId, state: runEvidence.state, kind: runEvidence.kind,
+          registrationId: runEvidence.registrationId, stepExecutionId: runToolAction.stepExecutionId, toolActionId: runEvidenceCapture.toolActionId })
         .from(runEvidence)
-        .where(inArray(runEvidence.evidenceId, ids));
-      return rows.map((row) => ({
-        evidenceId: row.evidenceId,
-        state: row.state as EvidenceState['state'],
-      }));
+        .leftJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
+        .leftJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
+        .where(and(eq(runEvidence.runId, runId), inArray(runEvidence.evidenceId, ids)));
+      return rows.map(row => ({ ...row, state: row.state as EvidenceState['state'], kind: row.kind as AdapterEvidenceRecord['kind'] }));
     },
     async saveObservations(rows: readonly RegisteredObservation[]) {
       // `DO NOTHING` on (work_item_id, population_record_key): a redelivered job that

@@ -496,6 +496,10 @@ export interface ObservationEvaluationRow {
 
 /** The Evidence state registration needs: an artifact is proof only once REGISTERED. */
 export interface EvidenceState {
+  readonly toolActionId?: string | null;
+  readonly kind?: AdapterEvidenceRecord['kind'];
+  readonly registrationId?: string;
+  readonly stepExecutionId?: string | null;
   readonly evidenceId: string;
   readonly state: AdapterEvidenceRecord['state'];
 }

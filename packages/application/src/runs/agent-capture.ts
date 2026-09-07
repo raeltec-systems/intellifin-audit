@@ -1,5 +1,5 @@
 import { WEB_TREE_MEDIA_TYPE, readStructuralSnapshot, type StoredSnapshot } from '@intellifin/domain';
-import type { BrowserActionArtifact, EvidenceStore, AdapterEvidenceRecord } from './execution-ports.js';
+import { PopulationAcquisitionError, type BrowserActionArtifact, type EvidenceStore, type AdapterEvidenceRecord } from './execution-ports.js';
 import type { AgentWorkContext } from './agent-work-ports.js';
 import type { CredentialGuard } from './credential-guard.js';
 import { adapterEvidenceRecord, freezeArtifact, registerEvidence, reserveArtifact, readRegisteredArtifact } from './evidence-package.js';
@@ -28,7 +28,7 @@ export async function freezeAgentCapture(input: {
   const evidence: AdapterEvidenceRecord[] = [];
   let snapshot: StoredSnapshot | null = null;
   let screenshotEvidenceId: string | null = null;
-  for (const artifact of input.artifacts) {
+  for (const artifact of [source, ...screenshots]) {
     const reservation = reserveArtifact({ runId: input.runId, kind: artifact.kind, scope: input.toolActionId, templateId: input.templateId });
     let row: AdapterEvidenceRecord | null = null;
     if (!await input.commit(async context => {
@@ -36,7 +36,18 @@ export async function freezeAgentCapture(input: {
       await context.saveEvidence(row);
     })) return null;
     const reserved = row! as AdapterEvidenceRecord;
-    const frozen = await freezeArtifact(input.store, { objectKey: reserved.objectKey, registeredDigest: reserved.digest, registeredSize: reserved.size }, artifact.bytes, input.budget, input.guard);
+    let frozen: { digest: string; size: number };
+    try {
+      frozen = await freezeArtifact(input.store, { objectKey: reserved.objectKey, registeredDigest: reserved.digest, registeredSize: reserved.size }, artifact.bytes, input.budget, input.guard);
+    } catch (error) {
+      // Only a typed transport failure may degrade the independent screenshot capture.
+      // Integrity mismatches and unknown failures retain the terminal/refusal path.
+      // Keep its reservation: shared registration records the missing required capture.
+      if (artifact.kind !== 'screenshot' || input.guard.discloses(artifact.bytes) ||
+          !(error instanceof PopulationAcquisitionError && error.code === 'transport')) throw error;
+      input.budget(); // Exhausted execution budgets still terminate the investigation.
+      continue;
+    }
     const registered = registerEvidence(reserved, frozen, { mediaType: artifact.mediaType, capturedAt: input.now(), method: 'agent' });
     evidence.push(registered);
     if (artifact.kind === 'structural-snapshot') {

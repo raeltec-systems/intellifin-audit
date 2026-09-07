@@ -1119,3 +1119,20 @@ describe('registerObservations', () => {
     expect((context.events[0]!.payload['digests'] as string[])[1199]).toBe(outcome.digests[1199]);
   });
 });
+
+describe('required agent captures in the shared registration contract', () => {
+  it.each(['missing', 'reserved', 'other-target', 'other-step', 'other-action', 'unlinked', 'matching'] as const)('registers honest evidence checks for a %s screenshot', async mode => {
+    const context = new FakeContext();
+    context.evidence = [{ evidenceId: EVIDENCE, state: 'REGISTERED', kind: 'structural-snapshot', registrationId: TARGET, stepExecutionId: STEP_EXECUTION, toolActionId: 'capture-action' }];
+    if (mode !== 'missing') context.evidence.push({ evidenceId: OTHER_EVIDENCE, state: mode === 'reserved' ? 'RESERVED' : 'REGISTERED', kind: 'screenshot', registrationId: mode === 'other-target' ? 'another-target' : TARGET, stepExecutionId: mode === 'other-step' ? 'another-step' : STEP_EXECUTION, toolActionId: mode === 'other-action' ? 'different-action' : 'capture-action' });
+    const record = { ...found('AG-1001'), captureMethod: 'agent' as const, evidenceIds: mode === 'missing' || mode === 'unlinked' ? [EVIDENCE] : [EVIDENCE, OTHER_EVIDENCE] };
+    await registerObservations(context, batch([item(record)], { evidenceRequirements: [] }), { ...SEAMS, corroboration: MATCHED_CORROBORATION });
+    expect(context.observations).toHaveLength(1); expect(context.observations[0]?.corroboration).toBe('MATCHED');
+    expect(context.checks).toContainEqual(expect.objectContaining({ check: 'required-evidence', outcome: mode === 'matching' ? 'PASS' : 'FAIL', diagnostic: mode === 'matching' ? null : 'required-capture-missing' }));
+  });
+  it('refuses omission of frozen requirements by an agent producer', async () => {
+    const context = new FakeContext();
+    await expect(registerObservations(context, batch([item({ ...found('AG-1001'), captureMethod: 'agent' })]), SEAMS)).rejects.toMatchObject({ refusal: 'batch-mismatch' });
+    expect(context.wroteNothing()).toBe(true);
+  });
+});

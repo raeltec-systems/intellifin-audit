@@ -952,6 +952,7 @@ export async function executeAgentWorkItem(
       const saved = await guarded(async (context) => {
         if (await stopAtFinalLimit(context)) { limited = true; return; }
         await registerObservations(context, {
+          evidenceRequirements: plan.inputs.evidenceRequirements,
           run,
           workItemId: item.workItemId,
           stepExecutionId: execution.stepExecutionId,
@@ -1119,7 +1120,11 @@ export async function executeAgentWorkItem(
         if (!applied.ok || applied.kind !== 'register') {
           await stopRun('human-decision-refused', 'session-step-failed'); return { retry: false };
         }
-        const finished = await finishObservation(item, execution, applied.item, original, applied.workItemState);
+        const originalScreenshot = claim.captures.find(capture => capture.toolActionId === binding.toolActionId &&
+          claim.evidence.some(row => row.evidenceId === capture.evidenceId && row.state === 'REGISTERED' && row.kind === 'screenshot' && row.registrationId === item.registrationId));
+        const decidedItem = originalScreenshot === undefined ? applied.item : { ...applied.item,
+          record: { ...applied.item.record, evidenceIds: [...new Set([...applied.item.record.evidenceIds, originalScreenshot.evidenceId])] } };
+        const finished = await finishObservation(item, execution, decidedItem, original, applied.workItemState);
         if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
         if (finished === 'refused') {
           // Preserve the choice across a retry. It is consumed only with registration.
@@ -1188,6 +1193,7 @@ export async function executeAgentWorkItem(
           });
         } catch (error) {
           const diagnostic = failureDiagnostic(error);
+          if (diagnostic === 'capture-integrity-failed') { await stopRun(diagnostic); return { retry: false }; }
           const result = await persistRetry(item, execution, diagnostic);
           const outcome = retryOutcome(result);
           if (outcome !== null) return outcome;
@@ -1238,7 +1244,7 @@ export async function executeAgentWorkItem(
         try {
           const saved = await guarded(async context => {
             if (await stopAtFinalLimit(context)) { limited = true; return; }
-            await registerObservations(context, { run, workItemId: item.workItemId,
+            await registerObservations(context, { evidenceRequirements: plan.inputs.evidenceRequirements, run, workItemId: item.workItemId,
               stepExecutionId: execution.stepExecutionId, targetSystem: item.registrationId,
               templateId: plan.inputs.templateId, runStartedAt: checkpoint.runStartedAt,
               registeredAt: nowIso(dependencies.clock), items: page.batch.items,
@@ -1437,7 +1443,9 @@ export async function executeAgentWorkItem(
             commit: guarded,
           });
         } catch (error) {
-          const result = await persistRetry(item, execution, failureDiagnostic(error));
+          const diagnostic = failureDiagnostic(error);
+          if (diagnostic === 'capture-integrity-failed') { await stopRun(diagnostic); return { retry: false }; }
+          const result = await persistRetry(item, execution, diagnostic);
           const outcome = retryOutcome(result);
           if (outcome !== null) return outcome;
           break;

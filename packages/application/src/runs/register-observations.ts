@@ -17,6 +17,7 @@ import {
   observationDigest,
   observationIdFor,
   templateCoverageRule,
+  type EvidenceRequirement,
   type ObservationAbsenceProof,
   type ObservationAttribute,
   type ObservationCheckResult,
@@ -122,6 +123,8 @@ export interface ObservationBatchItem {
 }
 
 export interface ObservationBatch {
+  /** Exact frozen requirements, mandatory for every agent capture producer. */
+  readonly evidenceRequirements?: readonly EvidenceRequirement[];
   readonly run: RunRecord;
   readonly workItemId: string;
   readonly stepExecutionId: string;
@@ -350,6 +353,7 @@ export async function registerObservations(
   }
 
   // ----------------------------------------------------- Evidence, then corroboration
+  if (batch.items.some(item => item.record.captureMethod === 'agent') && batch.evidenceRequirements === undefined) refuse('batch-mismatch');
   const linked = [...new Set(batch.items.flatMap((item) => [...item.record.evidenceIds]))];
   const states = await context.readEvidenceStates(linked);
   const registeredEvidenceIds = states
@@ -412,12 +416,20 @@ export async function registerObservations(
       registeredEvidenceIds,
       coverageRule,
     });
+    const primaryCaptureId = record.identity?.grounding?.evidenceId ?? item.absence?.emptyResultEvidenceId ?? record.evidenceIds.find(id => states.some(row => row.evidenceId === id && row.kind === 'structural-snapshot'));
+    const primaryCapture = states.find(row => row.evidenceId === primaryCaptureId && row.kind === 'structural-snapshot' && row.state === 'REGISTERED' && row.registrationId === batch.targetSystem);
+    const registeredCaptureKinds = primaryCapture?.toolActionId && primaryCapture.stepExecutionId
+      ? states.filter(row => row.state === 'REGISTERED' && record.evidenceIds.includes(row.evidenceId) && row.registrationId === batch.targetSystem && row.stepExecutionId === primaryCapture.stepExecutionId && row.toolActionId === primaryCapture.toolActionId && (row.kind === 'structural-snapshot' || row.kind === 'screenshot')).map(row => row.kind as 'structural-snapshot' | 'screenshot') : [];
     const checks: ObservationCheckResult[] = [
       ...observationChecks({
         record,
         absence: item.absence,
         expectedQueryKeys: item.expectedQueryKeys,
         registeredEvidenceIds,
+        // Agent fields are always platform-captured; authored requirements can add to,
+        // but cannot remove, their structural snapshot and screenshot baseline.
+        requiredCaptureKinds: record.captureMethod === 'agent' ? ['structural-snapshot', 'screenshot'] : [],
+        registeredCaptureKinds,
         runStartedAt: batch.runStartedAt,
         registeredAt: batch.registeredAt,
       }),
