@@ -1143,3 +1143,7 @@ Two mechanical lessons from doing it:
 - **Read the FIRST failure.** Four suites failed on that pollution and none of them had
   anything to do with it — `immutable-versions.test.ts` inside `listActiveVersions`, and
   `run-surfaces.test.ts` on four bounded reads that had fallen off page one.
+
+### Agent registration: unknown applicability is not a missing judgment
+
+When the frozen evaluator returns MISSING_OBSERVATION_FIELD for Agent-Judged applicability, preserve unknown as UNEVALUATED without a proposal. It is neither CONDITION_NOT_APPLICABLE nor permission for a guessed model conclusion. Registration rejects proposed or conclusive output for that state before writes.

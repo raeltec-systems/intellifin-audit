@@ -1,5 +1,6 @@
 import {
   CONDITION_NOT_APPLICABLE,
+  MISSING_OBSERVATION_FIELD,
   OBSERVATION_LIMITS,
   canBeCompliant,
   corroborationAllowsCompliant,
@@ -557,6 +558,9 @@ export async function registerObservations(
       const notApplicable = evaluation.diagnostic
         ?.split('; ')
         .includes(CONDITION_NOT_APPLICABLE) ?? false;
+      const applicabilityUnknown = evaluation.diagnostic
+        ?.split('; ')
+        .some((diagnostic) => diagnostic.startsWith(MISSING_OBSERVATION_FIELD)) ?? false;
       if (
         expectedAgentConditionSet !== null &&
         (expectedAgentConditionSet.has(evaluation.conditionId)
@@ -576,6 +580,20 @@ export async function registerObservations(
           // Applicability is deterministic. A proposal for a condition that does not apply
           // is an extra model answer, even if its value happens to be well-formed.
           if (proposal !== undefined) refuse('evaluation-shape');
+        } else if (applicabilityUnknown) {
+          // A null applicability is not a false predicate. The compiler reports it with its
+          // missing-field diagnostic and the only honest stored result is UNEVALUATED. No
+          // model proposal may fill in a predicate the frozen compiler could not decide,
+          // and a faulty port may not turn that unknown into COMPLIANT or EXCEPTION.
+          if (
+            proposal !== undefined ||
+            evaluation.value !== 'UNEVALUATED' ||
+            evaluation.confirmation !== null ||
+            evaluation.confidence !== null ||
+            evaluation.rationale !== null
+          ) {
+            refuse('evaluation-shape');
+          }
         } else {
           // Every applicable Agent-Judged condition needs one corresponding proposal. This
           // catches a missing C2 answer before any Observation/evaluation/Exception write.

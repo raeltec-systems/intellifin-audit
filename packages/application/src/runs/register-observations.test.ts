@@ -899,6 +899,73 @@ describe('registerObservations', () => {
     )).resolves.toMatchObject({ registered: 1, evaluations: 2, exceptions: 0 });
   });
 
+  it('keeps an ambiguous Observation with unknown Agent-Judged applicability Unevaluated', async () => {
+    const ambiguous = { ...found('AG-1001'), found: 'ambiguous' as const, identity: null, attributes: [] };
+    const agentEvaluation = agentEvaluationPort((observationId) => ({
+      observationId,
+      evaluations: [
+        {
+          conditionId: 'C1', origin: 'RULE' as const, value: 'UNEVALUATED' as const,
+          confirmation: null, confidence: null, rationale: null,
+          diagnostic: 'missing, ambiguous, contradictory, uninspected, or unproven Evidence', evidenceIds: [EVIDENCE],
+        },
+        {
+          conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value: 'UNEVALUATED' as const,
+          confirmation: null, confidence: null, rationale: null,
+          diagnostic: 'missing or invalid Observation field found', evidenceIds: [EVIDENCE],
+        },
+      ],
+    }));
+    const context = new FakeContext();
+    await expect(registerObservations(
+      context,
+      agentBatch([], { items: [item(ambiguous)] }),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation },
+    )).resolves.toMatchObject({ registered: 1, evaluations: 2, exceptions: 0 });
+    expect(context.evaluations).toHaveLength(2);
+    expect(context.evaluations[1]?.evaluation).toMatchObject({
+      conditionId: 'C2', origin: 'AGENT_JUDGED', value: 'UNEVALUATED', confirmation: null,
+    });
+    expect('agentProposal' in (context.evaluations[1] ?? {})).toBe(false);
+  });
+
+  it('rejects a proposal or Compliant result when Agent-Judged applicability is unknown', async () => {
+    const unknown = (observationId: string, value: 'COMPLIANT' | 'UNEVALUATED'): ObservationEvaluationResult => ({
+      observationId,
+      evaluations: [
+        {
+          conditionId: 'C1', origin: 'RULE' as const, value: 'UNEVALUATED' as const,
+          confirmation: null, confidence: null, rationale: null,
+          diagnostic: 'missing, ambiguous, contradictory, uninspected, or unproven Evidence', evidenceIds: [EVIDENCE],
+        },
+        {
+          conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value,
+          confirmation: null, confidence: null, rationale: null,
+          diagnostic: 'missing or invalid Observation field found', evidenceIds: [EVIDENCE],
+        },
+      ],
+    });
+    const proposal: AgentJudgedProposal = {
+      observationId: observationIdFor(WORK_ITEM, 'AG-1001'), conditionId: 'C2', value: 'EXCEPTION',
+      confidence: '0.80', rationale: 'The model must not decide unknown applicability.',
+    };
+    const proposedContext = new FakeContext();
+    expect(await refusal(() => registerObservations(
+      proposedContext,
+      agentBatch([proposal], { items: [item({ ...found('AG-1001'), found: 'ambiguous' as const, identity: null, attributes: [] })] }),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation: agentEvaluationPort((observationId) => unknown(observationId, 'UNEVALUATED')) },
+    ))).toBe('evaluation-shape');
+    expect(proposedContext.wroteNothing()).toBe(true);
+
+    const compliantContext = new FakeContext();
+    expect(await refusal(() => registerObservations(
+      compliantContext,
+      agentBatch([], { items: [item({ ...found('AG-1001'), found: 'ambiguous' as const, identity: null, attributes: [] })] }),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation: agentEvaluationPort((observationId) => unknown(observationId, 'COMPLIANT')) },
+    ))).toBe('evaluation-shape');
+    expect(compliantContext.wroteNothing()).toBe(true);
+  });
+
   it('refuses to call an uninspected or ambiguous record Compliant', async () => {
     // H, and the composite foreign key that says the same thing in the database.
     for (const offered of [

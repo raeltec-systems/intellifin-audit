@@ -146,3 +146,7 @@ The real provider gateway now supports a strict evaluation phase after a final c
 ## Story4.11 browser write/isolation checkpoint (incomplete story)
 
 Code review found the context route allowed same-origin page-script writes despite the Tool Action gate. The context now permits only read methods, with one exact credential-bearing main-frame POST armed solely for real login and revoked in finally.30 browser unit tests pass. Real local-Chromium regressions cover concurrent same-origin cookie/storage isolation, cross-Run reference refusal, release independence, page-script writes never reaching the server, and credential reflection refusing capture; hosted execution is pending. They do not prove Solari isolation or full4.11 acceptance. e1e7c3a171ebdb1c3bcbb7012842f685a6ce3ab9 is pushed; its model/turn/startup focused run passes76 tests locally. Remote-provider acceptance remains blocked by unavailable Solari credentials.
+
+## Unknown Agent-Judged applicability regression
+
+An ambiguous identity can make C2 applicability unknown rather than false. Registration now accepts only UNEVALUATED with no proposal, confidence, rationale, or confirmation in that case; fabricated proposals or compliant values remain refused. The new regression fails on 82a924f and passes with the repair (38 registration tests plus the previously failing loop case; application typecheck passes). No authority or predicate was changed. Pushed checkpoint; full connected journey and hosted acceptance remain pending.
