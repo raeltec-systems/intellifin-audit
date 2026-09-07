@@ -1252,3 +1252,8 @@ An in-scope HTTP origin does not authorize every password-form POST beneath it. 
 ### Epic 4 public ProdConsole landing navigation
 
 The seeded ProdConsole origin is its landing page, not the configuration table URL. Public access verifies the frozen structural landing surface; then the model selects an opaque approved in-scope link before the worker navigates and captures configuration evidence. Derive integration origins and labels from the actual catalog so deeper fixture URLs cannot hide a broken user path. Credential-free execution is restricted by the validated frozen P4/single-web contract, still requires EvidenceStore and Exception signing, and never resolves its legacy compatibility credential reference. Other plans keep the strict credential manifest gate.
+
+
+### Epic 4 hydrated and worker abuse verification
+
+SSR escaping alone cannot establish that hostile escalation text leaves hydrated choices unselected. Exercise actual browser controls and durable answers, then mutate the selection/answer guard and require the relevant assertions to fail. For runtime scope-widening cases, the test-only model HTTP preload may return hostile proposals, but must never create observations or replace browser results; boot the production worker with the candidate's migrated queues and actual synthetic form authentication. Keep mutation execution inside a clean detached worktree and restore guards after each run.
