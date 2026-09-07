@@ -1,3 +1,4 @@
+<!-- Workspace cleanup: a persisted Solari hard expiry is distinct from confirmed release; never discard an unexpired provider identity after a configuration mismatch or provider error. -->
 <!-- Engineering continuation: raw postgres.js timestamp-without-time-zone values may be strings; normalize dates in migration assertions. Drizzle wraps server errors in cause; sealed guards use SQLSTATE 23514. -->
 # CLAUDE.md
 

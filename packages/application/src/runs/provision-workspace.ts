@@ -569,20 +569,38 @@ export async function releaseWorkspace(
       );
       return null;
     }
+    const now = deps.clock.now();
+    const expired =
+      prior.mode === 'solari' &&
+      prior.expiresAt !== null &&
+      Date.parse(prior.expiresAt) <= now.getTime();
     return {
       checkpoint: prior,
       ref: { runId, workspaceId: prior.workspaceId, mode: prior.mode } satisfies WorkspaceRef,
       state: context.run?.state ?? 'RUN_FAILED',
+      expired,
     };
   });
   if (claim === null) return { released: false };
 
-  // The last chance to collect what the workspace refused: the denial log dies with the
-  // workspace, so it is drained before the release rather than after it.
-  const handle = await deps.browser.attach(claim.ref).catch(() => null);
-  const denials = handle?.takeDenials() ?? [];
-  const deniedTotal = handle?.denied() ?? 0;
-  await deps.browser.release(claim.ref, WORKSPACE_RELEASE_TIMEOUT_MS);
+  let denials: readonly WorkspaceDenial[] = [];
+  let deniedTotal = 0;
+  if (!claim.expired) {
+    // The last chance to collect what the workspace refused: the denial log dies with the
+    // workspace, so it is drained before the release rather than after it.
+    const handle = await deps.browser.attach(claim.ref).catch(() => null);
+    denials = handle?.takeDenials() ?? [];
+    deniedTotal = handle?.denied() ?? 0;
+    // An unexpired identity may still be alive. A provider failure must leave its identity
+    // on the row so the reaper can retry it, rather than falsely marking it released.
+    await deps.browser.release(claim.ref, WORKSPACE_RELEASE_TIMEOUT_MS);
+  } else {
+    // A persisted Solari deadline is authoritative: the provider has already auto-released
+    // this identity. Release is only a courtesy, so an unavailable provider cannot keep a
+    // terminal row reapable forever. The identity remains on the released row for audit
+    // correlation, and the expiry diagnosis distinguishes this from an acknowledged release.
+    await deps.browser.release(claim.ref, WORKSPACE_RELEASE_TIMEOUT_MS).catch(() => undefined);
+  }
 
   await deps.repository.transaction(runId, async (context) => {
     if (context.checkpoint?.revision !== claim.checkpoint.revision) return;
@@ -591,14 +609,13 @@ export async function releaseWorkspace(
       revision: claim.checkpoint.revision + 1,
       status: 'RELEASED',
       releasedAt: deps.clock.now().toISOString(),
-      diagnostic: null,
+      diagnostic: claim.expired ? 'workspace-expired' : null,
     };
     await context.save(released, claim.state);
-    await event(context, 'workspace-released', claim.state, released, {
+    await event(context, claim.expired ? 'workspace-expired' : 'workspace-released', claim.state, released, {
       ...(deniedTotal > 0 ? { deniedTotal } : {}),
     });
     await recordDenials(context, denials);
   });
   return { released: true };
 }
-

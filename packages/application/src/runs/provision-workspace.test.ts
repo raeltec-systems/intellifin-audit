@@ -323,7 +323,13 @@ describe('provisionWorkspace', () => {
       expect(restarted.created).toEqual([]);
       expect(restarted.attached).toEqual([]);
       expect(restarted.released).toEqual([]);
-      expect(state.checkpoint).toMatchObject({ workspaceId: identity, mode: originalMode, status: 'FAILED', diagnostic: 'workspace-policy' });
+      expect(state.checkpoint).toMatchObject({
+        workspaceId: identity,
+        mode: originalMode,
+        expiresAt: '2026-09-07T00:00:00.000Z',
+        status: 'FAILED',
+        diagnostic: 'workspace-policy',
+      });
       expect(state.run?.state).toBe('RUN_FAILED');
     },
   );
@@ -645,6 +651,31 @@ describe('releaseWorkspace', () => {
     expect(await releaseWorkspace(DEPS(state, browser), RUN.runId)).toEqual({ released: false });
     expect(browser.released).toHaveLength(1);
     expect(state.events).toHaveLength(events);
+  });
+
+  it('closes an expired Solari workspace when its provider release fails', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({
+      mode: 'solari',
+      expiresAt: '2026-09-05T00:00:00.000Z',
+      failRelease: new Error('the provider is unavailable'),
+    });
+    await provisionWorkspace(DEPS(state, browser), JOB);
+    state.run = { ...state.run!, state: 'RUN_FAILED' };
+
+    expect(await releaseWorkspace(DEPS(state, browser), RUN.runId)).toEqual({ released: true });
+    expect(browser.released).toEqual([{ runId: RUN.runId, workspaceId: 'ws-1', mode: 'solari' }]);
+    expect(state.checkpoint).toMatchObject({
+      status: 'RELEASED',
+      workspaceId: 'ws-1',
+      mode: 'solari',
+      expiresAt: '2026-09-05T00:00:00.000Z',
+      diagnostic: 'workspace-expired',
+    });
+    expect(state.events.at(-1)?.payload).toMatchObject({
+      diagnostic: 'workspace-expired',
+      workspaceId: 'ws-1',
+    });
   });
 
   it('closes a row that names no workspace rather than sweeping it forever', async () => {
