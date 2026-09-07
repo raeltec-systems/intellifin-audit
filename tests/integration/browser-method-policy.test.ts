@@ -122,4 +122,58 @@ describe('agent workspace page isolation', () => {
       await closeServer(server);
     }
   }, 60_000);
+
+  it('uses an explicit submitter formaction when one is declared', async () => {
+    let authenticationPath = '';
+    const { server, origin } = await listen((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const current = new URL(request.url ?? '/', 'http://127.0.0.1');
+        if (request.method === 'POST' && current.pathname === '/target/submitter-sign-in') {
+          authenticationPath = current.pathname;
+          expect(new URLSearchParams(Buffer.concat(chunks).toString()).get('credential')).toBe(TOKEN);
+          response.writeHead(303, {
+            location: '/target/home',
+            'set-cookie': 'session=granted; Path=/; HttpOnly',
+          });
+          response.end();
+          return;
+        }
+
+        const authenticated = String(request.headers.cookie ?? '').includes('session=granted');
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(authenticated
+          ? '<!doctype html><body><p role="status" aria-label="Current signed-in account">Signed in as audit.readonly</p></body>'
+          : `<!doctype html><body>
+            <form method="post" action="/target/sign-in">
+              <input type="password" name="credential">
+              <button type="submit" formaction="/target/submitter-sign-in">Sign in</button>
+            </form>
+          </body>`);
+      });
+    });
+    const browser = new PlaywrightBrowserExecution({ mode: 'local' });
+    try {
+      const workspace = await browser.create({
+        runId: 'agent-submit-button-override-test',
+        policy: { allowedOrigins: [origin] },
+        timeoutMs: 10_000,
+      });
+      const credential = await new ManifestCredentialResolver(
+        new Map([[CREDENTIAL_REF, TOKEN]]),
+      ).resolve(CREDENTIAL_REF, 1_000);
+      const result = await browser.perform(
+        workspace.ref,
+        { action: 'navigate', destination: origin, parameters: [], credential },
+        10_000,
+      );
+
+      expect(result).toMatchObject({ status: 200, method: 'POST', session: true });
+      expect(authenticationPath).toBe('/target/submitter-sign-in');
+    } finally {
+      await browser.close();
+      await closeServer(server);
+    }
+  }, 60_000);
 });

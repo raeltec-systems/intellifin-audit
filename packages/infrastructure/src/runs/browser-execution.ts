@@ -974,9 +974,10 @@ interface SubmittableForm {
 }
 interface FormSubmitter {
   readonly formAction: string;
-  /** Empty when the submitter has no override; the form's method is then effective. */
+  /** The effective method, inherited from the associated form when no override is declared. */
   readonly formMethod: string;
-  readonly form?: SubmittableForm | null;
+  readonly form: SubmittableForm | null;
+  readonly hasAttribute: (name: string) => boolean;
 }
 
 interface SearchParameter {
@@ -1144,8 +1145,19 @@ async function resolvedSubmitter(
     () => submitter.evaluate((element) => {
       const control = element as unknown as FormSubmitter;
       return {
-        formAction: control.formAction,
-        formMethod: control.formMethod || control.form?.method || '',
+        // The IDL `formAction` property is resolved even when no `formaction` attribute is
+        // present; in that case browsers expose the current document URL. Native form
+        // submission instead falls back to the associated form's action. Distinguish the
+        // attribute override from that default so the request arm matches what the browser
+        // will actually put on the wire.
+        formAction: control.hasAttribute('formaction')
+          ? control.formAction
+          : control.form?.action ?? '',
+        // The same distinction matters for an explicitly empty `formmethod`: an override is
+        // an override, while an absent attribute inherits the form's effective method.
+        formMethod: control.hasAttribute('formmethod')
+          ? control.formMethod
+          : control.form?.method ?? '',
       };
     }),
     deadline,

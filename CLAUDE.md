@@ -1159,3 +1159,7 @@ A human rejection can seal a pending Result and set the Run to INCONCLUSIVE. The
 ### Agent limits apply again at the commit boundary
 
 A successful browser/model read can consume the deadline while its registration waits for the Run lock. Check the original Run limit inside that transaction and again before the final Gate; retain acquired Evidence but never seal Pass after expiry. Process frozen targets outermost, included population records innermost. Typed uncertainty must consume the same bounded extra retry cycle as transport failure, rather than minting unlimited human Retry grants.
+
+### A submit button's DOM formAction is not its inherited form action
+
+Without a formaction attribute, the button property can report the document URL while native submission uses the associated form's action. Resolve explicit overrides by hasAttribute, otherwise use form.action/form.method. An exact one-request authentication grant must name the URL the browser actually submits to; never broaden it to the whole origin to mask this mismatch.
