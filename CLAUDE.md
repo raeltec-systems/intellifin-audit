@@ -1202,3 +1202,8 @@ Adapter extraction now completes references and leaves web work for investigatio
 ## Search-control provenance is temporal (2026-09-07)
 
 A search result can repeat the form that submitted it. Bind the request parameters to its single pre-search control snapshot; combining before/after node lists invents duplicate controls and prevents otherwise complete two-key absence proof. Retain the result's independent completeness proof. A supplied ambiguous/invalid pre-search page must not fall back to a cleaner result page. Existing evidence without a pre-search capture uses its one recorded page, preserving the bounded compatibility path.
+
+
+## P-4 prohibited baseline fields (2026-09-07)
+
+An explicitly prohibited baseline parameter has no approved comparison value. populationFieldFindings therefore exempts only approved_value emptiness for P-4 rows with exact disposition=prohibited. The column must still exist in the declared schema, and approved/unknown-disposition rows still need a value. This matches the existing shared compiler's prohibited-parameter rule and Northstar's canonical fixture; it does not excuse any missing observed parameter or duplicate baseline.

@@ -609,7 +609,15 @@ export function populationFieldFindings(
       for (const field of required) {
         if (field === key) continue;
         const value = Object.hasOwn(values, field) ? values[field] : undefined;
-        if (value === undefined || value === null || value === '') {
+        // P-4's prohibited baseline is a valid row with no allowed value to compare.
+        // Exempt only that exact disposition and only the approved-value cell: the
+        // disposition itself remains schema data, and approved/malformed rows still fail
+        // the mandatory-values row when their approved value is blank.
+        const prohibitedBaselineValue =
+          templateId === 'P-4' &&
+          field === 'approved_value' &&
+          values['disposition'] === 'prohibited';
+        if (!prohibitedBaselineValue && (value === undefined || value === null || value === '')) {
           yield { diagnostic: 'mandatory-value-missing', targetSystem: null, workItemId: null, record: named };
         }
       }

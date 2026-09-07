@@ -442,6 +442,39 @@ describe('populationFieldFindings', () => {
     ).toEqual([]);
   });
 
+  it('does not require an approved value for a valid prohibited P-4 baseline row', () => {
+    const shape = {
+      templateId: 'P-4',
+      declaredSchema: ['parameter', 'approved_value', 'effective_time', 'disposition'],
+      allowVersionedDuplicates: false,
+    } as const;
+    const prohibited = {
+      parameter: 'legacy_direct_db_access',
+      approved_value: '',
+      effective_time: '2026-01-01T00:00:00Z',
+      disposition: 'prohibited',
+    };
+    expect(populationFieldFindings({ ...shape, rows: rows([prohibited]) })).toEqual([]);
+
+    // The exemption is specific to the exact prohibited disposition. An empty approved
+    // value on an approved row, or beside a malformed disposition, remains a Gate failure.
+    for (const disposition of ['approved', 'unsupported']) {
+      const findings = populationFieldFindings({
+        ...shape,
+        rows: rows([{ ...prohibited, disposition }]),
+      });
+      expect(diagnostics(findings)).toContain('mandatory-value-missing');
+    }
+
+    // A missing column still fails the schema row even when the disposition is prohibited;
+    // this only exempts the semantic empty cell, never a missing field.
+    const missingColumn = { ...prohibited } as Record<string, string>;
+    delete missingColumn.approved_value;
+    expect(
+      diagnostics(populationFieldFindings({ ...shape, rows: rows([missingColumn]) })),
+    ).toContain('schema-field-missing');
+  });
+
   it('judges nothing at all for a Template this build does not know', () => {
     expect(
       populationFieldFindings({
