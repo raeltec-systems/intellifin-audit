@@ -335,3 +335,19 @@ describe('generation 40 adjacent absence provenance', () => {
     expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (40)');
   });
 });
+
+
+describe('generation 41 absence guard qualification', () => {
+  const sql = migration('0041_absence_guard_qualification.sql');
+  it('repairs the PL/pgSQL FOUND collision without rewriting generation40 or weakening immutable guards', () => {
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION run_observation_absence_guard()');
+    expect(sql).toContain("o.found='false'");
+    expect(sql).not.toMatch(/(?<!\.)\bfound='false'/);
+    expect(sql).toContain('PERFORM r.run_id FROM audit_run AS r WHERE r.run_id=NEW.run_id FOR UPDATE');
+    expect(sql).toContain('Absence provenance is immutable');
+    expect(sql).toContain('Absence provenance survives while its Observation exists');
+    expect(sql).toContain('A sealed Run cannot acquire retrospective absence provenance');
+    expect(sql).not.toMatch(/(?:DISABLE TRIGGER|DROP TRIGGER|UPDATE run_observation|DELETE FROM run_observation)/);
+    expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (41)');
+  });
+});

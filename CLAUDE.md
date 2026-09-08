@@ -1332,3 +1332,8 @@ Read the canonical expectation rows from disk and exercise the real synthetic ap
 ### Retrieved evidence assertions and second retry exhaustion
 
 Compare exact retrieved text after parsing the registered structural snapshot, not against JSON transport escaping. A retry-or-skip answer permits one additional bounded cycle; its second exhaustion fails the Work Item and continues the Run through the shared Gate. A one-record Run consequently ends Inconclusive without a third-cycle human wait. Verify the production terminal cleanup path rather than using a test Abort to manufacture teardown.
+
+
+### PL/pgSQL FOUND and published trigger repairs
+
+PL/pgSQL has an implicit boolean FOUND variable. Qualify a table column named found (o.found) in trigger queries: the function can be created successfully but fail on its first INSERT. Repair published trigger code with a forward CREATE OR REPLACE migration, retaining Run locks, immutability and sealed-package guards. A populated upgrade must preserve historical missing proof rather than backfill it.
