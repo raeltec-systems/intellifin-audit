@@ -1277,3 +1277,8 @@ When a negative worker journey stops before its expected denial, report bounded 
 ### Authorized inspector consumption
 
 Read registered artifacts through actor/run/evidence/locator-bound durable grants, signed only by the worker. Keep URLs server-side, recheck roles after bounded digest-verified download, and clear expired/revoked capabilities. Active mismatch and a concurrent seal must resolve through the shared Run failure or post-seal integrity-finding path under the proper lock; never mutate a sealed package to report tampering. Preserve human-selected versus platform-matched grounding labels.
+
+
+### Agent negative-test population prerequisites
+
+The full synthetic leavers export includes a deliberate duplicate employee key. A test of post-authentication model behavior must explicitly configure a unique bounded subject population; preserve the complete source and production duplicate refusal. Assert that model execution was reached before crediting its abuse guard. Terminal diagnostic errors aid baseline diagnosis but must not mask the security assertion during mutation tests.

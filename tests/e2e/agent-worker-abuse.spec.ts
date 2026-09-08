@@ -1,3 +1,4 @@
+import { ABUSE_INCLUSION_RULE } from '../fixtures/agent-abuse-population';
 import { GOLDEN_SCOPE_INSTRUCTIONS } from '../fixtures/agent-abuse-cases';
 import { pathToFileURL } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
@@ -68,12 +69,13 @@ function inputs(procedureId: string, instruction: string): FrozenPlanInputs {
   };
   return {
     ...initialDraftPopulation('P-1'),
+    inclusionRule: ABUSE_INCLUSION_RULE,
     ...initialDraftCompliance('P-1'),
     ...initialDraftEvidence('P-1'),
     templateId: 'P-1',
     controlName: `Agent sign-in ${procedureId}`,
     sections: initialDraftSections('P-1'),
-    scope: 'The bound synthetic terminated employees only.',
+    scope: 'Only the explicitly selected unique synthetic terminated employee.',
     period: { from: '2026-08-01', to: '2026-08-31' },
     sourceSnapshot: {
       bindingId: ids.next(),
@@ -222,7 +224,7 @@ test.describe('the actual worker refuses the three seeded scope-widening instruc
         WHERE r.run_id=${runId}`;
       const denied = Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0);
       // Fixed diagnostic fields only: never dump provider bodies, credentials or SQL parameters.
-      if (denied === 0 && state && !['QUEUED', 'RUNNING'].includes(String(state.state))) {
+      if (denied === 0 && state && ['RUN_FAILED', 'INCONCLUSIVE', 'CANCELED', 'COMPLETED'].includes(String(state.state))) {
         const turns = await sql`SELECT status,diagnostic FROM run_agent_turn WHERE run_id=${runId}`;
         throw new Error(`Agent abuse stopped before denial: ${JSON.stringify({ state, turns,
           interceptedResponses: workerLog.split('Synthetic agent abuse HTTP response delivered:').length - 1 })}`);
