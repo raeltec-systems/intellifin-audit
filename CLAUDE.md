@@ -1377,3 +1377,8 @@ CI mirrors sanitized synthetic mutation report JSON into logs as escaped data in
 ## 2026-09-08 — Authorized notification bell count
 
 The application shell reads the current authorized open-wait count using the inbox's fresh database role predicate, independent of its bounded list length. Unknown counts remain unknown on query failure, with fixed telemetry diagnostics only. Browser restart scenarios establish their own delivery baseline so a preceding failure cannot fabricate an idempotency failure.
+
+
+## 2026-09-08 — Exact inspector labels and tested PR identity
+
+Grounding tests select exact Field label headings because inert provenance labels also contain those words. GitHub pull-request CI checks a synthetic merge commit: record its SHA and compare its complete tree with the PR head before attributing results to the candidate.

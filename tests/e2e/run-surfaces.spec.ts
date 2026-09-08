@@ -315,7 +315,7 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
     // One per grounded attribute: the identity and the declared one.
     await expect(page.getByText('Original value')).toHaveCount(2);
     await expect(page.getByText('Normalized value')).toHaveCount(2);
-    await expect(page.getByText('Field label')).toHaveCount(2);
+    await expect(page.getByText('Field label', { exact: true })).toHaveCount(2);
     await expect(page.getByText('Matched').first()).toBeVisible();
     await scan(page);
   });
