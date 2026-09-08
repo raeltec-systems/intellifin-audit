@@ -1,5 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 
 import { raiseEscalation } from '@intellifin/application';
 import {
@@ -13,7 +16,8 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version';
-import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { startSyntheticS3 } from '../fixtures/s3-server';
+import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 const ids = new CryptoUuidV7Generator();
@@ -31,6 +35,8 @@ const periods = {
   expired: ['2026-03-01', '2026-03-31'],
 } as const;
 const supportingEvidenceId = ids.next();
+const expiredEvidenceId = ids.next();
+const managerIds = [ids.next(), ids.next()];
 const workItemId = ids.next();
 const stepExecutionId = ids.next();
 const attemptId = ids.next();
@@ -40,6 +46,132 @@ let auditorId: string;
 let answeredWaitId: string;
 let staleWaitId: string;
 let expiredWaitId: string;
+let stopWorker: (() => Promise<void>) | undefined;
+let deliveredBeforeRestart = '';
+let storage: Awaited<ReturnType<typeof startSyntheticS3>> | undefined;
+
+/** The built production composition consumes the real durable queues. No wake handler or
+ * notification sender is called by the test. These duties work with execution unconfigured. */
+async function startWorker(): Promise<void> {
+  let ready = false;
+  let failed = false;
+  let stopping = false;
+  let closed = false;
+  const worker = spawn(process.execPath, [resolve('apps/worker/dist/main.js')], {
+    cwd: process.cwd(),
+    windowsHide: true,
+    env: {
+      ...process.env,
+      SERVICE_NAME: 'worker', MODEL_PROVIDER: '', MODEL_ID: '', MODEL_API_KEY: '',
+      ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', SOLARI_API_KEY: '', SOLARI_RECORDING: 'false',
+      CREDENTIAL_TOKENS: '{}', SENTRY_DSN: '',
+      EVIDENCE_S3_ENDPOINT: '', EVIDENCE_S3_REGION: '', EVIDENCE_S3_BUCKET: '',
+      EVIDENCE_S3_ACCESS_KEY_ID: '', EVIDENCE_S3_SECRET_ACCESS_KEY: '',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  worker.on('error', () => { failed = true; });
+  const exited = new Promise<void>(resolveExit => worker.once('close', code => {
+    closed = true;
+    if (code !== 0 || !stopping) failed = true;
+    resolveExit();
+  }));
+  // Retain only fixed status markers, never configuration or arbitrary worker output.
+  worker.stdout.on('data', data => { if (String(data).includes('Heartbeat loop started')) ready = true; });
+  worker.stderr.on('data', () => undefined);
+  stopWorker = async () => {
+    stopping = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (!closed) worker.kill('SIGTERM');
+      const graceful = await Promise.race([
+        exited.then(() => true),
+        new Promise<boolean>(resolveTimeout => { timer = setTimeout(() => resolveTimeout(false), 30_000); }),
+      ]);
+      if (!graceful) {
+        worker.kill('SIGKILL');
+        throw new Error('Escalation fixture worker exceeded its graceful shutdown deadline.');
+      }
+      if (failed) throw new Error('Escalation fixture worker did not exit cleanly.');
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      stopWorker = undefined;
+    }
+  };
+  await expect.poll(() => {
+    if (failed) throw new Error('Escalation fixture worker failed before becoming ready.');
+    return ready;
+  }, { timeout: 60_000 }).toBe(true);
+}
+
+async function deliverySnapshot(): Promise<string> {
+  return JSON.stringify(await sql`
+    SELECT send_key, recipient_id, in_app_outcome, delivered_at, email_outcome, email_outcome_at
+    FROM notification WHERE wait_id=${answeredWaitId} ORDER BY send_key
+  `);
+}
+
+async function assertDeliveredNotifications(): Promise<void> {
+  const recipients = (await sql`
+    SELECT user_id AS id FROM user_role WHERE role='audit-manager'
+    UNION SELECT ${auditorId}::text AS id
+  `).map(row => String(row.id)).sort();
+  expect(managerIds.every(id => recipients.includes(id))).toBe(true);
+  await expect.poll(async () => (await sql`
+    SELECT recipient_id FROM notification WHERE wait_id=${answeredWaitId}
+    AND in_app_outcome='delivered' AND delivered_at IS NOT NULL
+    AND email_outcome='unconfigured' AND email_outcome_at IS NOT NULL
+  `).map(row => String(row.recipient_id)).sort(), { timeout: 30_000 }).toEqual(recipients);
+  const notifications = await sql`SELECT * FROM notification WHERE wait_id=${answeredWaitId}`;
+  expect(notifications).toHaveLength(recipients.length);
+  for (const row of notifications) {
+    expect(row).toMatchObject({ procedure_name: controlName, run_id: runs.answered,
+      kind: 'escalation', escalation_kind: 'choose-candidate' });
+    expect(row.deadline).not.toBeNull();
+  }
+  const deliveries = await sql`
+    SELECT event_type, outcome, payload FROM audit_events WHERE aggregate_id=${runs.answered}
+    AND event_type IN ('notification.in-app-delivery','notification.email-delivery')
+  `;
+  expect(deliveries).toHaveLength(recipients.length * 2);
+  for (const recipientId of recipients) {
+    const recipientEvents = deliveries.filter(row => row.payload.recipientId === recipientId);
+    expect(recipientEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event_type: 'notification.in-app-delivery', outcome: 'success',
+        payload: expect.objectContaining({ channel: 'in-app', deliveryOutcome: 'delivered' }) }),
+      expect.objectContaining({ event_type: 'notification.email-delivery', outcome: 'failure',
+        payload: expect.objectContaining({ channel: 'email', deliveryOutcome: 'unconfigured' }) }),
+    ]));
+  }
+  for (const forbidden of [supportingEvidenceId, 'Alice A', 'Bob B', '<script>ignore this</script>',
+    'Which candidate is correct?', 'Auditor note stays in the audit record.']) {
+    expect(JSON.stringify({ notifications, deliveries })).not.toContain(forbidden);
+  }
+}
+
+async function openFromNotifications(page: Page): Promise<void> {
+  await page.goto('/notifications');
+  const bell = page.getByRole('button', { name: /^Notifications/ });
+  await expect(bell).toContainText('unread');
+  await bell.click();
+  await expect(page.getByRole('link', { name: 'Open notifications', exact: true })).toHaveAttribute('href', '/notifications');
+  await page.keyboard.press('Escape');
+  const open = page.getByRole('region', { name: 'Runs waiting for your answer' });
+  const delivered = page.getByRole('region', { name: 'Delivered notifications' });
+  for (const surface of [open, delivered]) {
+    const row = surface.locator('li').filter({ has: page.locator(`a[href="/runs/${runs.answered}"]`) });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText(controlName);
+    await expect(row).toContainText('choose-candidate');
+    await expect(row).toContainText('Time remaining:');
+    await expect(row).not.toContainText('Alice A');
+    await expect(row).not.toContainText('Which candidate is correct?');
+  }
+  await scan(page);
+  await open.locator(`a[href="/runs/${runs.answered}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/runs/${runs.answered}$`));
+  await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible();
+}
 
 async function scan(page: Page): Promise<void> {
   const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -66,7 +198,7 @@ async function seedRun(runId: string, period: readonly [string, string]): Promis
   `;
 }
 
-async function raise(runId: string, clock = new SystemClock()): Promise<string> {
+async function raise(runId: string, clock = new SystemClock(), evidenceId = supportingEvidenceId): Promise<string> {
   const result = await raiseEscalation(
     { repository: new PostgresWaitRepository(db), ids, clock },
     {
@@ -78,7 +210,7 @@ async function raise(runId: string, clock = new SystemClock()): Promise<string> 
         { id: 'mark-ambiguous', label: 'ignored persisted label' },
       ],
       stepId: 'agent-step-1',
-      supportingEvidenceIds: [supportingEvidenceId],
+      supportingEvidenceIds: [evidenceId],
     },
   );
   if (!result.ok) throw new Error(`Escalation fixture could not open: ${result.reason}`);
@@ -166,6 +298,15 @@ test.beforeAll(async () => {
   const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Escalation journey.');
   auditorId = String(auditor.id);
+  for (const managerId of managerIds) {
+    await sql`INSERT INTO auth_user(id,name,email,email_verified)
+      VALUES (${managerId},'Synthetic Escalation Manager',${`${managerId}@example.test`},true)`;
+    // Reuse only the seeded synthetic hash inside SQL; sign-in below uses the real form.
+    await sql`INSERT INTO auth_account(id,issuer,account_id,provider_id,user_id,password)
+      SELECT ${ids.next()},issuer,${managerId},provider_id,${managerId},password
+      FROM auth_account WHERE user_id=${auditorId} AND provider_id='credential'`;
+    await sql`INSERT INTO user_role(user_id,role) VALUES (${managerId},'audit-manager')`;
+  }
 
   const version = activeRunVersion(procedureId, versionId, auditorId);
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
@@ -182,12 +323,11 @@ test.beforeAll(async () => {
   answeredWaitId = await raise(runs.answered);
   await seedMatchingAgentContext(answeredWaitId);
   staleWaitId = await raise(runs.stale);
-  expiredWaitId = await raise(runs.expired, {
-    now: () => new Date(Date.now() - 4 * 60 * 60 * 1000 - 60_000),
-  });
 });
 
 test.afterAll(async () => {
+  await stopWorker?.();
+  await storage?.close();
   if (!sql) return;
   try {
     const runIds = Object.values(runs);
@@ -197,6 +337,9 @@ test.afterAll(async () => {
     await sql`DELETE FROM run_agent_work WHERE run_id = ANY(${runIds}::uuid[])`;
     await sql`DELETE FROM run_step_execution WHERE run_id = ANY(${runIds}::uuid[])`;
     await sql`DELETE FROM run_work_item WHERE run_id = ANY(${runIds}::uuid[])`;
+    await sql`DELETE FROM run_result WHERE run_id = ANY(${runIds}::uuid[])`;
+    await sql`DELETE FROM run_evidence_integrity WHERE run_id = ANY(${runIds}::uuid[])`;
+    await sql`DELETE FROM run_evidence_package WHERE run_id = ANY(${runIds}::uuid[])`;
     await sql`DELETE FROM run_evidence WHERE run_id = ANY(${runIds}::uuid[])`;
     await sql`DELETE FROM run_wait WHERE run_id = ANY(${runIds}::uuid[])`;
     await sql`DELETE FROM audit_events WHERE aggregate_id = ANY(${runIds})`;
@@ -204,6 +347,7 @@ test.afterAll(async () => {
     await sql`DELETE FROM audit_run WHERE run_id = ANY(${runIds}::uuid[])`;
     await sql`DELETE FROM procedure_version WHERE version_id=${versionId}`;
     await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+    await sql`DELETE FROM auth_user WHERE id = ANY(${managerIds})`;
   } finally {
     await sql.end({ timeout: 5 });
   }
@@ -212,8 +356,21 @@ test.afterAll(async () => {
 test.describe('the Escalation panel as an Auditor', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('reads grounded metadata, keeps candidate text inert, confirms once, and contains the note', async ({ page }) => {
-    await page.goto(`/runs/${runs.answered}`);
+  test('delivers to Auditor and Managers, opens grounded metadata, confirms once, and contains the note', async ({ page, browser, baseURL }) => {
+    test.setTimeout(120_000);
+    await startWorker();
+    await assertDeliveredNotifications();
+    deliveredBeforeRestart = await deliverySnapshot();
+    await stopWorker?.();
+    await openFromNotifications(page);
+    const managerContext = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+    try {
+      const managerPage = await managerContext.newPage();
+      await signIn(managerPage, `${managerIds[0]}@example.test`);
+      await openFromNotifications(managerPage);
+    } finally {
+      await managerContext.close();
+    }
     await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible();
     await expect(page.getByText('agent-step-1', { exact: true })).toBeVisible();
     const questionProvenance = page.locator('.ls-untrusted__label').filter({ hasText: 'Untrusted source content — AGENT-GENERATED question.' });
@@ -283,7 +440,31 @@ test.describe('the Escalation panel as an Auditor', () => {
     }).toBeNull();
   });
 
-  test('shows the recorded timeout refusal and leaves the answer unavailable', async ({ page }) => {
+  test('refuses a late answer, then the restarted worker consumes the durable wake and seals Inconclusive', async ({ page }) => {
+    test.setTimeout(120_000);
+    storage = await startSyntheticS3();
+    // An already-collected synthetic artifact; the timeout must preserve its bytes and
+    // registration. This fixture does not claim a fresh browser capture or remote provider.
+    const bytes = Buffer.from('{"syntheticEvidence":"timeout-preservation-marker"}');
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const key = `runs/${runs.expired}/collected-before-wait.json`;
+    const objectUrl = `${storage.env.EVIDENCE_S3_ENDPOINT}/evidence/${key}`;
+    expect((await fetch(objectUrl, { method: 'PUT', headers: { 'if-none-match': '*' }, body: bytes })).status).toBe(200);
+    await sql`INSERT INTO run_evidence(
+      evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,
+      captured_at,capture_method,capture_time_source
+    ) VALUES (${expiredEvidenceId},${runs.expired},'structural-snapshot','synthetic-target',${key},
+      'application/json',${digest},${bytes.length},'REGISTERED',true,now(),'agent','registration')`;
+    const evidenceBefore = await sql`SELECT * FROM run_evidence WHERE evidence_id=${expiredEvidenceId}`;
+    expiredWaitId = await raise(runs.expired, {
+      now: () => new Date(Date.now() - 4 * 60 * 60 * 1000 - 60_000),
+    }, expiredEvidenceId);
+    const wakeJobs = await sql`SELECT id,state,data,start_after FROM pgboss.job
+      WHERE name='waits' AND data->>'waitId'=${expiredWaitId}`;
+    expect(wakeJobs).toHaveLength(1);
+    expect(wakeJobs[0]?.state).toBe('created');
+    expect(wakeJobs[0]?.data).toEqual({ schemaVersion: 1, runId: runs.expired, waitId: expiredWaitId });
+    expect(new Date(wakeJobs[0]!.start_after).getTime()).toBeLessThan(Date.now());
     await page.goto(`/runs/${runs.expired}`);
     await expect(page.getByText('00:00:00', { exact: true })).toBeVisible();
     await expect(page.getByText('deadline reached; reload this Run for the recorded outcome.', { exact: false })).toBeVisible();
@@ -299,5 +480,44 @@ test.describe('the Escalation panel as an Auditor', () => {
       return run?.state;
     }).toBe('AWAITING_AUDITOR');
     await scan(page);
+
+    // A real restart discovers the persisted wait, runs the production wake consumer /
+    // recovery duty, and lets the shared CompleteRun path publish the only terminal Result.
+    await startWorker();
+    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runs.expired}`)[0]?.state,
+      { timeout: 45_000 }).toBe('INCONCLUSIVE');
+    await expect.poll(async () => (await sql`SELECT state FROM pgboss.job WHERE id=${wakeJobs[0]!.id}`)[0]?.state,
+      { timeout: 30_000 }).toBe('completed');
+    const [wait] = await sql`SELECT closed_at,closure_kind,answer_option_id,actor FROM run_wait WHERE wait_id=${expiredWaitId}`;
+    expect(wait).toMatchObject({ closure_kind: 'timeout', answer_option_id: null, actor: 'wait-wake' });
+    expect(wait?.closed_at).not.toBeNull();
+    expect(await sql`SELECT * FROM run_evidence WHERE evidence_id=${expiredEvidenceId}`).toEqual(evidenceBefore);
+    const preserved = Buffer.from(await (await fetch(objectUrl)).arrayBuffer());
+    expect(preserved).toEqual(bytes);
+    expect(createHash('sha256').update(preserved).digest('hex')).toBe(digest);
+    expect(await sql`SELECT outcome FROM run_result WHERE run_id=${runs.expired}`).toEqual([
+      expect.objectContaining({ outcome: 'INCONCLUSIVE' }),
+    ]);
+    expect(await sql`SELECT state,run_state,registered FROM run_evidence_package WHERE run_id=${runs.expired}`).toEqual([
+      expect.objectContaining({ state: 'SEALED', run_state: 'INCONCLUSIVE', registered: 1 }),
+    ]);
+    const timeoutEvents = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runs.expired}
+      AND event_type='execution.escalation-timeout'`;
+    expect(timeoutEvents).toEqual([expect.objectContaining({ payload: expect.objectContaining({
+      waitId: expiredWaitId, closureKind: 'timeout', state: 'INCONCLUSIVE',
+    }) })]);
+    expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runs.expired}
+      AND event_type='execution.escalation-answered'`).toHaveLength(0);
+    await assertDeliveredNotifications();
+    expect(await deliverySnapshot()).toBe(deliveredBeforeRestart);
+    await stopWorker?.();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Select candidate 1', exact: true })).toHaveCount(0);
+    await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
+    await scan(page);
+    await page.goto('/notifications');
+    await expect(page.getByRole('region', { name: 'Runs waiting for your answer' })
+      .locator(`a[href="/runs/${runs.expired}"]`)).toHaveCount(0);
   });
 });

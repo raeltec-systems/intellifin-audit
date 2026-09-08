@@ -446,3 +446,10 @@ Reports retain persisted provider/Run IDs, configuration, denial events and pre-
 ## Live worker exit regression
 
 Paired isolation gateb16b1cf13e4b039e090c02a7f06fa26fb80e0149 is pushed. The live worker helper still treated an already-closed nonzero exit as successful shutdown, or ignored one occurring during shutdown. Two persistent regressions reproduce those paths while two clean-exit controls pass. Both paths now refuse with fixed secret-free errors; all4cases pass and root-test typechecking passes. The tests simulate child process events only, with no real worker/provider/network. Dedicated discovery remains exactly2livecases. This separate test-gate repair is pushed; live execution is still unaccepted.
+
+
+## Actual worker notification and timeout browser journeys
+
+Live exit regressionefbec9d5a6c3721ddbc0b8103b12c769c718a824 is pushed and the full local suite passes3514tests/165files on its code. The escalation browser suite now boots the built worker for real in-app notification delivery to the initiating Auditor and every Audit Manager, verifies recipient inbox/deep links and accessibility, and records email honestly as unconfigured. It preserves the existing option/answer containment assertions.
+
+The timeout journey now restarts the worker to consume the already-persisted wake, requires timeout closure, INCONCLUSIVE Result and sealed package, preserves original artifact bytes/digest/metadata, and checks idempotent notification delivery after restart. It retains the late-answer refusal before the wake runs. No test directly closes the wait or fabricates the terminal Result. These duties are intentionally exercised with acquisition/model/provider unconfigured; this does not claim a new agent-model journey. Worker shutdown has a30second bound and fails on abnormal/forced exit. TypeScript passed before the narrow shutdown addition; final typecheck is running. Hosted PostgreSQL/browser/accessibility execution remains pending; the three scenarios are discovered but not accepted locally. This checkpoint is pushed.
