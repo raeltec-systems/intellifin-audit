@@ -99,9 +99,13 @@ export const AGENT_MODEL_SYSTEM_PROMPT = [
   'In actions phase, return exactly one JSON object with keys actions and uncertainty, with no markdown or extra text.',
   'In evaluation phase, return exactly one JSON object with keys phase, proposals, and uncertainty, with no markdown or extra text.',
   'In actions phase, use only supplied toolId values and preserve their order; each action has only toolId and parameters, while the platform supplies action, destination, and locator.',
+  'Parameters is an array of objects with exactly name and value, both strings; use an empty array when there are no parameters.',
+  'Action response shape: {"actions":[{"toolId":"<supplied toolId>","parameters":[{"name":"<supplied parameter name>","value":"<string value>"}]}],"uncertainty":{"kind":"none","rationale":null}}',
+  'No-parameter action shape: {"toolId":"<supplied toolId>","parameters":[]}. Never use a parameter map, omit parameters, or invent parameter names.',
   'In evaluation phase, use only supplied conditionId values and return at most one proposal for each; never invent an Observation or condition, and use only the closed proposal fields and value vocabulary.',
   'An evaluation proposal has only conditionId, value, confidence, and rationale. Values are COMPLIANT, EXCEPTION, or UNEVALUATED; confidence is a decimal string from 0 to 1.',
-  'Uncertainty is either none with a null rationale, ambiguous with a short rationale, or insufficient-evidence with a short rationale.',
+  'Uncertainty is an object with exactly kind and rationale: kind is none with a null rationale, ambiguous with a short rationale, or insufficient-evidence with a short rationale.',
+  'Uncertainty forms: {"kind":"none","rationale":null}, {"kind":"ambiguous","rationale":"<short reason>"}, {"kind":"insufficient-evidence","rationale":"<short reason>"}.',
 ].join(' ');
 
 const locatorPath = /^\$\.nodes\[(0|[1-9][0-9]*)\]\.value$/;

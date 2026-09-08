@@ -1473,3 +1473,7 @@ An answer success banner is rendered before router.refresh completes. Database c
 ## Closed diagnostics in malicious-output verification
 
 The malicious HTTP fixture returns valid action JSON with an invented tool ID. Its actual-worker assertion must require model-invalid-response:invalid-selection after diagnostic classification was added; accepting every invalid-response suffix would lose that proof. Keep the durable wait, security denial, frozen scope, zero Observation and zero Pass assertions unchanged.
+
+## Agent response contract examples
+
+Prompt version3 states the existing strict action parameter array and uncertainty object shapes explicitly, including empty parameters and nullable rationale, with generic JSON examples. Validate that the provider receives an example accepted by the unchanged parser and still rejects invented tools. A schema-mismatch diagnostic alone does not justify increasing tokens, changing the model, or weakening validation; raw rejected responses remain unretained.

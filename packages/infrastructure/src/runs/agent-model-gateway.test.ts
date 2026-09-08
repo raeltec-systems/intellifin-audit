@@ -195,6 +195,23 @@ it('distinguishes an exhausted output budget without retaining reasoning or resp
   expect(error).toMatchObject({ code: 'invalid-response', responseIssue: 'output-limit', usage: { outputTokens: 1024 } });
 });
 
+it('supplies the exact action response shape to OpenAI while independently refusing invented tools', async () => {
+  const calls: Request[] = [];
+  const text = JSON.stringify({ actions: [{ toolId: 'invented', parameters: [] }], uncertainty: { kind: 'none', rationale: null } });
+  const error = await gateway('openai', providerFetch('openai', text, 200, calls)).propose(REQUEST).catch(error => error);
+  const body = await requestBody(calls[0]!);
+  const system = (body.input as { role: string; content: string }[]).find(message => message.role === 'system')!.content;
+  const example = system.split('Action response shape: ')[1]?.split(' No-parameter action shape: ')[0];
+  expect(example, 'The provider must receive the strict parameter/uncertainty JSON shape').toBeDefined();
+  const shape = JSON.parse(example!);
+  expect(shape.actions[0].parameters).toEqual([{ name: '<supplied parameter name>', value: '<string value>' }]);
+  expect(shape.uncertainty).toEqual({ kind: 'none', rationale: null });
+  shape.actions[0].toolId = 'search-account';
+  shape.actions[0].parameters = [{ name: 'employee_id', value: 'EMP-1' }];
+  expect(await gateway('openai', providerFetch('openai', JSON.stringify(shape))).propose(REQUEST)).toMatchObject({ actions: [{ toolId: 'search-account' }] });
+  expect(error).toMatchObject({ code: 'invalid-response', responseIssue: 'invalid-selection', usage: { totalTokens: 30 } });
+});
+
 afterEach(() => vi.restoreAllMocks());
 
 describe.each([

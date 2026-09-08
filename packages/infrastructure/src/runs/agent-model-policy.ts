@@ -6,4 +6,4 @@
  * its own model provenance on the version; one deployment may therefore support both
  * prompt identities without making historical plans appear to have changed.
  */
-export const AGENT_PROMPT_VERSION = '2' as const;
+export const AGENT_PROMPT_VERSION = '3' as const;
