@@ -2,7 +2,7 @@
 title: 'Story 4.6: Bound agent execution and render retrieved content inert'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -129,4 +129,6 @@ tests nothing.
 
 ## Auto Run Result
 
-_Not yet run._
+Implementation checkpoint; final Epic4 acceptance remains open. Both SDK adapter conformance suites, measured token/reservation limits, and all three real PostgreSQL Run-limit/sealed-Result cases pass at f4892c9. The token-accounting mutation fails its selected assertion when the guard is removed. Hosted local-Chromium tests render all seeded attacks inert. Genuine live-model execution remains blocked by Actions provider configuration; synthetic provider HTTP is labelled as such.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.

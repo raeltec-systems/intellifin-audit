@@ -2,7 +2,7 @@
 title: 'Story 4.7: Raise typed Escalations as durable waits'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -125,4 +125,6 @@ idle window does not become a Run deadline.
 
 ## Auto Run Result
 
-_Not yet run._
+Implementation checkpoint; final Epic4 acceptance remains open. Real PostgreSQL tests pass at f4892c9 for durable waits and queue jobs, restart, competing transactions held open, closed options and fresh authorized resolution. The single-grounded-match escalation mutation is killed. Actual compiled-worker abuse tests exercise wait, auditor Retry, resumed denial and Abort with persisted history.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.

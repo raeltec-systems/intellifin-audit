@@ -2,7 +2,7 @@
 title: 'Story 4.9: Confirm or reject Agent-Judged evaluations to seal the Result'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -119,4 +119,6 @@ against both spellings.
 
 ## Auto Run Result
 
-_Not yet run._
+Implementation checkpoint; final Epic4 acceptance remains open. Canonical compiled-worker P-1 journeys through Pending Confirmation and both human resolutions pass in CI34199194303 at f4892c9, with protected evidence inspection and accessibility checks. PostgreSQL confirmation/rejection, sealing races, immutable proposals and COMPLETED-to-INCONCLUSIVE cases pass. Removing inclusive threshold comparison kills the equality assertion.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.

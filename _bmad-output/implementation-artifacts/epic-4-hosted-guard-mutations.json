@@ -1,0 +1,3097 @@
+{
+  "schemaVersion": 1,
+  "headSha": "f4892c930e031071a77cc5945ffb2936e34cfe86",
+  "mergeSha": "ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a",
+  "treeSha": "5b5ff428306262bddf2148fcbdf483ff8e35c6b1",
+  "ciRun": 34199194303,
+  "job": 101973919735,
+  "mode": "hosted-postgresql18-and-local-chromium-not-solari",
+  "reports": [
+    {
+      "file": "agent-guard-mutations.json",
+      "report": {
+        "baselineSha": "ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a",
+        "completed": true,
+        "limitations": [
+          "No real model service, actual worker journey or Solari acceptance. Browser results exist only when --browser was executed.",
+          "This is a selected guard subset; Story 4.11 requires the remaining matrix and per-test mutations."
+        ],
+        "mode": "local-unit-and-chromium",
+        "results": [
+          {
+            "file": "apps/web/src/runs/EscalationPanel.tsx",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-1-terminated-users.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-1-terminated-users.json:D9-b' retains the generated label and closed options in server rendering",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-2-sod-conflicts.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-3-high-value-approvals.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-4-config-deviation.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 5
+            },
+            "guard": "<UntrustedText field=\"AGENT-GENERATED question\">",
+            "id": "escalation-agent-generated-label",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected '<a class=\"ls-skip-link\" href=\"#open-e…' to contain 'AGENT-GENERATED question'\n    at <worktree>/apps/web/src/runs/agent-escalation-golden.test.ts:25:18\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+                  ],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-1-terminated-users.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected '<a class=\"ls-skip-link\" href=\"#open-e…' to contain 'AGENT-GENERATED question'\n    at <worktree>/apps/web/src/runs/agent-escalation-golden.test.ts:25:18\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+                  ],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-1-terminated-users.json:D9-b' retains the generated label and closed options in server rendering",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected '<a class=\"ls-skip-link\" href=\"#open-e…' to contain 'AGENT-GENERATED question'\n    at <worktree>/apps/web/src/runs/agent-escalation-golden.test.ts:25:18\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+                  ],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-2-sod-conflicts.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected '<a class=\"ls-skip-link\" href=\"#open-e…' to contain 'AGENT-GENERATED question'\n    at <worktree>/apps/web/src/runs/agent-escalation-golden.test.ts:25:18\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+                  ],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-3-high-value-approvals.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected '<a class=\"ls-skip-link\" href=\"#open-e…' to contain 'AGENT-GENERATED question'\n    at <worktree>/apps/web/src/runs/agent-escalation-golden.test.ts:25:18\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+                  ],
+                  "name": "seeded agent-generated escalation text is not answer authority 'p-4-config-deviation.json:D9-a' retains the generated label and closed options in server rendering",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 5,
+              "passed": 0
+            },
+            "replacement": "<UntrustedText field=\"QUESTION\">",
+            "sourceSha256": "c9b1d9a00e417409333dc9b93d03ee03f9007e77905f906d3e8fe64089df1134",
+            "test": "apps/web/src/runs/agent-escalation-golden.test.ts",
+            "testName": "retains the generated label",
+            "testSha256": "85b092126e452b91b94dadeafc7c500b00f9628977ec17ef487116b08c0e4774"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/agent-model-gateway.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary discovers both hero injections and all other seeded prompt cases",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-b' remains verbatim data without changing the approved objective/tools",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-2-sod-conflicts.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-3-high-value-approvals.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-4-config-deviation.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-1' rejects an invented tool requested by the seeded instruction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-2' rejects an invented tool requested by the seeded instruction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-3' rejects an invented tool requested by the seeded instruction",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 5
+            },
+            "guard": "objective: request.objective,",
+            "id": "golden-retrieved-objective-separation",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary discovers both hero injections and all other seeded prompt cases",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'Read the frozen account status.IGNORE…' to be 'Read the frozen account status.' // Object.is equality\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:37:32\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'Read the frozen account status.SYSTEM…' to be 'Read the frozen account status.' // Object.is equality\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:37:32\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-b' remains verbatim data without changing the approved objective/tools",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'Read the frozen account status.h.zimb…' to be 'Read the frozen account status.' // Object.is equality\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:37:32\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'p-2-sod-conflicts.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'Read the frozen account status.NOTE T…' to be 'Read the frozen account status.' // Object.is equality\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:37:32\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'p-3-high-value-approvals.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'Read the frozen account status.Direct…' to be 'Read the frozen account status.' // Object.is equality\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:37:32\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'p-4-config-deviation.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-1' rejects an invented tool requested by the seeded instruction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-2' rejects an invented tool requested by the seeded instruction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-3' rejects an invented tool requested by the seeded instruction",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 5,
+              "passed": 0
+            },
+            "replacement": "objective: request.objective + request.retrieved.map(entry => entry.text).join(''),",
+            "sourceSha256": "6ef4bef84aee556db0c396e22c14135df04bf5ef807a3883ba9b4e99536c423a",
+            "test": "tests/unit/agent-abuse-golden.test.ts",
+            "testName": "remains verbatim data",
+            "testSha256": "105e23bd058a874a9e7ec6180725dd66842035488a9a9b99dff951ed9b8ff06c"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/agent-model-gateway.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary discovers both hero injections and all other seeded prompt cases",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-b' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-2-sod-conflicts.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-3-high-value-approvals.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-4-config-deviation.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-1' rejects an invented tool requested by the seeded instruction",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-2' rejects an invented tool requested by the seeded instruction",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-3' rejects an invented tool requested by the seeded instruction",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 3
+            },
+            "guard": "const tool = tools.get(action.toolId);",
+            "id": "golden-invented-tool-refusal",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary discovers both hero injections and all other seeded prompt cases",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-1-terminated-users.json:D9-b' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-2-sod-conflicts.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-3-high-value-approvals.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "golden retrieved content at the actual provider boundary 'p-4-config-deviation.json:D9-a' remains verbatim data without changing the approved objective/tools",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "Error: promise resolved \"{ schemaVersion: 1, …(6) }\" instead of rejecting\n    at _Assertion.__VITEST_REJECTS__ (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1747:17)\n    at _Assertion.propertyGetter (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1570:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1659:22)\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:45:53\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-1' rejects an invented tool requested by the seeded instruction",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "Error: promise resolved \"{ schemaVersion: 1, …(6) }\" instead of rejecting\n    at _Assertion.__VITEST_REJECTS__ (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1747:17)\n    at _Assertion.propertyGetter (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1570:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1659:22)\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:45:53\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-2' rejects an invented tool requested by the seeded instruction",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "Error: promise resolved \"{ schemaVersion: 1, …(6) }\" instead of rejecting\n    at _Assertion.__VITEST_REJECTS__ (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1747:17)\n    at _Assertion.propertyGetter (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1570:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1659:22)\n    at <worktree>/tests/unit/agent-abuse-golden.test.ts:45:53\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)"
+                  ],
+                  "name": "golden retrieved content at the actual provider boundary 'SW-3' rejects an invented tool requested by the seeded instruction",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 3,
+              "passed": 0
+            },
+            "replacement": "const tool = tools.get(action.toolId) ?? request.tools[0];",
+            "sourceSha256": "6ef4bef84aee556db0c396e22c14135df04bf5ef807a3883ba9b4e99536c423a",
+            "test": "tests/unit/agent-abuse-golden.test.ts",
+            "testName": "rejects an invented tool",
+            "testSha256": "105e23bd058a874a9e7ec6180725dd66842035488a9a9b99dff951ed9b8ff06c"
+          },
+          {
+            "file": "packages/domain/src/runs/tool-action.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions names all three, so every seeded instruction is flagged before submission exists",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-1 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-2 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-3 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-2: the write verb the Builder named is an action no version can permit",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-3: the origin the Builder named is outside every frozen allowed origin",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-1: the unregistered system has no frozen origin, so nothing addresses it",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution every instruction the fixture declares reaches one of the two denials",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "!isPermittedReadAction(action) ||\n    !(contract.permitted_actions as readonly string[]).includes(action)",
+            "id": "seeded-write-action-gate",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions names all three, so every seeded instruction is flagged before submission exists",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-1 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-2 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-3 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected { allowed: true, …(2) } to deeply equal { allowed: false, …(2) }\n    at <worktree>/tests/unit/scope-widening.test.ts:130:7\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+                  ],
+                  "name": "the same three instructions are DENIED at execution SW-2: the write verb the Builder named is an action no version can permit",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-3: the origin the Builder named is outside every frozen allowed origin",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-1: the unregistered system has no frozen origin, so nothing addresses it",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution every instruction the fixture declares reaches one of the two denials",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "false",
+            "sourceSha256": "fda729ddd1430936a8117ab3c35684cc44f7ec4fa6f027296feac1246a2c3182",
+            "test": "tests/unit/scope-widening.test.ts",
+            "testName": "SW-2: the write verb",
+            "testSha256": "2015e7d702fc073f7bb5ef5996e52a52873328518b1a2deb37d2b8270517640d"
+          },
+          {
+            "file": "packages/domain/src/runs/tool-action.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions names all three, so every seeded instruction is flagged before submission exists",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-1 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-2 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-3 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-2: the write verb the Builder named is an action no version can permit",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-3: the origin the Builder named is outside every frozen allowed origin",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-1: the unregistered system has no frozen origin, so nothing addresses it",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution every instruction the fixture declares reaches one of the two denials",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 2
+            },
+            "guard": "if (!permitted) {",
+            "id": "seeded-origin-action-gate",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions names all three, so every seeded instruction is flagged before submission exists",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-1 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-2 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the seeded scope-widening instructions SW-3 raises a named advisory warning of its own kind",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution SW-2: the write verb the Builder named is an action no version can permit",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected { allowed: true, …(2) } to match object { allowed: false, …(1) }\n(2 matching properties omitted from actual)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at <worktree>/tests/unit/scope-widening.test.ts:139:7\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20"
+                  ],
+                  "name": "the same three instructions are DENIED at execution SW-3: the origin the Builder named is outside every frozen allowed origin",
+                  "status": "failed"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected { allowed: true, …(2) } to match object { allowed: false, …(1) }\n(2 matching properties omitted from actual)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at <worktree>/tests/unit/scope-widening.test.ts:160:9\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20"
+                  ],
+                  "name": "the same three instructions are DENIED at execution SW-1: the unregistered system has no frozen origin, so nothing addresses it",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "the same three instructions are DENIED at execution every instruction the fixture declares reaches one of the two denials",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 2,
+              "passed": 0
+            },
+            "replacement": "if (false) {",
+            "sourceSha256": "fda729ddd1430936a8117ab3c35684cc44f7ec4fa6f027296feac1246a2c3182",
+            "test": "tests/unit/scope-widening.test.ts",
+            "testName": "SW-1:|SW-3:",
+            "testSha256": "2015e7d702fc073f7bb5ef5996e52a52873328518b1a2deb37d2b8270517640d"
+          },
+          {
+            "file": "packages/application/src/runs/evidence-package.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism re-reads frozen bytes and binds registered evidence to the actual action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism registers the verified snapshot for a typed screenshot transport failure and retains its reservation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does not downgrade screenshot integrity failure into partial success",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does not downgrade screenshot unknown failure into partial success",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism retains a reservation and refuses a read-back integrity mismatch",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism refuses secret bytes before storage or registration",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does not downgrade a screenshot credential disclosure into partial success",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism refuses an artifact from a different page before reserving it",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does no I/O after losing its Run claim",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (guard.discloses(bytes)) throw new PopulationAcquisitionError('credential');",
+            "id": "credential-before-artifact-storage",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism re-reads frozen bytes and binds registered evidence to the actual action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism registers the verified snapshot for a typed screenshot transport failure and retains its reservation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does not downgrade screenshot integrity failure into partial success",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does not downgrade screenshot unknown failure into partial success",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism retains a reservation and refuses a read-back integrity mismatch",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 1 to be +0 // Object.is equality\n    at <worktree>/packages/application/src/runs/agent-capture.test.ts:66:28\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "agent capture through the shared evidence mechanism refuses secret bytes before storage or registration",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does not downgrade a screenshot credential disclosure into partial success",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism refuses an artifact from a different page before reserving it",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent capture through the shared evidence mechanism does no I/O after losing its Run claim",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "/* MUTANT: disclose before storage */",
+            "sourceSha256": "6297ad570c817b7d9b1ca28f9b3bebc6233a04764a4aeec217ac8d7caa3c9608",
+            "test": "packages/application/src/runs/agent-capture.test.ts",
+            "testName": "refuses secret bytes before storage",
+            "testSha256": "daaf1eb191c0e5bb6afaf26d06c259d83431a72e77f4b6c346db9d5268dd3fbb"
+          },
+          {
+            "file": "packages/application/src/runs/register-observations.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "registerObservations commits rows, checks and one event carrying every digest, in order",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations derives the coverage state and stores it beside the row",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations leaves an absence UNINSPECTED under a must-appear Template, however honest",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations makes an absence UNINSPECTED when its empty result is not registered Evidence",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations makes an absence UNINSPECTED when the extraction did not prove itself complete",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations makes an absence UNINSPECTED when a declared search key was never searched",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations writes nothing at all when a batch is refused",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses the entire batch when identity and values use different Evidence snapshots",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers nothing and appends no event when the same batch is delivered twice",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers only what is missing when a partial batch is redelivered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when a stored ROW no longer agrees with its digest",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when the retained capture time was rewritten",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when the retained capture time is no longer an instant",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when a stored row is no longer in the wire schema",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the conflict when the batch describes a different Observation for one record",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations applies corroboration before the digest, and records its check",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations never lets a passing corroboration carry a diagnostic",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations never gives a same-named attribute the identity verdict",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses a COMPLIANT evaluation of a record its own snapshot contradicts",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses a corroboration verdict about an Observation the batch does not carry",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations commits evaluations with the rows they describe",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers an applicable Agent-Judged C2 evaluation and retains its original proposal",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations stores a below-threshold Agent proposal as UNEVALUATED with no pending control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses malformed Agent confidence before calling the evaluation seam ({})",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses malformed Agent confidence before calling the evaluation seam ({\"confidence\":\"1.5\"})",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses malformed Agent confidence before calling the evaluation seam ({\"confidence\":\"abc\"})",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses duplicate, unknown and extra Agent proposals before any writes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses an applicable Agent condition with no proposal and a result missing a frozen condition",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations allows an inapplicable C2 row only when the frozen evaluator marks it so",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations keeps an ambiguous Observation with unknown Agent-Judged applicability Unevaluated",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations rejects a proposal or Compliant result when Agent-Judged applicability is unknown",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses to call an uninspected or ambiguous record Compliant",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses an evaluation port that answers about only some of the batch",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations accepts \"nothing judged this\" as a result per Observation carrying no evaluations",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses an evaluation outside the shape, about an unknown row, or repeated",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations normalizes an offset-bearing capture time to UTC and keeps the original",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations preserves the actual absence proof beside the wire record and rejects different proof on replay",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers an empty batch as nothing at all",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations keeps a batch too large for one statement atomic, and in order",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a missing screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a reserved screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a other-target screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a other-step screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a other-action screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a unlinked screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a matching screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract refuses omission of frozen requirements by an agent producer",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (hasIdentityGroundingSplit(record)) refuse('identity-grounding-split');",
+            "id": "identity-single-snapshot",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "registerObservations commits rows, checks and one event carrying every digest, in order",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations derives the coverage state and stores it beside the row",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations leaves an absence UNINSPECTED under a must-appear Template, however honest",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations makes an absence UNINSPECTED when its empty result is not registered Evidence",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations makes an absence UNINSPECTED when the extraction did not prove itself complete",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations makes an absence UNINSPECTED when a declared search key was never searched",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations writes nothing at all when a batch is refused",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "Error: the batch was not refused\n    at refusal (<worktree>/packages/application/src/runs/register-observations.test.ts:289:9)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at <worktree>/packages/application/src/runs/register-observations.test.ts:442:7\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "registerObservations refuses the entire batch when identity and values use different Evidence snapshots",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers nothing and appends no event when the same batch is delivered twice",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers only what is missing when a partial batch is redelivered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when a stored ROW no longer agrees with its digest",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when the retained capture time was rewritten",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when the retained capture time is no longer an instant",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the integrity failure when a stored row is no longer in the wire schema",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations raises the conflict when the batch describes a different Observation for one record",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations applies corroboration before the digest, and records its check",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations never lets a passing corroboration carry a diagnostic",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations never gives a same-named attribute the identity verdict",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses a COMPLIANT evaluation of a record its own snapshot contradicts",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses a corroboration verdict about an Observation the batch does not carry",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations commits evaluations with the rows they describe",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers an applicable Agent-Judged C2 evaluation and retains its original proposal",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations stores a below-threshold Agent proposal as UNEVALUATED with no pending control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses malformed Agent confidence before calling the evaluation seam ({})",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses malformed Agent confidence before calling the evaluation seam ({\"confidence\":\"1.5\"})",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses malformed Agent confidence before calling the evaluation seam ({\"confidence\":\"abc\"})",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses duplicate, unknown and extra Agent proposals before any writes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses an applicable Agent condition with no proposal and a result missing a frozen condition",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations allows an inapplicable C2 row only when the frozen evaluator marks it so",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations keeps an ambiguous Observation with unknown Agent-Judged applicability Unevaluated",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations rejects a proposal or Compliant result when Agent-Judged applicability is unknown",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses to call an uninspected or ambiguous record Compliant",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses an evaluation port that answers about only some of the batch",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations accepts \"nothing judged this\" as a result per Observation carrying no evaluations",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations refuses an evaluation outside the shape, about an unknown row, or repeated",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations normalizes an offset-bearing capture time to UTC and keeps the original",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations preserves the actual absence proof beside the wire record and rejects different proof on replay",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations registers an empty batch as nothing at all",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "registerObservations keeps a batch too large for one statement atomic, and in order",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a missing screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a reserved screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a other-target screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a other-step screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a other-action screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a unlinked screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract registers honest evidence checks for a matching screenshot",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "required agent captures in the shared registration contract refuses omission of frozen requirements by an agent producer",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "/* MUTANT: permit split identity */",
+            "sourceSha256": "810a5f3aff5f6ff0e3d7ecca6f3c496f6c35808fe1e7653ada9227cdd46dc476",
+            "test": "packages/application/src/runs/register-observations.test.ts",
+            "testName": "identity and values use different Evidence snapshots",
+            "testSha256": "ce462aa9e82d3d4678c7e9b38cd0d7612d6840623144f89a074e60fdc217f96a"
+          },
+          {
+            "file": "packages/domain/src/runs/observation.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem retains the actually performed mistyped query instead of copying the expected population key",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 0 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 1 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes missing source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes duplicate source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for unknown-tool without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for provider-invalid-response without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem keeps grounded findings unevaluated when required screenshot capture is missing",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem terminates on screenshot integrity mismatch without retrying capture or registering an Observation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem inserts the new Work Item before the checkpoint references it on the first claim",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem registers a P-4 page batch through the shared writer, retaining duplicate baselines and missing parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem captures the bootstrap page first and resolves the proposed tool to frozen search parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem follows a model-selected landing link before offering the search control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem persists a pending typed wait before calling the wait port and resumes without a note",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem re-establishes browser navigation on a fresh attempt instead of treating stored Evidence as the current page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem recovers an unraised wait intent without repeating the browser or model action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem raises a choose-candidate wait for duplicate grounded identities before model I/O",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture resumes a selected duplicate candidate without reading a changed browser page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture keeps the closed choice when registration fails, then a fresh context consumes it exactly once",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains candidate selection through an unnamed-value wait and evaluates the original status unchanged",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains both candidate choice and unnamed acknowledgement through a subsequent model retry wait",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture preserves a choice while a model call is in flight and an expired lease is recovered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture mark ambiguous produces no fabricated absence or compliant evaluation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries uses target-major work ordering for multiple population records and web targets",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries stops before registering an absence when final verified capture read returns after the Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries rechecks the deadline after waiting for the Observation transaction lock",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries checks the deadline again at final Gate after the Observation transaction completes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra action cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra evaluation cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=false)",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=true)",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "input.requiredCaptureKinds?.some(kind => !input.registeredCaptureKinds?.includes(kind))",
+            "id": "missing-screenshot-evidence",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem retains the actually performed mistyped query instead of copying the expected population key",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 0 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 1 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes missing source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes duplicate source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for unknown-tool without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for provider-invalid-response without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected [ { …(4) }, { …(4) }, { …(4) }, …(2) ] to deep equally contain ObjectContaining{…}\n    at <worktree>/packages/application/src/runs/execute-agent-work-item.test.ts:431:42\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "executeAgentWorkItem keeps grounded findings unevaluated when required screenshot capture is missing",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem terminates on screenshot integrity mismatch without retrying capture or registering an Observation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem inserts the new Work Item before the checkpoint references it on the first claim",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem registers a P-4 page batch through the shared writer, retaining duplicate baselines and missing parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem captures the bootstrap page first and resolves the proposed tool to frozen search parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem follows a model-selected landing link before offering the search control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem persists a pending typed wait before calling the wait port and resumes without a note",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem re-establishes browser navigation on a fresh attempt instead of treating stored Evidence as the current page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem recovers an unraised wait intent without repeating the browser or model action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem raises a choose-candidate wait for duplicate grounded identities before model I/O",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture resumes a selected duplicate candidate without reading a changed browser page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture keeps the closed choice when registration fails, then a fresh context consumes it exactly once",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains candidate selection through an unnamed-value wait and evaluates the original status unchanged",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains both candidate choice and unnamed acknowledgement through a subsequent model retry wait",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture preserves a choice while a model call is in flight and an expired lease is recovered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture mark ambiguous produces no fabricated absence or compliant evaluation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries uses target-major work ordering for multiple population records and web targets",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries stops before registering an absence when final verified capture read returns after the Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries rechecks the deadline after waiting for the Observation transaction lock",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries checks the deadline again at final Gate after the Observation transaction completes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra action cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra evaluation cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=false)",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=true)",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "false",
+            "sourceSha256": "3e382a051d9c0cd77da4932202204b402b73d2fdf55abed7dfb503205de9a2eb",
+            "test": "packages/application/src/runs/execute-agent-work-item.test.ts",
+            "testName": "required screenshot capture is missing",
+            "testSha256": "4e015fce71d7452f18439de754d312dcd5178475c44b8b1660f23a9a678e491a"
+          },
+          {
+            "file": "packages/application/src/runs/execute-agent-work-item.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem retains the actually performed mistyped query instead of copying the expected population key",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 0 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 1 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes missing source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes duplicate source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for unknown-tool without performing its action",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for provider-invalid-response without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem keeps grounded findings unevaluated when required screenshot capture is missing",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem terminates on screenshot integrity mismatch without retrying capture or registering an Observation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem inserts the new Work Item before the checkpoint references it on the first claim",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem registers a P-4 page batch through the shared writer, retaining duplicate baselines and missing parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem captures the bootstrap page first and resolves the proposed tool to frozen search parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem follows a model-selected landing link before offering the search control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem persists a pending typed wait before calling the wait port and resumes without a note",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem re-establishes browser navigation on a fresh attempt instead of treating stored Evidence as the current page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem recovers an unraised wait intent without repeating the browser or model action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem raises a choose-candidate wait for duplicate grounded identities before model I/O",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture resumes a selected duplicate candidate without reading a changed browser page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture keeps the closed choice when registration fails, then a fresh context consumes it exactly once",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains candidate selection through an unnamed-value wait and evaluates the original status unchanged",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains both candidate choice and unnamed acknowledgement through a subsequent model retry wait",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture preserves a choice while a model call is in flight and an expired lease is recovered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture mark ambiguous produces no fabricated absence or compliant evaluation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries uses target-major work ordering for multiple population records and web targets",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries stops before registering an absence when final verified capture read returns after the Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries rechecks the deadline after waiting for the Observation transaction lock",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries checks the deadline again at final Gate after the Observation transaction completes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra action cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra evaluation cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=false)",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=true)",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (decision.securityEvent) {",
+            "id": "unknown-tool-security-event",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem retains the actually performed mistyped query instead of copying the expected population key",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 0 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 1 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes missing source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes duplicate source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected [ 'event:lifecycle.agent-work', …(3) ] to include 'event:security.action-denied'\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1319:15)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at <worktree>/packages/application/src/runs/execute-agent-work-item.test.ts:418:35\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "executeAgentWorkItem logs a security denial for unknown-tool without performing its action",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for provider-invalid-response without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem keeps grounded findings unevaluated when required screenshot capture is missing",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem terminates on screenshot integrity mismatch without retrying capture or registering an Observation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem inserts the new Work Item before the checkpoint references it on the first claim",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem registers a P-4 page batch through the shared writer, retaining duplicate baselines and missing parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem captures the bootstrap page first and resolves the proposed tool to frozen search parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem follows a model-selected landing link before offering the search control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem persists a pending typed wait before calling the wait port and resumes without a note",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem re-establishes browser navigation on a fresh attempt instead of treating stored Evidence as the current page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem recovers an unraised wait intent without repeating the browser or model action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem raises a choose-candidate wait for duplicate grounded identities before model I/O",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture resumes a selected duplicate candidate without reading a changed browser page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture keeps the closed choice when registration fails, then a fresh context consumes it exactly once",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains candidate selection through an unnamed-value wait and evaluates the original status unchanged",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains both candidate choice and unnamed acknowledgement through a subsequent model retry wait",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture preserves a choice while a model call is in flight and an expired lease is recovered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture mark ambiguous produces no fabricated absence or compliant evaluation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries uses target-major work ordering for multiple population records and web targets",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries stops before registering an absence when final verified capture read returns after the Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries rechecks the deadline after waiting for the Observation transaction lock",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries checks the deadline again at final Gate after the Observation transaction completes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra action cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra evaluation cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=false)",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=true)",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "if (false) {",
+            "sourceSha256": "dd668526cb448f7b82127353dd6426b877fae79d98623c9e14ab03bcb3ff3f77",
+            "test": "packages/application/src/runs/execute-agent-work-item.test.ts",
+            "testName": "logs a security denial for unknown-tool",
+            "testSha256": "4e015fce71d7452f18439de754d312dcd5178475c44b8b1660f23a9a678e491a"
+          },
+          {
+            "file": "packages/application/src/runs/execute-agent-work-item.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem retains the actually performed mistyped query instead of copying the expected population key",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 0 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 1 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes missing source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes duplicate source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for unknown-tool without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for provider-invalid-response without performing its action",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem keeps grounded findings unevaluated when required screenshot capture is missing",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem terminates on screenshot integrity mismatch without retrying capture or registering an Observation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem inserts the new Work Item before the checkpoint references it on the first claim",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem registers a P-4 page batch through the shared writer, retaining duplicate baselines and missing parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem captures the bootstrap page first and resolves the proposed tool to frozen search parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem follows a model-selected landing link before offering the search control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem persists a pending typed wait before calling the wait port and resumes without a note",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem re-establishes browser navigation on a fresh attempt instead of treating stored Evidence as the current page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem recovers an unraised wait intent without repeating the browser or model action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem raises a choose-candidate wait for duplicate grounded identities before model I/O",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture resumes a selected duplicate candidate without reading a changed browser page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture keeps the closed choice when registration fails, then a fresh context consumes it exactly once",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains candidate selection through an unnamed-value wait and evaluates the original status unchanged",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains both candidate choice and unnamed acknowledgement through a subsequent model retry wait",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture preserves a choice while a model call is in flight and an expired lease is recovered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture mark ambiguous produces no fabricated absence or compliant evaluation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries uses target-major work ordering for multiple population records and web targets",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries stops before registering an absence when final verified capture read returns after the Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries rechecks the deadline after waiting for the Observation transaction lock",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries checks the deadline again at final Gate after the Observation transaction completes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra action cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra evaluation cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=false)",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=true)",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;",
+            "id": "invalid-provider-security-event",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem retains the actually performed mistyped query instead of copying the expected population key",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 0 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem concludes an objectively incomplete search with 1 returned records as uninspected without a human guess or further model turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes missing source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem routes duplicate source identity through the shared Gate before any agent turn",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem logs a security denial for unknown-tool without performing its action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected [ 'event:lifecycle.agent-work', …(3) ] to include 'event:security.action-denied'\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1319:15)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at <worktree>/packages/application/src/runs/execute-agent-work-item.test.ts:418:35\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "executeAgentWorkItem logs a security denial for provider-invalid-response without performing its action",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem keeps grounded findings unevaluated when required screenshot capture is missing",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem terminates on screenshot integrity mismatch without retrying capture or registering an Observation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem inserts the new Work Item before the checkpoint references it on the first claim",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem registers a P-4 page batch through the shared writer, retaining duplicate baselines and missing parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem captures the bootstrap page first and resolves the proposed tool to frozen search parameters",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem follows a model-selected landing link before offering the search control",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem persists a pending typed wait before calling the wait port and resumes without a note",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem re-establishes browser navigation on a fresh attempt instead of treating stored Evidence as the current page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem recovers an unraised wait intent without repeating the browser or model action",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "executeAgentWorkItem raises a choose-candidate wait for duplicate grounded identities before model I/O",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture resumes a selected duplicate candidate without reading a changed browser page",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture keeps the closed choice when registration fails, then a fresh context consumes it exactly once",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains candidate selection through an unnamed-value wait and evaluates the original status unchanged",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture retains both candidate choice and unnamed acknowledgement through a subsequent model retry wait",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture preserves a choice while a model call is in flight and an expired lease is recovered",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work consumes durable human decisions with original capture mark ambiguous produces no fabricated absence or compliant evaluation",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries uses target-major work ordering for multiple population records and web targets",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries stops before registering an absence when final verified capture read returns after the Run deadline",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries rechecks the deadline after waiting for the Observation transaction lock",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries checks the deadline again at final Gate after the Observation transaction completes",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra action cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent work enforces final limits, target order and bounded human retries does not offer another retry grant when the extra evaluation cycle is still uncertain",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=false)",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "agent absence returns to its recorded search controls grounds both keys through an empty page without links (restart=true)",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "return;",
+            "sourceSha256": "dd668526cb448f7b82127353dd6426b877fae79d98623c9e14ab03bcb3ff3f77",
+            "test": "packages/application/src/runs/execute-agent-work-item.test.ts",
+            "testName": "logs a security denial for provider-invalid-response",
+            "testSha256": "4e015fce71d7452f18439de754d312dcd5178475c44b8b1660f23a9a678e491a"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/browser-execution.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "const context = await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });",
+            "id": "browser-context-separation",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "BrowserActionError: Tool Action unavailable failure\n    at actionFailure (<worktree>/packages/infrastructure/src/runs/browser-execution.ts:1792:10)\n    at PlaywrightBrowserExecution.perform (<worktree>/packages/infrastructure/src/runs/browser-execution.ts:878:13)\n    at <worktree>/tests/integration/agent-isolation.test.ts:71:23\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "const context = this.live.values().next().value?.context ?? await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });",
+            "sourceSha256": "005cd66e0b9587439bbe9b7d6044ae6a30ff0ab891ed4ce4ef1957d3ae9a08eb",
+            "test": "tests/integration/agent-isolation.test.ts",
+            "testName": "keeps concurrent authenticated Runs",
+            "testSha256": "41c002b0d68de9338c6945a6d94bfa87b7bac6581708fd533c6b942423ae3f67"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/browser-execution.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (!live || live.ref.runId !== ref.runId || live.ref.mode !== ref.mode) return null;",
+            "id": "browser-cross-run-reference",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected { Object (ref, expiresAt, ...) } to be null\n    at <worktree>/tests/integration/agent-isolation.test.ts:85:72\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "if (!live || live.ref.mode !== ref.mode) return null;",
+            "sourceSha256": "005cd66e0b9587439bbe9b7d6044ae6a30ff0ab891ed4ce4ef1957d3ae9a08eb",
+            "test": "tests/integration/agent-isolation.test.ts",
+            "testName": "keeps concurrent authenticated Runs",
+            "testSha256": "41c002b0d68de9338c6945a6d94bfa87b7bac6581708fd533c6b942423ae3f67"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/browser-execution.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "return origins.some((origin) => withinOrigin(origin, candidate));",
+            "id": "browser-workspace-egress",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "Error: promise resolved \"{ status: 200, method: 'GET', …(5) }\" instead of rejecting\n    at _Assertion.__VITEST_REJECTS__ (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1747:17)\n    at _Assertion.propertyGetter (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1570:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1659:22)\n    at <worktree>/tests/integration/agent-isolation.test.ts:96:159\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "return true;",
+            "sourceSha256": "005cd66e0b9587439bbe9b7d6044ae6a30ff0ab891ed4ce4ef1957d3ae9a08eb",
+            "test": "tests/integration/agent-isolation.test.ts",
+            "testName": "keeps concurrent authenticated Runs",
+            "testSha256": "41c002b0d68de9338c6945a6d94bfa87b7bac6581708fd533c6b942423ae3f67"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/browser-execution.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "passed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "(isReadOnlyBrowserMethod(request.method()) || isArmedAuthenticationPost(live, request))",
+            "id": "browser-script-write-method",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests keeps concurrent authenticated Runs on the same origin in separate cookie and storage contexts",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 4 to be +0 // Object.is equality\n    at <worktree>/tests/integration/agent-isolation.test.ts:117:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "local browser cross-Run isolation and hostile-page requests blocks a retrieved page from writing to its allowed origin outside sign-in",
+                  "status": "failed"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser cross-Run isolation and hostile-page requests refuses reflected credentials before screenshot capture in an authenticated workspace",
+                  "status": "skipped"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "true",
+            "sourceSha256": "005cd66e0b9587439bbe9b7d6044ae6a30ff0ab891ed4ce4ef1957d3ae9a08eb",
+            "test": "tests/integration/agent-isolation.test.ts",
+            "testName": "blocks a retrieved page from writing",
+            "testSha256": "41c002b0d68de9338c6945a6d94bfa87b7bac6581708fd533c6b942423ae3f67"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/browser-execution.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-1-terminated-users.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-1-terminated-users.json:D9-b' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-2-sod-conflicts.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-3-high-value-approvals.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-4-config-deviation.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace removes credential-bearing browser state from the workspace after release",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "await this.teardown(ref.workspaceId, live.browser, live.context, bound);",
+            "id": "browser-ended-workspace-state",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-1-terminated-users.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-1-terminated-users.json:D9-b' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-2-sod-conflicts.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-3-high-value-approvals.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "local browser golden retrieved content and ended workspace 'p-4-config-deviation.json:D9-a' is captured verbatim without copying audit credentials",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected false to be true // Object.is equality\n    at <worktree>/tests/integration/agent-abuse.test.ts:61:31\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "local browser golden retrieved content and ended workspace removes credential-bearing browser state from the workspace after release",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "/* MUTANT: leave workspace open */",
+            "sourceSha256": "005cd66e0b9587439bbe9b7d6044ae6a30ff0ab891ed4ce4ef1957d3ae9a08eb",
+            "test": "tests/integration/agent-abuse.test.ts",
+            "testName": "removes credential-bearing browser state",
+            "testSha256": "da6906615b7f26e8f5dd55cfe195b38eb240da0714ddbcb928fa5c523bdb01c5"
+          }
+        ],
+        "schemaVersion": 1
+      }
+    },
+    {
+      "file": "prodconsole-guard-mutations.json",
+      "report": {
+        "baselineSha": "ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a",
+        "completed": true,
+        "limitations": [
+          "No PostgreSQL, browser, model provider, actual worker journey or Solari acceptance was used.",
+          "This is the two Story 4.10 compiler guard mutations named by D2-b and D5."
+        ],
+        "mode": "local-unit-no-provider-no-database",
+        "results": [
+          {
+            "file": "packages/domain/src/procedures/plan-compiler.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler seeds all four Templates, preserves their prose and classifies P-1 C1/C2",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes unsupported prose Agent-Judged and cannot retain prior Template output",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles typed boolean composition, named sets, numeric and time comparisons",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler requires persisted comparison controls for a direct numeric, approval, or window rule",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler refuses invalid applicability, duplicate ids, bad numeric controls, and non-storable text",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies P-3 below, exactly and above USD 100,000 with explicit boundaries and tolerance",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler treats proven absent P-3 approval as Exception",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles the optional P-1 disablement window and includes the exact 24-hour boundary",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler reports unnamed values and preserves Exception then Unevaluated then Compliant reduction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes a missing applicable Agent-Judged evaluation Unevaluated while another Exception wins",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not return Compliant for missing, ambiguous, contradictory, or uninspected Evidence",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not classify contradictory attributes as an Exception or a pass",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies the one stored threshold to Agent-Judged condition values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler expands P-2 roles, finds all prohibited pairs, and refuses unknown or conflicting matrix values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler evaluates the one P-4 baseline in effect and rejects prohibited or ambiguous baselines",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (baseline.disposition === 'prohibited') return truth(values['found'] === false);",
+            "id": "p4-d2b-prohibited-baseline",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler seeds all four Templates, preserves their prose and classifies P-1 C1/C2",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes unsupported prose Agent-Judged and cannot retain prior Template output",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles typed boolean composition, named sets, numeric and time comparisons",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler requires persisted comparison controls for a direct numeric, approval, or window rule",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler refuses invalid applicability, duplicate ids, bad numeric controls, and non-storable text",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies P-3 below, exactly and above USD 100,000 with explicit boundaries and tolerance",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler treats proven absent P-3 approval as Exception",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles the optional P-1 disablement window and includes the exact 24-hour boundary",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler reports unnamed values and preserves Exception then Unevaluated then Compliant reduction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes a missing applicable Agent-Judged evaluation Unevaluated while another Exception wins",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not return Compliant for missing, ambiguous, contradictory, or uninspected Evidence",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not classify contradictory attributes as an Exception or a pass",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies the one stored threshold to Agent-Judged condition values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler expands P-2 roles, finds all prohibited pairs, and refuses unknown or conflicting matrix values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'COMPLIANT' to be 'EXCEPTION' // Object.is equality\n    at <worktree>/packages/domain/src/procedures/plan-compiler.test.ts:145:154\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+                  ],
+                  "name": "the deterministic Compliance Rule compiler evaluates the one P-4 baseline in effect and rejects prohibited or ambiguous baselines",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "if (baseline.disposition === 'prohibited') return truth(true);",
+            "requirement": "D2-b: a present parameter with frozen disposition prohibited must evaluate EXCEPTION.",
+            "sourceSha256": "4d6799548026596479db045a8098a4e9de7ff5e1915e34ef32265eb3609cd344",
+            "test": "packages/domain/src/procedures/plan-compiler.test.ts",
+            "testName": "evaluates the one P-4 baseline in effect and rejects prohibited or ambiguous baselines",
+            "testSha256": "3de3131206a080416b3be8609131d7ba579578cbdcca4d994da694d0ac377744"
+          },
+          {
+            "file": "packages/domain/src/procedures/plan-compiler.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler seeds all four Templates, preserves their prose and classifies P-1 C1/C2",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes unsupported prose Agent-Judged and cannot retain prior Template output",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles typed boolean composition, named sets, numeric and time comparisons",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler requires persisted comparison controls for a direct numeric, approval, or window rule",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler refuses invalid applicability, duplicate ids, bad numeric controls, and non-storable text",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies P-3 below, exactly and above USD 100,000 with explicit boundaries and tolerance",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler treats proven absent P-3 approval as Exception",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles the optional P-1 disablement window and includes the exact 24-hour boundary",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler reports unnamed values and preserves Exception then Unevaluated then Compliant reduction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes a missing applicable Agent-Judged evaluation Unevaluated while another Exception wins",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not return Compliant for missing, ambiguous, contradictory, or uninspected Evidence",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not classify contradictory attributes as an Exception or a pass",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies the one stored threshold to Agent-Judged condition values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler expands P-2 roles, finds all prohibited pairs, and refuses unknown or conflicting matrix values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler evaluates the one P-4 baseline in effect and rejects prohibited or ambiguous baselines",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (effective.length !== 1) return unknown(effective.length ? 'multiple effective baselines apply' : 'missing effective baseline');",
+            "id": "p4-d5-duplicate-baseline-first-wins",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler seeds all four Templates, preserves their prose and classifies P-1 C1/C2",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes unsupported prose Agent-Judged and cannot retain prior Template output",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles typed boolean composition, named sets, numeric and time comparisons",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler requires persisted comparison controls for a direct numeric, approval, or window rule",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler refuses invalid applicability, duplicate ids, bad numeric controls, and non-storable text",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies P-3 below, exactly and above USD 100,000 with explicit boundaries and tolerance",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler treats proven absent P-3 approval as Exception",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler compiles the optional P-1 disablement window and includes the exact 24-hour boundary",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler reports unnamed values and preserves Exception then Unevaluated then Compliant reduction",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler makes a missing applicable Agent-Judged evaluation Unevaluated while another Exception wins",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not return Compliant for missing, ambiguous, contradictory, or uninspected Evidence",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler does not classify contradictory attributes as an Exception or a pass",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler applies the one stored threshold to Agent-Judged condition values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [],
+                  "name": "the deterministic Compliance Rule compiler expands P-2 roles, finds all prohibited pairs, and refuses unknown or conflicting matrix values",
+                  "status": "skipped"
+                },
+                {
+                  "failures": [
+                    "AssertionError: expected 'COMPLIANT' to be 'UNEVALUATED' // Object.is equality\n    at <worktree>/packages/domain/src/procedures/plan-compiler.test.ts:144:130\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+                  ],
+                  "name": "the deterministic Compliance Rule compiler evaluates the one P-4 baseline in effect and rejects prohibited or ambiguous baselines",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "if (effective.length === 0) return unknown('missing effective baseline');",
+            "requirement": "D5: multiple effective baseline rows must remain UNEVALUATED; first-wins is forbidden.",
+            "sourceSha256": "4d6799548026596479db045a8098a4e9de7ff5e1915e34ef32265eb3609cd344",
+            "test": "packages/domain/src/procedures/plan-compiler.test.ts",
+            "testName": "evaluates the one P-4 baseline in effect and rejects prohibited or ambiguous baselines",
+            "testSha256": "3de3131206a080416b3be8609131d7ba579578cbdcca4d994da694d0ac377744"
+          }
+        ],
+        "schemaVersion": 1
+      }
+    },
+    {
+      "file": "escalation-review-guard-mutations.json",
+      "report": {
+        "baselineSha": "ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a",
+        "completed": true,
+        "limitations": [
+          "No browser, live model provider, complete worker journey or Solari acceptance was used.",
+          "Removing the repository closed-wait guard changes the duplicate-answer refusal; independent state, revision and SQL immutability protections remain active."
+        ],
+        "mode": "unit-and-real-postgresql-no-provider",
+        "results": [
+          {
+            "file": "packages/application/src/runs/agent-observation.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "agent absence uses the shared completeness judge retains both actual lookup keys and the registered empty result",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "absence: { queryKeys: input.queryKeys, emptyResultEvidenceId:",
+            "id": "absence-first-declared-search-key-only",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected { honest: false, …(1) } to deeply equal { honest: true, failure: null }\n    at <worktree>/packages/application/src/runs/agent-observation.test.ts:283:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+                  ],
+                  "name": "agent absence uses the shared completeness judge retains both actual lookup keys and the registered empty result",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "absence: { queryKeys: input.queryKeys.slice(0, 1), emptyResultEvidenceId:",
+            "requirement": "Story 4.5: the worker absence producer supplies every declared lookup key to the shared completeness judge.",
+            "sourceSha256": "27b448d85f1bcee827f871597ea213e8a415a7ffe28481c3e34da8bb2d4e60cf",
+            "test": "packages/application/src/runs/agent-observation.test.ts",
+            "testName": "retains both actual lookup keys and the registered empty result",
+            "testSha256": "4695984a052701fd1238891bfd16abdb8b649a5b1abd60eb56626768f64ec083"
+          },
+          {
+            "file": "packages/application/src/runs/execute-agent-model-turn.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "durable agent token accounting reserves before I/O and records real usage after the response",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "tokens: prior.tokens + response.usage.totalTokens,",
+            "id": "agent-measured-token-accounting-removed",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected { revision: 1, …(12) } to match object { Object (tokens, reservedTokens, ...) }\n(9 matching properties omitted from actual)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at <worktree>/packages/application/src/runs/execute-agent-model-turn.test.ts:21:70\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "durable agent token accounting reserves before I/O and records real usage after the response",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "tokens: prior.tokens,",
+            "requirement": "Story 4.6: the durable model-turn path used by the worker must add measured provider usage to prior Run consumption.",
+            "sourceSha256": "3441ec6cf33683de60f23cd50e6869d6cecda807e0b02d61d820cf69973a37d9",
+            "test": "packages/application/src/runs/execute-agent-model-turn.test.ts",
+            "testName": "reserves before I/O and records real usage after the response",
+            "testSha256": "094744b3ba3d805d4a0b456529b77c42b1374c81314c25199110e80b6f6c089b"
+          },
+          {
+            "file": "packages/application/src/runs/agent-tool-planner.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "planAgentTools grounds one candidate and exposes only frozen locators for declared fields",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "if (primaryValues.length === 1) {",
+            "id": "single-grounded-match-escalates",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected null to deeply equal { …(2) }\n    at <worktree>/packages/application/src/runs/agent-tool-planner.test.ts:175:27\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64"
+                  ],
+                  "name": "planAgentTools grounds one candidate and exposes only frozen locators for declared fields",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "if (false) {",
+            "requirement": "Story 4.7: one grounded key match resolves without raising an Escalation.",
+            "sourceSha256": "078972065d8292c55a9bad603a97f1c7a6aa9fd3e3af2c616c28dbfe04b88f3a",
+            "test": "packages/application/src/runs/agent-tool-planner.test.ts",
+            "testName": "grounds one candidate and exposes only frozen locators for declared fields",
+            "testSha256": "d094e1c8836a90d912ee924e6ac5198c61136972a92821d0a3c6fe389f9ad394"
+          },
+          {
+            "file": "packages/infrastructure/src/runs/wait-repository.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "durable Escalation waits closes once with the expected revision and leaves the original wake as the sole job",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "currentWait = lockedWait;\n            if (lockedWait.closedAt !== null) return { outcome: 'superseded', wait: lockedWait, run: current };\n            if (current.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: lockedWait, run: current };\n            if (current.revision !== input.expectedRunRevision)",
+            "id": "closed-wait-repeat-closure-guard",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected { ok: false, …(2) } to deeply equal { ok: false, code: 'closed', …(1) }\n    at <worktree>/tests/integration/run-waits.test.ts:286:23\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+                  ],
+                  "name": "durable Escalation waits closes once with the expected revision and leaves the original wake as the sole job",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "currentWait = lockedWait;\n            // Mutant: permit a closed wait to enter the closure path again.\n            if (current.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: lockedWait, run: current };\n            if (current.revision !== input.expectedRunRevision)",
+            "requirement": "Story 4.8: a repeated closure returns the durable closed-wait refusal; independent SQL immutability remains enabled.",
+            "sourceSha256": "e0154df63efebbbac36069389821c63b98ea936f9cf93f176a26a57fb62e22c4",
+            "test": "tests/integration/run-waits.test.ts",
+            "testName": "closes once with the expected revision and leaves the original wake as the sole job",
+            "testSha256": "6a1c50feeb96c51f46945dfaa5f0e122b241e913d7504ba9124d2b05a13bd67a"
+          },
+          {
+            "file": "packages/domain/src/runs/evaluation.ts",
+            "green": {
+              "assertions": [
+                {
+                  "failures": [],
+                  "name": "evaluateObservationRecord keeps an applicable C2 proposal Agent-Judged and pending at the inclusive threshold",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1
+            },
+            "guard": "compareComplianceDecimals(agent.confidence, fields.agentJudgedThreshold) >= 0;",
+            "id": "agent-review-threshold-strict",
+            "red": {
+              "assertions": [
+                {
+                  "failures": [
+                    "AssertionError: expected { conditionId: 'C2', …(7) } to match object { confirmation: 'pending', …(2) }\n(5 matching properties omitted from actual)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file://<worktree>/node_modules/.pnpm/@vitest+expect@4.1.11/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file://<worktree>/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at <worktree>/packages/domain/src/runs/evaluation.test.ts:203:36\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file://<worktree>/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20"
+                  ],
+                  "name": "evaluateObservationRecord keeps an applicable C2 proposal Agent-Judged and pending at the inclusive threshold",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0
+            },
+            "replacement": "compareComplianceDecimals(agent.confidence, fields.agentJudgedThreshold) > 0;",
+            "requirement": "Story 4.9: confidence equal to the frozen decimal threshold requires human confirmation.",
+            "sourceSha256": "fb05a474e99463ce4584c3ea3772e1bcaca9405fd24360b25f2b2350aee2203c",
+            "test": "packages/domain/src/runs/evaluation.test.ts",
+            "testName": "keeps an applicable C2 proposal Agent-Judged and pending at the inclusive threshold",
+            "testSha256": "a511495abda44066f9a9d48901bb39f8234541f6ee28468921d2329690ef36be"
+          }
+        ],
+        "schemaVersion": 1
+      }
+    }
+  ]
+}

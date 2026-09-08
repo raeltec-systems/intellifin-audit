@@ -2,7 +2,7 @@
 title: 'Story 4.4: Locate a record, capture Evidence, and register a grounded Observation'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -151,4 +151,6 @@ FAIL to a real verdict — never to a pass by omission.
 
 ## Auto Run Result
 
-_Not yet run._
+Implementation checkpoint; final Epic4 acceptance remains open. The canonical compiled-worker P-1 capture, grounded registration, protected stored-evidence inspector and confirm/reject journeys pass in CI34199194303 at f4892c9. The same candidate passes unit and real PostgreSQL coverage. Optional D3 timestamp binding/surface limitations are recorded explicitly in the engineering report; this is not complete fixture-map acceptance.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.

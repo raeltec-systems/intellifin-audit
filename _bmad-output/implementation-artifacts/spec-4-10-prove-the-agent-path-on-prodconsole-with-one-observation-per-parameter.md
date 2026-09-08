@@ -2,7 +2,7 @@
 title: 'Story 4.10: Prove the agent path on ProdConsole with one Observation per parameter'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -136,4 +136,6 @@ treatment here; nothing needed to change to make that true.
 
 ## Auto Run Result
 
-_Not yet run._
+Implementation checkpoint; final Epic4 acceptance remains open. Real PostgreSQL canonical P-4 and both D2-b/D5 guard-removal mutations pass at f4892c9. The compiled-worker browser test passes its exact failing Gate set, distinct baseline Observations, deterministic per-case evaluations and page declaration assertions, then fails an incorrect expectation that local immutable-snapshot reads are browser HTTP actions. The test correction must instead prove persisted model selections against approved locators and real stored bytes. Browser acceptance remains pending.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.

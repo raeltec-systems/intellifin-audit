@@ -1,0 +1,584 @@
+{
+  "schemaVersion": 1,
+  "headSha": "f4892c930e031071a77cc5945ffb2936e34cfe86",
+  "mergeSha": "ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a",
+  "treeSha": "5b5ff428306262bddf2148fcbdf483ff8e35c6b1",
+  "ciRun": 34199194303,
+  "job": 101973919659,
+  "mode": "hosted-local-chromium-hydrated-ui-and-compiled-worker-not-solari",
+  "reports": [
+    {
+      "file": "agent-abuse-e2e-mutations.json",
+      "report": {
+        "baselineSha": "ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a",
+        "completed": true,
+        "limitations": [
+          "No live model or Solari acceptance.",
+          "This selected matrix does not replace every Story 4.11 case."
+        ],
+        "mode": "local-chromium-hydrated-ui-and-worker-intercepted-provider",
+        "results": [
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-b: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-2-sod-conflicts.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-3-high-value-approvals.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-4-config-deviation.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 5,
+              "reportErrors": []
+            },
+            "guard": "const [pendingOption, setPendingOption] = useState<EscalationOption | null>(null);",
+            "id": "hydrated-no-preselected-answer",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('dialog')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('dialog')\u001b[22m\n\u001b[2m    24 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  183 |     const question = page.locator('.ls-untrusted__label').filter({ hasText: 'AGENT-GENERATED question' });\n  184 |     await expect(question.locator('..').locator('pre')).toHaveText(row.text);\n> 185 |     await expect(page.getByRole('dialog')).toHaveCount(0);\n      |                                            ^\n  186 |     await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();\n  187 |     await expect(page.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();\n  188 |     await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toHaveCount(0);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:185:44"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('dialog')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('dialog')\u001b[22m\n\u001b[2m    24 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  183 |     const question = page.locator('.ls-untrusted__label').filter({ hasText: 'AGENT-GENERATED question' });\n  184 |     await expect(question.locator('..').locator('pre')).toHaveText(row.text);\n> 185 |     await expect(page.getByRole('dialog')).toHaveCount(0);\n      |                                            ^\n  186 |     await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();\n  187 |     await expect(page.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();\n  188 |     await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toHaveCount(0);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:185:44"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-b: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('dialog')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('dialog')\u001b[22m\n\u001b[2m    24 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  183 |     const question = page.locator('.ls-untrusted__label').filter({ hasText: 'AGENT-GENERATED question' });\n  184 |     await expect(question.locator('..').locator('pre')).toHaveText(row.text);\n> 185 |     await expect(page.getByRole('dialog')).toHaveCount(0);\n      |                                            ^\n  186 |     await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();\n  187 |     await expect(page.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();\n  188 |     await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toHaveCount(0);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:185:44"
+                  ],
+                  "name": "p-2-sod-conflicts.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('dialog')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('dialog')\u001b[22m\n\u001b[2m    24 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  183 |     const question = page.locator('.ls-untrusted__label').filter({ hasText: 'AGENT-GENERATED question' });\n  184 |     await expect(question.locator('..').locator('pre')).toHaveText(row.text);\n> 185 |     await expect(page.getByRole('dialog')).toHaveCount(0);\n      |                                            ^\n  186 |     await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();\n  187 |     await expect(page.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();\n  188 |     await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toHaveCount(0);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:185:44"
+                  ],
+                  "name": "p-3-high-value-approvals.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('dialog')\nExpected: \u001b[32m0\u001b[39m\nReceived: \u001b[31m1\u001b[39m\nTimeout:  10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveCount\" with timeout 10000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('dialog')\u001b[22m\n\u001b[2m    24 × locator resolved to 1 element\u001b[22m\n\u001b[2m       - unexpected value \"1\"\u001b[22m\n\n\n  183 |     const question = page.locator('.ls-untrusted__label').filter({ hasText: 'AGENT-GENERATED question' });\n  184 |     await expect(question.locator('..').locator('pre')).toHaveText(row.text);\n> 185 |     await expect(page.getByRole('dialog')).toHaveCount(0);\n      |                                            ^\n  186 |     await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();\n  187 |     await expect(page.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();\n  188 |     await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toHaveCount(0);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:185:44"
+                  ],
+                  "name": "p-4-config-deviation.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 5,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "const [pendingOption, setPendingOption] = useState<EscalationOption | null>(wait.options[0] ?? null);",
+            "source": "apps/web/src/runs/EscalationPanel.tsx",
+            "sourceSha256": "c9b1d9a00e417409333dc9b93d03ee03f9007e77905f906d3e8fe64089df1134",
+            "test": "tests/e2e/agent-escalation-abuse.spec.ts",
+            "testSha256": "9ee7ac94d71d308d395e394470a8b35ecbf50fc46e2519db2f1264769aff1b04"
+          },
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-b: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-2-sod-conflicts.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-3-high-value-approvals.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-4-config-deviation.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 5,
+              "reportErrors": []
+            },
+            "guard": "onClick={() => setPendingOption(option)}",
+            "id": "hydrated-closed-answer-selection",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -1,8 +1,8 @@\u001b[39m\n\u001b[2m  Object {\u001b[22m\n\u001b[2m    \"actor\": \"OKmPUITEGJrAgQgYTViD5CZbQTo33P6y\",\u001b[22m\n\u001b[32m-   \"answer_option_id\": \"skip\",\u001b[39m\n\u001b[31m+   \"answer_option_id\": \"retry\",\u001b[39m\n\u001b[2m    \"options\": Array [\u001b[22m\n\u001b[2m      Object {\u001b[22m\n\u001b[2m        \"id\": \"retry\",\u001b[22m\n\u001b[2m        \"label\": \"Retry\",\u001b[22m\n\u001b[2m      },\u001b[22m\n\n  198 |     await expect(page.getByText('Escalation answered.', { exact: true })).toBeVisible();\n  199 |     const [after] = await sql`SELECT answer_option_id,options,actor,closed_at FROM run_wait WHERE wait_id=${row.waitId}`;\n> 200 |     expect(after).toMatchObject({ answer_option_id: 'skip', actor: auditorId, options: before!.options });\n      |                   ^\n  201 |     expect(after!.closed_at).not.toBeNull();\n  202 |     const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${row.runId} AND event_type='execution.escalation-answered'`;\n  203 |     expect(events).toHaveLength(1);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:200:19"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -1,8 +1,8 @@\u001b[39m\n\u001b[2m  Object {\u001b[22m\n\u001b[2m    \"actor\": \"OKmPUITEGJrAgQgYTViD5CZbQTo33P6y\",\u001b[22m\n\u001b[32m-   \"answer_option_id\": \"skip\",\u001b[39m\n\u001b[31m+   \"answer_option_id\": \"retry\",\u001b[39m\n\u001b[2m    \"options\": Array [\u001b[22m\n\u001b[2m      Object {\u001b[22m\n\u001b[2m        \"id\": \"retry\",\u001b[22m\n\u001b[2m        \"label\": \"Retry\",\u001b[22m\n\u001b[2m      },\u001b[22m\n\n  198 |     await expect(page.getByText('Escalation answered.', { exact: true })).toBeVisible();\n  199 |     const [after] = await sql`SELECT answer_option_id,options,actor,closed_at FROM run_wait WHERE wait_id=${row.waitId}`;\n> 200 |     expect(after).toMatchObject({ answer_option_id: 'skip', actor: auditorId, options: before!.options });\n      |                   ^\n  201 |     expect(after!.closed_at).not.toBeNull();\n  202 |     const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${row.runId} AND event_type='execution.escalation-answered'`;\n  203 |     expect(events).toHaveLength(1);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:200:19"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-b: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -1,8 +1,8 @@\u001b[39m\n\u001b[2m  Object {\u001b[22m\n\u001b[2m    \"actor\": \"OKmPUITEGJrAgQgYTViD5CZbQTo33P6y\",\u001b[22m\n\u001b[32m-   \"answer_option_id\": \"skip\",\u001b[39m\n\u001b[31m+   \"answer_option_id\": \"retry\",\u001b[39m\n\u001b[2m    \"options\": Array [\u001b[22m\n\u001b[2m      Object {\u001b[22m\n\u001b[2m        \"id\": \"retry\",\u001b[22m\n\u001b[2m        \"label\": \"Retry\",\u001b[22m\n\u001b[2m      },\u001b[22m\n\n  198 |     await expect(page.getByText('Escalation answered.', { exact: true })).toBeVisible();\n  199 |     const [after] = await sql`SELECT answer_option_id,options,actor,closed_at FROM run_wait WHERE wait_id=${row.waitId}`;\n> 200 |     expect(after).toMatchObject({ answer_option_id: 'skip', actor: auditorId, options: before!.options });\n      |                   ^\n  201 |     expect(after!.closed_at).not.toBeNull();\n  202 |     const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${row.runId} AND event_type='execution.escalation-answered'`;\n  203 |     expect(events).toHaveLength(1);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:200:19"
+                  ],
+                  "name": "p-2-sod-conflicts.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -1,8 +1,8 @@\u001b[39m\n\u001b[2m  Object {\u001b[22m\n\u001b[2m    \"actor\": \"OKmPUITEGJrAgQgYTViD5CZbQTo33P6y\",\u001b[22m\n\u001b[32m-   \"answer_option_id\": \"skip\",\u001b[39m\n\u001b[31m+   \"answer_option_id\": \"retry\",\u001b[39m\n\u001b[2m    \"options\": Array [\u001b[22m\n\u001b[2m      Object {\u001b[22m\n\u001b[2m        \"id\": \"retry\",\u001b[22m\n\u001b[2m        \"label\": \"Retry\",\u001b[22m\n\u001b[2m      },\u001b[22m\n\n  198 |     await expect(page.getByText('Escalation answered.', { exact: true })).toBeVisible();\n  199 |     const [after] = await sql`SELECT answer_option_id,options,actor,closed_at FROM run_wait WHERE wait_id=${row.waitId}`;\n> 200 |     expect(after).toMatchObject({ answer_option_id: 'skip', actor: auditorId, options: before!.options });\n      |                   ^\n  201 |     expect(after!.closed_at).not.toBeNull();\n  202 |     const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${row.runId} AND event_type='execution.escalation-answered'`;\n  203 |     expect(events).toHaveLength(1);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:200:19"
+                  ],
+                  "name": "p-3-high-value-approvals.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatchObject\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[33m@@ -1,8 +1,8 @@\u001b[39m\n\u001b[2m  Object {\u001b[22m\n\u001b[2m    \"actor\": \"OKmPUITEGJrAgQgYTViD5CZbQTo33P6y\",\u001b[22m\n\u001b[32m-   \"answer_option_id\": \"skip\",\u001b[39m\n\u001b[31m+   \"answer_option_id\": \"retry\",\u001b[39m\n\u001b[2m    \"options\": Array [\u001b[22m\n\u001b[2m      Object {\u001b[22m\n\u001b[2m        \"id\": \"retry\",\u001b[22m\n\u001b[2m        \"label\": \"Retry\",\u001b[22m\n\u001b[2m      },\u001b[22m\n\n  198 |     await expect(page.getByText('Escalation answered.', { exact: true })).toBeVisible();\n  199 |     const [after] = await sql`SELECT answer_option_id,options,actor,closed_at FROM run_wait WHERE wait_id=${row.waitId}`;\n> 200 |     expect(after).toMatchObject({ answer_option_id: 'skip', actor: auditorId, options: before!.options });\n      |                   ^\n  201 |     expect(after!.closed_at).not.toBeNull();\n  202 |     const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${row.runId} AND event_type='execution.escalation-answered'`;\n  203 |     expect(events).toHaveLength(1);\n    at <worktree>/tests/e2e/agent-escalation-abuse.spec.ts:200:19"
+                  ],
+                  "name": "p-4-config-deviation.json:D9-a: no preselection and only the confirmed closed answer persists",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 5,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "onClick={() => setPendingOption(options[0] ?? null)}",
+            "source": "apps/web/src/runs/EscalationPanel.tsx",
+            "sourceSha256": "c9b1d9a00e417409333dc9b93d03ee03f9007e77905f906d3e8fe64089df1134",
+            "test": "tests/e2e/agent-escalation-abuse.spec.ts",
+            "testSha256": "9ee7ac94d71d308d395e394470a8b35ecbf50fc46e2519db2f1264769aff1b04"
+          },
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "SW-1: refuses malicious provider output and records a security denial",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "SW-2: refuses malicious provider output and records a security denial",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "SW-3: refuses malicious provider output and records a security denial",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 3,
+              "reportErrors": []
+            },
+            "guard": "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;",
+            "id": "worker-malformed-proposal-security-event",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  231 |       }\n  232 |       return denied;\n> 233 |     }, { timeout: 120_000 }).toBeGreaterThan(0);\n      |                              ^\n  234 |     await expect.poll(async () => (await sql`SELECT status FROM run_agent_work WHERE run_id=${runId}`)[0]?.status, { timeout: 120_000 }).toBe('WAITING');\n  235 |     expect(workerLog).toContain(`Synthetic agent abuse HTTP response delivered:${row.instruction_id}`);\n  236 |     expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');\n    at <worktree>/tests/e2e/agent-worker-abuse.spec.ts:233:30"
+                  ],
+                  "name": "SW-1: refuses malicious provider output and records a security denial",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  231 |       }\n  232 |       return denied;\n> 233 |     }, { timeout: 120_000 }).toBeGreaterThan(0);\n      |                              ^\n  234 |     await expect.poll(async () => (await sql`SELECT status FROM run_agent_work WHERE run_id=${runId}`)[0]?.status, { timeout: 120_000 }).toBe('WAITING');\n  235 |     expect(workerLog).toContain(`Synthetic agent abuse HTTP response delivered:${row.instruction_id}`);\n  236 |     expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');\n    at <worktree>/tests/e2e/agent-worker-abuse.spec.ts:233:30"
+                  ],
+                  "name": "SW-2: refuses malicious provider output and records a security denial",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  231 |       }\n  232 |       return denied;\n> 233 |     }, { timeout: 120_000 }).toBeGreaterThan(0);\n      |                              ^\n  234 |     await expect.poll(async () => (await sql`SELECT status FROM run_agent_work WHERE run_id=${runId}`)[0]?.status, { timeout: 120_000 }).toBe('WAITING');\n  235 |     expect(workerLog).toContain(`Synthetic agent abuse HTTP response delivered:${row.instruction_id}`);\n  236 |     expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');\n    at <worktree>/tests/e2e/agent-worker-abuse.spec.ts:233:30"
+                  ],
+                  "name": "SW-3: refuses malicious provider output and records a security denial",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 3,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "return;",
+            "source": "packages/application/src/runs/execute-agent-work-item.ts",
+            "sourceSha256": "dd668526cb448f7b82127353dd6426b877fae79d98623c9e14ab03bcb3ff3f77",
+            "test": "tests/e2e/agent-worker-abuse.spec.ts",
+            "testSha256": "912b08312dfa7ba5e36a6f407cc35ac223493a426cfed6519b95198391e14178"
+          },
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-b: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-2-sod-conflicts.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-3-high-value-approvals.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-4-config-deviation.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "retrieved-scope-objective-rule-secret: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 6,
+              "reportErrors": []
+            },
+            "guard": "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;",
+            "id": "retrieved-worker-security-denial",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  241 |     await page.getByRole('button', { name: 'Retry', exact: true }).click();\n  242 |     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();\n> 243 |     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);\n      |                                                                                                                                                                                                                  ^\n  244 |     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));\n  245 |     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;\n  246 |     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:243:210"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  241 |     await page.getByRole('button', { name: 'Retry', exact: true }).click();\n  242 |     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();\n> 243 |     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);\n      |                                                                                                                                                                                                                  ^\n  244 |     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));\n  245 |     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;\n  246 |     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:243:210"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-b: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  241 |     await page.getByRole('button', { name: 'Retry', exact: true }).click();\n  242 |     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();\n> 243 |     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);\n      |                                                                                                                                                                                                                  ^\n  244 |     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));\n  245 |     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;\n  246 |     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:243:210"
+                  ],
+                  "name": "p-2-sod-conflicts.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  241 |     await page.getByRole('button', { name: 'Retry', exact: true }).click();\n  242 |     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();\n> 243 |     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);\n      |                                                                                                                                                                                                                  ^\n  244 |     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));\n  245 |     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;\n  246 |     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:243:210"
+                  ],
+                  "name": "p-3-high-value-approvals.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  241 |     await page.getByRole('button', { name: 'Retry', exact: true }).click();\n  242 |     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();\n> 243 |     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);\n      |                                                                                                                                                                                                                  ^\n  244 |     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));\n  245 |     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;\n  246 |     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:243:210"
+                  ],
+                  "name": "p-4-config-deviation.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeGreaterThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: > \u001b[32m0\u001b[39m\nReceived:   \u001b[31m0\u001b[39m\n\nCall Log:\n- Timeout 120000ms exceeded while waiting on the predicate\n\n  241 |     await page.getByRole('button', { name: 'Retry', exact: true }).click();\n  242 |     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();\n> 243 |     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);\n      |                                                                                                                                                                                                                  ^\n  244 |     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));\n  245 |     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;\n  246 |     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:243:210"
+                  ],
+                  "name": "retrieved-scope-objective-rule-secret: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 6,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "return;",
+            "source": "packages/application/src/runs/execute-agent-work-item.ts",
+            "sourceSha256": "dd668526cb448f7b82127353dd6426b877fae79d98623c9e14ab03bcb3ff3f77",
+            "test": "tests/e2e/agent-retrieved-abuse.spec.ts",
+            "testSha256": "c4f138befac535f5938ec6f000f2a4cf0090a68254a145dab7f60cbb61c88ac6"
+          },
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "refuses the valid secret-bearing model response before persistence or action",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 1,
+              "reportErrors": []
+            },
+            "guard": "const discloses = input.guard.discloses(utf8Bytes(JSON.stringify(response)));",
+            "id": "model-response-credential-containment",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  336 |     expect(turns.length).toBeGreaterThan(0);\n  337 |     // The guard's failure is durable, while the response value is deliberately absent.\n> 338 |     expect(turns.every((row) => row['status'] === 'FAILED')).toBe(true);\n      |                                                              ^\n  339 |     expect(turns.every((row) => row['diagnostic'] === 'credential-containment')).toBe(true);\n  340 |     expect(turns.every((row) => row['response'] === null)).toBe(true);\n  341 |\n    at <worktree>/tests/e2e/agent-credential-containment.spec.ts:338:62"
+                  ],
+                  "name": "refuses the valid secret-bearing model response before persistence or action",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 1,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "const discloses = false;",
+            "source": "packages/application/src/runs/execute-agent-model-turn.ts",
+            "sourceSha256": "3441ec6cf33683de60f23cd50e6869d6cecda807e0b02d61d820cf69973a37d9",
+            "test": "tests/e2e/agent-credential-containment.spec.ts",
+            "testSha256": "e6993ec761f84adcb827fdfbbf0721635fd37bce7bf5ada855dfb13e7e36ba5c"
+          },
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-b: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-2-sod-conflicts.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-3-high-value-approvals.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-4-config-deviation.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "retrieved-scope-objective-rule-secret: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 6,
+              "reportErrors": []
+            },
+            "guard": "await this.teardown(ref.workspaceId, live.browser, live.context, bound);",
+            "id": "terminal-worker-workspace-closure",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 90000ms exceeded while waiting on the predicate\n\n  289 |     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');\n  290 |     // The production terminal/reaper path must release; this test never calls release.\n> 291 |     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);\n      |                                                                                                                                                                               ^\n  292 |     // The passive browser-close observer fires before releaseWorkspace commits the\n  293 |     // durable cleanup row. Require both independent facts, allowing that transaction\n  294 |     // to finish; an OPEN/failed reference still fails this bounded assertion.\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:291:175"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 90000ms exceeded while waiting on the predicate\n\n  289 |     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');\n  290 |     // The production terminal/reaper path must release; this test never calls release.\n> 291 |     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);\n      |                                                                                                                                                                               ^\n  292 |     // The passive browser-close observer fires before releaseWorkspace commits the\n  293 |     // durable cleanup row. Require both independent facts, allowing that transaction\n  294 |     // to finish; an OPEN/failed reference still fails this bounded assertion.\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:291:175"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-b: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 90000ms exceeded while waiting on the predicate\n\n  289 |     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');\n  290 |     // The production terminal/reaper path must release; this test never calls release.\n> 291 |     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);\n      |                                                                                                                                                                               ^\n  292 |     // The passive browser-close observer fires before releaseWorkspace commits the\n  293 |     // durable cleanup row. Require both independent facts, allowing that transaction\n  294 |     // to finish; an OPEN/failed reference still fails this bounded assertion.\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:291:175"
+                  ],
+                  "name": "p-2-sod-conflicts.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 90000ms exceeded while waiting on the predicate\n\n  289 |     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');\n  290 |     // The production terminal/reaper path must release; this test never calls release.\n> 291 |     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);\n      |                                                                                                                                                                               ^\n  292 |     // The passive browser-close observer fires before releaseWorkspace commits the\n  293 |     // durable cleanup row. Require both independent facts, allowing that transaction\n  294 |     // to finish; an OPEN/failed reference still fails this bounded assertion.\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:291:175"
+                  ],
+                  "name": "p-3-high-value-approvals.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 90000ms exceeded while waiting on the predicate\n\n  289 |     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');\n  290 |     // The production terminal/reaper path must release; this test never calls release.\n> 291 |     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);\n      |                                                                                                                                                                               ^\n  292 |     // The passive browser-close observer fires before releaseWorkspace commits the\n  293 |     // durable cleanup row. Require both independent facts, allowing that transaction\n  294 |     // to finish; an OPEN/failed reference still fails this bounded assertion.\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:291:175"
+                  ],
+                  "name": "p-4-config-deviation.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 90000ms exceeded while waiting on the predicate\n\n  289 |     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');\n  290 |     // The production terminal/reaper path must release; this test never calls release.\n> 291 |     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);\n      |                                                                                                                                                                               ^\n  292 |     // The passive browser-close observer fires before releaseWorkspace commits the\n  293 |     // durable cleanup row. Require both independent facts, allowing that transaction\n  294 |     // to finish; an OPEN/failed reference still fails this bounded assertion.\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:291:175"
+                  ],
+                  "name": "retrieved-scope-objective-rule-secret: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 6,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "void bound;",
+            "source": "packages/infrastructure/src/runs/browser-execution.ts",
+            "sourceSha256": "005cd66e0b9587439bbe9b7d6044ae6a30ff0ab891ed4ce4ef1957d3ae9a08eb",
+            "test": "tests/e2e/agent-retrieved-abuse.spec.ts",
+            "testSha256": "c4f138befac535f5938ec6f000f2a4cf0090a68254a145dab7f60cbb61c88ac6"
+          },
+          {
+            "green": {
+              "assertions": [
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-1-terminated-users.json:D9-b: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-2-sod-conflicts.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-3-high-value-approvals.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "p-4-config-deviation.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                },
+                {
+                  "errors": [],
+                  "name": "retrieved-scope-objective-rule-secret: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "passed"
+                }
+              ],
+              "exit": 0,
+              "failed": 0,
+              "passed": 6,
+              "reportErrors": []
+            },
+            "guard": "IF OLD.state IN ('APPROVED', 'ACTIVE', 'RETIRED') OR OLD.frozen_review IS NOT NULL THEN",
+            "id": "stored-frozen-objective-scope-rule",
+            "red": {
+              "assertions": [
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"scope\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"objective\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"rule\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  ]\u001b[22m\n\n  260 |       } catch (error) { attempted.push({ attack, refusedByFrozenGuard: (error as { code?: string }).code === 'P0001' }); }\n  261 |     }\n> 262 |     expect(attempted).toEqual(['scope', 'objective', 'rule'].map(attack => ({ attack, refusedByFrozenGuard: true })));\n      |                       ^\n  263 |     expect(String((await sql`SELECT to_jsonb(v)::text AS frozen FROM procedure_version v WHERE procedure_id=${row.procedureId}`)[0]!.frozen)).toBe(row.frozenVersion);\n  264 |     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;\n  265 |     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:262:23"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"scope\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"objective\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"rule\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  ]\u001b[22m\n\n  260 |       } catch (error) { attempted.push({ attack, refusedByFrozenGuard: (error as { code?: string }).code === 'P0001' }); }\n  261 |     }\n> 262 |     expect(attempted).toEqual(['scope', 'objective', 'rule'].map(attack => ({ attack, refusedByFrozenGuard: true })));\n      |                       ^\n  263 |     expect(String((await sql`SELECT to_jsonb(v)::text AS frozen FROM procedure_version v WHERE procedure_id=${row.procedureId}`)[0]!.frozen)).toBe(row.frozenVersion);\n  264 |     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;\n  265 |     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:262:23"
+                  ],
+                  "name": "p-1-terminated-users.json:D9-b: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"scope\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"objective\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"rule\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  ]\u001b[22m\n\n  260 |       } catch (error) { attempted.push({ attack, refusedByFrozenGuard: (error as { code?: string }).code === 'P0001' }); }\n  261 |     }\n> 262 |     expect(attempted).toEqual(['scope', 'objective', 'rule'].map(attack => ({ attack, refusedByFrozenGuard: true })));\n      |                       ^\n  263 |     expect(String((await sql`SELECT to_jsonb(v)::text AS frozen FROM procedure_version v WHERE procedure_id=${row.procedureId}`)[0]!.frozen)).toBe(row.frozenVersion);\n  264 |     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;\n  265 |     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:262:23"
+                  ],
+                  "name": "p-2-sod-conflicts.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"scope\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"objective\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"rule\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  ]\u001b[22m\n\n  260 |       } catch (error) { attempted.push({ attack, refusedByFrozenGuard: (error as { code?: string }).code === 'P0001' }); }\n  261 |     }\n> 262 |     expect(attempted).toEqual(['scope', 'objective', 'rule'].map(attack => ({ attack, refusedByFrozenGuard: true })));\n      |                       ^\n  263 |     expect(String((await sql`SELECT to_jsonb(v)::text AS frozen FROM procedure_version v WHERE procedure_id=${row.procedureId}`)[0]!.frozen)).toBe(row.frozenVersion);\n  264 |     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;\n  265 |     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:262:23"
+                  ],
+                  "name": "p-3-high-value-approvals.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"scope\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"objective\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"rule\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  ]\u001b[22m\n\n  260 |       } catch (error) { attempted.push({ attack, refusedByFrozenGuard: (error as { code?: string }).code === 'P0001' }); }\n  261 |     }\n> 262 |     expect(attempted).toEqual(['scope', 'objective', 'rule'].map(attack => ({ attack, refusedByFrozenGuard: true })));\n      |                       ^\n  263 |     expect(String((await sql`SELECT to_jsonb(v)::text AS frozen FROM procedure_version v WHERE procedure_id=${row.procedureId}`)[0]!.frozen)).toBe(row.frozenVersion);\n  264 |     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;\n  265 |     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:262:23"
+                  ],
+                  "name": "p-4-config-deviation.json:D9-a: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                },
+                {
+                  "errors": [
+                    "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 3\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"scope\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"objective\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m    Object {\u001b[22m\n\u001b[2m      \"attack\": \"rule\",\u001b[22m\n\u001b[32m-     \"refusedByFrozenGuard\": true,\u001b[39m\n\u001b[31m+     \"refusedByFrozenGuard\": false,\u001b[39m\n\u001b[2m    },\u001b[22m\n\u001b[2m  ]\u001b[22m\n\n  260 |       } catch (error) { attempted.push({ attack, refusedByFrozenGuard: (error as { code?: string }).code === 'P0001' }); }\n  261 |     }\n> 262 |     expect(attempted).toEqual(['scope', 'objective', 'rule'].map(attack => ({ attack, refusedByFrozenGuard: true })));\n      |                       ^\n  263 |     expect(String((await sql`SELECT to_jsonb(v)::text AS frozen FROM procedure_version v WHERE procedure_id=${row.procedureId}`)[0]!.frozen)).toBe(row.frozenVersion);\n  264 |     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;\n  265 |     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);\n    at <worktree>/tests/e2e/agent-retrieved-abuse.spec.ts:262:23"
+                  ],
+                  "name": "retrieved-scope-objective-rule-secret: closed human answer, denied tool, frozen definition and terminal cleanup",
+                  "status": "failed"
+                }
+              ],
+              "exit": 1,
+              "failed": 6,
+              "passed": 0,
+              "reportErrors": []
+            },
+            "replacement": "IF FALSE THEN",
+            "source": "packages/infrastructure/drizzle/0014_young_vance_astro.sql",
+            "sourceSha256": "9842617d1120712c2d88b508c36b65efd335f99d2a3204212b53a201b269953b",
+            "test": "tests/e2e/agent-retrieved-abuse.spec.ts",
+            "testSha256": "c4f138befac535f5938ec6f000f2a4cf0090a68254a145dab7f60cbb61c88ac6"
+          }
+        ]
+      }
+    }
+  ]
+}

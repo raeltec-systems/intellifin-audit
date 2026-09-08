@@ -2,7 +2,7 @@
 title: 'Story 4.11: Prove abuse resistance and workspace isolation with negative tests'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -115,6 +115,12 @@ set is unchanged and the agent gets nothing but the identifier.
   accessibility gate has none.
 
 ## Auto Run Result
+
+Implementation checkpoint; final Epic4 acceptance remains open. Current hosted evidence at f4892c9: all22 smaller guard mutations pass, with exact source/test digests and per-case baseline/removed-guard failures in [hosted mutation evidence](epic-4-hosted-guard-mutations.md). The main browser run passes all seeded scope-widening, retrieved-question/worker and credential-containment cases. All seven dedicated hydrated/compiled-worker mutations pass (32 baseline passes and32 corresponding mutant assertion failures), retained in [worker JSON](epic-4-hosted-worker-mutations.json). The later completion-barrier test changes require their own hosted run. Live Solari isolation is blocked by Actions configuration. Earlier evidence below is historical, not current acceptance.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.
+
+### Historical verification entries
 
 Partial local evidence: [agent guard mutation log](epic-4-agent-guard-mutations.md) records ten killed mutations against runtime baseline `10b7d563179a78bcebda9a07873766baec80b0d4`, with exact per-test failures in the linked JSON. New local Chromium tests and five browser mutations remain unrun; SSR answer preselection mutation survived. Actual-worker abuse, remaining per-case mutations, and remote isolation gates are outstanding. Story 4.11 is not accepted.
 

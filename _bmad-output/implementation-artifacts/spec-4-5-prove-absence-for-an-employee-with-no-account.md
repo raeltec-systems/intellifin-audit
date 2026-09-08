@@ -2,7 +2,7 @@
 title: 'Story 4.5: Prove absence for an employee with no account'
 type: 'feature'
 created: '2026-09-06'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -120,4 +120,6 @@ recorded platform event; its query string is a fact about what the browser did.
 
 ## Auto Run Result
 
-_Not yet run._
+Implementation checkpoint; final Epic4 acceptance remains open. The actual compiled-worker canonical absence journey passes in CI34199194303 at f4892c9: both declared keys are searched through captured controls, the empty capture and immutable proof are registered, and the protected whole-document inspector opens the stored artifact. Real PostgreSQL coverage and the first-key-only mutation pass. No empty or failed search is promoted to absence.
+
+See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.
