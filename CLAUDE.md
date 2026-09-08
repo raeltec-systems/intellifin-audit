@@ -1489,3 +1489,7 @@ Agent prompt version4 uses a complete empty-parameter response envelope matching
 ## Evaluation input corroboration
 
 The pre-evaluation rule preview already checks the captured Observation with snapshotCorroboration. Supply that judged copy, including its actual identity/attribute verdicts, to the model instead of the original record's null corroboration placeholders. Do not invent matched states or mutate the original capture; transactional registration independently repeats its checks. The explicit human unnamed-value/Unevaluated branch retains its existing behavior. For live diagnosis, an accepted bounded user-facing uncertainty summary may be retained only after the normal credential guard and whole-report secret scan; this excludes provider reasoning, rejected output and raw logs.
+
+## Independent live isolation gate
+
+A genuine auditor decision may block representative audit acceptance after confirmed cleanup. The explicit solari-isolation-acceptance label can select only the existing overlapping-session test on the exact candidate. It does not make the combined audit gate green, alter maxFailures or relax any isolation assertion. Confirm prior remote cleanup before selecting it; recording remains disabled and the workflow remains read-only.

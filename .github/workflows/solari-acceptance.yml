@@ -25,7 +25,7 @@ jobs:
   audit:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.label.name == 'solari-live-acceptance' &&
+      ((github.event.label.name == 'solari-live-acceptance' || github.event.label.name == 'solari-isolation-acceptance') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     name: Actual worker, live model and Solari audit
     runs-on: ubuntu-latest
@@ -48,6 +48,7 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/intellifin_solari_ci?sslmode=require
       SOLARI_ACCEPTANCE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+      SOLARI_ACCEPTANCE_SCOPE: ${{ github.event.label.name == 'solari-isolation-acceptance' && 'isolation' || 'audit-and-isolation' }}
     steps:
       - name: Validate exact candidate identifier
         shell: bash
@@ -80,7 +81,12 @@ jobs:
           OPENAI_API_KEY: ${{ vars.SOLARI_ACCEPTANCE_MODEL_PROVIDER == 'openai' && secrets.OPENAI_API_KEY || '' }}
           AGENT_ANTHROPIC_MODEL: ${{ vars.AGENT_ANTHROPIC_MODEL }}
           AGENT_OPENAI_MODEL: ${{ vars.AGENT_OPENAI_MODEL }}
-        run: pnpm exec playwright test --config=playwright.solari.config.ts
+        run: |
+          if [ "$SOLARI_ACCEPTANCE_SCOPE" = 'isolation' ]; then
+            pnpm exec playwright test --config=playwright.solari.config.ts tests/e2e/solari-workspace-isolation.spec.ts
+          else
+            pnpm exec playwright test --config=playwright.solari.config.ts
+          fi
       - name: Retain secret-free live acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4

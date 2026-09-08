@@ -84,6 +84,13 @@ reuse its acceptance or automatically consume provider capacity. Remove and re-a
 only when another explicitly selected candidate needs verification. The workflow also exposes
 manual dispatch for an exact candidate SHA once available in the default-branch Actions UI.
 
+The separate label `solari-isolation-acceptance` selects only the existing overlapping
+workspace test, with the same exact-candidate, no-recording and cleanup requirements.
+Use it when the audit has stopped on a genuine auditor decision and its remote cleanup
+has been confirmed. It makes no model calls and does not replace the failed audit gate.
+The ordinary combined gate still stops after an audit failure; no assertion or failure
+limit is relaxed. Both gates must pass before claiming full remote acceptance.
+
 The command is `pnpm exec playwright test --config=playwright.solari.config.ts`. Normal
 `pnpm test:e2e` excludes this file. The live configuration starts no web server, local
 Northstar, authentication setup or recording. The only uploaded file is the secret-scanned
