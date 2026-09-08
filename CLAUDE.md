@@ -1457,3 +1457,7 @@ A losing provisioning claim may release only an uncommitted handle that it creat
 ## 2026-09-08 — Pending workspace recovery must stay discoverable
 
 Work prerequisites defer PROVISIONING/RETRY workspaces without changing Run state, evidence or work budgets. Authentication and work recovery both admit workspace RETRY and expired PROVISIONING, then provision before executing; neither selects a live provisioning lease. RETRY does not wait for the old lease timestamp because a failed claim retains it. Missing rows still fail explicitly. Cover these predicates before and after extraction, with fresh repositories and durable failure/lease injection.
+
+## 2026-09-08 — Scan the refreshed answer page
+
+An answer success banner is rendered before router.refresh completes. Database closure and that banner do not establish that the refreshed page/metadata has committed. Before the post-answer axe scan, require the open Escalation panel to disappear and the exact Run route title to appear. Retain all axe rules and the original violation assertion; never retry a completed failing scan or hide document-title findings.

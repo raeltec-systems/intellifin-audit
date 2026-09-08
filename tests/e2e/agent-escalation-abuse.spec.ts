@@ -201,6 +201,12 @@ test.describe('hydrated golden escalation questions remain untrusted', () => {
     expect(after!.closed_at).not.toBeNull();
     const events = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${row.runId} AND event_type='execution.escalation-answered'`;
     expect(events).toHaveLength(1);
+    // The success banner is set before router.refresh() finishes. Wait for the
+    // authoritative closed-wait render and its route metadata before scanning it.
+    // A stale open panel or missing title remains an assertion failure; no axe rule
+    // is disabled and an accessibility violation is never retried into a pass.
+    await expect(page.locator('#open-escalation')).toHaveCount(0);
+    await expect(page).toHaveTitle('Run · Result · IntelliFin Audit');
     await scan(page);
   });
 });
