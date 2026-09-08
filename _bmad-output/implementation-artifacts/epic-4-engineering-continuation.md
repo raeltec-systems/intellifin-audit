@@ -427,3 +427,10 @@ These tests change no runtime behavior. Root-test typechecking passes. Real Post
 Held decision checkpointfa8dc31e4ee28e5a5e3e485b2077067f36d98bb9 is pushed. Canonical D12/D14 execution exposed a genuine landing-page gap: LoanCore published only fixture-valued example queries, while the bounded planner correctly refused those links. LoanCore now exposes the generic search page and the model may select a captured query-free, in-origin navigation tool. A page carrying either declared identity datum is not a generic landing page; unrelated employee record links remain refused. The runtime never constructs a fixture route or borrows its employee values.
 
 Restoring the two old production files produces120passes/3newregression failures; repaired Northstar/planner/worker-loop suites pass123tests. Application, Northstar and root-test typechecks pass. Canonical PostgreSQL/Chromium journeys await hosted verification. This repair checkpoint is pushed without claiming local fixtures are autonomous live-model acceptance.
+
+
+## Exact escalation/review guard mutations
+
+Canonical navigation781e20911d14ed2ba914855bb7921146557edde9 is pushed. A new isolated-worktree harness fills three explicit story checks: actual planner single-grounded-match resolution, production PostgreSQL closed-wait refusal, and inclusive Agent-Judged confidence threshold. The first case deliberately targets the planner used by the worker rather than an unused helper. The PostgreSQL mutant preserves independent state/revision/SQL guards and must fail the precise duplicate-answer assertion.
+
+At exact781e209, each of the two unit baselines passes1test and its mutation fails that named assertion; the harness restores sources and records hashes/errors. The real PostgreSQL case is not locally run. CI now invokes all3after the existing17mutations and retains its JSON alongside them. Missing DB, missing tests, skipped tests, setup/import errors and non-assertion failures cannot count as kills. JavaScript syntax and diff checks pass; this checkpoint is pushed with full hosted mutation acceptance pending.

@@ -1352,3 +1352,8 @@ Hold the real command's transaction after its writes and before commit, then obs
 ### Generic landing navigation and employee scope
 
 A canonical application landing page must expose generic query-free navigation instead of fixture-valued example searches. Offer model-selected links copied from the captured page only within frozen origins and permitted navigation. A page containing either declared identity datum is a record surface, even when its value is not the current employee; it cannot use the generic landing path to open unrelated records.
+
+
+### Exact escalation and review mutation targets
+
+A closed option-set mutation is not a closed-wait mutation. Mutate the production persistence guard and use real PostgreSQL duplicate-answer assertions while keeping independent SQL protections. Mutate the actual worker-used planner for unique grounded matching, not an unused helper. Threshold tests must exercise the inclusive frozen decimal boundary. Partial unit-only mutation reports stay incomplete.

@@ -135,6 +135,7 @@ jobs:
             cd "$mutation_tree"
             node scripts/verify-agent-guard-mutations.mjs "$mutation_report" --browser
             node scripts/verify-prodconsole-guard-mutations.mjs "${RUNNER_TEMP}/prodconsole-guard-mutations.json"
+            node scripts/verify-escalation-review-guard-mutations.mjs "${RUNNER_TEMP}/escalation-review-guard-mutations.json"
           )
 
       - name: Retain agent mutation evidence
@@ -145,6 +146,7 @@ jobs:
           path: |
             ${{ runner.temp }}/agent-guard-mutations.json
             ${{ runner.temp }}/prodconsole-guard-mutations.json
+            ${{ runner.temp }}/escalation-review-guard-mutations.json
           if-no-files-found: ignore
           retention-days: 14
 
