@@ -52,9 +52,15 @@ Principal feature checkpoints: grounded capture/registration `6a1e1e0`, `60bf745
 actual-worker abuse/credential tests `9d7edb3`, `6c9b717`, `5fd2ac0`.
 All runtime Observations, evaluations, evidence and Results use the original shared engine.
 
+## Latest candidate gate
+
+Candidate04f2a3ef60fbcc1d02b4c05cffe9459d63a15671 / same-tree CI merge09258c7102a32fe5abc6607f56f394eb542fa865 passes3537unit tests,472PostgreSQL tests,22smallmutations, all image/static gates and **162browser/accessibility tests**, including the corrected P4 proof. CI34203072973's separate worker mutation job passes four guards, then its unchanged credential baseline reaches RUN_FAILED instead of the required auditor wait. [Exact failure](epic-4-credential-baseline-failure.json). Earlier full29guard success below does not waive this later failure.
+
+The diagnostic follow-up retains every assertion and introduces three independent credential lifecycle runs plus secret-safe durable failure diagnostics. The cause remains unestablished and the final gate remains open. No runtime protection is weakened to change the outcome.
+
 ## Verification evidence
 
-Current code candidate: **`f4892c930e031071a77cc5945ffb2936e34cfe86`**, tree
+Verified runtime baseline: **`f4892c930e031071a77cc5945ffb2936e34cfe86`**, tree
 `5b5ff428306262bddf2148fcbdf483ff8e35c6b1`.
 Its [CI34199194303](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34199194303)
 completed with four passing jobs and one browser failure; no full-candidate acceptance is claimed.

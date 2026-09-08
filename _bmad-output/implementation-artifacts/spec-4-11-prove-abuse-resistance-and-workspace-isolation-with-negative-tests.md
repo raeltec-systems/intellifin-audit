@@ -120,6 +120,8 @@ Implementation checkpoint; final Epic4 acceptance remains open. Current hosted e
 
 See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.
 
+Latest CI34203072973 at04f2a3e passes all162main browser cases and the first four worker mutations, then fails the credential BASELINE (RUN_FAILED instead of its required wait). Its diagnostic/stress follow-up is not yet accepted; [exact failure](epic-4-credential-baseline-failure.json).
+
 ### Historical verification entries
 
 Partial local evidence: [agent guard mutation log](epic-4-agent-guard-mutations.md) records ten killed mutations against runtime baseline `10b7d563179a78bcebda9a07873766baec80b0d4`, with exact per-test failures in the linked JSON. New local Chromium tests and five browser mutations remain unrun; SSR answer preselection mutation survived. Actual-worker abuse, remaining per-case mutations, and remote isolation gates are outstanding. Story 4.11 is not accepted.

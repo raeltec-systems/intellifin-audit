@@ -54,6 +54,62 @@ let target: Awaited<ReturnType<typeof startAgentAbuseTarget>> | undefined;
 let stopWorker: (() => Promise<void>) | undefined;
 let workerLog = '';
 let runId = '';
+let workerHealth = () => ({ closed: false, failed: false });
+
+// Even diagnostic columns are untrusted during a containment regression. Emit only
+// this closed vocabulary, numbers and booleans; never a provider response, SQL error,
+// arbitrary stored value, full event payload or captured worker output.
+const DIAGNOSTIC_CODES = new Set([
+  'RUNNING', 'AWAITING_AUDITOR', 'RUN_FAILED', 'INCONCLUSIVE', 'CANCELED', 'COMPLETED',
+  'PROVISIONING', 'OPEN', 'RETRY', 'RELEASED', 'FAILED', 'EXECUTING', 'SIGNED_IN',
+  'TERMINAL', 'WAITING', 'COMPLETE', 'EXTRACTION_COMPLETE', 'RESERVED', 'PENDING',
+  'IN_PROGRESS', 'AWAITING', 'OBSERVED', 'UNINSPECTED', 'AMBIGUOUS', 'SUCCEEDED',
+  'workspace', 'authentication', 'extraction', 'work', 'local', 'solari',
+  'credential-containment', 'credential-unresolved', 'unsupported-frozen-plan',
+  'workspace-missing', 'workspace-created', 'workspace-reattached', 'workspace-reattach-failed',
+  'workspace-release-failed', 'workspace-released', 'workspace-expired', 'workspace-unavailable',
+  'workspace-capacity', 'workspace-entitlement', 'workspace-refused', 'workspace-policy',
+  'attempt-limit', 'canceled', 'lost-claim', 'model-unavailable', 'model-timeout',
+  'model-configuration', 'model-invalid-request', 'model-invalid-response', 'model-provider-refused',
+  'model-canceled', 'model-invalid-action', 'browser-unavailable', 'browser-denied',
+  'browser-scope-violation', 'browser-contract-failed', 'capture-integrity-failed',
+  'capture-contract-failed', 'observation-registration-refused', 'human-decision-refused',
+  'run-time-limit', 'run-step-execution-limit', 'run-token-limit', 'insufficient-evidence',
+  'sign-in-unavailable', 'sign-in-denied', 'sign-in-contract-failed', 'sign-in-scope-violation',
+  'session-established', 'agent-sign-in-complete', 'agent-work-complete',
+  'lifecycle.agent-work', 'lifecycle.agent-workspace', 'lifecycle.agent-execution',
+  'lifecycle.result-sealed', 'security.action-denied',
+]);
+
+async function safeFailureSnapshot(): Promise<string> {
+  try {
+    const [run] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
+    const stages = await sql`
+      SELECT 'workspace' AS stage,status,diagnostic,revision,attempts,lease_until<=now() AS lease_expired FROM run_workspace WHERE run_id=${runId}
+      UNION ALL SELECT 'authentication',status,diagnostic,revision,attempts,lease_until<=now() FROM run_agent_execution WHERE run_id=${runId}
+      UNION ALL SELECT 'extraction',status,diagnostic,revision,attempts,lease_until<=now() FROM run_execution WHERE run_id=${runId}
+      UNION ALL SELECT 'work',status,diagnostic,revision,NULL,lease_until<=now() FROM run_agent_work WHERE run_id=${runId}`;
+    const turns = await sql`SELECT sequence,status,diagnostic,response IS NOT NULL AS response_present FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence LIMIT 20`;
+    const items = await sql`SELECT state,attempts,cycles,diagnostic FROM run_work_item WHERE run_id=${runId} LIMIT 20`;
+    const steps = await sql`SELECT state,diagnostic FROM run_step_execution WHERE run_id=${runId} ORDER BY started_at LIMIT 30`;
+    const events = await sql`SELECT event_type,payload->>'diagnostic' AS diagnostic FROM audit_events WHERE aggregate_id=${runId}
+      AND event_type IN ('lifecycle.agent-work','lifecycle.agent-workspace','lifecycle.agent-execution','lifecycle.result-sealed','security.action-denied')
+      ORDER BY sequence DESC LIMIT 20`;
+    const [waits] = await sql`SELECT count(*)::int AS total,count(*) FILTER (WHERE closed_at IS NULL)::int AS open FROM run_wait WHERE run_id=${runId}`;
+    const clean = (row: Record<string, unknown> | undefined) => row === undefined ? null :
+      Object.fromEntries(Object.entries(row).map(([key, value]) => [key,
+        value === null || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)) ? value :
+          typeof value === 'string' && DIAGNOSTIC_CODES.has(value) ? value : 'unrecognized']));
+    return JSON.stringify({ run: clean(run), stages: stages.map(clean), turns: turns.map(clean),
+      items: items.map(clean), steps: steps.map(clean), events: events.map(clean), waits: clean(waits),
+      worker: workerHealth(), deliveredResponses: workerLog.split('Synthetic credential containment response delivered:').length - 1,
+      durableSecretAbsent: !(await durableRunText()).includes(LOANCORE_TOKEN),
+      workerSecretAbsent: !workerLog.includes(LOANCORE_TOKEN) });
+  } catch {
+    // PostgreSQL exceptions can carry query parameters; never preserve their cause.
+    return JSON.stringify({ snapshotQueryFailed: true, worker: workerHealth() });
+  }
+}
 
 const LOANCORE = {
   registrationId,
@@ -185,6 +241,7 @@ test.beforeAll(async () => {
   let closed = false;
   let stopping = false;
   let workerFailure = false;
+  workerHealth = () => ({ closed, failed: workerFailure });
   const worker = spawn(process.execPath, [
     '--import',
     pathToFileURL(resolve('tests/fixtures/agent-credential-containment-worker-preload.mjs')).href,
@@ -330,7 +387,11 @@ test.describe('actual worker credential containment after an approved retrieved 
     expect(target!.requests.some((request) => request.method === 'GET' && request.authenticated)).toBe(true);
 
     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM run_agent_turn WHERE run_id=${runId}`)[0]?.['count'] ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);
-    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.['state'], { timeout: 120_000 }).toBe('AWAITING_AUDITOR');
+    try {
+      await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.['state'], { timeout: 120_000 }).toBe('AWAITING_AUDITOR');
+    } catch {
+      throw new Error(`Credential containment did not reach its required auditor wait: ${await safeFailureSnapshot()}`);
+    }
 
     const turns = await sql`SELECT status,diagnostic,response FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence`;
     expect(turns.length).toBeGreaterThan(0);

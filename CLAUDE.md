@@ -1441,3 +1441,7 @@ ProdConsole browser actions navigate and freeze evidence; the model then selects
 ## 2026-09-08 — Independent completion barriers in mutation tests
 
 Await durable WAITING/AWAITING_AUDITOR or the post-retry terminal Run before directly asserting its already-committed security event. Polling the removed guard's event wastes the entire execution budget on an intended mutation failure. For browser closure, retain the full RELEASED wait; after that commit, the passive observer has already queued its facts, so a short pipe-delivery wait suffices. Never shorten worker execution budgets or accept a missing event/closure fact.
+
+## 2026-09-08 — Diagnose containment failures without leaking them
+
+A passing credential test in the main suite does not waive a baseline failure in the mutation job. Preserve the expected wait and scanner assertions; report only closed-vocabulary durable diagnostics, finite counts and booleans. Independent lifecycle repetitions must all pass, with retries disabled. A terminal Run or failed setup is not a successful guard-removal result.

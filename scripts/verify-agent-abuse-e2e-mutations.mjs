@@ -31,7 +31,9 @@ const cases = [
     test: 'tests/e2e/agent-retrieved-abuse.spec.ts', count: 6, rebuild: true },
   { id: 'model-response-credential-containment', file: 'packages/application/src/runs/execute-agent-model-turn.ts',
     before: 'const discloses = input.guard.discloses(utf8Bytes(JSON.stringify(response)));', after: 'const discloses = false;',
-    test: 'tests/e2e/agent-credential-containment.spec.ts', count: 1, rebuild: true },
+    // One CI baseline reached RUN_FAILED instead of its durable wait. Exercise three
+    // independent lifecycles; these are required cases, never retries of a failed case.
+    test: 'tests/e2e/agent-credential-containment.spec.ts', count: 3, repeatEach: 3, rebuild: true },
   { id: 'terminal-worker-workspace-closure', file: 'packages/infrastructure/src/runs/browser-execution.ts',
     before: 'await this.teardown(ref.workspaceId, live.browser, live.context, bound);', after: 'void bound;',
     test: 'tests/e2e/agent-retrieved-abuse.spec.ts', count: 6, rebuild: '@intellifin/infrastructure' },
@@ -62,7 +64,8 @@ function build(packageName = '@intellifin/application') {
 function specs(suites) { return suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]); }
 async function run(entry, phase) {
   const reportPath = join(scratch, `${entry.id}-${phase}.json`);
-  const child = spawnSync('pnpm', ['exec', 'playwright', 'test', entry.test, '--project=chromium', '--reporter=json'], {
+  const child = spawnSync('pnpm', ['exec', 'playwright', 'test', entry.test, '--project=chromium', '--reporter=json',
+    ...(entry.repeatEach === undefined ? [] : [`--repeat-each=${entry.repeatEach}`])], {
     cwd: root, env: { ...process.env, CI: 'true', PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath, pnpm_config_verify_deps_before_run: 'false' },
     // Six serial negative cases can each wait for a bounded 120-second denial
     // assertion. Allow their existing per-case budgets plus setup; the CI job
