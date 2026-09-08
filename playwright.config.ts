@@ -45,7 +45,7 @@ const externalServer = process.env['PLAYWRIGHT_BASE_URL'] !== undefined;
 export default defineConfig({
   testDir: './tests/e2e',
   // Live provider capacity is consumed only by the separately selected acceptance gate.
-  testIgnore: /solari-audit-acceptance\.spec\.ts$/,
+  testIgnore: /solari-(?:audit-acceptance|workspace-isolation)\.spec\.ts$/,
   fullyParallel: false,
   forbidOnly: Boolean(process.env['CI']),
   // No retries, in CI or out of it. This suite's whole point is a deterministic
@@ -76,7 +76,7 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
-      testIgnore: /(?:auth\.setup\.ts|solari-audit-acceptance\.spec\.ts)$/,
+      testIgnore: /(?:auth\.setup\.ts|solari-(?:audit-acceptance|workspace-isolation)\.spec\.ts)$/,
     },
   ],
   ...(externalServer

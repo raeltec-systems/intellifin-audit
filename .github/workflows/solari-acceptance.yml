@@ -29,7 +29,7 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     name: Actual worker, live model and Solari audit
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: ghcr.io/railwayapp-templates/postgres-ssl:18
@@ -70,7 +70,7 @@ jobs:
         run: |
           pnpm build
           pnpm db:migrate
-      - name: Execute bounded live audit and confirm remote cleanup
+      - name: Execute live audit and overlapping workspace isolation gates
         env:
           INTELLIFIN_LIVE_SOLARI: '1'
           SOLARI_API_KEY: ${{ secrets.SOLARI_API_KEY }}
@@ -86,6 +86,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: solari-audit-acceptance-${{ env.SOLARI_ACCEPTANCE_CANDIDATE_SHA }}
-          path: test-results/**/solari-audit-acceptance*.json
+          path: |
+            test-results/**/solari-audit-acceptance*.json
+            test-results/**/solari-workspace-isolation*.json
           if-no-files-found: warn
           retention-days: 14

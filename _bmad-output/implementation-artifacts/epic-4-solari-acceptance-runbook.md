@@ -81,3 +81,57 @@ The command is `pnpm exec playwright test --config=playwright.solari.config.ts`.
 `pnpm test:e2e` excludes this file. The live configuration starts no web server, local
 Northstar, authentication setup or recording. The only uploaded file is the secret-scanned
 JSON attachment. Missing configuration is a failed selected gate; it is never a passed skip.
+
+## Paired remote isolation gate
+
+The dedicated configuration also selects `solari-workspace-isolation.spec.ts`. This
+second case makes no model requests. It creates two separate frozen procedure/Run
+records through the same application writers and `initiateRun`, provisions through
+`provisionWorkspace` using the actual worker's `agentWorkspace(loadConfig(...))`
+composition, acquires the actual published HR source through the HTTP/S3 adapters,
+and authenticates through `executeAgentSteps`. There are exactly two explicit
+provisioning attempts, one per Run; provider capacity refusal fails the gate.
+
+Both managed sessions remain alive together. While A is authenticated, B must still
+show the genuine login form and no inherited cookies. Synthetic non-secret local,
+session and Cache Storage sentinels prove state isolation. They are browser test
+state, not audited business records or fabricated authentication. Northstar issues
+one deterministic synthetic cookie value, so comparing the two authenticated cookie
+values for inequality would be an invalid test. B's clean state **before** its own
+real login supplies that proof.
+
+An operation in A stays pending while B completes a captured authenticated read.
+Cross-Run attachment, execution and release references must be refused. Deliberate
+requests below the application action gate exercise the production remote browser
+interceptor against the sibling ProdConsole path and a non-routable synthetic
+web-application origin. The production release stage must persist those denial
+samples as security events. No private service is exposed or contacted.
+
+The cancellation command and the next production workspace stage perform each
+terminal transition. `releaseWorkspace` confirms cleanup before provider expiry.
+A's page/context must then be closed and unable to reveal cookies, while B can still
+read its own session/state; B must subsequently close too. The attached
+`solari-workspace-isolation.json` retains both Run/provider IDs, overlap, denials and
+cleanup results. The workflow allows thirty minutes for the two bounded cases plus
+build/migration and uploads both JSON artifacts. It stops after the first failed case so an unconfirmed audit cleanup cannot be followed by two additional remote allocations.
+
+This proves two managed remote browser sessions and their adapter boundary. It does
+not prove shared worker-memory isolation, independently configured provider firewall
+rules, or connectivity to a deployed private web service. The existing real local
+web-boundary tests and dependency-boundary gate remain separate evidence.
+
+| Planted breach / guard | Paired remote assertion | Mutation evidence boundary |
+| --- | --- | --- |
+| Reuse a workspace/browser context | B starts without A's authentication/local/session/cache state | Existing local context-reuse mutation; remote repetition not executed |
+| Remove Run binding from attachment/action | Forged A workspace ID under B is refused | Existing local cross-Run guard mutation; remote repetition not executed |
+| Remove complete identity check from release | Forged release cannot close A or contact its provider session | Mocked SDK regression failed before repair; remote repetition not executed |
+| Remove request-scope interception | Below-gate sibling/web-origin requests fail and become durable security events | Existing local egress mutation; remote repetition not executed |
+| Remove terminal browser/session cleanup | A is closed and cannot reveal cookies while B remains usable; both provider releases acknowledged | Existing local terminal-closure mutation; remote repetition not executed |
+
+These mappings are not claims of live mutation execution. The paired test and its
+remote mutations remain unverified until their exact candidate is executed with
+provider access. A supplied key does not by itself establish this gate: the hosted
+runner must receive the encrypted secret, the first case's model secret/model ID,
+and a Solari plan with two available concurrent sessions. A refused entitlement or
+unavailable credential transport is a precise blocker, never authority to substitute
+local Chromium or change the plan.
