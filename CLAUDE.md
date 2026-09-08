@@ -1297,3 +1297,8 @@ Missing or duplicate included population keys are platform-decidable evidence-qu
 ### Explicit live-provider acceptance
 
 Use a separately selected read-only test workflow on an exact clean candidate and disposable database. Supply provider keys only through encrypted runner secrets. Ordinary PR pushes must not silently consume remote capacity, and missing selected-gate configuration must fail rather than skip. Retain actual provider/model/build identities, evidence digests and confirmed pre-expiry cleanup; preserve machine proposals requiring human review. Never upload raw worker logs, credentials or signed URLs as acceptance artifacts.
+
+
+### Queue provisioning in concurrent PostgreSQL tests
+
+pg-boss queue creation uses a raw transaction block. Provision it on a dedicated single-connection postgres-js client, then close that client; keep the separate multi-connection runtime pool for lock/race assertions. A setup failure means its tests did not execute and must never count as integration acceptance.

@@ -64,7 +64,9 @@ describe.skipIf(!databaseUrl)('stored Evidence read grants on PostgreSQL', () =>
     // The production release creates all consumers after schema migration. This call is
     // idempotent and makes the durable request assertion below work in an isolated test DB
     // whose migration job did not pre-provision pg-boss queues.
-    await migrateRunsQueue(db);
+    const queueSql = createSqlClient(databaseUrl!, { max: 1 });
+    try { await migrateRunsQueue(createDb(queueSql)); }
+    finally { await queueSql.end({ timeout: 5 }); }
   });
 
   afterAll(async () => {
