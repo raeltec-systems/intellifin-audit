@@ -1407,3 +1407,8 @@ A representative remote-target audit may use the independently declared canonica
 ## 2026-09-08 — Complete ProdConsole worker verification
 
 The canonical P4 browser journey crosses the compiled worker and durable queue as well as the existing application-stage integration. It asserts the exact failing Gate set before the golden Inconclusive Result; a typed synthetic provider selects only approved tools and never returns observed values or fixture expectations.
+
+
+## 2026-09-08 — Exact absence and accounting mutations
+
+Story4.5 mutation removes a key in the producer actually called by the worker; Story4.6 mutation removes its durable measured-usage increment. A helper-level or no-test failure does not establish either contract. The shared harness retains source/test hashes and exact assertion failures.

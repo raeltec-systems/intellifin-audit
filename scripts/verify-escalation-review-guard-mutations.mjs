@@ -1,5 +1,5 @@
 /**
- * Executable Story 4.7–4.9 mutation evidence for grounded matching, durable
+ * Executable Story 4.5–4.9 mutation evidence for complete absence keys, token accounting, grounded matching, durable
  * wait closure and inclusive human-review thresholds. Run only in a clean disposable detached linked worktree.
  * Every source mutation is restored in finally. The closure case uses real PostgreSQL;
  * no provider is used. --unit-only produces explicitly incomplete local evidence.
@@ -35,6 +35,24 @@ if (!unitOnly && !process.env['DATABASE_URL']) {
   throw new Error('DATABASE_URL is required for the real PostgreSQL closed-wait mutation.');
 }
 const cases = [
+  {
+    id: 'absence-first-declared-search-key-only',
+    file: 'packages/application/src/runs/agent-observation.ts',
+    before: 'absence: { queryKeys: input.queryKeys, emptyResultEvidenceId:',
+    after: 'absence: { queryKeys: input.queryKeys.slice(0, 1), emptyResultEvidenceId:',
+    test: 'packages/application/src/runs/agent-observation.test.ts',
+    name: 'retains both actual lookup keys and the registered empty result',
+    requirement: 'Story 4.5: the worker absence producer supplies every declared lookup key to the shared completeness judge.',
+  },
+  {
+    id: 'agent-measured-token-accounting-removed',
+    file: 'packages/application/src/runs/execute-agent-model-turn.ts',
+    before: 'tokens: prior.tokens + response.usage.totalTokens,',
+    after: 'tokens: prior.tokens,',
+    test: 'packages/application/src/runs/execute-agent-model-turn.test.ts',
+    name: 'reserves before I/O and records real usage after the response',
+    requirement: 'Story 4.6: the durable model-turn path used by the worker must add measured provider usage to prior Run consumption.',
+  },
   {
     id: 'single-grounded-match-escalates',
     file: 'packages/application/src/runs/agent-tool-planner.ts',
