@@ -1372,3 +1372,8 @@ The Evidence list displays grounding directly. Metadata-only seeds assert proven
 ## 2026-09-08 — Retain observable mutation failures
 
 CI mirrors sanitized synthetic mutation report JSON into logs as escaped data in addition to uploading the artifact. This makes exact per-case failures reviewable when artifact materialization is unavailable. Missing or partial reports never count as accepted; the existing mutation runner remains the gate.
+
+
+## 2026-09-08 — Authorized notification bell count
+
+The application shell reads the current authorized open-wait count using the inbox's fresh database role predicate, independent of its bounded list length. Unknown counts remain unknown on query failure, with fixed telemetry diagnostics only. Browser restart scenarios establish their own delivery baseline so a preceding failure cannot fabricate an idempotency failure.

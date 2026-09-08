@@ -57,6 +57,17 @@ type RawNotificationRow = {
   readonly deadline?: unknown;
 };
 
+/** One visibility predicate for the inbox and its count; delivery history is not unread work. */
+function openWaitAccess(session: SessionSnapshot) {
+  return sql`w.closed_at IS NULL
+    AND r.state = 'AWAITING_AUDITOR'
+    AND EXISTS (SELECT 1 FROM user_role access_role WHERE access_role.user_id = ${session.userId} AND access_role.role IN ('auditor','audit-manager'))
+    AND (
+      r.initiator_id = ${session.userId}
+      OR EXISTS (SELECT 1 FROM user_role ur WHERE ur.user_id = ${session.userId} AND ur.role = 'audit-manager')
+    )`;
+}
+
 function parse(row: RawNotificationRow): InAppNotification[] {
   if (typeof row.sendKey !== 'string' || typeof row.recipientId !== 'string' ||
       typeof row.procedureId !== 'string' || typeof row.versionId !== 'string' ||
@@ -114,6 +125,18 @@ export class DrizzleNotificationWriter implements NotificationWriter {
 export class DrizzleNotificationRepository implements NotificationRepository, OpenNotificationReader {
   constructor(private readonly db: Database) {}
 
+  /** The bell counts all visible open waits, independently of the inbox's bounded page. */
+  async countOpenFor(session: SessionSnapshot): Promise<number> {
+    const result = await this.db.execute(sql`
+      SELECT count(*)::int AS count
+      FROM run_wait w INNER JOIN audit_run r ON r.run_id = w.run_id
+      WHERE ${openWaitAccess(session)}
+    `);
+    const count = Number(result[0]?.count);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error('Notification count could not be read');
+    return count;
+  }
+
   /**
    * Current inbox state comes from the open wait, not from whether its delivery row has been
    * consumed. A worker can be down for a while and the Run must still appear in the inbox;
@@ -133,17 +156,7 @@ export class DrizzleNotificationRepository implements NotificationRepository, Op
         to_char(w.deadline AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS deadline
       FROM run_wait w
       INNER JOIN audit_run r ON r.run_id = w.run_id
-      WHERE w.closed_at IS NULL
-        AND EXISTS (SELECT 1 FROM user_role access_role WHERE access_role.user_id = ${session.userId} AND access_role.role IN ('auditor','audit-manager'))
-        AND r.state = 'AWAITING_AUDITOR'
-        AND (
-          r.initiator_id = ${session.userId}
-          OR EXISTS (
-            SELECT 1
-            FROM user_role ur
-            WHERE ur.user_id = ${session.userId} AND ur.role = 'audit-manager'
-          )
-        )
+      WHERE ${openWaitAccess(session)}
       ORDER BY w.deadline, w.wait_id
       LIMIT ${bounded}
     `);

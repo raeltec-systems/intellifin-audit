@@ -466,11 +466,19 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     expect((await raise(runId, 'unnamed-value')).ok).toBe(true);
     const notifications = new DrizzleNotificationRepository(db);
     expect((await notifications.openFor(session)).some(row => row.runId === runId)).toBe(true);
+    const countBeforeRevocation = await notifications.countOpenFor(session);
+    expect(countBeforeRevocation).toBeGreaterThan(0);
+    expect(countBeforeRevocation).toBe((await notifications.openFor(session)).length);
     await sql`DELETE FROM user_role WHERE user_id=${author} AND role='auditor'`;
     try {
       expect(await notifications.openFor(session)).toEqual([]);
-      expect((await notifications.openFor({ userId: manager, sessionId: 'manager-notification-test' })).some(row => row.runId === runId)).toBe(true);
+      expect(await notifications.countOpenFor(session)).toBe(0);
+      const managerSession = { userId: manager, sessionId: 'manager-notification-test' };
+      const managerInbox = await notifications.openFor(managerSession);
+      expect(managerInbox.some(row => row.runId === runId)).toBe(true);
+      expect(await notifications.countOpenFor(managerSession)).toBe(managerInbox.length);
     } finally { await sql`INSERT INTO user_role(user_id,role) VALUES (${author},'auditor')`; }
+    expect(await notifications.countOpenFor(session)).toBe(countBeforeRevocation);
   });
 
 });

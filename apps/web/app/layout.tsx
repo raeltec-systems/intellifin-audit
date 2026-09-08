@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { DrizzleNotificationRepository } from '@intellifin/infrastructure';
 
 import { AppShell } from '../src/shell/AppShell';
 import { EnvironmentRibbon } from '../src/design/EnvironmentRibbon';
 import { currentIdentity } from '../src/server-session';
+import { getRuntime } from '../src/bootstrap';
 
 import './tokens.css';
 import './globals.css';
@@ -46,6 +48,17 @@ export default async function RootLayout({
   children: ReactNode;
 }): Promise<React.JSX.Element> {
   const identity = await currentIdentity();
+  let unreadNotifications: number | undefined;
+  if (identity.kind === 'identified') {
+    const runtime = await getRuntime();
+    try {
+      unreadNotifications = await new DrizzleNotificationRepository(runtime.db).countOpenFor(identity.session);
+    } catch {
+      // A missing count is not zero, and a notification read failure must not remove
+      // the auditor's shell or imply that no Run needs attention.
+      runtime.telemetry.captureError('Notification count could not be read', new Error('notification-count-query-failed'), { outcome: 'failure' });
+    }
+  }
 
   return (
     <html lang="en">
@@ -56,7 +69,7 @@ export default async function RootLayout({
             {children}
           </>
         ) : (
-          <AppShell role={identity.kind === 'identified' ? identity.role : null}>
+          <AppShell role={identity.kind === 'identified' ? identity.role : null} unreadNotifications={unreadNotifications}>
             {children}
           </AppShell>
         )}

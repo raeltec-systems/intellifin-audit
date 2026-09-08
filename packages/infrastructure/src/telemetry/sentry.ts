@@ -32,6 +32,7 @@ export const TELEMETRY_MESSAGES = [
   'Cancel Run failed',
   'Rerun failed',
   'Notification delivery failed',
+  'Notification count could not be read',
   'Procedure Version decision failed',
   'New Procedure Version failed',
   'Captured failure',

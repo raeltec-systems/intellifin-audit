@@ -47,7 +47,6 @@ let answeredWaitId: string;
 let staleWaitId: string;
 let expiredWaitId: string;
 let stopWorker: (() => Promise<void>) | undefined;
-let deliveredBeforeRestart = '';
 let storage: Awaited<ReturnType<typeof startSyntheticS3>> | undefined;
 
 /** The built production composition consumes the real durable queues. No wake handler or
@@ -158,6 +157,7 @@ async function openFromNotifications(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   const open = page.getByRole('region', { name: 'Runs waiting for your answer' });
   const delivered = page.getByRole('region', { name: 'Delivered notifications' });
+  await expect(bell.locator('.ls-bell__count')).toHaveText(`${await open.locator('li').count()} unread`);
   for (const surface of [open, delivered]) {
     const row = surface.locator('li').filter({ has: page.locator(`a[href="/runs/${runs.answered}"]`) });
     await expect(row).toHaveCount(1);
@@ -360,7 +360,6 @@ test.describe('the Escalation panel as an Auditor', () => {
     test.setTimeout(120_000);
     await startWorker();
     await assertDeliveredNotifications();
-    deliveredBeforeRestart = await deliverySnapshot();
     await stopWorker?.();
     await openFromNotifications(page);
     const managerContext = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
@@ -442,6 +441,12 @@ test.describe('the Escalation panel as an Auditor', () => {
 
   test('refuses a late answer, then the restarted worker consumes the durable wake and seals Inconclusive', async ({ page }) => {
     test.setTimeout(120_000);
+    // Each scenario owns its restart baseline. Playwright starts a fresh fixture process
+    // after a prior failure, and this case must also work when selected by itself.
+    await startWorker();
+    await assertDeliveredNotifications();
+    const deliveredBeforeRestart = await deliverySnapshot();
+    await stopWorker?.();
     storage = await startSyntheticS3();
     // An already-collected synthetic artifact; the timeout must preserve its bytes and
     // registration. This fixture does not claim a fresh browser capture or remote provider.
@@ -517,7 +522,8 @@ test.describe('the Escalation panel as an Auditor', () => {
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     await scan(page);
     await page.goto('/notifications');
-    await expect(page.getByRole('region', { name: 'Runs waiting for your answer' })
-      .locator(`a[href="/runs/${runs.expired}"]`)).toHaveCount(0);
+    const open = page.getByRole('region', { name: 'Runs waiting for your answer' });
+    await expect(open.locator(`a[href="/runs/${runs.expired}"]`)).toHaveCount(0);
+    await expect(page.locator('.ls-bell__count')).toHaveText(`${await open.locator('li').count()} unread`);
   });
 });
