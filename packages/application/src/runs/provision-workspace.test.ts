@@ -310,7 +310,91 @@ const DEPS = (state: Store, browser: BrowserExecution) => ({
   ids: { next: () => '01a06fd8-0000-7000-8000-0000000000aa' },
 });
 
+function barrier() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 describe('provisionWorkspace', () => {
+  it('does not release the winning existing workspace when an older attach loses its lease', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari', attachable: true, expiresAt: '2026-09-07T00:00:00.000Z' });
+    let now = Date.parse('2026-09-06T00:00:00.000Z');
+    const deps = { ...DEPS(state, browser), clock: { now: () => new Date(now) } };
+    await provisionWorkspace(deps, JOB);
+    const original = state.checkpoint!;
+    const attachStarted = barrier();
+    const finishOldAttach = barrier();
+    const attach = browser.attach;
+    let attaching = 0;
+    browser.attach = async (ref) => {
+      const handle = await attach(ref);
+      if (++attaching === 1) {
+        attachStarted.resolve();
+        await finishOldAttach.promise;
+      }
+      return handle;
+    };
+
+    const older = provisionWorkspace(deps, JOB);
+    await attachStarted.promise;
+    expect(state.checkpoint).toMatchObject({ status: 'PROVISIONING', workspaceId: original.workspaceId, mode: 'solari' });
+    // Only the clock moves. B obtains and commits its own real claim after A's lease;
+    // no test assignment manufactures the winning checkpoint or changes its identity.
+    now = Date.parse(state.checkpoint!.leaseUntil) + 1;
+    expect(now).toBeLessThan(Date.parse(original.expiresAt!));
+    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true });
+    expect(state.checkpoint).toMatchObject({ status: 'OPEN', workspaceId: original.workspaceId, mode: 'solari', expiresAt: original.expiresAt });
+    const winner = JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved });
+
+    finishOldAttach.resolve();
+    expect(await older).toEqual({ retry: false, provisioned: false });
+    expect(JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved })).toBe(winner);
+    expect(state.run?.state).toBe('RUNNING');
+    expect(browser.created).toEqual([original.workspaceId]);
+    expect(browser.attached).toEqual([
+      { runId: RUN.runId, workspaceId: original.workspaceId, mode: 'solari' },
+      { runId: RUN.runId, workspaceId: original.workspaceId, mode: 'solari' },
+    ]);
+    expect(browser.released).toEqual([]);
+  });
+
+  it('releases only its newly created uncommitted handle when a newer claim wins with another identity', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari', expiresAt: '2026-09-07T00:00:00.000Z' });
+    let now = Date.parse('2026-09-06T00:00:00.000Z');
+    const deps = { ...DEPS(state, browser), clock: { now: () => new Date(now) } };
+    const createStarted = barrier();
+    const finishOldCreate = barrier();
+    const create = browser.create;
+    let creating = 0;
+    browser.create = async (input) => {
+      const handle = await create(input);
+      if (++creating === 1) {
+        createStarted.resolve();
+        await finishOldCreate.promise;
+      }
+      return handle;
+    };
+
+    const older = provisionWorkspace(deps, JOB);
+    await createStarted.promise;
+    expect(state.checkpoint).toMatchObject({ status: 'PROVISIONING', workspaceId: null });
+    now = Date.parse(state.checkpoint!.leaseUntil) + 1;
+    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true });
+    expect(state.checkpoint).toMatchObject({ status: 'OPEN', workspaceId: 'ws-2', mode: 'solari' });
+    const winner = JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved });
+
+    finishOldCreate.resolve();
+    expect(await older).toEqual({ retry: false, provisioned: false });
+    expect(JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved })).toBe(winner);
+    expect(state.run?.state).toBe('RUNNING');
+    expect(browser.created).toEqual(['ws-1', 'ws-2']);
+    expect(browser.attached).toEqual([]);
+    expect(browser.released).toEqual([{ runId: RUN.runId, workspaceId: 'ws-1', mode: 'solari' }]);
+  });
+
   it.each([['solari', 'local'], ['local', 'solari']] as const)(
     'preserves the persisted %s identity when a restarted worker selects %s',
     async (originalMode, configuredMode) => {

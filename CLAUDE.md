@@ -1449,3 +1449,7 @@ A passing credential test in the main suite does not waive a baseline failure in
 ## 2026-09-08 — Reattachment is a pending prerequisite
 
 Workspace reattachment commits PROVISIONING before provider I/O. Queue redelivery and the independent recovery sweep may overlap that interval even after a caller has previously provisioned successfully. A completed sign-in/extraction checkpoint alone cannot distinguish this pending workspace from a genuinely missing one. Exercise the overlap by holding actual attachment after its durable claim; require no work mutation or browser/model action until OPEN returns, then resume the original bounded retry. A passing repeated baseline is not a causal explanation for an earlier intermittent failure.
+
+## 2026-09-08 — Losing an attach lease does not own the session
+
+A losing provisioning claim may release only an uncommitted handle that it created. An attached existing identity remains named by the durable row and may already be used by the winning lease. Retain it for that winner or the terminal reaper; closing it as generic lost-claim cleanup revokes another live claim. Test both overlapping attachment and overlapping creation with an elapsed lease, preserving newly created orphan cleanup.

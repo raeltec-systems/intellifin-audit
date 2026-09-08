@@ -382,6 +382,7 @@ export async function provisionWorkspace(
     });
 
   let handle: WorkspaceHandle | null = null;
+  let createdByThisClaim = false;
   // Set only after a durable identity was found to be unavailable and its release path
   // completed. A failed release, failed create, or lost guarded commit must never tell the
   // caller that a replacement exists: in each case the durable row still names the old
@@ -455,11 +456,14 @@ export async function provisionWorkspace(
         diagnostic = 'workspace-reattached';
       }
     }
-    handle ??= await deps.browser.create({
-      runId: run.runId,
-      policy: { allowedOrigins: requirement.allowedOrigins },
-      timeoutMs: remaining(),
-    });
+    if (handle === null) {
+      handle = await deps.browser.create({
+        runId: run.runId,
+        policy: { allowedOrigins: requirement.allowedOrigins },
+        timeoutMs: remaining(),
+      });
+      createdByThisClaim = true;
+    }
   } catch (error) {
     const code = failureCode(error);
     // A failed release of the stale identity is its own outcome and never a provision
@@ -539,11 +543,11 @@ export async function provisionWorkspace(
     });
     await recordDenials(context, denials);
   });
-  // The claim was lost while the browser was being created — another worker holds this
-  // Run. The workspace this attempt made is nobody's, so it is released here rather than
-  // left for the reaper: the reaper only looks at Runs that have ENDED.
+  // Only a newly created, uncommitted handle belongs to this losing claim. An attached
+  // identity is still named by the durable row and may now belong to the winning lease;
+  // closing it here would revoke that worker's live session. Its winner/reaper owns it.
   if (!committed) {
-    await deps.browser.release(handle.ref, stepTimeoutMs).catch(() => undefined);
+    if (createdByThisClaim) await deps.browser.release(handle.ref, stepTimeoutMs).catch(() => undefined);
     return { retry: false, provisioned: false };
   }
   return workspaceReplaced
