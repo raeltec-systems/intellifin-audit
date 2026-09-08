@@ -1357,3 +1357,8 @@ A canonical application landing page must expose generic query-free navigation i
 ### Exact escalation and review mutation targets
 
 A closed option-set mutation is not a closed-wait mutation. Mutate the production persistence guard and use real PostgreSQL duplicate-answer assertions while keeping independent SQL protections. Mutate the actual worker-used planner for unique grounded matching, not an unused helper. Threshold tests must exercise the inclusive frozen decimal boundary. Partial unit-only mutation reports stay incomplete.
+
+
+## 2026-09-08 — Complete evaluation journey verification
+
+Human review browser acceptance starts with the actual compiled worker producing a pending machine evaluation, then submits the real Run Detail command and checks final sealing with unchanged original facts. A clearly synthetic model HTTP fixture may choose only current opaque approved tools; it cannot insert Observations or pending Results. Sign-in audit rows record the final redirected destination plus the originating method, not an invented copy of the frozen form endpoint.

@@ -2,16 +2,16 @@
 
 Status: INCOMPLETE — not accepted, not merged.
 
-## Current checkpoint — final verification and repairs underway
+## Current checkpoint — final browser verification underway
 
 - Branch: `codex/epic-4-agent-runs`; [draft PR24](https://github.com/raeltec-systems/intellifin-audit/pull/24). No merge or deployment.
-- Generation41 forward trigger repair is pushed in `8f1ecc5d11c4375da84f845594213d4172f265cd`; serial mutation-runner budget is pushed in `e49276dac7bf4f75b8ce0aba58ba2240e4704931`.
-- Latest full local unit result:3499tests/164files pass at `6d1463f720eccae2b06ccbfcd66bc2b7c2fce5b6`. Hosted static checks pass there, but PostgreSQL exposed the repaired trigger error and canonical landing navigation gap. This is not final acceptance.
-- Earlier `01bf266bad556018a90c755ed4b3fb5485fdb540` passed458realPG tests/36files, migrations through39, drift and17selected unit/browser/P4 guard mutations. Historical green does not accept later changes.
-- Stories4.4–4.11 are implemented in checkpoints but remain in final verification; canonical LoanCore navigation, remote release-reference isolation and remaining exact-candidate negative gates are being completed.
-- The owner supplied a Solari key outside Git. Live acceptance remains unrun because encrypted Actions runner configuration/model credentials are unavailable through this connector. The executable gate and configuration instructions are committed in `epic-4-solari-acceptance-runbook.md`. Concurrent remote isolation needs its own proof; a single audit is insufficient.
-- Production configuration and deployed synthetic target compatibility also remain unverified. Email is deliberately `unconfigured` per the approved specification. Desktop, scheduling and live/replay remain later-epic scope.
-- Next: finish the identified repairs, verify the exact final schema/candidate, retain per-case mutation evidence, then execute the selected remote gates when runner settings are supplied. The chronological entries below preserve earlier results and blockers as history.
+- Exact pushed candidate `eeca93c5cf1c547942945235e40260fd36ea9ce8` passes hosted CI34192863389 PostgreSQL18:470tests/39files, fresh migrations, real sealed generation31 and populated generation40 upgrades through final41, repeat migration, drift, and all20selected unit/browser/PostgreSQL guard mutations. Static/type/unit/boundary and all three image build/startup jobs pass.
+- That candidate's full local-browser/accessibility job reports154passes/3failures: missing notification bell count, dependent timeout-fixture baseline, and stale grounding-toggle locator. Repairs are underway. The separate actual-worker/hydrated mutation job is still running. These failures block acceptance.
+- Full local suite at `efbec9d5a6c3721ddbc0b8103b12c769c718a824`:3514unit tests/165files pass. Affected subsequent TypeScript checks, workspace build and509dependency boundaries pass. Local Chromium/PostgreSQL remain unavailable; hosted browser tests use local Chromium, not Solari.
+- Stories4.4–4.11 have implementation checkpoints but remain in final verification. Two new actual compiled-worker P-1 journeys cover pending evaluation through real Run Detail confirmation/rejection and final shared sealing; provider HTTP is explicitly synthetic. They await hosted execution.
+- The owner supplied a Solari key outside Git. Live acceptance remains unrun because encrypted Actions runner configuration/model credentials are unavailable through this connector. The two selected real-provider gates and exact settings are in `epic-4-solari-acceptance-runbook.md`. No recording is enabled.
+- Production prerequisites and deployed synthetic target compatibility remain unverified. Email is deliberately `unconfigured` per specification. Desktop, scheduling and live/replay remain later-epic scope.
+- Next: repair the three observed browser failures, run the two new review journeys and complete every exact-candidate job; retain per-case mutation results; execute the live gate when runner settings and target prerequisites are ready. Chronological entries below preserve historical checkpoints.
 
 ## Baseline and handoff
 
@@ -460,3 +460,12 @@ The timeout journey now restarts the worker to consume the already-persisted wak
 Worker timeout checkpointd7bd9b4d023d7aa17ab5071483a785a51f232d6b is pushed. Current local typechecking, workspace builds and509dependency boundaries pass, following3514unit tests. Hosted PostgreSQL on efbec9d5a6c3721ddbc0b8103b12c769c718a824 now passes canonicalD14 and the actual downstreamD12mistyped search/registration/Gate case; only the separate stronger-prevention expectation remains wrong.
 
 Material contract distinction: canonicalD12 describes an executed mistyped search, whose proof must remain UNINSPECTED/INCONCLUSIVE. The additional prevention case instead submits model-authored parameters before browser I/O; the established action-denied stop contract in domain/runs/limits.ts requires terminal RUN_FAILED and a security event. The test now requires that precise cause/diagnostic/state, no performed search and no Observation. The canonical downstream expectation and fixture remain unchanged. This is a test-contract correction, not a relaxation or runtime repair. Root-test TypeScript passes; exact hosted final execution remains required. This checkpoint is pushed.
+
+
+## Actual P-1 worker through human evaluation review
+
+Candidate eeca93c5cf1c547942945235e40260fd36ea9ce8 passes470realPG tests/39files, final41 upgrades/drift and20selected guard mutations, plus hosted static and image jobs. Its browser job has154passes/3failures under repair; no acceptance is implied.
+
+Two new browser journeys initiate a real frozen P-1 Run from Procedure Detail, boot the compiled worker, use canonical Northstar form authentication and actual search/capture/Observation/evaluation persistence, then confirm or reject the pending machine proposal through Run Detail. Final worker commands must produce the shared sealed PASS or CONTROL_FAILURE Result while retaining original machine evaluations, Observations and Evidence. Rejection requires the worker-signed Exception; both views run the accessibility gate. The explicitly named test-only HTTP provider fixture selects opaque approved actions and proposes C2, without manufacturing audit rows or bypassing credentials. It is synthetic model testing, not live autonomous acceptance.
+
+Root-test TypeScript, preload JavaScript syntax and discovery of both cases pass. No local PostgreSQL/browser execution occurred. The checkpoint is pushed for hosted verification; product behavior and acceptance criteria are unchanged. Worker shutdown is bounded and diagnostics are fixed, without raw provider logs.
