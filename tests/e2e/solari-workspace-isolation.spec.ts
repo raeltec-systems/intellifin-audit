@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { retainLiveAcceptanceReport } from '../fixtures/live-acceptance-report';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
@@ -198,8 +199,7 @@ test('two overlapping Solari Run workspaces keep authentication and browser stat
     try { await browser.close(); } catch { cleanupConfirmed = false; report['clientClose'] = 'unconfirmed'; }
     report['acceptance'] = accepted && cleanupConfirmed ? 'passed' : 'not-accepted';
     report['finishedAt'] = new Date().toISOString();
-    const serialized = JSON.stringify(report, null, 2);
-    if (noSecrets(serialized)) await testInfo.attach('solari-workspace-isolation.json', { body: serialized, contentType: 'application/json' });
+    await retainLiveAcceptanceReport(testInfo, 'solari-workspace-isolation.json', report, secrets);
     await storage.close(); await sql.end({ timeout: 5 });
     if (accepted && !cleanupConfirmed) throw new Error('Live isolation failed: cleanup was not confirmed.');
   }

@@ -17,6 +17,7 @@ import { startSyntheticS3 } from '../fixtures/s3-server';
 import { startCanonicalLeaverSource } from '../fixtures/single-leaver-source';
 import { canonicalLoanCoreCompliance, CANONICAL_LOANCORE_C1 } from '../fixtures/canonical-loancore-compliance';
 import { LIVE_EMPLOYEE_ID, liveSolariConfiguration, pollLive, startLiveWorker } from '../fixtures/solari-audit-acceptance';
+import { retainLiveAcceptanceReport } from '../fixtures/live-acceptance-report';
 
 /** Dedicated live-provider job only. Normal browser CI excludes this file, rather than
  * counting skipped provider work as acceptance. The worker itself directs the remote
@@ -216,8 +217,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     report['acceptance'] = accepted && cleanupConfirmed && !shutdownFailed ? 'passed' : 'not-accepted';
     report['cleanup'] = cleanupConfirmed ? 'confirmed' : 'not-confirmed';
     report['finishedAt'] = new Date().toISOString();
-    const serialized = JSON.stringify(report, null, 2);
-    if (noSecrets(serialized)) await testInfo.attach('solari-audit-acceptance.json', { body: serialized, contentType: 'application/json' });
+    await retainLiveAcceptanceReport(testInfo, 'solari-audit-acceptance.json', report, secretValues);
     await storage.close(); await populationSource.close(); await sql.end({ timeout: 5 });
     if (shutdownFailed && accepted) throw new Error('Live acceptance failed: worker shutdown was forced or unconfirmed after the audit.');
   }

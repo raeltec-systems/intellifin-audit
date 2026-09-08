@@ -40,6 +40,10 @@ Provider-native worker keys compose the agent gateway independently of plan deri
 <!-- Authentication: require the exact approved target/account postcondition, bind redirects to the action's selected target, and discard secret-bearing pages after submission failure while preserving provider cleanup identity. -->
 <!-- Workspace cleanup: a persisted Solari hard expiry is distinct from confirmed release; never discard an unexpired provider identity after a configuration mismatch or provider error. -->
 <!-- Engineering continuation: raw postgres.js timestamp-without-time-zone values may be strings; normalize dates in migration assertions. Drizzle wraps server errors in cause; sealed guards use SQLSTATE 23514. -->
+## Live acceptance report retention
+
+Playwright's list reporter keeps body attachments in memory; upload-artifact cannot find them. Secret-scan the selected acceptance facts before writing a named outputPath JSON file and attaching that path. Emit the same scanned facts for connector-readable diagnostics; never emit raw worker/model/provider logs. Preserve failed acceptance and workspace cleanup references as carefully as successful reports.
+
 # CLAUDE.md
 
 ## Engineering continuation — transport and verification
