@@ -1287,3 +1287,8 @@ The full synthetic leavers export includes a deliberate duplicate employee key. 
 ### Retrieved abuse and terminal cleanup evidence
 
 Plant hostile text only in actually authenticated synthetic HTML, leaving real form authentication and captured observations intact. Resume through the authorized closed answer; never forward answer narration as model authority. Observe production worker release without calling it from the test. Applied SQL guard mutations require the disposable loopback test database, explicit restoration, and actual assertion failures. Keep paid live-provider tests outside ordinary browser discovery.
+
+
+### Source identity failure classification
+
+Missing or duplicate included population keys are platform-decidable evidence-quality failures under addendumH. The agent path must preserve every source row and use the existing run-level Gate to seal INCONCLUSIVE. Do not misclassify these as unsupported plans, select a first duplicate, or ask a human to guess an identity. Target search ambiguity remains a separate typed escalation contract.

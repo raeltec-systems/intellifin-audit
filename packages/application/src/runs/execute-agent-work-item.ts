@@ -98,6 +98,7 @@ export interface AgentWorkDependencies {
 /** Closed diagnostics emitted by this stage. Work-item diagnostics remain strings in the port. */
 export type AgentWorkDiagnostic =
   | 'unsupported-frozen-plan'
+  | 'population-key-unresolved'
   | 'prerequisites-incomplete'
   | 'workspace-missing'
   | 'model-not-configured'
@@ -534,11 +535,15 @@ export async function executeAgentWorkItem(
           tokens: prior?.tokens ?? 0,
           reservedTokens: prior?.reservedTokens ?? 0,
           model: prior?.model ?? null,
-          diagnostic: 'unsupported-frozen-plan',
+          diagnostic: 'population-key-unresolved',
         };
-        await context.saveCheckpoint(checkpoint, 'RUN_FAILED');
-        await appendEvent(context, run, 'unsupported-frozen-plan', 'RUN_FAILED', checkpoint, {}, 'failure');
-        await completeRun(context, { run, state: 'RUN_FAILED', at: now.toISOString(), plan });
+        // Missing or duplicate source identities are evidence-quality findings, not
+        // an unsupported plan or failed authentication. Preserve every source row and
+        // let the shared Gate record its mandatory/duplicate/coverage checks and seal
+        // the INCONCLUSIVE Result. No row is picked and no human guess is requested.
+        await context.saveCheckpoint(checkpoint, 'RUNNING');
+        await appendEvent(context, run, 'population-key-unresolved', 'RUNNING', checkpoint, {}, 'failure');
+        await runRunLevelGate(context, { run, plan, decidedAt: now.toISOString() });
         return null;
       }
       seen.add(value);

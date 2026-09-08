@@ -344,6 +344,31 @@ function browserForPages(repository: FakeRepository, pages: readonly (readonly u
 
 describe('executeAgentWorkItem', () => {
   afterEach(() => vi.restoreAllMocks());
+  it.each(['missing', 'duplicate'] as const)('routes %s source identity through the shared Gate before any agent turn', async kind => {
+    const sharedGate = vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const directCompletion = vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    repository.records = kind === 'missing' ? [{ ...RECORD, values: { ...RECORD.values, employee_id: '' } }]
+      : [RECORD, { ordinal: 2, values: { ...RECORD.values, full_name: 'Conflicting source identity' } }];
+    const original = JSON.stringify(repository.records);
+    const model = { identity: identity(), propose: vi.fn(async () => response(null)) };
+    const browser = browserFor(repository); const perform = vi.spyOn(browser, 'perform');
+    const waits = durableWaitPort(repository);
+    const result = await executeAgentWorkItem(deps(repository, browser, model, waits), JOB);
+    expect(sharedGate).toHaveBeenCalledTimes(1);
+    expect(sharedGate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: PLAN }));
+    expect(directCompletion).not.toHaveBeenCalled(); // The shared Gate owns the terminal Result.
+    expect(repository.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'population-key-unresolved' });
+    expect(repository.workItems).toHaveLength(0);
+    expect(repository.observations).toHaveLength(0);
+    expect(repository.waits).toHaveLength(0);
+    expect(model.propose).not.toHaveBeenCalled(); expect(perform).not.toHaveBeenCalled();
+    expect(JSON.stringify(repository.records)).toBe(original);
+    expect(result.retry).toBe(false);
+    await executeAgentWorkItem(deps(repository, browser, model, waits), JOB);
+    expect(sharedGate).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['unknown-tool', 'provider-invalid-response'] as const)('logs a security denial for %s without performing its action', async kind => {
     vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);
     const repository = new FakeRepository();

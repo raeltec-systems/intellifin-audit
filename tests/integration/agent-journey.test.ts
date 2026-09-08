@@ -115,7 +115,7 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     } finally { await sql.end({ timeout: 5 }); }
   });
 
-  async function seed(employeeId: string, name: string) {
+  async function seed(employeeId: string, name: string, extraRows: readonly { employeeId: string; name: string }[] = []) {
     const schema = ['employee_id', 'full_name', 'employment_status', 'termination_effective_date'];
     const source = { kind: 'versioned-file' as const, location: 'https://synthetic.invalid/leavers.csv', declaredSchema: schema, sensitiveFields: [], declaredCountMechanism: 'cover-sheet' as const };
     const registration = { registrationId: ids.next(), displayName: 'LoanCore', kind: 'web' as const, allowedOrigins: [origin], applicationIdentity: '', credentialRef: REF, permittedActions: ['navigate', 'search', 'read-attribute'] as const, attributeLabelPatterns: ['Employee ID', 'Full name', 'Status', 'Username', 'Roles'], secondaryKey: 'Full name', authenticationDestination: `${origin}/sign-in` };
@@ -132,8 +132,9 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     const store: EvidenceStore = { async read(key) { return objects.get(key)?.slice() ?? null; }, async putIfAbsent(key, bytes) { if (!objects.has(key)) objects.set(key, bytes.slice()); } };
     const browser = new PlaywrightBrowserExecution({ mode: 'local' }); browsers.push(browser);
     expect(await provisionWorkspace({ repository: new PostgresWorkspaceRepository(db), browser, clock, ids }, job)).toMatchObject({ provisioned: true });
-    const body = `${schema.join(',')}\n${employeeId},${name},Terminated,2026-08-15\n`;
-    await acquirePopulation({ repository: new PostgresPopulationRepository(db), acquisition: { async acquire() { return { bytes: utf8Bytes(body), mediaType: 'text/csv', declaration: { schema_version: 1, representation: 'csv-raw-v1', source: source.location, generation: 'synthetic-1', generated_at: new Date(Date.now() - 60_000).toISOString(), effective_period: inputs.period, schema, count: 1, sha256: sha256Hex(body), complete: true } }; } }, store, clock, ids }, job);
+    const sourceRows = [{ employeeId, name }, ...extraRows];
+    const body = `${schema.join(',')}\n` + sourceRows.map(row => `${row.employeeId},${row.name},Terminated,2026-08-15\n`).join('');
+    await acquirePopulation({ repository: new PostgresPopulationRepository(db), acquisition: { async acquire() { return { bytes: utf8Bytes(body), mediaType: 'text/csv', declaration: { schema_version: 1, representation: 'csv-raw-v1', source: source.location, generation: 'synthetic-1', generated_at: new Date(Date.now() - 60_000).toISOString(), effective_period: inputs.period, schema, count: sourceRows.length, sha256: sha256Hex(body), complete: true } }; } }, store, clock, ids }, job);
     expect(await executeAgentSteps({ repository: new PostgresAgentExecutionRepository(db), browser, credentials, clock, ids }, job)).toMatchObject({ proceed: true });
     const unused = async (): Promise<never> => { throw new Error('A web target must not use an extraction shortcut'); };
     await executeAdapterSteps({ repository: new PostgresAdapterExecutionRepository(db), reference: { acquireReference: unused }, extraction: { extract: unused }, credentials, store, clock, ids, exceptions }, job);
@@ -153,6 +154,30 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     const dependencies = { repository: new PostgresAgentWorkRepository(db), browser, credentials, model, store, clock, ids, exceptions, waits: { raiseEscalation: (input: Parameters<typeof raiseEscalation>[1]) => raiseEscalation({ repository: new PostgresWaitRepository(db), clock, ids }, input) } };
     return { job, dependencies, objects, selectedTools };
   }
+
+  it.each(['missing', 'duplicate'] as const)('seals %s source identity as a shared Gate INCONCLUSIVE without selecting a row', async kind => {
+    const seeded = kind === 'missing' ? await seed('', 'Missing key person')
+      : await seed('E-101', 'Esther Kabwe', [{ employeeId: 'E-101', name: 'Conflicting source person' }]);
+    const beforeRows = await sql`SELECT ordinal,"values" FROM population_row WHERE run_id=${seeded.job.runId} ORDER BY ordinal`;
+    const beforeEvidence = await sql`SELECT raw_digest,envelope_digest,object_key,envelope_key FROM population_evidence WHERE run_id=${seeded.job.runId}`;
+    let modelCalls = 0;
+    const model: AgentModelGateway = { ...seeded.dependencies.model, async propose() { modelCalls++; throw new Error('Unresolved source identity must not reach a model.'); } };
+    await executeAgentWorkItem({ ...seeded.dependencies, model }, seeded.job);
+    expect(modelCalls).toBe(0);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('INCONCLUSIVE');
+    const expectedCheck = kind === 'missing' ? 'mandatory-values' : 'duplicate-primary-keys';
+    const expectedDiagnostic = kind === 'missing' ? 'mandatory-identifier-empty' : 'duplicate-primary-key';
+    expect((await sql`SELECT outcome,diagnostics FROM run_gate_check WHERE run_id=${seeded.job.runId} AND check_name=${expectedCheck}`)[0]).toMatchObject({ outcome: 'FAIL', diagnostics: expect.arrayContaining([expectedDiagnostic]) });
+    expect(await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${seeded.job.runId} AND payload->>'diagnostic'=${expectedDiagnostic}`).toHaveLength(1);
+    expect((await sql`SELECT outcome FROM run_result WHERE run_id=${seeded.job.runId}`)[0]?.outcome).toBe('INCONCLUSIVE');
+    expect(await sql`SELECT observation_id FROM run_observation WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+    expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+    expect(await sql`SELECT ordinal,"values" FROM population_row WHERE run_id=${seeded.job.runId} ORDER BY ordinal`).toEqual(beforeRows);
+    expect(await sql`SELECT raw_digest,envelope_digest,object_key,envelope_key FROM population_evidence WHERE run_id=${seeded.job.runId}`).toEqual(beforeEvidence);
+    const sealed = await sql`SELECT to_jsonb(r)::text AS value FROM run_result r WHERE run_id=${seeded.job.runId}`;
+    await executeAgentWorkItem({ ...seeded.dependencies, model }, seeded.job);
+    expect(await sql`SELECT to_jsonb(r)::text AS value FROM run_result r WHERE run_id=${seeded.job.runId}`).toEqual(sealed);
+  }, 120_000);
 
   it('searches, captures and registers a grounded found Observation through the real shared writer', async () => {
     const seeded = await seed('E-101', 'Esther Kabwe');
