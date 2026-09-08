@@ -2,7 +2,7 @@
 title: 'Epic 4 browser provider decision'
 type: 'decision'
 created: '2026-09-06'
-revised: '2026-09-06'
+revised: '2026-09-08'
 status: 'final'
 ---
 
@@ -285,16 +285,25 @@ evidence that the browser ran remotely.
 
 ### The boundary: what this does NOT prove
 
-**A remote browser cannot reach the synthetic Northstar systems, because they are on this
+**A remote browser cannot reach the synthetic Northstar systems while they are on this
 machine's loopback.** Measured, not assumed: `net::ERR_CONNECTION_REFUSED at
 http://localhost:4300/loancore`. That is a fact about where the fixture is served, not a defect
 in either the provider or the platform.
 
+> **`[CLOSED 2026-09-08]`** Codex deployed Northstar `70497eb` to the existing Railway
+> `northstar` service with the owner's authorization (deployment `65c63c65`, SUCCESS), and
+> `https://northstar-production-b312.up.railway.app` serves `/health` and the real LoanCore
+> sign-in form. The live workflow runs 34220819917 through 34223964866 then drove a real
+> worker on Solari against it: sign-in, navigate, search, open the record, read three
+> attributes, capture a screenshot, and a correct durable wait on the C2 policy question.
+> The remote isolation gate (34224743734) passed. The boundary below is therefore historical
+> for the hosted target; it still holds for anything served only on a developer's loopback.
+
 What follows, stated plainly:
 
-- **The golden P-1 and P-4 journeys run on local Chromium**, and will until the synthetic
-  systems have an address reachable from outside this container. `[DEFERRED]` A Railway service
-  for Northstar has been named since Story 1.8 and is the thing that would close it.
+- **The golden P-1 and P-4 journeys in CI still run on local Chromium**, because the standard
+  PR gate must not spend provider capacity or need a key; the hosted synthetic systems are
+  used only by the explicitly selected live workflow.
 - **Local execution is NOT evidence that the Solari path works**, and is never cited as such.
   The two guarantees differ, `run_workspace.mode` records which one a Run had, and this
   document's isolation table is the statement of the difference.
