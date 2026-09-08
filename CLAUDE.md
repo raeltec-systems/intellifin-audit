@@ -1445,3 +1445,7 @@ Await durable WAITING/AWAITING_AUDITOR or the post-retry terminal Run before dir
 ## 2026-09-08 — Diagnose containment failures without leaking them
 
 A passing credential test in the main suite does not waive a baseline failure in the mutation job. Preserve the expected wait and scanner assertions; report only closed-vocabulary durable diagnostics, finite counts and booleans. Independent lifecycle repetitions must all pass, with retries disabled. A terminal Run or failed setup is not a successful guard-removal result.
+
+## 2026-09-08 — Reattachment is a pending prerequisite
+
+Workspace reattachment commits PROVISIONING before provider I/O. Queue redelivery and the independent recovery sweep may overlap that interval even after a caller has previously provisioned successfully. A completed sign-in/extraction checkpoint alone cannot distinguish this pending workspace from a genuinely missing one. Exercise the overlap by holding actual attachment after its durable claim; require no work mutation or browser/model action until OPEN returns, then resume the original bounded retry. A passing repeated baseline is not a causal explanation for an earlier intermittent failure.

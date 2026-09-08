@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   acquirePopulation, executeAdapterSteps, executeAgentSteps, initiateRun, provisionWorkspace, raiseEscalation,
   type AgentModelGateway, type EvidenceStore,
@@ -154,6 +154,71 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     const dependencies = { repository: new PostgresAgentWorkRepository(db), browser, credentials, model, store, clock, ids, exceptions, waits: { raiseEscalation: (input: Parameters<typeof raiseEscalation>[1]) => raiseEscalation({ repository: new PostgresWaitRepository(db), clock, ids }, input) } };
     return { job, dependencies, objects, selectedTools, plan: version.compiledPlan! };
   }
+
+  it('defers a competing credential retry while the original workspace is being reattached', async () => {
+    const seeded = await seed('E-101', 'Esther Kabwe');
+    let modelCalls = 0;
+    const model: AgentModelGateway = { ...seeded.dependencies.model, async propose() {
+      modelCalls++;
+      return { schemaVersion: 1, route: 'anthropic', model: seeded.dependencies.model.identity,
+        actions: [], uncertainty: { kind: 'ambiguous', rationale: TOKEN },
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
+    } };
+    const dependencies = { ...seeded.dependencies, model };
+    await executeAgentWorkItem(dependencies, seeded.job);
+    expect(modelCalls).toBe(1);
+    const checkpointBefore = await sql`SELECT to_jsonb(w)::text AS value FROM run_agent_work w WHERE run_id=${seeded.job.runId}`;
+    expect((await sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${seeded.job.runId}`)[0])
+      .toMatchObject({ status: 'RETRY', diagnostic: 'model-unavailable' });
+    const [identityBefore] = await sql`SELECT workspace_id,mode,expires_at FROM run_workspace WHERE run_id=${seeded.job.runId}`;
+    const evidenceBefore = await sql`SELECT evidence_id,digest,object_key FROM run_evidence WHERE run_id=${seeded.job.runId} ORDER BY evidence_id`;
+
+    // Hold real provider attachment after provisionWorkspace commits PROVISIONING.
+    // No workspace/checkpoint state is fabricated: this is the same interval in which
+    // a queue redelivery can overlap the independent work-recovery sweep.
+    const browser = seeded.dependencies.browser;
+    const attach = browser.attach.bind(browser);
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const intercepted = vi.spyOn(browser, 'attach').mockImplementation(async ref => {
+      entered();
+      await held;
+      return attach(ref);
+    });
+    const reattachment = provisionWorkspace({ repository: new PostgresWorkspaceRepository(db), browser, clock, ids }, seeded.job);
+    try {
+      await started;
+      expect((await sql`SELECT status FROM run_workspace WHERE run_id=${seeded.job.runId}`)[0]?.status).toBe('PROVISIONING');
+      const requestsBefore = requests.length;
+      await executeAgentWorkItem({ ...dependencies, repository: new PostgresAgentWorkRepository(db) }, seeded.job);
+      expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('RUNNING');
+      expect(await sql`SELECT to_jsonb(w)::text AS value FROM run_agent_work w WHERE run_id=${seeded.job.runId}`).toEqual(checkpointBefore);
+      expect(await sql`SELECT evidence_id,digest,object_key FROM run_evidence WHERE run_id=${seeded.job.runId} ORDER BY evidence_id`).toEqual(evidenceBefore);
+      expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+      expect(modelCalls).toBe(1);
+      expect(requests.length).toBe(requestsBefore);
+    } finally {
+      release();
+      try { await reattachment; } finally { intercepted.mockRestore(); }
+    }
+    expect((await sql`SELECT status,workspace_id,mode,expires_at FROM run_workspace WHERE run_id=${seeded.job.runId}`)[0])
+      .toMatchObject({ ...identityBefore, status: 'OPEN' });
+    // Finish the original bounded cycle through fresh repository instances. The
+    // rejected response stays absent and recovery raises exactly one durable wait.
+    for (let attempt = 0; attempt < seeded.plan.limits.retriesPerStep; attempt++) {
+      await executeAgentWorkItem({ ...dependencies, repository: new PostgresAgentWorkRepository(db) }, seeded.job);
+    }
+    expect(modelCalls).toBe(seeded.plan.limits.retriesPerStep + 1);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('AWAITING_AUDITOR');
+    expect((await sql`SELECT status FROM run_agent_work WHERE run_id=${seeded.job.runId}`)[0]?.status).toBe('WAITING');
+    const turns = await sql`SELECT status,diagnostic,response IS NULL AS response_absent FROM run_agent_turn WHERE run_id=${seeded.job.runId} ORDER BY sequence`;
+    expect(turns).toHaveLength(modelCalls);
+    expect(turns.every(turn => turn.status === 'FAILED' && turn.diagnostic === 'credential-containment' && turn.response_absent === true)).toBe(true);
+    expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${seeded.job.runId} AND closed_at IS NULL`).toHaveLength(1);
+    expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+  }, 120_000);
 
   it.each(['missing', 'duplicate'] as const)('seals %s source identity as a shared Gate INCONCLUSIVE without selecting a row', async kind => {
     const seeded = kind === 'missing' ? await seed('', 'Missing key person')
