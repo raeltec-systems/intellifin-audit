@@ -1362,3 +1362,8 @@ A closed option-set mutation is not a closed-wait mutation. Mutate the productio
 ## 2026-09-08 — Complete evaluation journey verification
 
 Human review browser acceptance starts with the actual compiled worker producing a pending machine evaluation, then submits the real Run Detail command and checks final sealing with unchanged original facts. A clearly synthetic model HTTP fixture may choose only current opaque approved tools; it cannot insert Observations or pending Results. Sign-in audit rows record the final redirected destination plus the originating method, not an invented copy of the frozen form endpoint.
+
+
+## 2026-09-08 — Grounding surface test identity
+
+The Evidence list displays grounding directly. Metadata-only seeds assert provenance and exact protected links; they must not claim to download nonexistent objects. Actual inspector acceptance uses the separate registered-artifact/worker grant journey.

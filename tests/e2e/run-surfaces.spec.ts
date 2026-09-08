@@ -297,12 +297,20 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
     await scan(page);
   });
 
-  test('opens the grounding inspector on a json snapshot', async ({ page }) => {
+  test('shows recorded grounding and protected snapshot links for a json snapshot', async ({ page }) => {
     await page.goto(`/runs/${runs.completed}/evidence`);
     await expect(page.getByRole('heading', { name: 'Evidence items' })).toBeVisible();
     await expect(page.getByText('Adapter extract')).toBeVisible();
     await expect(page.getByText('Capture time (UTC)')).toBeVisible();
-    await page.getByRole('group').filter({ hasText: 'Grounding for' }).getByText('Grounding for').click();
+    // Grounding is displayed directly. These seeded artifacts have no stored bytes;
+    // evidence-inspector.spec.ts separately exercises the actual worker-backed read.
+    await expect(page.getByRole('heading', { name: 'Match provenance', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Grounded attributes', exact: true })).toBeVisible();
+    await expect(page.getByText('Platform key match', { exact: true })).toBeVisible();
+    const snapshotLinks = page.getByRole('link', { name: evidenceId, exact: true });
+    await expect(snapshotLinks).toHaveCount(2);
+    await expect(snapshotLinks.nth(0)).toHaveAttribute('href', `/runs/${runs.completed}/evidence/${evidenceId}?locator=${encodeURIComponent('$.accounts[0].employee_id')}`);
+    await expect(snapshotLinks.nth(1)).toHaveAttribute('href', `/runs/${runs.completed}/evidence/${evidenceId}?locator=${encodeURIComponent('$.accounts[0].roles')}`);
     await expect(page.getByText('$.accounts[0].roles')).toBeVisible();
     // One per grounded attribute: the identity and the declared one.
     await expect(page.getByText('Original value')).toHaveCount(2);
