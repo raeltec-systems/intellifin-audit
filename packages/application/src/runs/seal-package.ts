@@ -164,6 +164,84 @@ export interface SealedPackageVerification {
   readonly recorded: number;
 }
 
+/**
+ * Record the findings from one already completed, bounded verification.
+ *
+ * This is deliberately shared by the worker's package sweep and the server-side
+ * Evidence inspector. Both have already read and checked the bytes; this function is
+ * the one place that decides how a post-Run mismatch becomes an immutable finding and
+ * `failure.evidence-integrity` event. The inspector supplies `source: 'web'` so the
+ * Audit Trail identifies where the observation was discovered, while the payload and
+ * state semantics remain exactly those of the worker sweep.
+ */
+export async function recordSealedIntegrityFindings(
+  context: SealedPackageContext,
+  verifications: readonly EvidenceVerification[],
+  dependencies: Pick<SealedPackageVerificationDependencies, 'clock' | 'ids'> & {
+    readonly source?: 'web' | 'worker';
+    readonly actorId?: string;
+  },
+): Promise<{ readonly findings: readonly EvidenceIntegrityRecord[]; readonly recorded: number }> {
+  const run = context.run;
+  if (run === null) return { findings: [], recorded: 0 };
+
+  const failed = verifications.filter((entry) => entry.finding !== null);
+  const known = await context.readIntegrityFindings();
+  // Keyed by (Evidence, OBJECT, finding), exactly as the unique index is. The population
+  // reservation addresses TWO objects under ONE Evidence id, so a key without the object
+  // would silently drop the second one's finding while the database would have taken it.
+  const key = (entry: { evidenceId: string; objectKey: string; finding: unknown }): string =>
+    `${entry.evidenceId} ${entry.objectKey} ${String(entry.finding)}`;
+  const seen = new Set(known.map(key));
+  const fresh: EvidenceIntegrityRecord[] = [];
+  for (const entry of failed) {
+    if (seen.has(key(entry))) continue;
+    seen.add(key(entry));
+    fresh.push({
+      findingId: dependencies.ids.next(),
+      evidenceId: entry.evidenceId,
+      objectKey: entry.objectKey,
+      finding: entry.finding!,
+      expectedDigest: entry.expectedDigest,
+      observedDigest: entry.observedDigest,
+      expectedSize: entry.expectedSize,
+      observedSize: entry.observedSize,
+      detectedAt: dependencies.clock.now().toISOString(),
+    });
+  }
+  if (fresh.length > 0) {
+    await context.recordIntegrityFindings(fresh);
+    for (const finding of fresh) {
+      const stored = await context.auditEvents.append({
+        actor: { type: 'system', id: dependencies.actorId ?? 'evidence-verifier' },
+        eventType: INTEGRITY_EVENT,
+        source: dependencies.source ?? 'worker',
+        outcome: 'failure',
+        aggregateId: run.runId,
+        correlationId: run.correlationId,
+        sessionId: run.sessionId,
+        payload: {
+          // The artifact, and the two digests an auditor compares. A digest is what
+          // registration already put in the chain; the artifact's CONTENT is not here
+          // and there is nowhere for it to go.
+          evidenceId: finding.evidenceId,
+          objectKey: finding.objectKey,
+          finding: finding.finding,
+          registeredDigest: finding.expectedDigest,
+          observedDigest: finding.observedDigest,
+          registeredSize: finding.expectedSize,
+          observedSize: finding.observedSize,
+          // A post-Run finding never changes the sealed state, seal, Evidence row or
+          // bytes. The active inspector path emits its own state-changing event instead.
+          stateChanged: false,
+        },
+      });
+      await context.notifyTimeline(stored.sequence);
+    }
+  }
+  return { findings: [...known, ...fresh], recorded: fresh.length };
+}
+
 const DEFAULT_READ_TIMEOUT_MS = 30_000;
 
 /**
@@ -215,66 +293,14 @@ export async function verifySealedPackage(
     );
   }
 
-  const failed = verifications.filter((entry) => entry.finding !== null);
   return deps.repository.transaction(runId, async (context) => {
     const run = context.run;
     if (run === null) return { verified: verifications.length, findings: [], recorded: 0 };
-    const known = await context.readIntegrityFindings();
-    // Keyed by (Evidence, OBJECT, finding), exactly as the unique index is. The population
-    // reservation addresses TWO objects under ONE Evidence id, so a key without the object
-    // would silently drop the second one's finding while the database would have taken it.
-    const key = (entry: { evidenceId: string; objectKey: string; finding: unknown }): string =>
-      `${entry.evidenceId} ${entry.objectKey} ${String(entry.finding)}`;
-    const seen = new Set(known.map(key));
-    const fresh: EvidenceIntegrityRecord[] = [];
-    for (const entry of failed) {
-      if (seen.has(key(entry))) continue;
-      seen.add(key(entry));
-      fresh.push({
-        findingId: deps.ids.next(),
-        evidenceId: entry.evidenceId,
-        objectKey: entry.objectKey,
-        finding: entry.finding!,
-        expectedDigest: entry.expectedDigest,
-        observedDigest: entry.observedDigest,
-        expectedSize: entry.expectedSize,
-        observedSize: entry.observedSize,
-        detectedAt: deps.clock.now().toISOString(),
-      });
-    }
-    if (fresh.length > 0) {
-      await context.recordIntegrityFindings(fresh);
-      for (const finding of fresh) {
-        const stored = await context.auditEvents.append({
-          actor: { type: 'system', id: 'evidence-verifier' },
-          eventType: INTEGRITY_EVENT,
-          source: 'worker',
-          outcome: 'failure',
-          aggregateId: run.runId,
-          correlationId: run.correlationId,
-          sessionId: run.sessionId,
-          payload: {
-            // The artifact, and the two digests an auditor compares. A digest is what
-            // registration already put in the chain; the artifact's CONTENT is not here
-            // and there is nowhere for it to go.
-            evidenceId: finding.evidenceId,
-            objectKey: finding.objectKey,
-            finding: finding.finding,
-            registeredDigest: finding.expectedDigest,
-            observedDigest: finding.observedDigest,
-            registeredSize: finding.expectedSize,
-            observedSize: finding.observedSize,
-            // Said explicitly, because it is the whole point: nothing moved.
-            stateChanged: false,
-          },
-        });
-        await context.notifyTimeline(stored.sequence);
-      }
-    }
+    const recorded = await recordSealedIntegrityFindings(context, verifications, deps);
     return {
       verified: verifications.length,
-      findings: [...known, ...fresh],
-      recorded: fresh.length,
+      findings: recorded.findings,
+      recorded: recorded.recorded,
     };
   });
 }

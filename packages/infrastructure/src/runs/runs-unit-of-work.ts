@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import type { AuditUnitOfWork, RunCancellationContext, RunCancellationRepository, RunsUnitOfWorkContext } from '@intellifin/application';
+import { EVIDENCE_READ_GRANT_QUEUE } from '@intellifin/application';
 import { CryptoUuidV7Generator, SystemClock, createAuditEventWriter, type PostgresAuditDependencies } from '../db/audit-events.js';
 import type { Database } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
@@ -80,4 +81,5 @@ export async function migrateRunsQueue(db: Database): Promise<void> {
   const queue = new PgBoss({ db: queueDatabase(db), migrate: false, createSchema: false, schedule: false, supervise: false });
   await queue.createQueue(RUNS_QUEUE, { retryLimit: 3, retryDelay: 5, expireInSeconds: 180 });
   await queue.createQueue(EVALUATION_REVIEW_QUEUE, { retryLimit: 3, retryDelay: 5, expireInSeconds: 180 });
+  await queue.createQueue(EVIDENCE_READ_GRANT_QUEUE, { retryLimit: 3, retryDelay: 5, expireInSeconds: 180 });
 }

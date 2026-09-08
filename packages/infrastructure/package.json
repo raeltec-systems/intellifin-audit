@@ -49,6 +49,10 @@
     "./agent-model": {
       "types": "./src/runs/agent-model-gateway.ts",
       "default": "./dist/runs/agent-model-gateway.js"
+    },
+    "./evidence-read-signer": {
+      "types": "./src/evidence/s3-evidence-read-signer.ts",
+      "default": "./dist/evidence/s3-evidence-read-signer.js"
     }
   },
   "files": [
@@ -67,6 +71,7 @@
     "@ai-sdk/anthropic": "4.0.47",
     "@ai-sdk/openai": "4.0.58",
     "@aws-sdk/client-s3": "3.1124.0",
+    "@aws-sdk/s3-request-presigner": "3.1124.0",
     "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@sentry/node": "10.73.0",

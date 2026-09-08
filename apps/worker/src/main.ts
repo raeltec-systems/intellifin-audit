@@ -4,6 +4,7 @@ import { hostname } from 'node:os';
 import {
   ConfigError,
   createExceptionFingerprinter, PostgresEvaluationReviewRepository, startEvaluationReviewWorker, startEvaluationReviewRecovery,
+  PostgresEvidenceReadGrantRepository, startEvidenceReadGrantWorker, startEvidenceReadGrantRecovery,
   PostgresWaitRepository, startWaitWorker, startWaitRecovery,
   PostgresAgentWorkRepository, PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
@@ -20,6 +21,7 @@ import {
 // web imports that barrel. See packages/infrastructure/src/index.ts.
 import { HttpPopulationAcquisition } from '@intellifin/infrastructure/acquisition';
 import { createS3EvidenceStore } from '@intellifin/infrastructure/evidence';
+import { createS3EvidenceReadSigner } from '@intellifin/infrastructure/evidence-read-signer';
 import { HttpAdapterExtraction } from '@intellifin/infrastructure/extraction';
 import { ManifestCredentialResolver } from '@intellifin/infrastructure/credentials';
 import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
@@ -67,6 +69,7 @@ async function main(): Promise<void> {
 
   let interval: NodeJS.Timeout | undefined;
   let stopNotificationDelivery: (() => Promise<void>) | undefined;
+  let stopEvidenceReadRecovery: (() => Promise<void>) | undefined;
   let stopReviewRecovery: (() => Promise<void>) | undefined;
   let stopWaitRecovery: (() => Promise<void>) | undefined;
   let stopRecovery: (() => void) | undefined;
@@ -85,6 +88,7 @@ async function main(): Promise<void> {
     stopRecovery?.();
     await stopWaitRecovery?.();
     await stopReviewRecovery?.();
+    await stopEvidenceReadRecovery?.();
     await stopPopulationRecovery?.();
     await stopIntegritySweep?.();
     await stopWorkspaceReaper?.();
@@ -174,6 +178,14 @@ async function main(): Promise<void> {
   const review = { repository: reviewRepository, clock, ids: new CryptoUuidV7Generator() };
   await startEvaluationReviewWorker(queue, (job) => executeEvaluationReviewCommand(review, job.commandId));
   stopReviewRecovery = startEvaluationReviewRecovery(db, () => telemetry.captureError('Fatal worker error', new Error('Evaluation review recovery failed'), {}));
+  // Stored evidence inspection uses a short-lived server-side capability. The signer
+  // stays in this worker; web receives neither S3 credentials nor an EvidenceStore.
+  // An unconfigured store still consumes requests and records an honest refusal.
+  const evidenceReads = new PostgresEvidenceReadGrantRepository(db);
+  await startEvidenceReadGrantWorker(queue, evidenceReads,
+    evidence.enabled ? createS3EvidenceReadSigner(evidence.config) : null, clock);
+  stopEvidenceReadRecovery = startEvidenceReadGrantRecovery(db,
+    () => telemetry.captureError('Fatal worker error', new Error('Evidence read grant recovery failed'), {}));
   const stoppable = { repository: populationRepository, clock };
   if (evidence.enabled) {
     const store = createS3EvidenceStore(evidence.config);

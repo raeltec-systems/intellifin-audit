@@ -353,7 +353,7 @@ export function captureTimeSourceSentence(source: string | null): string | null 
 /**
  * Which stored artifacts the grounding inspector can open.
  *
- * Story 3.6's extractor implements `sheet` and `json` and refuses `web_tree` and
+ * Story 4.4's extractor implements `web_tree`, `sheet` and `json` and refuses
  * `desktop_tree` BY NAME, and it decides the substrate from the media type recorded
  * beside the digest. The DOMAIN's own `snapshotSubstrateForMediaType` answers that
  * question; a second media-type test here would be a second answer, and the two would

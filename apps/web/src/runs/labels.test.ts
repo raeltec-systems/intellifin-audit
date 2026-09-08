@@ -160,12 +160,13 @@ describe('the contract formats', () => {
 });
 
 describe('which snapshots the grounding inspector can open', () => {
-  it('asks the domain, and accepts only the two substrates the extractor re-reads', () => {
+  it('asks the domain, and accepts every substrate the extractor re-reads', () => {
+    expect(inspectableSubstrate('application/vnd.intellifin.web-tree+json')).toBe('web_tree');
     expect(inspectableSubstrate('text/csv')).toBe('sheet');
     expect(inspectableSubstrate('application/json')).toBe('json');
     expect(inspectableSubstrate('application/json; charset=utf-8')).toBe('json');
-    // `web_tree` and `desktop_tree` are refused BY NAME by the extractor, so an inspector
-    // that opened for them would promise a re-read nothing performed.
+    // `desktop_tree` remains refused BY NAME by the extractor, so an inspector that opened
+    // for it would promise a re-read nothing performed.
     expect(inspectableSubstrate('text/html')).toBeNull();
     expect(inspectableSubstrate(null)).toBeNull();
   });

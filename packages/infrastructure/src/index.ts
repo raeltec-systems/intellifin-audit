@@ -54,3 +54,7 @@ export * from './runs/agent-work-repository.js';
 export { PostgresEvaluationReviewRepository } from './runs/evaluation-review-repository.js';
 
 export * from './runs/evaluation-review-queue.js';
+
+export * from './runs/evidence-read-grant-repository.js';
+
+export * from './runs/evidence-read-grant-queue.js';

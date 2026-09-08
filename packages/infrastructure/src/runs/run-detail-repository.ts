@@ -419,6 +419,53 @@ export class DrizzleRunDetailRepository {
     };
   }
 
+  /**
+   * Resolve one recorded grounding for the protected snapshot route.
+   *
+   * The normal Observation projection is intentionally capped at 50 rows. An inspector
+   * link can target any row in a larger Run, so resolving it from that sample would turn a
+   * valid link into a false authorization refusal. PostgreSQL narrows the JSONB candidates
+   * and returns at most two matches; the second row is retained solely to refuse an
+   * ambiguous evidence/locator pair rather than choosing an arbitrary Observation.
+   */
+  async readObservationGrounding(
+    runId: string,
+    evidenceId: string,
+    locator: string,
+  ): Promise<ObservationAttribute | null> {
+    if (!isUuidText(runId) || !isUuidText(evidenceId) || locator.length === 0 || locator.length > 1024) return null;
+    const rows = await this.db
+      .select({ identity: runObservation.identity, attributes: runObservation.attributes })
+      .from(runObservation)
+      .where(and(
+        eq(runObservation.runId, runId),
+        sql`(
+          (
+            ${runObservation.identity}->'grounding'->>'evidenceId' = ${evidenceId}
+            AND ${runObservation.identity}->'grounding'->>'locator' = ${locator}
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(${runObservation.attributes}) AS attribute
+            WHERE attribute->'grounding'->>'evidenceId' = ${evidenceId}
+              AND attribute->'grounding'->>'locator' = ${locator}
+          )
+        )`,
+      ))
+      .limit(2);
+    let match: ObservationAttribute | null = null;
+    let count = 0;
+    for (const row of rows) {
+      const candidates = row.identity === null ? row.attributes : [row.identity, ...row.attributes];
+      for (const candidate of candidates) {
+        if (candidate.grounding?.evidenceId !== evidenceId || candidate.grounding.locator !== locator) continue;
+        count += 1;
+        match = candidate;
+      }
+    }
+    return count === 1 ? match : null;
+  }
+
   /** Every Exception this Run raised, ordered by identifier (EXPERIENCE.md, Open Question 2). */
   async readExceptions(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<Bounded<RunExceptionRow>> {
     if (!isUuidText(runId)) return { rows: [], total: 0 };

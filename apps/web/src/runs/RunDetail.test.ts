@@ -361,7 +361,7 @@ describe('the grounding inspector', () => {
     // The seeded prompt-like string reaches the page as data in a `<pre>`, announced as
     // untrusted, and never as the platform's own prose.
     expect(html).toContain('Untrusted source content — roles, as the Target System presented it.');
-    expect(html.match(/<pre/g) ?? []).toHaveLength(6);
+    expect(html.match(/<pre/g) ?? []).toHaveLength(8);
   });
 
   it('offers no substrate for an artifact the extractor cannot re-read', () => {

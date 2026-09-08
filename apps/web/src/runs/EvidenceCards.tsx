@@ -1,10 +1,16 @@
-import type { ObservationAttribute } from '@intellifin/domain';
+import type { ObservationAttribute, SnapshotSubstrate, StoredSnapshot } from '@intellifin/domain';
 import type { RunEvidenceItem, RunObservationRow } from '@intellifin/infrastructure';
 
 import { Digest } from '../design/Digest';
 import { CAPTURE_TIME_UNRECORDED } from '../design/copy';
 import { CorroborationBadge, EvidenceKindBadge } from './MinorBadge';
 import { UntrustedText } from './UntrustedText';
+import {
+  corroborationReason,
+  groundingInspectionReason,
+  groundingValueText,
+  inspectStoredGrounding,
+} from './grounding-inspector';
 import {
   captureTimeSourceSentence,
   countText,
@@ -169,9 +175,9 @@ export function evidenceCardProps(item: RunEvidenceItem): EvidenceCardProps {
  * read from, locator and field label in `{typography.mono}`, and a corroboration badge
  * (matched · contradictory · model-read)."
  *
- * It opens for a `sheet` or `json` snapshot — the two substrates Story 3.6's extractor
- * actually re-reads. `web_tree` and `desktop_tree` are refused BY NAME there, and an
- * inspector that opened for them would promise a re-read nothing performed. The substrate
+ * It opens for a `web_tree`, `sheet` or `json` snapshot — the substrates this build's
+ * domain extractor actually re-reads. `desktop_tree` remains refused by name there, and
+ * an inspector that opened for it would promise a re-read nothing performed. The substrate
  * is decided by the DOMAIN's own media-type function, not by a second test here.
  *
  * Every value in it came from a Target System, so every value in it is rendered as
@@ -180,16 +186,28 @@ export function evidenceCardProps(item: RunEvidenceItem): EvidenceCardProps {
 export function GroundingInspector({
   observation,
   mediaTypeOf,
+  snapshotOf,
+  snapshotHrefOf,
 }: {
   readonly observation: RunObservationRow;
   /** The registered media type of an Evidence item, or `null` when it is unknown. */
   readonly mediaTypeOf: (evidenceId: string) => string | null;
+  /** The exact stored artifact named by an Evidence id, supplied by the server route. */
+  readonly snapshotOf?: (evidenceId: string) => StoredSnapshot | null;
+  /** A protected route to the stored artifact at its grounding locator. */
+  readonly snapshotHrefOf?: (evidenceId: string, locator: string) => string | null;
 }): React.JSX.Element {
-  const attributes: readonly (ObservationAttribute | null)[] = [
-    observation.identity,
-    ...observation.attributes,
-  ];
-  const grounded = attributes.filter((attribute): attribute is ObservationAttribute => attribute !== null);
+  const snapshotResolver = snapshotOf ?? (() => null);
+  // No link is emitted until an authorized server composition supplies one. A guessed
+  // `/api/evidence` URL would be a dead placeholder and could suggest that access happened.
+  const artifactHref = snapshotHrefOf ?? (() => null);
+  const observationDiagnostic = observation.checks.find(
+    (check) => check.check === 'observation-corroboration',
+  )?.diagnostic ?? null;
+  const identityDiagnostic = observation.checks.find(
+    (check) => check.check === 'identity-corroboration',
+  )?.diagnostic ?? null;
+  const attributes: readonly ObservationAttribute[] = observation.attributes;
   return (
     <li className="ls-observation" id={`observation-${observation.observationId}`}>
       <p className="ls-observation__header">
@@ -236,13 +254,47 @@ export function GroundingInspector({
           ))}
         </ul>
       )}
-      {grounded.length === 0 ? (
-        <p>No attribute on this Observation carries a grounding.</p>
-      ) : (
-        <details className="ls-expand">
-          <summary>Grounding for {countText(grounded.length)} attributes</summary>
+      <div className="ls-stack">
+        <h3>Match provenance</h3>
+        {observation.identity === null ? (
+          <p>No identity match provenance was recorded.</p>
+        ) : (
           <ul className="ls-plain-list">
-            {grounded.map((attribute) => (
+            <AttributeGrounding
+              attribute={observation.identity}
+              isIdentity
+              identityMatchOrigin={observation.matchOrigin}
+              substrate={
+                observation.identity.grounding === null
+                  ? null
+                  : inspectableSubstrate(mediaTypeOf(observation.identity.grounding.evidenceId))
+              }
+              snapshot={
+                observation.identity.grounding === null
+                  ? null
+                  : snapshotResolver(observation.identity.grounding.evidenceId)
+              }
+              snapshotHref={
+                observation.identity.grounding === null
+                  ? null
+                  : artifactHref(
+                      observation.identity.grounding.evidenceId,
+                      observation.identity.grounding.locator,
+                    )
+              }
+              corroborationDiagnostic={identityDiagnostic}
+              populationRecordKey={observation.populationRecordKey}
+            />
+          </ul>
+        )}
+      </div>
+      <div className="ls-stack">
+        <h3>Grounded attributes</h3>
+        {attributes.length === 0 ? (
+          <p>No declared attribute was recorded on this Observation.</p>
+        ) : (
+          <ul className="ls-plain-list">
+            {attributes.map((attribute) => (
               <AttributeGrounding
                 key={attribute.name}
                 attribute={attribute}
@@ -251,11 +303,22 @@ export function GroundingInspector({
                     ? null
                     : inspectableSubstrate(mediaTypeOf(attribute.grounding.evidenceId))
                 }
+                snapshot={
+                  attribute.grounding === null
+                    ? null
+                    : snapshotResolver(attribute.grounding.evidenceId)
+                }
+                snapshotHref={
+                  attribute.grounding === null
+                    ? null
+                    : artifactHref(attribute.grounding.evidenceId, attribute.grounding.locator)
+                }
+                corroborationDiagnostic={observationDiagnostic}
               />
             ))}
           </ul>
-        </details>
-      )}
+        )}
+      </div>
     </li>
   );
 }
@@ -263,22 +326,38 @@ export function GroundingInspector({
 function AttributeGrounding({
   attribute,
   substrate,
+  snapshot,
+  snapshotHref,
+  corroborationDiagnostic,
+  populationRecordKey,
+  isIdentity = false,
+  identityMatchOrigin,
 }: {
   readonly attribute: ObservationAttribute;
-  readonly substrate: string | null;
+  readonly substrate: SnapshotSubstrate | null;
+  readonly snapshot: StoredSnapshot | null;
+  readonly snapshotHref: string | null;
+  readonly corroborationDiagnostic: string | null;
+  readonly populationRecordKey?: string;
+  readonly isIdentity?: boolean;
+  readonly identityMatchOrigin?: string;
 }): React.JSX.Element {
+  const inspection = inspectStoredGrounding(attribute, substrate, snapshot);
+  const reason = corroborationReason(attribute.corroboration, corroborationDiagnostic);
   return (
     <li className="ls-grounding">
       <p className="ls-grounding__header">
-        <span className="ls-mono">{attribute.name}</span>
+        {isIdentity ? <span>{identityMatchOrigin === 'platform' ? 'Platform key match' : identityMatchOrigin === 'human-matched' ? 'Human-selected match' : 'Identity match; origin unavailable'}</span> : <span className="ls-mono">{attribute.name}</span>}
+        {isIdentity ? <span className="ls-mono">{attribute.name}</span> : null}
         <CorroborationBadge value={attribute.corroboration} />
       </p>
+      <p>{reason}</p>
       <dl className="ls-definition">
         <div>
           <dt>Original value</dt>
           <dd>
             <UntrustedText field={`${attribute.name}, as the Target System presented it`}>
-              {JSON.stringify(attribute.originalValue)}
+              {groundingValueText(attribute.originalValue)}
             </UntrustedText>
           </dd>
         </div>
@@ -286,10 +365,16 @@ function AttributeGrounding({
           <dt>Normalized value</dt>
           <dd>
             <UntrustedText field={`${attribute.name}, normalized`}>
-              {JSON.stringify(attribute.normalizedValue)}
+              {groundingValueText(attribute.normalizedValue)}
             </UntrustedText>
           </dd>
         </div>
+        {isIdentity && populationRecordKey !== undefined ? (
+          <div>
+            <dt>Population record key</dt>
+            <dd className="ls-mono">{populationRecordKey}</dd>
+          </div>
+        ) : null}
         {attribute.grounding === null ? (
           <div>
             <dt>Grounding</dt>
@@ -303,9 +388,11 @@ function AttributeGrounding({
             <div>
               <dt>Structural Snapshot</dt>
               <dd className="ls-mono">
-                <a href={`#evidence-${attribute.grounding.evidenceId}`}>
-                  {attribute.grounding.evidenceId}
-                </a>
+                {snapshotHref === null ? (
+                  attribute.grounding.evidenceId
+                ) : (
+                  <a href={snapshotHref}>{attribute.grounding.evidenceId}</a>
+                )}
                 {substrate === null ? null : <> · {substrate}</>}
               </dd>
             </div>
@@ -315,8 +402,38 @@ function AttributeGrounding({
             </div>
             <div>
               <dt>Field label</dt>
-              <dd className="ls-mono">{attribute.grounding.label}</dd>
+              <dd className="ls-mono">
+                <UntrustedText field={`${attribute.name}, field label`}>
+                  {attribute.grounding.label}
+                </UntrustedText>
+              </dd>
             </div>
+            <div>
+              <dt>Snapshot at locator</dt>
+              <dd>
+                {inspection.cell === null ? (
+                  <p>
+                    {inspection.failure === null
+                      ? 'No snapshot cell was read.'
+                      : groundingInspectionReason(inspection.failure)}
+                  </p>
+                ) : (
+                  <UntrustedText field={`${attribute.name}, as read at the stored snapshot locator`}>
+                    {groundingValueText(inspection.cell.value)}
+                  </UntrustedText>
+                )}
+              </dd>
+            </div>
+            {inspection.cell !== null && inspection.cell.label !== attribute.grounding.label ? (
+              <div>
+                <dt>Snapshot field label</dt>
+                <dd className="ls-mono">
+                  <UntrustedText field={`${attribute.name}, field label re-read from the snapshot`}>
+                    {inspection.cell.label}
+                  </UntrustedText>
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt>Extracted text</dt>
               <dd>

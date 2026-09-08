@@ -307,3 +307,10 @@ The owner supplied Solari credentials on2026-09-08; credentials remain outside G
 ## Worker abuse prerequisite diagnostics
 
 Hydrated option correction pushed4aa474db196d5330e7f1d5bdf7304733b2951ed8. This checkpoint adds bounded durable stage diagnostics to the three failing actual-worker abuse cases. It leaves the security-event, WAITING, authenticated session, immutable version and no-Pass assertions unchanged. Script/gateway inspection found the synthetic SDK interception itself accepts the provider envelope; hosted stage evidence is needed to identify the preceding failure. Candidate acceptance remains pending.
+
+
+## Authorized persisted-evidence inspector checkpoint
+
+Parent834519ce6b99791bd9cfc62c86f86b1e56e27998 passes hosted static/unit/boundaries, PostgreSQL migrations/integration and container jobs in34187717446; browser mutation baseline still fails and browser suite remains pending. This checkpoint wires the authenticated inspector through durable grants, production worker AWS signing, bounded server-side HTTP consumption and SHA-256 checks. Roles are rechecked after fetch; expiry/revocation clear capabilities. Active tampering fails the Run; sealed tampering records the existing integrity finding without altering sealed evidence or outcomes. Human-selected matches retain their truthful provenance label.
+
+Local verification:33 focused inspector tests,57 web tests, complete workspace typecheck, dependency boundaries509modules and all builds pass. Nine PostgreSQL tests and three browser journeys are pending hosted execution. This is a pushed implementation checkpoint, not Story4.4 acceptance. The S3 SDK is confined to the worker-only signer subpath. Next: repair the actual-worker/browser mutation baselines, execute this inspector's real hosted flows, finish the negative-test matrix, then run the separate live Solari gate. No merge or deployment.

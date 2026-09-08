@@ -1272,3 +1272,8 @@ Retry-or-skip is the platform-owned closed option set Retry, Skip, Abort. The Ab
 ### Actual worker abuse failure diagnosis
 
 When a negative worker journey stops before its expected denial, report bounded Run/population/authentication/work status and fixed diagnostics plus model-interception count. Do not dump worker logs or provider messages to diagnose a stage prerequisite; retain the original security assertion.
+
+
+### Authorized inspector consumption
+
+Read registered artifacts through actor/run/evidence/locator-bound durable grants, signed only by the worker. Keep URLs server-side, recheck roles after bounded digest-verified download, and clear expired/revoked capabilities. Active mismatch and a concurrent seal must resolve through the shared Run failure or post-seal integrity-finding path under the proper lock; never mutate a sealed package to report tampering. Preserve human-selected versus platform-matched grounding labels.

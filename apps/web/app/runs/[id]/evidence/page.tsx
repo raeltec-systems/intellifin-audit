@@ -251,6 +251,9 @@ export default async function RunEvidencePage({
                 key={observation.observationId}
                 observation={observation}
                 mediaTypeOf={mediaTypeOf}
+                snapshotHrefOf={(evidenceId, locator) =>
+                  `/runs/${run.runId}/evidence/${encodeURIComponent(evidenceId)}?locator=${encodeURIComponent(locator)}`
+                }
               />
             ))}
           </ul>
