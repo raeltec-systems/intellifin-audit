@@ -61,7 +61,10 @@ async function run(entry, phase) {
   const reportPath = join(scratch, `${entry.id}-${phase}.json`);
   const child = spawnSync('pnpm', ['exec', 'playwright', 'test', entry.test, '--project=chromium', '--reporter=json'], {
     cwd: root, env: { ...process.env, CI: 'true', PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath, pnpm_config_verify_deps_before_run: 'false' },
-    encoding: 'utf8', timeout: 600000, maxBuffer: 16 * 1024 * 1024,
+    // Six serial negative cases can each wait for a bounded 120-second denial
+    // assertion. Allow their existing per-case budgets plus setup; the CI job
+    // retains its independent 60-minute ceiling. No product/test assertion changes.
+    encoding: 'utf8', timeout: (entry.count ?? entry.minimum) * 240_000 + 120_000, maxBuffer: 16 * 1024 * 1024,
   });
   if (child.error || child.signal) throw new Error(`Process did not finish: ${entry.id}/${phase}`);
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
