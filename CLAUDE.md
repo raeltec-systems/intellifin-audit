@@ -1387,3 +1387,8 @@ Grounding tests select exact Field label headings because inert provenance label
 ## 2026-09-08 — Cleanup observation is not persistence acknowledgement
 
 A passive browser-close observer fires before the production cleanup transaction commits. Browser tests must require closed/unusable state and separately await the persisted RELEASED row within a bound; neither fact substitutes for the other.
+
+
+## 2026-09-08 — Isolated cases need independently declared sources
+
+A unique employee inclusion does not remove source-wide invalid/duplicate rows from the Gate. Success/pending fixtures use a separately declared HTTP source with the unchanged canonical row and independent count/digest/cover; the complete golden source and its expected Inconclusive outcome remain untouched. Real captured-inspector tests follow the worker-produced grounding, not a seeded surrogate.

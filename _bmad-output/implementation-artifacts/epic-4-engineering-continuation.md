@@ -500,3 +500,12 @@ Selected live gate34194649240 at exactb165de7 fails before provider allocation: 
 ## Confirm durable cleanup after observed browser closure
 
 The preceding exact-label checkpoint is pushed. Hosted b165de7's D9-b browser test observed closed pages and refused cookie access before releaseWorkspace had committed its database row, then immediately read OPEN. Browser teardown and durable cleanup are separate asynchronous facts. The regression now requires both under their existing90second bounds; persistent OPEN/failed references still fail, and the test never releases anything itself. All6golden cases and teardown mutation remain selected. Root-test TypeScript passes; hosted rerun is required. This test-only synchronization checkpoint is pushed separately from production fixes.
+
+
+## Declared isolated-case source and actual captured inspector
+
+Durable cleanup assertion0199a41470309e0c5055675ede6e66548d42c0a5 is pushed. Hosted b165de7 correctly returned sealed INCONCLUSIVE for the full golden P1 source, contradicting the new review test's pending expectation. Source-wide invalid dates/duplicate keys remain quality failures despite a unique employee inclusion filter. Those protections and the canonical source are unchanged.
+
+The review journey now acquires a separately declared real HTTP CSV containing the unchanged canonical E-000102 row. An independent Python generator derives its actual one-row count, byte digest and synthetic signed cover while retaining canonical values/period/provenance. Three helper regressions exercise actual HTTP acquisition/reconciliation for canonical D1-a/D1-b and refuse ambiguous duplicate E-000107 selection. No runtime model or audit row is fabricated. The whole golden source still cannot become Pass.
+
+The first actual worker review journey also follows its captured account-status grounding link through the durable worker evidence grant, verifies the stored locator returns Disabled, runs accessibility and confirms no signed storage URL reaches the browser. TypeScript, helper3tests and discovery pass. Actual browser/worker execution remains hosted-only and pending. This checkpoint is pushed without acceptance.

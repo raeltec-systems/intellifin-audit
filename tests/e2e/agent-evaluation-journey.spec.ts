@@ -28,6 +28,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { startSyntheticS3 } from '../fixtures/s3-server';
+import { startCanonicalLeaverSource } from '../fixtures/single-leaver-source';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { NORTHSTAR_BASE_URL } from './northstar';
@@ -100,8 +101,8 @@ const EVALUATION_INCLUSION_RULE: InclusionRule = {
 function inputs(): FrozenPlanInputs {
   const source = {
     kind: 'versioned-file' as const,
-    location: `${NORTHSTAR_BASE_URL}/files/leavers-export.csv`,
-    declaredSchema: ['employee_id', 'full_name', 'department', 'employment_status', 'termination_effective_date', 'manager'],
+    location: populationSource.location,
+    declaredSchema: populationSource.schema,
     sensitiveFields: [],
     declaredCountMechanism: 'cover-sheet' as const,
   };
@@ -117,7 +118,7 @@ function inputs(): FrozenPlanInputs {
     period: { from: '2026-08-01', to: '2026-08-31' },
     sourceSnapshot: {
       bindingId: ids.next(),
-      displayName: 'Northstar leavers export',
+      displayName: 'Declared canonical single-leaver source',
       digest: bindingDigest(source),
       contract: bindingDigestEnvelope(source),
     },
@@ -132,6 +133,7 @@ function inputs(): FrozenPlanInputs {
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 let sql: Sql;
+let populationSource: Awaited<ReturnType<typeof startCanonicalLeaverSource>>;
 let storage: Awaited<ReturnType<typeof startSyntheticS3>>;
 let stopWorker: (() => Promise<void>) | undefined;
 const workerMarkers: string[] = [];
@@ -350,6 +352,35 @@ async function assertActualExecution(runId: string, markerStart: number): Promis
   expect(accountSnapshots.length).toBeGreaterThan(0);
 }
 
+async function inspectCapturedAccountStatus(page: Page, runId: string): Promise<void> {
+  const [row] = await sql`SELECT attributes FROM run_observation WHERE run_id=${runId}`;
+  const status = (row?.attributes as { name: string; grounding: { evidenceId: string; locator: string } }[])
+    .find(attribute => attribute.name === 'account_status');
+  expect(status).toBeDefined();
+  const { evidenceId, locator } = status!.grounding;
+  const path = `/runs/${runId}/evidence/${evidenceId}?locator=${encodeURIComponent(locator)}`;
+  const browserRequests: string[] = [];
+  const observe = (request: { url(): string }) => { browserRequests.push(request.url()); };
+  page.on('request', observe);
+  try {
+    await page.goto(`/runs/${runId}/evidence`);
+    await expect(page.getByRole('heading', { name: 'Match provenance', exact: true })).toBeVisible();
+    const link = page.locator(`a[href="${path}"]`);
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page.getByRole('heading', { name: 'Stored Structural Snapshot', exact: true })).toBeVisible();
+    const value = page.locator('.ls-untrusted').filter({ hasText: 'as read at the stored snapshot locator' }).locator('pre');
+    await expect(value).toHaveText(JSON.stringify('Disabled'));
+    await scan(page);
+    expect(await sql`SELECT locator,status FROM evidence_read_grant WHERE run_id=${runId} AND evidence_id=${evidenceId}`)
+      .toEqual([{ locator, status: 'issued' }]);
+    // The browser follows only the protected application link. The actual worker signs
+    // the registered object and the web server reads/checks it without exposing that URL.
+    expect(browserRequests.some(url => url.startsWith(storage.env.EVIDENCE_S3_ENDPOINT))).toBe(false);
+    expect(browserRequests.some(url => url.includes('X-Amz-'))).toBe(false);
+  } finally { page.off('request', observe); }
+}
+
 async function assertPendingReview(page: Page, runId: string): Promise<void> {
   await page.goto(`/runs/${runId}`);
   await expect(page.getByText('1 Agent-Judged evaluations await confirmation', { exact: true })).toBeVisible();
@@ -420,6 +451,10 @@ test.beforeAll(async () => {
   const db = createDb(sql);
   const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the synthetic Auditor first.');
+  // This declared one-row source keeps the canonical employee unchanged. The full
+  // golden export deliberately contains unrelated invalid/duplicate rows and must
+  // remain Inconclusive even when an inclusion filter excludes their employee IDs.
+  populationSource = await startCanonicalLeaverSource(EMPLOYEE_ID);
   const version = activeRunVersion(procedureId, versionId, String(auditor.id), inputs());
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
     await context.procedures.insertProcedure(version);
@@ -433,6 +468,7 @@ test.afterAll(async () => {
   await stopWorker?.();
   stopWorker = undefined;
   await storage?.close();
+  await populationSource?.close();
   if (!sql) return;
   try {
     const runs = await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId}`;
@@ -486,6 +522,7 @@ test.describe.serial('actual P-1 execution through human Agent-Judged review', (
     await waitForPending(runId);
     await assertActualExecution(runId, markerStart);
     const before = await reviewSnapshot(runId);
+    await inspectCapturedAccountStatus(page, runId);
     await assertPendingReview(page, runId);
     await finishReview(page, runId, 'confirm');
     await assertFinalReview(page, runId, 'confirm');
