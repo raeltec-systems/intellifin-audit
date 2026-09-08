@@ -295,3 +295,10 @@ Script syntax passes. Playwright listing initially refused missing E2E_PASSWORD;
 ## Mutation baseline diagnostic repair
 
 CI34154713417 at `9d7edb30a62946cd316844d292ae170f38811f34` passes type/unit/boundaries but the new mutation job fails before mutation: hydrated-no-preselected-answer baseline. The runner previously discarded its Playwright report before emitting the underlying failure. This repair persists bounded baseline/mutant diagnostics before validation; setup/report failures remain disqualifying and assertions are unchanged. Script syntax passes. Full baseline diagnosis is pending the next CI evidence. Final4.11 matrix review also identified additional real-worker retrieved-attack/resume/terminal-cleanup proof still being implemented; no story acceptance claimed.
+
+
+## 2026-09-08 continuation — hydrated baseline correction
+
+Remote freshness rechecked at87199d788e04282151c49c218e84823c0d4ca5d4; local scratch resumed at5c6623d and was restored through the two already-pushed exact commits without overwriting inspector WIP. CI34155023877 passes static/unit/boundaries, PostgreSQL through39 plus mutations, and container jobs. Browser8 failures are five closed-option assertions omitting platform Abort and three worker abuse cases without expected security events. This checkpoint corrects only the former to the established Retry/Skip/Abort contract; durable-answer immutability and selection assertions remain intact. Nine wait-command tests pass. Worker/model fixture diagnosis and remaining inspector/abuse work continue.
+
+The owner supplied Solari credentials on2026-09-08; credentials remain outside Git. Local outbound provider connection was unavailable (network approval cancelled), so live acceptance needs an authorized execution path as well as remaining model/storage/target configuration. No live acceptance or merge is claimed.

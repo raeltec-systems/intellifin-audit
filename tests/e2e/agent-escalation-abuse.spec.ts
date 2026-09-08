@@ -188,7 +188,7 @@ test.describe('hydrated golden escalation questions remain untrusted', () => {
     await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toHaveCount(0);
     const [before] = await sql`SELECT closed_at,answer_option_id,options FROM run_wait WHERE wait_id=${row.waitId}`;
     expect(before).toMatchObject({ closed_at: null, answer_option_id: null });
-    expect((before!.options as { id: string }[]).map(option => option.id)).toEqual(['retry','skip']);
+    expect((before!.options as { id: string }[]).map(option => option.id)).toEqual(['retry','skip','abort']);
     await page.getByRole('button', { name: 'Skip', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe('Go back');

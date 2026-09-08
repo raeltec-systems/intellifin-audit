@@ -1262,3 +1262,8 @@ SSR escaping alone cannot establish that hostile escalation text leaves hydrated
 ### Mutation-runner failure evidence
 
 Persist baseline and mutant diagnostics before checking success conditions. A failing baseline is not a killed mutation, and setup/report errors are never assertion evidence. Retain bounded sanitized Playwright errors so hosted failures can be reproduced without rerunning an opaque harness; restore the changed source in all paths.
+
+
+### Hosted escalation baseline expectations
+
+Retry-or-skip is the platform-owned closed option set Retry, Skip, Abort. The Abort safety action is appended by the application; fixture-supplied option labels cannot remove it. Browser regressions must assert the complete fixed set and unchanged persisted options after explicit confirmation.
