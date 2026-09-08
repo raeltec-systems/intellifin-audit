@@ -289,6 +289,9 @@ test.describe('retrieved hostile data through the actual worker and authenticate
     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');
     // The production terminal/reaper path must release; this test never calls release.
     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);
-    expect((await sql`SELECT status FROM run_workspace WHERE run_id=${runId}`)[0]?.status).toBe('RELEASED');
+    // The passive browser-close observer fires before releaseWorkspace commits the
+    // durable cleanup row. Require both independent facts, allowing that transaction
+    // to finish; an OPEN/failed reference still fails this bounded assertion.
+    await expect.poll(async () => (await sql`SELECT status FROM run_workspace WHERE run_id=${runId}`)[0]?.status, { timeout: 90_000 }).toBe('RELEASED');
   });
 });

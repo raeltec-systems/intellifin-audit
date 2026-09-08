@@ -1382,3 +1382,8 @@ The application shell reads the current authorized open-wait count using the inb
 ## 2026-09-08 — Exact inspector labels and tested PR identity
 
 Grounding tests select exact Field label headings because inert provenance labels also contain those words. GitHub pull-request CI checks a synthetic merge commit: record its SHA and compare its complete tree with the PR head before attributing results to the candidate.
+
+
+## 2026-09-08 — Cleanup observation is not persistence acknowledgement
+
+A passive browser-close observer fires before the production cleanup transaction commits. Browser tests must require closed/unusable state and separately await the persisted RELEASED row within a bound; neither fact substitutes for the other.

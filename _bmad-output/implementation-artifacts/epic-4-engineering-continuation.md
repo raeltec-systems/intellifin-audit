@@ -495,3 +495,8 @@ Notification repairb165de77b1391fc9674b38a96b5e3c01ddb6862b is pushed. CI3419463
 This checkpoint selects the exact two Field label headings rather than all substrings; every existing value/corroboration/link/accessibility assertion remains. The actual current UI has additional provenance labels deliberately containing that phrase. Root-test TypeScript passes. This narrow regression correction is pushed separately.
 
 Selected live gate34194649240 at exactb165de7 fails before provider allocation: SOLARI_API_KEY is empty, and both model-key/model-ID pairs are also empty in Actions. The connector cannot set encrypted Actions secrets. No Solari session or acceptance artifact was created; the second isolation case did not run. Owner settings are required, and this critical blocker prevents merge.
+
+
+## Confirm durable cleanup after observed browser closure
+
+The preceding exact-label checkpoint is pushed. Hosted b165de7's D9-b browser test observed closed pages and refused cookie access before releaseWorkspace had committed its database row, then immediately read OPEN. Browser teardown and durable cleanup are separate asynchronous facts. The regression now requires both under their existing90second bounds; persistent OPEN/failed references still fail, and the test never releases anything itself. All6golden cases and teardown mutation remain selected. Root-test TypeScript passes; hosted rerun is required. This test-only synchronization checkpoint is pushed separately from production fixes.
