@@ -1402,3 +1402,8 @@ Absence browser acceptance begins with the compiled worker reading a separately 
 ## 2026-09-08 — Live case source provenance
 
 A representative remote-target audit may use the independently declared canonical case CSV acquired by the actual worker over HTTP. Its report must label source and S3 as worker-local synthetic fixtures, never deployed integration acceptance; the model still obtains target observations through the actual Solari browser and shared audit engine.
+
+
+## 2026-09-08 — Complete ProdConsole worker verification
+
+The canonical P4 browser journey crosses the compiled worker and durable queue as well as the existing application-stage integration. It asserts the exact failing Gate set before the golden Inconclusive Result; a typed synthetic provider selects only approved tools and never returns observed values or fixture expectations.
