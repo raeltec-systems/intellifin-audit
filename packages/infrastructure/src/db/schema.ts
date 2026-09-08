@@ -1837,3 +1837,17 @@ export type RunObservationEvaluationRow = typeof runObservationEvaluation.$infer
 export type RunResultReviewRow = typeof runResultReview.$inferSelect;
 export type RunEvaluationReviewRow = typeof runEvaluationReview.$inferSelect;
 export type RunEvaluationReviewCommandRow = typeof runEvaluationReviewCommand.$inferSelect;
+
+/** Immutable registration-time absence provenance; no historical proof is invented. */
+export const runObservationAbsence = pgTable('run_observation_absence', {
+  observationId: uuid('observation_id').primaryKey().references(() => runObservation.observationId, { onDelete: 'cascade' }),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId),
+  proof: jsonb('proof').$type<import('@intellifin/domain').ObservationAbsenceProof>(),
+  expectedQueryKeys: jsonb('expected_query_keys').$type<readonly import('@intellifin/domain').ObservationQueryKey[]>().notNull(),
+  digest: text('digest').notNull(),
+}, t => [
+  check('run_observation_absence_digest', sql`${t.digest} ~ '^[0-9a-f]{64}$'`),
+  check('run_observation_absence_proof', sql`${t.proof} IS NULL OR (jsonb_typeof(${t.proof}) = 'object' AND octet_length(${t.proof}::text) <= 4194304)`),
+  check('run_observation_absence_expected', sql`jsonb_typeof(${t.expectedQueryKeys}) = 'array' AND jsonb_array_length(${t.expectedQueryKeys}) <= 64 AND octet_length(${t.expectedQueryKeys}::text) <= 4194304`),
+  index('run_observation_absence_run').on(t.runId),
+]);

@@ -145,6 +145,17 @@ describe('Evidence read grant contract', () => {
     expect(Date.parse(stored.input?.expiresAt ?? '') - Date.parse(stored.input?.requestedAt ?? '')).toBe(EVIDENCE_READ_GRANT_MAX_TTL_MS);
   });
 
+  it('issues the explicitly authorized whole empty-result page view without pretending it names a matched cell', async () => {
+    const request = { runId: RUN_ID, evidenceId: EVIDENCE_ID, locator: 'absence-result' };
+    expect(parseEvidenceReadGrantRequest(request)).toEqual(request);
+    const fake = repository({ grant: grant({ locator: 'absence-result' }) });
+    const result = await issueEvidenceReadGrant({ repository: fake.repository, clock: clock(),
+      signer: { signGet: async ({ expiresAt }) => ({ signedUrl: 'https://objects.invalid/read', signedUrlExpiresAt: expiresAt }) },
+    }, { schemaVersion: 1, grantId: GRANT_ID });
+    expect(result).toEqual({ status: 'issued', grantId: GRANT_ID });
+    expect(fake.current()?.capability?.locator).toBe('absence-result');
+  });
+
   it('rechecks role and registered binding, then audits only grant/run/evidence ids', async () => {
     const fake = repository();
     const result = await issueEvidenceReadGrant(

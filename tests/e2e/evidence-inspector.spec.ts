@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { observationAbsenceDigest } from '@intellifin/application';
 import { sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
 import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version';
@@ -24,7 +25,7 @@ let stopWorker: (() => Promise<void>) | undefined;
 let author = '';
 const fixtures: { runId: string; evidenceId: string; objectKey: string; bytes: Uint8Array }[] = [];
 
-async function fixture(): Promise<(typeof fixtures)[number]> {
+async function fixture(absent = false): Promise<(typeof fixtures)[number]> {
   const runId = ids.next();
   const evidenceId = ids.next();
   const workItem = ids.next();
@@ -32,7 +33,7 @@ async function fixture(): Promise<(typeof fixtures)[number]> {
   const step = ids.next();
   const at = new Date().toISOString();
   const day = String(fixtures.length + 1).padStart(2, '0');
-  const bytes = utf8Bytes(JSON.stringify({ schemaVersion: 1, nodes: [
+  const bytes = utf8Bytes(JSON.stringify({ schemaVersion: 1, ...(absent ? { completion: { complete: true, returned: 0 } } : {}), nodes: absent ? [] : [
     { group: 'record:0', role: 'datum', label: 'Employee ID', value: 'E-001', target: null },
     { group: 'record:0', role: 'datum', label: 'Roles', value: SOURCE_TEXT, target: null },
   ] }));
@@ -54,8 +55,16 @@ async function fixture(): Promise<(typeof fixtures)[number]> {
   const attributes = [attribute('roles', SOURCE_TEXT, LOCATOR, 'Roles')];
   await sql`INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,
     step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration)
-    VALUES(${observation},${runId},${workItem},1,'E-001','loancore','true',${at},${step},'agent','platform',
-    ${JSON.stringify(identity)}::jsonb,${JSON.stringify(attributes)}::jsonb,${JSON.stringify([evidenceId])}::jsonb,${'d'.repeat(64)},'COVERED',${at},'MATCHED')`;
+    VALUES(${observation},${runId},${workItem},1,'E-001','loancore',${absent ? 'false' : 'true'},${at},${step},'agent','platform',
+    ${absent ? null : JSON.stringify(identity)}::jsonb,${JSON.stringify(absent ? [] : attributes)}::jsonb,${JSON.stringify([evidenceId])}::jsonb,${'d'.repeat(64)},'COVERED',${at},${absent ? 'UNJUDGED' : 'MATCHED'})`;
+  if (absent) {
+    const expected = [{ key: 'employee_id', value: 'E-001' }, { key: 'full_name', value: 'Pat Example' }];
+    const proof = { queryKeys: expected, emptyResultEvidenceId: evidenceId, extractionComplete: true };
+    await sql`INSERT INTO run_observation_absence(observation_id,run_id,proof,expected_query_keys,digest)
+      VALUES(${observation},${runId},${JSON.stringify(proof)}::jsonb,${JSON.stringify(expected)}::jsonb,${observationAbsenceDigest(observation,proof,expected)})`;
+    await sql`INSERT INTO run_observation_check(observation_id,run_id,check_name,outcome,diagnostic)
+      VALUES(${observation},${runId},'search-completeness','PASS',NULL)`;
+  }
   await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
     VALUES(${runId},'SEALED','INCONCLUSIVE',${at},0,1,'[]'::jsonb,'[]'::jsonb)`;
   await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
@@ -117,6 +126,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_result WHERE run_id=${row.runId}`;
       await sql`DELETE FROM run_evidence_integrity WHERE run_id=${row.runId}`;
       await sql`DELETE FROM run_evidence_package WHERE run_id=${row.runId}`;
+      await sql`DELETE FROM run_observation_check WHERE run_id=${row.runId}`;
       await sql`DELETE FROM run_observation WHERE run_id=${row.runId}`;
       await sql`DELETE FROM run_step_execution WHERE run_id=${row.runId}`;
       await sql`DELETE FROM run_work_item WHERE run_id=${row.runId}`;
@@ -162,6 +172,25 @@ test.describe('stored snapshot inspection through the actual worker', () => {
     expect(workerLog).not.toContain('X-Amz-Signature');
   });
 
+  test('shows both actual search keys and opens the entire linked empty-result snapshot without inventing a row locator', async ({ page }) => {
+    const row = await fixture(true);
+    await page.goto(`/runs/${row.runId}/evidence`);
+    const proof = page.getByRole('region', { name: 'Absence proof', exact: true });
+    await expect(proof).toBeVisible();
+    await expect(proof.getByText('Values actually searched', { exact: true })).toBeVisible();
+    await expect(proof.locator('.ls-untrusted').filter({ hasText: 'value actually searched.' }).locator('pre')).toHaveText(['E-001','Pat Example']);
+    await expect(proof.getByText('The producer recorded complete result consumption.', { exact: true })).toBeVisible();
+    await proof.getByRole('link', { name: row.evidenceId, exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Stored Structural Snapshot' })).toBeVisible();
+    const storedPage = page.locator('.ls-untrusted').filter({ hasText: 'empty-result page, as read' }).locator('pre');
+    await expect(storedPage).toBeVisible();
+    expect(JSON.parse((await storedPage.textContent())!)).toEqual({ schemaVersion: 1, nodes: [], completion: { complete: true, returned: 0 } });
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);
+    expect(await sql`SELECT locator,status FROM evidence_read_grant WHERE run_id=${row.runId}`)
+      .toEqual([{ locator: 'absence-result', status: 'issued' }]);
+    expect(storage.requests.filter(request => request.key === row.objectKey && request.method === 'GET')).toHaveLength(1);
+  });
+
   test('refuses tampered stored bytes and records a sealed integrity finding without rewriting the Result', async ({ page }) => {
     const row = await fixture();
     const [original] = await sql`SELECT to_jsonb(r)::text AS result FROM run_result r WHERE run_id=${row.runId}`;
@@ -179,6 +208,10 @@ test.describe('stored snapshot inspection through the actual worker', () => {
     const row = await fixture();
     const before = storage.requests.length;
     await page.goto(path(row, '$.nodes[999].value'));
+    await expect(page.getByText('This locator is not a recorded grounding for the Run.', { exact: true })).toBeVisible();
+    expect(await sql`SELECT grant_id FROM evidence_read_grant WHERE run_id=${row.runId}`).toHaveLength(0);
+    expect(storage.requests).toHaveLength(before);
+    await page.goto(`/runs/${row.runId}/evidence/${row.evidenceId}?absence=${ids.next()}`);
     await expect(page.getByText('This locator is not a recorded grounding for the Run.', { exact: true })).toBeVisible();
     expect(await sql`SELECT grant_id FROM evidence_read_grant WHERE run_id=${row.runId}`).toHaveLength(0);
     expect(storage.requests).toHaveLength(before);

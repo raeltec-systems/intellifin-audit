@@ -53,6 +53,7 @@ import {
   runException,
   runExecution,
   runObservation,
+  runObservationAbsence,
   runObservationCheck,
   runObservationEvaluation,
   runToolAction,
@@ -535,8 +536,13 @@ export async function withRunExecutionContext<T>(
               inArray(runObservation.populationRecordKey, slice),
             ),
           );
+        const absenceRows = found.length === 0 ? [] : await tx.select().from(runObservationAbsence)
+          .where(inArray(runObservationAbsence.observationId, found.map(row => row.observationId)));
+        const absenceById = new Map(absenceRows.map(row => [row.observationId, row]));
         for (const row of found) {
+          const absence = absenceById.get(row.observationId);
           rows.push({
+            ...(absence === undefined ? {} : { absence: { proof: absence.proof, expectedQueryKeys: absence.expectedQueryKeys, digest: absence.digest } }),
             observationId: row.observationId,
             populationRecordKey: row.populationRecordKey,
             digest: row.digest,
@@ -614,6 +620,11 @@ export async function withRunExecutionContext<T>(
               target: [runObservation.workItemId, runObservation.populationRecordKey],
             });
         }
+        const absence = rows.slice(offset, offset + OBSERVATION_CHUNK).flatMap(row => row.absence === undefined ? [] : [{
+          observationId: row.record.observationId, runId, proof: row.absence.proof,
+          expectedQueryKeys: row.absence.expectedQueryKeys, digest: row.absence.digest,
+        }]);
+        if (absence.length > 0) await tx.insert(runObservationAbsence).values(absence);
       }
     },
     async saveObservationChecks(rows: readonly ObservationCheckRow[]) {

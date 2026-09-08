@@ -3,6 +3,10 @@ import {
   MISSING_OBSERVATION_FIELD,
   OBSERVATION_LIMITS,
   canBeCompliant,
+  canonicalJson,
+  sha256Hex,
+  isObservationAbsenceProof,
+  isObservationQueryKey,
   corroborationAllowsCompliant,
   exceptionIdFor,
   isObservationEvaluation,
@@ -109,6 +113,23 @@ export class ObservationRegistrationError extends Error {
     super(`Observation registration refused: ${refusal}`);
     this.refusal = refusal;
   }
+}
+
+/** Hash adjacent absence provenance without changing the frozen Observation wire schema. */
+export function observationAbsenceDigest(
+  observationId: string,
+  proof: ObservationAbsenceProof | null,
+  expectedQueryKeys: readonly ObservationQueryKey[],
+): string {
+  return sha256Hex(canonicalJson({
+    schemaVersion: 1, observationId,
+    proof: proof === null ? null : {
+      queryKeys: proof.queryKeys.map(({ key, value }) => ({ key, value })),
+      emptyResultEvidenceId: proof.emptyResultEvidenceId,
+      extractionComplete: proof.extractionComplete,
+    },
+    expectedQueryKeys: expectedQueryKeys.map(({ key, value }) => ({ key, value })),
+  }));
 }
 
 /** One Observation offered for registration, with everything needed to judge it. */
@@ -492,6 +513,20 @@ export async function registerObservations(
     // unique on (work item, record key), so a genuinely different capture for that pair
     // cannot be stored at all; saying so is better than dropping it silently.
     if (existing.digest !== entry.digest) refuse('digest-mismatch');
+    if (existing.absence !== undefined) {
+      const metadata = existing.absence;
+      if (existing.record.found !== 'false' || !Array.isArray(metadata.expectedQueryKeys) || !metadata.expectedQueryKeys.every(isObservationQueryKey) ||
+          (metadata.proof !== null && !isObservationAbsenceProof(metadata.proof)) ||
+          observationAbsenceDigest(existing.observationId, metadata.proof, metadata.expectedQueryKeys) !== metadata.digest) {
+        refuse('observation-integrity');
+      }
+      const offeredProof = isObservationAbsenceProof(entry.item.absence) ? entry.item.absence : null;
+      if (observationAbsenceDigest(entry.record.observationId, offeredProof, entry.item.expectedQueryKeys) !== metadata.digest) {
+        refuse('digest-mismatch');
+      }
+    }
+    // A historical row without adjacent metadata remains historical. Redelivery must not
+    // claim today's offered proof was preserved when the original Observation was captured.
     alreadyRegistered += 1;
   }
   if (fresh.length === 0) return { ...empty, alreadyRegistered };
@@ -705,6 +740,14 @@ export async function registerObservations(
     coverage: entry.coverage,
     corroboration: entry.corroboration,
     observedAtSource: entry.item.observedAtSource,
+    ...(entry.record.found === 'false' ? {
+      absence: {
+        proof: isObservationAbsenceProof(entry.item.absence) ? entry.item.absence : null,
+        expectedQueryKeys: entry.item.expectedQueryKeys,
+        digest: observationAbsenceDigest(entry.record.observationId,
+          isObservationAbsenceProof(entry.item.absence) ? entry.item.absence : null, entry.item.expectedQueryKeys),
+      },
+    } : {}),
   }));
   const checkRows: ObservationCheckRow[] = fresh.flatMap((entry) =>
     entry.checks.map((check) => ({
@@ -759,6 +802,9 @@ export async function registerObservations(
       // which a per-row digest can see because each row would still agree with itself.
       digests,
       batchDigest,
+      // Bind adjacent provenance into the same immutable audit chain, without including
+      // source query values or changing any Observation wire digest.
+      ...(rows.some(row => row.absence !== undefined) ? { absenceDigests: rows.flatMap(row => row.absence === undefined ? [] : [{ observationId: row.record.observationId, digest: row.absence.digest }]) } : {}),
       coverage,
       corroboration,
       failedChecks,

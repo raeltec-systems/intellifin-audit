@@ -116,6 +116,24 @@ describe('GroundingInspector web_tree support', () => {
     expect(html).not.toContain('Platform key match');
   });
 
+  it('shows all recorded absence proof legs and leaves historical unrecorded proof explicit', () => {
+    const absent = observation({ found: 'false', identity: null, attributes: [], absence: {
+      proof: { queryKeys: [{ key: 'employee_id', value: 'E-001' }, { key: 'full_name', value: '<b>Pat</b>' }],
+        emptyResultEvidenceId: SNAPSHOT_ID, extractionComplete: false },
+      expectedQueryKeys: [{ key: 'employee_id', value: 'E-001' }, { key: 'full_name', value: 'Pat' }], integrityValid: true,
+    }, coverage: 'UNINSPECTED', checks: [{ check: 'search-completeness', outcome: 'FAIL', diagnostic: 'extraction-incomplete' }] });
+    const html = render(absent);
+    expect(html).toContain('Absence proof');
+    expect(html).toContain('Values actually searched');
+    expect(html).toContain('employee_id');
+    expect(html).toContain('full_name');
+    expect(html).toContain('&lt;b&gt;Pat&lt;/b&gt;');
+    expect(html).not.toContain('<b>Pat</b>');
+    expect(html).toContain('The search did not establish complete result consumption.');
+    expect(html).toContain('Empty-result Evidence');
+    expect(render(observation({ found: 'false', identity: null, attributes: [] }))).toContain('Absence proof was not recorded for this historical Observation.');
+  });
+
   it('explains a corroboration contradiction and exposes the re-read label as data', () => {
     const changed: StoredSnapshot = {
       ...WEB_SNAPSHOT,

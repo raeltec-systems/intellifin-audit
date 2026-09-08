@@ -116,6 +116,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_gate_check',
       'run_initiation_request',
       'run_observation',
+      'run_observation_absence',
       // Story 3.4. Observation registration: the per-Observation Gate check outcomes and
       // the per-condition evaluations, both committed in the same transaction as the
       // Observation rows they describe.
@@ -181,6 +182,10 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     [
       'run_evaluation_review_command',
       ['action', 'actor_id', 'command_id', 'condition_id', 'correlation_id', 'decision_id', 'expected_review_revision', 'observation_id', 'processed_at', 'rationale', 'refusal_code', 'replacement_value', 'requested_at', 'result_outcome', 'result_sealed', 'result_version', 'review_revision', 'run_id', 'session_id', 'status'],
+    ],
+    [
+      'run_observation_absence',
+      ['digest', 'expected_query_keys', 'observation_id', 'proof', 'run_id'],
     ],
     [
       'run_result_review',

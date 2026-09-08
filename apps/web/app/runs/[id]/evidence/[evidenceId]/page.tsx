@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import {
   requestEvidenceReadGrant,
+  ABSENCE_SNAPSHOT_LOCATOR,
 } from '@intellifin/application';
 import {
   CryptoUuidV7Generator,
@@ -46,21 +47,23 @@ export default async function StoredSnapshotPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly id: string; readonly evidenceId: string }>;
-  readonly searchParams: Promise<{ readonly locator?: string | readonly string[] }>;
+  readonly searchParams: Promise<{ readonly locator?: string | readonly string[]; readonly absence?: string | readonly string[] }>;
 }): Promise<React.JSX.Element> {
   const { id, evidenceId } = await params;
   const access = await openRun(id);
   if (!access.allowed) return <RunDenied reason={access.reason} />;
   const decision = await requireServerAction('run.initiate');
   if (!decision.allowed) return <RunDenied reason={decision.reason} />;
-  const locatorValue = (await searchParams).locator;
-  const locator = typeof locatorValue === 'string' ? locatorValue : null;
+  const search = await searchParams;
+  const absenceId = typeof search.absence === 'string' && search.locator === undefined ? search.absence : null;
+  const locator = absenceId !== null ? ABSENCE_SNAPSHOT_LOCATOR : typeof search.locator === 'string' && search.absence === undefined ? search.locator : null;
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const grounding = locator === null
+  const absence = absenceId === null ? null : await detail.readAbsenceEvidence(access.run.runId, absenceId, evidenceId.toLowerCase());
+  const grounding = locator === null || absenceId !== null
     ? null
     : await detail.readObservationGrounding(access.run.runId, evidenceId.toLowerCase(), locator);
-  if (locator === null || grounding === null || grounding.grounding === null) {
+  if (locator === null || (absenceId !== null ? absence === null : grounding?.grounding == null)) {
     return <RunDenied reason="This locator is not a recorded grounding for the Run." />;
   }
 
@@ -104,9 +107,9 @@ export default async function StoredSnapshotPage({
             <dd className="ls-mono">{locator}</dd>
           </div>
           <div>
-            <dt>Field label</dt>
+            <dt>{absence === null ? 'Field label' : 'Snapshot view'}</dt>
             <dd>
-              <UntrustedText field="recorded grounding field label">{grounding.grounding.label}</UntrustedText>
+              <UntrustedText field="recorded grounding field label">{grounding?.grounding?.label ?? 'Captured empty-result page'}</UntrustedText>
             </dd>
           </div>
         </dl>
@@ -115,7 +118,7 @@ export default async function StoredSnapshotPage({
             {FAILURE_COPY[read.failure]}
           </Banner>
         ) : (
-          <UntrustedText field={`${grounding.name}, as read at the stored snapshot locator`}>
+          <UntrustedText field={`${absence === null ? grounding!.name : 'empty-result page'}, as read at the stored snapshot locator`}>
             {groundingValueText(read.cell.value)}
           </UntrustedText>
         )}

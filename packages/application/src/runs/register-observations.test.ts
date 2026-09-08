@@ -33,6 +33,7 @@ import type {
 import {
   ObservationRegistrationError,
   registerObservations,
+  observationAbsenceDigest,
   type ObservationBatch,
   type ObservationBatchItem,
 } from './register-observations.js';
@@ -176,6 +177,7 @@ class FakeContext implements ObservationRegistrationContext {
     this.observations
       .filter((row) => row.record.workItemId === workItemId && keys.includes(row.record.populationRecordKey))
       .map((row) => ({
+        ...(row.absence === undefined ? {} : { absence: row.absence }),
         observationId: row.record.observationId,
         populationRecordKey: row.record.populationRecordKey,
         record: row.record,
@@ -1094,6 +1096,19 @@ describe('registerObservations', () => {
     expect(stored.observedAtSource).toBe('2026-09-05T12:00:00+02:00');
     // The instant is provably the same one; nothing was silently shifted.
     expect(Date.parse(stored.observedAtSource)).toBe(Date.parse(stored.record.observedAt));
+  });
+
+  it('preserves the actual absence proof beside the wire record and rejects different proof on replay', async () => {
+    const context = new FakeContext();
+    const offered = item(absent('AG-9999'));
+    await registerObservations(context, batch([offered]), SEAMS);
+    const persisted = context.observations[0]!;
+    expect(persisted.absence).toEqual({ proof: offered.absence, expectedQueryKeys: offered.expectedQueryKeys,
+      digest: observationAbsenceDigest(offered.record.observationId, offered.absence, offered.expectedQueryKeys) });
+    expect(persisted.digest).toBe(observationDigest(persisted.record));
+    await expect(registerObservations(context, batch([offered]), SEAMS)).resolves.toMatchObject({ registered: 0, alreadyRegistered: 1 });
+    const changed = { ...offered, absence: { ...offered.absence!, extractionComplete: false } };
+    expect(await refusal(() => registerObservations(context, batch([changed]), SEAMS))).toBe('digest-mismatch');
   });
 
   it('registers an empty batch as nothing at all', async () => {

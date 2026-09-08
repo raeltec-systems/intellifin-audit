@@ -251,7 +251,11 @@ export default async function RunEvidencePage({
                 key={observation.observationId}
                 observation={observation}
                 mediaTypeOf={mediaTypeOf}
-                snapshotHrefOf={(evidenceId, locator) =>
+                absenceHrefOf={(evidenceId, observationId) =>
+                mediaTypes.get(evidenceId) === 'application/vnd.intellifin.web-tree+json'
+                  ? `/runs/${run.runId}/evidence/${encodeURIComponent(evidenceId)}?absence=${encodeURIComponent(observationId)}`
+                  : `#evidence-${evidenceId}`}
+              snapshotHrefOf={(evidenceId, locator) =>
                   `/runs/${run.runId}/evidence/${encodeURIComponent(evidenceId)}?locator=${encodeURIComponent(locator)}`
                 }
               />

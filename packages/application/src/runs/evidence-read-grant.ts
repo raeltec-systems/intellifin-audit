@@ -17,6 +17,8 @@ export const EVIDENCE_READ_MAX_BYTES = 4 * 1024 * 1024;
 
 export const EVIDENCE_READ_GRANT_SCHEMA_VERSION = 1 as const;
 export const EVIDENCE_READ_GRANT_QUEUE = 'evidence-read-grants' as const;
+/** Whole captured empty-result page; authorized by a persisted absence proof, not a row locator. */
+export const ABSENCE_SNAPSHOT_LOCATOR = 'absence-result' as const;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -204,7 +206,7 @@ export function parseEvidenceReadGrantRequest(value: unknown):
   if (
     typeof value.runId !== 'string' || !UUID.test(value.runId) ||
     typeof value.evidenceId !== 'string' || !UUID.test(value.evidenceId) ||
-    !nonEmptyText(value.locator, 1024) || parseSnapshotLocator(value.locator) === null
+    !nonEmptyText(value.locator, 1024) || (value.locator !== ABSENCE_SNAPSHOT_LOCATOR && parseSnapshotLocator(value.locator) === null)
   ) return { error: 'malformed' };
   return {
     runId: value.runId.toLowerCase(),
@@ -350,7 +352,7 @@ export async function issueEvidenceReadGrant(
     if (!nonEmptyText(objectKey, 1024) || !validDigest(digest) ||
         typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0 || size > EVIDENCE_READ_MAX_BYTES ||
         !nonEmptyText(mediaType, 512)) return denyGrant(context, 'invalid-evidence-metadata');
-    if (parseSnapshotLocator(grant.locator) === null) return denyGrant(context, 'scope-mismatch');
+    if (grant.locator !== ABSENCE_SNAPSHOT_LOCATOR && parseSnapshotLocator(grant.locator) === null) return denyGrant(context, 'scope-mismatch');
 
     const signed = await dependencies.signer.signGet({ bucketKey: objectKey, expiresAt: grant.expiresAt });
     if (!validCapabilityUrl(signed.signedUrl) || !validInstant(signed.signedUrlExpiresAt) ||

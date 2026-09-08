@@ -364,3 +364,12 @@ Both regressions fail before repair;55 focused loop/planner/Observation tests pa
 ## Canonical Northstar empty-result declaration repair
 
 Search-fact repairbd271cbf5d4b2903865d14d69f5ba49b277566d5 is pushed and current root/application typechecks pass. Real-page D12 testing found canonical LoanCore zero-result pages omitted the declared result summary, while the simplified integration fixture supplied it. A failing Northstar regression now requires the truthful zero-of-zero summary alongside the existing no-accounts text. The target renderer emits it only when its actual matched row count is zero; the browser's completion predicate is unchanged. All34Northstar server tests pass after repair. This checkpoint is pushed; canonical browser/PG and live deployed-target verification remain required.
+
+
+## Persisted absence proof and auditor surface checkpoint
+
+Canonical Northstar summary repair2e9a36ac907a3235682f03991cfab988fcafea6b is pushed. Generation40 adds an immutable, Observation-bound absence provenance row with actual searched keys, declared expected keys, empty-result Evidence and completeness. The separate canonical metadata digest is bound into the registration audit event; the existing thirteen-key Observation wire digest remains unchanged. Historical rows are not backfilled. Shared transactional registration writes the metadata and refuses changed proof on redelivery.
+
+The Observation card renders every proof leg as inert data, explicitly distinguishes incomplete and historical missing proof, and opens the captured empty-result document through the existing authenticated route/durable worker/S3 grant path. It does not invent a matching-row locator. Exact persisted proof/Evidence binding controls this whole-document mode. Five PostgreSQL cases cover persistence, immutability, replay and historical/sealed behavior; the browser suite now includes actual absent-proof inspection, forged Evidence refusal and accessibility.
+
+UI and persistence regressions both demonstrated red then green.102 focused tests and all affected typechecks pass; generation40 derives from39 and repeat generation reports no drift. The5PG cases and4browser cases are unrun locally; hosted execution is required. This checkpoint is pushed but4.5 acceptance remains pending canonical D12/D14 journeys and exact-candidate CI. No merge/deployment.

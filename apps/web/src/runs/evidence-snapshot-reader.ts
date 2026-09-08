@@ -1,4 +1,5 @@
 import {
+  ABSENCE_SNAPSHOT_LOCATOR,
   type EvidenceReadIntegrityMismatch,
   type EvidenceReadGrantCapability,
   type EvidenceReadGrantRepository,
@@ -261,6 +262,12 @@ export async function readSnapshotCellWithGrant(
   if (substrate === null) return { cell: null, failure: 'snapshot-unreadable' };
   const parsed = readStructuralSnapshot({ evidenceId: input.evidenceId, substrate, bytes: body });
   if (!parsed.ok) return { cell: null, failure: 'snapshot-unreadable' };
+  if (input.locator === ABSENCE_SNAPSHOT_LOCATOR) {
+    if (parsed.substrate !== 'web_tree') return { cell: null, failure: 'snapshot-unreadable' };
+    // The entire bounded document is shown as inert JSON. It is a view of the captured
+    // empty-result page, not an invented matched-row cell or a second absence judge.
+    return { cell: { value: JSON.parse(JSON.stringify(parsed.document)), label: 'Captured empty-result page' }, failure: null };
+  }
   const locator = parseSnapshotLocator(input.locator);
   if (locator === null) return { cell: null, failure: 'locator-malformed' };
   const cell = readSnapshotCell(parsed, locator);

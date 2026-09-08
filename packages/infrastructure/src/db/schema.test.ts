@@ -321,3 +321,17 @@ describe('generation 38 stored snapshot read capabilities', () => {
     expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (38)');
   });
 });
+
+
+describe('generation 40 adjacent absence provenance', () => {
+  const sql = migration('0040_faulty_james_howlett.sql');
+  it('adds immutable proof storage without rewriting prior Observations or their digest', () => {
+    expect(sql).toContain('CREATE TABLE "run_observation_absence"');
+    expect(sql).toContain("found='false'");
+    expect(sql).toContain("IF TG_OP = 'UPDATE'");
+    expect(sql).toContain('A sealed Run cannot acquire retrospective absence provenance');
+    expect(sql).toContain('PERFORM run_id FROM audit_run WHERE run_id=NEW.run_id FOR UPDATE');
+    expect(sql).not.toMatch(/UPDATE\s+"?run_observation"?\s+SET/i);
+    expect(sql).toContain('INSERT INTO "schema_meta" ("version") VALUES (40)');
+  });
+});

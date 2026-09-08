@@ -8,13 +8,16 @@ import type {
   GateDiagnostic,
   GateOutcome,
   ObservationAttribute,
+  ObservationAbsenceProof,
+  ObservationQueryKey,
   ObservationCoverage,
   ObservationFound,
   OutcomeRowId,
   RunResultPublication,
   SystemOutcome,
 } from '@intellifin/domain';
-import { isRunResultPublication } from '@intellifin/domain';
+import { observationAbsenceDigest } from '@intellifin/application';
+import { isObservationAbsenceProof, isObservationQueryKey, isRunResultPublication } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import {
@@ -23,6 +26,7 @@ import {
   runException,
   runGateCheck,
   runObservation,
+  runObservationAbsence,
   runObservationCheck,
   runObservationEvaluation,
   runEvaluationReview,
@@ -114,7 +118,25 @@ export interface RunEvidenceItem {
   readonly captureTimeSource: string | null;
 }
 
+export interface RunObservationAbsence {
+  readonly proof: ObservationAbsenceProof | null;
+  readonly expectedQueryKeys: readonly ObservationQueryKey[];
+  readonly integrityValid: boolean;
+}
+
+function readAbsenceMetadata(row: typeof runObservationAbsence.$inferSelect): RunObservationAbsence {
+  try {
+    const valid = (row.proof === null || isObservationAbsenceProof(row.proof)) &&
+      Array.isArray(row.expectedQueryKeys) && row.expectedQueryKeys.every(isObservationQueryKey) &&
+      observationAbsenceDigest(row.observationId, row.proof, row.expectedQueryKeys) === row.digest;
+    return valid ? { proof: row.proof, expectedQueryKeys: row.expectedQueryKeys, integrityValid: true }
+      : { proof: null, expectedQueryKeys: [], integrityValid: false };
+  } catch { return { proof: null, expectedQueryKeys: [], integrityValid: false }; }
+}
+
 export interface RunObservationRow {
+  /** Undefined means this historical Observation did not retain its absence provenance. */
+  readonly absence?: RunObservationAbsence;
   readonly observationId: string;
   readonly workItemId: string;
   readonly populationRecordKey: string;
@@ -385,6 +407,9 @@ export class DrizzleRunDetailRepository {
       .orderBy(asc(runObservation.targetSystem), asc(runObservation.populationRecordKey))
       .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
     const ids = rows.map((row) => row.observationId);
+    const absenceRows = ids.length === 0 ? [] : await this.db.select().from(runObservationAbsence)
+      .where(and(eq(runObservationAbsence.runId, runId), inArray(runObservationAbsence.observationId, ids)));
+    const absence = new Map(absenceRows.map(row => [row.observationId, readAbsenceMetadata(row)]));
     const checks = ids.length === 0 ? [] : await this.db
       .select()
       .from(runObservationCheck)
@@ -399,6 +424,7 @@ export class DrizzleRunDetailRepository {
     return {
       total,
       rows: rows.map((row): RunObservationRow => ({
+        ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
         observationId: row.observationId,
         workItemId: row.workItemId,
         populationRecordKey: row.populationRecordKey,
@@ -464,6 +490,19 @@ export class DrizzleRunDetailRepository {
       }
     }
     return count === 1 ? match : null;
+  }
+
+  /** Exact recorded empty-result proof, independent of the 50-row Observation sample. */
+  async readAbsenceEvidence(runId: string, observationId: string, evidenceId: string): Promise<RunObservationAbsence | null> {
+    if (![runId, observationId, evidenceId].every(isUuidText)) return null;
+    const rows = await this.db.select({ metadata: runObservationAbsence, evidenceIds: runObservation.evidenceIds })
+      .from(runObservationAbsence)
+      .innerJoin(runObservation, and(eq(runObservation.observationId, runObservationAbsence.observationId), eq(runObservation.runId, runObservationAbsence.runId)))
+      .where(and(eq(runObservationAbsence.runId, runId), eq(runObservationAbsence.observationId, observationId), eq(runObservation.found, 'false'))).limit(1);
+    const row = rows[0];
+    if (row === undefined) return null;
+    const metadata = readAbsenceMetadata(row.metadata);
+    return metadata.integrityValid && metadata.proof?.emptyResultEvidenceId === evidenceId && row.evidenceIds.includes(evidenceId) ? metadata : null;
   }
 
   /** Every Exception this Run raised, ordered by identifier (EXPERIENCE.md, Open Question 2). */

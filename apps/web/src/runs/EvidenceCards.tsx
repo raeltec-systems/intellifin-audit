@@ -188,6 +188,7 @@ export function GroundingInspector({
   mediaTypeOf,
   snapshotOf,
   snapshotHrefOf,
+  absenceHrefOf,
 }: {
   readonly observation: RunObservationRow;
   /** The registered media type of an Evidence item, or `null` when it is unknown. */
@@ -196,6 +197,7 @@ export function GroundingInspector({
   readonly snapshotOf?: (evidenceId: string) => StoredSnapshot | null;
   /** A protected route to the stored artifact at its grounding locator. */
   readonly snapshotHrefOf?: (evidenceId: string, locator: string) => string | null;
+  readonly absenceHrefOf?: (evidenceId: string, observationId: string) => string | null;
 }): React.JSX.Element {
   const snapshotResolver = snapshotOf ?? (() => null);
   // No link is emitted until an authorized server composition supplies one. A guessed
@@ -254,6 +256,7 @@ export function GroundingInspector({
           ))}
         </ul>
       )}
+      {observation.found === 'false' ? <AbsenceProof observation={observation} hrefOf={absenceHrefOf} /> : null}
       <div className="ls-stack">
         <h3>Match provenance</h3>
         {observation.identity === null ? (
@@ -447,4 +450,52 @@ function AttributeGrounding({
       </dl>
     </li>
   );
+}
+
+const ABSENCE_FAILURE_COPY: Readonly<Record<string, string>> = {
+  'absence-proof-missing': 'No valid absence proof was supplied.',
+  'query-key-missing': 'At least one declared search key was not searched.',
+  'query-key-mismatch': 'A searched value did not match the declared population key.',
+  'empty-result-unlinked': 'The empty-result Evidence was not linked to this Observation.',
+  'empty-result-unregistered': 'The empty-result Evidence was not registered.',
+  'extraction-incomplete': 'The search did not establish complete result consumption.',
+};
+
+function AbsenceProof({ observation, hrefOf }: {
+  readonly observation: RunObservationRow;
+  readonly hrefOf?: (evidenceId: string, observationId: string) => string | null;
+}): React.JSX.Element {
+  const metadata = observation.absence;
+  const proof = metadata?.proof;
+  const check = observation.checks.find(row => row.check === 'search-completeness');
+  const failure = check?.diagnostic;
+  const href = proof == null ? null : hrefOf?.(proof.emptyResultEvidenceId, observation.observationId);
+  return <section className="ls-stack" aria-label="Absence proof">
+    <h3>Absence proof</h3>
+    <p>No matching account was reported. The proof below determines whether that absence is supported.</p>
+    {metadata === undefined ? <p>Absence proof was not recorded for this historical Observation.</p>
+      : !metadata.integrityValid ? <p>The stored absence provenance failed its integrity check; its proof cannot be displayed as verified.</p>
+      : proof == null ? <p>No valid absence proof was supplied.</p>
+      : <>
+        <h4>Values actually searched</h4>
+        <p>Recorded by the platform from the executed search, not from agent narration.</p>
+        <ul className="ls-plain-list">{proof.queryKeys.map(query => <li key={query.key}>
+          <UntrustedText field="search key">{query.key}</UntrustedText>
+          <UntrustedText field="value actually searched">{query.value}</UntrustedText>
+        </li>)}</ul>
+        <p>Declared search keys: {metadata.expectedQueryKeys.length}.</p>
+        <ul className="ls-plain-list">{metadata.expectedQueryKeys.map(query => <li key={query.key}>
+          <UntrustedText field="declared search key">{query.key}</UntrustedText>
+          <UntrustedText field="expected population value">{query.value}</UntrustedText>
+        </li>)}</ul>
+        <dl className="ls-definition">
+          <div><dt>Empty-result Evidence</dt><dd className="ls-mono">{href ? <a href={href}>{proof.emptyResultEvidenceId}</a> : proof.emptyResultEvidenceId}</dd></div>
+          <div><dt>Search completeness</dt><dd>{proof.extractionComplete ? 'The producer recorded complete result consumption.' : 'The search did not establish complete result consumption.'}</dd></div>
+        </dl>
+      </>}
+    {failure != null && Object.hasOwn(ABSENCE_FAILURE_COPY, failure) ? <p>{ABSENCE_FAILURE_COPY[failure]}</p> : null}
+    <p>{observation.coverage === 'COVERED' && check?.outcome === 'PASS'
+      ? 'The registered absence check passed. Other required checks and evaluations still determine the Result.'
+      : 'This Observation does not establish a covered absence; it cannot support a Compliant absence conclusion.'}</p>
+  </section>;
 }

@@ -1317,3 +1317,8 @@ Absence proof values must come from the saved sanitized Tool Action parameters, 
 ### Canonical empty-result evidence
 
 A synthetic target's real empty page must expose a truthful count/completeness declaration. A custom test page with a stronger summary can mask a missing canonical target contract. Fix the renderer from its actual matched rows; do not relax browser completion or call an arbitrary empty document proof of absence.
+
+
+### Retained absence provenance
+
+Preserve proof metadata beside the Observation in the shared registration transaction, with its own canonical digest recorded in the audit chain. Do not change the existing wire digest or backfill historical proof from today's values. Freeze the metadata while its Observation exists and refuse retrospective insertion after sealing. The auditor surface must show searched values, expected keys, completeness and the linked empty-result Evidence. Whole-document inspection requires that exact persisted proof binding; it never invents a matched-row locator.

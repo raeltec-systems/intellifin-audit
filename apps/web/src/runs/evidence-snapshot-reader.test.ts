@@ -187,6 +187,13 @@ describe('server-side Evidence snapshot consumption', () => {
     expect(fake.access).toEqual([]);
   });
 
+  it('opens a whole bounded empty-result page only through the explicit absence view', async () => {
+    const fake = repository(capability({ locator: 'absence-result' }));
+    const result = await readSnapshotCellWithGrant(fake.repository, { ...input, locator: 'absence-result' }, environment(responseWithBytes()));
+    expect(result).toEqual({ cell: { label: 'Captured empty-result page', value: JSON.parse(new TextDecoder().decode(BYTES)) }, failure: null });
+    expect(fake.access).toEqual([GRANT_ID]);
+  });
+
   it('does not render a cell when the access audit cannot be committed', async () => {
     const fake = repository(capability(), false);
     const result = await readSnapshotCellWithGrant(

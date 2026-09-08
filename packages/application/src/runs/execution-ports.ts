@@ -22,6 +22,8 @@ import type {
   ObservationCoverage,
   ObservationEvaluation,
   ObservationRecord,
+  ObservationAbsenceProof,
+  ObservationQueryKey,
   ExceptionFingerprintEnvelope,
   OutcomeRowId,
   RaisedException,
@@ -441,6 +443,8 @@ export interface AdapterExecutionRepository {
  * it would find them in agreement and see nothing.
  */
 export interface StoredObservation {
+  /** Undefined means historical provenance was not retained; never backfilled on replay. */
+  readonly absence?: RegisteredObservationAbsence;
   readonly observationId: string;
   readonly populationRecordKey: string;
   /** The stored row, rebuilt from its columns. Unvalidated: the caller judges it. */
@@ -461,7 +465,15 @@ export interface StoredObservation {
 }
 
 /** One Observation as it is written: the wire record, plus what registration derived. */
+export interface RegisteredObservationAbsence {
+  readonly proof: ObservationAbsenceProof | null;
+  readonly expectedQueryKeys: readonly ObservationQueryKey[];
+  readonly digest: string;
+}
+
 export interface RegisteredObservation {
+  /** Adjacent provenance, deliberately outside the thirteen-key Observation envelope. */
+  readonly absence?: RegisteredObservationAbsence;
   readonly record: ObservationRecord;
   /** `observationDigest(record)`. Recomputed on read; never taken from a caller. */
   readonly digest: string;
