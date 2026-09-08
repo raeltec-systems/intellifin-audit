@@ -1426,6 +1426,7 @@ export async function executeAgentWorkItem(
           break;
         }
         const planned = planAgentTools({
+          runId: run.runId,
           plan,
           target: entry.target,
           population: record,
@@ -1605,18 +1606,20 @@ export async function executeAgentWorkItem(
         }
         if (capture === null) return { retry: false };
         const beforeSearch = current.snapshot;
+        const controlPage = { runId: run.runId, targetSystem: entry.target.registrationId, sourceLocation: current.sourceLocation };
         current = { snapshot: capture.snapshot, sourceLocation: performed.action.destination, screenshotEvidenceId: capture.screenshotEvidenceId };
         item.evidenceId = capture.snapshot.evidenceId;
         if (selected.action === 'search') {
           searches = [...searches, {
             parameters: performed.action.parameters,
             controlSnapshot: beforeSearch,
+            controlPage,
             snapshot: current.snapshot,
             lookupKey: searchLookupKey(entry.target, performed.action.parameters, beforeSearch) ?? undefined,
           }];
         }
         if (selected.action === 'read-attribute') {
-          const after = planAgentTools({ plan, target: entry.target, population: record, snapshot: current.snapshot, sourceLocation: current.sourceLocation, searches });
+          const after = planAgentTools({ runId: run.runId, plan, target: entry.target, population: record, snapshot: current.snapshot, sourceLocation: current.sourceLocation, searches });
           if (after.found !== null) {
             const observation = buildFoundAgentObservation({
               plan, target: entry.target, population: record, workItemId: item.workItemId,

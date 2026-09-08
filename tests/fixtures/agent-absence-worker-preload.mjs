@@ -18,7 +18,10 @@ globalThis.fetch = async (input, init) => {
   const tool = envelope.tools.find(candidate => candidate.action === 'search') ??
     envelope.tools.find(candidate => candidate.action === 'navigate') ??
     envelope.tools.find(candidate => candidate.action === 'read-attribute');
-  if (!tool) throw new Error('Absence journey has no approved action.');
+  if (!tool) {
+    process.stdout.write('Synthetic absence provider:no-approved-action\n');
+    throw new Error('Absence journey has no approved action.');
+  }
   process.stdout.write(`Synthetic absence provider:${JSON.stringify({ action: tool.action, opaqueTool: typeof tool.toolId === 'string' })}\n`);
   return new Response(JSON.stringify({
     id: `msg_synthetic_absence_${++sequence}`, type: 'message', role: 'assistant', model: body.model,

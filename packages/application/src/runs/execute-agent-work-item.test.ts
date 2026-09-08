@@ -896,3 +896,53 @@ describe('agent work enforces final limits, target order and bounded human retri
     expect(repository.waits).toHaveLength(1); expect(repository.workItems[0]?.state).toBe('FAILED');
   });
 });
+
+describe('agent absence returns to its recorded search controls', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it.each([false, true])('grounds both keys through an empty page without links (restart=%s)', async restart => {
+    vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    const actions: string[] = [];
+    function liveBrowser() {
+      const browser = browserFor(repository);
+      const perform = browser.perform;
+      browser.perform = async (...args) => {
+        const result = await perform(...args);
+        const action = args[1]; actions.push(action.action);
+        const document = action.action === 'search'
+          ? { schemaVersion: 1, nodes: [], completion: { complete: true, returned: 0 } }
+          : { schemaVersion: 1, nodes: SNAPSHOT_NODES };
+        return { ...result, artifacts: result.artifacts!.map(artifact => artifact.kind === 'structural-snapshot'
+          ? { ...artifact, bytes: utf8Bytes(JSON.stringify(document)) } : artifact) };
+      };
+      return browser;
+    }
+    let interrupted = false;
+    const gateway: AgentModelGateway = { identity: identity(), propose: vi.fn(async (request: AgentModelRequest) => {
+      const tool = request.tools.find(tool => tool.action === 'search') ?? request.tools.find(tool => tool.action === 'navigate');
+      if (restart && !interrupted && actions.at(-1) === 'search') {
+        interrupted = true; throw new AgentModelGatewayError('unavailable');
+      }
+      return response(tool?.toolId ?? null);
+    }) };
+    const dependencies = deps(repository, liveBrowser(), gateway, durableWaitPort(repository));
+    const initial = await executeAgentWorkItem(dependencies, JOB);
+    if (restart) {
+      expect(initial).toEqual({ retry: true });
+      expect(repository.observations).toHaveLength(0);
+      // Fresh browser and application call: persisted evidence is retained, live controls
+      // are reacquired and both keys searched again under the current Run/target.
+      await executeAgentWorkItem({ ...dependencies, browser: liveBrowser() }, JOB);
+    }
+    expect(repository.checkpoint?.status).toBe('COMPLETE');
+    expect(repository.waits).toHaveLength(0);
+    expect(repository.observations).toHaveLength(1);
+    expect(repository.observations[0]).toMatchObject({ coverage: 'COVERED', record: { found: 'false', attributes: [] } });
+    expect(repository.observationChecks).toContainEqual(expect.objectContaining({ check: 'search-completeness', outcome: 'PASS' }));
+    expect(repository.actions.filter(action => action.action === 'search').slice(-2).map(action => action.parameters)).toEqual([
+      [{ name: 'employee_id', value: RECORD.values.employee_id }], [{ name: 'full_name', value: RECORD.values.full_name }],
+    ]);
+    expect(actions.slice(-4)).toEqual(['navigate','search','navigate','search']);
+    expect(repository.actions.every(action => action.runId === RUN_ID && action.destination === 'https://loancore.example.test/')).toBe(true);
+  });
+});

@@ -144,6 +144,33 @@ async function startWorker(): Promise<void> {
 }
 
 
+// Closed platform fields only: no model responses, URLs, credentials or free-text diagnostics.
+const SAFE_DIAGNOSTICS = new Set(['unsupported-frozen-plan','population-key-unresolved','extraction-incomplete','prerequisites-incomplete','workspace-missing','model-not-configured','model-invalid-action','model-no-proposal','model-unavailable','model-timeout','model-canceled','model-configuration','model-invalid-request','model-invalid-response','model-provider-refused','browser-unavailable','browser-denied','browser-scope-violation','browser-contract-failed','capture-integrity-failed','capture-contract-failed','credential-unresolved','observation-registration-refused','human-decision-refused','unnamed-value','ambiguous-match','insufficient-evidence','run-time-limit','run-step-execution-limit','run-token-limit','attempt-limit','canceled','lost-claim']);
+function closedValue(value: unknown, allowed: readonly string[]): string | null {
+  return value === null ? null : typeof value === 'string' && allowed.includes(value) ? value : 'unrecognized';
+}
+async function failureDiagnostics(runId: string) {
+  const [runs, works, turns, waits, gates, items] = await Promise.all([
+    sql`SELECT state FROM audit_run WHERE run_id=${runId}`,
+    sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${runId}`,
+    sql`SELECT status,diagnostic FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence LIMIT 32`,
+    sql`SELECT kind FROM run_wait WHERE run_id=${runId} AND closed_at IS NULL`,
+    sql`SELECT outcome FROM run_gate_check WHERE run_id=${runId}`,
+    sql`SELECT state,diagnostic FROM run_work_item WHERE run_id=${runId}`,
+  ]);
+  const diagnostic = (value: unknown) => closedValue(value, [...SAFE_DIAGNOSTICS]);
+  return {
+    run: runs.map(row => closedValue(row.state, ['QUEUED','RUNNING','AWAITING_AUDITOR','COMPLETED','INCONCLUSIVE','FAILED','CANCELED'])),
+    work: works.map(row => ({ status: closedValue(row.status, ['EXECUTING','RETRY','WAITING','COMPLETE','TERMINAL']), diagnostic: diagnostic(row.diagnostic) })),
+    turns: turns.map(row => ({ status: closedValue(row.status, ['RESERVED','COMPLETED','FAILED']), diagnostic: diagnostic(row.diagnostic) })),
+    waits: waits.map(row => closedValue(row.kind, ['retry-or-skip','choose-candidate','unnamed-value'])),
+    gate: gates.map(row => closedValue(row.outcome, ['PASS','FAIL','NOT_APPLICABLE'])),
+    items: items.map(row => ({ state: closedValue(row.state, ['PENDING','IN_PROGRESS','AWAITING','OBSERVED','UNINSPECTED','FAILED','SKIPPED']), diagnostic: diagnostic(row.diagnostic) })),
+    providerActions: ['search','navigate','read-attribute'].map(action => ({ action, count: workerMarkers.filter(marker => marker === `Synthetic absence provider:${JSON.stringify({ action, opaqueTool: true })}`).length })),
+    noApprovedAction: workerMarkers.filter(marker => marker === 'Synthetic absence provider:no-approved-action').length,
+  };
+}
+
 async function startRun(page: Page): Promise<string> {
   await page.goto(`/procedures/${procedureId}`);
   await expect(page.locator('#initiate-run[data-client-ready=true]')).toBeVisible();
@@ -178,10 +205,14 @@ test.describe('canonical P-1 absence through the actual compiled worker', () => 
     test.setTimeout(240_000);
     const frozen = (await sql`SELECT to_jsonb(v)::text AS value FROM procedure_version v WHERE version_id=${versionId}`)[0]!.value;
     const runId = await startRun(page);
+    try {
     await expect.poll(async () => {
       if (workerFailure) throw new Error(workerFailure);
       return (await sql`SELECT outcome,sealed,gate_passed FROM run_result WHERE run_id=${runId}`)[0];
     }, { timeout: 150_000 }).toMatchObject({ outcome: expected!.expected_terminal_outcome.toUpperCase(), sealed: true, gate_passed: true });
+    } catch {
+      throw new Error(`Absence journey did not seal its expected Result: ${JSON.stringify(await failureDiagnostics(runId))}`);
+    }
     expect(await sql`SELECT state,missing_required FROM run_evidence_package WHERE run_id=${runId}`).toEqual([{ state: 'SEALED', missing_required: [] }]);
     const [observation] = await sql`SELECT observation_id,population_record_key,found,coverage,attributes,evidence_ids FROM run_observation WHERE run_id=${runId}`;
     expect(await sql`SELECT observation_id FROM run_observation WHERE run_id=${runId}`).toHaveLength(1);
@@ -194,7 +225,7 @@ test.describe('canonical P-1 absence through the actual compiled worker', () => 
     expect(observation!.evidence_ids).toContain(proof.emptyResultEvidenceId);
     const searches = await sql`SELECT action,method,destination,parameters FROM run_tool_action WHERE run_id=${runId} AND action='search' AND outcome='performed' ORDER BY started_at`;
     expect(searches).toHaveLength(2);
-    expect(searches.map(row => row.parameters)).toEqual(keys.map(key => [{ name: key.key, value: key.value }]));
+    expect(searches.map(row => row.parameters)).toEqual(keys.map(key => [{ name: key.key === 'full_name' ? 'name' : 'employee_id', value: key.value }]));
     expect(searches.every(row => row.method === 'GET' && !String(row.destination).includes('?'))).toBe(true);
     expect(await sql`SELECT step_id FROM run_session_step WHERE run_id=${runId} AND action='sign-in' AND state='ACQUIRED'`).toHaveLength(1);
     expect(await sql`SELECT sequence FROM audit_events WHERE aggregate_id=${runId} AND payload->>'diagnostic'='session-established'`).toHaveLength(1);
@@ -269,6 +300,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_tool_action WHERE run_id = ANY(${runIds}::uuid[])`;
       await sql`DELETE FROM run_agent_turn WHERE run_id = ANY(${runIds}::uuid[])`;
       await sql`DELETE FROM run_agent_work WHERE run_id = ANY(${runIds}::uuid[])`;
+      await sql`DELETE FROM run_wait WHERE run_id = ANY(${runIds}::uuid[])`;
       await sql`DELETE FROM run_observation_evaluation WHERE run_id = ANY(${runIds}::uuid[])`;
       await sql`DELETE FROM run_observation_check WHERE run_id = ANY(${runIds}::uuid[])`;
       // Review ledger/command rows cascade from their evaluation, and Exceptions

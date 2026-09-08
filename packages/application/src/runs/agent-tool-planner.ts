@@ -33,6 +33,8 @@ export interface AgentSearchEvidence {
   readonly controlSnapshot?: StoredSnapshot;
   /** The root may retain this binding when it has it; it is never model supplied. */
   readonly lookupKey?: string;
+  /** Platform-recorded provenance of the pre-search capture; never model supplied. */
+  readonly controlPage?: { readonly runId: string; readonly targetSystem: string; readonly sourceLocation: string };
 }
 
 /** Structural alias for callers that pass the sanitized action before projecting it. */
@@ -40,9 +42,12 @@ export type AgentSearchHistoryEntry = Pick<SanitizedToolAction, 'parameters'> & 
   readonly snapshot: StoredSnapshot;
   readonly controlSnapshot?: StoredSnapshot;
   readonly lookupKey?: string;
+  readonly controlPage?: AgentSearchEvidence['controlPage'];
 };
 
 export interface AgentToolPlannerInput {
+  /** Required to offer navigation derived from this Run's recorded search history. */
+  readonly runId?: string;
   readonly plan: ExecutablePlan;
   readonly target: ProcedureTargetSnapshot;
   readonly population: PopulationRecord;
@@ -471,6 +476,37 @@ function addSearchOption(
   );
 }
 
+/** Return to a previously captured search surface without inventing a route. This is
+ * an opaque navigation proposal, not a replayed search or proof of absence. A fresh
+ * capture must expose the remaining control before any next search can be offered. */
+function addRecordedSearchPageOption(
+  options: InternalOption[], input: AgentToolPlannerInput, lookups: readonly LookupSpec[], next: LookupSpec | undefined,
+): boolean {
+  if (next === undefined || !targetAllows(input.target, 'navigate') || !targetAllows(input.target, 'search') ||
+      !targetLabelAllowed(input.target, next.label) || !input.runId ||
+      options.some(option => option.tool.action === 'search') || !completeZero(input.snapshot)) return true;
+  for (const search of input.searches) {
+    const page = search.controlPage;
+    if (!page || page.runId !== input.runId || page.targetSystem !== input.target.registrationId ||
+        search.controlSnapshot === undefined || searchKeysForEvidence(search, lookups) === null) continue;
+    const destination = safeLocation(page.sourceLocation);
+    // Reject query/fragment-bearing or transformed provenance rather than stripping it.
+    if (destination === null || destination !== page.sourceLocation || !inTargetOrigins(input.target, destination)) continue;
+    const parsed = readStructuralSnapshot(search.controlSnapshot);
+    if (!parsed.ok || parsed.substrate !== 'web_tree') continue;
+    const controls = parsed.document.nodes.filter(node => node.role === 'input' && node.label === next.label && node.target !== null);
+    if (controls.length !== 1) continue;
+    if (options.some(option => option.tool.action === 'navigate' && option.tool.destination === destination)) return true;
+    // Current-node link indexes cannot collide with this reserved index. There is no
+    // current-page locator: the provenance is the platform's earlier control capture.
+    const current = readStructuralSnapshot(input.snapshot);
+    if (!current.ok || current.substrate !== 'web_tree') return true;
+    return addOption(options, 'navigate', destination, null,
+      'Return to the recorded approved search page to inspect the remaining search control.', [], current.document.nodes.length, []);
+  }
+  return true;
+}
+
 function addReadOptions(
   options: InternalOption[],
   target: ProcedureTargetSnapshot,
@@ -603,6 +639,7 @@ export function planAgentTools(input: AgentToolPlannerInput): AgentToolPlannerRe
   if (!addLinkOptions(options, parsed.document, input.target, primary, secondary)) return emptyResult();
   if (!addSearchOption(options, parsed.document, input.target, destination, next)) return emptyResult();
   const found = candidate.found;
+  if (found === null && !absenceReady && !addRecordedSearchPageOption(options, input, lookups, next)) return emptyResult();
   if (!addReadOptions(options, input.target, destination, parsed.document, found)) return emptyResult();
   if (!addScreenshotOption(options, input.target, destination)) return emptyResult();
   return output(options, found, candidate.candidates, absenceReady);

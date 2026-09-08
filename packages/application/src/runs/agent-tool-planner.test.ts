@@ -127,6 +127,46 @@ describe('planAgentTools', () => {
     ]);
   });
 
+  it('offers recorded control-page navigation when a complete empty result has no form or links', () => {
+    const zero = snapshot([], { complete: true, returned: 0 });
+    const request = {
+      ...input({ snapshot: zero, sourceLocation: 'https://loancore.example.test/loancore/users' }),
+      runId: 'run-a',
+      searches: [{ parameters: [{ name: 'employee_id', value: 'E-000105' }],
+        controlSnapshot: snapshot(HOME_NODES), snapshot: zero,
+        controlPage: { runId: 'run-a', targetSystem: TARGET.registrationId, sourceLocation: 'https://loancore.example.test/loancore/users' } }],
+    };
+    const planned = planAgentTools(request);
+    expect(planned.absenceReady).toBe(false);
+    expect(planned.tools.find(tool => tool.action === 'navigate')).toMatchObject({
+      destination: request.searches[0]!.controlPage.sourceLocation, locator: null, parameterNames: [],
+    });
+    expect(planned.tools.some(tool => tool.action === 'search')).toBe(false);
+    const returned = planAgentTools({ ...request, snapshot: snapshot(HOME_NODES) });
+    const search = returned.tools.find(tool => tool.action === 'search');
+    expect(returned.parametersByToolId[search!.toolId]).toEqual([{ name: 'name', value: 'Esther Kabwe' }]);
+  });
+
+  it('rejects missing, cross-Run, cross-target, queried, out-of-scope and ungrounded control history', () => {
+    const zero = snapshot([], { complete: true, returned: 0 });
+    const entry = { parameters: [{ name: 'employee_id', value: 'E-000105' }], controlSnapshot: snapshot(HOME_NODES), snapshot: zero,
+      controlPage: { runId: 'run-a', targetSystem: TARGET.registrationId, sourceLocation: 'https://loancore.example.test/loancore/users' } };
+    const base = { ...input({ snapshot: zero }), runId: 'run-a' };
+    for (const history of [
+      { parameters: entry.parameters, controlSnapshot: entry.controlSnapshot, snapshot: zero },
+      { ...entry, controlPage: { ...entry.controlPage, runId: 'run-b' } },
+      { ...entry, controlPage: { ...entry.controlPage, targetSystem: 'other-target' } },
+      { ...entry, controlPage: { ...entry.controlPage, sourceLocation: 'https://loancore.example.test/loancore/users?name=other' } },
+      { ...entry, controlPage: { ...entry.controlPage, sourceLocation: 'https://loancore.example.test/loancore/users#fragment' } },
+      { ...entry, controlPage: { ...entry.controlPage, sourceLocation: 'https://other.example.test/loancore/users' } },
+      { ...entry, controlSnapshot: snapshot([]) },
+      { ...entry, controlSnapshot: snapshot([...HOME_NODES, HOME_NODES[1]]) },
+      { ...entry, parameters: [{ name: 'employee_id', value: 'another-employee' }] },
+    ]) expect(planAgentTools({ ...base, searches: [history] }).tools.some(tool => tool.action === 'navigate')).toBe(false);
+    const both = [entry, { ...entry, parameters: [{ name: 'name', value: 'Esther Kabwe' }] }];
+    expect(planAgentTools({ ...base, searches: both }).tools.some(tool => tool.action === 'navigate')).toBe(false);
+  });
+
   it('grounds one candidate and exposes only frozen locators for declared fields', () => {
     const planned = planAgentTools(input({
       snapshot: snapshot(RECORD_NODES),
