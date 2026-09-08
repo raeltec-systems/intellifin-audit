@@ -408,3 +408,8 @@ Forward migration8f1ecc5d11c4375da84f845594213d4172f265cd is pushed. Static revi
 Mutation-runner checkpointe49276dac7bf4f75b8ce0aba58ba2240e4704931 is pushed. Final isolation review found release could send a Solari release request for a known session despite a different Run reference; a forged local mode could also falsely report success without teardown. Two regressions fail before repair (34pass/2fail). The adapter now checks the complete known live identity before any teardown or provider I/O. Unknown-live persisted cleanup after restart remains supported.
 
 All36browser-adapter unit tests pass after repair, including correct/repeated release, restart, provider failure retry and confirmed absence; infrastructure typechecking passes. No live request occurred. This repair and regression checkpoint is pushed; actual remote isolation and final hosted checks remain required. The current-checkpoint summary above is refreshed to distinguish supplied credentials from unavailable encrypted runner configuration.
+
+
+## Live acceptance reporting containment
+
+Remote release repair6f18f64efcaf8ea41d1ccdc58289d8ff426c909d is pushed. The selected live audit gate now scans the synthetic application's derived session token as well as raw/provider credentials without printing operands. A forced or unconfirmed worker shutdown cannot leave the gate or artifact accepted. The runbook explicitly distinguishes byte scanning from visual credential absence, which is covered by credential-entry capture suppression tests. Root-test typechecking and diff checks pass. Live execution remains blocked by runner configuration; this checkpoint adds no remote acceptance claim or network activity and is pushed separately from the product repair.

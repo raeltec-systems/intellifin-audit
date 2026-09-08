@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import {
   bindingDigest, bindingDigestEnvelope, initialDraftCompliance, initialDraftEvidence,
   initialDraftPopulation, initialDraftSections, registrationDigest, sha256HexOfBytes,
@@ -44,7 +45,10 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
   };
   const target = catalog.target_systems.find(row => row.id === 'loancore');
   if (!target?.credential_ref || !target.credential_token || !target.authentication_destination_path) throw new Error('Approved synthetic LoanCore authentication catalog is incomplete.');
-  const secretValues = [configuration.apiKey, configuration.modelKey, target.credential_token, process.env['E2E_PASSWORD']].filter((value): value is string => Boolean(value));
+  // The synthetic application derives this session token during its real form login.
+  // Scan it as a secret too; never attach or print the operand.
+  const sessionToken = createHash('sha256').update(`loancore-session:${target.credential_token}`).digest('hex');
+  const secretValues = [configuration.apiKey, configuration.modelKey, target.credential_token, sessionToken, process.env['E2E_PASSWORD']].filter((value): value is string => Boolean(value));
   const noSecrets = (value: string) => !secretValues.some(secret => value.includes(secret));
   try {
     await sql`INSERT INTO auth_user(id,name,email) VALUES (${authorId},'Synthetic live acceptance',${authorId + '@test.invalid'})`;
@@ -155,7 +159,9 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
       const bytes = storage.objects.get(row.object_key);
       expect(bytes !== undefined, 'Registered evidence bytes must exist').toBe(true);
       expect(sha256HexOfBytes(bytes!)).toBe(row.digest);
-      expect(noSecrets(new TextDecoder().decode(bytes!)), 'Evidence must not contain credentials').toBe(true);
+      // Byte-level containment is additional evidence, not OCR or proof of visual absence.
+      // Credential-entry capture suppression has its separate real-browser regressions.
+      expect(noSecrets(new TextDecoder().decode(bytes!)), 'Evidence bytes must not contain credentials or the session token').toBe(true);
     }
     for (const bytes of storage.objects.values()) expect(noSecrets(new TextDecoder().decode(bytes)), 'All acquired and captured bytes must exclude credentials').toBe(true);
     report['evidence'] = evidence.map(({ evidence_id, digest, kind }) => ({ evidenceId: evidence_id, digest, kind }));
@@ -198,13 +204,15 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
         cleanupConfirmed = !workspace || (workspace.status === 'RELEASED' && workspace.diagnostic === null);
       }
     } catch { report['cleanupBlocker'] = 'Worker cleanup could not be confirmed; retain the workspace ID and reconcile it through the real provider.'; }
-    try { await worker?.stop(); } catch { report['shutdown'] = 'forced-or-unconfirmed'; }
+    let shutdownFailed = false;
+    try { await worker?.stop(); } catch { shutdownFailed = true; report['shutdown'] = 'forced-or-unconfirmed'; }
     // No DB teardown: retain the disposable test rows for diagnostics until the CI service ends.
-    report['acceptance'] = accepted && cleanupConfirmed ? 'passed' : 'not-accepted';
+    report['acceptance'] = accepted && cleanupConfirmed && !shutdownFailed ? 'passed' : 'not-accepted';
     report['cleanup'] = cleanupConfirmed ? 'confirmed' : 'not-confirmed';
     report['finishedAt'] = new Date().toISOString();
     const serialized = JSON.stringify(report, null, 2);
     if (noSecrets(serialized)) await testInfo.attach('solari-audit-acceptance.json', { body: serialized, contentType: 'application/json' });
     await storage.close(); await sql.end({ timeout: 5 });
+    if (shutdownFailed && accepted) throw new Error('Live acceptance failed: worker shutdown was forced or unconfirmed after the audit.');
   }
 });

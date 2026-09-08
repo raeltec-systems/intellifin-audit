@@ -50,7 +50,7 @@ provider workspace ID/expiry/release. A release counts only when the persisted p
 mode is Solari, release completed before expiry and there is no expiry diagnosis. The
 worker's actual adapter uses `releaseAndWait`; provider unavailability must leave cleanup
 unconfirmed. Raw logs, cookies, credentials, model bodies and replay URLs are not uploaded.
-Secret scanning uses boolean assertions so a failure cannot print the secret operand.
+Secret scanning includes the synthetic application's derived session-cookie token and uses boolean assertions so a failure cannot print the secret operand. PNG byte scanning is not visual/OCR verification; credential-entry capture suppression is proved by its separate browser regressions. Forced or unconfirmed worker shutdown fails the live gate even when remote cleanup was already confirmed.
 
 Keep the disposable database until job completion; no protected evidence is deleted to
 make cleanup assertions pass. If cleanup is unconfirmed, retain the workspace ID in the
