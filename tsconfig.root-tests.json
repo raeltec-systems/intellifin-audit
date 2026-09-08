@@ -10,6 +10,7 @@
   },
   "include": [
     "playwright.config.ts",
+    "playwright.solari.config.ts",
     "scripts/**/*.mts",
     "tests/e2e/**/*.ts",
     "tests/integration/**/*.ts",

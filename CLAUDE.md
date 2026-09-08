@@ -1292,3 +1292,8 @@ Plant hostile text only in actually authenticated synthetic HTML, leaving real f
 ### Source identity failure classification
 
 Missing or duplicate included population keys are platform-decidable evidence-quality failures under addendumH. The agent path must preserve every source row and use the existing run-level Gate to seal INCONCLUSIVE. Do not misclassify these as unsupported plans, select a first duplicate, or ask a human to guess an identity. Target search ambiguity remains a separate typed escalation contract.
+
+
+### Explicit live-provider acceptance
+
+Use a separately selected read-only test workflow on an exact clean candidate and disposable database. Supply provider keys only through encrypted runner secrets. Ordinary PR pushes must not silently consume remote capacity, and missing selected-gate configuration must fail rather than skip. Retain actual provider/model/build identities, evidence digests and confirmed pre-expiry cleanup; preserve machine proposals requiring human review. Never upload raw worker logs, credentials or signed URLs as acceptance artifacts.

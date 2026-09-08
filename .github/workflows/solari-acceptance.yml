@@ -1,0 +1,91 @@
+name: Live Solari audit acceptance
+
+# Explicitly selected, bounded provider test. This workflow cannot modify repository
+# contents or deploy services. A new candidate needs its own live acceptance result.
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact reviewed branch candidate SHA (40 hexadecimal characters)
+        required: true
+        type: string
+  pull_request:
+    types: [labeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-solari-acceptance
+  # Let cleanup finish before another explicitly selected journey starts.
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'solari-live-acceptance' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    name: Actual worker, live model and Solari audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: ghcr.io/railwayapp-templates/postgres-ssl:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: intellifin_solari_ci
+          PGDATA: /var/lib/postgresql/data/pgdata
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/intellifin_solari_ci?sslmode=require
+      SOLARI_ACCEPTANCE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+    steps:
+      - name: Validate exact candidate identifier
+        shell: bash
+        run: |
+          [[ "$SOLARI_ACCEPTANCE_CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]] || exit 1
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOLARI_ACCEPTANCE_CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build exact candidate and migrate disposable database
+        run: |
+          pnpm build
+          pnpm db:migrate
+      - name: Execute bounded live audit and confirm remote cleanup
+        env:
+          INTELLIFIN_LIVE_SOLARI: '1'
+          SOLARI_API_KEY: ${{ secrets.SOLARI_API_KEY }}
+          SOLARI_RECORDING: 'false'
+          SOLARI_REGION: ${{ vars.SOLARI_REGION || 'us-west' }}
+          ANTHROPIC_API_KEY: ${{ vars.SOLARI_ACCEPTANCE_MODEL_PROVIDER != 'openai' && secrets.ANTHROPIC_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ vars.SOLARI_ACCEPTANCE_MODEL_PROVIDER == 'openai' && secrets.OPENAI_API_KEY || '' }}
+          AGENT_ANTHROPIC_MODEL: ${{ vars.AGENT_ANTHROPIC_MODEL }}
+          AGENT_OPENAI_MODEL: ${{ vars.AGENT_OPENAI_MODEL }}
+        run: pnpm exec playwright test --config=playwright.solari.config.ts
+      - name: Retain secret-free live acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solari-audit-acceptance-${{ env.SOLARI_ACCEPTANCE_CANDIDATE_SHA }}
+          path: test-results/**/solari-audit-acceptance*.json
+          if-no-files-found: warn
+          retention-days: 14
