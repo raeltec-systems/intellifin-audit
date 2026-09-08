@@ -136,7 +136,16 @@ Run over a hundred thousand records has to be able to commit its own conclusion.
 - the version's **scope statement, verbatim**;
 - the Gate verdict, the Evidence package seal, and one generated sentence;
 - the **artifacts the Run actually froze, by identity** — `evidence.artifacts`, a bounded
-  sample beside the exact `evidence.registered` count.
+  sample beside the exact `evidence.registered` count;
+- the **Target Systems in scope and out of scope** — `targetSystems` (added 2026-09-08,
+  optional on older documents): every selected registration with whether THIS build can
+  execute it (`support`, and the closed `reason` such as `agent-driven-target` for a
+  desktop), and every Template default the auditor did NOT select, listed out of scope by
+  name. Explicitly selected systems define the scope (owner decision, 2026-09-08); an
+  unselected default never blocks; a selected system this build refuses is identified and
+  never disappears. `requiredTargetSystems` keeps every selected non-reference system as
+  required coverage even when the plan is refused, so such a Run's coverage says "every
+  record uninspected, per system" rather than "no coverage required".
 
 The named artifacts are the owner's decision of 2026-09-06. A count alone cannot tell
 "Inconclusive with Evidence" from "Inconclusive with nothing": `registered: 1` says a

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resultTargetSystems,
   GATE_CHECKS,
   type ExecutablePlan,
   type PackageArtifact,
@@ -385,6 +386,20 @@ describe('completeRun', () => {
     expect(result?.publication.exclusions).toEqual([
       { reason: 'Outside inclusion rule: amount (decimal)', total: 3, records: ['#4', '#5', '#6'] },
     ]);
+  });
+
+  it('publishes every selected Target System with its support status and the unselected defaults out of scope', async () => {
+    const context = new FakeContext();
+    const frozen = plan();
+    const result = await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: frozen });
+    const published = result?.publication.targetSystems ?? [];
+    expect(published).toEqual(resultTargetSystems(frozen));
+    for (const target of frozen.inputs.targets) {
+      expect(published).toContainEqual(expect.objectContaining({ registrationId: target.registrationId, displayName: target.displayName, kind: target.contract.kind, inScope: true, support: 'supported', reason: null }));
+    }
+    expect(published.filter((entry) => !entry.inScope).every((entry) => entry.registrationId === null && entry.support === null)).toBe(true);
+    const unreadable = await completeRun(new FakeContext(), { run: RUN, state: 'COMPLETED', at: AT, plan: null });
+    expect(unreadable?.publication.targetSystems).toEqual([]);
   });
 
   it('publishes a null scope rather than an empty one for an unreadable plan', async () => {

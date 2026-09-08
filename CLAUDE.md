@@ -2,6 +2,10 @@
 
 Privilege is never inferred from a role name, the system prompt, the runtime or an expectation fixture. `RolePrivilegePolicy` is an OPTIONAL `policy` key on an Agent-Judged condition over a Template's `roles` field, omitted (never `null`) when absent so legacy rows recompile byte for byte. The evaluator applies it before the proposal (unreadable roles = missing field; an unnamed role = §B unnamed value, escalated before any paid turn) and after it (a contradicting proposal is UNEVALUATED, never corrected; the producer retries it as a rejected model answer). A consistent privileged Exception is labelled `retained privileged assignment`. `agentJudgedNeedsProposal` is the one predicate the producer and registrar share. C2 stays Agent-Judged and pending human confirmation. `canonicalLoanCoreCompliance({ c2Policy: false })` keeps the original undefined-privilege negative case. Contract: `docs/contracts/deterministic-evaluation-v1.md`.
 
+## 2026-09-08 — A refused Target System never disappears from the Result
+
+Owner decision 4: explicitly selected systems define scope; an unselected Template default never blocks. `requiredTargetSystems` no longer returns an empty list for a refused plan; it keeps every selected non-reference system, so a Run refused for a selected desktop reports every record uninspected per system rather than "no coverage required". The Result publication gained an optional `targetSystems` list (`resultTargetSystems`): each selected system with `support`/`reason`, each unselected default out of scope by name; documents older than the key say so on the surface. Story 2.3's spec carries the superseding note.
+
 ## 2026-09-07 — Page-script write containment
 
 The browser context enforces read-only HTTP methods as well as destination scope. An action gate alone cannot stop retrieved page scripts issuing same-origin writes. Only the real form login may arm one exact credential-bearing main-frame POST; redirects, fetch/XHR, repeats and credentialless bodies cannot use that exception. It is revoked in finally and page disposal. Local browser tests establish state isolation only, not Solari process/network isolation.

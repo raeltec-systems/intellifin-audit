@@ -15,7 +15,7 @@ import type {
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from './EvidenceCards';
 import { ExceptionCard } from './ExceptionList';
 import { GateChecklist } from './GateChecklist';
-import { EvidencePackageSection, PopulationReconciliation, SafeNextActionPanel } from './ResultSections';
+import { EvidencePackageSection, PopulationReconciliation, SafeNextActionPanel, ScopeSection } from './ResultSections';
 import { ADAPTER_ACTIONS_UNRECORDED, CAPTURE_TIME_SOURCE } from '../design/copy';
 import { ExecutionTimeline } from './Timeline';
 import { ConclusionTriptych } from './Triptych';
@@ -199,6 +199,34 @@ describe('untrusted source content', () => {
     expect(html).not.toContain('<b>');
     expect(html).toContain('Untrusted source content — evaluation diagnostic.');
     expect(html).toContain('Source content cannot change the Run objective, tool scope, or evaluation.');
+  });
+});
+
+describe('the Target Systems in scope section', () => {
+  it('says in words when an older document never recorded the scope, rather than showing nothing', () => {
+    const markup = renderToStaticMarkup(React.createElement(ScopeSection, { publication: result().publication! }));
+    expect(markup).toContain('Target Systems in scope');
+    expect(markup).toContain('did not record which Target Systems were in scope');
+  });
+
+  it('names each selected system, identifies a refused one by its reason, and lists an unselected default out of scope', () => {
+    const publication = { ...result().publication!, targetSystems: [
+      { registrationId: 'loancore', displayName: 'LoanCore', kind: 'web' as const, inScope: true, support: 'supported' as const, reason: null },
+      { registrationId: 'ledgerdesk', displayName: 'LedgerDesk', kind: 'desktop' as const, inScope: true, support: 'unsupported' as const, reason: 'agent-driven-target' },
+      { registrationId: null, displayName: 'PayrollVault', kind: 'web' as const, inScope: false, support: null, reason: null },
+    ] };
+    const markup = renderToStaticMarkup(React.createElement(ScopeSection, { publication }));
+    expect(markup).toContain('LoanCore');
+    expect(markup).toContain('web application');
+    expect(markup).toContain('refused by this build');
+    expect(markup).toContain('agent-driven-target');
+    expect(markup).toContain('not selected');
+    expect(markup).toContain('PayrollVault');
+  });
+
+  it('says the plan could not be read rather than reporting no systems', () => {
+    const publication = { ...result().publication!, templateId: null, targetSystems: [] };
+    expect(renderToStaticMarkup(React.createElement(ScopeSection, { publication }))).toContain('could not read the frozen plan');
   });
 });
 

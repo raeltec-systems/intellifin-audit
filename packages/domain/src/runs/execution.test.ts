@@ -143,6 +143,11 @@ describe('frozen-kind classification', () => {
     expect(classifyPlanTargets(plan(['desktop', 'api'])).unsupported).toBe('agent-driven-target');
     expect(referenceTargets(plan(['web']))).toEqual([]);
     expect(adapterTargets(plan(['web']))).toEqual([]);
+    // A refused plan still names the systems the auditor selected as required coverage:
+    // the refused desktop is identified, never dropped, and a Reference Source is not covered.
+    expect(requiredTargetSystems(plan(['desktop', 'api']))).toEqual(['reg-1', 'reg-2']);
+    expect(requiredTargetSystems(plan(['versioned-file', 'desktop']))).toEqual(['reg-2']);
+    expect(requiredTargetSystems(plan(['web']))).toEqual(['reg-1']);
   });
 
   it('accounts for a complete web target in the shared Gate coverage', () => {

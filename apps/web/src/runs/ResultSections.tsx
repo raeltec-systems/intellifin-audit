@@ -276,6 +276,52 @@ function artifactKindWord(kind: string): string {
   return Object.hasOwn(ARTIFACT_KIND_WORDS, kind) ? ARTIFACT_KIND_WORDS[kind]! : kind;
 }
 
+const TARGET_KIND_WORDS: Readonly<Record<string, string>> = {
+  web: 'web application', desktop: 'desktop application', api: 'read-only API', 'versioned-file': 'versioned file (Reference Source)',
+};
+
+function targetKindWord(kind: string): string {
+  return Object.hasOwn(TARGET_KIND_WORDS, kind) ? TARGET_KIND_WORDS[kind]! : kind;
+}
+
+/**
+ * Which Target Systems were in scope, and which Template defaults were not (owner decision
+ * 2026-09-08). A selected system this build refused is named with its closed reason rather
+ * than dropped; an older document that never recorded the list says so in words.
+ */
+export function ScopeSection({
+  publication,
+}: {
+  readonly publication: RunResultPublication;
+}): React.JSX.Element {
+  const systems = publication.targetSystems;
+  return (
+    <section className="ls-card ls-stack" aria-labelledby="scope-heading">
+      <h2 id="scope-heading">Target Systems in scope</h2>
+      {systems === undefined ? (
+        <p>This Result did not record which Target Systems were in scope; it was published by an earlier build.</p>
+      ) : publication.templateId === null ? (
+        <p>This build could not read the frozen plan, so the Target System scope is not stated.</p>
+      ) : systems.length === 0 ? (
+        <p>The frozen version selected no Target System.</p>
+      ) : (
+        <ul className="ls-plain-list">
+          {systems.map((entry) => (
+            <li key={`${entry.inScope ? 'in' : 'out'}:${entry.registrationId ?? entry.displayName}`}>
+              <strong>{entry.displayName}</strong> · {targetKindWord(entry.kind)} ·{' '}
+              {!entry.inScope
+                ? 'not selected — a Template default only, not in scope for this Run'
+                : entry.support === 'supported'
+                  ? 'in scope'
+                  : <>in scope; <span className="ls-difference">refused by this build</span> ({entry.reason})</>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** Per-Target-System coverage, exactly as the sealed Result reports it. */
 export function CoverageSection({
   publication,

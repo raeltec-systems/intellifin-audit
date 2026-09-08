@@ -4,6 +4,7 @@ import {
   isTerminalRunState,
   publishRunResult,
   requiredTargetSystems,
+  resultTargetSystems,
   systemOutcome,
   type ExecutablePlan,
   type GateCheckName,
@@ -224,6 +225,8 @@ async function publishResult(
     // functions. A Result that derived them a second way could disagree with the Gate it
     // reports.
     requiredTargetSystems: requiredTargetSystems(input.plan),
+    // What was in scope and what was not, by name, from the same frozen plan.
+    targetSystems: resultTargetSystems(input.plan),
     includedRecordKeys: includedRecordKeys(templateId ?? '', rows),
     observations: await context.readGateObservations(),
     conditions,

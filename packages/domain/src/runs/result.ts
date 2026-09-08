@@ -1,6 +1,9 @@
 import type { JsonValue } from '../canonical-json.js';
+import type { ExecutablePlan } from '../procedures/executable-plan.js';
 import { COMPLIANCE_OBSERVATION_FIELDS } from '../procedures/plan-compiler.js';
-import { isTemplateId, type TemplateId } from '../procedures/templates.js';
+import { findProcedureTemplate, isTemplateId, type TemplateId } from '../procedures/templates.js';
+import type { TargetSystemKind } from '../registrations/target-system.js';
+import { classifyPlanTargets } from './execution.js';
 import { coverageFindings, GATE_AFFECTED_LIMIT, type CoverageObservation, type GateCheckName } from './gate.js';
 import type { EvaluationConfirmation, EvaluationOrigin, EvaluationValue } from './observation.js';
 import type { SystemOutcome } from './outcome.js';
@@ -181,6 +184,57 @@ export interface RunResultGate {
   readonly failed: readonly GateCheckName[];
 }
 
+/**
+ * One Target System the Result speaks about: selected in the frozen version (in scope),
+ * or a Template default the auditor did NOT select (out of scope, named so a reader of a
+ * P-1 Result sees that LedgerDesk was not part of this Run rather than wondering).
+ *
+ * Owner decision (2026-09-08): explicitly selected systems define the scope; an
+ * unselected default never blocks; a selected system this build cannot execute is
+ * identified and refused, and never disappears from the Result.
+ */
+export interface RunResultTargetSystem {
+  /** `null` for an unselected Template default, which has no registration. */
+  readonly registrationId: string | null;
+  readonly displayName: string;
+  readonly kind: TargetSystemKind;
+  /** Selected in the frozen version — what the auditor put in scope. */
+  readonly inScope: boolean;
+  /** Whether THIS build can execute an in-scope system; `null` when it is not in scope. */
+  readonly support: 'supported' | 'unsupported' | null;
+  /** The closed refusal name for an unsupported system (`agent-driven-target` for desktop). */
+  readonly reason: string | null;
+}
+
+/**
+ * The Target Systems a Result names, from the FROZEN plan and the Template it froze.
+ *
+ * Every selected target is in scope, Reference Sources included: they are registrations
+ * the auditor chose. `support` is a property of the SYSTEM under this build — a selected
+ * desktop is `agent-driven-target` (Epic 7), and a plan this build cannot read at all
+ * marks every selected system with that reason — so a Run refused because of one system
+ * still shows the others as supported and the refused one by name. A Template default
+ * with no selected registration of the same name and kind is listed out of scope.
+ */
+export function resultTargetSystems(plan: ExecutablePlan | null): readonly RunResultTargetSystem[] {
+  if (plan === null) return [];
+  const classification = classifyPlanTargets(plan);
+  const planReason = classification.unsupported !== null && classification.unsupported !== 'agent-driven-target'
+    ? classification.unsupported : null;
+  const selected = plan.inputs.targets.map((target): RunResultTargetSystem => {
+    const reason = target.contract.kind === 'desktop' ? 'agent-driven-target' : planReason;
+    return {
+      registrationId: target.registrationId, displayName: target.displayName, kind: target.contract.kind,
+      inScope: true, support: reason === null ? 'supported' : 'unsupported', reason,
+    };
+  });
+  const defaults = isTemplateId(plan.inputs.templateId) ? findProcedureTemplate(plan.inputs.templateId).defaultTargets : [];
+  const outOfScope = defaults
+    .filter((entry) => !plan.inputs.targets.some((target) => target.displayName === entry.name && target.contract.kind === entry.kind))
+    .map((entry): RunResultTargetSystem => ({ registrationId: null, displayName: entry.name, kind: entry.kind, inScope: false, support: null, reason: null }));
+  return [...selected, ...outOfScope];
+}
+
 export interface RunResultPublication {
   readonly templateId: string | null;
   readonly controlName: string | null;
@@ -197,6 +251,12 @@ export interface RunResultPublication {
   readonly population: RunResultPopulation;
   readonly exclusions: readonly RunResultExclusion[];
   readonly coverage: readonly RunResultCoverage[];
+  /**
+   * Which Target Systems were in scope, and which Template defaults were not. OPTIONAL:
+   * a document published before 2026-09-08 has no key at all, which is a different
+   * statement from an empty list, and the surface says which.
+   */
+  readonly targetSystems?: readonly RunResultTargetSystem[];
   readonly conditions: readonly RunResultConditionCount[];
   readonly exceptions: RunResultFindings;
   readonly unevaluated: RunResultFindings;
@@ -249,6 +309,8 @@ export interface RunResultInput {
   readonly exclusions: readonly RunResultExclusion[];
   /** The Target Systems this Run had to cover, from the FROZEN plan's classification. */
   readonly requiredTargetSystems: readonly string[];
+  /** Every selected system and every unselected Template default, from `resultTargetSystems`. */
+  readonly targetSystems: readonly RunResultTargetSystem[];
   /** The matching key of every INCLUDED population record, in source order. */
   readonly includedRecordKeys: readonly string[];
   readonly observations: readonly CoverageObservation[];
@@ -326,6 +388,7 @@ export function publishRunResult(input: RunResultInput): RunResultPublication {
       records: entry.records.slice(0, RESULT_SAMPLE_LIMIT),
     })),
     coverage,
+    targetSystems: input.targetSystems,
     conditions: input.conditions,
     exceptions: project(input.exceptions),
     unevaluated: project(input.unevaluated),
@@ -380,6 +443,7 @@ export function isRunResultPublication(value: unknown): value is RunResultPublic
     typeof (period as { to?: unknown }).to === 'string' &&
     Array.isArray(document['exclusions']) &&
     Array.isArray(document['coverage']) &&
+    (document['targetSystems'] === undefined || Array.isArray(document['targetSystems'])) &&
     Array.isArray(document['conditions']) &&
     Array.isArray(document['controlFields']) &&
     findings(document['exceptions']) &&

@@ -5,10 +5,14 @@ import {
   RESULT_SAMPLE_LIMIT,
   publishRunResult,
   resultStatement,
+  resultTargetSystems,
   templateResultFields,
   type RunResultFinding,
   type RunResultInput,
 } from './result.js';
+import { registrationDigest, registrationDigestEnvelope, type TargetSystemKind } from '../registrations/target-system.js';
+import type { ExecutablePlan } from '../procedures/executable-plan.js';
+import type { ProcedureTargetSnapshot } from '../procedures/target-draft.js';
 
 /**
  * The published Result: what a Run says it looked at, and what it concluded about it.
@@ -28,6 +32,7 @@ function input(overrides: Partial<RunResultInput> = {}): RunResultInput {
     population: { rowsParsed: 4, included: 2, excluded: 1, indeterminate: 1 },
     exclusions: [],
     requiredTargetSystems: ['approvenow'],
+    targetSystems: [{ registrationId: 'approvenow', displayName: 'ApproveNow', kind: 'api', inScope: true, support: 'supported', reason: null }],
     includedRecordKeys: ['TX-1', 'TX-2'],
     observations: [
       { targetSystem: 'approvenow', populationRecordKey: 'TX-1', coverage: 'COVERED', workItemId: 'w1' },
@@ -205,7 +210,7 @@ describe('reading a stored publication back', () => {
       period: { from: '2026-08-01', to: '2026-08-31' },
       population: { rowsParsed: 2, included: 2, excluded: 0, indeterminate: 0 },
       exclusions: [],
-      requiredTargetSystems: [],
+      requiredTargetSystems: [], targetSystems: [],
       includedRecordKeys: [],
       observations: [],
       conditions: [],
@@ -234,5 +239,70 @@ describe('reading a stored publication back', () => {
     ]) {
       expect(isRunResultPublication(value), JSON.stringify(value)).toBe(false);
     }
+  });
+});
+
+/** Only the fields `classifyPlanTargets` and `resultTargetSystems` read. */
+function scopedTarget(id: string, name: string, kind: TargetSystemKind): ProcedureTargetSnapshot {
+  const fields = {
+    kind, allowedOrigins: kind === 'desktop' ? [] : [`https://${id}.synthetic.invalid`], applicationIdentity: kind === 'desktop' ? 'com.synthetic.app' : '',
+    credentialRef: `cred://${id}`, permittedActions: ['read-attribute'] as const, attributeLabelPatterns: ['Field'], secondaryKey: '',
+  };
+  return { registrationId: id, displayName: name, digest: registrationDigest(fields), contract: registrationDigestEnvelope(fields) };
+}
+function scopedPlan(targets: readonly ProcedureTargetSnapshot[], overrides: Partial<ExecutablePlan> = {}): ExecutablePlan {
+  const agentDriven = targets.filter((target) => target.contract.kind === 'web' || target.contract.kind === 'desktop');
+  return {
+    schemaVersion: 1, compilerVersion: '1',
+    inputs: { templateId: 'P-1', targets } as unknown as ExecutablePlan['inputs'],
+    sessionSteps: [
+      ...(agentDriven.length ? [{ id: 'session-workspace', action: 'create-workspace' as const, targetSystemId: null, text: 'x' }] : []),
+      { id: 'session-population', action: 'acquire-population' as const, targetSystemId: null, text: 'x' },
+      ...targets.map((target, index) => ({ id: `session-${String(index + 2)}`, action: target.contract.kind === 'web' ? 'sign-in' as const : 'extract-adapter' as const, targetSystemId: target.registrationId, text: 'x' })),
+    ],
+    targetSystems: targets.filter((target) => target.contract.kind === 'web').map((target) => ({ registrationId: target.registrationId, planSteps: [
+      { id: `${target.registrationId}-1`, action: 'inspect-record' as const, targetSystemId: target.registrationId, text: 'x' },
+      { id: `${target.registrationId}-2`, action: 'capture-observation' as const, targetSystemId: target.registrationId, text: 'x' },
+      { id: `${target.registrationId}-3`, action: 'evaluate-conditions' as const, targetSystemId: target.registrationId, text: 'x' },
+    ] })),
+    observations: [], credentialReferences: [],
+    limits: { retriesPerStep: 3, stepTimeoutSeconds: 120, runStepExecutions: 100, runTimeoutSeconds: 3600, runTokens: 1000 },
+    ...overrides,
+  } as unknown as ExecutablePlan;
+}
+
+describe('the Target Systems a Result names (owner decision 2026-09-08)', () => {
+  const loancore = scopedTarget('loancore', 'LoanCore', 'web');
+  const ledgerdesk = scopedTarget('ledgerdesk', 'LedgerDesk', 'desktop');
+
+  it('lists every selected system in scope and an unselected Template default out of scope', () => {
+    expect(resultTargetSystems(scopedPlan([loancore]))).toEqual([
+      { registrationId: 'loancore', displayName: 'LoanCore', kind: 'web', inScope: true, support: 'supported', reason: null },
+      { registrationId: null, displayName: 'LedgerDesk', kind: 'desktop', inScope: false, support: null, reason: null },
+    ]);
+  });
+
+  it('identifies a selected desktop as refused by name and keeps the web system supported beside it', () => {
+    expect(resultTargetSystems(scopedPlan([loancore, ledgerdesk]))).toEqual([
+      { registrationId: 'loancore', displayName: 'LoanCore', kind: 'web', inScope: true, support: 'supported', reason: null },
+      { registrationId: 'ledgerdesk', displayName: 'LedgerDesk', kind: 'desktop', inScope: true, support: 'unsupported', reason: 'agent-driven-target' },
+    ]);
+  });
+
+  it('marks every selected system unsupported when the plan itself cannot be read, and names nothing for a null plan', () => {
+    expect(resultTargetSystems(scopedPlan([loancore], { compilerVersion: '2' } as unknown as Partial<ExecutablePlan>)).map((entry) => [entry.displayName, entry.support, entry.reason])).toEqual([
+      ['LoanCore', 'unsupported', 'unsupported-plan-version'], ['LedgerDesk', null, null],
+    ]);
+    expect(resultTargetSystems(null)).toEqual([]);
+  });
+
+  it('publishes the list, and still reads a document published before the list existed', () => {
+    const published = publishRunResult(input());
+    expect(published.targetSystems).toEqual(input().targetSystems);
+    expect(isRunResultPublication(published)).toBe(true);
+    const { targetSystems: _legacy, ...older } = published;
+    expect(Object.hasOwn(older, 'targetSystems')).toBe(false);
+    expect(isRunResultPublication(older)).toBe(true);
+    expect(isRunResultPublication({ ...published, targetSystems: 'LoanCore' })).toBe(false);
   });
 });

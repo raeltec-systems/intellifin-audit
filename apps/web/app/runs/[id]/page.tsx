@@ -15,6 +15,7 @@ import { GateChecklist } from '../../../src/runs/GateChecklist';
 import {
   ConditionCards,
   CoverageSection,
+  ScopeSection,
   EvidencePackageSection,
   ExecutionFailurePanel,
   FindingsSection,
@@ -133,6 +134,7 @@ export default async function RunResultPage({
             uninspected={uninspected}
           />
           <EvidencePackageSection publication={publication} runId={run.runId} />
+          <ScopeSection publication={publication} />
           <CoverageSection publication={publication} />
           <ConditionCards publication={publication} conditionText={conditionText} />
           <FindingsSection publication={publication} />

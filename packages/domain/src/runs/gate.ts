@@ -426,7 +426,13 @@ export function snapshotFreshness(input: SnapshotFreshnessInput): GateDiagnostic
 export function requiredTargetSystems(plan: ExecutablePlan | null): readonly string[] {
   if (plan === null) return [];
   const classification = classifyPlanTargets(plan);
-  if (classification.unsupported !== null) return [];
+  if (classification.unsupported !== null) {
+    // A refused plan still names the systems the auditor put in scope. None of them was
+    // covered, and the Result says so system by system — a selected system this build
+    // cannot execute is identified and refused, never dropped from coverage (owner
+    // decision, 2026-09-08). Reference Sources are acquired, not covered.
+    return plan.inputs.targets.filter((target) => target.contract.kind !== 'versioned-file').map((target) => target.registrationId);
+  }
   return [...classification.adapters, ...classification.agents].map((entry) => entry.target.registrationId);
 }
 
