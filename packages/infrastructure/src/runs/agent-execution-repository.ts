@@ -204,7 +204,10 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
       .innerJoin(runWorkspace, eq(runWorkspace.runId, auditRun.runId))
       .leftJoin(runAgentExecution, eq(runAgentExecution.runId, auditRun.runId))
       .where(
-        sql`${auditRun.state}='RUNNING' AND ${populationExecution.status}='POPULATION_READY' AND ${runWorkspace.status}='OPEN' AND (${runAgentExecution.runId} IS NULL OR ${runAgentExecution.status}='RETRY' OR (${runAgentExecution.status}='EXECUTING' AND ${runAgentExecution.leaseUntil}<=now()))`,
+        // Recovery provisions before sign-in. A failed or interrupted reattachment
+        // must remain discoverable even before extraction has begun; a live lease
+        // belongs to its current claimant and is excluded.
+        sql`${auditRun.state}='RUNNING' AND ${populationExecution.status}='POPULATION_READY' AND (${runWorkspace.status} IN ('OPEN','RETRY') OR (${runWorkspace.status}='PROVISIONING' AND ${runWorkspace.leaseUntil}<=now())) AND (${runAgentExecution.runId} IS NULL OR ${runAgentExecution.status}='RETRY' OR (${runAgentExecution.status}='EXECUTING' AND ${runAgentExecution.leaseUntil}<=now()))`,
       )
       .orderBy(asc(auditRun.initiatedAt))
       .limit(Math.max(1, Math.min(100, limit)));

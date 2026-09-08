@@ -39,7 +39,7 @@ export interface AgentWaitRaise { readonly runId: string; readonly waitId: strin
 export interface AgentWorkContext extends Omit<AdapterExecutionContext, 'checkpoint' | 'saveCheckpoint'> {
   checkpoint: AgentWorkCheckpoint | null;
   workspace: WorkspaceRef | null;
-  /** The existing sign-in and adapter/reference stages must both have completed. */
+  /** Sign-in and extraction completed, with no pending workspace provisioning/retry. */
   prerequisitesReady: boolean;
   turns: readonly AgentTurnRecord[];
   toolActions: readonly SanitizedToolAction[];

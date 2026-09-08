@@ -1453,3 +1453,7 @@ Workspace reattachment commits PROVISIONING before provider I/O. Queue redeliver
 ## 2026-09-08 — Losing an attach lease does not own the session
 
 A losing provisioning claim may release only an uncommitted handle that it created. An attached existing identity remains named by the durable row and may already be used by the winning lease. Retain it for that winner or the terminal reaper; closing it as generic lost-claim cleanup revokes another live claim. Test both overlapping attachment and overlapping creation with an elapsed lease, preserving newly created orphan cleanup.
+
+## 2026-09-08 — Pending workspace recovery must stay discoverable
+
+Work prerequisites defer PROVISIONING/RETRY workspaces without changing Run state, evidence or work budgets. Authentication and work recovery both admit workspace RETRY and expired PROVISIONING, then provision before executing; neither selects a live provisioning lease. RETRY does not wait for the old lease timestamp because a failed claim retains it. Missing rows still fail explicitly. Cover these predicates before and after extraction, with fresh repositories and durable failure/lease injection.

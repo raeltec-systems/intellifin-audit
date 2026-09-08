@@ -46,7 +46,12 @@ export class PostgresAgentWorkRepository implements AgentWorkRepository {
         workspace: workspace?.status === 'OPEN' && workspace.workspaceId !== null &&
           (workspace.mode === 'local' || workspace.mode === 'solari')
           ? { runId, workspaceId: workspace.workspaceId, mode: workspace.mode } : null,
-        prerequisitesReady: signIn?.status === 'SIGNED_IN' && shared.checkpoint?.status === 'EXTRACTION_COMPLETE',
+        // Reattachment temporarily hides the workspace from actions. A competing
+        // delivery must defer until provisioning finishes, not turn that pending
+        // prerequisite into a terminal workspace-missing failure. A genuinely absent
+        // row still reaches the application's existing missing-workspace protection.
+        prerequisitesReady: signIn?.status === 'SIGNED_IN' && shared.checkpoint?.status === 'EXTRACTION_COMPLETE' &&
+          workspace?.status !== 'PROVISIONING' && workspace?.status !== 'RETRY',
         wait: wait === undefined ? null : { ...wait, kind: wait.kind as NonNullable<AgentWorkContext['wait']>['kind'], deadline: wait.deadline.toISOString(), closedAt: wait.closedAt?.toISOString() ?? null, closureKind: wait.closureKind as NonNullable<AgentWorkContext['wait']>['closureKind'] },
         waitRaise, retainedDecisions,
         toolActions: actions.map(row => ({ ...row, startedAt: row.startedAt.toISOString(), completedAt: row.completedAt?.toISOString() ?? null })) as readonly SanitizedToolAction[],
@@ -107,7 +112,9 @@ export class PostgresAgentWorkRepository implements AgentWorkRepository {
       .innerJoin(runAgentExecution, eq(runAgentExecution.runId, auditRun.runId))
       .innerJoin(runExecution, eq(runExecution.runId, auditRun.runId))
       .leftJoin(runAgentWork, eq(runAgentWork.runId, auditRun.runId))
-      .where(sql`${auditRun.state}='RUNNING' AND ${runWorkspace.status}='OPEN' AND ${runAgentExecution.status}='SIGNED_IN' AND ${runExecution.status}='EXTRACTION_COMPLETE' AND (${runAgentWork.runId} IS NULL OR ${runAgentWork.status}='RETRY' OR (${runAgentWork.status} IN ('EXECUTING','WAITING') AND ${runAgentWork.leaseUntil}<=now()))`)
+      // The recovery handler provisions before inspecting. Keep failed or interrupted
+      // reattachments discoverable, but never select another live provisioning lease.
+      .where(sql`${auditRun.state}='RUNNING' AND (${runWorkspace.status} IN ('OPEN','RETRY') OR (${runWorkspace.status}='PROVISIONING' AND ${runWorkspace.leaseUntil}<=now())) AND ${runAgentExecution.status}='SIGNED_IN' AND ${runExecution.status}='EXTRACTION_COMPLETE' AND (${runAgentWork.runId} IS NULL OR ${runAgentWork.status}='RETRY' OR (${runAgentWork.status} IN ('EXECUTING','WAITING') AND ${runAgentWork.leaseUntil}<=now()))`)
       .orderBy(asc(auditRun.initiatedAt)).limit(Math.max(1, Math.min(100, limit)));
     return rows.map(row => row.id);
   }

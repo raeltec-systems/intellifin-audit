@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   acquirePopulation, executeAdapterSteps, executeAgentSteps, initiateRun, provisionWorkspace, raiseEscalation,
-  type AgentModelGateway, type EvidenceStore,
+  WorkspaceProvisionError, type AgentModelGateway, type EvidenceStore,
 } from '@intellifin/application';
 import {
   bindingDigest, bindingDigestEnvelope, GATE_CHECKS, RUN_LIMIT_CAUSES, initialDraftCompliance, initialDraftEvidence, initialDraftPopulation,
@@ -182,9 +182,9 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     let release!: () => void;
     const started = new Promise<void>(resolve => { entered = resolve; });
     const held = new Promise<void>(resolve => { release = resolve; });
+    let attachments = 0;
     const intercepted = vi.spyOn(browser, 'attach').mockImplementation(async ref => {
-      entered();
-      await held;
+      if (++attachments === 1) { entered(); await held; }
       return attach(ref);
     });
     const reattachment = provisionWorkspace({ repository: new PostgresWorkspaceRepository(db), browser, clock, ids }, seeded.job);
@@ -199,6 +199,14 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
       expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
       expect(modelCalls).toBe(1);
       expect(requests.length).toBe(requestsBefore);
+      const recovery = new PostgresAgentWorkRepository(db);
+      expect(await recovery.recoverableRunIds(100)).not.toContain(seeded.job.runId);
+      // Simulate the original worker stalling past its durable lease. Only that
+      // timestamp changes; the real provisioning claim and provider identity remain.
+      await sql`UPDATE run_workspace SET lease_until=now()-interval '1 millisecond' WHERE run_id=${seeded.job.runId}`;
+      expect(await recovery.recoverableRunIds(100)).toContain(seeded.job.runId);
+      expect(await provisionWorkspace({ repository: new PostgresWorkspaceRepository(db), browser, clock, ids }, seeded.job))
+        .toMatchObject({ provisioned: true });
     } finally {
       release();
       try { await reattachment; } finally { intercepted.mockRestore(); }
@@ -218,6 +226,42 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     expect(turns.every(turn => turn.status === 'FAILED' && turn.diagnostic === 'credential-containment' && turn.response_absent === true)).toBe(true);
     expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${seeded.job.runId} AND closed_at IS NULL`).toHaveLength(1);
     expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+  }, 120_000);
+
+  it('rediscovers a failed reattachment without spending work attempts or abandoning its identity', async () => {
+    const seeded = await seed('E-101', 'Esther Kabwe');
+    const browser = seeded.dependencies.browser;
+    const [identityBefore] = await sql`SELECT workspace_id,mode,expires_at FROM run_workspace WHERE run_id=${seeded.job.runId}`;
+    const failing = vi.spyOn(browser, 'attach').mockRejectedValueOnce(new WorkspaceProvisionError('unavailable'));
+    try {
+      expect(await provisionWorkspace({ repository: new PostgresWorkspaceRepository(db), browser, clock, ids }, seeded.job))
+        .toMatchObject({ retry: true, provisioned: false });
+    } finally { failing.mockRestore(); }
+    expect((await sql`SELECT status,workspace_id,mode,expires_at FROM run_workspace WHERE run_id=${seeded.job.runId}`)[0])
+      .toMatchObject({ ...identityBefore, status: 'RETRY' });
+    const recovery = new PostgresAgentWorkRepository(db);
+    expect(await recovery.recoverableRunIds(100)).toContain(seeded.job.runId);
+    await executeAgentWorkItem({ ...seeded.dependencies, repository: recovery }, seeded.job);
+    expect(await sql`SELECT run_id FROM run_agent_work WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+    expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
+    expect(seeded.selectedTools).toHaveLength(0);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('RUNNING');
+    expect(await provisionWorkspace({ repository: new PostgresWorkspaceRepository(db), browser, clock, ids }, seeded.job))
+      .toMatchObject({ provisioned: true });
+    expect((await sql`SELECT workspace_id,mode,expires_at FROM run_workspace WHERE run_id=${seeded.job.runId}`)[0]).toEqual(identityBefore);
+    await executeAgentWorkItem({ ...seeded.dependencies, repository: new PostgresAgentWorkRepository(db) }, seeded.job);
+    expect(await sql`SELECT observation_id FROM run_observation WHERE run_id=${seeded.job.runId}`).toHaveLength(1);
+    expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId}`).toHaveLength(1);
+  }, 120_000);
+
+  it('still fails a genuinely missing workspace instead of deferring it as provisioning', async () => {
+    const seeded = await seed('E-101', 'Esther Kabwe');
+    await sql`DELETE FROM run_workspace WHERE run_id=${seeded.job.runId}`;
+    await executeAgentWorkItem(seeded.dependencies, seeded.job);
+    expect(seeded.selectedTools).toHaveLength(0);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('RUN_FAILED');
+    expect((await sql`SELECT diagnostic FROM run_agent_work WHERE run_id=${seeded.job.runId}`)[0]?.diagnostic).toBe('workspace-missing');
+    expect((await sql`SELECT outcome FROM run_result WHERE run_id=${seeded.job.runId}`)[0]?.outcome).toBe('RUN_FAILED');
   }, 120_000);
 
   it.each(['missing', 'duplicate'] as const)('seals %s source identity as a shared Gate INCONCLUSIVE without selecting a row', async kind => {

@@ -339,6 +339,49 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
     expect(requested.at(-1)?.cookie).toContain('session=granted');
   }, 120_000);
 
+  it('discovers pre-extraction authentication recovery only when the workspace can resume', async () => {
+    // Build both durable checkpoints through the real workspace and sign-in paths first.
+    // The SQL below is a crash/lease fault injection: it changes only the persisted status
+    // a process would have left behind, while the repository query remains the subject under
+    // test. This is a repository recovery check, not another browser journey.
+    const job = await seed();
+    const execution = browser();
+    await ready(job, execution);
+    await executeAgentSteps(deps(execution), job);
+    expect(await sql`SELECT status FROM run_workspace WHERE run_id=${job.runId}`).toEqual([{ status: 'OPEN' }]);
+    expect(await sql`SELECT status FROM run_agent_execution WHERE run_id=${job.runId}`).toEqual([{ status: 'SIGNED_IN' }]);
+
+    const setWorkspace = async (status: 'RETRY' | 'PROVISIONING', lease: 'future' | 'expired') => {
+      if (lease === 'future') {
+        await sql`UPDATE run_workspace SET status=${status}, lease_until=now()+interval '1 hour' WHERE run_id=${job.runId}`;
+      } else {
+        await sql`UPDATE run_workspace SET status=${status}, lease_until=now()-interval '1 second' WHERE run_id=${job.runId}`;
+      }
+    };
+    const setAuthentication = async (status: 'RETRY' | 'EXECUTING', lease: 'future' | 'expired') => {
+      if (lease === 'future') {
+        await sql`UPDATE run_agent_execution SET status=${status}, lease_until=now()+interval '1 hour' WHERE run_id=${job.runId}`;
+      } else {
+        await sql`UPDATE run_agent_execution SET status=${status}, lease_until=now()-interval '1 second' WHERE run_id=${job.runId}`;
+      }
+    };
+
+    const cases = [
+      { name: 'workspace RETRY + authentication RETRY', workspace: 'RETRY' as const, workspaceLease: 'future' as const, authentication: 'RETRY' as const, authenticationLease: 'future' as const, recoverable: true },
+      { name: 'workspace RETRY + expired authentication EXECUTING', workspace: 'RETRY' as const, workspaceLease: 'future' as const, authentication: 'EXECUTING' as const, authenticationLease: 'expired' as const, recoverable: true },
+      { name: 'expired workspace PROVISIONING + authentication RETRY', workspace: 'PROVISIONING' as const, workspaceLease: 'expired' as const, authentication: 'RETRY' as const, authenticationLease: 'future' as const, recoverable: true },
+      { name: 'expired workspace PROVISIONING + expired authentication EXECUTING', workspace: 'PROVISIONING' as const, workspaceLease: 'expired' as const, authentication: 'EXECUTING' as const, authenticationLease: 'expired' as const, recoverable: true },
+      { name: 'live workspace PROVISIONING + authentication RETRY', workspace: 'PROVISIONING' as const, workspaceLease: 'future' as const, authentication: 'RETRY' as const, authenticationLease: 'future' as const, recoverable: false },
+    ] as const;
+
+    for (const scenario of cases) {
+      await setWorkspace(scenario.workspace, scenario.workspaceLease);
+      await setAuthentication(scenario.authentication, scenario.authenticationLease);
+      const recoverable = await new PostgresAgentExecutionRepository(db).recoverableRunIds(100);
+      expect(recoverable.includes(job.runId), scenario.name).toBe(scenario.recoverable);
+    }
+  }, 120_000);
+
   it('records the action in the shared log, with no credential anywhere in it', async () => {
     requested = [];
     const job = await seed();

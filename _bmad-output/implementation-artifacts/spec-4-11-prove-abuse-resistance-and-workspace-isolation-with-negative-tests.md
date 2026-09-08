@@ -120,7 +120,7 @@ Implementation checkpoint; final Epic4 acceptance remains open. Current hosted e
 
 See [engineering report](epic-4-engineering-report.md) and [continuation log](epic-4-engineering-continuation.md) for exact candidate identities, test evidence and blockers. No merge or deployment is claimed.
 
-Latest CI34203072973 at04f2a3e passes all162main browser cases and the first four worker mutations, then fails the credential BASELINE (RUN_FAILED instead of its required wait). Its diagnostic/stress follow-up is not yet accepted; [exact failure](epic-4-credential-baseline-failure.json).
+CI34205126512 at82adb83 subsequently passes all five jobs, including162browser cases and all seven worker mutations (34 baseline/removed-guard pairs, three independent credential lifecycles). The earlier [baseline failure](epic-4-credential-baseline-failure.json) prompted a deterministic PostgreSQL reattachment-race regression at e55c001, which fails before repair. Cleanup repair d50e424 and pending-work/recovery changes require final hosted verification. Live Solari isolation remains unverified.
 
 ### Historical verification entries
 
