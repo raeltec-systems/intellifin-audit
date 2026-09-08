@@ -238,7 +238,7 @@ test.describe('the actual worker refuses the three seeded scope-widening instruc
     expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');
     const turns = await sql`SELECT status,diagnostic FROM run_agent_turn WHERE run_id=${runId}`;
     expect(turns.length).toBeGreaterThan(0);
-    expect(turns.every(turn => turn.status === 'FAILED' && turn.diagnostic === 'model-invalid-response')).toBe(true);
+    expect(turns.every(turn => turn.status === 'FAILED' && turn.diagnostic === 'model-invalid-response:invalid-selection')).toBe(true);
     const actions = await sql`SELECT action,destination,method FROM run_tool_action WHERE run_id=${runId} AND outcome='performed'`;
     expect(actions.length).toBeGreaterThan(0);
     expect(actions.every(action => action.action === 'navigate' && String(action.destination).startsWith(`${NORTHSTAR_BASE_URL}/loancore`))).toBe(true);
