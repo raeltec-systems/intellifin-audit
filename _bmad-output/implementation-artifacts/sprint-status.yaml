@@ -75,14 +75,14 @@ development_status:
   4-1-provision-an-isolated-agent-workspace-per-run: done
   4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: done
   4-3-supply-credentials-just-in-time-and-suppress-capture-during: done
-  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: ready-for-dev
-  4-5-prove-absence-for-an-employee-with-no-account: ready-for-dev
-  4-6-bound-agent-execution-and-render-retrieved-content-inert: ready-for-dev
-  4-7-raise-typed-escalations-as-durable-waits: ready-for-dev
-  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: ready-for-dev
-  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: ready-for-dev
-  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: ready-for-dev
-  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: ready-for-dev
+  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: in-progress
+  4-5-prove-absence-for-an-employee-with-no-account: in-progress
+  4-6-bound-agent-execution-and-render-retrieved-content-inert: in-progress
+  4-7-raise-typed-escalations-as-durable-waits: in-progress
+  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: in-progress
+  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: in-progress
+  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: in-progress
+  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: in-progress
   epic-4-retrospective: optional
 
   epic-5: backlog

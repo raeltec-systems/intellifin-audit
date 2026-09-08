@@ -1322,3 +1322,8 @@ A synthetic target's real empty page must expose a truthful count/completeness d
 ### Retained absence provenance
 
 Preserve proof metadata beside the Observation in the shared registration transaction, with its own canonical digest recorded in the audit chain. Do not change the existing wire digest or backfill historical proof from today's values. Freeze the metadata while its Observation exists and refuse retrospective insertion after sealing. The auditor surface must show searched values, expected keys, completeness and the linked empty-result Evidence. Whole-document inspection requires that exact persisted proof binding; it never invents a matched-row locator.
+
+
+### Canonical negative journeys and stricter prevention
+
+Read the canonical expectation rows from disk and exercise the real synthetic application's pages. When an earlier authorization guard prevents a downstream defect by construction, retain that pre-I/O prevention test and label any deliberate downstream fault injection separately. The downstream browser/capture/registration/Gate proof must still fail honestly; never relax the earlier guard to make the historical defect reachable in production.
