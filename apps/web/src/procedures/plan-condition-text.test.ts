@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialDraftCompliance } from '@intellifin/domain';
-import { predicateText, ruleText } from './plan-condition-text';
+import { policyText, predicateText, ruleText } from './plan-condition-text';
 
 describe('readable stored compliance contracts', () => {
   it('shows exact tolerance-adjusted boundaries, including strict comparisons', () => {
@@ -29,5 +29,13 @@ describe('readable stored compliance contracts', () => {
     }
     expect(ruleText({ kind: 'disablement-window', disabledField: 'disabled_time', terminationField: 'termination_time', hours: '24', tolerance: '0.5', boundary: 'exclusive' })).toContain('less than (exclusive) 24.5 hours');
     expect(ruleText(initialDraftCompliance('P-3').complianceConditions[0]!.rule!)).toContain('strictly before processed time (exclusive)');
+  });
+
+  it('describes a frozen role-privilege policy with both lists and the escalation rule', () => {
+    const text = policyText({ kind: 'role-privilege', rolesField: 'roles', privileged: ['LOAN_ADMIN', 'SYSTEM_ADMIN'], nonPrivileged: [] });
+    expect(text).toContain('Privileged roles: LOAN_ADMIN, SYSTEM_ADMIN.');
+    expect(text).toContain('Known non-privileged roles: none declared.');
+    expect(text).toContain('retained privileged assignment');
+    expect(text).toContain('never inferred from a role name');
   });
 });

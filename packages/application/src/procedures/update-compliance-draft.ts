@@ -54,6 +54,8 @@ function auditValues(row: DraftComplianceFields): JsonValue {
         applicabilityAst: condition.applicabilityAst,
         rule: condition.rule,
         comparison: condition.comparison,
+        // A policy change is a compiled-meaning change; the role names stay on the version.
+        policy: condition.policy ?? null,
       } as unknown as JsonValue)),
       status: condition.status,
     })),

@@ -968,6 +968,45 @@ describe('registerObservations', () => {
     expect(compliantContext.wroteNothing()).toBe(true);
   });
 
+  it('accepts a policy-decided unnamed role without a proposal and refuses one with a proposal', async () => {
+    // The producer never asks the model about a role the frozen policy does not name;
+    // the registrar shares the predicate, so a proposal for that row is an extra answer.
+    const decided = (observationId: string): ObservationEvaluationResult => ({
+      observationId,
+      evaluations: [
+        {
+          conditionId: 'C1', origin: 'RULE' as const, value: 'COMPLIANT' as const,
+          confirmation: null, confidence: null, rationale: null, diagnostic: null, evidenceIds: [EVIDENCE],
+        },
+        {
+          conditionId: 'C2', origin: 'AGENT_JUDGED' as const, value: 'UNEVALUATED' as const,
+          confirmation: null, confidence: null, rationale: null,
+          diagnostic: 'rule does not name value XR_TEMP', evidenceIds: [EVIDENCE],
+        },
+      ],
+    });
+    const context = new FakeContext();
+    await expect(registerObservations(
+      context,
+      agentBatch([]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation: agentEvaluationPort((observationId) => decided(observationId)) },
+    )).resolves.toMatchObject({ registered: 1, evaluations: 2, exceptions: 0 });
+    expect(context.evaluations[1]?.evaluation).toMatchObject({ conditionId: 'C2', value: 'UNEVALUATED', confirmation: null, diagnostic: 'rule does not name value XR_TEMP' });
+    expect('agentProposal' in (context.evaluations[1] ?? {})).toBe(false);
+
+    const proposal: AgentJudgedProposal = {
+      observationId: observationIdFor(WORK_ITEM, 'AG-1001'), conditionId: 'C2', value: 'EXCEPTION',
+      confidence: '0.90', rationale: 'The model must not decide an unnamed role.',
+    };
+    const proposedContext = new FakeContext();
+    expect(await refusal(() => registerObservations(
+      proposedContext,
+      agentBatch([proposal]),
+      { ...SEAMS, corroboration: MATCHED_CORROBORATION, agentEvaluation: agentEvaluationPort((observationId) => decided(observationId)) },
+    ))).toBe('evaluation-shape');
+    expect(proposedContext.wroteNothing()).toBe(true);
+  });
+
   it('refuses to call an uninspected or ambiguous record Compliant', async () => {
     // H, and the composite foreign key that says the same thing in the database.
     for (const offered of [

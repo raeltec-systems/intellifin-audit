@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  compileComplianceDraft,
+  complianceInputFromFields,
   initialDraftCompliance,
   initialDraftEvidence,
   registrationDigest,
@@ -832,6 +834,96 @@ describe('agent work consumes durable human decisions with original capture', ()
   });
 });
 
+
+describe('agent work applies a frozen role-privilege policy before, during and after the model turn', () => {
+  afterEach(() => vi.restoreAllMocks());
+  function gateBoundary() { vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never); }
+  const POLICY = { kind: 'role-privilege', rolesField: 'roles', privileged: ['SYSTEM_ADMIN'], nonPrivileged: ['read-only'] } as const;
+  function policyPlan(): ExecutablePlan {
+    const authored = complianceInputFromFields(initialDraftCompliance('P-1'));
+    const compiled = compileComplianceDraft('P-1', { ...authored, conditions: authored.conditions.map(condition => condition.conditionId === 'C2' ? { ...condition, policy: POLICY } : condition) });
+    if (!compiled.ok) throw new Error(compiled.reason);
+    return { ...PLAN, inputs: { ...PLAN.inputs, ...compiled.value } } as ExecutablePlan;
+  }
+  const disabledWithRoles = (roles: unknown) => FOUND_CANDIDATES.slice(5).map(node => node.label === 'Roles' ? { ...node, value: roles } : node);
+  function proposing(value: 'COMPLIANT' | 'EXCEPTION'): AgentModelGateway {
+    return { identity: identity(), propose: vi.fn(async (request: AgentModelRequest): Promise<AgentModelResponse> => {
+      if (request.phase === 'evaluation' && request.evaluation) return {
+        schemaVersion: 1, phase: 'evaluation', route: 'anthropic', model: identity(), actions: [],
+        agentProposals: request.evaluation.conditions.map(condition => ({ observationId: request.evaluation!.observationId, conditionId: condition.conditionId, value, confidence: '0.99', rationale: 'Synthetic test judgment.' })),
+        uncertainty: { kind: 'none', rationale: null }, usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      };
+      return response(request.tools.find(tool => tool.action === 'read-attribute')?.toolId ?? null);
+    }) };
+  }
+  const evaluationRequests = (model: AgentModelGateway) => vi.mocked(model.propose).mock.calls.map(([request]) => request).filter(request => request.phase === 'evaluation');
+
+  it('sends the frozen policy inside the condition text and registers a consistent non-privileged judgment as pending', async () => {
+    gateBoundary();
+    const repository = new FakeRepository(); repository.plan = policyPlan();
+    const model = proposing('COMPLIANT');
+    expect(await executeAgentWorkItem(deps(repository, browserFor(repository, disabledWithRoles(['read-only'])), model, durableWaitPort(repository)), JOB)).toEqual({ retry: false });
+    const [request] = evaluationRequests(model);
+    expect(request?.evaluation?.conditions).toHaveLength(1);
+    expect(request!.evaluation!.conditions[0]!.text).toContain('Privileged roles: SYSTEM_ADMIN');
+    expect(request!.evaluation!.conditions[0]!.text).toContain('Known non-privileged roles: read-only');
+    expect(request!.evaluation!.conditions[0]!.text.startsWith(initialDraftCompliance('P-1').complianceConditions[1]!.text)).toBe(true);
+    expect(repository.observations).toHaveLength(1);
+    expect(repository.evaluations).toContainEqual(expect.objectContaining({ evaluation: expect.objectContaining({ conditionId: 'C2', origin: 'AGENT_JUDGED', value: 'COMPLIANT', confirmation: 'pending', diagnostic: null }) }));
+  });
+
+  it('labels a consistent privileged Exception as a retained privileged assignment, still pending human confirmation', async () => {
+    gateBoundary();
+    const repository = new FakeRepository(); repository.plan = policyPlan();
+    expect(await executeAgentWorkItem(deps(repository, browserFor(repository, disabledWithRoles('SYSTEM_ADMIN, read-only')), proposing('EXCEPTION'), durableWaitPort(repository)), JOB)).toEqual({ retry: false });
+    expect(repository.evaluations).toContainEqual(expect.objectContaining({ evaluation: expect.objectContaining({ conditionId: 'C2', origin: 'AGENT_JUDGED', value: 'EXCEPTION', confirmation: 'pending', diagnostic: 'retained privileged assignment SYSTEM_ADMIN' }) }));
+  });
+
+  it('refuses a proposal the policy contradicts as a rejected model answer: bounded retry, audited, nothing registered', async () => {
+    gateBoundary();
+    const repository = new FakeRepository(); repository.plan = policyPlan();
+    const model = proposing('COMPLIANT');
+    const dependencies = deps(repository, browserFor(repository, disabledWithRoles('SYSTEM_ADMIN')), model, durableWaitPort(repository));
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: true });
+    expect(repository.observations).toHaveLength(0);
+    expect(repository.evaluations).toHaveLength(0);
+    expect(repository.checkpoint).toMatchObject({ status: 'RETRY', diagnostic: 'model-policy-contradiction' });
+    expect(repository.workItems[0]).toMatchObject({ state: 'IN_PROGRESS', diagnostic: 'model-policy-contradiction' });
+    expect(repository.eventOrder).toContain('event:security.action-denied');
+    // The model never becomes the platform's answer: the retry asks again rather than
+    // converting COMPLIANT into the Exception the policy implies.
+    expect(evaluationRequests(model)).toHaveLength(1);
+  });
+
+  it('escalates an unnamed role to a person before any paid evaluation turn, then registers it Unevaluated without a proposal', async () => {
+    gateBoundary();
+    const repository = new FakeRepository(); repository.plan = policyPlan();
+    const model = proposing('EXCEPTION');
+    const dependencies = deps(repository, browserFor(repository, disabledWithRoles('XR_TEMP')), model, durableWaitPort(repository));
+    await executeAgentWorkItem(dependencies, JOB);
+    expect(repository.waits.at(-1)?.kind).toBe('unnamed-value');
+    expect(repository.run.state).toBe('AWAITING_AUDITOR');
+    expect(repository.checkpoint).toMatchObject({ status: 'WAITING', diagnostic: 'unnamed-value' });
+    expect(evaluationRequests(model)).toHaveLength(0);
+    expect(repository.observations).toHaveLength(0);
+    answerLast(repository, 'mark-unevaluated');
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
+    expect(evaluationRequests(model)).toHaveLength(0);
+    expect(repository.observations).toHaveLength(1);
+    expect(repository.evaluations).toContainEqual(expect.objectContaining({ evaluation: expect.objectContaining({ conditionId: 'C2', origin: 'AGENT_JUDGED', value: 'UNEVALUATED', confirmation: null, diagnostic: 'rule does not name value XR_TEMP' }) }));
+    expect(repository.evaluations.find(row => row.evaluation.conditionId === 'C2' && 'agentProposal' in row)).toBeUndefined();
+  });
+
+  it('leaves the policy-less C2 to the model: the original undefined-privilege scenario asks nothing of the platform', async () => {
+    gateBoundary();
+    const repository = new FakeRepository();
+    const model = proposing('COMPLIANT');
+    expect(await executeAgentWorkItem(deps(repository, browserFor(repository, disabledWithRoles('XR_TEMP')), model, durableWaitPort(repository)), JOB)).toEqual({ retry: false });
+    expect(repository.waits).toHaveLength(0);
+    expect(evaluationRequests(model)[0]!.evaluation!.conditions[0]!.text).toBe(initialDraftCompliance('P-1').complianceConditions[1]!.text);
+    expect(repository.evaluations).toContainEqual(expect.objectContaining({ evaluation: expect.objectContaining({ conditionId: 'C2', value: 'COMPLIANT', confirmation: 'pending' }) }));
+  });
+});
 
 describe('agent work enforces final limits, target order and bounded human retries', () => {
   afterEach(() => vi.restoreAllMocks());

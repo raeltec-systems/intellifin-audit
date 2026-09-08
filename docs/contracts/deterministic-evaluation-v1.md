@@ -200,8 +200,71 @@ this is the only case reached that way.
 
 Both full golden populations end **Inconclusive** by design.
 
+## Role-privilege policy on an Agent-Judged condition (added 2026-09-08)
+
+The owner's decision on P-1's C2 ("Treat any account whose roles look privileged as an
+Exception even if disabled"): privilege is **never inferred from a role's name**, never read
+from the system prompt, never hard-coded into the runtime and never read from an expectation
+fixture. It is an explicit, reviewable **policy binding** frozen with the version, on the
+condition it governs:
+
+```
+policy: { kind: 'role-privilege', rolesField: 'roles', privileged: [...], nonPrivileged: [...] }
+```
+
+- **Where it lives.** `RolePrivilegePolicy` in `compliance-draft.ts`, an OPTIONAL `policy` key on
+  `ComplianceConditionInput`. The key is ABSENT (never `null`) on every condition without one:
+  a compiled condition is compared byte for byte with its recompilation on every read, so a key
+  added to legacy rows would make every stored version read as nothing. `null` on input means
+  absent. The compiler accepts it only on a condition that compiles `AGENT_JUDGED` over a
+  Template that declares `roles` (P-1, P-2); on a Rule-Classified condition it is refused —
+  a policy beside a rule would be a second rule nobody evaluates.
+- **The lists are sets.** Trimmed, deduplicated, sorted, disjoint, bounded
+  (`ROLE_PRIVILEGE_LIMITS`), no separator characters in a name, at least one name across the
+  two. Names are compared EXACTLY — compiler 1 named sets compare exact strings and
+  corroboration permits no case folding — so `system_admin` is not `SYSTEM_ADMIN` and
+  `SUPER_ADMIN` is unclassified until a policy names it.
+- **How the roles value is read.** `readRoleList`: a JSON array of strings is itself (the P-2
+  population); a plain-text cell — LoanCore renders `LOAN_ADMIN, SYSTEM_ADMIN` — is split on
+  commas, semicolons and line breaks, each entry trimmed. A value that is not a list of names
+  is UNREADABLE, never an empty list.
+- **Classification** (`classifyRolePrivilege`): any privileged role → `privileged`, whatever
+  else the account holds; every role known non-privileged → `non-privileged`; a role in
+  neither list → `unclassified`, naming the roles; unreadable → `unreadable`.
+- **Before the proposal.** In `evaluateComplianceRecord`'s Agent-Judged branch the policy is
+  applied BEFORE the proposal is read: `unreadable` is the missing-field case
+  (`missing or invalid Observation field roles`); `unclassified` is §B's unnamed value
+  (`rule does not name value <role>`, one per unnamed role), which the Run-level Gate's
+  unnamed-value row already matches on any origin. Neither row needs, or may carry, a
+  proposal: `agentJudgedNeedsProposal` is the ONE predicate the producer
+  (`applicableAgentConditionIds`) and the registrar (`registerObservations`) share, so the
+  producer never asks the model about such a row and the registrar refuses a proposal for one.
+  The producer raises the existing `unnamed-value` escalation for an unclassified role before
+  any paid model turn, exactly as it does for a Rule-Classified unnamed value.
+- **After the proposal.** A proposal at or above the threshold that the policy CONTRADICTS
+  (COMPLIANT for a privileged account, EXCEPTION for a non-privileged one) is `UNEVALUATED`
+  with `Agent-Judged value contradicts the frozen role-privilege policy: <value> proposed for
+  roles <list>` — never silently corrected into the value the policy implies. C2 stays
+  Agent-Judged and its human-review contract stays intact; clarifying the policy does not
+  convert a machine proposal into an approval. The producer treats such a proposal as a
+  rejected model answer (`model-policy-contradiction`): the bounded retry cycle, an ID-only
+  `security.action-denied` record, then the `retry-or-skip` escalation, so a person decides.
+- **The label.** A consistent privileged EXCEPTION carries the owner's own words as its
+  diagnostic: `retained privileged assignment <privileged roles>`. It is still `pending`
+  human confirmation like every other Agent-Judged value.
+- **What the model reads.** `conditionInstructionText` renders the policy under the authored
+  prose as ONE instruction; the compiler bounds the pair at `COMPLIANCE_LIMITS.text`, which
+  is what the gateway accepts. The system prompt is unchanged.
+- **The negative case is kept.** `canonicalLoanCoreCompliance({ c2Policy: false })` is the
+  original undefined-privilege C2; without a policy every role is the model's alone to judge
+  and the live acceptance expects it to ask rather than guess. With the policy, E-000102
+  (LOAN_VIEWER) is non-privileged, E-000118 (LOAN_ADMIN, SYSTEM_ADMIN) is the declared positive
+  privilege case, and E-000119 (OPS_GENERIC, XR_TEMP) is in neither list — still ambiguous,
+  still escalated, exactly as `p-1-terminated-users.json` D16-b names it.
+
 ## What this contract does not decide
 
 The Run-level Gate rows, the applicable-condition counts and the mapping of a failing Gate to
-`INCONCLUSIVE` (Story 3.8); Result sealing and publication (3.9); and any Agent-Judged
-evaluation, which this epic does not have.
+`INCONCLUSIVE` (Story 3.8); Result sealing and publication (3.9); and the Agent-Judged
+evaluation turn, the retained machine proposal and human review, which are
+`evaluation-review-sealing-v1.md`.

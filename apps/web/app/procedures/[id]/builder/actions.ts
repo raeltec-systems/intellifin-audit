@@ -19,7 +19,7 @@ import {
   type UpdateEvidenceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { COMPLIANCE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
+import { COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -253,6 +253,21 @@ export interface ComplianceDraftFields {
   readonly edit: ComplianceDraftInput;
 }
 
+function isRoleList(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= ROLE_PRIVILEGE_LIMITS.roles &&
+    value.every((entry: unknown) => typeof entry === 'string' && entry.length <= ROLE_PRIVILEGE_LIMITS.roleLength);
+}
+
+/** `null` means no policy; an object must carry exactly the frozen policy keys with bounded string lists. */
+function isPolicyShape(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  const policy = value as Record<string, unknown>;
+  return Object.keys(policy).length === 4 && Object.hasOwn(policy, 'kind') && Object.hasOwn(policy, 'rolesField') &&
+    Object.hasOwn(policy, 'privileged') && Object.hasOwn(policy, 'nonPrivileged') && typeof policy['kind'] === 'string' &&
+    typeof policy['rolesField'] === 'string' && isRoleList(policy['privileged']) && isRoleList(policy['nonPrivileged']);
+}
+
 function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return false;
   const fields = input as Record<string, unknown>;
@@ -267,9 +282,12 @@ function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields
   return edit['conditions'].every((candidate: unknown) => {
     if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return false;
     const condition = candidate as Record<string, unknown>;
-    if (Object.keys(condition).length !== 4 || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
+    const keys = Object.keys(condition).length;
+    if ((keys !== 4 && keys !== 5) || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
       !Object.hasOwn(condition, 'applicability') || !Object.hasOwn(condition, 'comparison') || typeof condition['conditionId'] !== 'string' ||
       typeof condition['text'] !== 'string' || typeof condition['applicability'] !== 'string') return false;
+    // The optional policy is shape-checked here and validated by the compiler in the command.
+    if (keys === 5 && (!Object.hasOwn(condition, 'policy') || !isPolicyShape(condition['policy']))) return false;
     if (condition['comparison'] === null) return true;
     if (typeof condition['comparison'] !== 'object' || Array.isArray(condition['comparison'])) return false;
     const comparison = condition['comparison'] as Record<string, unknown>;

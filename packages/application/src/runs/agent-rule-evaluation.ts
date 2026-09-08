@@ -1,5 +1,6 @@
 import {
   adapterLookupColumn,
+  agentJudgedNeedsProposal,
   evaluableTemplateId,
   evaluateComplianceRecord,
   evaluateObservationRecord,
@@ -127,8 +128,11 @@ export function applicableAgentConditionIds(
       roleMatrix: context.roleExpansion,
     },
   );
+  // A frozen policy can decide a row without the model (unreadable roles, an unnamed
+  // role); the shared predicate excludes those so no proposal is asked for and, in the
+  // registrar, none is accepted.
   return evaluation.conditions
-    .filter((condition) => condition.origin === 'AGENT_JUDGED' && condition.applicable === true)
+    .filter(agentJudgedNeedsProposal)
     .map((condition) => condition.conditionId);
 }
 

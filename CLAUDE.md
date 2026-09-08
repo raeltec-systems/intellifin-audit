@@ -1,3 +1,7 @@
+## 2026-09-08 — C2 role-privilege policy is a frozen condition binding
+
+Privilege is never inferred from a role name, the system prompt, the runtime or an expectation fixture. `RolePrivilegePolicy` is an OPTIONAL `policy` key on an Agent-Judged condition over a Template's `roles` field, omitted (never `null`) when absent so legacy rows recompile byte for byte. The evaluator applies it before the proposal (unreadable roles = missing field; an unnamed role = §B unnamed value, escalated before any paid turn) and after it (a contradicting proposal is UNEVALUATED, never corrected; the producer retries it as a rejected model answer). A consistent privileged Exception is labelled `retained privileged assignment`. `agentJudgedNeedsProposal` is the one predicate the producer and registrar share. C2 stays Agent-Judged and pending human confirmation. `canonicalLoanCoreCompliance({ c2Policy: false })` keeps the original undefined-privilege negative case. Contract: `docs/contracts/deterministic-evaluation-v1.md`.
+
 ## 2026-09-07 — Page-script write containment
 
 The browser context enforces read-only HTTP methods as well as destination scope. An action gate alone cannot stop retrieved page scripts issuing same-origin writes. Only the real form login may arm one exact credential-bearing main-frame POST; redirects, fetch/XHR, repeats and credentialless bodies cannot use that exception. It is revoked in finally and page disposal. Local browser tests establish state isolation only, not Solari process/network isolation.

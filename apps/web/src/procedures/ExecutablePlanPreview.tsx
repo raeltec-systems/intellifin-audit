@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { ProcedureVersionView } from '@intellifin/application';
 import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
-import { predicateText, ruleText } from './plan-condition-text';
+import { policyText, predicateText, ruleText } from './plan-condition-text';
 import { startPlanPolling } from './plan-polling';
 
 import { ACTION_LABELS } from './plan-step-labels';
@@ -60,6 +60,7 @@ export function ExecutablePlanPreview({ draft, modelConfiguration }: { readonly 
         <p className="ls-whitespace">{condition.text}</p><p>Applies when: {condition.applicability}</p>
         <p>Compiled applicability: {predicateText(condition.applicabilityAst)}.</p>
         {condition.rule === null ? <p>Agent-Judged confidence threshold: {plan.inputs.agentJudgedThreshold}. The judgment must reach this threshold; otherwise the condition is Unevaluated.</p> : <p>Compiled rule: {ruleText(condition.rule)}</p>}
+        {condition.policy === undefined ? null : <p>Frozen role-privilege policy: {policyText(condition.policy)}</p>}
       </div>)}
       <h3>Credential references</h3>
       <ul>{plan.credentialReferences.map((reference) => <li key={reference.targetSystemId}>{plan.inputs.targets.find((target) => target.registrationId === reference.targetSystemId)?.displayName}: <code>{reference.credentialRef}</code></li>)}</ul>

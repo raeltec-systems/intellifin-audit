@@ -1,5 +1,6 @@
 import {
-  observationChecks, observationCoverage, observationCorroborationState, RULE_DOES_NOT_NAME_VALUE,
+  observationChecks, observationCoverage, observationCorroborationState, RULE_DOES_NOT_NAME_VALUE, POLICY_CONTRADICTED,
+  conditionInstructionText,
   adapterLookupColumn,
   adapterSearchKeys,
   classifyPlanTargets,
@@ -29,6 +30,7 @@ import {
   type CredentialResolver,
   type EvidenceStore,
   type ExceptionFingerprinter,
+  type ObservationEvaluationSubject,
   type PopulationRecord,
   type StepExecutionRecord,
   type WorkItemRecord,
@@ -111,6 +113,7 @@ export type AgentWorkDiagnostic =
   | 'model-configuration'
   | 'model-invalid-request'
   | 'model-invalid-response'
+  | 'model-policy-contradiction'
   | 'model-provider-refused'
   | 'browser-unavailable'
   | 'browser-denied'
@@ -741,7 +744,7 @@ export async function executeAgentWorkItem(
     // the specified bounded retry, but retain an ID-only security denial in the same
     // transaction as that retry/wait. Never persist the rejected model content.
     const auditModelRefusal = async (context: AgentWorkContext): Promise<void> => {
-      if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;
+      if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action' && diagnostic !== 'model-policy-contradiction') return;
       const denied = await context.auditEvents.append({
         actor: { type: 'system', id: 'agent-worker' }, eventType: SECURITY_DENIED_EVENT,
         source: 'worker', outcome: 'denied', aggregateId: run.runId,
@@ -907,18 +910,20 @@ export async function executeAgentWorkItem(
     snapshot: StoredSnapshot,
     state: 'OBSERVED' | 'UNINSPECTED',
     diagnostic: AgentWorkDiagnostic | null = state === 'UNINSPECTED' ? 'insufficient-evidence' : null,
-  ): Promise<'done' | 'lost' | 'refused'> => {
-    if (observation === null) return 'refused';
+  ): Promise<'done' | 'lost' | { readonly refused: AgentWorkDiagnostic }> => {
+    const refused = (why: AgentWorkDiagnostic = 'observation-registration-refused') => ({ refused: why });
+    if (observation === null) return refused();
     const priorObservations = item.observations;
     const corroboration = snapshotCorroboration([snapshot]);
     const agentInputs = { plan, records, references: [] };
     const evaluation = ruleEvaluation(agentInputs);
     let evaluationObservation = observation.record;
+    let judgedSubject: ObservationEvaluationSubject | null = null;
     if (observation.record.found === 'true' && !(humanDecision !== null && [humanDecision.wait, ...humanDecision.retained.map(entry => entry.wait)].some(wait => wait.kind === 'unnamed-value' && wait.answerOptionId === ESCALATION_OPTION_IDS.markUnevaluated))) {
       let registeredEvidenceIds: string[] = [];
       if (!await guarded(async context => { registeredEvidenceIds = (await context.readEvidenceStates(observation.record.evidenceIds)).filter(row => row.state === 'REGISTERED').map(row => row.evidenceId); })) return 'lost';
       const [verdict] = await corroboration.corroborate([observation.record]);
-      if (verdict === undefined) return 'refused';
+      if (verdict === undefined) return refused();
       const judged = { ...observation.record,
         identity: observation.record.identity === null ? null : { ...observation.record.identity, corroboration: verdict.identity },
         attributes: observation.record.attributes.map(attribute => ({ ...attribute, corroboration: verdict.attributes.find(entry => entry.name === attribute.name)?.corroboration ?? null })) };
@@ -928,10 +933,14 @@ export async function executeAgentWorkItem(
       evaluationObservation = judged;
       const checks = [...observationChecks({ ...observation, record: judged, registeredEvidenceIds, runStartedAt: checkpoint.runStartedAt, registeredAt: nowIso(dependencies.clock) }),
         { check: 'observation-corroboration' as const, outcome: verdict.outcome, diagnostic: verdict.diagnostic }];
-      const [preview] = await evaluation.evaluate([{ record: judged,
+      judgedSubject = { record: judged,
         coverage: observationCoverage({ ...observation, record: judged, registeredEvidenceIds, coverageRule: findProcedureTemplate(plan.inputs.templateId).coverageRule }),
-        corroboration: observationCorroborationState(judged), checks }]);
-      if (preview?.evaluations.some(row => row.origin === 'RULE' && row.value === 'UNEVALUATED' && row.diagnostic?.startsWith(RULE_DOES_NOT_NAME_VALUE))) {
+        corroboration: observationCorroborationState(judged), checks };
+      const [preview] = await evaluation.evaluate([judgedSubject]);
+      // Any origin: a Rule-Classified condition meeting a value it does not name, or an
+      // Agent-Judged condition whose frozen role-privilege policy does not name a role.
+      // Both are §B's unnamed value, escalated to a person BEFORE any paid model turn.
+      if (preview?.evaluations.some(row => row.value === 'UNEVALUATED' && row.diagnostic?.startsWith(RULE_DOES_NOT_NAME_VALUE))) {
         await persistWait({ item, execution, kind: 'unnamed-value', options: FIXED_ESCALATION_OPTIONS['unnamed-value'], diagnostic: 'unnamed-value', supportingEvidenceIds: [snapshot.evidenceId] });
         return 'lost';
       }
@@ -940,12 +949,14 @@ export async function executeAgentWorkItem(
     const expectedConditionIds = plan.inputs.complianceConditions.map(({ conditionId }) => conditionId);
     const expectedAgentConditionIds = plan.inputs.complianceConditions.filter(({ status }) => status === 'AGENT_JUDGED').map(({ conditionId }) => conditionId);
     const applicableIds = new Set(applicableAgentConditionIds(agentInputs, observation.record));
+    // The model reads the authored prose AND its frozen policy as one instruction; the
+    // policy is never in the system prompt and never inferred from the runtime.
     const conditions = plan.inputs.complianceConditions
       .filter(({ conditionId, status }) => status === 'AGENT_JUDGED' && applicableIds.has(conditionId))
-      .map(({ conditionId, text }) => ({ conditionId, text }));
+      .map((condition) => ({ conditionId: condition.conditionId, text: conditionInstructionText(condition) }));
     let agentProposals: readonly AgentJudgedProposal[] = [];
     if (observation.record.found === 'true' && conditions.length > 0) {
-      if (dependencies.model === null) return 'refused';
+      if (dependencies.model === null) return refused();
       const primary = adapterLookupColumn(plan.inputs.templateId);
       const population = primary === null ? null : records.find(record => record.values[primary] === observation.record.populationRecordKey) ?? null;
       const turn = await executeAgentModelTurn({ plan, checkpoint,
@@ -961,18 +972,26 @@ export async function executeAgentWorkItem(
       if (turn.kind === 'limit') { await stopRun('run-token-limit', 'run-token-limit'); return 'lost'; }
       if (turn.kind !== 'completed' && turn.kind !== 'failed') return 'lost';
       checkpoint = turn.checkpoint;
-      if (turn.kind === 'failed') return 'refused';
+      if (turn.kind === 'failed') return refused();
       const spentLimit = runLimit(stepExecutions, checkpoint, plan, dependencies.clock);
       if (spentLimit !== null) {
         await stopRun(spentLimit === 'run-time-limit' ? 'run-time-limit' : spentLimit === 'run-step-execution-limit' ? 'run-step-execution-limit' : 'run-token-limit', spentLimit);
         return 'lost';
       }
-      if (turn.response.phase !== 'evaluation' || turn.response.agentProposals === undefined) return 'refused';
+      if (turn.response.phase !== 'evaluation' || turn.response.agentProposals === undefined) return refused();
       if (turn.response.uncertainty.kind !== 'none') {
         await persistWait({ item, execution, kind: 'retry-or-skip', options: FIXED_ESCALATION_OPTIONS['retry-or-skip'], diagnostic: 'insufficient-evidence', supportingEvidenceIds: [snapshot.evidenceId] });
         return 'lost';
       }
       agentProposals = turn.response.agentProposals;
+      if (judgedSubject !== null) {
+        // A proposal the frozen policy contradicts is a rejected model answer, not a
+        // finding: it takes the bounded retry cycle and then the retry-or-skip
+        // escalation, so a person decides — the platform never converts the proposal
+        // into the value the policy implies, and never registers it as a judgment.
+        const [checked] = await agentEvaluation.evaluateWithAgentProposals([judgedSubject], agentProposals);
+        if (checked?.evaluations.some(row => row.diagnostic?.includes(POLICY_CONTRADICTED))) return refused('model-policy-contradiction');
+      }
       if (await cancellationBoundary() !== 'continue') return 'lost';
     }
     item.state = state;
@@ -1016,7 +1035,7 @@ export async function executeAgentWorkItem(
       return 'done';
     } catch {
       item.observations = priorObservations;
-      return 'refused';
+      return refused();
     }
   };
 
@@ -1158,9 +1177,9 @@ export async function executeAgentWorkItem(
           record: { ...applied.item.record, evidenceIds: [...new Set([...applied.item.record.evidenceIds, originalScreenshot.evidenceId])] } };
         const finished = await finishObservation(item, execution, decidedItem, original, applied.workItemState);
         if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
-        if (finished === 'refused') {
+        if (typeof finished === 'object') {
           // Preserve the choice across a retry. It is consumed only with registration.
-          const result = await persistRetry(item, execution, 'observation-registration-refused');
+          const result = await persistRetry(item, execution, finished.refused);
           const outcome = retryOutcome(result); if (outcome !== null) return outcome;
         }
         continue;
@@ -1410,8 +1429,8 @@ export async function executeAgentWorkItem(
             });
             const finished = await finishObservation(item, execution, absence, current.snapshot, 'UNINSPECTED', 'extraction-incomplete');
             if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
-            if (finished === 'refused') {
-              const result = await persistRetry(item, execution, 'observation-registration-refused');
+            if (typeof finished === 'object') {
+              const result = await persistRetry(item, execution, finished.refused);
               const outcome = retryOutcome(result); if (outcome !== null) return outcome;
             }
           } else {
@@ -1449,8 +1468,8 @@ export async function executeAgentWorkItem(
           });
           const finished = await finishObservation(item, execution, observation, current.snapshot, 'OBSERVED');
           if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
-          if (finished === 'refused') {
-            const result = await persistRetry(item, execution, 'observation-registration-refused');
+          if (typeof finished === 'object') {
+            const result = await persistRetry(item, execution, finished.refused);
             const outcome = retryOutcome(result);
             if (outcome !== null) return outcome;
           }
@@ -1530,8 +1549,8 @@ export async function executeAgentWorkItem(
             });
             const finished = await finishObservation(item, execution, observation, current.snapshot, 'UNINSPECTED');
             if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
-            if (finished === 'refused') {
-              const result = await persistRetry(item, execution, 'observation-registration-refused');
+            if (typeof finished === 'object') {
+              const result = await persistRetry(item, execution, finished.refused);
               const outcome = retryOutcome(result);
               if (outcome !== null) return outcome;
             }
@@ -1636,8 +1655,8 @@ export async function executeAgentWorkItem(
             });
             const finished = await finishObservation(item, execution, observation, current.snapshot, 'OBSERVED');
             if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
-            if (finished === 'refused') {
-              const result = await persistRetry(item, execution, 'observation-registration-refused');
+            if (typeof finished === 'object') {
+              const result = await persistRetry(item, execution, finished.refused);
               const outcome = retryOutcome(result);
               if (outcome !== null) return outcome;
             }

@@ -4,7 +4,8 @@ import {
   COMPLIANCE_COMPILER_VERSION, COMPLIANCE_SCHEMA_VERSION, COMPLIANCE_LIMITS, COMPLIANCE_MESSAGES,
   addComplianceDecimals, subtractComplianceDecimals, multiplyComplianceDecimal, compareComplianceDecimals,
   complianceObject, complianceExactKeys, isComplianceText, isComplianceConfidence, complianceCanonical,
-  complianceInputFromFields,
+  complianceInputFromFields, normalizeConditionPolicy, conditionInstructionText, classifyRolePrivilege,
+  RETAINED_PRIVILEGED_ASSIGNMENT, POLICY_CONTRADICTED,
   type ComparisonOperator, type ComplianceComparison, type ComplianceCompilation, type ComplianceConditionInput,
   type CompliancePredicate, type ComplianceRule, type CompiledComplianceCondition, type DraftComplianceFields,
 } from './compliance-draft.js';
@@ -122,7 +123,8 @@ export function compileComplianceDraft(templateId: TemplateId, input: unknown, c
   if (!isComplianceConfidence(input['confidenceThreshold'])) return { ok: false, reason: COMPLIANCE_MESSAGES.CONFIDENCE };
   const conditions: CompiledComplianceCondition[] = [], ids = new Set<string>();
   for (const candidate of input['conditions'] as unknown[]) {
-    if (!complianceObject(candidate) || !complianceExactKeys(candidate, ['conditionId', 'text', 'applicability', 'comparison'])
+    if (!complianceObject(candidate)
+      || !(complianceExactKeys(candidate, ['conditionId', 'text', 'applicability', 'comparison']) || complianceExactKeys(candidate, ['conditionId', 'text', 'applicability', 'comparison', 'policy']))
       || typeof candidate['conditionId'] !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(candidate['conditionId']) || ids.has(candidate['conditionId'])
       || !isComplianceText(candidate['text'], COMPLIANCE_LIMITS.text) || !candidate['text'].trim()
       || !isComplianceText(candidate['applicability'], COMPLIANCE_LIMITS.expression)) return { ok: false, reason: COMPLIANCE_MESSAGES.INPUT };
@@ -155,9 +157,25 @@ export function compileComplianceDraft(templateId: TemplateId, input: unknown, c
       rule = withComparison(rule, condition.comparison);
       if (!rule) return { ok: false, reason: COMPLIANCE_MESSAGES.NUMBER };
     }
+    // A policy binds ONLY an Agent-Judged condition over a Template that declares `roles`.
+    // A Rule-Classified condition already decides itself, and a policy beside one would be
+    // a second rule nobody evaluates; a Template with no roles field has nothing to
+    // classify. `null` on input means absent, and the key is OMITTED from the compiled
+    // condition when absent so every legacy row still recompiles byte for byte.
+    const policy = normalizeConditionPolicy(candidate['policy']);
+    if (policy === false) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
+    if (policy !== undefined && (rule !== null || COMPLIANCE_OBSERVATION_FIELDS[templateId][policy.rolesField] !== 'roles')) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
+    // The prose and its rendered policy are ONE instruction to the model; bound the whole,
+    // because a limit on the prose alone would let the pair exceed what the gateway accepts.
+    if (policy !== undefined && conditionInstructionText({ text: condition.text, policy }).length > COMPLIANCE_LIMITS.text) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
     // Preserve the authored string byte-for-byte. A blank string is an authored input;
-    // only its compiled meaning defaults to `found = true`.
-    conditions.push({ ...condition, applicabilityAst, rule, status: rule ? 'RULE' : 'AGENT_JUDGED' });
+    // only its compiled meaning defaults to `found = true`. Built key by key, never a
+    // spread of the candidate: a spread would carry a `policy: null` into the frozen row.
+    conditions.push({
+      conditionId: condition.conditionId, text: condition.text, applicability: condition.applicability, comparison: condition.comparison,
+      ...(policy === undefined ? {} : { policy }),
+      applicabilityAst, rule, status: rule ? 'RULE' : 'AGENT_JUDGED',
+    });
   }
   return { ok: true, value: { complianceSchemaVersion: COMPLIANCE_SCHEMA_VERSION, complianceCompilerVersion: COMPLIANCE_COMPILER_VERSION, complianceConditions: conditions, agentJudgedThreshold: input['confidenceThreshold'] } };
 }
@@ -381,9 +399,24 @@ export function evaluateComplianceRecord(
     if (!evidenceValid) return { ...base, value: 'UNEVALUATED', diagnostics: ['missing, ambiguous, contradictory, uninspected, or unproven Evidence'] };
     if (!application.value) return { ...base, value: 'COMPLIANT', diagnostics: [] };
     if (!condition.rule) {
+      // A frozen role-privilege policy is applied BEFORE the proposal is read. Roles that
+      // cannot be read are the missing-field case; a role the policy does not name is §B's
+      // unnamed value, escalated and never guessed. Neither needs, or may receive, a model
+      // proposal (`agentJudgedNeedsProposal` says so to the producer and the registrar).
+      const classification = condition.policy === undefined ? null : classifyRolePrivilege(condition.policy, observation.values[condition.policy.rolesField]);
+      if (classification?.kind === 'unreadable') return { ...base, value: 'UNEVALUATED', diagnostics: missing(condition.policy!.rolesField).diagnostics };
+      if (classification?.kind === 'unclassified') return { ...base, value: 'UNEVALUATED', diagnostics: classification.unclassified.map((role) => `${RULE_DOES_NOT_NAME_VALUE}${role}`) };
       const evaluation = Object.hasOwn(agentEvaluations, condition.conditionId) ? agentEvaluations[condition.conditionId] : undefined;
       if (!evaluation || !['EXCEPTION', 'COMPLIANT', 'UNEVALUATED'].includes(evaluation.value) || !isComplianceConfidence(evaluation.confidence)) return { ...base, value: 'UNEVALUATED', diagnostics: [`missing Agent-Judged evaluation for ${condition.conditionId}`] };
       if (compareComplianceDecimals(evaluation.confidence, fields.agentJudgedThreshold) < 0) return { ...base, value: 'UNEVALUATED', diagnostics: [`Agent-Judged confidence for ${condition.conditionId} is below the stored threshold`] };
+      if (classification !== null && evaluation.value !== 'UNEVALUATED') {
+        // The policy is the backstop: a proposal it contradicts is Unevaluated with the
+        // contradiction named, never silently corrected into the value the policy implies —
+        // C2 stays Agent-Judged and its human-review contract stays intact.
+        const expected = classification.kind === 'privileged' ? 'EXCEPTION' : 'COMPLIANT';
+        if (evaluation.value !== expected) return { ...base, value: 'UNEVALUATED', diagnostics: [`${POLICY_CONTRADICTED}: ${evaluation.value} proposed for roles ${classification.roles.join(', ')}`] };
+        if (classification.kind === 'privileged') return { ...base, value: 'EXCEPTION', diagnostics: [`${RETAINED_PRIVILEGED_ASSIGNMENT}${classification.privileged.join(', ')}`] };
+      }
       return { ...base, value: evaluation.value, diagnostics: [] };
     }
     const result = evaluateRule(condition.rule, observation);
@@ -391,4 +424,17 @@ export function evaluateComplianceRecord(
     return { ...base, value, diagnostics: result.diagnostics };
   });
   return { value: reduceComplianceEvaluations(conditions.map((condition) => condition.value)), conditions, diagnostics: conditions.flatMap((condition) => condition.diagnostics) };
+}
+
+/**
+ * Whether an applicable Agent-Judged condition still needs a model proposal.
+ *
+ * A frozen policy can decide a condition WITHOUT the model — unreadable roles are the
+ * missing-field case and an unnamed role is escalated — and such a row must carry no
+ * proposal: the producer does not ask for one and the registrar refuses one. One
+ * predicate, shared by both, so they cannot disagree about which rows those are.
+ */
+export function agentJudgedNeedsProposal(evaluation: Pick<ComplianceConditionEvaluation, 'origin' | 'applicable' | 'diagnostics'>): boolean {
+  return evaluation.origin === 'AGENT_JUDGED' && evaluation.applicable === true
+    && !evaluation.diagnostics.some((diagnostic) => diagnostic.startsWith(MISSING_OBSERVATION_FIELD) || diagnostic.startsWith(RULE_DOES_NOT_NAME_VALUE));
 }

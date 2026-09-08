@@ -12,6 +12,7 @@ import {
   type ComplianceComparison,
   type ComplianceConditionInput,
   type ComplianceDraftInput,
+  type RolePrivilegePolicy,
 } from '@intellifin/domain';
 import type { ProcedureVersionView, UpdateComplianceDraftResult } from '@intellifin/application';
 import type { ComplianceDraftFields } from '../../app/procedures/[id]/builder/actions';
@@ -41,6 +42,31 @@ function comparisonFor(draft: ProcedureVersionView, condition: ComplianceConditi
   return null;
 }
 
+/** One role per line. Blank lines are typing room, never entries; the compiler trims, dedupes and sorts. */
+function roleLines(text: string): string[] {
+  return text.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
+}
+
+function RoleListField({ id, label, help, roles, invalid, onChange }: {
+  readonly id: string; readonly label: string; readonly help: string; readonly roles: readonly string[];
+  readonly invalid: boolean; readonly onChange: (roles: string[]) => void;
+}): React.JSX.Element {
+  const saved = roles.join('\n');
+  const [text, setText] = useState(saved);
+  const [seen, setSeen] = useState(saved);
+  // Re-sync only when the saved list moved underneath (a save normalized it, a refresh
+  // replaced it) and the local text no longer spells the same entries.
+  if (saved !== seen) { setSeen(saved); if (roleLines(text).join('\n') !== saved) setText(saved); }
+  return <div className="ls-dialog__field">
+    <label htmlFor={id}>{label}</label>
+    <textarea className="ls-input" id={id} rows={4} value={text} aria-describedby={`${id}-help`} aria-invalid={invalid || undefined}
+      onChange={(event) => { setText(event.target.value); onChange(roleLines(event.target.value)); }} />
+    <p className="ls-caption" id={`${id}-help`}>{help}</p>
+  </div>;
+}
+
+const EMPTY_POLICY: RolePrivilegePolicy = { kind: 'role-privilege', rolesField: 'roles', privileged: [], nonPrivileged: [] };
+
 export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRuleFormProps): React.JSX.Element {
   const id = useId();
   const section = useSection(complianceInputFromFields(draft), rowVersion);
@@ -66,6 +92,14 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   function changeCondition(conditionId: string, edit: Partial<ComplianceConditionInput>): void {
     change({ ...inputRef.current, conditions: inputRef.current.conditions.map((condition) =>
       condition.conditionId === conditionId ? { ...condition, ...edit } : condition) });
+  }
+
+  function removePolicy(conditionId: string): void {
+    change({ ...inputRef.current, conditions: inputRef.current.conditions.map((condition) => {
+      if (condition.conditionId !== conditionId) return condition;
+      const { policy: _policy, ...rest } = condition;
+      return rest;
+    }) });
   }
 
   function touch(conditionId: string): void {
@@ -179,6 +213,19 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
             text: 'disabled_time - termination_time <= 24h',
             comparison: { boundary: 'inclusive', threshold: '24', tolerance: '0' },
           })}>Use 24-hour disablement window</Button> : null}
+          {condition.policy !== undefined || (compiled?.status === 'AGENT_JUDGED' && COMPLIANCE_OBSERVATION_FIELDS[draft.templateId]['roles'] === 'roles') ? <fieldset className="ls-stack" data-policy-for={condition.conditionId}>
+            <legend>Role-privilege policy {condition.conditionId}</legend>
+            <p className="ls-caption" id={`${fieldId}-policy-help`}>An explicit, reviewable list of role names frozen with this version. The agent applies it exactly and never infers privilege from a role name: any listed privileged role is an Exception even when the account is disabled; only known non-privileged roles can be Compliant; a role in neither list stops the evaluation and asks a person.</p>
+            {condition.policy === undefined
+              ? <Button type="button" aria-describedby={`${fieldId}-policy-help`} onClick={() => changeCondition(condition.conditionId, { policy: EMPTY_POLICY })}>Add role-privilege policy {condition.conditionId}</Button>
+              : <>
+                <RoleListField id={`${fieldId}-privileged`} label={`Privileged roles ${condition.conditionId}`} help="One role name per line, exactly as the Target System displays it." roles={condition.policy.privileged}
+                  invalid={error?.includes(COMPLIANCE_MESSAGES.POLICY) ?? false} onChange={(privileged) => changeCondition(condition.conditionId, { policy: { ...condition.policy!, privileged } })} />
+                <RoleListField id={`${fieldId}-non-privileged`} label={`Known non-privileged roles ${condition.conditionId}`} help="One role name per line. A role in neither list is escalated, never guessed." roles={condition.policy.nonPrivileged}
+                  invalid={error?.includes(COMPLIANCE_MESSAGES.POLICY) ?? false} onChange={(nonPrivileged) => changeCondition(condition.conditionId, { policy: { ...condition.policy!, nonPrivileged } })} />
+                <Button type="button" onClick={() => removePolicy(condition.conditionId)}>Remove role-privilege policy {condition.conditionId}</Button>
+              </>}
+          </fieldset> : null}
           <div id={`${fieldId}-error`} aria-live="polite">{error === null ? null : <Banner tone="warning" title={error} />}</div>
           <Button type="button" onClick={() => change({ ...inputRef.current, conditions: inputRef.current.conditions.filter((current) => current.conditionId !== condition.conditionId) })}>Remove condition {condition.conditionId}</Button>
         </fieldset>;

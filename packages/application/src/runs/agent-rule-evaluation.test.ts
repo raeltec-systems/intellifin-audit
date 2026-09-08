@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compileComplianceDraft,
+  complianceInputFromFields,
   initialDraftCompliance,
   observationIdFor,
   utf8Bytes,
@@ -168,6 +170,28 @@ describe('agentRuleEvaluation', () => {
       records: population({ employee_id: 'EMP-1', full_name: 'Dana Ok' }),
       references: [],
     }, record)).toEqual(['C2']);
+  });
+
+  it('withholds an Agent-Judged condition its frozen role-privilege policy decided without the model', () => {
+    const authored = complianceInputFromFields(TEMPLATE_FIELDS.P1);
+    const compiled = compileComplianceDraft('P-1', { ...authored, conditions: authored.conditions.map((condition) => condition.conditionId === 'C2'
+      ? { ...condition, policy: { kind: 'role-privilege', rolesField: 'roles', privileged: ['SYSTEM_ADMIN'], nonPrivileged: ['LOAN_VIEWER'] } }
+      : condition) });
+    if (!compiled.ok) throw new Error(compiled.reason);
+    const policyPlan = { ...plan('P-1'), inputs: { ...plan('P-1').inputs, ...compiled.value } } as ExecutablePlan;
+    const inputs = { plan: policyPlan, records: population({ employee_id: 'EMP-1', full_name: 'Dana Ok' }), references: [] };
+    const withRoles = (roles: unknown): ObservationRecord => ({ ...foundP1('EMP-1'), attributes: [...foundP1('EMP-1').attributes, {
+      name: 'roles', originalValue: roles as never, normalizedValue: roles as never,
+      grounding: { evidenceId: EVIDENCE, locator: '$.accounts[0].roles', label: 'Roles', extractedText: String(roles) }, corroboration: null,
+    }] });
+    // A decidable row still needs the model's judgment; a policy-decided row never does.
+    expect(applicableAgentConditionIds(inputs, withRoles('SYSTEM_ADMIN, LOAN_VIEWER'))).toEqual(['C2']);
+    expect(applicableAgentConditionIds(inputs, withRoles('LOAN_VIEWER'))).toEqual(['C2']);
+    expect(applicableAgentConditionIds(inputs, withRoles('XR_TEMP'))).toEqual([]);
+    expect(applicableAgentConditionIds(inputs, withRoles(''))).toEqual([]);
+    expect(applicableAgentConditionIds(inputs, foundP1('EMP-1'))).toEqual([]);
+    // Without a policy the same roles are the model's to judge — the original scenario.
+    expect(applicableAgentConditionIds({ ...inputs, plan: plan('P-1') }, withRoles('XR_TEMP'))).toEqual(['C2']);
   });
 
   it('does not offer an inapplicable or indeterminate condition to the model', () => {
