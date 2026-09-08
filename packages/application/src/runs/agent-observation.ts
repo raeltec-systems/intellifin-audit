@@ -88,6 +88,12 @@ export function buildFoundAgentObservation(input: {
   const attributes: ObservationAttribute[] = [];
   for (const field of input.plan.observations) {
     if (field.attributeName === 'found' || field.attributeName === 'identity' || field.attributeName === column) continue;
+    // The compiler lists a union of supported rule fields, including optional
+    // variants and population-supplied values. It is not a capture obligation for
+    // every target. Preserve this Template's declared fields and explicit evidence
+    // requirements; unavailable fields in that set still fail as ungrounded below.
+    if (labels?.[field.attributeName] === undefined &&
+        !input.plan.inputs.evidenceRequirements?.some(requirement => requirement.attributeName === field.attributeName)) continue;
     const choices = input.selections.filter(selection => selection.attributeName === field.attributeName);
     const attribute = choices.length === 1 ? ground(field.attributeName, field.valueType, choices[0]!.locator) : null;
     // Every declared field stays represented. No guessed or model-authored fallback value.

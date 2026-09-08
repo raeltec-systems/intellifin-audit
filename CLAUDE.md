@@ -1425,3 +1425,7 @@ A malicious-response regression must put the synthetic credential into a valid p
 ## 2026-09-08 — Search continuation from captured history
 
 An empty results page may omit its original form. Offer model-selected navigation only to a same-Run/target, query-free previously captured control page with the remaining declared key; require a fresh capture before searching. The old capture proves navigation provenance, never today's results. Keep the actual HTML parameter name distinct from the logical population lookup key.
+
+## 2026-09-08 — Compiler field vocabulary is not target capture scope
+
+A compiled plan carries the union of supported condition fields, including source-supplied and optional-variant values. Agent Observations retain mapped target fields and explicit Evidence Requirements, not null placeholders for every compiler field. Missing requested fields still fail required-evidence; unavailable rule inputs remain Unevaluated through the shared evaluator. Regression fixtures must derive the real plan instead of hand-trimming its vocabulary.
