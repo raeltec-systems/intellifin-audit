@@ -29,7 +29,9 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     name: Actual worker, live model and Solari audit
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Two bounded audit cases (policy-bound and the undefined-privilege negative case)
+    # plus the isolation gate; each audit case is capped at 12 minutes by its own timeout.
+    timeout-minutes: 50
     services:
       postgres:
         image: ghcr.io/railwayapp-templates/postgres-ssl:18

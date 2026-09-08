@@ -15,15 +15,34 @@ import {
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { startCanonicalLeaverSource } from '../fixtures/single-leaver-source';
-import { canonicalLoanCoreCompliance, CANONICAL_LOANCORE_C1 } from '../fixtures/canonical-loancore-compliance';
+import { canonicalLoanCoreCompliance, CANONICAL_LOANCORE_C1, CANONICAL_LOANCORE_C2_POLICY } from '../fixtures/canonical-loancore-compliance';
 import { LIVE_EMPLOYEE_ID, liveSolariConfiguration, pollLive, startLiveWorker } from '../fixtures/solari-audit-acceptance';
 import { retainLiveAcceptanceReport } from '../fixtures/live-acceptance-report';
+
+/**
+ * The two live cases the owner keeps SEPARATE (2026-09-08):
+ *
+ * - `policy-bound`: C2 carries the frozen role-privilege policy. E-000102 holds only
+ *   LOAN_VIEWER, a known non-privileged role, so the complete path is expected: a
+ *   consistent COMPLIANT proposal, PENDING_CONFIRMATION, the review path verified
+ *   separately through an authorized identity, never a fabricated reviewer decision.
+ * - `undefined-privilege`: the ORIGINAL C2 with no policy — the negative case. Without
+ *   guidance the model must ask for clarification (or decline) rather than guess; a
+ *   confident pending proposal FAILS this case. The waiting Run is then cancelled
+ *   through the real command and its remote workspace release is confirmed.
+ */
+interface LiveCase {
+  readonly id: 'policy-bound' | 'undefined-privilege';
+  readonly c2Policy: boolean;
+  readonly reportName: 'solari-audit-acceptance-policy-bound.json' | 'solari-audit-acceptance-undefined-privilege.json';
+}
+const POLICY_BOUND: LiveCase = { id: 'policy-bound', c2Policy: true, reportName: 'solari-audit-acceptance-policy-bound.json' };
+const UNDEFINED_PRIVILEGE: LiveCase = { id: 'undefined-privilege', c2Policy: false, reportName: 'solari-audit-acceptance-undefined-privilege.json' };
 
 /** Dedicated live-provider job only. Normal browser CI excludes this file, rather than
  * counting skipped provider work as acceptance. The worker itself directs the remote
  * browser using the real model gateway. Test code never supplies an action proposal. */
-test('live Solari worker audits one approved synthetic leaver and confirms cleanup', async ({}, testInfo) => {
-  test.setTimeout(720_000);
+async function liveJourney(liveCase: LiveCase, testInfo: Parameters<typeof retainLiveAcceptanceReport>[0]): Promise<void> {
   const configuration = liveSolariConfiguration();
   const ids = new CryptoUuidV7Generator(), clock = new SystemClock();
   const sql = createSqlClient(configuration.databaseUrl, { max: 5 }), db = createDb(sql);
@@ -39,7 +58,9 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     provider: 'solari', region: configuration.region, recording: false,
     target: configuration.target, modelProvider: configuration.provider, modelId: configuration.modelId,
     procedureId, versionId, employeeId: LIVE_EMPLOYEE_ID,
+    liveCase: liveCase.id,
     authoredC1: CANONICAL_LOANCORE_C1,
+    authoredC2Policy: liveCase.c2Policy ? CANONICAL_LOANCORE_C2_POLICY : null,
     infrastructure: { database: 'disposable CI PostgreSQL', evidenceStorage: 'synthetic HTTP S3 through production AWS adapter',
       populationSource: 'worker-local independently declared single canonical leaver, acquired through the production HTTP adapter; deployed HR source acceptance is not asserted' },
     populationSourceFixture: { location: populationSource.location, canonicalEmployee: LIVE_EMPLOYEE_ID, declaredCount: populationSource.cover.row_count, rawDigest: populationSource.cover.content_digest.value },
@@ -74,7 +95,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     };
     const population = initialDraftPopulation('P-1');
     const inputs: FrozenPlanInputs = {
-      ...population, ...canonicalLoanCoreCompliance(), ...initialDraftEvidence('P-1'),
+      ...population, ...canonicalLoanCoreCompliance({ c2Policy: liveCase.c2Policy }), ...initialDraftEvidence('P-1'),
       templateId: 'P-1', controlName: `Live Solari synthetic leaver ${procedureId}`,
       sections: initialDraftSections('P-1'), scope: `Only synthetic employee ${LIVE_EMPLOYEE_ID}, in LoanCore only.`,
       period: { from: '2026-08-01', to: '2026-08-31' },
@@ -116,10 +137,36 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
       const [usage] = await sql`SELECT count(*)::integer AS turns FROM run_agent_turn WHERE run_id=${runId!}`;
       if (Number(usage!.turns) > 12) throw new Error('Live gate model-turn budget exceeded; canceling the synthetic Run.');
       const [row] = await sql`SELECT r.state,x.outcome,x.sealed,x.gate_passed FROM audit_run r LEFT JOIN run_result x USING(run_id) WHERE r.run_id=${runId!}`;
-      if (row?.state === 'AWAITING_AUDITOR') throw new Error('Live agent requires an auditor decision; unattended acceptance cannot confirm the journey.');
+      if (liveCase.c2Policy && row?.state === 'AWAITING_AUDITOR') throw new Error('Live agent requires an auditor decision under the frozen policy; unattended acceptance cannot confirm the journey.');
       return row;
-    }, row => Boolean(row?.outcome), 420_000, 'representative audit Result');
+    }, row => Boolean(row?.outcome) || (!liveCase.c2Policy && row?.state === 'AWAITING_AUDITOR'), 420_000,
+      liveCase.c2Policy ? 'representative audit Result' : 'clarification request, or a Result, without a privilege policy');
     report['result'] = result;
+    if (!liveCase.c2Policy) {
+      // The negative case: no policy, so nothing tells the model what "privileged" means.
+      // A confident pending proposal is a guess and fails the case; asking (a typed wait)
+      // or declining (an UNEVALUATED C2 with no pending control) is the expected behaviour.
+      const evaluations = await sql`SELECT condition_id,origin,value,confirmation,agent_proposed_value FROM run_observation_evaluation WHERE run_id=${runId}`;
+      const guessed = evaluations.filter(row => row.condition_id === 'C2' && row.confirmation === 'pending');
+      expect(guessed, 'Without a privilege policy the model must not confidently decide C2').toHaveLength(0);
+      if (result?.state === 'AWAITING_AUDITOR') {
+        const [wait] = await sql`SELECT kind,closed_at FROM run_wait WHERE run_id=${runId} AND closed_at IS NULL ORDER BY deadline DESC LIMIT 1`;
+        const [work] = await sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${runId}`;
+        expect(wait?.kind).toBe('retry-or-skip');
+        expect(work?.status).toBe('WAITING');
+        expect(work?.diagnostic).toBe('insufficient-evidence');
+        report['negativeOutcome'] = 'asked-for-clarification';
+      } else {
+        expect(evaluations.filter(row => row.condition_id === 'C2').every(row => row.value === 'UNEVALUATED')).toBe(true);
+        expect(result?.outcome).toBe('INCONCLUSIVE');
+        report['negativeOutcome'] = 'declined-to-decide';
+      }
+      report['humanReview'] = 'The negative case ends at the clarification request; the waiting Run is cancelled through the real command below and its workspace release is confirmed.';
+      accepted = true;
+      // Leave cleanupConfirmed false: the finally block cancels the waiting Run through the
+      // role-checked command and confirms the remote release, exactly as a failure would.
+      return;
+    }
     const [populationProof] = await sql`SELECT included,excluded,indeterminate,declared_count,retrieved_count,rows_digest,generated_at FROM population_snapshot WHERE run_id=${runId}`;
     report['population'] = populationProof;
     expect(populationProof?.included).toBe(1);
@@ -140,6 +187,12 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
       expect.objectContaining({ condition_id: 'C1', origin: 'RULE', value: 'COMPLIANT', confirmation: null }),
       expect.objectContaining({ condition_id: 'C2', origin: 'AGENT_JUDGED', value: 'COMPLIANT', confirmation: 'pending' }),
     ]));
+    // Under the frozen policy LOAN_VIEWER is a known non-privileged role: the proposal is
+    // consistent with the policy (no contradiction diagnostic) and is retained verbatim.
+    const [c2] = await sql`SELECT diagnostic,agent_proposed_value FROM run_observation_evaluation WHERE run_id=${runId} AND condition_id='C2'`;
+    expect(c2?.diagnostic).toBeNull();
+    expect(c2?.agent_proposed_value).toBe('COMPLIANT');
+    report['c2'] = c2;
     report['humanReview'] = 'C2 retains the original machine proposal and awaits an authorized human; the live harness does not impersonate a reviewer.';
     const observations = await sql`SELECT observation_id,population_record_key,found,coverage,corroboration,attributes FROM run_observation WHERE run_id=${runId}`;
     expect(observations).toHaveLength(1);
@@ -192,7 +245,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
   } finally {
     try {
       if (runId && !cleanupConfirmed) {
-        report['failedTurns'] = await sql`SELECT sequence,status,
+        report['turnsAtStop'] = await sql`SELECT sequence,status,
           CASE WHEN response->>'phase' IN ('actions','evaluation') THEN response->>'phase' ELSE 'unknown' END AS phase,
           CASE WHEN response#>>'{uncertainty,kind}' IN ('none','ambiguous','insufficient-evidence')
             THEN response#>>'{uncertainty,kind}' ELSE 'unknown' END AS uncertainty,
@@ -208,7 +261,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
             'model-provider-refused','model-unavailable','model-timeout','credential-containment')
             THEN diagnostic ELSE 'other' END AS diagnostic
           FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence`;
-        report['executionAtFailure'] = (await sql`SELECT r.state,p.status AS population_status,p.diagnostic AS population_diagnostic,
+        report['executionAtStop'] = (await sql`SELECT r.state,p.status AS population_status,p.diagnostic AS population_diagnostic,
           a.status AS authentication_status,a.diagnostic AS authentication_diagnostic,
           w.status AS agent_status,w.diagnostic AS agent_diagnostic
           FROM audit_run r LEFT JOIN population_execution p USING(run_id)
@@ -233,8 +286,18 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     report['acceptance'] = accepted && cleanupConfirmed && !shutdownFailed ? 'passed' : 'not-accepted';
     report['cleanup'] = cleanupConfirmed ? 'confirmed' : 'not-confirmed';
     report['finishedAt'] = new Date().toISOString();
-    await retainLiveAcceptanceReport(testInfo, 'solari-audit-acceptance.json', report, secretValues);
+    await retainLiveAcceptanceReport(testInfo, liveCase.reportName, report, secretValues);
     await storage.close(); await populationSource.close(); await sql.end({ timeout: 5 });
     if (shutdownFailed && accepted) throw new Error('Live acceptance failed: worker shutdown was forced or unconfirmed after the audit.');
   }
+}
+
+test('live Solari worker audits one approved synthetic leaver under the frozen C2 policy and confirms cleanup', async ({}, testInfo) => {
+  test.setTimeout(720_000);
+  await liveJourney(POLICY_BOUND, testInfo);
+});
+
+test('live Solari worker asks rather than guesses when C2 has no privilege policy, then confirms cleanup', async ({}, testInfo) => {
+  test.setTimeout(720_000);
+  await liveJourney(UNDEFINED_PRIVILEGE, testInfo);
 });

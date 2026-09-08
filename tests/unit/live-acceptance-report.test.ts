@@ -10,10 +10,10 @@ it('retains failed acceptance and its cleanup identity as an uploadable JSON fil
   const report = { acceptance: 'not-accepted', workspace: { mode: 'solari', workspace_id: 'synthetic-session', status: 'RELEASED' } };
   try {
     expect(await retainLiveAcceptanceReport({ outputPath: name => join(directory, name), attach },
-      'solari-audit-acceptance.json', report, ['synthetic-secret'])).toBe(true);
-    const path = join(directory, 'solari-audit-acceptance.json');
+      'solari-audit-acceptance-policy-bound.json', report, ['synthetic-secret'])).toBe(true);
+    const path = join(directory, 'solari-audit-acceptance-policy-bound.json');
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(report);
-    expect(attach).toHaveBeenCalledWith('solari-audit-acceptance.json', { path, contentType: 'application/json' });
+    expect(attach).toHaveBeenCalledWith('solari-audit-acceptance-policy-bound.json', { path, contentType: 'application/json' });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
