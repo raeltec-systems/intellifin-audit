@@ -516,3 +516,10 @@ The first actual worker review journey also follows its captured account-status 
 Isolated-source/inspector checkpoint07219363d51d997f4bb80096279a795ca43019d5 is pushed. The new D1-a browser journey reads its expected employee and per-case outcome from the canonical P1 file, initiates via the real UI, and drives the actual compiled worker/queue with a named synthetic provider selecting current opaque tools. It authenticates against canonical Northstar, searches every declared key, captures real empty results, persists immutable proof, passes the shared absence judge and seals through the existing Gate. The auditor follows the actual proof Evidence into the protected empty-result inspector; accessibility and credential-free artifacts are asserted.
 
 The runtime never receives fixture expectations and no execution facts or outcomes are seeded. TypeScript, preload syntax and one-case discovery pass; actual local-Chromium/PG execution remains hosted-only and pending. This Story4.5 verification checkpoint is pushed without acceptance.
+
+
+## Live gate source provenance correction
+
+The canonical absence worker checkpoint is pushed. The selected live single-case audit now uses the same explicitly declared canonical E-000102 source acquired over real worker-local HTTP. Its independent count/digest/synthetic signed cover and source identity are recorded in the secret-free report. The browser remains a real remote Solari session against the approved public Northstar target; source acquisition and S3 transport remain worker-local test fixtures and are explicitly not deployed HR/storage acceptance. This preserves the required real model-directed target investigation without hiding unrelated full-source quality failures. No model/source response interception or fixture-aware runtime logic is added.
+
+TypeScript and source-helper tests pass. The dedicated gate still discovers2cases and has not been rerun; its last selected attempt failed before allocation because Actions lacks Solari/model configuration. This narrow live-gate correction is pushed; recording stays disabled, and no remote acceptance, merge or deployment is claimed.

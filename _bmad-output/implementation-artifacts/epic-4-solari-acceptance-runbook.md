@@ -6,10 +6,17 @@ its production configuration selects the real Solari browser adapter and real mo
 No model interception, action script, remote target deployment, tunnel, or recording is used.
 
 The existing approved synthetic target is
-`https://northstar-production-b312.up.railway.app`. The worker acquires its published
-HR export, applies the frozen P-1 inclusion rule plus employee `E-000102`, signs in
-using the catalog's synthetic **audit** credential, and lets the model select approved
-browser actions. The expected disabled account produces deterministic C1 Compliant and
+`https://northstar-production-b312.up.railway.app`. The worker acquires a separately
+declared, worker-local HTTP source containing exactly canonical employee `E-000102`,
+applies the frozen P-1 inclusion rule, signs into the remote LoanCore target using the
+catalog's synthetic **audit** credential, and lets the model select approved browser actions.
+The Python fixture generator reads the original row unchanged, independently computes
+its one-row count/digest and publishes its signed cover sheet. Original generation time
+is retained. This is an approved synthetic case projection, not acceptance of a deployed
+HR integration. The full golden export deliberately includes missing dates and duplicate
+keys: an employee inclusion filter cannot erase those source-level Gate failures, so it
+cannot validly demonstrate this case's pending-confirmation outcome. The full source and
+its protections are unchanged. The expected disabled account produces deterministic C1 Compliant and
 an evidence-grounded C2 proposal awaiting human confirmation. The harness never supplies
 an Observation, marks missing evidence Pass, or impersonates a reviewer to seal C2.
 
@@ -35,7 +42,7 @@ file; an absent key in the explicitly selected live job fails rather than skips.
 
 S3 is a disposable worker-local HTTP fixture, accessed through the production AWS
 adapter. It is not represented as deployed durable storage acceptance. The browser
-alone is remote; evidence is uploaded by the worker, so Solari needs no access to local
+alone is remote; population acquisition and evidence upload happen in the worker, so Solari needs no access to local
 services. Database, storage and fingerprint values are synthetic and isolated.
 
 The audit is bounded to one employee, 1,024 output tokens per model call, at most twelve

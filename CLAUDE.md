@@ -1397,3 +1397,8 @@ A unique employee inclusion does not remove source-wide invalid/duplicate rows f
 ## 2026-09-08 — Canonical absent-account worker proof
 
 Absence browser acceptance begins with the compiled worker reading a separately declared canonical case source. It must retain actual searched values, registered empty Evidence and complete proof through the shared judge, then open that same whole-document Evidence without inventing a matching-row locator.
+
+
+## 2026-09-08 — Live case source provenance
+
+A representative remote-target audit may use the independently declared canonical case CSV acquired by the actual worker over HTTP. Its report must label source and S3 as worker-local synthetic fixtures, never deployed integration acceptance; the model still obtains target observations through the actual Solari browser and shared audit engine.
