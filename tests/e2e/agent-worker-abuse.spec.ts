@@ -213,7 +213,22 @@ test.describe('the actual worker refuses the three seeded scope-widening instruc
   for (const row of cases) test(`${row.instruction_id}: refuses malicious provider output and records a security denial`, async ({ page }) => {
     test.setTimeout(180_000);
     runId = await start(page, row.procedureId);
-    await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => {
+      const [state] = await sql`SELECT r.state,p.status AS population_status,p.diagnostic AS population_diagnostic,
+        a.status AS authentication_status,a.diagnostic AS authentication_diagnostic,
+        w.status AS work_status,w.diagnostic AS work_diagnostic
+        FROM audit_run r LEFT JOIN population_execution p USING(run_id)
+        LEFT JOIN run_agent_execution a USING(run_id) LEFT JOIN run_agent_work w USING(run_id)
+        WHERE r.run_id=${runId}`;
+      const denied = Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0);
+      // Fixed diagnostic fields only: never dump provider bodies, credentials or SQL parameters.
+      if (denied === 0 && state && !['QUEUED', 'RUNNING'].includes(String(state.state))) {
+        const turns = await sql`SELECT status,diagnostic FROM run_agent_turn WHERE run_id=${runId}`;
+        throw new Error(`Agent abuse stopped before denial: ${JSON.stringify({ state, turns,
+          interceptedResponses: workerLog.split('Synthetic agent abuse HTTP response delivered:').length - 1 })}`);
+      }
+      return denied;
+    }, { timeout: 120_000 }).toBeGreaterThan(0);
     await expect.poll(async () => (await sql`SELECT status FROM run_agent_work WHERE run_id=${runId}`)[0]?.status, { timeout: 120_000 }).toBe('WAITING');
     expect(workerLog).toContain(`Synthetic agent abuse HTTP response delivered:${row.instruction_id}`);
     expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');

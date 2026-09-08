@@ -1267,3 +1267,8 @@ Persist baseline and mutant diagnostics before checking success conditions. A fa
 ### Hosted escalation baseline expectations
 
 Retry-or-skip is the platform-owned closed option set Retry, Skip, Abort. The Abort safety action is appended by the application; fixture-supplied option labels cannot remove it. Browser regressions must assert the complete fixed set and unchanged persisted options after explicit confirmation.
+
+
+### Actual worker abuse failure diagnosis
+
+When a negative worker journey stops before its expected denial, report bounded Run/population/authentication/work status and fixed diagnostics plus model-interception count. Do not dump worker logs or provider messages to diagnose a stage prerequisite; retain the original security assertion.

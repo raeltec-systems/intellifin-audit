@@ -302,3 +302,8 @@ CI34154713417 at `9d7edb30a62946cd316844d292ae170f38811f34` passes type/unit/bou
 Remote freshness rechecked at87199d788e04282151c49c218e84823c0d4ca5d4; local scratch resumed at5c6623d and was restored through the two already-pushed exact commits without overwriting inspector WIP. CI34155023877 passes static/unit/boundaries, PostgreSQL through39 plus mutations, and container jobs. Browser8 failures are five closed-option assertions omitting platform Abort and three worker abuse cases without expected security events. This checkpoint corrects only the former to the established Retry/Skip/Abort contract; durable-answer immutability and selection assertions remain intact. Nine wait-command tests pass. Worker/model fixture diagnosis and remaining inspector/abuse work continue.
 
 The owner supplied Solari credentials on2026-09-08; credentials remain outside Git. Local outbound provider connection was unavailable (network approval cancelled), so live acceptance needs an authorized execution path as well as remaining model/storage/target configuration. No live acceptance or merge is claimed.
+
+
+## Worker abuse prerequisite diagnostics
+
+Hydrated option correction pushed4aa474db196d5330e7f1d5bdf7304733b2951ed8. This checkpoint adds bounded durable stage diagnostics to the three failing actual-worker abuse cases. It leaves the security-event, WAITING, authenticated session, immutable version and no-Pass assertions unchanged. Script/gateway inspection found the synthetic SDK interception itself accepts the provider envelope; hosted stage evidence is needed to identify the preceding failure. Candidate acceptance remains pending.
