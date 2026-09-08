@@ -1337,3 +1337,8 @@ Compare exact retrieved text after parsing the registered structural snapshot, n
 ### PL/pgSQL FOUND and published trigger repairs
 
 PL/pgSQL has an implicit boolean FOUND variable. Qualify a table column named found (o.found) in trigger queries: the function can be created successfully but fail on its first INSERT. Repair published trigger code with a forward CREATE OR REPLACE migration, retaining Run locks, immutability and sealed-package guards. A populated upgrade must preserve historical missing proof rather than backfill it.
+
+
+### Remote release ownership
+
+A known live workspace's Run, provider mode and workspace ID must match before either teardown or a provider release request. Local release tests alone can hide a remote-only forged-reference branch. Reject a known mismatch without provider I/O; preserve the unknown-live persisted-reference path for legitimate restart cleanup, provider-confirmed absence and retry after provider failure.

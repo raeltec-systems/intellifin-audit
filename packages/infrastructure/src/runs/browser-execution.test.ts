@@ -211,6 +211,65 @@ describe('attaching and releasing without a live workspace', () => {
   });
 });
 
+describe('Solari release preserves the complete live workspace identity', () => {
+  function fixture() {
+    const execution = new PlaywrightBrowserExecution({ mode: 'solari', apiKey: 'synthetic-sdk-unit-key', recording: false });
+    const ref = { runId: 'run-a', workspaceId: 'session-a', mode: 'solari' as const };
+    const contextClose = vi.fn(async () => undefined), browserClose = vi.fn(async () => undefined);
+    const releaseAndWait = vi.fn(async (_id: string) => undefined);
+    // Inject the SDK transport and a connected session only. The release method under
+    // test is real; no provider request or browser process is needed to expose this bug.
+    Reflect.set(execution, 'solari', { sessions: { releaseAndWait } });
+    const live = Reflect.get(execution, 'live') as Map<string, unknown>;
+    live.set(ref.workspaceId, { ref, context: { close: contextClose }, browser: { close: browserClose } });
+    return { execution, ref, live, contextClose, browserClose, releaseAndWait };
+  }
+
+  it.each([
+    { runId: 'run-b', mode: 'solari' as const },
+    { runId: 'run-a', mode: 'local' as const },
+  ])('refuses a known session whose Run or provider identity differs: %j', async forged => {
+    const f = fixture();
+    await expect(f.execution.release({ ...f.ref, ...forged }, 1000)).rejects.toMatchObject({ code: 'policy' });
+    expect(f.releaseAndWait).not.toHaveBeenCalled();
+    expect(f.contextClose).not.toHaveBeenCalled(); expect(f.browserClose).not.toHaveBeenCalled();
+    expect(f.live.has(f.ref.workspaceId)).toBe(true);
+  });
+
+  it('closes and confirms the same Run and provider, then safely repeats cleanup', async () => {
+    const f = fixture();
+    await f.execution.release(f.ref, 1000);
+    expect(f.contextClose).toHaveBeenCalledOnce(); expect(f.browserClose).toHaveBeenCalledOnce();
+    expect(f.releaseAndWait).toHaveBeenCalledExactlyOnceWith(f.ref.workspaceId);
+    expect(f.live.has(f.ref.workspaceId)).toBe(false);
+    await f.execution.release(f.ref, 1000);
+    expect(f.releaseAndWait).toHaveBeenCalledTimes(2);
+    expect(f.contextClose).toHaveBeenCalledOnce();
+  });
+
+  it('still confirms a persisted identity after restart when no live session is held', async () => {
+    const f = fixture(); f.live.clear();
+    await f.execution.release(f.ref, 1000);
+    expect(f.releaseAndWait).toHaveBeenCalledExactlyOnceWith(f.ref.workspaceId);
+    expect(f.contextClose).not.toHaveBeenCalled(); expect(f.browserClose).not.toHaveBeenCalled();
+  });
+
+  it('propagates provider failure and permits cleanup retry with the retained reference', async () => {
+    const f = fixture();
+    f.releaseAndWait.mockRejectedValueOnce(new Error('Synthetic provider outage'));
+    await expect(f.execution.release(f.ref, 1000)).rejects.toThrow('Synthetic provider outage');
+    await f.execution.release(f.ref, 1000);
+    expect(f.releaseAndWait).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts provider-confirmed absence while leaving provider unavailability exceptional', async () => {
+    const f = fixture(); f.live.clear();
+    f.releaseAndWait.mockRejectedValueOnce(new SolariError('Synthetic absent session', 404, undefined, 'InvalidSessionId'));
+    await expect(f.execution.release(f.ref, 1000)).resolves.toBeUndefined();
+    expect(f.releaseAndWait).toHaveBeenCalledExactlyOnceWith(f.ref.workspaceId);
+  });
+});
+
 describe('capture during credential use', () => {
   const execution = new PlaywrightBrowserExecution({ mode: 'local' });
   const ref = { runId: 'run-1', workspaceId: 'gone', mode: 'local' as const };

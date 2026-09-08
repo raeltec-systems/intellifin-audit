@@ -620,7 +620,14 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
   async release(ref: WorkspaceRef, timeoutMs: number): Promise<void> {
     const bound = Math.max(1, Math.min(timeoutMs, CLOSE_TIMEOUT_MS));
     const live = this.live.get(ref.workspaceId);
-    if (live && live.ref.runId === ref.runId) {
+    // A known session belongs to one complete identity, for release just as for attach.
+    // Check before local teardown OR provider I/O: a forged Run/mode must not close
+    // another Run's browser. An unknown live session still permits persisted cleanup
+    // after restart, when the repository owns the original provider reference.
+    if (live && (live.ref.runId !== ref.runId || live.ref.mode !== ref.mode)) {
+      throw new WorkspaceProvisionError('policy');
+    }
+    if (live) {
       await this.teardown(ref.workspaceId, live.browser, live.context, bound);
     }
     if (ref.mode !== 'solari') return;

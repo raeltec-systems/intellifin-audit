@@ -2,14 +2,16 @@
 
 Status: INCOMPLETE — not accepted, not merged.
 
-## Current checkpoint — durable review dispatch (not accepted)
+## Current checkpoint — final verification and repairs underway
 
-- Latest fully hosted-verified SHA: `fbd9c10d3d0827b1ff06c7910288ea2b9e99fbc3`; CI `34152702255` passes all four jobs. PostgreSQL: 439 tests / 35 files, including fresh/populated migrations and drift. Browser isolation mutation gate: all 15 deliberate guard removals detected by passing-baseline/failing-mutant assertions. This is local Chromium, not remote Solari evidence.
-- This checkpoint adds generation 37 durable review commands, a dedicated worker queue, fresh authorization at execution, worker-only Exception signing, immutable original proposal/finding history, and effective-condition UI projection. Web reports pending until worker transaction commits. Recovery retains pending work when the signer is unavailable.
-- Local focused review/application/repository/queue/UI validation: 82 tests pass. Production worker E2E and PostgreSQL command regressions are committed for hosted execution; candidate acceptance is pending those checks.
-- Stories 4.4–4.11 remain under final verification. Inspector access, exact frozen authentication destinations, seeded P4 model navigation and additional hydrated/worker abuse checks remain separate worktree checkpoints. No merge or deployment.
-- Live gate remains blocked by unavailable Solari credentials and production worker evidence/credential/fingerprint configuration. Next action: push this coherent review checkpoint, verify hosted results, then deliver inspector/authentication checkpoints and repeat affected gates.
-- Delivery: this entry travels with the atomic commit; the matching commit is pushed immediately after creation. It does not declare its own untested SHA accepted.
+- Branch: `codex/epic-4-agent-runs`; [draft PR24](https://github.com/raeltec-systems/intellifin-audit/pull/24). No merge or deployment.
+- Generation41 forward trigger repair is pushed in `8f1ecc5d11c4375da84f845594213d4172f265cd`; serial mutation-runner budget is pushed in `e49276dac7bf4f75b8ce0aba58ba2240e4704931`.
+- Latest full local unit result:3499tests/164files pass at `6d1463f720eccae2b06ccbfcd66bc2b7c2fce5b6`. Hosted static checks pass there, but PostgreSQL exposed the repaired trigger error and canonical landing navigation gap. This is not final acceptance.
+- Earlier `01bf266bad556018a90c755ed4b3fb5485fdb540` passed458realPG tests/36files, migrations through39, drift and17selected unit/browser/P4 guard mutations. Historical green does not accept later changes.
+- Stories4.4–4.11 are implemented in checkpoints but remain in final verification; canonical LoanCore navigation, remote release-reference isolation and remaining exact-candidate negative gates are being completed.
+- The owner supplied a Solari key outside Git. Live acceptance remains unrun because encrypted Actions runner configuration/model credentials are unavailable through this connector. The executable gate and configuration instructions are committed in `epic-4-solari-acceptance-runbook.md`. Concurrent remote isolation needs its own proof; a single audit is insufficient.
+- Production configuration and deployed synthetic target compatibility also remain unverified. Email is deliberately `unconfigured` per the approved specification. Desktop, scheduling and live/replay remain later-epic scope.
+- Next: finish the identified repairs, verify the exact final schema/candidate, retain per-case mutation evidence, then execute the selected remote gates when runner settings are supplied. The chronological entries below preserve earlier results and blockers as history.
 
 ## Baseline and handoff
 
@@ -399,3 +401,10 @@ A real populated40-to-final regression now executes the preceding migrator, inse
 ## Serial mutation-runner budget correction
 
 Forward migration8f1ecc5d11c4375da84f845594213d4172f265cd is pushed. Static review of the now-reachable six-case mutation path finds its fixed10minute subprocess deadline could kill the process before six serial120second denial assertions finish. The harness now permits each selected case's existing240second budget plus120seconds setup, under the unchanged60minute CI job ceiling. This changes no assertion, product execution limit or mutation success rule: every selected case still must fail an assertion after its guard is removed. JavaScript syntax check passes; hosted complete per-case mutation evidence remains pending. This separate test-infrastructure checkpoint is pushed.
+
+
+## Cross-Run remote release repair
+
+Mutation-runner checkpointe49276dac7bf4f75b8ce0aba58ba2240e4704931 is pushed. Final isolation review found release could send a Solari release request for a known session despite a different Run reference; a forged local mode could also falsely report success without teardown. Two regressions fail before repair (34pass/2fail). The adapter now checks the complete known live identity before any teardown or provider I/O. Unknown-live persisted cleanup after restart remains supported.
+
+All36browser-adapter unit tests pass after repair, including correct/repeated release, restart, provider failure retry and confirmed absence; infrastructure typechecking passes. No live request occurred. This repair and regression checkpoint is pushed; actual remote isolation and final hosted checks remain required. The current-checkpoint summary above is refreshed to distinguish supplied credentials from unavailable encrypted runner configuration.
