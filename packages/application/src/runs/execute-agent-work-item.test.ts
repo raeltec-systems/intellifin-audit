@@ -529,6 +529,47 @@ describe('executeAgentWorkItem', () => {
     expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
   });
 
+  it('follows a model-selected landing link before offering the search control', async () => {
+    const repository = new FakeRepository();
+    const landing = [{
+      group: 'page', role: 'link', label: 'Search accounts', value: 'Search accounts',
+      target: 'https://loancore.example.test/loancore/users',
+    }] as const;
+    const requests: AgentModelRequest[] = [];
+    let calls = 0;
+    const model: AgentModelGateway = {
+      identity: identity(),
+      propose: vi.fn(async (request: AgentModelRequest) => {
+        requests.push(request);
+        const tool = calls++ === 0
+          ? request.tools.find(candidate => candidate.action === 'navigate')
+          : calls === 2
+            ? request.tools.find(candidate => candidate.action === 'search')
+            : undefined;
+        return response(tool?.toolId ?? null);
+      }),
+    };
+    const dependencies = deps(
+      repository,
+      browserForPages(repository, [landing, SNAPSHOT_NODES]),
+      model,
+      durableWaitPort(repository),
+    );
+    await executeAgentWorkItem(dependencies, JOB);
+
+    expect(repository.actions.map(action => action.action)).toEqual(['navigate', 'navigate', 'search']);
+    expect(repository.actions[1]?.destination).toBe('https://loancore.example.test/loancore/users');
+    expect(requests[0]?.tools).toEqual([expect.objectContaining({
+      action: 'navigate',
+      destination: 'https://loancore.example.test/loancore/users',
+      parameterNames: [],
+    })]);
+    expect(requests[0]?.tools.some(tool => tool.destination.includes('?'))).toBe(false);
+    expect(repository.actions[2]?.parameters).toEqual([
+      { name: 'employee_id', value: RECORD.values.employee_id },
+    ]);
+  });
+
   it('persists a pending typed wait before calling the wait port and resumes without a note', async () => {
     const repository = new FakeRepository();
     const browser = browserFor(repository);

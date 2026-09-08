@@ -420,3 +420,10 @@ Remote release repair6f18f64efcaf8ea41d1ccdc58289d8ff426c909d is pushed. The sel
 Live reporting checkpoint ed330ff4599b64ecdfd43c3ffad98c8ec3f7b30c is pushed. Exact-spec review found existing tests demonstrated a row lock or concurrent starts rather than held competing decisions. The wait test now holds the actual answer/cancellation/seal transaction uncommitted, starts both a real timeout and a second answer, observes both blocked in PostgreSQL and invisible uncommitted closure, then requires one CANCELED Result, superseded wake and closed-answer refusal. The evaluation test holds the actual first confirmation transaction while the second blocks, verifies no visible decision before commit, then retains the existing stale-revision, final sealing, immutable proposal/package and replay assertions.
 
 These tests change no runtime behavior. Root-test typechecking passes. Real PostgreSQL execution remains hosted-only and pending; this checkpoint is pushed without an acceptance claim.
+
+
+## Canonical LoanCore landing navigation repair
+
+Held decision checkpointfa8dc31e4ee28e5a5e3e485b2077067f36d98bb9 is pushed. Canonical D12/D14 execution exposed a genuine landing-page gap: LoanCore published only fixture-valued example queries, while the bounded planner correctly refused those links. LoanCore now exposes the generic search page and the model may select a captured query-free, in-origin navigation tool. A page carrying either declared identity datum is not a generic landing page; unrelated employee record links remain refused. The runtime never constructs a fixture route or borrows its employee values.
+
+Restoring the two old production files produces120passes/3newregression failures; repaired Northstar/planner/worker-loop suites pass123tests. Application, Northstar and root-test typechecks pass. Canonical PostgreSQL/Chromium journeys await hosted verification. This repair checkpoint is pushed without claiming local fixtures are autonomous live-model acceptance.

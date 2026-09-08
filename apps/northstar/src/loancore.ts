@@ -118,8 +118,7 @@ function administrationHome(): NorthstarResponse {
 <h2>User administration</h2>
 <p>Search for an account by employee ID or by full name.</p>
 <ul>
-  <li><a href="/loancore/users?employee_id=E-000103">Search by employee ID</a></li>
-  <li><a href="/loancore/users?name=Rita+Musonda">Search by full name</a></li>
+  <li><a href="/loancore/users">Search accounts</a></li>
 </ul>
 <p class="note">This account holds read access only. Creating, changing and disabling accounts are not available to it, and the system refuses the attempt.</p>
 `,

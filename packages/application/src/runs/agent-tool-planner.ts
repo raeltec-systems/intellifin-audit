@@ -377,29 +377,38 @@ function addLinkOptions(
   document: WebTreeDocument,
   target: ProcedureTargetSnapshot,
   primary: LookupSpec,
+  secondary: LookupSpec,
 ): boolean {
   const identityGroups = new Set(
     identityValueNodes(document, primary.value)
       .filter(({ node }) => node.label === primary.label)
       .map(({ node }) => node.group),
   );
+  const hasDeclaredIdentityDatum = indexed(document).some(
+    ({ node }) =>
+      node.role === 'datum' &&
+      (node.label === primary.label || node.label === secondary.label),
+  );
   const seen = new Set<string>();
   for (const [index, node] of document.nodes.entries()) {
     if (node.role !== 'link' || node.target === null || node.target.includes('?') || node.target.includes('#')) continue;
     const destination = safeLocation(node.target);
     if (destination === null || !inTargetOrigins(target, destination) || seen.has(destination)) continue;
-    // A path segment is useful evidence only when the current page has one
-    // grounded identity group. With no grounded identity, a same-origin link
-    // can be another record (or an example), so it must not become an action.
-    if (
-      !identityGroups.has(node.group) &&
-      !(identityGroups.size === 1 && pathCarriesExactKey(destination, primary.value))
-    ) continue;
-    const action: PermittedReadAction | null = targetAllows(target, 'open-record')
-      ? 'open-record'
-      : targetAllows(target, 'navigate')
-        ? 'navigate'
-        : null;
+    const recordLink =
+      identityGroups.has(node.group) ||
+      (identityGroups.size === 1 && pathCarriesExactKey(destination, primary.value));
+    // A landing page has no grounded identity, so it cannot authorize an
+    // open-record action. It may still publish a query-free, same-origin page
+    // link for the model to select as navigation. The link target itself is
+    // copied into the approved tool; the model cannot author a route or query.
+    if (!recordLink && (hasDeclaredIdentityDatum || !targetAllows(target, 'navigate'))) continue;
+    const action: PermittedReadAction | null = recordLink
+      ? targetAllows(target, 'open-record')
+        ? 'open-record'
+        : targetAllows(target, 'navigate')
+          ? 'navigate'
+          : null
+      : 'navigate';
     if (action === null) continue;
     const path = nodePath(index);
     if (path === null) continue;
@@ -591,7 +600,7 @@ export function planAgentTools(input: AgentToolPlannerInput): AgentToolPlannerRe
   // the proposal set and leave only opaque candidate choices for the human path.
   if (candidate.fatal) return output([], null, candidate.candidates, false);
   const options: InternalOption[] = [];
-  if (!addLinkOptions(options, parsed.document, input.target, primary)) return emptyResult();
+  if (!addLinkOptions(options, parsed.document, input.target, primary, secondary)) return emptyResult();
   if (!addSearchOption(options, parsed.document, input.target, destination, next)) return emptyResult();
   const found = candidate.found;
   if (!addReadOptions(options, input.target, destination, parsed.document, found)) return emptyResult();

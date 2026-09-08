@@ -80,6 +80,14 @@ function account(employeeId: string) {
 }
 
 describe('LoanCore', () => {
+  it('publishes a generic search entry point without fixture-valued query links', () => {
+    const page = text('/loancore');
+    expect(page).toContain('<a href="/loancore/users">Search accounts</a>');
+    expect(page).not.toContain('/loancore/users?');
+    expect(page).not.toContain('E-000103');
+    expect(page).not.toContain('Rita Musonda');
+  });
+
   it('renders Status, Username, Roles and Employee ID on an account page', () => {
     const row = account('E-000103');
     const page = text(`/loancore/users/${row.employee_id}`);

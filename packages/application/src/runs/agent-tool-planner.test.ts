@@ -272,4 +272,76 @@ describe('planAgentTools', () => {
       'https://loancore.example.test/loancore/users/E-000105',
     ]);
   });
+
+  it('offers a query-free same-origin landing link as model-selected navigation', () => {
+    const landing = [
+      {
+        group: 'page',
+        role: 'link' as const,
+        label: 'Search accounts',
+        value: 'Search accounts',
+        target: 'https://loancore.example.test/loancore/users',
+      },
+      {
+        group: 'page',
+        role: 'link' as const,
+        label: 'Example search',
+        value: 'Example search',
+        target: 'https://loancore.example.test/loancore/users?employee_id=E-000103',
+      },
+      {
+        group: 'page',
+        role: 'link' as const,
+        label: 'External',
+        value: 'External',
+        target: 'https://other.example.test/account',
+      },
+    ] as const;
+    const planned = planAgentTools(input({ snapshot: snapshot(landing) }));
+    expect(planned.tools.filter((tool) => tool.action === 'navigate')).toEqual([
+      {
+        toolId: 'agent-navigate-0',
+        action: 'navigate',
+        destination: 'https://loancore.example.test/loancore/users',
+        locator: { substrate: 'web_tree', path: '$.nodes[0].value' },
+        description: 'Navigate to the approved linked page.',
+        parameterNames: [],
+      },
+    ]);
+    expect(planned.tools.some((tool) => tool.action === 'open-record')).toBe(false);
+    expect(JSON.stringify(planned.tools)).not.toContain('E-000103');
+  });
+
+  it('does not treat an unrelated record link as landing navigation', () => {
+    const unrelatedRecord = [
+      {
+        group: 'record:other',
+        role: 'datum' as const,
+        label: 'Employee ID',
+        value: 'E-000103',
+        target: null,
+      },
+      {
+        group: 'record:other',
+        role: 'datum' as const,
+        label: 'Full name',
+        value: 'Chipo Zulu',
+        target: null,
+      },
+      {
+        group: 'page',
+        role: 'link' as const,
+        label: 'Open account',
+        value: 'Open account',
+        target: 'https://loancore.example.test/loancore/users/E-000103',
+      },
+    ] as const;
+    const planned = planAgentTools(input({
+      snapshot: snapshot(unrelatedRecord),
+      sourceLocation: 'https://loancore.example.test/loancore/users',
+    }));
+    expect(planned.tools.filter((tool) => ['navigate', 'open-record', 'search'].includes(tool.action))).toEqual([]);
+    expect(planned.candidates).toEqual([]);
+    expect(planned.absenceReady).toBe(false);
+  });
 });
