@@ -389,7 +389,7 @@ jobs:
   agent_abuse_mutations:
     name: Agent abuse mutations (hydrated UI and worker)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     services:
       postgres:
         image: ghcr.io/railwayapp-templates/postgres-ssl:18

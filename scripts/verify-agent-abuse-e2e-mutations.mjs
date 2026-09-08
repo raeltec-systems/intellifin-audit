@@ -26,12 +26,34 @@ const cases = [
   { id: 'worker-malformed-proposal-security-event', file: 'packages/application/src/runs/execute-agent-work-item.ts',
     before: "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;", after: 'return;',
     test: 'tests/e2e/agent-worker-abuse.spec.ts', count: 3, rebuild: true },
+  { id: 'retrieved-worker-security-denial', file: 'packages/application/src/runs/execute-agent-work-item.ts',
+    before: "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;", after: 'return;',
+    test: 'tests/e2e/agent-retrieved-abuse.spec.ts', count: 6, rebuild: true },
+  { id: 'terminal-worker-workspace-closure', file: 'packages/infrastructure/src/runs/browser-execution.ts',
+    before: 'await this.teardown(ref.workspaceId, live.browser, live.context, bound);', after: 'void bound;',
+    test: 'tests/e2e/agent-retrieved-abuse.spec.ts', count: 6, rebuild: '@intellifin/infrastructure' },
+  { id: 'stored-frozen-objective-scope-rule', file: 'packages/infrastructure/drizzle/0014_young_vance_astro.sql',
+    before: "IF OLD.state IN ('APPROVED', 'ACTIVE', 'RETIRED') OR OLD.frozen_review IS NOT NULL THEN", after: 'IF FALSE THEN',
+    test: 'tests/e2e/agent-retrieved-abuse.spec.ts', count: 6, databaseMutation: true },
 ];
 const scratch = await mkdtemp(join(tmpdir(), 'agent-abuse-e2e-mutations-'));
 const results = [];
+const verifiedBaselines = new Map();
+let mutationSql;
+async function frozenDefinitionMutation(entry) {
+  const url = new URL(process.env.DATABASE_URL ?? '');
+  if (!['localhost', '127.0.0.1'].includes(url.hostname) || url.pathname !== '/intellifin_e2e') throw new Error('Frozen-definition mutation requires the dedicated loopback intellifin_e2e database.');
+  const { createSqlClient } = await import('../packages/infrastructure/dist/index.js');
+  mutationSql ??= createSqlClient(url.href, { max: 1 });
+  const [row] = await mutationSql`SELECT pg_get_functiondef('protect_procedure_definition()'::regprocedure) AS definition`;
+  const original = String(row.definition);
+  if (original.split(entry.before).length !== 2) throw new Error('Applied frozen-definition guard drift.');
+  await mutationSql.unsafe(original.replace(entry.before, entry.after));
+  return async () => { await mutationSql.unsafe(original); };
+}
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-function build() {
-  const child = spawnSync('pnpm', ['--filter', '@intellifin/application', 'build'], { cwd: root, env: process.env, encoding: 'utf8', timeout: 120000 });
+function build(packageName = '@intellifin/application') {
+  const child = spawnSync('pnpm', ['--filter', packageName, 'build'], { cwd: root, env: process.env, encoding: 'utf8', timeout: 120000 });
   if (child.error || child.status !== 0) throw new Error('Candidate application build failed; no mutation result claimed.');
 }
 function specs(suites) { return suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]); }
@@ -54,16 +76,19 @@ try {
   for (const entry of cases) {
     const path = resolve(root, entry.file), source = await readFile(path, 'utf8');
     if (source.split(entry.before).length !== 2) throw new Error(`Mutation anchor drift: ${entry.id}`);
-    if (entry.rebuild) build();
-    const green = await run(entry, 'baseline');
+    if (entry.rebuild) build(typeof entry.rebuild === 'string' ? entry.rebuild : undefined);
+    const green = verifiedBaselines.get(entry.test) ?? await run(entry, 'baseline');
     await writeFile(output, JSON.stringify({ baselineSha, completed: false, pending: { id: entry.id, phase: 'baseline', result: green }, results }, null, 2) + '\n');
     if (green.reportErrors.length > 0 || green.exit !== 0 || (entry.count === undefined ? green.passed < entry.minimum : green.passed !== entry.count) || green.failed !== 0) { process.stderr.write(JSON.stringify(green, null, 2) + '\n'); throw new Error(`Baseline failed or test count changed: ${entry.id}`); }
+    verifiedBaselines.set(entry.test, green);
     let red;
+    let restoreDatabase;
     try {
       await writeFile(path, source.replace(entry.before, entry.after));
-      if (entry.rebuild) build();
+      if (entry.databaseMutation) restoreDatabase = await frozenDefinitionMutation(entry);
+      if (entry.rebuild) build(typeof entry.rebuild === 'string' ? entry.rebuild : undefined);
       red = await run(entry, 'mutant');
-    } finally { await writeFile(path, source); if (entry.rebuild) build(); }
+    } finally { try { await restoreDatabase?.(); } finally { await writeFile(path, source); if (entry.rebuild) build(typeof entry.rebuild === 'string' ? entry.rebuild : undefined); } }
     // Every seeded case must itself fail an assertion, not time out or fail setup.
     await writeFile(output, JSON.stringify({ baselineSha, completed: false, pending: { id: entry.id, phase: 'mutant', green, result: red }, results }, null, 2) + '\n');
     if (red.reportErrors.length > 0 || red.exit === 0 || red.failed !== green.passed || red.assertions.some(row => !row.errors.some(error => /expect\(|AssertionError/u.test(error)))) throw new Error(`Mutation survived or lacked per-case assertion failures: ${entry.id}`);
@@ -72,4 +97,4 @@ try {
     process.stdout.write(`${entry.id}: baseline ${green.passed} passed; mutant ${red.failed} failed\n`);
   }
   await writeFile(output, JSON.stringify({ baselineSha, mode: 'local-chromium-hydrated-ui-and-worker-intercepted-provider', completed: true, limitations: ['No live model or Solari acceptance.', 'This selected matrix does not replace every Story 4.11 case.'], results }, null, 2) + '\n');
-} finally { await rm(scratch, { recursive: true, force: true }); }
+} finally { await mutationSql?.end({ timeout: 5 }); await rm(scratch, { recursive: true, force: true }); }

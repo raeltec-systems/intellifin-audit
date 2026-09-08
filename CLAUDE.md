@@ -1282,3 +1282,8 @@ Read registered artifacts through actor/run/evidence/locator-bound durable grant
 ### Agent negative-test population prerequisites
 
 The full synthetic leavers export includes a deliberate duplicate employee key. A test of post-authentication model behavior must explicitly configure a unique bounded subject population; preserve the complete source and production duplicate refusal. Assert that model execution was reached before crediting its abuse guard. Terminal diagnostic errors aid baseline diagnosis but must not mask the security assertion during mutation tests.
+
+
+### Retrieved abuse and terminal cleanup evidence
+
+Plant hostile text only in actually authenticated synthetic HTML, leaving real form authentication and captured observations intact. Resume through the authorized closed answer; never forward answer narration as model authority. Observe production worker release without calling it from the test. Applied SQL guard mutations require the disposable loopback test database, explicit restoration, and actual assertion failures. Keep paid live-provider tests outside ordinary browser discovery.
