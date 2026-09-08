@@ -1429,3 +1429,7 @@ An empty results page may omit its original form. Offer model-selected navigatio
 ## 2026-09-08 — Compiler field vocabulary is not target capture scope
 
 A compiled plan carries the union of supported condition fields, including source-supplied and optional-variant values. Agent Observations retain mapped target fields and explicit Evidence Requirements, not null placeholders for every compiler field. Missing requested fields still fail required-evidence; unavailable rule inputs remain Unevaluated through the shared evaluator. Regression fixtures must derive the real plan instead of hand-trimming its vocabulary.
+
+## 2026-09-08 — Explicit target values versus normalization
+
+Compiler-1 named sets compare exact strings and corroboration permits no case-folding. When a target's display values differ from Template defaults, author and freeze a target-specific expression through the existing compiler; retain the default mismatch as an unnamed-value refusal. Never alter captured case or turn plain-text role display into an invented JSON list to satisfy a journey fixture.

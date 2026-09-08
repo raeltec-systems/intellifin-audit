@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
-  bindingDigest, bindingDigestEnvelope, initialDraftCompliance, initialDraftEvidence,
+  bindingDigest, bindingDigestEnvelope, initialDraftEvidence,
   initialDraftPopulation, initialDraftSections, registrationDigest, sha256HexOfBytes,
   snapshotFromRegistration, type FrozenPlanInputs,
 } from '@intellifin/domain';
@@ -15,6 +15,7 @@ import {
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { startCanonicalLeaverSource } from '../fixtures/single-leaver-source';
+import { canonicalLoanCoreCompliance, CANONICAL_LOANCORE_C1 } from '../fixtures/canonical-loancore-compliance';
 import { LIVE_EMPLOYEE_ID, liveSolariConfiguration, pollLive, startLiveWorker } from '../fixtures/solari-audit-acceptance';
 
 /** Dedicated live-provider job only. Normal browser CI excludes this file, rather than
@@ -37,6 +38,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     provider: 'solari', region: configuration.region, recording: false,
     target: configuration.target, modelProvider: configuration.provider, modelId: configuration.modelId,
     procedureId, versionId, employeeId: LIVE_EMPLOYEE_ID,
+    authoredC1: CANONICAL_LOANCORE_C1,
     infrastructure: { database: 'disposable CI PostgreSQL', evidenceStorage: 'synthetic HTTP S3 through production AWS adapter',
       populationSource: 'worker-local independently declared single canonical leaver, acquired through the production HTTP adapter; deployed HR source acceptance is not asserted' },
     populationSourceFixture: { location: populationSource.location, canonicalEmployee: LIVE_EMPLOYEE_ID, declaredCount: populationSource.cover.row_count, rawDigest: populationSource.cover.content_digest.value },
@@ -71,7 +73,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     };
     const population = initialDraftPopulation('P-1');
     const inputs: FrozenPlanInputs = {
-      ...population, ...initialDraftCompliance('P-1'), ...initialDraftEvidence('P-1'),
+      ...population, ...canonicalLoanCoreCompliance(), ...initialDraftEvidence('P-1'),
       templateId: 'P-1', controlName: `Live Solari synthetic leaver ${procedureId}`,
       sections: initialDraftSections('P-1'), scope: `Only synthetic employee ${LIVE_EMPLOYEE_ID}, in LoanCore only.`,
       period: { from: '2026-08-01', to: '2026-08-31' },
@@ -144,7 +146,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     expect(observations[0]!.attributes).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'account_status', normalizedValue: 'Disabled', corroboration: 'matched' }),
       expect.objectContaining({ name: 'username', normalizedValue: 'b.tembo', corroboration: 'matched' }),
-      expect.objectContaining({ name: 'roles', normalizedValue: ['LOAN_VIEWER'], corroboration: 'matched' }),
+      expect.objectContaining({ name: 'roles', originalValue: 'LOAN_VIEWER', normalizedValue: 'LOAN_VIEWER', corroboration: 'matched' }),
     ]));
     expect(await sql`SELECT step_id FROM run_session_step WHERE run_id=${runId} AND action='sign-in' AND state='ACQUIRED'`).toHaveLength(1);
     expect(await sql`SELECT sequence FROM audit_events WHERE aggregate_id=${runId} AND payload->>'diagnostic'='session-established'`).toHaveLength(1);

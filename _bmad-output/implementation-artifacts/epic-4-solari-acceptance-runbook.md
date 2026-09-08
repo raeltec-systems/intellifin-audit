@@ -142,3 +142,19 @@ runner must receive the encrypted secret, the first case's model secret/model ID
 and a Solari plan with two available concurrent sessions. A refused entitlement or
 unavailable credential transport is a precise blocker, never authority to substitute
 local Chromium or change the plan.
+
+## Explicit canonical LoanCore rule configuration
+
+The representative procedure freezes C1 authored through the existing compiler:
+`found = false or account_status in [Disabled] else [Active]`.
+C2 and its confirmation threshold remain the P1 definitions. The JSON report retains
+this exact authored C1. This is an explicitly configured target-specific procedure,
+not a claim that the untouched lowercase default recognizes capitalized statuses.
+
+Material conflict: the default C1 names `disabled`/`active`, while canonical LoanCore
+renders `Disabled`/`Active`. Shared §B/corroboration rules do not authorize case-folding.
+Tests retain the default mismatch as `rule does not name value Disabled`; no answer
+may map it into a known value. The owner can use the explicit expression above when
+configuring this target. Original and normalized captured strings remain identical.
+LoanCore renders Roles as plain text, so `LOAN_VIEWER` is retained as text; the
+independent real-list capture tests still require exact JSON list preservation.

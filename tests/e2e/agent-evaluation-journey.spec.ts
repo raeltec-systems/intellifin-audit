@@ -6,7 +6,6 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-  initialDraftCompliance,
   initialDraftEvidence,
   initialDraftPopulation,
   initialDraftSections,
@@ -29,6 +28,7 @@ import {
 
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { startCanonicalLeaverSource } from '../fixtures/single-leaver-source';
+import { canonicalLoanCoreCompliance } from '../fixtures/canonical-loancore-compliance';
 import { activeRunVersion } from '../fixtures/active-run-version';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { NORTHSTAR_BASE_URL } from './northstar';
@@ -109,7 +109,7 @@ function inputs(): FrozenPlanInputs {
   return {
     ...initialDraftPopulation('P-1'),
     inclusionRule: EVALUATION_INCLUSION_RULE,
-    ...initialDraftCompliance('P-1'),
+    ...canonicalLoanCoreCompliance(),
     ...initialDraftEvidence('P-1'),
     templateId: 'P-1',
     controlName,
@@ -247,15 +247,28 @@ async function startRun(page: Page): Promise<string> {
 }
 
 async function waitForPending(runId: string): Promise<void> {
-  await expect.poll(async () => {
-    const [run] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
-    const [result] = await sql`SELECT outcome,sealed FROM run_result WHERE run_id=${runId}`;
-    return { runState: run?.state, outcome: result?.outcome, sealed: result?.sealed };
-  }, { timeout: 120_000 }).toMatchObject({
-    runState: 'COMPLETED',
-    outcome: 'PENDING_CONFIRMATION',
-    sealed: false,
-  });
+  try {
+    await expect.poll(async () => {
+      const [run] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
+      const [result] = await sql`SELECT outcome,sealed FROM run_result WHERE run_id=${runId}`;
+      return { runState: run?.state, outcome: result?.outcome, sealed: result?.sealed };
+    }, { timeout: 120_000 }).toMatchObject({
+      runState: 'COMPLETED',
+      outcome: 'PENDING_CONFIRMATION',
+      sealed: false,
+    });
+  } catch (failure) {
+    // Failure diagnostics contain platform state/closed codes only, never captured
+    // values, model response text, credentials, SQL errors or worker stderr.
+    const gates = await sql`SELECT check_name,outcome,diagnostics FROM run_gate_check WHERE run_id=${runId} ORDER BY check_name`;
+    const checks = await sql`SELECT check_name,outcome,diagnostic FROM run_observation_check WHERE run_id=${runId} ORDER BY check_name`;
+    const work = await sql`SELECT state,attempts,cycles,observations,diagnostic FROM run_work_item WHERE run_id=${runId}`;
+    const turns = await sql`SELECT sequence,status,diagnostic FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence`;
+    const actions = await sql`SELECT action,outcome,status,diagnostic FROM run_tool_action WHERE run_id=${runId} ORDER BY started_at,tool_action_id`;
+    const evaluations = await sql`SELECT condition_id,origin,value,confirmation FROM run_observation_evaluation WHERE run_id=${runId}`;
+    console.error('Synthetic evaluation journey diagnostics:', JSON.stringify({ gates, checks, work, turns, actions, evaluations, markers: workerMarkers }));
+    throw failure;
+  }
 }
 
 type ReviewSnapshot = {
@@ -293,8 +306,8 @@ async function assertActualExecution(runId: string, markerStart: number): Promis
     coverage: 'COVERED',
   });
   expect(observations[0]?.attributes).toEqual(expect.arrayContaining([
-    expect.objectContaining({ name: 'account_status', normalizedValue: 'disabled' }),
-    expect.objectContaining({ name: 'roles', normalizedValue: ['LOAN_VIEWER'] }),
+    expect.objectContaining({ name: 'account_status', originalValue: 'Disabled', normalizedValue: 'Disabled' }),
+    expect.objectContaining({ name: 'roles', originalValue: 'LOAN_VIEWER', normalizedValue: 'LOAN_VIEWER' }),
   ]));
 
   const evaluations = await sql`SELECT condition_id,origin,value,confirmation,confidence::text AS confidence,rationale,evidence_ids,agent_proposed_value,agent_proposed_confidence::text AS agent_proposed_confidence,agent_proposed_rationale FROM run_observation_evaluation WHERE run_id=${runId} ORDER BY condition_id`;
@@ -346,7 +359,7 @@ async function assertActualExecution(runId: string, markerStart: number): Promis
       if (!parsed.ok || parsed.substrate !== 'web_tree') return null;
       const nodes = parsed.document.nodes;
       const has = (label: string, value: string | readonly string[]) => nodes.some((node) => node.role === 'datum' && node.label === label && JSON.stringify(node.value) === JSON.stringify(value));
-      return has('Employee ID', EMPLOYEE_ID) && has('Status', 'Disabled') && has('Roles', ['LOAN_VIEWER']) ? parsed.document : null;
+      return has('Employee ID', EMPLOYEE_ID) && has('Status', 'Disabled') && has('Roles', 'LOAN_VIEWER') ? parsed.document : null;
     })
     .filter((document): document is NonNullable<typeof document> => document !== null);
   expect(accountSnapshots.length).toBeGreaterThan(0);
