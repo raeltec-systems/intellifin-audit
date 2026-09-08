@@ -9,6 +9,7 @@ import {
   raiseEscalation,
   wakeEscalation,
   type Clock,
+  type WaitContext,
 } from '@intellifin/application';
 import {
   createDb,
@@ -325,50 +326,52 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     expect(await sql`SELECT count(*)::int AS count FROM run_result WHERE run_id=${runId}`).toEqual([{ count: 1 }]);
   });
 
-  it('serializes a concurrent answer and timeout on the Run row lock', async () => {
+  it('serializes an uncommitted answer against a competing timeout and second answer', async () => {
     const runId = await startRun('2026-05-01', '2026-05-31');
     const raised = await raise(runId, 'unnamed-value');
     expect(raised.ok).toBe(true);
     if (!raised.ok) return;
-    let release!: () => void;
-    let entered!: () => void;
-    const held = new Promise<void>((resolve) => { release = resolve; });
-    const ready = new Promise<void>((resolve) => { entered = resolve; });
-    // Hold the same row lock a real producer takes. The answering command must wait
-    // rather than reading revision 2 through the pool and writing after the timeout.
-    const blocker = sql.begin(async (transaction) => {
-      await transaction`SELECT run_id FROM audit_run WHERE run_id=${runId} FOR UPDATE`;
-      entered();
-      await held;
-    });
-    await ready;
-    const answering = answerEscalation(
-      {
-        repository: waitRepository(),
-        roles: new DrizzleRoleRepository(db),
-        unitOfWork: new PostgresRunsUnitOfWork(db),
-        ids,
-        clock: new FixedClock(new Date(baseNow.getTime() + 60 * 60 * 1000)),
-      },
-      {
-        session,
-        request: { runId, waitId: raised.wait.waitId, expectedRunRevision: 2, answerOptionId: ESCALATION_OPTION_IDS.abort },
-      },
-    );
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    class HeldAnswerRepository extends PostgresWaitRepository {
+      override transaction<T>(id: string, work: (context: WaitContext) => Promise<T>): Promise<T> {
+        return super.transaction(id, async context => {
+          const result = await work(context);
+          // The actual closing command has written its answer, cancellation and seal,
+          // but this real transaction remains open while both competitors arrive.
+          entered(); await held; return result;
+        });
+      }
+    }
+    const request = { runId, waitId: raised.wait.waitId, expectedRunRevision: 2, answerOptionId: ESCALATION_OPTION_IDS.abort };
+    const deps = { repository: waitRepository(), roles: new DrizzleRoleRepository(db),
+      unitOfWork: new PostgresRunsUnitOfWork(db), ids,
+      clock: new FixedClock(new Date(baseNow.getTime() + 60 * 60 * 1000)) };
+    const answering = answerEscalation({ ...deps, repository: new HeldAnswerRepository(db) }, { session, request });
+    await Promise.race([ready, answering.then(() => { throw new Error('The first answer did not reach its transaction hold.'); })]);
+    const timingOut = wakeEscalation({ repository: waitRepository(),
+      clock: new FixedClock(new Date(baseNow.getTime() + AWAITING_AUDITOR_TIMEOUT_MS)) },
+      { schemaVersion: 1, runId, waitId: raised.wait.waitId });
+    const duplicate = answerEscalation(deps, { session, request });
     try {
       await expect.poll(async () => Number((await sql`
         SELECT count(*) FROM pg_stat_activity
         WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE '%audit_run%for update%'
-      `)[0]!.count)).toBeGreaterThan(0);
+      `)[0]!.count)).toBeGreaterThanOrEqual(2);
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'AWAITING_AUDITOR' }]);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${raised.wait.waitId}`).toEqual([{ closed_at: null }]);
     } finally {
       release();
-      await blocker;
+      await Promise.allSettled([answering, timingOut, duplicate]);
     }
-    // The answer wins after the blocker releases; the row's closure and cancellation
-    // share one transaction, and a second timeout wake observes the closed wait.
     expect(await answering).toMatchObject({ ok: true, state: 'CANCELED' });
-    expect(await sql`SELECT closure_kind,actor FROM run_wait WHERE wait_id=${raised.wait.waitId}`).toMatchObject([{ closure_kind: 'answer', actor: author }]);
-    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'CANCELED' }]);
+    expect(await timingOut).toMatchObject({ ok: true, status: 'superseded' });
+    expect(await duplicate).toMatchObject({ ok: false, code: 'closed' });
+    expect(await sql`SELECT closure_kind,actor FROM run_wait WHERE wait_id=${raised.wait.waitId}`).toEqual([{ closure_kind: 'answer', actor: author }]);
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'CANCELED' }]);
+    expect(await sql`SELECT outcome,sealed FROM run_result WHERE run_id=${runId}`).toEqual([{ outcome: 'CANCELED', sealed: true }]);
+    expect(await sql`SELECT state FROM run_evidence_package WHERE run_id=${runId}`).toEqual([{ state: 'SEALED' }]);
   });
 
   it('refuses a duplicate singleton wake while the first enqueue is uncommitted', async () => {

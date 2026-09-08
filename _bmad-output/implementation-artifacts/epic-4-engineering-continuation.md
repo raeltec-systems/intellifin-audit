@@ -413,3 +413,10 @@ All36browser-adapter unit tests pass after repair, including correct/repeated re
 ## Live acceptance reporting containment
 
 Remote release repair6f18f64efcaf8ea41d1ccdc58289d8ff426c909d is pushed. The selected live audit gate now scans the synthetic application's derived session token as well as raw/provider credentials without printing operands. A forced or unconfirmed worker shutdown cannot leave the gate or artifact accepted. The runbook explicitly distinguishes byte scanning from visual credential absence, which is covered by credential-entry capture suppression tests. Root-test typechecking and diff checks pass. Live execution remains blocked by runner configuration; this checkpoint adds no remote acceptance claim or network activity and is pushed separately from the product repair.
+
+
+## Held decision concurrency proof
+
+Live reporting checkpoint ed330ff4599b64ecdfd43c3ffad98c8ec3f7b30c is pushed. Exact-spec review found existing tests demonstrated a row lock or concurrent starts rather than held competing decisions. The wait test now holds the actual answer/cancellation/seal transaction uncommitted, starts both a real timeout and a second answer, observes both blocked in PostgreSQL and invisible uncommitted closure, then requires one CANCELED Result, superseded wake and closed-answer refusal. The evaluation test holds the actual first confirmation transaction while the second blocks, verifies no visible decision before commit, then retains the existing stale-revision, final sealing, immutable proposal/package and replay assertions.
+
+These tests change no runtime behavior. Root-test typechecking passes. Real PostgreSQL execution remains hosted-only and pending; this checkpoint is pushed without an acceptance claim.

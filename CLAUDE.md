@@ -1342,3 +1342,8 @@ PL/pgSQL has an implicit boolean FOUND variable. Qualify a table column named fo
 ### Remote release ownership
 
 A known live workspace's Run, provider mode and workspace ID must match before either teardown or a provider release request. Local release tests alone can hide a remote-only forged-reference branch. Reject a known mismatch without provider I/O; preserve the unknown-live persisted-reference path for legitimate restart cleanup, provider-confirmed absence and retry after provider failure.
+
+
+### Durable decision race evidence
+
+Hold the real command's transaction after its writes and before commit, then observe competing production commands blocked in pg_stat_activity. A separate fixture row lock followed by only one command, or Promise.all without a controlled hold, does not prove the required race. Check uncommitted decisions remain invisible, then release and require exactly one winner, precise loser refusal and unchanged original machine/evidence history.

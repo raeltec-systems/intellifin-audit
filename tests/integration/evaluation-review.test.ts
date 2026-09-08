@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { completeRun, confirmEvaluation, dispatchEvaluationReview, executeEvaluationReviewCommand, rejectEvaluation, type AgentJudgedEvaluationRow } from '@intellifin/application';
+import { completeRun, confirmEvaluation, dispatchEvaluationReview, executeEvaluationReviewCommand, rejectEvaluation, type AgentJudgedEvaluationRow, type EvaluationReviewContext } from '@intellifin/application';
 import { exceptionFingerprint, GATE_CHECKS, observationDigest, utf8Bytes, type ObservationRecord } from '@intellifin/domain';
 import { createDb, createExceptionFingerprinter, createSqlClient, CryptoUuidV7Generator, DrizzleRoleRepository, EVALUATION_REVIEW_QUEUE, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, SystemClock, type Database, type Sql } from '@intellifin/infrastructure';
 import { PostgresEvaluationReviewRepository } from '../../packages/infrastructure/src/runs/evaluation-review-repository.js';
@@ -99,7 +99,34 @@ describe.skipIf(!url)('human evaluation review on PostgreSQL', () => {
     const originals = await sql`SELECT * FROM run_observation_evaluation WHERE run_id=${runId} ORDER BY observation_id`;
     expect(originals.every(row => row.agent_proposed_value === 'COMPLIANT' && Number(row.agent_proposed_confidence) === 0.95 && row.agent_proposed_rationale === 'Synthetic original machine proposal')).toBe(true);
     const packageBefore = await sql`SELECT * FROM run_evidence_package WHERE run_id=${runId}`;
-    const answers = await Promise.all(observationIds.map(observationId => confirmEvaluation(dependencies(), { session, request: {runId, observationId, conditionId: 'C2', expectedReviewRevision: 0} })));
+    let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    class HeldReviewRepository extends PostgresEvaluationReviewRepository {
+      override transaction<T>(id: string, work: (context: EvaluationReviewContext) => Promise<T>): Promise<T> {
+        return super.transaction(id, async context => {
+          const result = await work(context);
+          entered(); await held; return result;
+        });
+      }
+    }
+    const first = confirmEvaluation({ ...dependencies(), repository: new HeldReviewRepository(db) },
+      { session, request: { runId, observationId: observationIds[0], conditionId: 'C2', expectedReviewRevision: 0 } });
+    await Promise.race([ready, first.then(() => { throw new Error('The first review did not reach its transaction hold.'); })]);
+    const second = confirmEvaluation(dependencies(),
+      { session, request: { runId, observationId: observationIds[1], conditionId: 'C2', expectedReviewRevision: 0 } });
+    try {
+      await expect.poll(async () => Number((await sql`
+        SELECT count(*) FROM pg_stat_activity
+        WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE '%audit_run%for update%'
+      `)[0]!.count)).toBeGreaterThan(0);
+      // The first real decision is uncommitted, not a separate fixture row lock.
+      expect(await sql`SELECT revision FROM run_result_review WHERE run_id=${runId}`).toEqual([]);
+      expect(await sql`SELECT decision_id FROM run_evaluation_review WHERE run_id=${runId}`).toEqual([]);
+    } finally {
+      release(); await Promise.allSettled([first, second]);
+    }
+    const answers = await Promise.all([first, second]);
     expect(answers.filter(a=>a.ok)).toHaveLength(1);
     expect(answers.filter(a=>!a.ok)).toMatchObject([{ok:false,code:'stale-revision'}]);
     expect(await sql`SELECT version,sealed,outcome FROM run_result WHERE run_id=${runId}`).toEqual([{version:1,sealed:false,outcome:'PENDING_CONFIRMATION'}]);
