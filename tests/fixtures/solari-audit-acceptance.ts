@@ -86,10 +86,14 @@ export function startLiveWorker(env: NodeJS.ProcessEnv) {
     },
     assertRunning() { if (failed || closed) throw new Error('Live worker terminated unexpectedly; raw logs are withheld.'); },
     async stop() {
-      if (closed) return;
+      if (closed) {
+        if (failed) throw new Error('Live worker exited unsuccessfully; raw logs are withheld.');
+        return;
+      }
       process_.kill('SIGTERM');
       try { await pollLive(async () => closed, Boolean, 30_000, 'worker graceful shutdown'); }
       catch { process_.kill('SIGKILL'); throw new Error('Live worker required forced shutdown; remote cleanup must be checked in the report.'); }
+      if (failed) throw new Error('Live worker exited unsuccessfully; raw logs are withheld.');
     },
   };
 }
