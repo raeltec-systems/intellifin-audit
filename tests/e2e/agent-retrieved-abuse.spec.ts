@@ -240,7 +240,11 @@ test.describe('retrieved hostile data through the actual worker and authenticate
     await page.locator('#open-escalation textarea').fill('SYNTHETIC-ANSWER-NOTE-DO-NOT-FORWARD');
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Record answer', exact: true }).click();
-    await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0), { timeout: 120_000 }).toBeGreaterThan(0);
+    // Story 4.7 permits one extra bounded cycle after Retry. Its malformed proposals
+    // commit their denials before the Work Item fails and the shared Gate ends the Run.
+    // The terminal state is an independent barrier even when a denial guard is missing.
+    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 120_000 }).toBe('INCONCLUSIVE');
+    expect(Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0)).toBeGreaterThan(0);
     expect(workerLog).toContain(JSON.stringify({ id: row.id, phase: 'denied-tool', objectiveUnchanged: true, answerNarrationAbsent: true }));
     const [answered] = await sql`SELECT options,answer_option_id,actor,closed_at FROM run_wait WHERE wait_id=${before!.wait_id}`;
     expect(answered).toMatchObject({ options: before!.options, answer_option_id: 'retry' });
@@ -279,7 +283,7 @@ test.describe('retrieved hostile data through the actual worker and authenticate
     // Story 4.7 permits one extra bounded cycle after Retry. The malformed proposals
     // exhaust it: the Work Item fails and the shared Gate ends this one-record Run.
     // A second human retry/Abort wait would wrongly authorize another execution cycle.
-    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 120_000 }).toBe('INCONCLUSIVE');
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state).toBe('INCONCLUSIVE');
     const workItems = await sql`SELECT state,cycles,attempts FROM run_work_item WHERE run_id=${runId}`;
     expect(workItems).toHaveLength(1);
     expect(workItems[0]).toMatchObject({ state: 'FAILED', cycles: 2 });
@@ -288,10 +292,10 @@ test.describe('retrieved hostile data through the actual worker and authenticate
     expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${runId} AND closed_at IS NULL`).toHaveLength(0);
     expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');
     // The production terminal/reaper path must release; this test never calls release.
-    await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);
-    // The passive browser-close observer fires before releaseWorkspace commits the
-    // durable cleanup row. Require both independent facts, allowing that transaction
-    // to finish; an OPEN/failed reference still fails this bounded assertion.
     await expect.poll(async () => (await sql`SELECT status FROM run_workspace WHERE run_id=${runId}`)[0]?.status, { timeout: 90_000 }).toBe('RELEASED');
+    // The passive observer awaits browser.release and writes this marker before returning;
+    // releaseWorkspace then commits RELEASED. Only pipe delivery remains after that barrier,
+    // not browser execution. Preserve the full cleanup budget and require all actual facts.
+    await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 5_000 }).toBe(true);
   });
 });

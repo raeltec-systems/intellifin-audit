@@ -222,16 +222,18 @@ test.describe('the actual worker refuses the three seeded scope-widening instruc
         FROM audit_run r LEFT JOIN population_execution p USING(run_id)
         LEFT JOIN run_agent_execution a USING(run_id) LEFT JOIN run_agent_work w USING(run_id)
         WHERE r.run_id=${runId}`;
-      const denied = Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0);
       // Fixed diagnostic fields only: never dump provider bodies, credentials or SQL parameters.
-      if (denied === 0 && state && ['RUN_FAILED', 'INCONCLUSIVE', 'CANCELED', 'COMPLETED'].includes(String(state.state))) {
+      if (state && ['RUN_FAILED', 'INCONCLUSIVE', 'CANCELED', 'COMPLETED'].includes(String(state.state))) {
         const turns = await sql`SELECT status,diagnostic FROM run_agent_turn WHERE run_id=${runId}`;
-        throw new Error(`Agent abuse stopped before denial: ${JSON.stringify({ state, turns,
+        throw new Error(`Agent abuse stopped before its durable wait: ${JSON.stringify({ state, turns,
           interceptedResponses: workerLog.split('Synthetic agent abuse HTTP response delivered:').length - 1 })}`);
       }
-      return denied;
-    }, { timeout: 120_000 }).toBeGreaterThan(0);
-    await expect.poll(async () => (await sql`SELECT status FROM run_agent_work WHERE run_id=${runId}`)[0]?.status, { timeout: 120_000 }).toBe('WAITING');
+      return { state: state?.state, workStatus: state?.work_status };
+    }, { timeout: 120_000 }).toEqual({ state: 'AWAITING_AUDITOR', workStatus: 'WAITING' });
+    // persistRetry appends the denial in the transaction that persists WAITING, before
+    // raiseEscalation changes the Run state. Once both are committed the event must exist;
+    // waiting for the event itself would hide a missing guard behind a full execution timeout.
+    expect(Number((await sql`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='security.action-denied'`)[0]?.count ?? 0)).toBeGreaterThan(0);
     expect(workerLog).toContain(`Synthetic agent abuse HTTP response delivered:${row.instruction_id}`);
     expect((await sql`SELECT status FROM run_agent_execution WHERE run_id=${runId}`)[0]?.status).toBe('SIGNED_IN');
     const turns = await sql`SELECT status,diagnostic FROM run_agent_turn WHERE run_id=${runId}`;

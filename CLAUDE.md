@@ -1437,3 +1437,7 @@ Compiler-1 named sets compare exact strings and corroboration permits no case-fo
 ## 2026-09-08 — Verify snapshot reads in their actual ledger
 
 ProdConsole browser actions navigate and freeze evidence; the model then selects approved local snapshot reads. Verify those reads through persisted model turns bound to the Work Item's registered snapshot, the frozen tool catalogue and independently resolved cells. Do not invent browser HTTP actions for evidence already stored. Retain exact golden Gate, evaluation and declaration checks alongside that proof.
+
+## 2026-09-08 — Independent completion barriers in mutation tests
+
+Await durable WAITING/AWAITING_AUDITOR or the post-retry terminal Run before directly asserting its already-committed security event. Polling the removed guard's event wastes the entire execution budget on an intended mutation failure. For browser closure, retain the full RELEASED wait; after that commit, the passive observer has already queued its facts, so a short pipe-delivery wait suffices. Never shorten worker execution budgets or accept a missing event/closure fact.
