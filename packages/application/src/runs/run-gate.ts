@@ -5,6 +5,7 @@ import {
   populationFieldFindings,
   runGateChecks,
   runGateDecision,
+  runStopFor,
   tallyGateFindings,
   GATE_AFFECTED_LIMIT,
   GATE_CHECKS,
@@ -16,6 +17,7 @@ import {
   type ObservationCheckName,
   type PopulationGateRow,
   type RunGateDecision,
+  type RunLimitCause,
   type RunRecord,
 } from '@intellifin/domain';
 import type {
@@ -64,6 +66,8 @@ export const SECURITY_DENIED_EVENT = 'security.action-denied';
 
 export interface RunGateOutcome {
   readonly decision: RunGateDecision;
+  /** The terminal Result may be Inconclusive even when every quality check passed. */
+  readonly terminalState: RunRecord['state'];
   readonly results: readonly GateCheckResult[];
   /** `false` when the Gate had already run and this call changed nothing. */
   readonly recorded: boolean;
@@ -75,6 +79,15 @@ export interface RunGateInput {
   readonly plan: ExecutablePlan | null;
   /** The instant this Gate is deciding. Used for the Evidence package seal. */
   readonly decidedAt: string;
+  /** An exhausted frozen execution budget cannot be repaired by passing quality checks. */
+  readonly limitCause?: RunLimitCause;
+}
+
+function gateTerminalState(decision: RunGateDecision, limitCause?: RunLimitCause): RunGateDecision['state'] {
+  // Preserve independent execution/integrity failures. A limit is not a new §H
+  // diagnostic and must never fabricate a failed evidence-quality check.
+  return decision.state === 'RUN_FAILED' || limitCause === undefined
+    ? decision.state : runStopFor(limitCause).state;
 }
 
 function sample(entries: readonly GateFactSample[], diagnostic: GateDiagnostic): GateFinding[] {
@@ -149,7 +162,9 @@ export async function runRunLevelGate(
         },
       }),
     );
-    return { decision: runGateDecision(results), results, recorded: false };
+    const decision = runGateDecision(results);
+    const result = await context.readResult();
+    return { decision, terminalState: result?.runState ?? gateTerminalState(decision, input.limitCause), results, recorded: false };
   }
 
   const plan = input.plan;
@@ -286,6 +301,7 @@ export async function runRunLevelGate(
     findings,
   });
   const decision = runGateDecision(results);
+  const terminalState = gateTerminalState(decision, input.limitCause);
 
   await context.saveGateChecks(
     results.map(
@@ -328,14 +344,14 @@ export async function runRunLevelGate(
           workItems: result.affected.workItems,
           records: result.affected.records,
           affected: result.affected.total,
-          runState: decision.state,
+          runState: terminalState,
         },
       });
       await context.notifyTimeline(stored.sequence);
     }
   }
 
-  await context.saveRunState(decision.state);
+  await context.saveRunState(terminalState);
   const summary = await context.auditEvents.append({
     actor: { type: 'system', id: 'evidence-gate' },
     eventType: GATE_EVENT,
@@ -347,7 +363,8 @@ export async function runRunLevelGate(
     payload: {
       check: 'run-level-gate',
       outcome: decision.passed ? 'PASS' : 'FAIL',
-      runState: decision.state,
+      runState: terminalState,
+      ...(input.limitCause === undefined ? {} : { limitCause: input.limitCause }),
       checks: GATE_CHECKS.length,
       failed: decision.failed,
     },
@@ -357,11 +374,11 @@ export async function runRunLevelGate(
   // is computed once, the Result is sealed and the Evidence package is sealed with it. A
   // branch that forgot would not ship an unsealed Run — generations 21 and 25 both refuse
   // the commit outright, with a deferred constraint trigger each.
-  await completeRun(context, {
+  const result = await completeRun(context, {
     run: input.run,
-    state: decision.state,
+    state: terminalState,
     at: input.decidedAt,
     plan: input.plan,
   });
-  return { decision, results, recorded: true };
+  return { decision, terminalState: result?.runState ?? terminalState, results, recorded: true };
 }

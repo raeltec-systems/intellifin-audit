@@ -1412,3 +1412,8 @@ The canonical P4 browser journey crosses the compiled worker and durable queue a
 ## 2026-09-08 — Exact absence and accounting mutations
 
 Story4.5 mutation removes a key in the producer actually called by the worker; Story4.6 mutation removes its durable measured-usage increment. A helper-level or no-test failure does not establish either contract. The shared harness retains source/test hashes and exact assertion failures.
+
+
+## 2026-09-08 — Exhaustion records the shared quality Gate
+
+An agent Run limit must still record every existing §H check before sealing. A typed limit cause supplies terminal context to the shared Gate: quality rows remain truthful, independent execution failure remains RUN_FAILED, and passing quality cannot repair an exhausted budget into Completed. The returned actual terminal state is distinct from the quality decision; original recorded results win on replay.

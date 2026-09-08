@@ -426,7 +426,7 @@ export async function executeAgentWorkItem(
     const plan = await context.frozenPlan();
     if (plan && dependencies.clock.now().getTime() >= Date.parse(checkpoint.runStartedAt) + plan.limits.runTimeoutSeconds * 1000) {
       await context.saveCheckpoint({ ...checkpoint, status: 'TERMINAL', diagnostic: 'run-time-limit' }, 'INCONCLUSIVE');
-      await completeRun(context, { run: context.run, state: 'INCONCLUSIVE', at: nowIso(dependencies.clock), plan });
+      await runRunLevelGate(context, { run: context.run, plan, decidedAt: nowIso(dependencies.clock), limitCause: 'run-time-limit' });
       return null;
     }
     return { runId: job.runId, kind: checkpoint.pendingWait.kind, options: checkpoint.pendingWait.options,
@@ -706,7 +706,11 @@ export async function executeAgentWorkItem(
       });
       await context.notifyTimeline(security.sequence);
     }
-    await completeRun(context, { run, state: decision.state, at: nowIso(dependencies.clock), plan });
+    if (cause === 'run-time-limit' || cause === 'run-token-limit' || cause === 'run-step-execution-limit') {
+      await runRunLevelGate(context, { run, plan, decidedAt: nowIso(dependencies.clock), limitCause: cause });
+    } else {
+      await completeRun(context, { run, state: decision.state, at: nowIso(dependencies.clock), plan });
+    }
   };
 
   const stopRun = async (diagnostic: AgentWorkDiagnostic, cause: RunLimitCause | 'action-denied' | 'scope-violation' | 'session-step-failed' = 'session-step-failed'): Promise<void> => {

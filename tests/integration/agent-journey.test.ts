@@ -5,7 +5,7 @@ import {
   type AgentModelGateway, type EvidenceStore,
 } from '@intellifin/application';
 import {
-  bindingDigest, bindingDigestEnvelope, initialDraftCompliance, initialDraftEvidence, initialDraftPopulation,
+  bindingDigest, bindingDigestEnvelope, GATE_CHECKS, RUN_LIMIT_CAUSES, initialDraftCompliance, initialDraftEvidence, initialDraftPopulation,
   initialDraftSections, registrationDigest, sha256Hex, sha256HexOfBytes, snapshotFromRegistration, utf8Bytes,
 } from '@intellifin/domain';
 import {
@@ -152,7 +152,7 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
       return { schemaVersion: 1, route: 'anthropic', model: identity, actions: tool ? [{ toolId: tool.toolId, action: tool.action, destination: tool.destination, locator: tool.locator, parameters: [] }] : [], uncertainty: tool ? { kind: 'none', rationale: null } : { kind: 'insufficient-evidence', rationale: 'Fixture cannot find an approved interaction.' }, usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
     } };
     const dependencies = { repository: new PostgresAgentWorkRepository(db), browser, credentials, model, store, clock, ids, exceptions, waits: { raiseEscalation: (input: Parameters<typeof raiseEscalation>[1]) => raiseEscalation({ repository: new PostgresWaitRepository(db), clock, ids }, input) } };
-    return { job, dependencies, objects, selectedTools };
+    return { job, dependencies, objects, selectedTools, plan: version.compiledPlan! };
   }
 
   it.each(['missing', 'duplicate'] as const)('seals %s source identity as a shared Gate INCONCLUSIVE without selecting a row', async kind => {
@@ -233,17 +233,72 @@ describe.skipIf(!url)('local browser agent journeys through PostgreSQL registrat
     expect(await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${seeded.job.runId} AND event_type='security.action-denied'`).toHaveLength(1);
   }, 120_000);
 
-  it('stops before executing a proposal when measured provider usage exceeds the Run budget', async () => {
+  it.each(RUN_LIMIT_CAUSES)('records the shared Gate and seals %s with partial Evidence unchanged on replay', async cause => {
     const seeded = await seed('E-101', 'Esther Kabwe');
+    const partialBefore = [...seeded.objects].map(([key, bytes]) => [key, bytes.slice()] as const);
+    expect(partialBefore.length).toBeGreaterThan(0);
+    const [population] = await sql`SELECT started_at FROM population_execution WHERE run_id=${seeded.job.runId}`;
+    const runStartedAt = new Date(population!.started_at).getTime();
+    let deadlineReached = false, modelCalls = 0;
+    const limitedClock = { now: () => new Date(deadlineReached
+      ? runStartedAt + seeded.plan.limits.runTimeoutSeconds * 1000 + 1
+      : Date.now()) };
+    if (cause === 'run-step-execution-limit') {
+      const [count] = await sql`SELECT count(*)::int AS count FROM run_step_execution WHERE run_id=${seeded.job.runId}`;
+      const priorCount = seeded.plan.limits.runStepExecutions - 1 - Number(count!.count);
+      expect(priorCount).toBeGreaterThan(0);
+      // Real preceding Step Execution rows make the next agent attempt the final allowed
+      // one. No frozen plan limit, count reader or runtime branch is substituted.
+      await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,
+        action,state,attempt,started_at,completed_at,diagnostic)
+        SELECT gen_random_uuid(),${seeded.job.runId},'preceding-run-step',NULL,'extract-adapter',
+          'SUCCEEDED',1,now(),now(),NULL FROM generate_series(1,${priorCount})`;
+    }
     const original = seeded.dependencies.model;
     const model: AgentModelGateway = { ...original, async propose(request) {
+      modelCalls++;
       const proposed = await original.propose(request);
-      return { ...proposed, usage: {inputTokens:2_000_000,outputTokens:1,totalTokens:2_000_001} };
+      if (cause === 'run-time-limit') deadlineReached = true;
+      return cause === 'run-token-limit'
+        ? { ...proposed, usage: { inputTokens: seeded.plan.limits.runTokens, outputTokens: 1, totalTokens: seeded.plan.limits.runTokens + 1 } }
+        : proposed;
     } };
-    await executeAgentWorkItem({ ...seeded.dependencies, model }, seeded.job);
+    const dependencies = { ...seeded.dependencies, model, clock: limitedClock };
+    await executeAgentWorkItem(dependencies, seeded.job);
+    expect(modelCalls).toBe(1);
     expect(await sql`SELECT tool_action_id FROM run_tool_action WHERE run_id=${seeded.job.runId} AND action='search' AND outcome='performed'`).toHaveLength(0);
-    expect(await sql`SELECT tokens,diagnostic FROM run_agent_work WHERE run_id=${seeded.job.runId}`).toEqual([{tokens:2_000_001,diagnostic:'run-token-limit'}]);
-    expect(await sql`SELECT run_id FROM run_result WHERE run_id=${seeded.job.runId} AND outcome='PASS'`).toHaveLength(0);
+    const [work] = await sql`SELECT tokens,diagnostic,run_started_at FROM run_agent_work WHERE run_id=${seeded.job.runId}`;
+    expect(work?.diagnostic).toBe(cause);
+    expect(new Date(work!.run_started_at).getTime()).toBe(runStartedAt);
+    if (cause === 'run-token-limit') expect(work?.tokens).toBe(seeded.plan.limits.runTokens + 1);
+    if (cause === 'run-step-execution-limit') {
+      expect((await sql`SELECT count(*)::int AS count FROM run_step_execution WHERE run_id=${seeded.job.runId}`)[0]?.count).toBe(seeded.plan.limits.runStepExecutions);
+    }
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('INCONCLUSIVE');
+    const checks = await sql`SELECT * FROM run_gate_check WHERE run_id=${seeded.job.runId} ORDER BY check_name`;
+    expect(checks.map(row => String(row.check_name))).toEqual([...GATE_CHECKS].sort());
+    const summary = await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.job.runId}
+      AND event_type='execution.gate-checked' AND payload->>'check'='run-level-gate'`;
+    expect(summary).toEqual([expect.objectContaining({ payload: expect.objectContaining({ limitCause: cause, runState: 'INCONCLUSIVE', checks: 20 }) })]);
+    const result = await sql`SELECT * FROM run_result WHERE run_id=${seeded.job.runId}`;
+    expect(result).toEqual([expect.objectContaining({ outcome: 'INCONCLUSIVE', run_state: 'INCONCLUSIVE', sealed: true })]);
+    const seal = await sql`SELECT * FROM run_evidence_package WHERE run_id=${seeded.job.runId}`;
+    expect(seal).toEqual([expect.objectContaining({ state: 'SEALED', run_state: 'INCONCLUSIVE' })]);
+    const evidence = await sql`SELECT * FROM run_evidence WHERE run_id=${seeded.job.runId} ORDER BY evidence_id`;
+    expect(evidence.some(row => row.kind === 'structural-snapshot' && row.state === 'REGISTERED')).toBe(true);
+    for (const row of evidence.filter(row => row.state === 'REGISTERED')) {
+      expect(sha256HexOfBytes(seeded.objects.get(String(row.object_key))!)).toBe(row.digest);
+    }
+    for (const [key, bytes] of partialBefore) expect(seeded.objects.get(key)).toEqual(bytes);
+    const objectsAfter = [...seeded.objects].map(([key, bytes]) => [key, bytes.slice()] as const);
+    const eventsBefore = await sql`SELECT * FROM audit_events WHERE aggregate_id=${seeded.job.runId} ORDER BY sequence`;
+    await executeAgentWorkItem({ ...dependencies, repository: new PostgresAgentWorkRepository(db) }, seeded.job);
+    expect(await sql`SELECT * FROM run_gate_check WHERE run_id=${seeded.job.runId} ORDER BY check_name`).toEqual(checks);
+    expect(await sql`SELECT * FROM run_result WHERE run_id=${seeded.job.runId}`).toEqual(result);
+    expect(await sql`SELECT * FROM run_evidence_package WHERE run_id=${seeded.job.runId}`).toEqual(seal);
+    expect(await sql`SELECT * FROM run_evidence WHERE run_id=${seeded.job.runId} ORDER BY evidence_id`).toEqual(evidence);
+    expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${seeded.job.runId} ORDER BY sequence`).toEqual(eventsBefore);
+    expect([...seeded.objects]).toEqual(objectsAfter);
   }, 120_000);
 
 });

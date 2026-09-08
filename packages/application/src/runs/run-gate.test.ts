@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ExecutablePlan, GateCheckResult, PackageArtifact, RunRecord } from '@intellifin/domain';
+import { RUN_LIMIT_CAUSES, type ExecutablePlan, type GateCheckResult, type PackageArtifact, type RunRecord } from '@intellifin/domain';
 import { runRunLevelGate } from './run-gate.js';
 import type {
   GateCheckRow,
@@ -167,6 +167,33 @@ function plan(conditions: number, templateId: 'P-2' | 'P-4' = 'P-2'): Executable
 }
 
 describe('runRunLevelGate', () => {
+  it.each(RUN_LIMIT_CAUSES)('retains truthful passing quality checks but seals %s as Inconclusive', async limitCause => {
+    const context = new FakeGate();
+    const ordinary = new FakeGate();
+    await runRunLevelGate(ordinary, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT });
+    const outcome = await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT, limitCause });
+    expect(context.state).toBe('INCONCLUSIVE');
+    expect(context.rows).toEqual(ordinary.rows);
+    expect(context.rows).toHaveLength(20);
+    expect(outcome.decision).toMatchObject({ passed: true, state: 'COMPLETED' });
+    expect(outcome.terminalState).toBe('INCONCLUSIVE');
+    expect(context.seal?.runState).toBe('INCONCLUSIVE');
+    expect(context.result).toMatchObject({ runState: 'INCONCLUSIVE', outcome: 'INCONCLUSIVE', sealed: true });
+    const before = JSON.stringify({ rows: context.rows, events: context.events, seal: context.seal, result: context.result });
+    const replay = await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT });
+    expect(replay).toMatchObject({ terminalState: 'INCONCLUSIVE', recorded: false });
+    expect(JSON.stringify({ rows: context.rows, events: context.events, seal: context.seal, result: context.result })).toBe(before);
+  });
+
+  it('preserves an independent Gate execution failure when a Run limit also expired', async () => {
+    const context = new FakeGate();
+    context.readPopulationFacts = async () => ({ ...CLEAN_POPULATION, checks: [{ name: 'parse', passed: false }] });
+    await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT, limitCause: 'run-time-limit' });
+    expect(context.rows).toHaveLength(20);
+    expect(context.state).toBe('RUN_FAILED');
+    expect(context.result).toMatchObject({ runState: 'RUN_FAILED', outcome: 'RUN_FAILED' });
+  });
+
   it('counts condition gaps against the number of conditions the plan froze', async () => {
     const context = new FakeGate();
     const outcome = await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT });

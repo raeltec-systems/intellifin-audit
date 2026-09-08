@@ -614,6 +614,22 @@ describe('executeAgentWorkItem', () => {
     expect(repository.actions).toHaveLength(actions); expect(gateway.propose).toHaveBeenCalledTimes(1);
     expect(waits.raiseEscalation).toHaveBeenLastCalledWith(expect.objectContaining({ supportingEvidenceIds: [repository.workItems[0]!.evidenceId] }));
   });
+  it('runs the shared Gate when an unraised wait intent has exhausted the inherited Run deadline', async () => {
+    const gateCall = vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository(), browser = browserFor(repository);
+    const gateway: AgentModelGateway = { identity: identity(), propose: vi.fn(async () => response(null, { kind: 'insufficient-evidence', rationale: 'Unclear' })) };
+    const waits = { raiseEscalation: vi.fn(async () => ({ ok: false as const, reason: 'temporary failure' })) };
+    const dependencies = deps(repository, browser, gateway, waits);
+    await executeAgentWorkItem(dependencies, JOB);
+    expect(repository.checkpoint).toMatchObject({ status: 'WAITING', waitId: null });
+    const before = JSON.stringify({ evidence: repository.evidence, actions: repository.actions });
+    await executeAgentWorkItem({ ...dependencies, clock: { now: () => new Date('2026-09-07T01:00:01.000Z') } }, JOB);
+    expect(gateCall).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({ limitCause: 'run-time-limit' }));
+    expect(repository.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'run-time-limit' });
+    expect(waits.raiseEscalation).toHaveBeenCalledTimes(1);
+    expect(gateway.propose).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify({ evidence: repository.evidence, actions: repository.actions })).toBe(before);
+  });
   it('raises a choose-candidate wait for duplicate grounded identities before model I/O', async () => {
     const duplicateNodes = [
       { group: 'record:0', role: 'datum', label: 'Employee ID', value: 'E-000105', target: null },
@@ -841,7 +857,7 @@ describe('agent work enforces final limits, target order and bounded human retri
     await executeAgentWorkItem({ ...dependencies, store, clock: { now: () => new Date(late ? '2026-09-07T01:00:01.000Z' : '2026-09-07T00:00:01.000Z') } }, JOB);
     expect(late).toBe(true); expect(repository.run.state).toBe('INCONCLUSIVE');
     expect(repository.observations).toHaveLength(0); expect(repository.evidence.some(row => row.state === 'REGISTERED')).toBe(true);
-    expect(gateCall).not.toHaveBeenCalled();
+    expect(gateCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ limitCause: 'run-time-limit' }));
   });
   it('rechecks the deadline after waiting for the Observation transaction lock', async () => {
     const gateCall = finalBoundaries();
@@ -852,7 +868,8 @@ describe('agent work enforces final limits, target order and bounded human retri
     const dependencies = deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), evaluationModel(), durableWaitPort(repository));
     await executeAgentWorkItem({ ...dependencies, clock: { now: () => new Date(late ? '2026-09-07T01:00:01.000Z' : '2026-09-07T00:00:01.000Z') } }, JOB);
     expect(late).toBe(true); expect(repository.observations).toHaveLength(0);
-    expect(repository.run.state).toBe('INCONCLUSIVE'); expect(gateCall).not.toHaveBeenCalled();
+    expect(repository.run.state).toBe('INCONCLUSIVE');
+    expect(gateCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ limitCause: 'run-time-limit' }));
     expect(repository.evidence.some(row => row.state === 'REGISTERED')).toBe(true);
   });
   it('checks the deadline again at final Gate after the Observation transaction completes', async () => {
@@ -862,7 +879,7 @@ describe('agent work enforces final limits, target order and bounded human retri
     const dependencies = deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), evaluationModel(), durableWaitPort(repository));
     await executeAgentWorkItem({ ...dependencies, clock: { now: () => new Date(late ? '2026-09-07T01:00:01.000Z' : '2026-09-07T00:00:01.000Z') } }, JOB);
     expect(repository.observations, JSON.stringify({ checkpoint: repository.checkpoint, items: repository.workItems })).toHaveLength(1); expect(repository.run.state).toBe('INCONCLUSIVE');
-    expect(gateCall).not.toHaveBeenCalled();
+    expect(gateCall).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ limitCause: 'run-time-limit' }));
   });
   it.each(['action', 'evaluation'] as const)('does not offer another retry grant when the extra %s cycle is still uncertain', async phase => {
     finalBoundaries();
