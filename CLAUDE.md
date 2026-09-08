@@ -1392,3 +1392,8 @@ A passive browser-close observer fires before the production cleanup transaction
 ## 2026-09-08 — Isolated cases need independently declared sources
 
 A unique employee inclusion does not remove source-wide invalid/duplicate rows from the Gate. Success/pending fixtures use a separately declared HTTP source with the unchanged canonical row and independent count/digest/cover; the complete golden source and its expected Inconclusive outcome remain untouched. Real captured-inspector tests follow the worker-produced grounding, not a seeded surrogate.
+
+
+## 2026-09-08 — Canonical absent-account worker proof
+
+Absence browser acceptance begins with the compiled worker reading a separately declared canonical case source. It must retain actual searched values, registered empty Evidence and complete proof through the shared judge, then open that same whole-document Evidence without inventing a matching-row locator.

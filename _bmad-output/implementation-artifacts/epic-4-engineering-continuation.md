@@ -509,3 +509,10 @@ Durable cleanup assertion0199a41470309e0c5055675ede6e66548d42c0a5 is pushed. Hos
 The review journey now acquires a separately declared real HTTP CSV containing the unchanged canonical E-000102 row. An independent Python generator derives its actual one-row count, byte digest and synthetic signed cover while retaining canonical values/period/provenance. Three helper regressions exercise actual HTTP acquisition/reconciliation for canonical D1-a/D1-b and refuse ambiguous duplicate E-000107 selection. No runtime model or audit row is fabricated. The whole golden source still cannot become Pass.
 
 The first actual worker review journey also follows its captured account-status grounding link through the durable worker evidence grant, verifies the stored locator returns Disabled, runs accessibility and confirms no signed storage URL reaches the browser. TypeScript, helper3tests and discovery pass. Actual browser/worker execution remains hosted-only and pending. This checkpoint is pushed without acceptance.
+
+
+## Canonical absence through the compiled worker
+
+Isolated-source/inspector checkpoint07219363d51d997f4bb80096279a795ca43019d5 is pushed. The new D1-a browser journey reads its expected employee and per-case outcome from the canonical P1 file, initiates via the real UI, and drives the actual compiled worker/queue with a named synthetic provider selecting current opaque tools. It authenticates against canonical Northstar, searches every declared key, captures real empty results, persists immutable proof, passes the shared absence judge and seals through the existing Gate. The auditor follows the actual proof Evidence into the protected empty-result inspector; accessibility and credential-free artifacts are asserted.
+
+The runtime never receives fixture expectations and no execution facts or outcomes are seeded. TypeScript, preload syntax and one-case discovery pass; actual local-Chromium/PG execution remains hosted-only and pending. This Story4.5 verification checkpoint is pushed without acceptance.
