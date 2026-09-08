@@ -49,6 +49,10 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: test -n "$RAILWAY_TOKEN"
+      - name: Enable pinned pnpm before Node setup
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
       - uses: actions/setup-node@v5
         with:
           node-version: '24.20.0'
