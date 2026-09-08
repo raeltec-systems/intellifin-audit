@@ -1302,3 +1302,8 @@ Use a separately selected read-only test workflow on an exact clean candidate an
 ### Queue provisioning in concurrent PostgreSQL tests
 
 pg-boss queue creation uses a raw transaction block. Provision it on a dedicated single-connection postgres-js client, then close that client; keep the separate multi-connection runtime pool for lock/race assertions. A setup failure means its tests did not execute and must never count as integration acceptance.
+
+
+### Singleton enqueue concurrency proof
+
+To exercise PostgreSQL singleton insertion contention, hold the first INSERT uncommitted and observe the competing INSERT blocked through pg_stat_activity. A FOR UPDATE lock on an already-committed duplicate row does not establish that ON CONFLICT DO NOTHING waits. Restore/release the held transaction in finally and require exactly one durable wake afterward. Keep root ownership of branch commits when transport reconstruction is needed.

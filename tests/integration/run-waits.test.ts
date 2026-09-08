@@ -1,3 +1,4 @@
+import { queueDatabase } from '../../packages/infrastructure/src/procedures/derivation-queue.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   AWAITING_AUDITOR_TIMEOUT_MS,
@@ -13,6 +14,7 @@ import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
+  createProceduresQueue,
   DrizzleNotificationRepository,
   DrizzleRoleRepository,
   InAppNotificationSender,
@@ -368,6 +370,94 @@ describe.skipIf(!url)('durable Escalation waits', () => {
     expect(await sql`SELECT closure_kind,actor FROM run_wait WHERE wait_id=${raised.wait.waitId}`).toMatchObject([{ closure_kind: 'answer', actor: author }]);
     expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'CANCELED' }]);
   });
+
+  it('refuses a duplicate singleton wake while the first enqueue is uncommitted', async () => {
+    const runId = await startRun('2026-02-01', '2026-02-28');
+    const raised = await raise(runId, 'retry-or-skip');
+    expect(raised.ok).toBe(true);
+    if (!raised.ok) return;
+
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    // Remove only this disposable fixture's scheduled job, then hold its replacement
+    // INSERT uncommitted. Locking an already-committed row does not block PostgreSQL's
+    // ON CONFLICT DO NOTHING path and would not test a singleton enqueue race.
+    await sql`DELETE FROM pgboss.job WHERE name=${WAIT_QUEUE} AND data->>'waitId'=${raised.wait.waitId}`;
+    const blocker = db.transaction(async transaction => {
+      const adapter = queueDatabase(transaction);
+      const queue = createProceduresQueue(db);
+      expect(await queue.send(WAIT_QUEUE, { schemaVersion: 1, runId, waitId: raised.wait.waitId }, {
+        db: adapter, startAfter: new Date(raised.wait.deadline),
+        singletonKey: `wait:${raised.wait.waitId}`, singletonSeconds: AWAITING_AUDITOR_TIMEOUT_MS / 1000,
+      })).not.toBeNull();
+      entered();
+      await held;
+    });
+    await ready;
+
+    // The queue factory is the same pg-boss implementation used by the process. The
+    // blocker above keeps this duplicate's real PostgreSQL insert pending until the
+    // original row lock releases its singleton index entry.
+    const duplicate = createProceduresQueue(db).send(
+      WAIT_QUEUE,
+      { schemaVersion: 1, runId, waitId: raised.wait.waitId },
+      {
+        startAfter: new Date(raised.wait.deadline),
+        singletonKey: `wait:${raised.wait.waitId}`,
+        singletonSeconds: AWAITING_AUDITOR_TIMEOUT_MS / 1000,
+      },
+    );
+    try {
+      await expect.poll(async () => Number((await sql`
+        SELECT count(*)
+        FROM pg_stat_activity
+        WHERE datname=current_database()
+          AND wait_event_type='Lock'
+          AND cardinality(pg_blocking_pids(pid)) > 0
+          AND query ILIKE '%insert%' AND query ILIKE '%pgboss%' AND query ILIKE '%job%'
+      `)[0]!.count)).toBeGreaterThan(0);
+    } finally {
+      release();
+      await blocker;
+    }
+    expect(await duplicate).toBeNull();
+    expect(await sql`SELECT count(*)::int AS count FROM pgboss.job WHERE name=${WAIT_QUEUE} AND data->>'waitId'=${raised.wait.waitId}`).toEqual([{ count: 1 }]);
+  });
+
+  it('recreated wait repository recovers an open wait after a worker restart', async () => {
+    const runId = await startRun('2026-01-01', '2026-01-31');
+    // Make the persisted deadline already due so startup recovery can discover it without
+    // relying on the host clock matching the fixture's calendar date.
+    const raised = await raise(
+      runId,
+      'retry-or-skip',
+      new Date(Date.now() - AWAITING_AUDITOR_TIMEOUT_MS - 1_000),
+    );
+    expect(raised.ok).toBe(true);
+    if (!raised.ok) return;
+
+    const restartedRepository = new PostgresWaitRepository(db);
+    const recovered = await restartedRepository.recoverableWaits(100);
+    expect(recovered).toContainEqual({ runId, waitId: raised.wait.waitId });
+
+    const state = await restartedRepository.transaction(runId, async context => ({
+      run: context.run,
+      wait: context.wait,
+    }));
+    expect(state.run).toMatchObject({ state: 'AWAITING_AUDITOR', revision: 2 });
+    expect(state.wait).toMatchObject({
+      runId,
+      waitId: raised.wait.waitId,
+      kind: 'retry-or-skip',
+      closedAt: null,
+      closureKind: null,
+      answerOptionId: null,
+      actor: null,
+    });
+  });
+
   it('removes open-wait metadata from a revoked initiating auditor while retaining manager access', async () => {
     const runId = await startRun('2026-03-01', '2026-03-31');
     expect((await raise(runId, 'unnamed-value')).ok).toBe(true);
