@@ -1485,3 +1485,7 @@ The worker deliberately rejects all model-authored search parameters and resolve
 ## Action uncertainty versus final evaluation
 
 Agent prompt version4 uses a complete empty-parameter response envelope matching the worker, and distinguishes uncertainty about a safe next action from missing final audit evidence during investigation. It must still stop on unresolved scope/identity or no safe offered action. Evaluation, persisted uncertainty, human review and evidence gates remain unchanged. Generic gateway compatibility does not by itself prove a response is executable by the worker; test the example against worker-style parameterNames=[] and retain parameter-injection refusal.
+
+## Evaluation input corroboration
+
+The pre-evaluation rule preview already checks the captured Observation with snapshotCorroboration. Supply that judged copy, including its actual identity/attribute verdicts, to the model instead of the original record's null corroboration placeholders. Do not invent matched states or mutate the original capture; transactional registration independently repeats its checks. The explicit human unnamed-value/Unevaluated branch retains its existing behavior. For live diagnosis, an accepted bounded user-facing uncertainty summary may be retained only after the normal credential guard and whole-report secret scan; this excludes provider reasoning, rejected output and raw logs.

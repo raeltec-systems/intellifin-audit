@@ -196,6 +196,9 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
           CASE WHEN response->>'phase' IN ('actions','evaluation') THEN response->>'phase' ELSE 'unknown' END AS phase,
           CASE WHEN response#>>'{uncertainty,kind}' IN ('none','ambiguous','insufficient-evidence')
             THEN response#>>'{uncertainty,kind}' ELSE 'unknown' END AS uncertainty,
+          CASE WHEN status='COMPLETED' AND response#>>'{uncertainty,kind}' IN ('ambiguous','insufficient-evidence')
+            AND length(response#>>'{uncertainty,rationale}') BETWEEN 1 AND 2000
+            THEN response#>>'{uncertainty,rationale}' ELSE NULL END AS uncertainty_summary,
           (SELECT jsonb_agg(CASE WHEN choice->>'action' IN ('navigate','search','open-record','read-attribute','capture-screenshot')
             THEN choice->>'action' ELSE 'other' END)
             FROM jsonb_array_elements(COALESCE(response->'actions','[]'::jsonb)) choice) AS selected_actions,

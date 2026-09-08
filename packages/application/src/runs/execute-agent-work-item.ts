@@ -913,6 +913,7 @@ export async function executeAgentWorkItem(
     const corroboration = snapshotCorroboration([snapshot]);
     const agentInputs = { plan, records, references: [] };
     const evaluation = ruleEvaluation(agentInputs);
+    let evaluationObservation = observation.record;
     if (observation.record.found === 'true' && !(humanDecision !== null && [humanDecision.wait, ...humanDecision.retained.map(entry => entry.wait)].some(wait => wait.kind === 'unnamed-value' && wait.answerOptionId === ESCALATION_OPTION_IDS.markUnevaluated))) {
       let registeredEvidenceIds: string[] = [];
       if (!await guarded(async context => { registeredEvidenceIds = (await context.readEvidenceStates(observation.record.evidenceIds)).filter(row => row.state === 'REGISTERED').map(row => row.evidenceId); })) return 'lost';
@@ -921,6 +922,10 @@ export async function executeAgentWorkItem(
       const judged = { ...observation.record,
         identity: observation.record.identity === null ? null : { ...observation.record.identity, corroboration: verdict.identity },
         attributes: observation.record.attributes.map(attribute => ({ ...attribute, corroboration: verdict.attributes.find(entry => entry.name === attribute.name)?.corroboration ?? null })) };
+      // Reuse the real snapshot verdict already needed by the rule preview. Leaving
+      // these fields null would tell the model corroboration had not been performed.
+      // The registration transaction still independently verifies the original record.
+      evaluationObservation = judged;
       const checks = [...observationChecks({ ...observation, record: judged, registeredEvidenceIds, runStartedAt: checkpoint.runStartedAt, registeredAt: nowIso(dependencies.clock) }),
         { check: 'observation-corroboration' as const, outcome: verdict.outcome, diagnostic: verdict.diagnostic }];
       const [preview] = await evaluation.evaluate([{ record: judged,
@@ -948,7 +953,7 @@ export async function executeAgentWorkItem(
           objective: 'Evaluate only the supplied frozen conditions against the final captured Observation and frozen population context.',
           retrieved: [], tools: [],
           evaluation: { observationId: observation.record.observationId,
-            observation: { source: `snapshot:${snapshot.evidenceId}`, text: JSON.stringify({ observation: observation.record, population, period: run.period }) },
+            observation: { source: `snapshot:${snapshot.evidenceId}`, text: JSON.stringify({ observation: evaluationObservation, population, period: run.period }) },
             conditions }, timeoutMs: Math.max(1, budget()) },
         gateway: dependencies.model, guard: agentGuard, workItemId: item.workItemId,
         stepExecutionId: execution.stepExecutionId, snapshotEvidenceId: snapshot.evidenceId, commit: guarded });

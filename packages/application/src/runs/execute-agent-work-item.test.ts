@@ -705,6 +705,21 @@ describe('agent work consumes durable human decisions with original capture', ()
   // The Gate has its own repository integration. These unit cases use the REAL shared
   // Observation registration/corroboration/evaluation and focus on decision consumption.
   function gateBoundary() { vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never); }
+  it('supplies the verified snapshot corroboration to evaluation without changing captured values', async () => {
+    gateBoundary();
+    const repository = new FakeRepository(), model = evaluationModel();
+    await executeAgentWorkItem(deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), model, durableWaitPort(repository)), JOB);
+    const evaluationRequest = vi.mocked(model.propose).mock.calls.map(([request]) => request).find(request => request.phase === 'evaluation');
+    expect(evaluationRequest?.evaluation).toBeDefined();
+    const supplied = JSON.parse(evaluationRequest!.evaluation!.observation.text).observation;
+    expect(supplied.identity.corroboration).toBe('matched');
+    expect(supplied.attributes.find((attribute: { name: string }) => attribute.name === 'roles')).toMatchObject({
+      originalValue: ['read-only'], normalizedValue: ['read-only'], corroboration: 'matched',
+    });
+    expect(repository.observations).toHaveLength(1);
+    expect(supplied.identity).toEqual(repository.observations[0]!.record.identity);
+    expect(supplied.attributes).toEqual(repository.observations[0]!.record.attributes);
+  });
   it('resumes a selected duplicate candidate without reading a changed browser page', async () => {
     gateBoundary();
     const repository = new FakeRepository(), browser = browserFor(repository, FOUND_CANDIDATES), model = evaluationModel();
