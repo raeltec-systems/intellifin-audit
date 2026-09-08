@@ -138,6 +138,14 @@ jobs:
             node scripts/verify-escalation-review-guard-mutations.mjs "${RUNNER_TEMP}/escalation-review-guard-mutations.json"
           )
 
+      - name: Publish per-case mutation observations in job logs
+        if: always()
+        run: >-
+          node scripts/report-agent-mutations.mjs
+          "${RUNNER_TEMP}/agent-guard-mutations.json"
+          "${RUNNER_TEMP}/prodconsole-guard-mutations.json"
+          "${RUNNER_TEMP}/escalation-review-guard-mutations.json"
+
       - name: Retain agent mutation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -447,6 +455,9 @@ jobs:
       - name: Prove hydrated answer and worker denial guards
         working-directory: ${{ runner.temp }}/agent-abuse-e2e-worktree
         run: node scripts/verify-agent-abuse-e2e-mutations.mjs "${RUNNER_TEMP}/agent-abuse-e2e-mutations.json"
+      - name: Publish per-case worker mutation observations in job logs
+        if: always()
+        run: node scripts/report-agent-mutations.mjs "${RUNNER_TEMP}/agent-abuse-e2e-mutations.json"
       - name: Retain exact mutation evidence
         if: always()
         uses: actions/upload-artifact@v4

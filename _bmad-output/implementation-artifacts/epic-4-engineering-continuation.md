@@ -474,3 +474,8 @@ Root-test TypeScript, preload JavaScript syntax and discovery of both cases pass
 ## Existing grounding surface regression correction
 
 Actual human-review journey checkpoint99864d73aff429f985ceb0da62d3ebb77f01c741 is pushed. Hosted eeca93c browser failure showed the older Run surface test still clicked a removed disclosure. The current inspector deliberately displays match provenance and grounded attributes directly. The regression now requires those headings, exact protected identity/roles snapshot links, original/normalized values, locators, corroboration and accessibility. Its seeded metadata has no S3 object, so the case is accurately named; separate evidence-inspector cases exercise real worker-backed reads. No production behavior or assertion gate is relaxed. Root-test TypeScript and diff checks pass; hosted rerun remains required. This checkpoint is pushed.
+
+
+## Reviewable per-case hosted mutation evidence
+
+Grounding correctionbfa30319f9f966be34c7dea0a454463b8e9802d5 is pushed. GitHub returned artifact10042933102 for eeca93c's20successful mutation checks, but local materialization of the returned download URL is refused with HTTP403. The artifact link remains available in GitHub. Future CI now mirrors the existing sanitized synthetic mutation JSON into job logs, including exact source/test hashes, removed guards and actual per-test assertion failures. The reporter parses data only; it cannot execute content, write the branch or modify audit state. Missing files are labelled missing rather than accepted; the existing runner still owns all pass/fail decisions. JavaScript syntax and a read of the existing committed local report verify reporting. This separate CI checkpoint is pushed; no additional mutation success is claimed.

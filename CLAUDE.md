@@ -1367,3 +1367,8 @@ Human review browser acceptance starts with the actual compiled worker producing
 ## 2026-09-08 — Grounding surface test identity
 
 The Evidence list displays grounding directly. Metadata-only seeds assert provenance and exact protected links; they must not claim to download nonexistent objects. Actual inspector acceptance uses the separate registered-artifact/worker grant journey.
+
+
+## 2026-09-08 — Retain observable mutation failures
+
+CI mirrors sanitized synthetic mutation report JSON into logs as escaped data in addition to uploading the artifact. This makes exact per-case failures reviewable when artifact materialization is unavailable. Missing or partial reports never count as accepted; the existing mutation runner remains the gate.
