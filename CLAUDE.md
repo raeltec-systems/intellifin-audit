@@ -1327,3 +1327,8 @@ Preserve proof metadata beside the Observation in the shared registration transa
 ### Canonical negative journeys and stricter prevention
 
 Read the canonical expectation rows from disk and exercise the real synthetic application's pages. When an earlier authorization guard prevents a downstream defect by construction, retain that pre-I/O prevention test and label any deliberate downstream fault injection separately. The downstream browser/capture/registration/Gate proof must still fail honestly; never relax the earlier guard to make the historical defect reachable in production.
+
+
+### Retrieved evidence assertions and second retry exhaustion
+
+Compare exact retrieved text after parsing the registered structural snapshot, not against JSON transport escaping. A retry-or-skip answer permits one additional bounded cycle; its second exhaustion fails the Work Item and continues the Run through the shared Gate. A one-record Run consequently ends Inconclusive without a third-cycle human wait. Verify the production terminal cleanup path rather than using a test Abort to manufacture teardown.

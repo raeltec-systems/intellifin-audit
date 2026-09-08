@@ -13,6 +13,7 @@ import {
   initialDraftPopulation,
   initialDraftSections,
   registrationDigest,
+  readStructuralSnapshot,
   snapshotFromRegistration,
   type FrozenPlanInputs,
 } from '@intellifin/domain';
@@ -263,15 +264,29 @@ test.describe('retrieved hostile data through the actual worker and authenticate
     const [stored] = await sql`SELECT string_agg(payload::text,' ') AS text FROM audit_events WHERE aggregate_id=${runId}`;
     expect(String(stored!.text)).not.toContain(LOANCORE_TOKEN);
     expect(workerLog).not.toContain(LOANCORE_TOKEN);
-    const snapshots = [...storage.objects.values()].map(bytes => Buffer.from(bytes).toString('utf8'));
-    expect(snapshots.some(bytes => bytes.includes(row.text))).toBe(true);
-    for (const bytes of snapshots) expect(bytes).not.toContain(LOANCORE_TOKEN);
-    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 120_000 }).toBe('AWAITING_AUDITOR');
-    await page.reload();
-    await expect(page.locator('#run-lifecycle')).toHaveAttribute('data-client-ready', 'true');
-    await page.locator('#open-escalation').getByRole('button', { name: 'Abort', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Abort Run', exact: true }).click();
-    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state).toBe('CANCELED');
+    const captured = await sql`SELECT evidence_id,object_key FROM run_evidence WHERE run_id=${runId} AND kind='structural-snapshot' AND state='REGISTERED'`;
+    const snapshots = captured.map(capture => {
+      const bytes = storage.objects.get(String(capture.object_key));
+      expect(bytes).toBeDefined();
+      const parsed = readStructuralSnapshot({ evidenceId: String(capture.evidence_id), substrate: 'web_tree', bytes: bytes! });
+      expect(parsed.ok).toBe(true);
+      return parsed.ok && parsed.substrate === 'web_tree' ? parsed.document : null;
+    });
+    // Compare the captured data value after JSON decoding. Quoted golden instructions
+    // have escaped transport bytes, but their stored semantic value must stay verbatim.
+    expect(snapshots.some(snapshot => snapshot?.nodes.some(node => node.role === 'datum' && node.label === 'Untrusted audit note' && node.value === row.text))).toBe(true);
+    for (const bytes of storage.objects.values()) expect(Buffer.from(bytes).toString('utf8')).not.toContain(LOANCORE_TOKEN);
+    // Story 4.7 permits one extra bounded cycle after Retry. The malformed proposals
+    // exhaust it: the Work Item fails and the shared Gate ends this one-record Run.
+    // A second human retry/Abort wait would wrongly authorize another execution cycle.
+    await expect.poll(async () => (await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state, { timeout: 120_000 }).toBe('INCONCLUSIVE');
+    const workItems = await sql`SELECT state,cycles,attempts FROM run_work_item WHERE run_id=${runId}`;
+    expect(workItems).toHaveLength(1);
+    expect(workItems[0]).toMatchObject({ state: 'FAILED', cycles: 2 });
+    const frozenLimits = (JSON.parse(row.frozenVersion) as { compiled_plan: { limits: { retriesPerStep: number } } }).compiled_plan.limits;
+    expect(Number(workItems[0]!.attempts)).toBeLessThanOrEqual((frozenLimits.retriesPerStep + 1) * 2);
+    expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${runId} AND closed_at IS NULL`).toHaveLength(0);
+    expect((await sql`SELECT outcome FROM run_result WHERE run_id=${runId}`)[0]?.outcome).toBe('INCONCLUSIVE');
     // The production terminal/reaper path must release; this test never calls release.
     await expect.poll(() => workerLog.includes(JSON.stringify({ runId, mode: 'local', hadPages: true, allPagesClosed: true, cookieReadRefused: true })), { timeout: 90_000 }).toBe(true);
     expect((await sql`SELECT status FROM run_workspace WHERE run_id=${runId}`)[0]?.status).toBe('RELEASED');
