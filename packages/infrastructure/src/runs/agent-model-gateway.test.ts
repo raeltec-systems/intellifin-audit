@@ -201,14 +201,16 @@ it('supplies the exact action response shape to OpenAI while independently refus
   const error = await gateway('openai', providerFetch('openai', text, 200, calls)).propose(REQUEST).catch(error => error);
   const body = await requestBody(calls[0]!);
   const system = (body.input as { role: string; content: string }[]).find(message => message.role === 'system')!.content;
-  const example = system.split('Action response shape: ')[1]?.split(' No-parameter action shape: ')[0];
+  const example = system.split('Action response shape: ')[1]?.split(' Action parameter policy: ')[0];
   expect(example, 'The provider must receive the strict parameter/uncertainty JSON shape').toBeDefined();
   const shape = JSON.parse(example!);
-  expect(shape.actions[0].parameters).toEqual([{ name: '<supplied parameter name>', value: '<string value>' }]);
+  expect(shape.actions[0].parameters).toEqual([]);
   expect(shape.uncertainty).toEqual({ kind: 'none', rationale: null });
   shape.actions[0].toolId = 'search-account';
+  const workerRequest = { ...REQUEST, tools: REQUEST.tools.map(tool => ({ ...tool, parameterNames: [] })) };
+  expect(await gateway('openai', providerFetch('openai', JSON.stringify(shape))).propose(workerRequest)).toMatchObject({ actions: [{ toolId: 'search-account', parameters: [] }] });
   shape.actions[0].parameters = [{ name: 'employee_id', value: 'EMP-1' }];
-  expect(await gateway('openai', providerFetch('openai', JSON.stringify(shape))).propose(REQUEST)).toMatchObject({ actions: [{ toolId: 'search-account' }] });
+  await expect(gateway('openai', providerFetch('openai', JSON.stringify(shape))).propose(workerRequest)).rejects.toMatchObject({ responseIssue: 'invalid-selection' });
   expect(error).toMatchObject({ code: 'invalid-response', responseIssue: 'invalid-selection', usage: { totalTokens: 30 } });
 });
 

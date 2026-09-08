@@ -1481,3 +1481,7 @@ Prompt version3 states the existing strict action parameter array and uncertaint
 ## Frozen worker search arguments
 
 The worker deliberately rejects all model-authored search parameters and resolves values from parametersByToolId. Its planner must therefore advertise parameterNames=[] and explain that the platform supplies the frozen current-record lookup value. Advertising a writable field while withholding its required value contradicts that contract and can induce an honest insufficient-evidence wait. Preserve exact control binding, parameter-substitution denial and the original shared Observation engine.
+
+## Action uncertainty versus final evaluation
+
+Agent prompt version4 uses a complete empty-parameter response envelope matching the worker, and distinguishes uncertainty about a safe next action from missing final audit evidence during investigation. It must still stop on unresolved scope/identity or no safe offered action. Evaluation, persisted uncertainty, human review and evidence gates remain unchanged. Generic gateway compatibility does not by itself prove a response is executable by the worker; test the example against worker-style parameterNames=[] and retain parameter-injection refusal.
