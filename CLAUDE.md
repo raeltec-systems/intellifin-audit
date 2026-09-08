@@ -1433,3 +1433,7 @@ A compiled plan carries the union of supported condition fields, including sourc
 ## 2026-09-08 — Explicit target values versus normalization
 
 Compiler-1 named sets compare exact strings and corroboration permits no case-folding. When a target's display values differ from Template defaults, author and freeze a target-specific expression through the existing compiler; retain the default mismatch as an unnamed-value refusal. Never alter captured case or turn plain-text role display into an invented JSON list to satisfy a journey fixture.
+
+## 2026-09-08 — Verify snapshot reads in their actual ledger
+
+ProdConsole browser actions navigate and freeze evidence; the model then selects approved local snapshot reads. Verify those reads through persisted model turns bound to the Work Item's registered snapshot, the frozen tool catalogue and independently resolved cells. Do not invent browser HTTP actions for evidence already stored. Retain exact golden Gate, evaluation and declaration checks alongside that proof.

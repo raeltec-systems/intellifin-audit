@@ -1,3 +1,5 @@
+import type { AgentModelResponse } from '@intellifin/application';
+import { planProdConsoleTools } from '../../packages/application/src/runs/agent-prodconsole.js';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -7,7 +9,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   initialDraftCompliance, initialDraftEvidence, initialDraftPopulation, initialDraftSections,
   bindingDigest, bindingDigestEnvelope, registrationDigest, snapshotFromRegistration,
-  readStructuralSnapshot, sha256HexOfBytes, type FrozenPlanInputs, type PermittedReadAction,
+  readStructuralSnapshot, readSnapshotCell, parseSnapshotLocator, sha256HexOfBytes,
+  type ExecutablePlan, type StoredSnapshot, type FrozenPlanInputs, type PermittedReadAction,
 } from '@intellifin/domain';
 import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
 import { startSyntheticS3 } from '../fixtures/s3-server';
@@ -34,7 +37,7 @@ const baseline = fixtureJson('datasets/configregistry-baseline.json') as { param
 const expectedKeys = [...new Set(baseline.parameters.map(row => row.parameter))].sort();
 const declaredCount = (fixtureJson('generated/prodconsole-parameters.count.json') as { declared_count: number }).declared_count;
 const pageDataset = fixtureJson('datasets/prodconsole-parameters.json') as {
-  snapshot: { snapshot_id: string };
+  snapshot: { snapshot_id: string; taken_at: string };
   observed_parameters: { parameter: string; description: string }[];
 };
 const catalogue = (fixtureJson('datasets/systems.json') as { target_systems: {
@@ -260,7 +263,7 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await expect.poll(async () => {
       if (workerFailure) throw new Error(workerFailure);
       const [row] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
-      return ['COMPLETED', 'INCONCLUSIVE', 'FAILED', 'CANCELED'].includes(String(row?.state));
+      return ['COMPLETED', 'INCONCLUSIVE', 'RUN_FAILED', 'CANCELED'].includes(String(row?.state));
     }, { timeout: 150_000 }).toBe(true);
 
     // Assert the complete failing §H set BEFORE reading the Result. Neither the declared
@@ -327,10 +330,12 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     expect(expectedKeys.length).not.toBe(declaredCount);
 
     const actions = await sql`SELECT action,method,destination,outcome FROM run_tool_action WHERE run_id=${runId}`;
-    expect(actions.filter(row => row.outcome === 'performed').map(row => row.action)).toEqual(expect.arrayContaining(['navigate', 'read-attribute', 'read-metadata']));
+    // Only navigation reaches the browser. P-4's model-selected reads consume frozen
+    // snapshot cells inside registration; they must not invent extra network actions.
+    expect(actions.filter(row => row.outcome === 'performed').map(row => row.action)).toContain('navigate');
     expect(actions.every(row => row.method === 'GET')).toBe(true);
     expect(actions.every(row => String(row.destination).startsWith(`${NORTHSTAR_BASE_URL}/prodconsole`))).toBe(true);
-    const turns = await sql`SELECT status,response FROM run_agent_turn WHERE run_id=${runId}`;
+    const turns = await sql<{ status: string; snapshot_evidence_id: string; response: AgentModelResponse }[]>`SELECT status,snapshot_evidence_id,response FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence`;
     expect(turns.length).toBeGreaterThan(0);
     expect(turns.every(row => row.status === 'COMPLETED')).toBe(true);
     expect(workerMarkers.some(marker => marker.includes('"snapshotTimeToolPresent":true'))).toBe(true);
@@ -339,6 +344,7 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     expect(artifacts.some(row => row.kind === 'structural-snapshot')).toBe(true);
     expect(artifacts.some(row => row.kind === 'screenshot')).toBe(true);
     const structuralDocuments: unknown[] = [];
+    const snapshots = new Map<string, StoredSnapshot>();
     for (const artifact of artifacts) {
       const bytes = storage.objects.get(String(artifact.object_key));
       expect(bytes).toBeDefined();
@@ -346,9 +352,65 @@ test.describe('canonical P-4 through the real compiled worker', () => {
       if (artifact.kind === 'structural-snapshot') {
         const parsed = readStructuralSnapshot({ evidenceId: String(artifact.evidence_id), substrate: 'web_tree', bytes: bytes! });
         expect(parsed.ok).toBe(true);
-        if (parsed.ok && parsed.substrate === 'web_tree') structuralDocuments.push(parsed.document);
+        if (parsed.ok && parsed.substrate === 'web_tree') {
+          structuralDocuments.push(parsed.document);
+          snapshots.set(String(artifact.evidence_id), { evidenceId: String(artifact.evidence_id), substrate: 'web_tree', bytes: bytes! });
+        }
       }
     }
+    // Prove the persisted model selected actual approved reads from this exact stored
+    // capture. Rebuild the platform catalogue from the Run's frozen plan and capture
+    // location, then independently resolve every persisted locator through the domain.
+    const [frozenVersion] = await sql<{ compiled_plan: ExecutablePlan }[]>`SELECT v.compiled_plan FROM audit_run r
+      JOIN procedure_version v ON v.version_id=r.version_id WHERE r.run_id=${runId} AND v.version_id=${versionId}`;
+    expect(frozenVersion).toBeDefined();
+    const plan = frozenVersion!.compiled_plan;
+    const target = plan.inputs.targets.find(row => row.registrationId === targetId);
+    expect(target).toBeDefined();
+    const readTurns = turns.filter(turn => turn.response.actions.some(action => action.action === 'read-attribute' || action.action === 'read-metadata'));
+    expect(readTurns).toHaveLength(1);
+    const readTurn = readTurns[0]!;
+    expect(readTurn.snapshot_evidence_id).toBe(items[0]?.evidence_id);
+    expect(readTurn.snapshot_evidence_id).toBe(declarations[0]?.payload.snapshotEvidenceId);
+    const snapshot = snapshots.get(readTurn.snapshot_evidence_id);
+    expect(snapshot).toBeDefined();
+    const [capture] = await sql`SELECT source_location FROM run_evidence_capture WHERE run_id=${runId} AND evidence_id=${readTurn.snapshot_evidence_id}`;
+    expect(capture).toBeDefined();
+    const planner = planProdConsoleTools({ plan, target: target!, snapshot: snapshot!, sourceLocation: String(capture!.source_location) });
+    expect(planner).not.toBeNull();
+    expect(readTurn.response.actions.map(action => action.toolId).sort()).toEqual(planner!.tools.map(tool => tool.toolId).sort());
+    const parsedSnapshot = readStructuralSnapshot(snapshot!);
+    const labels: string[] = [];
+    for (const proposal of readTurn.response.actions) {
+      const approved = planner!.tools.find(tool => tool.toolId === proposal.toolId);
+      expect(approved).toBeDefined();
+      expect(proposal).toEqual({ toolId: approved!.toolId, action: approved!.action,
+        destination: approved!.destination, locator: approved!.locator, parameters: [] });
+      const locator = parseSnapshotLocator(proposal.locator?.path);
+      expect(locator).not.toBeNull();
+      const cell = readSnapshotCell(parsedSnapshot, locator!);
+      expect(cell).not.toBeNull();
+      expect(target!.contract.attribute_label_patterns).toContain(cell!.label);
+      labels.push(cell!.label);
+      if (cell!.label === 'Snapshot taken at') {
+        expect(proposal.action).toBe('read-metadata');
+        expect(cell!.value).toBe(pageDataset.snapshot.taken_at);
+      }
+      if (cell!.label === 'Snapshot identifier') {
+        expect(proposal.locator?.path).toBe(declarations[0]?.payload.snapshotIdentifierLocator);
+        expect(cell!.value).toBe(pageDataset.snapshot.snapshot_id);
+      }
+      if (cell!.label === 'Expected parameter count') {
+        expect(proposal.locator?.path).toBe(declarations[0]?.payload.expectedParameterCountLocator);
+        expect(String(cell!.value)).toBe(String(declaredCount));
+      }
+    }
+    expect(readTurn.response.actions.map(action => action.action)).toEqual(expect.arrayContaining(['read-attribute', 'read-metadata']));
+    expect(labels.sort()).toEqual([
+      ...pageDataset.observed_parameters.flatMap(() => ['Parameter', 'Value']),
+      'Snapshot identifier', 'Expected parameter count', 'Snapshot taken at',
+    ].sort());
+
     const hostileDescription = pageDataset.observed_parameters.find(row => row.description.includes('ATTENTION AGENT'))!.description;
     expect(structuralDocuments.some(document => JSON.stringify(document).includes(hostileDescription))).toBe(true);
 
