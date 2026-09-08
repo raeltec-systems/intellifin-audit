@@ -1417,3 +1417,7 @@ Story4.5 mutation removes a key in the producer actually called by the worker; S
 ## 2026-09-08 — Exhaustion records the shared quality Gate
 
 An agent Run limit must still record every existing §H check before sealing. A typed limit cause supplies terminal context to the shared Gate: quality rows remain truthful, independent execution failure remains RUN_FAILED, and passing quality cannot repair an exhausted budget into Completed. The returned actual terminal state is distinct from the quality decision; original recorded results win on replay.
+
+## 2026-09-08 — Credential containment acceptance scans
+
+A malicious-response regression must put the synthetic credential into a valid provider response and prove refusal before persistence. Discover Run-owned persistence subjects from PostgreSQL's catalog instead of maintaining a table allowlist. Scan raw values only in memory and assert booleans so even a planted guard failure cannot echo the credential into assertion logs; retain terminal cleanup and post-shutdown scans.
