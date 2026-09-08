@@ -102,8 +102,8 @@ describe('planAgentTools', () => {
       action: 'search',
       destination: 'https://loancore.example.test/loancore',
       locator: { substrate: 'web_tree', path: '$.nodes[0].value' },
-      description: 'Search with the approved population key.',
-      parameterNames: ['employee_id'],
+      description: 'Search for the current population record. The platform supplies the frozen lookup value; select this tool with an empty parameters array.',
+      parameterNames: [],
     });
     expect(planned.parametersByToolId['agent-search-0']).toEqual([
       { name: 'employee_id', value: 'E-000105' },
@@ -121,7 +121,7 @@ describe('planAgentTools', () => {
     const planned = planAgentTools(input({ searches }));
     const search = planned.tools.find((tool) => tool.action === 'search');
     expect(search?.locator).toEqual({ substrate: 'web_tree', path: '$.nodes[1].value' });
-    expect(search?.parameterNames).toEqual(['name']);
+    expect(search?.parameterNames).toEqual([]);
     expect(planned.parametersByToolId['agent-search-1']).toEqual([
       { name: 'name', value: 'Esther Kabwe' },
     ]);
@@ -283,7 +283,9 @@ describe('planAgentTools', () => {
     }];
     const planned = planAgentTools(input({ searches }));
     expect(planned.absenceReady).toBe(false);
-    expect(planned.tools.find((tool) => tool.action === 'search')?.parameterNames).toEqual(['employee_id']);
+    const offered = planned.tools.find((tool) => tool.action === 'search');
+    expect(offered?.parameterNames).toEqual([]);
+    expect(planned.parametersByToolId[offered!.toolId]).toEqual([{ name: 'employee_id', value: 'E-000105' }]);
   });
 
   it('offers only a record link grounded to the current identity', () => {

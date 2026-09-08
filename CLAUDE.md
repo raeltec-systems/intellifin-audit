@@ -1477,3 +1477,7 @@ The malicious HTTP fixture returns valid action JSON with an invented tool ID. I
 ## Agent response contract examples
 
 Prompt version3 states the existing strict action parameter array and uncertainty object shapes explicitly, including empty parameters and nullable rationale, with generic JSON examples. Validate that the provider receives an example accepted by the unchanged parser and still rejects invented tools. A schema-mismatch diagnostic alone does not justify increasing tokens, changing the model, or weakening validation; raw rejected responses remain unretained.
+
+## Frozen worker search arguments
+
+The worker deliberately rejects all model-authored search parameters and resolves values from parametersByToolId. Its planner must therefore advertise parameterNames=[] and explain that the platform supplies the frozen current-record lookup value. Advertising a writable field while withholding its required value contradicts that contract and can induce an honest insufficient-evidence wait. Preserve exact control binding, parameter-substitution denial and the original shared Observation engine.

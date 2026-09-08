@@ -193,6 +193,12 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
     try {
       if (runId && !cleanupConfirmed) {
         report['failedTurns'] = await sql`SELECT sequence,status,
+          CASE WHEN response->>'phase' IN ('actions','evaluation') THEN response->>'phase' ELSE 'unknown' END AS phase,
+          CASE WHEN response#>>'{uncertainty,kind}' IN ('none','ambiguous','insufficient-evidence')
+            THEN response#>>'{uncertainty,kind}' ELSE 'unknown' END AS uncertainty,
+          (SELECT jsonb_agg(CASE WHEN choice->>'action' IN ('navigate','search','open-record','read-attribute','capture-screenshot')
+            THEN choice->>'action' ELSE 'other' END)
+            FROM jsonb_array_elements(COALESCE(response->'actions','[]'::jsonb)) choice) AS selected_actions,
           CASE WHEN diagnostic IN ('model-invalid-response','model-invalid-response:output-limit',
             'model-invalid-response:empty-response','model-invalid-response:invalid-json',
             'model-invalid-response:schema-mismatch','model-invalid-response:invalid-selection',

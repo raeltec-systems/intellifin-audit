@@ -469,8 +469,8 @@ function addSearchOption(
     'search',
     destination,
     { substrate: 'web_tree', path },
-    'Search with the approved population key.',
-    [control.node.target],
+    'Search for the current population record. The platform supplies the frozen lookup value; select this tool with an empty parameters array.',
+    [],
     control.index,
     [{ name: control.node.target, value: next.value }],
   );

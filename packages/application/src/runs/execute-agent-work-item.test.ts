@@ -521,6 +521,10 @@ describe('executeAgentWorkItem', () => {
     expect(result.retry).toBe(true);
     expect(dependencies.credentials.resolve).toHaveBeenCalledWith('cred://loancore', expect.any(Number));
     expect(gateway.propose).toHaveBeenCalled();
+    const firstRequest = vi.mocked(gateway.propose).mock.calls[0]![0];
+    const offeredSearch = firstRequest.tools.find(tool => tool.action === 'search');
+    expect(offeredSearch?.parameterNames, 'The worker supplies frozen search values; the model must not author parameters').toEqual([]);
+    expect(offeredSearch?.description).toContain('platform supplies');
     expect(repository.actions.map((action) => action.action)).toEqual(['navigate', 'search']);
     const search = repository.actions[1]!;
     expect(search.parameters).toEqual([{ name: 'employee_id', value: RECORD.values.employee_id }]);
