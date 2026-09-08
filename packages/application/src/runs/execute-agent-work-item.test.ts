@@ -26,7 +26,7 @@ import type {
   StepExecutionRecord,
   WorkspaceRef,
 } from './execution-ports.js';
-import { executeAgentWorkItem, type AgentWorkDependencies } from './execute-agent-work-item.js';
+import { currentSearchQueryKeys, executeAgentWorkItem, type AgentWorkDependencies } from './execute-agent-work-item.js';
 import * as completion from './complete-run.js';
 import * as registration from './register-observations.js';
 import * as gate from './run-gate.js';
@@ -344,6 +344,42 @@ function browserForPages(repository: FakeRepository, pages: readonly (readonly u
 
 describe('executeAgentWorkItem', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('retains the actually performed mistyped query instead of copying the expected population key', () => {
+    expect(currentSearchQueryKeys([{
+      parameters: [{ name: 'employee_id', value: 'E-OOO105' }],
+      controlSnapshot: snapshot('controls'), snapshot: snapshot('empty'), lookupKey: 'employee_id',
+    }], TARGET)).toEqual([{ key: 'employee_id', value: 'E-OOO105' }]);
+  });
+
+  it.each([0, 1])('concludes an objectively incomplete search with %i returned records as uninspected without a human guess or further model turn', async returned => {
+    const gateCall = vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const repository = new FakeRepository();
+    const browser = browserFor(repository);
+    const perform = browser.perform.bind(browser);
+    browser.perform = async (...args) => {
+      const result = await perform(...args);
+      if (args[1].action !== 'search') return result;
+      return { ...result, artifacts: result.artifacts!.map(artifact => artifact.kind === 'structural-snapshot'
+        ? { ...artifact, bytes: utf8Bytes(JSON.stringify({ schemaVersion: 1, nodes: SNAPSHOT_NODES,
+          completion: { returned, complete: false } })) }
+        : artifact) };
+    };
+    let calls = 0;
+    const model: AgentModelGateway = { identity: identity(), async propose(request) {
+      calls++; return response(request.tools.find(tool => tool.action === 'search')?.toolId ?? null);
+    } };
+    await executeAgentWorkItem(deps(repository, browser, model, durableWaitPort(repository)), JOB);
+    expect(repository.actions.filter(action => action.action === 'search')).toHaveLength(1);
+    expect(repository.workItems[0]).toMatchObject({ state: 'UNINSPECTED' });
+    expect(repository.waitRaises).toHaveLength(0);
+    expect(calls).toBe(1);
+    expect(gateCall).toHaveBeenCalledTimes(1);
+    expect(repository.evaluations.some(row => row.evaluation.value === 'COMPLIANT')).toBe(false);
+    expect(repository.observations).toHaveLength(returned === 0 ? 1 : 0);
+    expect(repository.workItems[0]?.diagnostic).toBe('extraction-incomplete');
+  });
+
   it.each(['missing', 'duplicate'] as const)('routes %s source identity through the shared Gate before any agent turn', async kind => {
     const sharedGate = vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
     const directCompletion = vi.spyOn(completion, 'completeRun').mockResolvedValue(undefined as never);

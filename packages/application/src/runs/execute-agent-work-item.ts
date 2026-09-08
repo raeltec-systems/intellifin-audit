@@ -99,6 +99,7 @@ export interface AgentWorkDependencies {
 export type AgentWorkDiagnostic =
   | 'unsupported-frozen-plan'
   | 'population-key-unresolved'
+  | 'extraction-incomplete'
   | 'prerequisites-incomplete'
   | 'workspace-missing'
   | 'model-not-configured'
@@ -230,7 +231,6 @@ async function readSnapshotForBinding(
 
 function searchLookupKey(
   target: ProcedureTargetSnapshot,
-  population: PopulationRecord,
   parameters: readonly ToolActionParameter[],
   controlSnapshot: StoredSnapshot,
 ): string | null {
@@ -256,24 +256,25 @@ function searchLookupKey(
     const node: (typeof parsed.document.nodes[number]) = controls[0]!;
     const key = node.label === labels.identity ? primary :
       node.label === target.contract.secondary_key ? secondary : null;
-    if (key === null || byName.has(key) || population.values[key] !== parameter.value) return null;
+    if (key === null || byName.has(key)) return null;
     byName.set(key, parameter.value);
   }
   return byName.size === 1 ? [...byName.keys()][0]! : null;
 }
 
-function currentSearchQueryKeys(
+export function currentSearchQueryKeys(
   searches: readonly AgentSearchEvidence[],
   target: ProcedureTargetSnapshot,
-  population: PopulationRecord,
 ): readonly { key: string; value: string }[] {
   const keys = adapterSearchKeys(TEMPLATE_ID) ?? [];
   const out = new Map<string, string>();
   for (const search of searches) {
-    const key = search.lookupKey ?? searchLookupKey(target, population, search.parameters, search.controlSnapshot ?? search.snapshot);
-    if (key === null || out.has(key)) continue;
-    const value = population.values[key];
-    if (typeof value === 'string' && value.length > 0) out.set(key, value);
+    const key = searchLookupKey(target, search.parameters, search.controlSnapshot ?? search.snapshot);
+    if (key === null || search.parameters.length !== 1) continue;
+    // This is the performed action's value, never a reconstruction from the expected
+    // employee key. A mistype must remain visible to the shared absence judge.
+    const value = search.parameters[0]!.value;
+    if (typeof value === 'string') out.set(key, value);
   }
   return keys.flatMap((key) => {
     const value = out.get(key);
@@ -901,6 +902,7 @@ export async function executeAgentWorkItem(
     observation: ReturnType<typeof buildFoundAgentObservation> | ReturnType<typeof buildAbsentAgentObservation>,
     snapshot: StoredSnapshot,
     state: 'OBSERVED' | 'UNINSPECTED',
+    diagnostic: AgentWorkDiagnostic | null = state === 'UNINSPECTED' ? 'insufficient-evidence' : null,
   ): Promise<'done' | 'lost' | 'refused'> => {
     if (observation === null) return 'refused';
     const priorObservations = item.observations;
@@ -967,7 +969,7 @@ export async function executeAgentWorkItem(
     item.state = state;
     item.observations += 1;
     item.evidenceId = snapshot.evidenceId;
-    item.diagnostic = state === 'UNINSPECTED' ? 'insufficient-evidence' : null;
+    item.diagnostic = diagnostic;
     try {
       let limited = false;
       const saved = await guarded(async (context) => {
@@ -1384,6 +1386,41 @@ export async function executeAgentWorkItem(
       while (actionsConsumed < MAX_ACTIONS_PER_TURN) {
         const modelBoundary = await cancellationBoundary();
         if (modelBoundary !== 'continue') return { retry: false };
+        const searchPage = readStructuralSnapshot(current.snapshot);
+        if (searches.length > 0 && searchPage.ok && searchPage.substrate === 'web_tree' && searchPage.document.completion?.complete === false) {
+          // A captured pagination/count gap is objectively unresolved. Preserve it and
+          // finish through the existing Gate; a human cannot turn an incomplete search
+          // into proof that the employee has no account.
+          if (searchPage.document.completion.returned === 0) {
+            const absence = buildAbsentAgentObservation({
+              plan, target: entry.target, population: record, workItemId: item.workItemId,
+              stepExecutionId: execution.stepExecutionId, snapshot: current.snapshot,
+              queryKeys: currentSearchQueryKeys(searches, entry.target),
+              searchEvidenceIds: searches.map(search => search.snapshot.evidenceId),
+              screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
+            });
+            const finished = await finishObservation(item, execution, absence, current.snapshot, 'UNINSPECTED', 'extraction-incomplete');
+            if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
+            if (finished === 'refused') {
+              const result = await persistRetry(item, execution, 'observation-registration-refused');
+              const outcome = retryOutcome(result); if (outcome !== null) return outcome;
+            }
+          } else {
+            // Nonempty partial results do not support an absent Observation at all.
+            item.state = 'UNINSPECTED'; item.diagnostic = 'extraction-incomplete';
+            const incompleteEvidenceId = current.snapshot.evidenceId;
+            if (!await guarded(async context => {
+              if (await stopAtFinalLimit(context)) return;
+              await context.saveWorkItem(item);
+              await context.saveStepExecution({ ...execution, state: 'SUCCEEDED', completedAt: nowIso(dependencies.clock), diagnostic: item.diagnostic });
+              await appendEvent(context, run, 'work-item-uninspected', 'RUNNING', checkpoint, {
+                workItemId: item.workItemId, stepExecutionId: execution.stepExecutionId,
+                evidenceId: incompleteEvidenceId, observations: item.observations,
+              });
+            })) return { retry: false };
+          }
+          break;
+        }
         const planned = planAgentTools({
           plan,
           target: entry.target,
@@ -1393,7 +1430,7 @@ export async function executeAgentWorkItem(
           searches,
         });
         if (planned.absenceReady) {
-          const queryKeys = currentSearchQueryKeys(searches, entry.target, record);
+          const queryKeys = currentSearchQueryKeys(searches, entry.target);
           const observation = buildAbsentAgentObservation({
             plan, target: entry.target, population: record, workItemId: item.workItemId,
             stepExecutionId: execution.stepExecutionId, snapshot: current.snapshot,
@@ -1477,7 +1514,7 @@ export async function executeAgentWorkItem(
             const observation = buildAbsentAgentObservation({
               plan, target: entry.target, population: record, workItemId: item.workItemId,
               stepExecutionId: execution.stepExecutionId, snapshot: current.snapshot,
-              queryKeys: currentSearchQueryKeys(searches, entry.target, record),
+              queryKeys: currentSearchQueryKeys(searches, entry.target),
               searchEvidenceIds: searches.map((search) => search.snapshot.evidenceId),
               screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
             });
@@ -1568,10 +1605,10 @@ export async function executeAgentWorkItem(
         item.evidenceId = capture.snapshot.evidenceId;
         if (selected.action === 'search') {
           searches = [...searches, {
-            parameters: selected.parameters,
+            parameters: performed.action.parameters,
             controlSnapshot: beforeSearch,
             snapshot: current.snapshot,
-            lookupKey: searchLookupKey(entry.target, record, selected.parameters, beforeSearch) ?? undefined,
+            lookupKey: searchLookupKey(entry.target, performed.action.parameters, beforeSearch) ?? undefined,
           }];
         }
         if (selected.action === 'read-attribute') {

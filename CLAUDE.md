@@ -1307,3 +1307,8 @@ pg-boss queue creation uses a raw transaction block. Provision it on a dedicated
 ### Singleton enqueue concurrency proof
 
 To exercise PostgreSQL singleton insertion contention, hold the first INSERT uncommitted and observe the competing INSERT blocked through pg_stat_activity. A FOR UPDATE lock on an already-committed duplicate row does not establish that ON CONFLICT DO NOTHING waits. Restore/release the held transaction in finally and require exactly one durable wake afterward. Keep root ownership of branch commits when transport reconstruction is needed.
+
+
+### Performed search facts and partial results
+
+Absence proof values must come from the saved sanitized Tool Action parameters, never copied from the expected population. Ground the parameter-to-key mapping in the captured control; retain a differing value for the shared absence judge. An explicit captured completeness failure is platform-decidable: preserve partial evidence, mark the Work Item UNINSPECTED and run the shared Gate. A nonempty partial page cannot produce an absent Observation or an invitation for a human to guess completeness.
