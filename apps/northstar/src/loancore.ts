@@ -194,7 +194,8 @@ function results(options: {
         title: 'Search results',
         body: `<h2>Search results</h2>
 <p>Searched for ${escapeHtml(criterion)}.</p>
-<p id="no-results">No accounts match that search.</p>`,
+<p id="no-results">No accounts match that search.</p>
+<p role="status" aria-label="result-summary">Showing 0 of 0 matching accounts.</p>`,
       }),
     );
   }

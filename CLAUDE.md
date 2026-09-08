@@ -1312,3 +1312,8 @@ To exercise PostgreSQL singleton insertion contention, hold the first INSERT unc
 ### Performed search facts and partial results
 
 Absence proof values must come from the saved sanitized Tool Action parameters, never copied from the expected population. Ground the parameter-to-key mapping in the captured control; retain a differing value for the shared absence judge. An explicit captured completeness failure is platform-decidable: preserve partial evidence, mark the Work Item UNINSPECTED and run the shared Gate. A nonempty partial page cannot produce an absent Observation or an invitation for a human to guess completeness.
+
+
+### Canonical empty-result evidence
+
+A synthetic target's real empty page must expose a truthful count/completeness declaration. A custom test page with a stronger summary can mask a missing canonical target contract. Fix the renderer from its actual matched rows; do not relax browser completion or call an arbitrary empty document proof of absence.

@@ -151,7 +151,9 @@ describe('LoanCore', () => {
   it('returns two candidates with no Employee ID column for a name-only match', () => {
     const row = account('E-000117');
     // The ID search must find nothing, or the fallback name search never happens.
-    expect(text(`/loancore/users?employee_id=${row.employee_id}`)).toContain('No accounts match');
+    const empty = text(`/loancore/users?employee_id=${row.employee_id}`);
+    expect(empty).toContain('No accounts match');
+    expect(empty).toContain('<p role="status" aria-label="result-summary">Showing 0 of 0 matching accounts.</p>');
     const results = text(`/loancore/users?name=${encodeURIComponent(row.full_name)}`);
     expect(results).not.toContain('Employee ID');
     for (const username of row.candidate_usernames ?? []) {
