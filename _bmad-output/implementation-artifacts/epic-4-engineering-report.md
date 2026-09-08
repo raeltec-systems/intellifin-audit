@@ -1,6 +1,6 @@
 # Epic 4 engineering verification report
 
-**Work in final verification; not accepted, merged or deployed.**
+**Implementation in final verification; Epic4 is not accepted or merged. Only the separately authorized synthetic Northstar update has deployed.**
 
 Branch `codex/epic-4-agent-runs`, [draft PR24](https://github.com/raeltec-systems/intellifin-audit/pull/24).
 Historical owner review was `b6bcd466749c56d2c37f8d8a46669dcf0f32d001`.
@@ -33,17 +33,17 @@ These are implementation and verification distinctions, not interface-only compl
 
 | Story | Implemented path | Acceptance status |
 | --- | --- | --- |
-| 4.1 | Persisted isolated workspace identity, recovery, bounded retry/expiry and cleanup | Local/state and provider-adapter regressions pass; live managed-session gate blocked |
+| 4.1 | Persisted isolated workspace identity, recovery, bounded retry/expiry and cleanup | Local/state and provider-adapter regressions pass; remote allocation/authentication/cleanup demonstrated; remote managed-state isolation passes at8eafbfbe; representative audit remains blocked by C2 |
 | 4.2 | Read-only scoped browser actions, request interception and exact real form destination | PostgreSQL/local Chromium authentication, denial and script-write tests pass |
 | 4.3 | Just-in-time worker-only credential resolution, capture suppression, request/response/artifact scans | Credential regressions pass; actual-worker malicious response passed at5fd2ac0; actual-worker response-scanner mutation passes at f4892c9 |
 | 4.4 | Captured web_tree + PNG, same-snapshot identity, shared transactional registration/corroboration/evaluation, protected stored-evidence inspector | Unit/PG and canonical worker → inspector journeys pass at f4892c9. Optional D3 binding limitation below |
 | 4.5 | Actual searched values, both identity keys, complete registered empty capture, immutable proof/digest and whole-document inspector | PG, key-removal mutation and canonical worker journey pass at f4892c9 |
-| 4.6 | Genuine model gateway and approved tool selection, measured usage/reservations, inherited deadlines, all limit causes through shared Gate, inert retrieved content | Provider conformance, PG limit/sealing/replay and token-removal mutation pass; live model execution blocked |
+| 4.6 | Genuine model gateway and approved tool selection, measured usage/reservations, inherited deadlines, all limit causes through shared Gate, inert retrieved content | Provider conformance, PG limit/sealing/replay and token-removal mutation pass; real model turns demonstrated, complete live audit pending |
 | 4.7 | Typed durable waits, closed options, one transactional wake, leased work checkpoints and restart/resume | PG real queue/restart/held-transaction tests and unique-match mutation pass |
 | 4.8 | Fresh-authorized answers, revision/closure guards, timeout, real cancellation, initiator/manager notifications and exact shell count | PG command races, browser notification/answer/timeout journeys and both hydrated-answer mutations pass at f4892c9. Email truthfully unconfigured |
 | 4.9 | Original machine proposal + immutable human decision overlay, durable worker review command, shared Exception signing and one-time sealing | PG confirm/reject/Unevaluated/races, threshold mutation and canonical compiled-worker confirm/reject journeys pass at f4892c9 |
 | 4.10 | One page Work Item, one Observation per distinct baseline key, real shared reconciliation/evaluation and exact failing Gate set | Canonical PG, both guard mutations and the corrected compiled-worker browser proof pass at82adb83. Persisted selections resolve against approved snapshot locators and actual stored bytes; all golden Gate/Observation/evaluation/declaration checks remain |
-| 4.11 | Dynamic golden attacks, hydrated closed answers, real worker SDK denial, catalog-discovered credential sink scans, overlapping browser-state isolation, workspace egress and terminal closure | All29 guard mutations pass at82adb83, including seven actual-worker/hydrated mutations with34 baseline/removed-guard case pairs. Later deterministic recovery fixes require final CI; remote isolation remains blocked |
+| 4.11 | Dynamic golden attacks, hydrated closed answers, real worker SDK denial, catalog-discovered credential sink scans, overlapping browser-state isolation, workspace egress and terminal closure | All29 guard mutations pass at82adb83, including seven actual-worker/hydrated mutations with34 baseline/removed-guard case pairs. Recovery fixes pass476-test PG suite; remote managed-state isolation passes at8eafbfbe; final standard CI remains pending |
 
 Principal feature checkpoints: grounded capture/registration `6a1e1e0`, `60bf745`,
 `f3ba33e`, `d96b7fe`, `bfdbaa6`; model gateway/composition/loop `31317cc`, `64df031`,
@@ -52,89 +52,120 @@ Principal feature checkpoints: grounded capture/registration `6a1e1e0`, `60bf745
 actual-worker abuse/credential tests `9d7edb3`, `6c9b717`, `5fd2ac0`.
 All runtime Observations, evaluations, evidence and Results use the original shared engine.
 
-## Latest candidate gate
+## Current verification checkpoint
 
-Candidate **82adb8338cfd3c6efb82b664ba4848729e8818ec** passes all five jobs in [CI34205126512](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34205126512): 3537 unit tests, 472 PostgreSQL tests, 162 browser/accessibility cases, static/image gates and all29 guard mutations. Its tested merge0ef533e2a22a400f7a960c7a152de72ac3ffe7de shares the complete tree78be9099481a62825a00c22230597b1f2264246b with the head. The worker matrix includes34 baseline/removed-guard pairs, with three independent credential lifecycles and no assertion retries.
+Runtime candidate **0c118a8d77f9866e36a0b0fd90cf862e0710af79**, tree
+`4258e987dcf2f12a38d77c0818ff7b01887bc822`, is pushed. The subsequent
+workflow/documentation checkpoint **8eafbfbea65a53b651363b56ad93cd690dcf0472**
+selects the existing independent remote-isolation test without changing runtime code.
+[Standard CI34224604065](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34224604065)
+is pending at this report update; the following documentation checkpoint must receive its
+own [current PR checks](https://github.com/raeltec-systems/intellifin-audit/pull/24/checks).
+[Independent isolation34224743734](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34224743734)
+**passes** at8eafbfbe. The full audit gate remains failed on explicit C2 policy ambiguity;
+independent isolation does not replace it. Post-commit check results and exact final tested
+SHA are recorded in the PR status and final handoff, without describing this prepared report
+as proof that a pending job passed.
 
-Earlier04f2a3e reached RUN_FAILED instead of the required credential-containment wait ([exact failure](epic-4-credential-baseline-failure.json)). Passing repetitions did not explain it. A deterministic real PostgreSQL/local-Chromium regression at **e55c001** then reproduced a concrete reattachment race: competing work treated durable PROVISIONING as a missing workspace and falsely failed the Run. A separate controlled-clock regression showed that an old attach could close the winning lease's same session. The original intermittent run lacked durable diagnostics, so attribution of that exact run remains an inference.
+Last fully green standard candidate **70497eb8e9e04ae4282f71844fa6363d89d77597**
+passes all five jobs in
+[CI34217326851](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34217326851):
+3541unit tests,476real PostgreSQL18 tests,162browser/accessibility cases,
+22small guard mutations and7worker/hydrated guard mutations with34baseline/removed-guard
+case pairs. TypeScript, dependency boundaries, fresh/populated/repeat migrations,
+schema drift and web/worker/Northstar images pass. Hosted browser tests use local Chromium;
+these results are not proof of remote Solari execution.
 
-The cleanup repair **d50e424** and pending-work/recovery repair **5944e6f** are pushed. Local3539unit tests, full TypeScript and boundaries pass. CI34208782831 verifies476PostgreSQL tests, all22smaller mutations, fresh/populated/repeat migrations, drift, static and container gates. The previously failing real held-attachment regression now passes, together with failed-attachment recovery and genuine missing-workspace protection. Its separate worker matrix stops at a post-answer document-title accessibility failure before any guard removal; the test must wait for the refreshed closed-wait page and exact route title before its unchanged axe scan. Final browser/mutation and live Solari acceptance remain open.
+Subsequent runtime checkpoint590df4e passes3548local unit tests/170files. Current
+prompt/planner repairs pass103focused tests and full TypeScript; the final uncertainty
+prose passes the affected88tests again. The continuation log records exact commands,
+red/green evidence and incomplete or canceled hosted runs. Local runtime uses Node24.20.0
+and pnpm11.25.0; real PostgreSQL and browser gates run on hosted CI.
 
-## Verification evidence
+## Additional acceptance findings and atomic repairs
 
-Verified runtime baseline: **`f4892c930e031071a77cc5945ffb2936e34cfe86`**, tree
-`5b5ff428306262bddf2148fcbdf483ff8e35c6b1`.
-Its [CI34199194303](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34199194303)
-completed with four passing jobs and one browser failure; no full-candidate acceptance is claimed.
+- `e55c001` reproduces a real PostgreSQL/local-Chromium reattachment race: a competing
+  work claim mistakes PROVISIONING for a missing workspace and falsely fails the Run.
+  `d50e424` preserves the winning claim's session when an older attach returns late;
+  `5944e6f` defers work and rediscovers interrupted/failed provisioning. The deterministic
+  regression and recovery cases pass in the476-test PostgreSQL suite.
+- `af3abd6` waits for the refreshed closed-wait page and exact title before the unchanged
+  accessibility scan. `70497eb` writes scanned live reports to disk so CI can retain them;
+  its real-filesystem regression fails against body-only attachments.
+- `d142629` retains only closed model failure categories while charging real usage.
+  `48381c7` corrects the malicious-worker test to require the exact invalid-selection
+  suffix; all security-denial, no-Observation, no-Pass and frozen-scope assertions stay.
+- `590df4e` specifies the strict JSON response shape. `d6e8597` aligns offered search
+  tools with platform-bound arguments: the model selects an opaque tool ID, and the
+  worker supplies the frozen lookup value. No population values are exposed merely to
+  satisfy the model. `86e12c1` uses a complete empty-parameter example and distinguishes
+  uncertainty about a safe next action from missing final evidence during investigation.
+  Each format/argument mismatch has a failing regression before repair. Model-provided
+  parameters, unsafe actions and actual uncertainty remain refused or durably escalated.
 
-- Local full unit suite on this SHA: **3537 tests /169 files pass**, Node24.20.0,
-  pnpm11.25.0, `pnpm test`. Full `pnpm typecheck` and `pnpm boundaries` pass
-  (510 modules, no dependency violations).
-- This candidate passes hosted static, PostgreSQL18 (472 tests/39 files), fresh and
-  populated migrations through41, repeat migration, drift and all image checks.
-  CI tested merge SHA `ef9334efbdcbb374a23fdcc538403a7f4e0e3b4a`, whose complete tree
-  equals the head tree above. All22 smaller mutations pass, with exact guard removals,
-  source/test digests and per-case assertion failures retained in
-  [hosted mutation evidence](epic-4-hosted-guard-mutations.json).
-- Browser/accessibility: **161 passed, 1 failed**. The remaining ProdConsole assertion
-  incorrectly expects immutable snapshot reads in the browser-request ledger; all
-  preceding exact golden Gate/Observation/evaluation/declaration assertions pass.
-  A sound test must match durable model selections to approved locators and stored bytes.
-  The separate seven-worker/hydrated mutation job passes all32 selected baseline/removed-guard case pairs. Its [exact evidence](epic-4-hosted-worker-mutations.json) is retained.
-- Candidate2d1eec4:472 real PostgreSQL18 tests/39files, fresh migration, sealed31 and
-  populated40 upgrades through41, repeat migration, drift, all22 smaller mutations,
-  static checks and container build/startup checks passed in CI34196546462.
-  GitHub tested merge SHA67a4b1d6ef0fd9280bb441a0b102ed6a469e655f; its complete tree
-  equaled that PR head. Later candidate5fd2ac0 also passed PG/static/images.
-- Earlier browser failures are retained in the continuation log. They produced actual
-  repairs; a canceled run or a passing subset is not full browser acceptance.
-- Hosted browser tests use **local Chromium**. Synthetic provider HTTP is explicitly
-  intercepted in negative/expected-journey tests; the compiled worker, SDK, queue,
-  PostgreSQL, Northstar, browser, S3 adapter, evidence and review commands are real.
-- Test commands are the repository's `pnpm typecheck`, `pnpm boundaries`, `pnpm test`,
-  `pnpm test:integration`, `pnpm db:migrate`, drift via `pnpm db:generate`,
-  `pnpm test:e2e`, package/worker/Northstar builds and web/container builds in CI.
-  Each PostgreSQL/browser job installs its own Chromium binary.
-- The old ten-mutation report is historical evidence, not the final matrix. Current per-case JSON shows baseline success and meaningful guard-removal assertion
-  failure; setup errors, timeouts, canceled cases and surviving mutants do not count.
+## Real provider evidence and deployment prerequisites
 
-Test-only follow-up commits: **881dc35338c4a5ae26dc3df9e71b852115a75d77** proves
-P4 model-selected reads against the actual stored snapshot;
-**9a6987fe165520d2bc71673e1e736457f66db2de** awaits independent committed completion
-before security assertions and retains the full execution/cleanup budgets. Focused
-TypeScript,18P4 unit tests and unchanged browser-case discovery pass. Their exact
-hosted verification is required after publication; no production source changed.
+Both GitHub API secrets and the OpenAI Luna model configuration are now present.
+The actual-worker live workflow uses `gpt-5.6-luna`, Solari `us-west`, recording disabled,
+one canonical employee and the existing approved Northstar HTTPS service. It uses
+worker-local disposable PostgreSQL, HTTP population and synthetic S3 fixtures through
+production adapters; it does not claim production storage or deployed HR integration.
+See the [live runbook](epic-4-solari-acceptance-runbook.md) for exact bounds/configuration.
 
-## Live-provider and deployment blockers
+Owner explicitly authorized updating only Northstar. Source70497eb passed CI before
+Railway deployment **65c63c65-db86-407f-80e7-9b097caccd42**, which reports SUCCESS.
+Public health and the real LoanCore sign-in form were verified. Its Actions deployment
+job34219001411 later failed only during pnpm cache-save; that operational error does not
+reverse the independently verified rollout. Web, worker and database were untouched.
+The one-shot operations workflow was removed in `da6fbd2`; its final branch tree equals
+70497eb and it never entered PR24. Existing staged Railway configuration was preserved.
 
-The explicitly selected [live run34194649240](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34194649240)
-failed before allocating a workspace: **Actions `SOLARI_API_KEY` was empty**.
-Model-provider secrets and model-ID variables were also empty. The supplied key is
-outside Git with private permissions; a1468-file tracked/candidate scan found zero occurrences.
-This session's GitHub connector cannot create encrypted Actions secrets. Nothing
-about that failed run establishes live authentication, evidence, isolation or cleanup.
+Post-deployment live34220819917 proves real authentication/population and four
+schema-mismatch refusals. Live34222183373 at590df4e completes two real model turns before
+an insufficient-evidence wait. Live34222899942 atd6e8597 selects investigative actions
+but also returns insufficient-evidence, so the worker correctly waits before acting.
+All three confirm remote cleanup; none is an accepted audit or remote-isolation gate.
+Rejected output and provider reasoning are not retained. Later diagnosis retains only
+the accepted bounded user-facing uncertainty summary after credential and report scans. Live34223252568 at86e12c1 then completes model-directed navigation, search, record opening
+and field reading before a genuine evaluation wait. Repair `0c118a8` supplies the model
+with the snapshot corroboration already computed for the deterministic preview; registration
+still independently verifies the original captured record. Its regression fails with null
+corroboration before repair, then verifies the supplied values and verdicts equal the final
+registered record. All103focused tests and full TypeScript pass.
 
-Configure encrypted Actions `SOLARI_API_KEY` and exactly one `ANTHROPIC_API_KEY` or
-`OPENAI_API_KEY`, plus its corresponding model-ID variable. Then explicitly select the
-exact final candidate using PR label `solari-live-acceptance`. The
-[runbook](epic-4-solari-acceptance-runbook.md) records all settings and bounds.
-The live gate uses the actual worker adapter and real model against the existing
-approved Northstar HTTPS service; its source and S3 fixture are explicitly worker-local.
-No tunnel, new target deployment, provider plan change or recording is authorized by the test.
+[Live34223964866](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34223964866)
+at0c118a8 repeats the full investigative sequence and retains the accepted stop summary:
+“The condition does not define which roles are privileged.” C2’s frozen condition says
+roles that look privileged are exceptions but supplies no role policy. The actual roles field
+is present and corroborated; independent review confirms no required C2 attribute is missing.
+The worker correctly preserves a durable wait, with confirmed cleanup. It has not registered
+a completed audit Observation/Result for this live case. Do not inject the fixture’s expected
+answer, infer a privilege policy, or change this wait into a Pass. An approved clarification
+of the procedure’s C2 criterion is required before completing this representative gate.
 
-Railway service presence was inspected; final candidate deployment prerequisites and
-target version compatibility remain unverified. In particular, the existing worker's
-visible variable names did not establish Solari, evidence-store or credential/fingerprint
-configuration. Release requires production DATABASE_URL/RAILWAY_TOKEN and migrates before
-serial deployment. Main may auto-deploy immediately. No branch protection is bypassed,
-no non-disposable database is dropped, and no merge or deployment has occurred.
+The independent remote-isolation gate **passes** at8eafbfbe: two concurrently open Solari
+sessions, separate real authentication, cookies/local/session/cache state, an A operation
+held pending while B completes an authenticated captured read, forged cross-Run
+attach/perform/release refusal, intercepted out-of-scope requests and terminal closure.
+Both provider releases are confirmed before expiry (A12:12:57.690Z; B12:12:58.342Z on
+2026-09-08). Recording is off and this test makes no model calls. It proves managed
+browser-state isolation and adapter request interception, not worker-memory isolation
+or an independently configured provider firewall. The
+[scanned artifact](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34224743734/artifacts/10055228838)
+retains original provider identities; the committed
+[secret-free verification summary](epic-4-live-provider-verification.json) retains exact
+candidate/Run/configuration IDs, accepted scope and cleanup timestamps.
 
-Read-only Railway inspection on2026-09-08 confirms the existing web domain is
-`web-production-edded.up.railway.app`; latest web/worker/Northstar deployments still date
-fromSeptember5. Their platform status is SUCCESS, which is not candidate health evidence.
-Worker service `84394c42-5018-4cb4-9a7a-707b2ca1fe4a` uses `apps/worker/Dockerfile` and
-`node dist/main.js`; its direct variable list still omits the agent evidence/credential
-and Solari settings above. No deployment settings or variable values were changed.
+A read-only Railway recheck confirms neither web nor worker has `EVIDENCE_S3_*`.
+The worker also lacks `SOLARI_API_KEY`, `CREDENTIAL_TOKENS` and
+`EXCEPTION_FINGERPRINT_KEY`; these are deployment blockers separate from Actions
+configuration. Both model-provider keys exist on the worker but the Luna model override
+is absent; current composition prefers Anthropic when both keys are present. Only
+variable names were inspected. An existing approved private S3-compatible bucket and
+its configuration must be supplied; do not provision paid storage or use the disposable
+fixture as production evidence storage. Release also needs the production DATABASE_URL
+and RAILWAY_TOKEN, PostgreSQL18, successful exact-candidate checks. GitHub currently reports main as unprotected;
+no bypass or direct main push is used. No main merge or candidate web/worker rollout has occurred.
 
 ## Material contract conflicts and limits
 
@@ -156,7 +187,7 @@ and Solari settings above. No deployment settings or variable values were change
   that default path is verified separately. Resolving D3 requires a compatibility-safe
   frozen field-mapping extension, not a silent alias in compiler1.
 - Local contexts prove browser-state isolation, not process or worker-memory isolation.
-  Even the proposed remote test distinguishes managed sessions from an independently
+  The passing remote test distinguishes managed sessions from an independently
   configured provider firewall. Email remains recorded as `unconfigured`.
 - Desktop execution, user-facing live/replay and scheduling are later epic work. They
   are not delivered by the agent worker or by these test fixtures.

@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "audit": {
+    "candidateSha": "0c118a8d77f9866e36a0b0fd90cf862e0710af79",
+    "workflowRun": 34223964866,
+    "job": 102053454020,
+    "runId": "01a080e7-bb72-7c5f-92f5-1c05f34ee150",
+    "provider": "solari",
+    "region": "us-west",
+    "recording": false,
+    "target": "https://northstar-production-b312.up.railway.app",
+    "modelProvider": "openai",
+    "modelId": "gpt-5.6-luna",
+    "acceptance": "not-accepted",
+    "cleanup": "confirmed",
+    "execution": {
+      "agent_diagnostic": "insufficient-evidence",
+      "agent_status": "WAITING",
+      "authentication_diagnostic": null,
+      "authentication_status": "SIGNED_IN",
+      "population_diagnostic": null,
+      "population_status": "POPULATION_READY",
+      "state": "AWAITING_AUDITOR"
+    },
+    "turns": [
+      {
+        "diagnostic": "other",
+        "phase": "actions",
+        "selected_actions": [
+          "navigate"
+        ],
+        "sequence": 1,
+        "status": "COMPLETED",
+        "uncertainty": "none",
+        "uncertainty_summary": null
+      },
+      {
+        "diagnostic": "other",
+        "phase": "actions",
+        "selected_actions": [
+          "search"
+        ],
+        "sequence": 2,
+        "status": "COMPLETED",
+        "uncertainty": "none",
+        "uncertainty_summary": null
+      },
+      {
+        "diagnostic": "other",
+        "phase": "actions",
+        "selected_actions": [
+          "open-record"
+        ],
+        "sequence": 3,
+        "status": "COMPLETED",
+        "uncertainty": "none",
+        "uncertainty_summary": null
+      },
+      {
+        "diagnostic": "other",
+        "phase": "actions",
+        "selected_actions": [
+          "read-attribute",
+          "read-attribute",
+          "read-attribute",
+          "capture-screenshot"
+        ],
+        "sequence": 4,
+        "status": "COMPLETED",
+        "uncertainty": "none",
+        "uncertainty_summary": null
+      },
+      {
+        "diagnostic": "other",
+        "phase": "evaluation",
+        "selected_actions": null,
+        "sequence": 5,
+        "status": "COMPLETED",
+        "uncertainty": "ambiguous",
+        "uncertainty_summary": "The condition does not define which roles are privileged."
+      }
+    ],
+    "workspace": {
+      "mode": "solari",
+      "status": "RELEASED",
+      "expiresAt": "2026-09-08 13:04:26.888+00",
+      "releasedAt": "2026-09-08 12:05:25.771+00",
+      "diagnostic": null
+    }
+  },
+  "isolation": {
+    "candidateSha": "8eafbfbea65a53b651363b56ad93cd690dcf0472",
+    "workflowRun": 34224743734,
+    "job": 102055999739,
+    "artifactId": 10055228838,
+    "acceptance": "passed",
+    "proofScope": "Two concurrent managed browser sessions; cookie/session/local/session/cache state and production adapter request interception. Worker memory and provider-side firewall policy are not asserted.",
+    "overlap": "A browser operation remained pending while B completed an authenticated captured read.",
+    "recording": false,
+    "modelRequests": 0,
+    "runA": {
+      "planInputDigest": "deb1c5f631ff4a3d14f49d03cbf0f2bdfa61b6571f742632a29eaa9155633b50",
+      "procedureId": "01a080ef-69e9-76af-8480-cb03606afd90",
+      "runId": "01a080ef-6a1e-716d-8697-8cacb98e57fb",
+      "versionId": "01a080ef-69e9-7c9f-ae82-092af8994d8a"
+    },
+    "runB": {
+      "planInputDigest": "43418ab17c7b69ae9b4f235876c88d982c19283890c0327f0aca7932b437720e",
+      "procedureId": "01a080ef-6ffc-778c-95e0-187bd8900bea",
+      "runId": "01a080ef-7015-7ab6-82d9-9bb5ff28025e",
+      "versionId": "01a080ef-6ffc-71ec-9dc5-2b95a529961b"
+    },
+    "workspaceA": {
+      "mode": "solari",
+      "status": "RELEASED",
+      "expiresAt": "2026-09-08 13:12:49.577+00",
+      "releasedAt": "2026-09-08 12:12:57.69+00",
+      "diagnostic": null
+    },
+    "workspaceB": {
+      "mode": "solari",
+      "status": "RELEASED",
+      "expiresAt": "2026-09-08 13:12:50.649+00",
+      "releasedAt": "2026-09-08 12:12:58.342+00",
+      "diagnostic": null
+    },
+    "providerIdentityRetention": "Original provider identities are retained in the scanned Actions artifact; they are not copied into this repository summary."
+  },
+  "northstar": {
+    "sourceSha": "70497eb8e9e04ae4282f71844fa6363d89d77597",
+    "deploymentId": "65c63c65-db86-407f-80e7-9b097caccd42",
+    "status": "SUCCESS",
+    "scope": "Northstar only; no candidate web/worker deployment or database migration"
+  },
+  "release": {
+    "merged": false,
+    "blockingItems": [
+      "Approved C2 privilege judgment criterion",
+      "Approved private evidence storage and production worker configuration",
+      "Final hosted standard CI"
+    ]
+  }
+}
