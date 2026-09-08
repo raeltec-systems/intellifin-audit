@@ -116,7 +116,7 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
       const [usage] = await sql`SELECT count(*)::integer AS turns FROM run_agent_turn WHERE run_id=${runId!}`;
       if (Number(usage!.turns) > 12) throw new Error('Live gate model-turn budget exceeded; canceling the synthetic Run.');
       const [row] = await sql`SELECT r.state,x.outcome,x.sealed,x.gate_passed FROM audit_run r LEFT JOIN run_result x USING(run_id) WHERE r.run_id=${runId!}`;
-      if (row?.state === 'AWAITING_INPUT') throw new Error('Live agent requires an auditor decision; unattended acceptance cannot confirm the journey.');
+      if (row?.state === 'AWAITING_AUDITOR') throw new Error('Live agent requires an auditor decision; unattended acceptance cannot confirm the journey.');
       return row;
     }, row => Boolean(row?.outcome), 420_000, 'representative audit Result');
     report['result'] = result;
@@ -192,6 +192,13 @@ test('live Solari worker audits one approved synthetic leaver and confirms clean
   } finally {
     try {
       if (runId && !cleanupConfirmed) {
+        report['failedTurns'] = await sql`SELECT sequence,status,
+          CASE WHEN diagnostic IN ('model-invalid-response','model-invalid-response:output-limit',
+            'model-invalid-response:empty-response','model-invalid-response:invalid-json',
+            'model-invalid-response:schema-mismatch','model-invalid-response:invalid-selection',
+            'model-provider-refused','model-unavailable','model-timeout','credential-containment')
+            THEN diagnostic ELSE 'other' END AS diagnostic
+          FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence`;
         report['executionAtFailure'] = (await sql`SELECT r.state,p.status AS population_status,p.diagnostic AS population_diagnostic,
           a.status AS authentication_status,a.diagnostic AS authentication_diagnostic,
           w.status AS agent_status,w.diagnostic AS agent_diagnostic

@@ -44,6 +44,10 @@ Provider-native worker keys compose the agent gateway independently of plan deri
 
 Playwright's list reporter keeps body attachments in memory; upload-artifact cannot find them. Secret-scan the selected acceptance facts before writing a named outputPath JSON file and attaching that path. Emit the same scanned facts for connector-readable diagnostics; never emit raw worker/model/provider logs. Preserve failed acceptance and workspace cleanup references as carefully as successful reports.
 
+## Live model failure classification
+
+Keep invalid-response retry/wait behavior stable, but retain a runtime-validated closed suffix on failed turn diagnostics to distinguish output budget, empty response, JSON, shape and selection failures. Never retain rejected model text, parser errors or reasoning. Provider usage remains charged. Live acceptance must recognize AWAITING_AUDITOR, the actual Run vocabulary, and stop for an authorized decision rather than wait out the audit deadline.
+
 # CLAUDE.md
 
 ## Engineering continuation — transport and verification

@@ -179,9 +179,13 @@ const RETRYABLE_AGENT_MODEL_ERRORS: ReadonlySet<AgentModelErrorCode> = new Set([
   'timeout',
 ]);
 
+const RESPONSE_ISSUES = ['output-limit', 'empty-response', 'invalid-json', 'schema-mismatch', 'invalid-selection'] as const;
+export type AgentModelResponseIssue = (typeof RESPONSE_ISSUES)[number];
+
 /** An operational error with a fixed message and no provider cause attached. */
 export class AgentModelGatewayError extends Error {
   readonly retryable: boolean;
+  readonly responseIssue: AgentModelResponseIssue | null;
 
   constructor(
     readonly code: AgentModelErrorCode,
@@ -193,10 +197,13 @@ export class AgentModelGatewayError extends Error {
     readonly route: AgentModelProvider | null = identity?.provider ?? null,
     /** Provider attempts for which no usage envelope was available. */
     readonly unaccountedProviderAttempts = 0,
+    responseIssue: AgentModelResponseIssue | null = null,
   ) {
     super(AGENT_MODEL_ERROR_MESSAGES[code]);
     this.name = 'AgentModelGatewayError';
     this.retryable = RETRYABLE_AGENT_MODEL_ERRORS.has(code);
+    this.responseIssue = code === 'invalid-response' && responseIssue !== null && RESPONSE_ISSUES.includes(responseIssue)
+      ? responseIssue : null;
   }
 }
 

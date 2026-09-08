@@ -177,6 +177,24 @@ async function requestBody(request: Request): Promise<Record<string, unknown>> {
   return (await request.clone().json()) as Record<string, unknown>;
 }
 
+it.each([
+  { text: '', issue: 'empty-response' },
+  { text: 'private-response-not-json', issue: 'invalid-json' },
+  { text: JSON.stringify({ actions: [], uncertainty: 'private-response-wrong-shape' }), issue: 'schema-mismatch' },
+])('retains only a closed response failure category: $issue', async ({ text, issue }) => {
+  const error = await gateway('openai', providerFetch('openai', text)).propose(REQUEST).catch(error => error);
+  expect(error).toMatchObject({ code: 'invalid-response', responseIssue: issue, usage: { totalTokens: 30 } });
+  expect(JSON.stringify(error)).not.toContain('private-response');
+});
+
+it('distinguishes an exhausted output budget without retaining reasoning or response text', async () => {
+  const envelope = { ...providerEnvelope('openai', ''), status: 'incomplete',
+    incomplete_details: { reason: 'max_output_tokens' }, output: [],
+    usage: { input_tokens: 10, output_tokens: 1024, total_tokens: 1034 } };
+  const error = await gateway('openai', async () => Response.json(envelope)).propose(REQUEST).catch(error => error);
+  expect(error).toMatchObject({ code: 'invalid-response', responseIssue: 'output-limit', usage: { outputTokens: 1024 } });
+});
+
 afterEach(() => vi.restoreAllMocks());
 
 describe.each([

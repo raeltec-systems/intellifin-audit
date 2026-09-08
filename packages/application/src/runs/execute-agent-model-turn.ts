@@ -60,7 +60,8 @@ export async function executeAgentModelTurn(input: {
       reservedTokens: prior.reservedTokens + (known.usage === null ? reserve.total : Math.min(reserve.total, reserve.perAttempt * known.unaccountedProviderAttempts)),
       model: known.identity ?? reserved.model, diagnostic: `model-${known.code}` };
     if (!await input.commit(async context => {
-      await context.saveTurn({ ...turn, status: 'FAILED', diagnostic: next.diagnostic });
+      await context.saveTurn({ ...turn, status: 'FAILED', diagnostic: known.responseIssue === null
+        ? next.diagnostic : `${next.diagnostic}:${known.responseIssue}` });
       await context.saveCheckpoint(next, 'RUNNING');
     })) return { kind: 'lost' };
     return { kind: 'failed', diagnostic: next.diagnostic!, checkpoint: next };

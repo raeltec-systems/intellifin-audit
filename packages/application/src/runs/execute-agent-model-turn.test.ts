@@ -16,6 +16,21 @@ function harness() {
 }
 
 describe('durable agent token accounting', () => {
+  it('cannot reflect an arbitrary provider string through the failure category', async () => {
+    const h = harness();
+    h.input.gateway.propose = async () => { throw new AgentModelGatewayError('invalid-response', h.response.usage, h.response.model, 'anthropic', 0, 'private-provider-string' as never); };
+    await executeAgentModelTurn(h.input);
+    expect(h.turns.at(-1)).toMatchObject({ response: null, diagnostic: 'model-invalid-response' });
+    expect(JSON.stringify([h.turns, h.checkpoints])).not.toContain('private-provider-string');
+  });
+  it('retains a bounded failure category without persisting rejected model content or changing retry classification', async () => {
+    const h = harness();
+    h.input.gateway.propose = async () => { throw new AgentModelGatewayError('invalid-response', h.response.usage, h.response.model, 'anthropic', 0, 'output-limit'); };
+    const out = await executeAgentModelTurn(h.input);
+    expect(out).toMatchObject({ kind: 'failed', diagnostic: 'model-invalid-response' });
+    expect(h.turns.at(-1)).toMatchObject({ status: 'FAILED', response: null, diagnostic: 'model-invalid-response:output-limit' });
+    expect(h.checkpoints.at(-1)).toMatchObject({ tokens: 43, reservedTokens: 0, diagnostic: 'model-invalid-response' });
+  });
   it('reserves before I/O and records real usage after the response', async () => {
     const h = harness(); const out = await executeAgentModelTurn(h.input);
     expect(out.kind).toBe('completed'); expect(h.checkpoints.at(-1)).toMatchObject({ tokens: 43, reservedTokens: 0, nextTurn: 2, model: h.response.model });

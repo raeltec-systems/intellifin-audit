@@ -372,8 +372,9 @@ function invalidOutput(
   identity: AgentModelIdentity,
   route: AgentModelProvider,
   usage: AgentTokenUsage,
+  issue: 'output-limit' | 'empty-response' | 'invalid-json' | 'schema-mismatch' | 'invalid-selection' = 'invalid-selection',
 ): never {
-  throw new AgentModelGatewayError('invalid-response', usage, identity, route);
+  throw new AgentModelGatewayError('invalid-response', usage, identity, route, 0, issue);
 }
 
 function parseOutput(
@@ -384,16 +385,16 @@ function parseOutput(
   route: AgentModelProvider,
 ): AgentModelResponse {
   if (typeof text !== 'string' || text.length === 0 || text.length > 1_000_000) {
-    return invalidOutput(identity, route, usage);
+    return invalidOutput(identity, route, usage, 'empty-response');
   }
   let candidate: unknown;
   try {
     candidate = JSON.parse(text) as unknown;
   } catch {
-    return invalidOutput(identity, route, usage);
+    return invalidOutput(identity, route, usage, 'invalid-json');
   }
   const parsed = outputSchema.safeParse(candidate);
-  if (!parsed.success) return invalidOutput(identity, route, usage);
+  if (!parsed.success) return invalidOutput(identity, route, usage, 'schema-mismatch');
   const data: ParsedOutput = parsed.data;
   const requestedPhase = request.phase ?? 'actions';
   if (requestedPhase === 'evaluation') {
@@ -599,6 +600,7 @@ function errorForProvider(
       error.identity,
       error.route,
       unaccountedProviderAttempts,
+      error.responseIssue,
     );
   }
   if (invalidProviderEnvelope(error)) {
@@ -660,6 +662,7 @@ abstract class SdkAgentModelGateway implements AgentModelGateway {
         throw new AgentModelGatewayError('canceled', usage, this.identity, this.identity.provider);
       }
       if (control.timedOut()) throw new AgentModelGatewayError('timeout', usage, this.identity, this.identity.provider);
+      if (result.finishReason === 'length') return invalidOutput(this.identity, this.identity.provider, usage, 'output-limit');
       return parseOutput(result.text, effectiveRequest, usage, this.identity, this.identity.provider);
     } catch (error) {
       throw errorForProvider(error, control, effectiveRequest, this.identity, providerAttempted);
@@ -859,6 +862,7 @@ export class FallbackAgentModelGateway implements AgentModelGateway {
             fallbackError.identity ?? this.fallback.identity,
             fallbackError.route ?? this.fallback.identity.provider,
             unaccountedAttemptsForError(error) + unaccountedAttemptsForError(fallbackError),
+            fallbackError.responseIssue,
           );
         }
         throw new AgentModelGatewayError(
