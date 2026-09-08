@@ -185,7 +185,7 @@ describe.skipIf(!url)('canonical D12/D14 absence negatives: local browser and Po
     expect(requests.some(request => request.path.includes(`employee_id=${D14.record_key}`) && request.authenticated)).toBe(true);
   }, 120_000);
 
-  it('D12: the runtime refuses the exact canonical mistype before the browser types it', async () => {
+  it('D12 stronger prevention: a model-authored mistype is terminally denied before browser I/O', async () => {
     const seeded = await seed(D12);
     if (!D12.mistyped_key) throw new Error('Canonical D12 has no mistyped key.');
     const original = seeded.dependencies.model;
@@ -205,7 +205,14 @@ describe.skipIf(!url)('canonical D12/D14 absence negatives: local browser and Po
     expect(await sql`SELECT tool_action_id FROM run_tool_action WHERE run_id=${seeded.job.runId} AND action='search' AND outcome='performed'`).toHaveLength(0);
     expect(await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${seeded.job.runId} AND event_type='security.action-denied'`).toHaveLength(1);
     expect(await sql`SELECT observation_id FROM run_observation WHERE run_id=${seeded.job.runId}`).toHaveLength(0);
-    expect((await sql`SELECT outcome FROM run_result WHERE run_id=${seeded.job.runId}`)[0]?.outcome).toBe(D12.expected_terminal_outcome.toUpperCase());
+    // This is the earlier action-denial contract, not a completed mistyped search.
+    // runStopFor('action-denied') terminates RUN_FAILED. The separate downstream
+    // fault-injection test below still requires canonical D12 UNINSPECTED/INCONCLUSIVE.
+    expect(await sql`SELECT payload FROM audit_events WHERE aggregate_id=${seeded.job.runId} AND event_type='security.action-denied'`).toEqual([
+      expect.objectContaining({ payload: expect.objectContaining({ cause: 'action-denied', diagnostic: 'model-invalid-action', state: 'RUN_FAILED' }) }),
+    ]);
+    expect((await sql`SELECT state FROM audit_run WHERE run_id=${seeded.job.runId}`)[0]?.state).toBe('RUN_FAILED');
+    expect((await sql`SELECT outcome FROM run_result WHERE run_id=${seeded.job.runId}`)[0]?.outcome).toBe('RUN_FAILED');
   }, 120_000);
 
   it('D12 downstream fault injection: actual mistyped search and exact persisted query fail shared absence judgement', async () => {
