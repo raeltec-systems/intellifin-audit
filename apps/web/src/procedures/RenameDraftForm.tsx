@@ -6,7 +6,6 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { PROCEDURE_REFUSALS } from '@intellifin/application';
 
-import { ConfirmDialog } from '../design/ConfirmDialog';
 import type { RenameActionResult } from '../../app/procedures/[id]/builder/actions';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
@@ -64,7 +63,6 @@ export function RenameDraftForm({
   const setControlName = (value: string) => section.edit({ ...section.current.current.value, controlName: value });
   const [result, setResult] = useState<RenameActionResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   useSectionSubmissionStatus('Control name', section, busy, unknownOutcome);
@@ -74,7 +72,6 @@ export function RenameDraftForm({
   async function doRename(): Promise<void> {
     if (submittingRef.current || unknownOutcome || section.current.current.conflict) return;
     submittingRef.current = true;
-    setConfirming(false);
     setBusy(true);
     section.begin({ savedControlName: controlName.trim(), controlName: '' });
     try {
@@ -105,7 +102,9 @@ export function RenameDraftForm({
       setAnnouncement((count) => count + 1);
       return;
     }
-    setConfirming(true);
+    // Direct save (owner decision 2026-09-08). A rename is an ordinary Draft section
+    // save; the Banner reports what was saved and the audit chain records who.
+    void doRename();
   }
 
   return (
@@ -162,18 +161,6 @@ export function RenameDraftForm({
           </Button>
         </div>
       </form>
-
-      <ConfirmDialog
-        open={confirming}
-        weight="routine"
-        title="Change the Control name?"
-        consequence={`The Draft's Control name becomes ${controlName.trim() || 'the submitted value'}. The change is recorded in the audit chain against your name.`}
-        confirmLabel="Save Control name"
-        onConfirm={() => {
-          void doRename();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
     </div>
   );
 }

@@ -115,6 +115,7 @@ export function TargetSelectionForm({
     defaultTargetsFor(draft.templateId).map((target) => target.kind).filter(isAgentDrivenKind),
   );
   const selectedKinds = new Set(selected.map((target) => target.kind));
+  const added = addedSystems(selected);
   const diagnostics: string[] = [];
   if (selected.length === 0) diagnostics.push(TARGET_SELECTION_MISSING);
   for (const kind of ['web', 'desktop'] as const) {
@@ -155,6 +156,24 @@ export function TargetSelectionForm({
       return next;
     });
     setResult(null);
+  }
+
+  /**
+   * The systems this save would ADD to the frozen scope, by name.
+   *
+   * Owner decision (2026-09-08): an ordinary Draft section save is a direct save, and
+   * the focus-trapping confirmation is kept for the decisions a person cannot take back
+   * from this page — including SCOPE EXPANSION. Adding a Target System is the one edit
+   * on this form that widens what a Run may read, so it keeps its dialog; removing one,
+   * reordering, or re-saving an unchanged selection does not.
+   *
+   * Compared against `draft.targets`, the SAVED selection, not against whatever this
+   * form last rendered: the question is what the Version would freeze, and a system
+   * added and removed again before saving expands nothing.
+   */
+  function addedSystems(next: readonly SelectedTarget[]): readonly string[] {
+    const saved = new Set(draft.targets.map((target) => target.registrationId));
+    return next.filter((target) => !saved.has(target.registrationId)).map((target) => target.displayName);
   }
 
   async function save(): Promise<void> {
@@ -283,7 +302,9 @@ export function TargetSelectionForm({
           if (saving.current || unknownOutcome || section.current.current.conflict) return;
           if (selected.length === 0 && draft.targets.length === 0) return;
           setResult(null);
-          setConfirming(true);
+          // Scope expansion keeps its confirmation; every other save is direct.
+          if (added.length > 0) setConfirming(true);
+          else void save();
         }}
       >
         <div className="ls-dialog__field">
@@ -327,8 +348,8 @@ export function TargetSelectionForm({
       <ConfirmDialog
         open={confirming}
         weight="routine"
-        title="Save the Target System selection?"
-        consequence={`This sets the Target Systems for Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`}
+        title="Add to the audited scope?"
+        consequence={`This adds ${added.join(', ')} to the Target Systems a Run of Draft version ${draft.versionNumber} of ${draft.controlName} may read. The change is recorded in the audit chain against your name.`}
         confirmLabel="Save Target Systems"
         onConfirm={() => {
           void save();

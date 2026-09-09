@@ -6,7 +6,6 @@ import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit
 import type { PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields, ComplianceDraftFields, EvidenceDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { ConfirmDialog } from '../design/ConfirmDialog';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { BuilderSections } from './BuilderSections';
 import { RenameDraftForm } from './RenameDraftForm';
@@ -50,7 +49,6 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   const setDuplicates = (value: boolean) => populationSection.edit({ ...populationSection.current.current.value, duplicates: value });
   const [periodTouched, setPeriodTouched] = useState(false);
   const [ruleTouched, setRuleTouched] = useState(false);
-  const [confirming, setConfirming] = useState<DraftPopulationEdit | null>(null);
   const [result, setResult] = useState<UpdatePopulationDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -71,6 +69,11 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   function changePredicate(index: number, predicate: InclusionPredicate): void {
     setPredicates((current) => current.map((p, i) => i === index ? predicate : p));
   }
+  // Owner decision (2026-09-08): an ordinary Draft section save is a DIRECT save with a
+  // visible saved / unsaved / error state. No dialog and no autosave — the confirmation
+  // is kept for the decisions this page cannot take back (submit, approve, reject,
+  // activation, scope expansion, cancellation, rerun). See EXPERIENCE.md's confirmation
+  // table and its dated revision note.
   function requestSave(section: 'period-scope' | 'population-source'): void {
     if (saving.current || unknownOutcome) return;
     if (section === 'period-scope' ? periodSection.current.current.conflict : populationSection.current.current.conflict) return;
@@ -78,19 +81,17 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     if (section === 'period-scope') {
       setPeriodTouched(true);
       if (periodError !== null) return;
-      setConfirming({ section, period: { from, to }, scope });
+      void save({ section, period: { from, to }, scope });
     } else {
       setRuleTouched(true);
       if (bindingError !== null) return;
-      setConfirming({ section, source: selection === 'retain' ? { mode: 'retain' } : { mode: 'bind', bindingId: selected!.bindingId, expectedDigest: selected!.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
+      void save({ section, source: selection === 'retain' ? { mode: 'retain' } : { mode: 'bind', bindingId: selected!.bindingId, expectedDigest: selected!.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
     }
   }
-  async function save(): Promise<void> {
-    if (saving.current || unknownOutcome || confirming === null) return;
+  async function save(edit: DraftPopulationEdit): Promise<void> {
+    if (saving.current || unknownOutcome) return;
     saving.current = true;
     setBusy(true);
-    const edit = confirming;
-    setConfirming(null);
     if (edit.section === 'period-scope' ? periodSection.current.current.conflict : populationSection.current.current.conflict) { saving.current = false; setBusy(false); return; }
     if (edit.section === 'period-scope') periodSection.begin({ from, to, scope });
     else {
@@ -187,7 +188,6 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
     <RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async (fields) => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} />
-    <ConfirmDialog open={confirming !== null} weight="routine" title={confirming?.section === 'period-scope' ? 'Save Period and scope?' : 'Save Population Source binding?'} consequence={`This changes Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`} confirmLabel="Save Draft changes" onConfirm={() => { void save(); }} onCancel={() => setConfirming(null)} />
   </div>;
 }
 

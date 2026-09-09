@@ -18,7 +18,6 @@ import type { ProcedureVersionView, UpdateComplianceDraftResult } from '@intelli
 import type { ComplianceDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { ConfirmDialog } from '../design/ConfirmDialog';
 import { StatusBadge } from '../design/StatusBadge';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
@@ -75,7 +74,6 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
   const [thresholdTouched, setThresholdTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [confirming, setConfirming] = useState<ComplianceDraftInput | null>(null);
   const [result, setResult] = useState<UpdateComplianceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -111,12 +109,12 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
   const templateText = draft.sections.find((section) => section.heading === 'Compliance Rule conditions')?.content ?? null;
   const limitReached = input.conditions.length >= COMPLIANCE_LIMITS.conditions;
 
-  async function save(): Promise<void> {
-    if (saving.current || unknownOutcome || confirming === null || section.current.current.conflict) return;
+  // Owner decision (2026-09-08): an ordinary Draft section save is a direct save with a
+  // visible saved / unsaved / error state, not a confirmation.
+  async function save(edit: ComplianceDraftInput): Promise<void> {
+    if (saving.current || unknownOutcome || section.current.current.conflict) return;
     saving.current = true;
     setBusy(true);
-    const edit = confirming;
-    setConfirming(null);
     section.begin(edit);
     try {
       const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
@@ -161,7 +159,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
         requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[data-compliance-error]')?.focus());
         return;
       }
-      setConfirming(inputRef.current);
+      void save(inputRef.current);
     }}>
       {input.conditions.map((condition) => {
         const fieldId = `${id}-${condition.conditionId}`;
@@ -247,8 +245,5 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
       {submitted && !validation.ok ? <div tabIndex={-1} data-compliance-error><Banner tone="warning" title={`The Compliance Rule was not saved. ${validation.reason}`} /></div> : null}
       <Button type="submit" disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary" busy={busy}>{busy ? 'Saving…' : 'Save Compliance Rule'}</Button>
     </form>
-    <ConfirmDialog open={confirming !== null} weight="routine" title="Save the Compliance Rule?"
-      consequence={`This sets ${confirming?.conditions.length ?? 0} conditions and one Agent-Judged confidence threshold for Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`}
-      confirmLabel="Save Compliance Rule" onConfirm={() => { void save(); }} onCancel={() => setConfirming(null)} />
   </div>;
 }
