@@ -1,3 +1,49 @@
+## 2026-09-09 — The worker image carries its own browser, and only the half it can reach
+
+The Agent Workspace's LOCAL mode calls `chromium.launch()` INSIDE the worker container, so
+`node:24.20.0-bookworm-slim` with no browser meant every agent-driven Run (P-1, P-4) failed
+at provisioning while every adapter Run (P-2, P-3) passed — the deployment looked healthy
+and half the product did not work. Found by reading the Dockerfile against
+`browser-execution.ts` while writing a test plan, not by a failing test, because nothing in
+CI ever launched a browser inside the built image.
+
+- **`chromium-headless-shell`, not `chromium`.** `browser-execution.ts` passes no
+  `headless` option, so Playwright's default applies and the headless shell is what that
+  default launches. Verified rather than assumed, against the real
+  `PlaywrightBrowserExecution.create` on the real `pnpm deploy --prod` tree with only the
+  shell present: create, `newContext`, `newPage`, `textContent`, `screenshot`, `release`
+  and `close` all succeed. 262 MB against the full build's 389 MB. `ffmpeg` is removed too
+  — it exists only to encode video and nothing here records any — and the same proof was
+  re-run with it deleted.
+- **`install-deps` still names `chromium`.** The system libraries are shared, and letting
+  Playwright resolve them for the distribution beats pinning an apt list that goes stale at
+  the next browser revision.
+- **`PLAYWRIGHT_BROWSERS_PATH` is declared ONCE, on the runtime stage.** It has to cover
+  both the install and the running process; set for only one, the browser is downloaded to
+  root's home and the worker looks elsewhere.
+- **The CLI path is RESOLVED, never written out.** `playwright-core` is transitive through
+  `@intellifin/infrastructure`, so under pnpm it lives in `.pnpm/playwright-core@<version>/`
+  and any literal path breaks on upgrade. It is also NOT resolvable from the deploy tree's
+  root — only through the realpath of `node_modules/@intellifin/infrastructure`, which is
+  how Node resolves it at runtime anyway.
+- **A narrow choice needs the test that catches its regression.** `images` in `ci.yml` now
+  runs `PlaywrightBrowserExecution.create` inside the BUILT image, so a later `headless:
+  false`, a channel, or a dropped install fails there rather than in a Run against a live
+  Target System. Testing raw `playwright-core` instead would have proved the binary present
+  and said nothing about the options the product actually uses.
+- **An empty `allowedOrigins` is the right policy for that smoke test**, not a placeholder:
+  it denies every destination, which is exactly what a desktop-only plan really gets.
+- **Solari mode needs none of this** and the image carries it anyway, because the mode is a
+  boot-time choice — an image that worked in only one of them would make a configuration
+  switch into a deployment trap.
+
+`seed-northstar.yml` now DERIVES `CREDENTIAL_CAPABILITIES` from
+`fixtures/northstar/datasets/systems.json` instead of naming one reference by hand. The
+hand-written value named LoanCore's own reference and not the shared fallback the script
+applies to the other nine, so the seed refused before writing anything — the fail-closed
+manifest working exactly as designed, and a list that drifts from the data the moment a
+system is added.
+
 ## 2026-09-09 — The hero workflow: what the Builder now does, and the rules underneath it
 
 Owner decision 2026-09-08: an ordinary Draft section save is DIRECT, with the visible saved / unsaved / refused state and the lost-response recovery it already had; the focus-trapping confirmation stays only where a person cannot take the action back from that page — submit, approve, reject, edit back to Draft, activation, cancel, rerun — and for SCOPE EXPANSION (a Target Systems save that ADDS a registration, which names the systems being added; removing, reordering or re-saving is direct). Recorded in EXPERIENCE.md and the UX memlog through `memlog.py`. The Draft is editable and says so: two sections stay read-only (`BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE`) and the Control section names where its editable half is; `copy.test.ts` refuses the phrase "not editable yet" anywhere under `apps/web`. Simple and advanced Compliance editors operate on ONE authored string (`apps/web/src/procedures/simple-condition.ts` reads it into controls and writes controls back, verified by a round trip through the unchanged compiler); switching modes writes nothing, typing in the textarea pins a condition to advanced, values are compared EXACTLY and never case-folded. Readiness (`packages/domain/src/procedures/readiness.ts`) is a CLOSED vocabulary computed on read from the frozen-shaped authoring inputs, never stored, never a save refusal or submission blocker, always rendered beside `READINESS_NO_GUARANTEE`; `AgentSummary` restates the frozen plan and compiles nothing. P-1's 24-hour window is a THIRD condition (`C3`, or a fresh id when taken) added from the Timing controls beside C1 and never in its place — an Active account has no disablement instant, so C1 is what makes it an Exception; `disablementWindowCondition` attaches the frozen `termination_time` mapping only when the compiler this build ships accepts the key, and omits it (never null, never empty) otherwise. A path that THREW says the change may have been saved, never "Nothing was changed". `[hidden]` is `display: none !important` at the root because a class rule beat the user-agent one and a hidden textarea stayed focusable. Journey: `tests/e2e/hero-workflow.spec.ts` (keyboard, axe, one screenshot per proven state; screenshots default to `test-results/`, the curated set is `_bmad-output/implementation-artifacts/hero-ux-screenshots/` via `HERO_UX_SCREENSHOTS`). Named, not built: `createProcedure` carries no request token, so a retry after a lost creation response makes a second Procedure; the form blocks the retry and points at the list instead.
