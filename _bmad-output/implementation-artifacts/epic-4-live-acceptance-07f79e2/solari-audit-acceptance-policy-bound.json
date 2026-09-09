@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "candidateSha": "07f79e275b729893754ce23e5eacbc420c706902",
+  "provider": "solari",
+  "region": "us-west",
+  "recording": false,
+  "target": "https://northstar-production-b312.up.railway.app",
+  "modelProvider": "openai",
+  "modelId": "gpt-5.6-luna",
+  "procedureId": "01a083c9-fc61-7805-a5aa-85022714c54c",
+  "versionId": "01a083c9-fc61-705f-8c26-f6e5f0377284",
+  "employeeId": "E-000102",
+  "liveCase": "policy-bound",
+  "authoredC1": "found = false or account_status in [Disabled] else [Active]",
+  "authoredC2Policy": {
+    "kind": "role-privilege",
+    "rolesField": "roles",
+    "privileged": [
+      "SYSTEM_ADMIN",
+      "LOAN_ADMIN",
+      "BRANCH_SUPERVISOR"
+    ],
+    "nonPrivileged": [
+      "LOAN_VIEWER",
+      "LOAN_OFFICER",
+      "COLLECTIONS_AGENT",
+      "TREASURY_ANALYST",
+      "SERVICING_CLERK",
+      "RISK_ANALYST",
+      "OPS_CLERK"
+    ]
+  },
+  "infrastructure": {
+    "database": "disposable CI PostgreSQL",
+    "evidenceStorage": "synthetic HTTP S3 through production AWS adapter",
+    "populationSource": "worker-local independently declared single canonical leaver, acquired through the production HTTP adapter; deployed HR source acceptance is not asserted"
+  },
+  "populationSourceFixture": {
+    "location": "http://127.0.0.1:42519/single-leaver.csv",
+    "canonicalEmployee": "E-000102",
+    "declaredCount": 1,
+    "rawDigest": "8f7c8c40a71d8ae94c49214198caaed3276f31a69896a270923e7ddac4d24cd1"
+  },
+  "beganAt": "2026-09-09T01:30:47.822Z",
+  "acceptance": "passed",
+  "cleanup": "confirmed",
+  "planInputDigest": "977943933435a2905db47446b21965f9790e4ab516bfa89a0006438ed823d950",
+  "registrationDigest": "491f30ce0cf55fe8f0cdfe049183143818e15705165c4216308c929dc5cb0250",
+  "sourceBindingDigest": "5803ffd1ddc9551df3c2ab25af35fc05ffbeaea2dfbdc0995c42c036c5c9f145",
+  "limits": {
+    "retriesPerStep": 3,
+    "runStepExecutions": 10000,
+    "runTimeoutSeconds": 3600,
+    "runTokens": 1000000,
+    "stepTimeoutSeconds": 120
+  },
+  "harnessBounds": {
+    "employeeCount": 1,
+    "maximumModelTurns": 12,
+    "auditDeadlineSeconds": 420,
+    "modelOutputTokensPerTurn": 1024
+  },
+  "runId": "01a083ca-06ee-7ba3-b2d5-becb0f279232",
+  "result": {
+    "state": "COMPLETED",
+    "outcome": "PENDING_CONFIRMATION",
+    "sealed": false,
+    "gate_passed": true
+  },
+  "population": {
+    "included": 1,
+    "excluded": 0,
+    "indeterminate": 0,
+    "declared_count": 1,
+    "retrieved_count": 1,
+    "rows_digest": "feb5ca7c89bf0cbe0f03bc4475b07ecef07cf52dc46b2efbb7a80a2c69ac3816",
+    "generated_at": "2026-09-01 00:00:00+00"
+  },
+  "populationEvidence": {
+    "evidenceId": "55c59e6f-0c21-8588-8dcc-718b6f38884b",
+    "rawDigest": "8f7c8c40a71d8ae94c49214198caaed3276f31a69896a270923e7ddac4d24cd1",
+    "envelopeDigest": "bdc4ec78c3b9bab751ad1c8791c0c1537d008040641083761d43948ca3aa61fd"
+  },
+  "c2": {
+    "diagnostic": null,
+    "agent_proposed_value": "COMPLIANT"
+  },
+  "humanReview": "C2 retains the original machine proposal and awaits an authorized human; the live harness does not impersonate a reviewer.",
+  "modelIdentities": [
+    {
+      "modelId": "gpt-5.6-luna",
+      "provider": "openai",
+      "buildVersion": "07f79e275b729893754ce23e5eacbc420c706902",
+      "configuration": {
+        "maxActions": 32,
+        "temperature": 0,
+        "responseFormat": "agent-action-proposal-v1",
+        "maxOutputTokens": 1024
+      },
+      "promptVersion": "4"
+    },
+    {
+      "modelId": "gpt-5.6-luna",
+      "provider": "openai",
+      "buildVersion": "07f79e275b729893754ce23e5eacbc420c706902",
+      "configuration": {
+        "maxActions": 32,
+        "temperature": 0,
+        "responseFormat": "agent-action-proposal-v1",
+        "maxOutputTokens": 1024
+      },
+      "promptVersion": "4"
+    },
+    {
+      "modelId": "gpt-5.6-luna",
+      "provider": "openai",
+      "buildVersion": "07f79e275b729893754ce23e5eacbc420c706902",
+      "configuration": {
+        "maxActions": 32,
+        "temperature": 0,
+        "responseFormat": "agent-action-proposal-v1",
+        "maxOutputTokens": 1024
+      },
+      "promptVersion": "4"
+    },
+    {
+      "modelId": "gpt-5.6-luna",
+      "provider": "openai",
+      "buildVersion": "07f79e275b729893754ce23e5eacbc420c706902",
+      "configuration": {
+        "maxActions": 32,
+        "temperature": 0,
+        "responseFormat": "agent-action-proposal-v1",
+        "maxOutputTokens": 1024
+      },
+      "promptVersion": "4"
+    },
+    {
+      "modelId": "gpt-5.6-luna",
+      "provider": "openai",
+      "buildVersion": "07f79e275b729893754ce23e5eacbc420c706902",
+      "configuration": {
+        "maxActions": 32,
+        "temperature": 0,
+        "responseFormat": "agent-action-proposal-v1",
+        "maxOutputTokens": 1024
+      },
+      "promptVersion": "4"
+    }
+  ],
+  "turnCount": 5,
+  "evidence": [
+    {
+      "evidenceId": "b2e97cff-bd56-81e0-932b-6f02d9884c4e",
+      "digest": "8e51752403c8aeab6dd28485c17808f5da4d16a76c0c9ecd554041a4ea7e72b4",
+      "kind": "structural-snapshot"
+    },
+    {
+      "evidenceId": "8dcb334f-8682-8f38-bb7a-854718e8bf87",
+      "digest": "f71da48ae74f8a218aba1cab55ed140c4e703d4d91b09a1e667f8a370acd89ad",
+      "kind": "screenshot"
+    },
+    {
+      "evidenceId": "fbb738ca-d243-8f99-8f0c-a231075515d4",
+      "digest": "a1b6a793a5bf23e2bb8c4f08088f7ef4e530cde5f7e7408d7819a33c05114be8",
+      "kind": "structural-snapshot"
+    },
+    {
+      "evidenceId": "dc4e9003-b4b1-8cfc-bc0e-c82417d297d6",
+      "digest": "d39da27d10075f9728f3ab28df0e76da41644ce4ddff646023d216d1f4e5f0b4",
+      "kind": "screenshot"
+    },
+    {
+      "evidenceId": "99aaedaa-ecf5-8841-acfd-64f070643dd9",
+      "digest": "bf582008a90bb451dad9b67f7a98c45decc5dfc2645b448d10577d1dc1892566",
+      "kind": "structural-snapshot"
+    },
+    {
+      "evidenceId": "0267480b-fc0b-8937-bb9f-41c06efa98c5",
+      "digest": "f287d575db3f1d4ab513651e350a334af10585ac02eb2c3fdd0a54f48b1f2c36",
+      "kind": "screenshot"
+    },
+    {
+      "evidenceId": "ca62496b-9ffb-8c86-9cf3-1c7abf6999aa",
+      "digest": "0b1b75332f1b332648740c7fcaaef83dba3e3658fb19c3e77579df0890cae814",
+      "kind": "structural-snapshot"
+    },
+    {
+      "evidenceId": "8c10e88a-63dc-867f-972a-31e768dfc6ca",
+      "digest": "08002b217864df66a00307ca62de6ec97fba108c727638ac04ea5b1021d12444",
+      "kind": "screenshot"
+    },
+    {
+      "evidenceId": "a59aa7c9-5bb4-887f-b31f-a675fb3f23f4",
+      "digest": "0b1b75332f1b332648740c7fcaaef83dba3e3658fb19c3e77579df0890cae814",
+      "kind": "structural-snapshot"
+    },
+    {
+      "evidenceId": "13c39c66-263e-8020-b451-c1673182de19",
+      "digest": "08002b217864df66a00307ca62de6ec97fba108c727638ac04ea5b1021d12444",
+      "kind": "screenshot"
+    }
+  ],
+  "observationIds": [
+    "005a8a0d-d4b9-8986-8c31-ab8be4e4d3ab"
+  ],
+  "workspace": {
+    "mode": "solari",
+    "workspace_id": "ip-10-0-10-40:60eea2bb-8c90-4856-9d57-042def167fa3:cmtq5387l00eeo101zic44zc7:1788917451895.d1yuMZ6DBGO9m70h3j6PtA",
+    "status": "RELEASED",
+    "expires_at": "2026-09-09 02:30:51.895+00",
+    "released_at": "2026-09-09 01:31:16.998+00",
+    "diagnostic": null
+  },
+  "finishedAt": "2026-09-09T01:31:18.272Z"
+}

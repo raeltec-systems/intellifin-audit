@@ -93,13 +93,13 @@ workflow is read-only and runs only on an explicit label or dispatch with an exa
 
 | Check | Status | Where |
 |---|---|---|
-| Standard CI on the exact candidate | running on `6237c4c`; the two mutation gates were red on `db3c6d3` and `ad238db` for a stale anchor, repaired in `6237c4c` | PR 24 checks |
+| Standard CI on the exact candidate | green in all five jobs on `6237c4c` (run `34298099868`); the two mutation gates had been red on `db3c6d3` and `ad238db` for a stale anchor, repaired in `6237c4c`; the docs-only head `07f79e2` has its own run | PR 24 checks |
 | Fresh install to 41 and upgrade 32 → 41 with schema parity | passed | `epic-4-independent-verification.md` |
 | Populated upgrade 14 → 41 (production's generation) | in progress: a generation-14 database populated through main's own commands, upgraded by the candidate's migrator, then parity and a behaviour subset | `epic-4-engineering-continuation.md` (result recorded when done) |
 | Evidence preservation across the sealed-Run backfill (31 → 32) and the absence guard (40 → 41) | passed in CI on every candidate | `tests/integration/sealed-evidence-upgrade.test.ts`, `absence-guard-upgrade.test.ts` |
 | Worker restart, redelivery and lease recovery | passed in CI integration | `tests/integration/*` recovery cases |
-| Live representative audit under the C2 policy, the undefined-privilege negative case, and remote isolation | to run on the candidate after standard CI is green | `solari-acceptance.yml` |
-| Story 4.12 journey on the compiled worker | passed locally; hosted result on the candidate pending | `tests/e2e/disablement-window-journey.spec.ts` |
+| Live representative audit under the C2 policy, the undefined-privilege negative case, and remote isolation | passed on `07f79e2`: run `34299424112`, artifact `10084400638` (COMPLETED with PENDING_CONFIRMATION and a consistent proposal; AWAITING_AUDITOR asking for clarification, cancelled and released; two isolated sessions released before expiry) | `solari-acceptance.yml` |
+| Story 4.12 journey on the compiled worker | passed locally and in the hosted browser job of run `34298099868` | `tests/e2e/disablement-window-journey.spec.ts` |
 
 ## 4. Merge plan (owner decision 3, option B)
 

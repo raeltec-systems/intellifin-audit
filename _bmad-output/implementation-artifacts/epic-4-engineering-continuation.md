@@ -749,3 +749,34 @@ ten unit-mode mutations (baseline green, mutant red for each), the repointed ent
 The two abuse-harness entries need the hosted job's real worker journeys and are proven there.
 Lesson recorded in CLAUDE.md: a change to a guarded line must repoint its mutation anchors in
 the same commit, or the hosted gates stop before proving anything.
+
+## Live acceptance passed on the policy-bound candidate (2026-09-09)
+
+Standard CI `34298099868` on `6237c4c` is green in all five jobs (typecheck/boundaries/unit;
+PostgreSQL migrations, integration and the guard-mutation gate; the browser suite including
+`disablement-window-journey.spec.ts`; container images; the abuse-mutation gate). The
+docs-only head `07f79e2` was pushed and the `solari-live-acceptance` label re-applied.
+
+Live run `34299424112` on `07f79e275b729893754ce23e5eacbc420c706902` passed all three cases in
+1.3 minutes of Playwright time, on Solari (`us-west`, recording off), OpenAI `gpt-5.6-luna`,
+prompt version 4, against `https://northstar-production-b312.up.railway.app`:
+
+- Policy-bound (E-000102, the frozen role-privilege policy on C2): Run
+  `01a083ca-06ee-7ba3-b2d5-becb0f279232` ended `COMPLETED`, outcome `PENDING_CONFIRMATION`,
+  Gate passed, five model turns (navigate, search, open-record, read-attribute, evaluation),
+  C2 proposal `COMPLIANT` with no diagnostic, one Observation, ten registered artifacts (five
+  Structural Snapshots, five screenshots), workspace `RELEASED` at 01:31:16 before its 02:30
+  expiry. The harness did not impersonate a reviewer; the proposal awaits an authorized human.
+- Undefined-privilege negative case (no policy): Run `01a083ca-7e01-7a3f-b011-5997aaaf8ff1`
+  authenticated, performed the same four actions, and the evaluation turn returned
+  `ambiguous` with the accepted summary "The privileged-role criterion is undefined."; the
+  Run waited durably (`AWAITING_AUDITOR`, `insufficient-evidence`), was cancelled through the
+  real command, and its workspace was released. It asked rather than guessed.
+- Remote isolation: two overlapping Solari sessions kept authentication and browser state
+  apart, refused a forged cross-Run reference and two intercepted out-of-scope fetches, and
+  both released before expiry; zero model requests.
+
+The secret-free reports are the run's retained artifact `10084400638`. This is the
+representative live acceptance the owner asked for; the review path is proven separately by
+`agent-evaluation-journey.spec.ts` and `evaluation-review.spec.ts` with an authorized identity.
+A later candidate (the hero-workflow merge) needs its own live result, per the workflow's rule.
