@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { DrizzleRunListRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../src/bootstrap';
-import { RefreshBanner } from '../../src/runs/detail';
+import { LiveBanner } from '../../src/runs/LiveBanner';
 import { RunsPagination, RunsTable, RunsTableSkeleton } from '../../src/runs/RunsTable';
 import { Banner } from '../../src/design/Banner';
 import { requireServerAction } from '../../src/server-session';
@@ -17,10 +17,10 @@ export const dynamic = 'force-dynamic';
 /**
  * Runs (FR-48, EXPERIENCE.md → Data tables → Runs).
  *
- * A request-time read behind the contract's `Updated {time}. Refresh.` banner. There is
- * no polling, no streaming and no auto-refresh: Epic 5 adds the live channel on Live
- * View, and this read stays compatible with it because it asks the database at the
- * moment the request is served and says so.
+ * A request-time read behind the contract's `Updated {time}. Refresh.` banner, which
+ * the live channel (Story 5.1, AD-17) re-reads on every committed Timeline event: the
+ * table still asks the database at the moment the request is served and says so; the
+ * channel only decides when to ask again. No polling.
  *
  * The table itself is inside a `<Suspense>` boundary so a cold load streams skeleton rows
  * in the shape of the layout rather than a blank page — EXPERIENCE.md's "Any / Cold load"
@@ -58,7 +58,7 @@ async function RunsList({ after }: { readonly after: string | null }): Promise<R
   const readAt = new Date();
   return (
     <>
-      <RefreshBanner readAt={readAt} href={after === null ? '/runs' : `/runs?after=${after}`} />
+      <LiveBanner url="/api/runs/events" cursor={null} readAt={readAt.toISOString()} href={after === null ? '/runs' : `/runs?after=${after}`} />
       <RunsTable rows={page.rows} readAt={readAt} />
       <RunsPagination next={page.next} firstHref="/runs" onFirstPage={after === null} />
     </>

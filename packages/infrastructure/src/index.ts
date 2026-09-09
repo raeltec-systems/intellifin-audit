@@ -47,6 +47,7 @@ export * from './runs/workspace-reaper.js';
 
 export * from './runs/wait-repository.js';
 export * from './runs/wait-wake.js';
+export * from './runs/run-timeline-channel.js';
 
 export * from './notifications/notification-worker.js';
 export * from './runs/agent-work-repository.js';
