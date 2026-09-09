@@ -44,7 +44,7 @@ const cases = [
     before: 'if (decision.securityEvent) {', after: 'if (false) {',
     test: 'packages/application/src/runs/execute-agent-work-item.test.ts', name: 'logs a security denial for unknown-tool' },
   { id: 'invalid-provider-security-event', file: 'packages/application/src/runs/execute-agent-work-item.ts',
-    before: "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action') return;", after: 'return;',
+    before: "if (diagnostic !== 'model-invalid-response' && diagnostic !== 'model-invalid-action' && diagnostic !== 'model-policy-contradiction') return;", after: 'return;',
     test: 'packages/application/src/runs/execute-agent-work-item.test.ts', name: 'logs a security denial for provider-invalid-response' },
 ];
 if (browserMode) cases.push(
