@@ -5,6 +5,7 @@ import type { Role } from '@intellifin/domain';
 import { EnvironmentRibbon } from '../design/EnvironmentRibbon';
 import { Sidebar, type SidebarCounts } from '../design/Sidebar';
 import { Breadcrumbs } from './Breadcrumbs';
+import { BellLive } from './BellLive';
 import { NotificationBell } from './NotificationBell';
 import { SignOutButton } from './SignOutButton';
 
@@ -60,6 +61,7 @@ export function AppShell({
           */}
           <div className="ls-topbar">
             <NotificationBell unread={unreadNotifications} />
+            {unreadNotifications === undefined ? null : <BellLive />}
             <SignOutButton />
           </div>
           {/* `tabIndex={-1}`: without it the skip link moves the scroll position and

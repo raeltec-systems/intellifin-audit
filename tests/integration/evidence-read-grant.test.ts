@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   EVIDENCE_READ_GRANT_QUEUE,
   EVIDENCE_READ_GRANT_SCHEMA_VERSION,
+  FRAME_LOCATOR,
   issueEvidenceReadGrant,
   requestEvidenceReadGrant,
 } from '@intellifin/application';
@@ -20,6 +21,7 @@ import {
 } from '@intellifin/infrastructure';
 import { sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
 
+import { readFrameWithGrant } from '../../apps/web/src/runs/evidence-frame-reader.js';
 import { readSnapshotCellWithGrant } from '../../apps/web/src/runs/evidence-snapshot-reader.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
 
@@ -81,7 +83,10 @@ describe.skipIf(!databaseUrl)('stored Evidence read grants on PostgreSQL', () =>
         await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
         await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
         await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
         await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
         await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
         await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
@@ -120,12 +125,10 @@ describe.skipIf(!databaseUrl)('stored Evidence read grants on PostgreSQL', () =>
     )`;
     await sql`INSERT INTO run_evidence(
       evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,
-      required,captured_at,capture_method,capture_time_source
-    ) VALUES (
+      required,captured_at,capture_method,capture_time_source,role) VALUES (
       ${evidenceId},${runId},'structural-snapshot','evidence-read-target',${objectKey},
       ${WEB_TREE_MEDIA_TYPE},${digest},${registeredBytes.byteLength},'REGISTERED',false,
-      ${at},'agent','registration'
-    )`;
+      ${at},'agent','registration','evidence')`;
     runIds.push(runId);
     if (options.terminal) {
       // Seed a truthful terminal package/result before testing the post-Run mismatch path.
@@ -433,5 +436,185 @@ describe.skipIf(!databaseUrl)('stored Evidence read grants on PostgreSQL', () =>
     expect(await sql`SELECT source,payload FROM audit_events WHERE aggregate_id=${run.runId} AND event_type='failure.evidence-integrity'`).toMatchObject([{
       source: 'web', payload: { evidenceId: run.evidenceId, stateChanged: false },
     }]);
+  });
+
+  // -------------------------------------------------------------- Live View frames ----
+
+  /**
+   * A frame is the SAME grant mechanism with a third locator (Story 5.3). These cases run
+   * against the real trigger, the real issuance branch and the real web-side reader, so a
+   * screenshot served through a cell locator, or a snapshot through the frame locator,
+   * fails here rather than on a supervision surface.
+   */
+  const PNG = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  ]);
+
+  interface SeededFrame extends SeededRun {
+    readonly sourceLocation: string;
+  }
+
+  async function seedFrame(): Promise<SeededFrame> {
+    const runId = ids.next();
+    const evidenceId = ids.next();
+    const stepExecutionId = ids.next();
+    const toolActionId = ids.next();
+    const correlationId = ids.next();
+    const requestToken = ids.next();
+    const objectKey = `screenshot/${runId}/${evidenceId}`;
+    const digest = sha256HexOfBytes(PNG);
+    const at = clock.now().toISOString();
+    const ordinal = runIds.length + 1;
+    const day = String(Math.min(28, ordinal + 1)).padStart(2, '0');
+    const sourceLocation = `https://loancore.invalid/accounts/${ordinal}`;
+    await sql`INSERT INTO audit_run(
+      request_token,run_id,correlation_id,procedure_id,version_id,version_number,
+      procedure_name,period_from,period_to,state,kind,initiator_id,session_id,
+      authorization_role,initiated_at
+    ) VALUES (
+      ${requestToken},${runId},${correlationId},${procedureId},${versionId},1,
+      'Evidence read test',${`2026-08-${day}`},${`2026-08-${day}`},'RUNNING','STANDARD',
+      ${author},${`evidence-frame-${ordinal}`},'auditor',${at}
+    )`;
+    await sql`INSERT INTO run_step_execution(
+      step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at
+    ) VALUES (${stepExecutionId},${runId},'target-1-1',NULL,'inspect-record','RUNNING',1,${at})`;
+    // The binding trigger requires a PERFORMED action with PERMITTED capture whose
+    // `target_system` is the Evidence registration and whose destination is the location.
+    await sql`INSERT INTO run_tool_action(
+      tool_action_id,run_id,step_execution_id,work_item_id,surface,target_system,action,
+      method,destination,parameters,outcome,redirected,downloads,started_at,capture
+    ) VALUES (
+      ${toolActionId},${runId},${stepExecutionId},NULL,'agent','evidence-read-target',
+      'read-attribute','GET',${sourceLocation},'[]'::jsonb,'performed',false,0,${at},'PERMITTED'
+    )`;
+    await sql`INSERT INTO run_evidence(
+      evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,
+      required,captured_at,capture_method,capture_time_source,role) VALUES (
+      ${evidenceId},${runId},'screenshot','evidence-read-target',${objectKey},
+      'image/png',${digest},${PNG.byteLength},'REGISTERED',false,${at},'agent','registration','evidence')`;
+    await sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
+      VALUES (${evidenceId},${runId},${toolActionId},${sourceLocation})`;
+    runIds.push(runId);
+    return { runId, evidenceId, objectKey, registeredBytes: PNG, digest, size: PNG.byteLength, sourceLocation };
+  }
+
+  async function issueFrameGrant(run: SeededRun, locator: string = FRAME_LOCATOR): Promise<{
+    readonly grantId: string;
+    readonly repository: PostgresEvidenceReadGrantRepository;
+    readonly issued: { readonly status: string };
+  }> {
+    const repository = new PostgresEvidenceReadGrantRepository(db, { clock, ids });
+    const requested = await requestEvidenceReadGrant(
+      { repository, ids, clock },
+      {
+        session: { userId: author, sessionId: `frame-${run.runId}` },
+        correlationId: ids.next(),
+        request: { runId: run.runId, evidenceId: run.evidenceId, locator },
+      },
+    );
+    expect(requested.ok).toBe(true);
+    if (!requested.ok) throw new Error('frame grant request fixture failed');
+    const issued = await issueEvidenceReadGrant(
+      {
+        repository,
+        clock,
+        signer: {
+          signGet: async ({ expiresAt }) => ({ signedUrl: `https://objects.invalid/${run.evidenceId}`, signedUrlExpiresAt: expiresAt }),
+        },
+      },
+      { schemaVersion: EVIDENCE_READ_GRANT_SCHEMA_VERSION, grantId: requested.grantId },
+    );
+    return { grantId: requested.grantId, repository, issued };
+  }
+
+  it('issues a frame grant over a registered screenshot and yields the verified PNG bytes', async () => {
+    const run = await seedFrame();
+    const { grantId, repository, issued } = await issueFrameGrant(run);
+    expect(issued).toEqual({ status: 'issued', grantId });
+
+    const read = await readFrameWithGrant(repository, {
+      grantId, runId: run.runId, evidenceId: run.evidenceId, actorId: author,
+      locator: FRAME_LOCATOR, correlationId: ids.next(), maxGrantWaitMs: 0,
+    }, {
+      fetch: async () => new Response(PNG.buffer as ArrayBuffer, { headers: { 'content-type': 'image/png', 'content-length': String(PNG.byteLength) } }),
+    });
+    expect(read.failure).toBeNull();
+    expect(read.frame?.digest).toBe(run.digest);
+    expect(read.frame?.size).toBe(PNG.byteLength);
+    expect(read.frame?.bytes).toEqual(PNG);
+    // The read is recorded against the Run, exactly as a snapshot cell read is.
+    expect(await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${run.runId} AND event_type='evidence-access.read'`).toHaveLength(1);
+  });
+
+  it('refuses a frame grant over a Structural Snapshot, and a cell grant over a screenshot', async () => {
+    // Both directions. Issuance is where the locator meets the artifact, and either half
+    // alone would let one kind be served through the other kind's route.
+    const snapshot = await seedRun();
+    const wrongKind = await issueFrameGrant(snapshot);
+    expect(wrongKind.issued).toMatchObject({ status: 'denied' });
+    expect(await sql`SELECT status,denial_code,signed_url FROM evidence_read_grant WHERE grant_id=${wrongKind.grantId}`)
+      .toEqual([{ status: 'denied', denial_code: 'scope-mismatch', signed_url: null }]);
+
+    const frame = await seedFrame();
+    const wrongLocator = await issueFrameGrant(frame, '$.nodes[0].value');
+    expect(wrongLocator.issued).toMatchObject({ status: 'denied' });
+    expect(await sql`SELECT status,denial_code,signed_url FROM evidence_read_grant WHERE grant_id=${wrongLocator.grantId}`)
+      .toEqual([{ status: 'denied', denial_code: 'scope-mismatch', signed_url: null }]);
+  });
+
+  it('refuses to serve bytes whose digest is not the one the Run registered', async () => {
+    const run = await seedFrame();
+    const { grantId, repository } = await issueFrameGrant(run);
+    const tampered = new Uint8Array([...PNG.slice(0, PNG.byteLength - 1), 0xff]);
+    const read = await readFrameWithGrant(repository, {
+      grantId, runId: run.runId, evidenceId: run.evidenceId, actorId: author,
+      locator: FRAME_LOCATOR, correlationId: ids.next(), maxGrantWaitMs: 0,
+    }, {
+      fetch: async () => new Response(tampered.buffer as ArrayBuffer, { headers: { 'content-type': 'image/png', 'content-length': String(tampered.byteLength) } }),
+      // The reporter is the caller's, exactly as the frames route supplies it: a reader
+      // that could write findings without being handed one would be a second write path.
+      reportIntegrityMismatch: (mismatch) => repository.reportIntegrityMismatch(mismatch),
+    });
+    expect(read).toEqual({ frame: null, failure: 'download-digest-mismatch' });
+    // DURING a Run a verified mismatch is `RUN_FAILED` — `evidence-package-v1`'s rule,
+    // reached here through the frame path exactly as through the snapshot path. It is not
+    // a `run_evidence_integrity` row: that is the POST-Run finding, which changes nothing.
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${run.runId}`).toEqual([{ state: 'RUN_FAILED' }]);
+    expect(await sql`SELECT payload FROM audit_events
+      WHERE aggregate_id=${run.runId} AND event_type='failure.evidence-integrity'`).toMatchObject([
+      { payload: { evidenceId: run.evidenceId, finding: 'digest-mismatch', stateChanged: true } },
+    ]);
+    // And the bytes were never rendered: no read was recorded for them.
+    expect(await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${run.runId} AND event_type='evidence-access.read'`).toEqual([]);
+  });
+
+  it('reads a frame only through its capture binding, and never a loose screenshot', async () => {
+    const run = await seedFrame();
+    const detail = new DrizzleRunDetailRepository(db);
+    expect(await detail.readFrame(run.runId, run.evidenceId)).toMatchObject({
+      evidenceId: run.evidenceId,
+      digest: run.digest,
+      sourceLocation: run.sourceLocation,
+      action: 'read-attribute',
+    });
+    expect(await detail.readLatestFrame(run.runId)).toMatchObject({ evidenceId: run.evidenceId });
+
+    // Remove the binding and the same registered screenshot stops being a frame: a
+    // screenshot nothing links to a performed reading action is not one.
+    await sql`DELETE FROM run_evidence_capture WHERE evidence_id=${run.evidenceId}`;
+    expect(await detail.readFrame(run.runId, run.evidenceId)).toBeNull();
+    expect(await detail.readLatestFrame(run.runId)).toBeNull();
+  });
+
+  it('never lets one Run read another Run’s frame', async () => {
+    // Sequentially: `seedFrame` derives its period from how many Runs this file has
+    // seeded, and `audit_run_active_standard_period` refuses two active Standard Runs of
+    // one Procedure over one period — which is the index doing its job.
+    const mine = await seedFrame();
+    const theirs = await seedFrame();
+    const detail = new DrizzleRunDetailRepository(db);
+    expect(await detail.readFrame(mine.runId, theirs.evidenceId)).toBeNull();
+    expect(await detail.readFrame(theirs.runId, mine.evidenceId)).toBeNull();
   });
 });

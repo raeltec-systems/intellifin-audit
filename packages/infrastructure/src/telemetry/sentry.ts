@@ -20,6 +20,7 @@ export const TELEMETRY_MESSAGES = [
   // deployment: every adapter Work Item would then fail closed with `credential-unresolved`,
   // which reads as a Target System problem and is not one.
   'Adapter extraction disabled',
+  'Replay recording copy disabled',
   // Story 4.1. Said once at boot: which browser this worker provisions an Agent Workspace
   // with, and why. The two modes are the same code path and NOT the same guarantee —
   // `local` isolates browser state per Run and does not isolate the worker process at all —

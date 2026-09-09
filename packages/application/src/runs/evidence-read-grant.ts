@@ -19,6 +19,17 @@ export const EVIDENCE_READ_GRANT_SCHEMA_VERSION = 1 as const;
 export const EVIDENCE_READ_GRANT_QUEUE = 'evidence-read-grants' as const;
 /** Whole captured empty-result page; authorized by a persisted absence proof, not a row locator. */
 export const ABSENCE_SNAPSHOT_LOCATOR = 'absence-result' as const;
+/**
+ * The whole registered screenshot of one Tool Action, as Live View and Replay show it
+ * (Story 5.3, AD-17: "a live frame is a Replay asset the moment it is registered").
+ *
+ * A frame has no cell to address, so its locator is this sentinel and nothing else. The
+ * worker issues a frame grant only for a REGISTERED `screenshot` artifact whose media type
+ * is `image/png`, and a cell locator only for a `structural-snapshot`: the locator says
+ * what KIND of read the capability is for, and a capability for the wrong kind is a
+ * scope mismatch, never a best effort.
+ */
+export const FRAME_LOCATOR = 'frame' as const;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -95,6 +106,8 @@ export interface EvidenceReadIntegrityReporter {
 export interface RegisteredEvidenceForRead {
   readonly runId: string;
   readonly evidenceId: string;
+  /** `run_evidence.kind`: the locator's read kind must match it (`FRAME_LOCATOR` needs `screenshot`). */
+  readonly kind: string;
   readonly state: string;
   readonly objectKey: string;
   readonly mediaType: string | null;
@@ -194,6 +207,13 @@ function exactKeys(value: Record<string, unknown>, expected: readonly string[]):
   return Object.keys(value).length === expected.length && expected.every((key) => Object.hasOwn(value, key));
 }
 
+/** The one media type a frame may have; the capture path already refuses any other. */
+export const FRAME_MEDIA_TYPE = 'image/png' as const;
+
+function contentTypeBase(value: string | null): string {
+  return value === null ? '' : value.split(';', 1)[0]!.trim().toLowerCase();
+}
+
 function nonEmptyText(value: unknown, max = 4096): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= max && value.trim().length > 0;
 }
@@ -206,7 +226,7 @@ export function parseEvidenceReadGrantRequest(value: unknown):
   if (
     typeof value.runId !== 'string' || !UUID.test(value.runId) ||
     typeof value.evidenceId !== 'string' || !UUID.test(value.evidenceId) ||
-    !nonEmptyText(value.locator, 1024) || (value.locator !== ABSENCE_SNAPSHOT_LOCATOR && parseSnapshotLocator(value.locator) === null)
+    !nonEmptyText(value.locator, 1024) || (value.locator !== ABSENCE_SNAPSHOT_LOCATOR && value.locator !== FRAME_LOCATOR && parseSnapshotLocator(value.locator) === null)
   ) return { error: 'malformed' };
   return {
     runId: value.runId.toLowerCase(),
@@ -344,7 +364,17 @@ export async function issueEvidenceReadGrant(
       return denyGrant(context, 'scope-mismatch');
     }
     if (evidence.state !== 'REGISTERED') return denyGrant(context, 'evidence-not-registered');
-    if (snapshotSubstrateForMediaType(evidence.mediaType) === null) return denyGrant(context, 'unsupported-media-type');
+    // The locator names the KIND of read. A frame is the whole screenshot of one action; a
+    // cell or the absence view is a Structural Snapshot. The wrong kind for the locator is a
+    // scope mismatch, so a caller cannot obtain a screenshot through a cell locator or a
+    // snapshot through the frame sentinel and then read it as something it is not.
+    if (grant.locator === FRAME_LOCATOR) {
+      if (evidence.kind !== 'screenshot') return denyGrant(context, 'scope-mismatch');
+      if (contentTypeBase(evidence.mediaType) !== FRAME_MEDIA_TYPE) return denyGrant(context, 'unsupported-media-type');
+    } else {
+      if (evidence.kind !== 'structural-snapshot') return denyGrant(context, 'scope-mismatch');
+      if (snapshotSubstrateForMediaType(evidence.mediaType) === null) return denyGrant(context, 'unsupported-media-type');
+    }
     const objectKey = evidence.objectKey;
     const mediaType = evidence.mediaType;
     const digest = evidence.digest;
@@ -352,7 +382,7 @@ export async function issueEvidenceReadGrant(
     if (!nonEmptyText(objectKey, 1024) || !validDigest(digest) ||
         typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0 || size > EVIDENCE_READ_MAX_BYTES ||
         !nonEmptyText(mediaType, 512)) return denyGrant(context, 'invalid-evidence-metadata');
-    if (grant.locator !== ABSENCE_SNAPSHOT_LOCATOR && parseSnapshotLocator(grant.locator) === null) return denyGrant(context, 'scope-mismatch');
+    if (grant.locator !== ABSENCE_SNAPSHOT_LOCATOR && grant.locator !== FRAME_LOCATOR && parseSnapshotLocator(grant.locator) === null) return denyGrant(context, 'scope-mismatch');
 
     const signed = await dependencies.signer.signGet({ bucketKey: objectKey, expiresAt: grant.expiresAt });
     if (!validCapabilityUrl(signed.signedUrl) || !validInstant(signed.signedUrlExpiresAt) ||

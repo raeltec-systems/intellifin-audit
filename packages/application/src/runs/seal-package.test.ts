@@ -102,6 +102,7 @@ function artifact(overrides: Partial<PackageArtifact> = {}): PackageArtifact {
     kind: 'population',
     objectKey: `population/${RUN.runId}/raw`,
     required: true,
+    role: 'evidence' as const,
     state: 'REGISTERED',
     ...overrides,
   };

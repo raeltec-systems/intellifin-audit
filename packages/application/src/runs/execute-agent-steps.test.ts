@@ -370,6 +370,8 @@ class FakeContext implements AgentExecutionContext {
     this.state.run = this.state.run === null ? null : { ...this.state.run, state };
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.state.result;
@@ -414,6 +416,8 @@ class FakeBrowser implements BrowserExecution {
   create = (): Promise<never> => Promise.reject(new BrowserActionError('unavailable'));
   attach = (): Promise<null> => Promise.resolve(null);
   release = (): Promise<void> => Promise.resolve();
+  /** Story 5.2: this fake provider records nothing. */
+  downloadRecording = (): Promise<Uint8Array | null> => Promise.resolve(null);
 
   perform = async (
     _ref: WorkspaceRef,

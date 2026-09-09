@@ -47,6 +47,7 @@ export function evidencePackageContext(
           objectKey: runEvidence.objectKey,
           required: runEvidence.required,
           state: runEvidence.state,
+          role: runEvidence.role,
         })
         .from(runEvidence)
         .where(eq(runEvidence.runId, runId));
@@ -67,6 +68,8 @@ export function evidencePackageContext(
             objectKey: row.objectKey,
             required: row.required,
             state: row.state as PackageArtifact['state'],
+            // A population is Evidence by definition, so its table carries no role to read.
+            role: 'evidence',
           }),
         ),
         ...adapter.map(
@@ -76,6 +79,7 @@ export function evidencePackageContext(
             objectKey: row.objectKey,
             required: row.required,
             state: row.state as PackageArtifact['state'],
+            role: row.role as PackageArtifact['role'],
           }),
         ),
       ];

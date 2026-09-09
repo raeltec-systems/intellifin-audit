@@ -755,13 +755,13 @@ describe.skipIf(!url)('adapter execution against PostgreSQL', () => {
     await expect(insert('maybe', 'NULL')).rejects.toThrow(/run_observation_found/);
     await expect(
       sql.unsafe(
-        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,required,state) VALUES ($1,$2,'reference-source','r','k','not-a-digest',1,true,'REGISTERED')`,
+        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,required,state,role) VALUES ($1,$2,'reference-source','r','k','not-a-digest',1,true,'REGISTERED','evidence')`,
         [ids.next(), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_evidence_digest/);
     await expect(
       sql.unsafe(
-        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,required,state) VALUES ($1,$2,'reference-source','r','k2',NULL,NULL,true,'REGISTERED')`,
+        `INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,digest,size,required,state,role) VALUES ($1,$2,'reference-source','r','k2',NULL,NULL,true,'REGISTERED','evidence')`,
         [ids.next(), seeded.run.runId],
       ),
     ).rejects.toThrow(/run_evidence_state/);

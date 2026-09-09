@@ -13,6 +13,7 @@ import {
   requiredEvidenceKinds,
   sealPackageDecision,
   verifyStoredArtifact,
+  EVIDENCE_ARTIFACT_ROLES,
   type EvidenceArtifactKind,
   type PackageArtifact,
 } from './evidence.js';
@@ -27,6 +28,7 @@ function artifact(overrides: Partial<PackageArtifact> = {}): PackageArtifact {
     objectKey: `population/${RUN}/raw`,
     required: true,
     state: 'REGISTERED',
+    role: 'evidence',
     ...overrides,
   };
 }
@@ -236,6 +238,42 @@ describe('the sealable decision', () => {
     const rows = [artifact({ state: 'RESERVED' })];
     sealPackageDecision(rows);
     expect(rows[0]!.state).toBe('RESERVED');
+  });
+});
+
+describe('the artifact role', () => {
+  it('never lets a replay artifact make a package INCOMPLETE, whatever its flag says', () => {
+    // The flag is set wrongly on purpose. A `replay` frame is what a Run is WATCHED by,
+    // not what it concluded from, so it can degrade a replay and never a conclusion.
+    const decision = sealPackageDecision([
+      artifact({ role: 'evidence', required: true, state: 'REGISTERED' }),
+      artifact({ evidenceId: 'r-1', kind: 'screenshot', role: 'replay', required: true, state: 'RESERVED' }),
+    ]);
+    expect(decision.state).toBe('SEALED');
+    expect(decision.missingRequired).toEqual([]);
+    expect(decision.requiredTotal).toBe(1);
+  });
+
+  it('still abandons an open replay reservation and keeps it out of the registered set', () => {
+    const decision = sealPackageDecision([
+      artifact({ evidenceId: 'r-1', kind: 'screenshot', role: 'replay', required: false, state: 'RESERVED' }),
+    ]);
+    expect(decision.abandoned.map((a) => a.evidenceId)).toEqual(['r-1']);
+    expect(decision.registered).toBe(0);
+  });
+
+  it('still fails a package whose EVIDENCE-role required artifact never registered', () => {
+    // The role narrows what can gate the seal; it must not stop the seal gating at all.
+    const decision = sealPackageDecision([
+      artifact({ role: 'evidence', required: true, state: 'RESERVED' }),
+      artifact({ evidenceId: 'r-1', kind: 'screenshot', role: 'replay', required: false, state: 'REGISTERED' }),
+    ]);
+    expect(decision.state).toBe('INCOMPLETE');
+    expect(decision.missingRequired.map((a) => a.role)).toEqual(['evidence']);
+  });
+
+  it('is a closed vocabulary of exactly two roles', () => {
+    expect([...EVIDENCE_ARTIFACT_ROLES]).toEqual(['evidence', 'replay']);
   });
 });
 

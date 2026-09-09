@@ -16,6 +16,7 @@ import {
   type RunResultConditionCount,
   type RunResultExclusion,
   type RunResultFindings,
+  type ReplayRecording,
 } from '@intellifin/domain';
 
 import { provisionWorkspace, releaseWorkspace } from './provision-workspace.js';
@@ -179,6 +180,12 @@ class FakeContext implements WorkspaceExecutionContext {
   saveStepExecution = async (execution: StepExecutionRecord): Promise<void> => {
     this.store.executions.push(execution);
   };
+  /** Story 5.2: the copy is attempted once per Run; the FIRST answer wins. */
+  recording: ReplayRecording | null = null;
+  readRecording = async (): Promise<ReplayRecording | null> => this.recording;
+  saveRecording = async (recording: ReplayRecording): Promise<void> => {
+    this.recording = recording;
+  };
 
   readPackageArtifacts = async (): Promise<readonly PackageArtifact[]> => [];
   abandonArtifacts = async (): Promise<void> => undefined;
@@ -192,6 +199,8 @@ class FakeContext implements WorkspaceExecutionContext {
     this.store.run = this.store.run === null ? null : { ...this.store.run, state };
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.store.result;
@@ -277,6 +286,8 @@ class FakeBrowser implements BrowserExecution {
     this.released.push(ref);
     if (this.options.failRelease) throw this.options.failRelease;
   };
+  /** Story 5.2: this fake provider records nothing unless a case says otherwise. */
+  downloadRecording = async (): Promise<Uint8Array | null> => null;
 
   /**
    * Story 4.2's Tool Action port member.

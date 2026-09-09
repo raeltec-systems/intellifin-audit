@@ -44,7 +44,13 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
       const bytes = utf8Bytes('{"schemaVersion":1,"nodes":[],"completion":{"complete":true,"returned":0}}');
       const artifact = join(temporary,'empty-result.json');
       await writeFile(artifact,bytes);
+      // The helper seeds BOTH schemas: the historical one before the upgrade and the
+      // current one after it. Generation 43 added `run_evidence.role` NOT NULL, so the
+      // insert has to name the columns the live schema actually has. Reading it from the
+      // catalogue keeps one helper honest on both sides rather than duplicating it.
       const seed = async (sealed: boolean) => {
+        const hasRole = (await connection`SELECT 1 FROM information_schema.columns
+          WHERE table_name='run_evidence' AND column_name='role'`).length === 1;
         const runId=ids.next(), evidenceId=ids.next(), workItemId=ids.next(), stepExecutionId=ids.next();
         const day=String(++ordinal).padStart(2,'0');
         const at='2026-09-01T09:00:00.000Z';
@@ -52,8 +58,13 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
         await connection.begin(async tx => {
           await tx`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
             VALUES(${ids.next()},${runId},${ids.next()},${version.procedureId},${version.versionId},1,'Historical absence',${`2026-08-${day}`},${`2026-08-${day}`},'RUNNING','STANDARD',${author},'upgrade','auditor',${at})`;
-          await tx`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
-            VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${`historical/${runId}/empty`},'application/vnd.intellifin.web-tree+json',${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false)`;
+          if (hasRole) {
+            await tx`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,role)
+              VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${`historical/${runId}/empty`},'application/vnd.intellifin.web-tree+json',${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false,'evidence')`;
+          } else {
+            await tx`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
+              VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${`historical/${runId}/empty`},'application/vnd.intellifin.web-tree+json',${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false)`;
+          }
           await tx`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
             VALUES(${workItemId},${runId},'inspect',1,'loancore','LoanCore','OBSERVED',1,0,NULL,${evidenceId},1)`;
           await tx`INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration)
@@ -84,7 +95,17 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
       const originalSeals=await sql`SELECT to_jsonb(p) AS value FROM run_evidence_package p ORDER BY run_id`;
       expect(await runMigrations(isolatedUrl)).toBeGreaterThanOrEqual(41);
       expect(await sql`SELECT to_jsonb(o) AS value FROM run_observation o ORDER BY observation_id`).toEqual(original);
-      expect(await sql`SELECT to_jsonb(e) AS value FROM run_evidence e ORDER BY evidence_id`).toEqual(originalEvidence);
+      // Generation 43 adds `role`, so the upgraded rows carry one MORE key than the
+      // historical ones. Every key that existed before is compared unchanged, and the new
+      // one is asserted separately: adding a column is not changing a fact, and a
+      // comparison that quietly tolerated a changed VALUE would stop proving preservation.
+      const upgradedEvidence=await sql`SELECT to_jsonb(e) AS value FROM run_evidence e ORDER BY evidence_id`;
+      expect(upgradedEvidence.map(row=>{const {role,...rest}=row['value'] as Record<string,unknown>; void role; return {value:rest};}))
+        .toEqual(originalEvidence.map(row=>({value:row['value']})));
+      // The backfill is STRUCTURAL, not a guess: every row this table has ever held was
+      // written by a producer freezing bytes a Run concluded from.
+      expect(upgradedEvidence.map(row=>(row['value'] as Record<string,unknown>)['role']))
+        .toEqual(upgradedEvidence.map(()=>'evidence'));
       expect(await sql`SELECT to_jsonb(r) AS value FROM run_result r ORDER BY run_id`).toEqual(originalResults);
       expect(await sql`SELECT to_jsonb(p) AS value FROM run_evidence_package p ORDER BY run_id`).toEqual(originalSeals);
       expect(await sql`SELECT * FROM run_observation_absence`).toEqual([]);

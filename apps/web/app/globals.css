@@ -1669,3 +1669,177 @@ a {
 .ls-timeline__title {
   font-weight: var(--type-row-title-font-weight);
 }
+
+/* ------------------------------------------------------ the session viewer ---- */
+
+/* DESIGN.md → Session viewer (UX-DR24): a sandboxed viewport under a navy chrome strip
+ * carrying the state dot and word, the Agent Workspace identifier, the isolation note
+ * and the Step counter, with a narration rail beside the stage. Every value below is
+ * `{components.session-viewer}`'s, which `tokens.test.ts` checks against DESIGN.md on
+ * disk. The Step scrubber stays deferred: scrubbing is Replay's control, and this
+ * surface only watches. */
+.ls-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+.ls-session__chrome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-navy);
+  color: var(--color-navy-100);
+  border-radius: var(--rounded-md) var(--rounded-md) 0 0;
+}
+
+.ls-session__state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-family: var(--type-mono-font-family);
+  letter-spacing: 0.08em;
+}
+
+/* Colour is never the only carrier: the word sits beside every dot. */
+.ls-session__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--rounded-full);
+  background: var(--color-neutral-solid);
+}
+
+.ls-session__dot--live {
+  background: var(--color-danger-solid);
+}
+
+.ls-session__dot--paused {
+  background: var(--color-neutral-solid);
+}
+
+.ls-session__dot--awaiting {
+  background: var(--color-info-solid);
+}
+
+.ls-session__dot--replay {
+  background: var(--color-teal-500);
+}
+
+.ls-session__dot--none {
+  background: var(--color-navy-700);
+}
+
+.ls-session__workspace,
+.ls-session__note {
+  font-family: var(--type-mono-font-family);
+  overflow-wrap: anywhere;
+}
+
+.ls-session__counter {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.ls-session__body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--spacing-5);
+}
+
+.ls-session__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 430px;
+  padding: var(--spacing-4);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+}
+
+.ls-session__stage-note {
+  max-width: 48ch;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.ls-session__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  width: 100%;
+}
+
+/* The frame is the Target System's own screen. It is inert content: no link, no map, no
+ * control — only pixels the platform froze as Evidence. */
+.ls-session__frame {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-surface-card);
+}
+
+.ls-session__caption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  font-size: var(--type-caption-font-size);
+  color: var(--color-text-secondary);
+}
+
+.ls-session__rail {
+  min-width: 0;
+}
+
+.ls-session__evidence,
+.ls-session__log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-session__evidence > li,
+.ls-session__log > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-2);
+  padding-bottom: var(--spacing-2);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+/* The auditor's own words, verbatim and inert. */
+.ls-session__instruction {
+  margin: 0;
+  padding: var(--spacing-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-md);
+  font-family: var(--type-mono-font-family);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ls-session-desktop-only {
+  display: none;
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-surface-sunken);
+  border-radius: var(--rounded-md);
+  color: var(--color-text-secondary);
+}
+
+/* Below 1024px Live View is read-only (UX-DR25, EXPERIENCE.md → Responsive
+ * breakpoints): the stage stacks above the rail and the floor sentence appears. */
+@media (max-width: 1023px) {
+  .ls-session__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-session-desktop-only {
+    display: block;
+  }
+}

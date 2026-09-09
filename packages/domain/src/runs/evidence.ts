@@ -56,6 +56,26 @@ export const EVIDENCE_ARTIFACT_STATES = ['RESERVED', 'REGISTERED', 'ABANDONED'] 
 export type EvidenceArtifactState = (typeof EVIDENCE_ARTIFACT_STATES)[number];
 
 /**
+ * WHAT an artifact is for (Story 5.2, FR-30, AD-5).
+ *
+ * `evidence` is what a Run concluded FROM: the bytes an auditor's finding rests on, and
+ * the only role a Run can be incomplete for. `replay` is what a Run is WATCHED BY: the
+ * frames, the sanitized actions and the Escalation and Session Step records that let a
+ * terminal Run be replayed without the platform ever calling the Workspace Provider again.
+ *
+ * The distinction is a ROLE and not a kind, because the same kind sits on both sides: the
+ * screenshot an Observation is grounded in is `evidence`, and the screenshot captured after
+ * every Tool Action so the session can be replayed is `replay`. A kind cannot say which,
+ * and a naming convention would be one anybody could satisfy by typing.
+ *
+ * A missing `replay` artifact degrades a replay and is recorded as such; it can never make
+ * a package INCOMPLETE, which `sealPackageDecision` enforces by construction rather than by
+ * trusting every producer to leave `required` false.
+ */
+export const EVIDENCE_ARTIFACT_ROLES = ['evidence', 'replay'] as const;
+export type EvidenceArtifactRole = (typeof EVIDENCE_ARTIFACT_ROLES)[number];
+
+/**
  * HOW an artifact was captured — FR-31's "capture method", as a STORED value.
  *
  * It used to be derived on the way to the screen from the artifact's KIND, which was true
@@ -339,6 +359,8 @@ export interface PackageArtifact {
   readonly objectKey: string;
   readonly required: boolean;
   readonly state: EvidenceArtifactState;
+  /** `evidence` for anything a Run concluded from; `replay` for what it is watched by. */
+  readonly role: EvidenceArtifactRole;
 }
 
 /** What sealing decided, and why. */
@@ -382,7 +404,10 @@ export function sealPackageDecision(
   const settled = artifacts.map((artifact) =>
     artifact.state === 'RESERVED' ? { ...artifact, state: 'ABANDONED' as const } : artifact,
   );
-  const required = settled.filter((artifact) => artifact.required);
+  // A `replay` artifact can never gate the seal, whatever its `required` flag says. The
+  // filter is the enforcement: a producer that set the flag wrongly, or a row an older
+  // build wrote, cannot make a Run INCOMPLETE for a frame nobody concluded anything from.
+  const required = settled.filter((artifact) => artifact.required && artifact.role === 'evidence');
   const missingRequired = required.filter((artifact) => artifact.state !== 'REGISTERED');
   // ONE walk decides both the list and the count, so the two can never disagree about what
   // this Run froze. A count derived separately from the list is the "two answers to one

@@ -129,11 +129,9 @@ async function seedRun(runId: string, evidenceId: string, workItemId: string, ob
   await sql`
     INSERT INTO run_evidence(
       evidence_id, run_id, kind, registration_id, object_key, media_type, digest, size,
-      state, required, captured_at, capture_method, capture_time_source
-    ) VALUES (
+      state, required, captured_at, capture_method, capture_time_source,role) VALUES (
       ${evidenceId}, ${runId}, 'structural-snapshot', 'review-target', ${`runs/${runId}/snapshot`},
-      'application/json', ${'a'.repeat(64)}, 128, 'REGISTERED', false, ${at}, 'agent', 'registration'
-    )
+      'application/json', ${'a'.repeat(64)}, 128, 'REGISTERED', false, ${at}, 'agent', 'registration','evidence')
   `;
   await sql`
     INSERT INTO run_work_item(

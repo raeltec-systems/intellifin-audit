@@ -235,9 +235,9 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
   ): Promise<void> {
     // Generation 32: FR-31's capture provenance is STORED on the artifact by the stage
     // that registered it, so the fixture writes what production writes.
-    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,captured_at,capture_method,capture_time_source)
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,captured_at,capture_method,capture_time_source,role)
               VALUES(${evidence},${runId},'adapter-extraction','accessgate',${`runs/${runId}/extract`},
-                'application/json',${'c'.repeat(64)},1024,'REGISTERED',false,'2026-09-01T09:01:20Z','adapter','registration')`;
+                'application/json',${'c'.repeat(64)},1024,'REGISTERED',false,'2026-09-01T09:01:20Z','adapter','registration','evidence')`;
     await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
               VALUES(${item},${runId},'step-1',1,'accessgate','AccessGate','OBSERVED',1,0,NULL,${evidence},1)`;
     await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at,diagnostic)
@@ -321,8 +321,8 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     // surface says so in words, and it can only do that if the read does not invent one.
     // Seeded on the QUEUED Run, because generation 21 freezes a sealed Run's Evidence.
     const bare = ids.next();
-    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
-              VALUES(${bare},${runs.third},'reference-source','rolematrix',${`runs/${runs.third}/reference`},'text/csv',${'d'.repeat(64)},64,'REGISTERED',false)`;
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,role)
+              VALUES(${bare},${runs.third},'reference-source','rolematrix',${`runs/${runs.third}/reference`},'text/csv',${'d'.repeat(64)},64,'REGISTERED',false,'evidence')`;
     expect((await detail().readEvidenceItems(runs.third))[0]).toMatchObject({
       evidenceId: bare,
       capturedAt: null,

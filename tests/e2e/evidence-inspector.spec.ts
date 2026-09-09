@@ -43,8 +43,8 @@ async function fixture(absent = false): Promise<(typeof fixtures)[number]> {
     period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
     VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,'Stored snapshot inspector',
     ${`2026-08-${day}`},${`2026-08-${day}`},'QUEUED','STANDARD',${author},'inspector-fixture','auditor',${at})`;
-  await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,captured_at,capture_method,capture_time_source)
-    VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${objectKey},${MEDIA_TYPE},${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false,${at},'agent','registration')`;
+  await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,captured_at,capture_method,capture_time_source,role)
+    VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${objectKey},${MEDIA_TYPE},${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false,${at},'agent','registration','evidence')`;
   await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
     VALUES(${workItem},${runId},'inspect',1,'loancore','LoanCore','OBSERVED',1,0,NULL,${evidenceId},1)`;
   await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at,diagnostic)

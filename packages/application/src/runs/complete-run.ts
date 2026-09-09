@@ -1,4 +1,5 @@
 import {
+  FRAME_MISSING_EVENT,
   GATE_CHECKS,
   includedRecordKeys,
   isTerminalRunState,
@@ -199,6 +200,15 @@ async function publishResult(
       objectKey: artifact.objectKey,
     }));
 
+  // Every Tool Action that should have left a frame and did not (Story 5.2, AC3).
+  //
+  // Read AFTER the seal, which is what makes "the seal is not blocked" a property of
+  // WHERE this sits rather than a rule this code remembers: `sealPackage` has already
+  // returned its decision, and nothing below can change it. A `replay`-role asset is
+  // outside the required set by construction (AD-5), so a frame gap degrades a Replay and
+  // never a conclusion.
+  const missingFrames = await context.readMissingFrames();
+
   const populationFacts = await context.readPopulationFacts();
   const population: RunResultPopulation | null =
     populationFacts === null
@@ -240,6 +250,10 @@ async function publishResult(
       missingRequired: seal.missingRequired.length,
       abandoned: seal.abandoned.length,
       artifacts: registeredArtifacts,
+      // On the Result as well as in the chain, because "flagged on Replay and export"
+      // needs a fact the Result document carries: an export reader holds the document and
+      // not the Timeline. Never folded into `missingRequired` — a frame cannot gate a seal.
+      framesMissing: missingFrames.total,
     },
   });
 
@@ -299,6 +313,40 @@ async function publishResult(
     },
   });
   await context.notifyTimeline(stored.sequence);
+
+  // The Replay asset set is not whole (Story 5.2, AC3). One event per Run, carrying the
+  // exact total and a bounded sample: one per missing frame would put an unbounded number
+  // of rows into an immutable chain for exactly the Run whose capture was misconfigured.
+  //
+  // Only on the FIRST publication. A pending Result sealed later by a human review adds no
+  // frames and removes none, so a second event would report the same gap twice and read as
+  // a second failure.
+  if (previous === null && missingFrames.total > 0) {
+    const flagged = await context.auditEvents.append({
+      actor: { type: 'system', id: 'result-sealer' },
+      eventType: FRAME_MISSING_EVENT,
+      source: 'worker',
+      // A failure: a capture the platform meant to take did not happen. It does not change
+      // the outcome and does not block the seal — both were decided above this line.
+      outcome: 'failure',
+      aggregateId: input.run.runId,
+      correlationId: input.run.correlationId,
+      sessionId: input.run.sessionId,
+      payload: {
+        // Identities and counts. A destination is redacted before it is recorded and is
+        // already on the `run_tool_action` row this names; repeating it here would put a
+        // second, unredacted-by-this-path copy into the immutable chain.
+        missing: missingFrames.total,
+        actions: missingFrames.sample.map((frame) => ({
+          toolActionId: frame.toolActionId,
+          stepExecutionId: frame.stepExecutionId,
+          targetSystem: frame.targetSystem,
+          completedAt: frame.completedAt,
+        })),
+      },
+    });
+    await context.notifyTimeline(flagged.sequence);
+  }
 
   // The Run outran a cancellation somebody asked for. Read HERE, on this transaction's
   // connection, because the request may have committed after the worker's claim; and only

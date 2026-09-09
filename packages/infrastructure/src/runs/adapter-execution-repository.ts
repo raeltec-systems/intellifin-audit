@@ -404,6 +404,7 @@ export async function withRunExecutionContext<T>(
         size: row.size,
         required: row.required,
         state: row.state as AdapterEvidenceRecord['state'],
+        role: row.role as AdapterEvidenceRecord['role'],
         capturedAt: row.capturedAt === null ? null : row.capturedAt.toISOString(),
         captureMethod: isEvidenceCaptureMethod(row.captureMethod) ? row.captureMethod : null,
         captureTimeSource: isEvidenceCaptureTimeSource(row.captureTimeSource) ? row.captureTimeSource : null,

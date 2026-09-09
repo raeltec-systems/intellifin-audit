@@ -7,6 +7,7 @@ import type { Clock, UuidV7Generator } from '../audit/clock.js';
 import type { RoleRepository } from '../identity/ports.js';
 import {
   EVIDENCE_READ_GRANT_MAX_TTL_MS,
+  FRAME_LOCATOR,
   issueEvidenceReadGrant,
   parseEvidenceReadGrantRequest,
   requestEvidenceReadGrant,
@@ -38,6 +39,7 @@ function registered(overrides: Partial<RegisteredEvidenceForRead> = {}): Registe
   return {
     runId: RUN_ID,
     evidenceId: EVIDENCE_ID,
+    kind: 'structural-snapshot',
     state: 'REGISTERED',
     objectKey: `runs/${RUN_ID}/evidence/${EVIDENCE_ID}`,
     mediaType: 'application/vnd.intellifin.web-tree+json',
@@ -154,6 +156,39 @@ describe('Evidence read grant contract', () => {
     }, { schemaVersion: 1, grantId: GRANT_ID });
     expect(result).toEqual({ status: 'issued', grantId: GRANT_ID });
     expect(fake.current()?.capability?.locator).toBe('absence-result');
+  });
+
+  it('issues a frame capability for a registered PNG screenshot and nothing else (Story 5.3)', async () => {
+    const request = { runId: RUN_ID, evidenceId: EVIDENCE_ID, locator: FRAME_LOCATOR };
+    expect(parseEvidenceReadGrantRequest(request)).toEqual(request);
+    const fake = repository({
+      grant: grant({ locator: FRAME_LOCATOR }),
+      evidence: registered({ kind: 'screenshot', mediaType: 'image/png' }),
+    });
+    const result = await issueEvidenceReadGrant({ repository: fake.repository, clock: clock(),
+      signer: { signGet: async ({ expiresAt }) => ({ signedUrl: 'https://objects.invalid/frame', signedUrlExpiresAt: expiresAt }) },
+    }, { schemaVersion: 1, grantId: GRANT_ID });
+    expect(result).toEqual({ status: 'issued', grantId: GRANT_ID });
+    expect(fake.current()?.capability).toMatchObject({ locator: FRAME_LOCATOR, mediaType: 'image/png' });
+  });
+
+  it.each([
+    // The locator names the KIND of read, and the artifact must be that kind: a screenshot
+    // cannot be read through a cell locator, and a Structural Snapshot cannot be served
+    // as a frame. Either mismatch is a scope refusal before any signer is called.
+    { name: 'a frame locator on a Structural Snapshot', locator: FRAME_LOCATOR, evidence: registered(), code: 'scope-mismatch' as const },
+    { name: 'a cell locator on a screenshot', locator: '$.nodes[0].value', evidence: registered({ kind: 'screenshot', mediaType: 'image/png' }), code: 'scope-mismatch' as const },
+    { name: 'the absence view on a screenshot', locator: 'absence-result', evidence: registered({ kind: 'screenshot', mediaType: 'image/png' }), code: 'scope-mismatch' as const },
+    { name: 'a frame locator on a screenshot that is not a PNG', locator: FRAME_LOCATOR, evidence: registered({ kind: 'screenshot', mediaType: 'image/webp' }), code: 'unsupported-media-type' as const },
+  ])('denies $name without calling a signer', async ({ locator, evidence, code }) => {
+    const fake = repository({ grant: grant({ locator }), evidence });
+    let signed = false;
+    const result = await issueEvidenceReadGrant(
+      { repository: fake.repository, clock: clock(), signer: { signGet: async () => { signed = true; return { signedUrl: 'https://objects.invalid', signedUrlExpiresAt: '2026-09-07T00:01:00.000Z' }; } } },
+      { schemaVersion: 1, grantId: GRANT_ID },
+    );
+    expect(result).toEqual({ status: 'denied', grantId: GRANT_ID, code });
+    expect(signed).toBe(false);
   });
 
   it('rechecks role and registered binding, then audits only grant/run/evidence ids', async () => {

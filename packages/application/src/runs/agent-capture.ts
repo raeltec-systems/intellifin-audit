@@ -4,6 +4,16 @@ import type { AgentWorkContext } from './agent-work-ports.js';
 import type { CredentialGuard } from './credential-guard.js';
 import { adapterEvidenceRecord, freezeArtifact, registerEvidence, reserveArtifact, readRegisteredArtifact } from './evidence-package.js';
 
+/**
+ * The Timeline event a registered capture appends, in the transaction that registers it
+ * (Story 5.3, AD-17). Before it, a Tool Action's Structural Snapshot and screenshot
+ * became Evidence with nothing in the chain saying so until the next checkpoint, so a
+ * Live View following the channel could not learn a frame existed within the 5 seconds
+ * NFR-7 allows. The payload names the artifacts by id only: the bytes stay in the store,
+ * the sanitized action stays in `run_tool_action`, and a reader re-reads both.
+ */
+export const AGENT_CAPTURE_EVENT = 'execution.capture-registered' as const;
+
 /** Freeze only the artifacts of one already-persisted, permitted reading action. */
 export async function freezeAgentCapture(input: {
   runId: string;
@@ -57,11 +67,34 @@ export async function freezeAgentCapture(input: {
     }
     else screenshotEvidenceId = reserved.evidenceId;
   }
+  const registeredSnapshot = snapshot;
   if (!await input.commit(async context => {
     for (const row of evidence) {
       await context.saveEvidence(row);
       await context.saveCapture({ evidenceId: row.evidenceId, toolActionId: input.toolActionId, sourceLocation: input.sourceLocation });
     }
+    // Same transaction as the registration: a frame that is a Replay asset the moment it
+    // is registered has to be announced by the commit that registers it, or a subscriber
+    // learns of it only at the next checkpoint. `run` is non-null inside a held claim.
+    const run = context.run;
+    if (run === null) throw new Error('Agent capture registration requires a claimed Run');
+    const stored = await context.auditEvents.append({
+      actor: { type: 'system', id: 'agent-worker' },
+      eventType: AGENT_CAPTURE_EVENT,
+      source: 'worker',
+      outcome: 'success',
+      aggregateId: run.runId,
+      correlationId: run.correlationId,
+      sessionId: run.sessionId,
+      payload: {
+        toolActionId: input.toolActionId,
+        targetSystem: input.targetSystem,
+        structuralSnapshotEvidenceId: registeredSnapshot === null ? null : registeredSnapshot.evidenceId,
+        screenshotEvidenceId,
+        registered: evidence.length,
+      },
+    });
+    await context.notifyTimeline(stored.sequence);
   })) return null;
   return snapshot === null ? null : { snapshot, screenshotEvidenceId };
 }

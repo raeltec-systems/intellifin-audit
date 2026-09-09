@@ -306,6 +306,28 @@ export function captureSentence(capture: string, suppression: string | null): st
 }
 export const matchOriginWord = (origin: string): string => wordFor(MATCH_ORIGIN_WORDS, origin);
 export const planActionWord = (action: string): string => wordFor(PLAN_ACTION_WORDS, action);
+
+/**
+ * One Tool Action's name, in words (Story 5.3).
+ *
+ * The eight `PERMITTED_READ_ACTIONS` of the frozen registration vocabulary — every member
+ * observes, and `labels.test.ts` walks that list so an action the domain gains without a
+ * word here fails rather than rendering its raw identifier on a supervision surface.
+ * Separate from `PLAN_ACTION_WORDS`: a plan step and a Tool Action are different units,
+ * and one table covering both would give a reader one word for two things.
+ */
+const TOOL_ACTION_NAME_WORDS: Readonly<Record<string, string>> = {
+  navigate: 'Navigate',
+  search: 'Search',
+  'list-records': 'List the records',
+  'open-record': 'Open the record',
+  'read-attribute': 'Read an attribute',
+  'read-metadata': 'Read the metadata',
+  'read-file': 'Read the file',
+  'capture-screenshot': 'Capture a screenshot',
+};
+
+export const toolActionNameWord = (action: string): string => wordFor(TOOL_ACTION_NAME_WORDS, action);
 export const workspaceModeWord = (mode: string): string => wordFor(WORKSPACE_MODE_WORDS, mode);
 
 /**

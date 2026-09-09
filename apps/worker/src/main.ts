@@ -1,4 +1,4 @@
-import { canExecuteWithoutAuditCredentials, executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob } from '@intellifin/application';
+import { RECORDING_COPY_TIMEOUT_MS, canExecuteWithoutAuditCredentials, executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob, type WorkspaceDependencies } from '@intellifin/application';
 import { hostname } from 'node:os';
 
 import {
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
   const provider = agentWorkspace(config);
   const browser = new PlaywrightBrowserExecution(provider.connection);
   closeBrowsers = () => browser.close();
-  const workspace = {
+  const workspace: WorkspaceDependencies = {
     repository: new PostgresWorkspaceRepository(db),
     browser,
     clock: new SystemClock(),
@@ -195,6 +195,25 @@ async function main(): Promise<void> {
   stopEvidenceReadRecovery = startEvidenceReadGrantRecovery(db,
     () => telemetry.captureError('Fatal worker error', new Error('Evidence read grant recovery failed'), {}));
   const stoppable = { repository: populationRepository, clock };
+  // Copying the provider's own session recording at Run end (Story 5.2) needs an object
+  // store AND a credential resolver — the store to put it in, and the resolver because a
+  // session recording is a transcript of a browser and a sign-in TYPES a credential into a
+  // form field, so it is the artifact most likely of all to carry one. A deployment with
+  // neither still releases its workspaces; the copy is disabled BY NAME rather than by a
+  // startup guard refusing the duty it was configured for (the PR 23 lesson).
+  if (evidence.enabled && executionCapability.enabled) {
+    workspace.recording = {
+      store: createS3EvidenceStore(evidence.config),
+      credentials: new ManifestCredentialResolver(executionCapability.credentials),
+      timeoutMs: RECORDING_COPY_TIMEOUT_MS,
+    };
+  } else {
+    telemetry.info('Replay recording copy disabled', {
+      reason: evidence.enabled
+        ? (executionCapability as { readonly reason?: string }).reason ?? 'no audit credential is configured'
+        : evidence.reason,
+    });
+  }
   if (evidence.enabled) {
     const store = createS3EvidenceStore(evidence.config);
     const ids = new CryptoUuidV7Generator();

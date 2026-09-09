@@ -998,6 +998,45 @@ export const runExecution = pgTable('run_execution', {
  * browser state per Run and does NOT isolate the worker process at all. A Run that ran
  * under the weaker one must say so rather than inherit the stronger sentence.
  */
+/**
+ * Generation 44 (Story 5.2): the provider's own session recording, copied into platform
+ * storage at Run end so Replay never depends on the provider afterwards.
+ *
+ * A SIBLING of the Evidence package and deliberately not a `run_evidence` row. The copy
+ * happens at the terminal RELEASE, which is after `completeRun` has already sealed the
+ * package — and generation 21 freezes a sealed Run's Evidence, so an Evidence row written
+ * here would either be refused or would sit outside the seal that names what this Run
+ * froze. Both are wrong, and the second is worse: the Result would report an artifact list
+ * that did not include it. The recording is not something a Run concluded from, so it does
+ * not belong in the package at all; `role = 'replay'` says what such an artifact is FOR,
+ * and this table is where the one that arrives after the seal lives.
+ *
+ * `ON DELETE CASCADE` for the same reason `run_workspace` has it: this is operational
+ * Replay state and records no audit outcome, so removing a whole Run takes it along and no
+ * existing teardown has to learn a new table name.
+ */
+export const runReplayRecording = pgTable('run_replay_recording', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  /** The provider session the recording belongs to, so a copy is correlatable with its Run. */
+  workspaceId: text('workspace_id').notNull(),
+  objectKey: text('object_key').notNull(),
+  mediaType: text('media_type').notNull(),
+  digest: text('digest'), size: bigint('size', { mode: 'number' }),
+  state: text('state').notNull(),
+  copiedAt: timestamp('copied_at', { withTimezone: true }),
+  /** Why there is no recording. Closed vocabulary, never a provider error message. */
+  diagnostic: text('diagnostic'),
+}, t => [
+  check('run_replay_recording_state', sql`${t.state} IN ('RESERVED','REGISTERED','UNAVAILABLE')`),
+  check('run_replay_recording_digest', sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
+  // A REGISTERED copy is bytes whose size and SHA-256 were verified before this row said so
+  // — the `run_evidence_state` rule, one table along.
+  check('run_replay_recording_registered', sql`${t.state} <> 'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL AND ${t.copiedAt} IS NOT NULL)`),
+  // Either half alone permits a row that reads as the other: a diagnostic on a stored
+  // recording, or an UNAVAILABLE row with nothing saying why.
+  check('run_replay_recording_unavailable', sql`(${t.state} = 'UNAVAILABLE') = (${t.diagnostic} IS NOT NULL)`),
+]);
+
 export const runWorkspace = pgTable('run_workspace', {
   // ON DELETE CASCADE, unlike `run_gate_check`, `run_result`, `run_evidence_package` and
   // `run_evidence_integrity`, which every test teardown has to delete by name. Those four
@@ -1061,8 +1100,21 @@ export const runEvidence = pgTable('run_evidence', {
   capturedAt: timestamp('captured_at',{withTimezone:true}),
   captureMethod: text('capture_method'),
   captureTimeSource: text('capture_time_source'),
+  /**
+   * Generation 43 (Story 5.2): what the artifact is FOR, beside what it IS.
+   *
+   * `evidence` is what a Run concluded from; `replay` is what it is watched by. The same
+   * kind sits on both sides — a screenshot an Observation is grounded in against one
+   * captured after every Tool Action so the session can be replayed — so `kind` cannot
+   * carry the distinction, and a naming convention would be one anybody could satisfy by
+   * typing. A CHECK also refuses a REQUIRED replay row, so no raw writer can make a Run
+   * INCOMPLETE for a frame nobody concluded anything from.
+   */
+  role: text('role').notNull(),
 }, t=>[
   check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction','structural-snapshot','screenshot')`),
+  check('run_evidence_role',sql`${t.role} IN ('evidence','replay')`),
+  check('run_evidence_replay_never_required',sql`${t.role} <> 'replay' OR ${t.required} = false`),
   check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
   check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
   check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),

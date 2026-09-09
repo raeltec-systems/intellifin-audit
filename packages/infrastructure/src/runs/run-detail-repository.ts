@@ -1,5 +1,5 @@
 import { evaluationReviewJoin, effectiveEvaluationConfirmation, effectiveEvaluationValue } from './effective-evaluation.js';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   EvaluationConfirmation,
   EvaluationOrigin,
@@ -22,7 +22,9 @@ import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import {
   populationExecution,
+  runAgentWork,
   runEvidence,
+  runEvidenceCapture,
   runException,
   runGateCheck,
   runObservation,
@@ -278,7 +280,13 @@ export interface RunTimelineRead {
    * to say so on the surface rather than inherit the stronger sentence.
    */
   readonly workspace:
-    | (RunTimelineStage & { readonly stepId: string; readonly mode: string; readonly releasedAt: string | null })
+    | (RunTimelineStage & {
+        readonly stepId: string;
+        readonly mode: string;
+        /** The provider's opaque session identity (Story 4.1): correlatable, never a capability. */
+        readonly workspaceId: string | null;
+        readonly releasedAt: string | null;
+      })
     | null;
   readonly population: (RunTimelineStage & { readonly stepId: string; readonly attemptStartedAt: string }) | null;
   readonly execution: (RunTimelineStage & { readonly runStartedAt: string }) | null;
@@ -288,8 +296,96 @@ export interface RunTimelineRead {
   readonly toolActions: Bounded<RunTimelineToolAction>;
 }
 
+/**
+ * One registered screenshot bound to the Tool Action that captured it (Story 5.3).
+ *
+ * A frame is `run_evidence` of kind `screenshot` in state `REGISTERED`, bound through
+ * `run_evidence_capture` to a `run_tool_action` row. The binding is what makes it a
+ * frame rather than a loose artifact: the action says which Step Execution and Work Item
+ * it belongs to, and the Live View narrates the frame from that Step. A screenshot with
+ * no binding is not a frame and is not read here.
+ */
+export interface RunFrameRow {
+  readonly evidenceId: string;
+  readonly toolActionId: string;
+  readonly stepExecutionId: string;
+  readonly workItemId: string | null;
+  readonly action: string;
+  readonly digest: string;
+  readonly size: number;
+  readonly mediaType: string;
+  /** The sanitized location the action captured, from the binding (never a query string). */
+  readonly sourceLocation: string;
+  readonly capturedAt: string | null;
+  readonly actionStartedAt: string;
+}
+
+/** Where the agent phase is, from its own checkpoint (`run_agent_work`), or `null`. */
+export interface RunAgentWorkPosition {
+  readonly status: string;
+  readonly workItemId: string | null;
+  readonly waitId: string | null;
+}
+
 export class DrizzleRunDetailRepository {
   constructor(private readonly db: Database | Transaction) {}
+
+  /**
+   * The newest frame of a Run, or `null` when nothing has been captured yet.
+   *
+   * Newest by the ACTION's start, tiebroken on the action id (a UUIDv7, so deterministic),
+   * never by the Evidence row's registration time: the frame shows the page the agent was
+   * on when it acted, and two captures registered out of order would otherwise swap.
+   */
+  async readLatestFrame(runId: string): Promise<RunFrameRow | null> {
+    if (!isUuidText(runId)) return null;
+    const [row] = await this.frames(runId).limit(1);
+    return row === undefined ? null : frameRow(row);
+  }
+
+  /** One frame by its Evidence id, only when it is a registered, bound screenshot of this Run. */
+  async readFrame(runId: string, evidenceId: string): Promise<RunFrameRow | null> {
+    if (!isUuidText(runId) || !isUuidText(evidenceId)) return null;
+    const [row] = await this.frames(runId, evidenceId).limit(1);
+    return row === undefined ? null : frameRow(row);
+  }
+
+  private frames(runId: string, evidenceId?: string) {
+    return this.db
+      .select({
+        evidenceId: runEvidence.evidenceId,
+        digest: runEvidence.digest,
+        size: runEvidence.size,
+        mediaType: runEvidence.mediaType,
+        capturedAt: runEvidence.capturedAt,
+        toolActionId: runEvidenceCapture.toolActionId,
+        sourceLocation: runEvidenceCapture.sourceLocation,
+        stepExecutionId: runToolAction.stepExecutionId,
+        workItemId: runToolAction.workItemId,
+        action: runToolAction.action,
+        actionStartedAt: runToolAction.startedAt,
+      })
+      .from(runEvidence)
+      .innerJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
+      .innerJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
+      .where(and(
+        eq(runEvidence.runId, runId),
+        eq(runEvidence.kind, 'screenshot'),
+        eq(runEvidence.state, 'REGISTERED'),
+        ...(evidenceId === undefined ? [] : [eq(runEvidence.evidenceId, evidenceId)]),
+      ))
+      .orderBy(desc(runToolAction.startedAt), desc(runToolAction.toolActionId));
+  }
+
+  /** The agent phase's own position, read from its checkpoint; `null` before the phase starts. */
+  async readAgentWorkPosition(runId: string): Promise<RunAgentWorkPosition | null> {
+    if (!isUuidText(runId)) return null;
+    const [row] = await this.db
+      .select({ status: runAgentWork.status, workItemId: runAgentWork.workItemId, waitId: runAgentWork.waitId })
+      .from(runAgentWork)
+      .where(eq(runAgentWork.runId, runId));
+    return row === undefined ? null : { status: row.status, workItemId: row.workItemId, waitId: row.waitId };
+  }
 
   async readResult(runId: string): Promise<RunResultRow | null> {
     if (!isUuidText(runId)) return null;
@@ -634,6 +730,7 @@ export class DrizzleRunDetailRepository {
             diagnostic: workspace.diagnostic,
             stepId: workspace.stepId,
             mode: workspace.mode,
+            workspaceId: workspace.workspaceId,
             startedAt: workspace.startedAt.toISOString(),
             releasedAt: workspace.releasedAt === null ? null : workspace.releasedAt.toISOString(),
           }
@@ -762,4 +859,35 @@ export class DrizzleRunDetailRepository {
       })),
     };
   }
+}
+
+function frameRow(row: {
+  readonly evidenceId: string;
+  readonly digest: string | null;
+  readonly size: number | null;
+  readonly mediaType: string | null;
+  readonly capturedAt: Date | null;
+  readonly toolActionId: string;
+  readonly sourceLocation: string;
+  readonly stepExecutionId: string;
+  readonly workItemId: string | null;
+  readonly action: string;
+  readonly actionStartedAt: Date;
+}): RunFrameRow | null {
+  // A REGISTERED row carries a digest, a size and a media type by CHECK; a row that does
+  // not is not a frame this build can serve, and is absence rather than a partial frame.
+  if (row.digest === null || row.size === null || row.mediaType === null) return null;
+  return {
+    evidenceId: row.evidenceId,
+    toolActionId: row.toolActionId,
+    stepExecutionId: row.stepExecutionId,
+    workItemId: row.workItemId,
+    action: row.action,
+    digest: row.digest,
+    size: row.size,
+    mediaType: row.mediaType,
+    sourceLocation: row.sourceLocation,
+    capturedAt: row.capturedAt === null ? null : row.capturedAt.toISOString(),
+    actionStartedAt: row.actionStartedAt.toISOString(),
+  };
 }

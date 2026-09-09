@@ -460,3 +460,35 @@ export const ESCALATION_PANEL_COPY = {
     'retry-or-skip': 'Choose whether the platform should retry this Work Item or skip it.',
   },
 } as const;
+
+/**
+ * The Live View responsive floor (UX-DR25, UX-DR36; EXPERIENCE.md → Responsive
+ * breakpoints, the "Live View | Below 1024px" row).
+ *
+ * Below 1024px the session viewer renders read-only and states this sentence rather
+ * than degrading supervision into a control somebody can half-reach. The Builder's own
+ * floor is `BUILDER_DESKTOP_ONLY_SENTENCE` at 900px and says something different — that
+ * one is about AUTHORING — so the two are separate constants rather than one shared
+ * sentence with a substituted verb. `copy.test.ts` reads both off EXPERIENCE.md.
+ */
+export const LIVE_VIEW_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to supervise this Run.';
+
+/**
+ * Why the Watch control is unavailable on a Queued Run (EXPERIENCE.md → Per-surface
+ * states, the "Run Detail | Queued" row).
+ *
+ * A Queued Run has no workspace, no Step Execution and no frame, so there is nothing to
+ * supervise; the control says so rather than opening a viewer with nothing in it.
+ */
+export const LIVE_VIEW_QUEUED_SENTENCE = 'Live View opens when the Run starts.';
+
+/**
+ * What the session viewer's chrome strip states about the workspace it is showing
+ * (DESIGN.md → Session viewer).
+ *
+ * It is a claim about the Agent Workspace contract: every Tool Action is a permitted
+ * READ gated against the frozen registration, and the credential a Run resolves is
+ * isolated to that Run's workspace. The interpunct and its spaces are part of the
+ * contract's own spelling, which is why this is read off DESIGN.md rather than retyped.
+ */
+export const SESSION_ISOLATION_NOTE = 'read-only · isolated credentials';

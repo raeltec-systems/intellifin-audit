@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   resultTargetSystems,
+  FRAME_MISSING_EVENT,
   GATE_CHECKS,
+  MISSING_FRAME_SAMPLE_LIMIT,
   type ExecutablePlan,
   type PackageArtifact,
   type RunCancellationRequest,
@@ -178,6 +180,8 @@ class FakeContext implements RunResultContext {
     this.states.push(state);
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => this.population;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames: RunResultContext['readMissingFrames'] = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.result;
@@ -547,5 +551,81 @@ describe('shared Result sealing after human evaluation review', () => {
     const { context } = await pending();
     expect(await sealResult(context, { ...input(), run: RUN })).toBeNull();
     expect(context.writes).toBe(1);
+  });
+});
+
+/**
+ * The Replay asset set is not whole (Story 5.2, acceptance criterion 3).
+ *
+ * Every case here drives a Run that CONCLUDES. That is the point of the criterion: a
+ * missing frame is recorded and flagged and the seal is not blocked, because a
+ * `replay`-role asset is outside the required set by construction (AD-5).
+ */
+describe('a frame the Run should have and does not', () => {
+  const withGaps = (total: number, sample = total): FakeContext => {
+    const context = new FakeContext();
+    context.readMissingFrames = async () => ({
+      total,
+      sample: Array.from({ length: Math.min(sample, MISSING_FRAME_SAMPLE_LIMIT) }, (_, index) => ({
+        toolActionId: `action-${index}`,
+        stepExecutionId: 'step-1',
+        targetSystem: 'loancore',
+        completedAt: AT,
+      })),
+    });
+    return context;
+  };
+
+  it('records one event carrying the exact total and the bounded sample, and still seals a Pass', async () => {
+    const context = withGaps(40, 40);
+    const result = await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+
+    // The seal is unaffected. This is the whole criterion: the Run concluded.
+    expect(result).toMatchObject({ outcome: 'PASS', sealed: true });
+    expect(context.seal?.state).toBe('SEALED');
+
+    const flagged = context.events.filter((entry) => entry.eventType === FRAME_MISSING_EVENT);
+    expect(flagged).toHaveLength(1);
+    // The EXACT total beside a bounded sample — never the sample's length, which is the
+    // shape a §H `total` was once written in and was not a count at all.
+    expect(flagged[0]?.payload['missing']).toBe(40);
+    expect(flagged[0]?.outcome).toBe('failure');
+    expect((flagged[0]?.payload['actions'] as unknown[]).length).toBe(MISSING_FRAME_SAMPLE_LIMIT);
+  });
+
+  it('puts the count on the Result too, because an export reader holds the document and not the chain', async () => {
+    const context = withGaps(3);
+    const result = await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    expect(result?.publication.evidence.framesMissing).toBe(3);
+    // Never folded into the required set: a frame cannot make a package INCOMPLETE.
+    expect(result?.publication.evidence.missingRequired).toBe(0);
+    expect(result?.publication.evidence.state).toBe('SEALED');
+  });
+
+  it('says nothing at all when every performed action left its frame', async () => {
+    const context = new FakeContext();
+    const result = await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    expect(context.events.map((entry) => entry.eventType)).not.toContain(FRAME_MISSING_EVENT);
+    // Zero, not absent: this build DID look, and a reader can tell that from an older
+    // document that carries no key at all.
+    expect(result?.publication.evidence.framesMissing).toBe(0);
+  });
+
+  it('does not repeat itself when a human review seals the pending Result later', async () => {
+    const base = withGaps(2);
+    base.conditions = [{ conditionId: 'C2', origin: 'AGENT_JUDGED', confirmation: 'pending', value: 'COMPLIANT', total: 1 }];
+    await completeRun(base, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    expect(base.events.filter((entry) => entry.eventType === FRAME_MISSING_EVENT)).toHaveLength(1);
+
+    const context = Object.assign(base, {
+      sealPendingResult: async (result: StoredRunResult) => {
+        await base.writeResult(result);
+      },
+    });
+    context.conditions = [{ conditionId: 'C2', origin: 'AGENT_JUDGED', confirmation: 'confirmed', value: 'COMPLIANT', total: 1 }];
+    await sealResult(context, { run: { ...RUN, state: 'COMPLETED' as const }, state: 'COMPLETED', at: AT, plan: plan() });
+    // A later sealing adds no frames and removes none. A second event would report one gap
+    // twice and read as a second failure.
+    expect(context.events.filter((entry) => entry.eventType === FRAME_MISSING_EVENT)).toHaveLength(1);
   });
 });

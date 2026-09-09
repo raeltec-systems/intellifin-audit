@@ -10,18 +10,21 @@ import {
   PostgresEvaluationReviewRepository,
   type RunEvaluationRow,
   type RunResultRow,
+  readTimelineHead,
 } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../bootstrap';
 import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
+import { WatchControl } from './WatchControl';
 import { ESCALATION_PANEL_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
 import { EscalationPanel } from './EscalationPanel';
 import { EvaluationReview } from './EvaluationReview';
 import { readOpenEscalation } from './escalation-read';
+import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { runLifecycleWord, utcStamp } from './labels';
 
@@ -183,6 +186,12 @@ export async function RunDetailFrame({
     : null;
   const lifecycle = runLifecycleWord(run.state);
   const here = runTabHref(run.runId, tab);
+  // The live channel subscribes only while the Run is active (UX-DR35): the cursor is
+  // the chain head the page was read at, so the stream replays exactly what commits
+  // after this render and nothing before it. A terminal Run keeps the plain banner.
+  const liveCursor = isActiveRunState(run.state)
+    ? await readTimelineHead((await getRuntime()).db, run.runId)
+    : null;
   const trail = [
     { href: '/runs', label: 'Runs' },
     { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
@@ -208,10 +217,16 @@ export async function RunDetailFrame({
           <StatusBadge family="run-lifecycle" state={lifecycle} size="md" />
         )}
       </header>
-      <RefreshBanner readAt={readAt} href={here} />
+      {liveCursor === null
+        ? <RefreshBanner readAt={readAt} href={here} />
+        : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       <CancellationBanners run={run} />
       <RerunLinks runId={run.runId} />
+      {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
+          is its own surface, not a sixth tab, so it is reached from here and from a
+          notification rather than from the tab bar. */}
+      <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
       <RunLifecycleActions
         runId={run.runId}
         active={isActiveRunState(run.state)}

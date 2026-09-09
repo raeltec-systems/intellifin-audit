@@ -103,6 +103,8 @@ class FakeGate implements RunGateContext {
     this.state = state;
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => CLEAN_POPULATION;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readFailedObservationChecks = async () => ({});

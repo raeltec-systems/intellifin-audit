@@ -99,6 +99,119 @@ applies to the other nine, so the seed refused before writing anything — the f
 manifest working exactly as designed, and a list that drifts from the data the moment a
 system is added.
 
+## 2026-09-09 — The Replay asset set: a frame that is missing, and the recording that arrives after the seal
+
+Story 5.2 adds NO capture path. AD-17 already says a live frame is a Replay asset the moment
+it is registered, so Live View and Replay read the same rows and a second path would give
+two surfaces two answers about one session. What the story adds is the `role` (generation
+43), the event that says the set is not whole, and the copy of the provider's own recording.
+Whole rule: `docs/contracts/replay-asset-set-v1.md`, whose asset table
+`tests/unit/replay-asset-set.test.ts` reads off disk and pins to the schema — a renamed
+column that silently breaks Replay is what that catches, and it fails with a named message.
+
+- **A screenshot bound to a Tool Action keeps `role = 'evidence'` and is still a frame.**
+  The one judgement call. It serves both purposes — `required-evidence` reads it per
+  Observation, Live View and Replay render it — and demoting it for the sake of the label
+  would take it out of the seal's reach and out of `required-evidence`'s, weakening an
+  audit to tidy a name. The role says what an artifact is FOR when the two purposes differ;
+  where they coincide, the stronger one wins.
+- **`failure.frame-missing` is derived from three stored facts and one absence**: the action
+  `performed`, its `capture` is `PERMITTED`, and no `screenshot` is `REGISTERED` against its
+  `run_evidence_capture` binding. A credential-entry action is excluded BY THE PREDICATE
+  (`capture = 'SUPPRESSED'`, generation 29) and not by a rule the reader remembers —
+  suppression and absence are different statements, and reporting the first as the second
+  raises a finding against the guarantee that produced it. ONE event per Run with the exact
+  total and a bounded sample; the count also goes on `publication.evidence.framesMissing`,
+  because "flagged on export" needs a fact the document carries. **The seal is never
+  blocked, and that is a property of WHERE the read sits** — after `sealPackage` has already
+  returned. A `RESERVED` binding turned out to be unreachable (a published trigger refuses a
+  capture bound to unregistered Evidence), so that is asserted rather than worked around.
+- **The session recording is `run_replay_recording` (generation 44) and NOT a
+  `run_evidence` row.** The copy happens at the terminal RELEASE, which is after
+  `completeRun` has already sealed; generation 21 freezes a sealed Run's Evidence, so an
+  Evidence row here would either be refused or would sit outside the seal that names what
+  this Run froze — and the second is worse, because the Result would publish an artifact
+  list that did not include it. It cascades from `audit_run` like `run_workspace`: it
+  records no audit outcome, so no existing teardown has to learn a new table name.
+- **The credential wall applies here hardest of all, so the resolver is REQUIRED.** A
+  session recording is a transcript of a browser and a sign-in TYPES a credential into a
+  form field. `copyRecording` builds its guard from the credential references the frozen
+  plan names; a plan whose references NONE resolve is refused (`recording-unscannable`)
+  rather than treated as clean. Upload and verification go through `freezeArtifact` — the
+  same implementation every Evidence artifact uses — so the scan-before-upload rule has one
+  home. Proven by two mutations: swapping in a permissive guard, and treating "nothing
+  resolved" as clean.
+- **`downloadRecording` returning `null` is the ORDINARY answer**, not an error: the local
+  mode records nothing and `SOLARI_RECORDING` is off by default. Only a provider that fails
+  throws. `REPLAY_RECORDING_DIAGNOSTICS` keeps the five reasons apart, because an operator
+  acts on four of them and not on the first.
+- **`[NOT BUILT, NAMED]` Provider retention is not set to minimum.**
+  `@solarisdk/browser@0.1.3` exposes `create`, `release`, `releaseAndWait`, `getReplayUrl`
+  and `downloadReplay` and no retention control at all. The 2026-09-01 decision asks for it;
+  the SDK this build ships cannot express it, so it is an owner action against the provider
+  account. **And the live leg is unproven here**: this environment holds no provider key and
+  recording cannot be enabled for a session that already exists, so every case runs against
+  a synthetic provider.
+
+Two mechanical lessons, both about the migration chain:
+
+- **A hand-written migration needs a GENERATED snapshot.** `0043_snapshot.json` was made by
+  hand without the new column, so the next `db:generate` re-emitted generation 43's whole
+  DDL into 0044 — and CI's drift check caught it as the one red job out of five. Regenerate
+  the snapshot from the real schema (temporarily remove the NEXT change, generate, restore
+  the hand-written SQL under its own tag), then generate the next one on top.
+- **Never let a PUSHED migration's journal `when` move.** Regenerating 0043's snapshot
+  rewrote its `when` to an earlier value, and the migrator applies what sorts AFTER the last
+  applied `created_at` — so every database that had already applied 0043 silently skipped
+  0044 and reported success at 43. Restore the original `when` and give the new migration a
+  later one. A fresh install still reached 44, which is exactly what makes this the kind of
+  defect that ships: only an UPGRADE can see it.
+
+## 2026-09-09 — An Evidence artifact has a ROLE beside its kind, and replay never gates a seal
+
+`EVIDENCE_ARTIFACT_ROLES` is `evidence` and `replay` (generation 43, `run_evidence.role`).
+`evidence` is what a Run concluded FROM; `replay` is what it is WATCHED BY. It cannot be a
+kind, because the same kind sits on both sides — the screenshot an Observation is grounded
+in is Evidence, the screenshot taken after every Tool Action so a session can be replayed is
+not — and it cannot be a naming convention, which is one anybody can satisfy by typing.
+`sealPackageDecision` filters `required && role === 'evidence'`, so a producer that set the
+flag wrongly, or a row an older build wrote, still cannot make a package INCOMPLETE for a
+frame nobody concluded anything from; `reserveArtifact` forces `required: false` on a
+`replay` reservation, and `run_evidence_replay_never_required` is the layer below both that
+no raw writer can route around. Three statements of one rule, in the order this codebase
+always uses: the producer cannot ASK for the contradiction, the domain would not honour it,
+and the database refuses to hold it. `population_evidence` gains no column — a population is
+Evidence by definition and has no other role to hold. The backfill is STRUCTURAL and not a
+guess: every row the table has ever held was written by a producer freezing bytes a Run
+concluded from. `role` is added with a DEFAULT and the default is then DROPPED, so the next
+producer must say which role it means rather than inheriting one.
+
+- **A new column on a reviewed table needs `tests/integration/schema-compat.test.ts` too.**
+  That file asserts the EXACT column set of `run_evidence` and `population_evidence`, and it
+  is the guard working: an unlisted column is a migration nobody reviewed. It was the one
+  failure left out of 487 after generation 43, and it named itself.
+- **A historical-schema upgrade test must NOT get the new column.** `absence-guard-upgrade`
+  and `sealed-evidence-upgrade` build a generation-32/40 schema by hand and then run the real
+  migrator over it; adding `role` to their seed inserts would have them seed a schema that
+  did not exist. They assert the backfill separately and strip `role` before comparing rows.
+  `absence-guard-upgrade`'s `seed()` reads `information_schema` because it seeds BOTH schemas.
+
+## 2026-09-09 — Live View: a frame is a registered artifact, read through the grant that already exists
+
+`/runs/<id>/live` is a SURFACE, not a sixth Run Detail tab (EXPERIENCE.md reaches it from the rail's **Watch** control and from a notification, breadcrumb `Runs / <run> / Live`), and it authorizes for itself through `openRun` like every tab. A frame is `run_evidence` of kind `screenshot` in state `REGISTERED` bound through `run_evidence_capture` to the `run_tool_action` that captured it — the BINDING is what makes it a frame, and a loose screenshot is not one. Its bytes reach the browser only through the Story 4.4 worker-signed grant, consumed on the web server: `FRAME_LOCATOR` is a third locator naming the KIND of read, issuance branches on it (a `frame` grant requires a `screenshot` of `image/png`; every other locator still requires a Structural Snapshot with an implemented substrate), and generation 42 widens the published binding trigger to admit both kinds and changes nothing else. `downloadWithGrant` was EXTRACTED from the snapshot reader rather than copied, so poll-verify-record has one implementation. **The web still never touches object storage** — `no-evidence-store-in-web` still fails the build — and the structural claim is asserted rather than searched for: every `src` on the surface is under `/api/runs/<id>/`, which a signed store URL fails. The route answers 304 on the digest ETag under a FRESH role check and with no grant; a store disagreement is 502, an unsigned grant a retryable 503. `liveViewChrome` is total over `RUN_STATES` and gives `QUEUED` NO word rather than stretching `LIVE` (the "Active version: Draft" rule); the four stage sentences say why a stage is empty, because an empty stage that says nothing reads as "fine". The Step counter's denominator is READ from the frozen plan. NFR-7 needed an event: `registerAgentCapture` now appends `execution.capture-registered` in the transaction that registers the capture and notifies the channel. Story 5.3 ships READ-ONLY — Pause is 5.4, Flag is 5.5, the scrubber is Replay's — and links to Run Detail for Cancel. Contract: `docs/contracts/live-view-v1.md`.
+
+Three mechanical lessons from proving it:
+
+- **Seeding a RUNNING Run while the real worker is up hands it to the worker.** A RUNNING Run with no `population_execution` row IS abandoned, so the population recovery sweep claimed the fixtures and executed them out from under the surface under test — one reached `RUN_FAILED`. Seed the checkpoints such a Run really has (`POPULATION_READY` plus a claim whose lease is still live) so all three sweeps see a live claim; that is also the truthful state of a Run whose worker is holding it.
+- **Who performs a `CANCELED` transition decides what a browser test can assert.** `RUN_CANCEL_TRANSITIONS` gives a RUNNING Run to the WORKER, so `cancelRun` there only records the request and the page correctly does not flip. The "Run ended while open" journey uses a PAUSED Run, which the COMMAND transitions, so the flip really happens.
+- **`vi.resetModules()` in a `beforeEach` re-transforms the whole workspace graph per case.** The frames-route test timed out at 5 seconds on its first case for that reason alone; the route holds no module state, so the reset was buying nothing.
+- **Never point a second worktree at another worktree's `node_modules`.** A `ln -s` of the epic-5 `node_modules` into a scratch worktree, followed by `pnpm build` there, REWROTE the shared `node_modules/@intellifin/*` links to the scratch tree; removing that tree left them dangling. Two browser specs then failed with `does not provide an export named …` — a resolution failure that reads exactly like a missing export, on a branch where the export is present in both source and `dist`. Next resolves workspace packages its own way, so 172 tests still passed and only the two specs importing the package directly could see it. Give a second worktree its own install, and re-run the whole suite after repairing links: a contaminated green is worth nothing.
+
+## 2026-09-09 — The live Timeline channel: a notification is a wake-up, never the data
+
+`openRunTimelineStream` (`packages/infrastructure/src/runs/run-timeline-channel.ts`) LISTENs on `run_timeline` — the channel every writer already NOTIFYs, pinned by a source scan over the package rather than a list — arms the LISTEN BEFORE replaying `sequence > cursor` from `audit_events`, and on every wake-up and every heartbeat reads `sequence > lastSent` again, in order: a lost or coalesced notification cannot lose an event, and `lastSent` only grows, so nothing is sent twice. The stream carries the chain's ENVELOPE (seq, eventType, occurredAt, outcome, source) and never a payload; a surface re-reads what it renders from PostgreSQL through the reader it already has (`router.refresh()`, throttled to one a second). The heartbeat is an SSE EVENT every 10 seconds, not a comment: a comment is invisible to `EventSource`, and the 15-second stale rule (UX-DR25) needs a signal the page can observe. The cursor is `Last-Event-ID` first and `?after=` second, because a reconnect carries both and only the header is current. Lifetime 14 minutes ending with `event: end`; an aborted request tears its listener down, which the integration test proves by counting hand-overs through a `Proxy` on the real client. `sql.listen` needs the postgres.js client, so the engine lives in infrastructure and the two routes are thin; the list stream reads the row a notification names rather than forwarding the notification. Only the status WORD is `aria-live`; the counting sentence beside it is not. A terminal Run keeps the plain `Updated {time}. Refresh.` banner (UX-DR35), and the bell re-reads only on `execution.escalation-*`. Contract: `docs/contracts/live-timeline-channel-v1.md`.
+
+
 ## 2026-09-09 — The hero workflow: what the Builder now does, and the rules underneath it
 
 Owner decision 2026-09-08: an ordinary Draft section save is DIRECT, with the visible saved / unsaved / refused state and the lost-response recovery it already had; the focus-trapping confirmation stays only where a person cannot take the action back from that page — submit, approve, reject, edit back to Draft, activation, cancel, rerun — and for SCOPE EXPANSION (a Target Systems save that ADDS a registration, which names the systems being added; removing, reordering or re-saving is direct). Recorded in EXPERIENCE.md and the UX memlog through `memlog.py`. The Draft is editable and says so: two sections stay read-only (`BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE`) and the Control section names where its editable half is; `copy.test.ts` refuses the phrase "not editable yet" anywhere under `apps/web`. Simple and advanced Compliance editors operate on ONE authored string (`apps/web/src/procedures/simple-condition.ts` reads it into controls and writes controls back, verified by a round trip through the unchanged compiler); switching modes writes nothing, typing in the textarea pins a condition to advanced, values are compared EXACTLY and never case-folded. Readiness (`packages/domain/src/procedures/readiness.ts`) is a CLOSED vocabulary computed on read from the frozen-shaped authoring inputs, never stored, never a save refusal or submission blocker, always rendered beside `READINESS_NO_GUARANTEE`; `AgentSummary` restates the frozen plan and compiles nothing. P-1's 24-hour window is a THIRD condition (`C3`, or a fresh id when taken) added from the Timing controls beside C1 and never in its place — an Active account has no disablement instant, so C1 is what makes it an Exception; `disablementWindowCondition` attaches the frozen `termination_time` mapping only when the compiler this build ships accepts the key, and omits it (never null, never empty) otherwise. A path that THREW says the change may have been saved, never "Nothing was changed". `[hidden]` is `display: none !important` at the root because a class rule beat the user-agent one and a hidden textarea stayed focusable. Journey: `tests/e2e/hero-workflow.spec.ts` (keyboard, axe, one screenshot per proven state; screenshots default to `test-results/`, the curated set is `_bmad-output/implementation-artifacts/hero-ux-screenshots/` via `HERO_UX_SCREENSHOTS`). Named, not built: `createProcedure` carries no request token, so a retry after a lost creation response makes a second Procedure; the form blocks the retry and points at the list instead.
