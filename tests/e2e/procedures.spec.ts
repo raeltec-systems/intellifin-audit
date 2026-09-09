@@ -154,6 +154,10 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E compliance lost response ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
+    // P-1's C1 opens in the SIMPLE editor; prose has no simple form, so the advanced
+    // mode is where it is written. Checking the radio is also this test's hydration
+    // proof: the radios exist only once React has rendered the client tree.
+    await page.locator('[data-condition-id="C1"]').getByLabel('Advanced — write the expression').check();
     const conditionText = page.getByLabel('Condition text C1', { exact: true });
     const savedText = 'Confirm that each retained access right has a documented business reason.';
     await expect(async () => {
@@ -237,6 +241,14 @@ test.describe('as an Auditor', () => {
       // and the Schedule are editable now too (Story 2.5): exactly TWO sections remain
       // read-only — Control, Objective.
       await expect(page.getByLabel('Add a Target System')).toBeVisible();
+      // The Compliance Rule is editable in both modes. A condition with a simple form
+      // opens on it and its authored text is one radio away; one with no simple form
+      // says so and shows the text directly. Exactly one of those, never neither.
+      const c1Editor = page.locator('[data-condition-id="C1"]');
+      const advancedRadio = c1Editor.getByLabel('Advanced — write the expression');
+      const hasSimple = (await advancedRadio.count()) > 0;
+      expect(hasSimple || (await c1Editor.locator('[data-simple-unavailable]').count()) > 0).toBe(true);
+      if (hasSimple) await advancedRadio.check();
       await expect(page.getByLabel('Condition text C1', { exact: true })).toBeVisible();
       await expect(page.getByLabel('Agent-Judged confidence threshold')).toHaveValue('0.80');
       await expect(page.locator('[data-condition-id="C1"]').getByText('Rule-Classified', { exact: true })).toBeVisible();
@@ -382,6 +394,7 @@ test.describe('as an Auditor', () => {
     // No prior compiled badge may survive an unsupported prose edit. Retrying this
     // first interaction covers a fill that arrives before React hydration completes.
     const prose = '  Check whether this account has a justified business need.  ';
+    await c1.getByLabel('Advanced — write the expression').check();
     await expect(async () => {
       await c1Text.fill(prose);
       await c1Text.blur();
@@ -444,7 +457,15 @@ test.describe('as an Auditor', () => {
     await page.reload();
     await expect(c1Text).toHaveValue(prose);
     await expect(threshold).toHaveValue('0.8500');
-    await expect(page.locator(`[data-condition-id="${addedId}"]`).getByRole('textbox', { name: /^Condition text/ })).toHaveValue('account_status in [disabled] else [active]');
+    // A reload has no memory of which editor was open, and the added condition's saved
+    // text IS a status list, so it comes back in the simple editor showing exactly that
+    // rule. Both halves are asserted: the values the simple editor read out of the saved
+    // text, and the authored text itself, one radio away and byte for byte.
+    const added2 = page.locator(`[data-condition-id="${addedId}"]`);
+    await expect(added2.getByLabel(/^Values that count as Compliant/)).toHaveValue('disabled');
+    await expect(added2.getByLabel(/^Values that count as an Exception/)).toHaveValue('active');
+    await added2.getByLabel('Advanced — write the expression').check();
+    await expect(added2.getByRole('textbox', { name: /^Condition text/ })).toHaveValue('account_status in [disabled] else [active]');
     await expect(page.locator('[data-condition-id="C2"]')).toHaveCount(0);
     await expect(page.getByLabel('Scope statement')).toHaveValue('Unsaved August scope');
     await scan(page);
@@ -497,17 +518,31 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E window control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByRole('button', { name: 'Use 24-hour disablement window', exact: true }).click();
-    await expect(page.getByLabel('Condition text C1', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
-    await expect(page.locator('[data-condition-id="C1"]').getByText('Rule-Classified', { exact: true })).toBeVisible();
-    await expect(amount).toHaveValue('24');
-    await expect(boundary).toHaveValue('inclusive');
-    await tolerance.fill('0.001');
+    // The 24-hour window is P-1's optional THIRD condition, added from the Timing controls
+    // beside the account-status rule. It never replaces C1: an Active account has no
+    // disablement instant at all, so C1 is what makes that account an Exception.
+    const c1Simple = page.locator('[data-simple-for="C1"]');
+    await expect(c1Simple).toBeVisible();
+    await expect(page.locator('[data-window-condition]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Add the 24-hour disablement window', exact: true }).click();
+    const c3 = page.locator('[data-condition-id="C3"]');
+    await expect(c3.getByLabel('Condition text C3', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
+    await expect(c3.getByText('Rule-Classified', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-window-condition="C3"]')).toBeVisible();
+    const hours = page.getByLabel('Comparison threshold C3', { exact: true });
+    const windowBoundary = page.getByLabel('Comparison boundary C3', { exact: true });
+    const windowTolerance = page.getByLabel('Numeric tolerance C3', { exact: true });
+    await expect(hours).toHaveValue('24');
+    await expect(windowBoundary).toHaveValue('inclusive');
+    await windowTolerance.fill('0.001');
     await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.reload();
-    await expect(amount).toHaveValue('24');
-    await expect(tolerance).toHaveValue('0.001');
+    await expect(hours).toHaveValue('24');
+    await expect(windowTolerance).toHaveValue('0.001');
+    // C1 came back exactly as the Template wrote it, one radio away from its own text.
+    await expect(page.locator('[data-condition-id="C1"]').getByLabel('Values that count as Compliant C1')).toHaveValue('disabled');
+    await expect(page.locator('[data-condition-id="C1"]').getByLabel('Values that count as an Exception C1')).toHaveValue('active');
     await scan(page);
   });
 

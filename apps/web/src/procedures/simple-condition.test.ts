@@ -9,7 +9,14 @@ import {
 } from '@intellifin/domain';
 
 import {
+  DISABLEMENT_TIME_ATTRIBUTE,
+  DISABLEMENT_WINDOW_APPLICABILITY,
+  DISABLEMENT_WINDOW_COMPARISON,
+  DISABLEMENT_WINDOW_CONDITION_ID,
   DISABLEMENT_WINDOW_PATTERN,
+  DISABLEMENT_WINDOW_TEXT,
+  disablementWindowCondition,
+  isDisablementWindow,
   readSimpleCondition,
   valueLines,
   writeSimpleCondition,
@@ -227,5 +234,57 @@ describe('one value per line', () => {
     expect(valueLines('')).toEqual([]);
     // An inner space is part of the value, not a separator.
     expect(valueLines('Not Active')).toEqual(['Not Active']);
+  });
+});
+
+describe("P-1's 24-hour disablement window", () => {
+  it('is a condition the frozen compiler accepts, and compiles to the intended rule', () => {
+    const condition = disablementWindowCondition('P-1', '0.80');
+    expect(condition.conditionId).toBe(DISABLEMENT_WINDOW_CONDITION_ID);
+    expect(condition.text).toBe(DISABLEMENT_WINDOW_TEXT);
+    expect(condition.applicability).toBe(DISABLEMENT_WINDOW_APPLICABILITY);
+    expect(condition.comparison).toEqual({ ...DISABLEMENT_WINDOW_COMPARISON });
+
+    // The COMPILER decides what this means, not this module. Exactly 24 hours must be
+    // Compliant: `exclusive` would make a disablement at the boundary an Exception.
+    const compiled = compileComplianceDraft('P-1', { conditions: [condition], confidenceThreshold: '0.80' });
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.value.complianceConditions[0]!.rule).toEqual({
+      kind: 'disablement-window',
+      disabledField: DISABLEMENT_TIME_ATTRIBUTE,
+      terminationField: 'termination_time',
+      hours: '24',
+      boundary: 'inclusive',
+      tolerance: '0',
+    });
+    expect(compiled.value.complianceConditions[0]!.status).toBe('RULE');
+  });
+
+  it('carries the explicit mapping only when the compiler accepts the key, and never null or empty', () => {
+    const condition = disablementWindowCondition('P-1', '0.80');
+    const mapping = (condition as { readonly mapping?: unknown }).mapping;
+    if (Object.hasOwn(condition, 'mapping')) {
+      // Present: exactly the declared pair, so a Version freezes the auditor's own column.
+      expect(mapping).toEqual([{ field: 'termination_time', column: 'termination_effective_time' }]);
+    } else {
+      // Absent: the key is OMITTED, never null and never empty. A compiled condition is
+      // recompiled byte for byte on every read, and an empty key is not the same bytes.
+      expect(mapping).toBeUndefined();
+    }
+    // Either way the condition is saveable by THIS build: a key the compiler refuses
+    // would make the timing choice impossible to save at all.
+    expect(compileComplianceDraft('P-1', { conditions: [condition], confidenceThreshold: '0.80' }).ok).toBe(true);
+  });
+
+  it('takes an explicit id, so a Draft that already uses C3 gets a fresh one', () => {
+    expect(disablementWindowCondition('P-1', '0.80', 'C-other').conditionId).toBe('C-other');
+  });
+
+  it('recognises its own condition and leaves the status rule alone', () => {
+    expect(isDisablementWindow(disablementWindowCondition('P-1', '0.80'))).toBe(true);
+    expect(isDisablementWindow({ text: '  disabled_time - termination_time <= 24h  ' })).toBe(true);
+    const status = initialDraftCompliance('P-1').complianceConditions.find((condition) => condition.conditionId === 'C1')!;
+    expect(isDisablementWindow(status)).toBe(false);
   });
 });

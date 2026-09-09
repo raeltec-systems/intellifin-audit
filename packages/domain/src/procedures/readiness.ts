@@ -36,6 +36,7 @@ export const PROCEDURE_READINESS_CODES = [
   'source-not-bound',
   'agent-judged-without-policy',
   'termination-time-precision-missing',
+  'disablement-capture-missing',
   'model-read-attribute',
 ] as const;
 export type ProcedureReadinessCode = (typeof PROCEDURE_READINESS_CODES)[number];
@@ -84,6 +85,29 @@ export interface ProcedureReadinessInputs {
  * this within 24 hours"; a source declaring `termination_effective_time` can.
  */
 export const TERMINATION_TIME_COLUMN = 'termination_effective_time';
+
+/**
+ * The source column a `disablement-window` condition reads as the termination instant.
+ *
+ * The condition MAY freeze an explicit `mapping` saying which declared column carries
+ * compiler 1's `termination_time`; when it does, that column is the one the source has to
+ * declare, and when it does not the default above is. The key is read structurally rather
+ * than off the compiled type because it is OPTIONAL — a condition frozen before the key
+ * existed carries none, and every such condition must go on reading exactly as it did.
+ * Nothing is guessed from a name: an unmapped condition asks for the default column and
+ * a mapped one asks for the column the auditor named, and a date column is never promoted
+ * to an instant by either.
+ */
+export function terminationColumnFor(condition: CompiledComplianceCondition): string {
+  const mapping = (condition as { readonly mapping?: unknown }).mapping;
+  if (!Array.isArray(mapping)) return TERMINATION_TIME_COLUMN;
+  for (const entry of mapping) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { field, column } = entry as { field?: unknown; column?: unknown };
+    if (field === 'termination_time' && typeof column === 'string' && column !== '') return column;
+  }
+  return TERMINATION_TIME_COLUMN;
+}
 
 /**
  * Advisory readiness items for one Draft, in a deterministic order: the code order above,
@@ -151,21 +175,33 @@ export function procedureReadiness(inputs: ProcedureReadinessInputs): readonly P
   for (const condition of inputs.complianceConditions) {
     // 5. A disablement window over a source that declares only a date. Every record would
     //    be Unevaluated for want of a column nobody can supply at run time.
-    if (
-      condition.rule?.kind === 'disablement-window' &&
-      declaredSchema !== null &&
-      !declaredSchema.includes(TERMINATION_TIME_COLUMN)
-    ) {
+    const rule = condition.rule;
+    if (rule?.kind !== 'disablement-window') continue;
+    const column = terminationColumnFor(condition);
+    if (declaredSchema !== null && !declaredSchema.includes(column)) {
       items.push({
         code: 'termination-time-precision-missing',
         section: 'Compliance Rule conditions',
         subject: condition.conditionId,
-        sentence: `Condition ${condition.conditionId} compares the disablement time with the termination time in hours, but the bound Population Source declares no \`${TERMINATION_TIME_COLUMN}\` column — only a date. Every record would be Unevaluated. Bind a source that declares it in Population Source binding, or use the account-status rule in Compliance Rule conditions.`,
+        sentence: `Condition ${condition.conditionId} compares the disablement time with the termination time in hours, but the bound Population Source declares no \`${column}\` column — only a date. Every record would be Unevaluated. Bind a source that declares it in Population Source binding, or use the account-status rule in Compliance Rule conditions.`,
+      });
+    }
+
+    // 6. The window is authored and nothing captures the disablement instant. The rule
+    //    compiles, the Run reads the page, and every record is Unevaluated for want of an
+    //    attribute the Version never asked to be captured — a whole Run spent to learn
+    //    nothing. The attribute name comes from the compiled rule, never retyped here.
+    if (!inputs.evidenceRequirements.some((requirement) => requirement.attributeName.trim() === rule.disabledField)) {
+      items.push({
+        code: 'disablement-capture-missing',
+        section: 'Evidence Requirements',
+        subject: rule.disabledField,
+        sentence: `Condition ${condition.conditionId} reads \`${rule.disabledField}\`, and no Evidence Requirement names it, so nothing captures the disablement time and every record would be Unevaluated. Add \`${rule.disabledField}\`, grounded in a Structural Snapshot, in Evidence Requirements.`,
       });
     }
   }
 
-  // 6. A model-read attribute. Permitted, and recorded as such rather than pretended to be
+  // 7. A model-read attribute. Permitted, and recorded as such rather than pretended to be
   //    grounded — and worth knowing before paying for a Run whose only Evidence for that
   //    attribute is the agent's own reading.
   for (const requirement of inputs.evidenceRequirements) {

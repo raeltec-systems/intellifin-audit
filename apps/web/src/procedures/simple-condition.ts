@@ -1,8 +1,11 @@
 import {
+  TERMINATION_TIME_COLUMN,
+  compileComplianceDraft,
   findProcedureTemplate,
   parseCompliancePredicate,
   templateConditionText,
   type BoundarySemantics,
+  type ComplianceConditionInput,
   type CompliancePredicate,
   type TemplateId,
 } from '@intellifin/domain';
@@ -187,6 +190,72 @@ export function writeSimpleCondition(
   const read = readSimpleCondition(text, templateId, conditionId);
   return read !== null && sameCondition(read, value) ? text : null;
 }
+
+/* ------------------------------------- the 24-hour disablement variant (D3) --- */
+
+/**
+ * The authored shape of P-1's 24-hour disablement window, as
+ * `docs/contracts/deterministic-evaluation-v1.md` §"Explicit population field mapping for
+ * a time condition" freezes it and as `tests/fixtures/canonical-loancore-compliance.ts`
+ * authors it.
+ *
+ * It is a THIRD condition beside the explicit status rule, never a replacement: an
+ * Active account has no disablement instant, so C3 stays Unevaluated for want of a value
+ * and C1 is what makes that account an Exception.
+ */
+export const DISABLEMENT_WINDOW_CONDITION_ID = 'C3';
+export const DISABLEMENT_WINDOW_TEXT = 'disabled_time - termination_time <= 24h';
+export const DISABLEMENT_WINDOW_APPLICABILITY = 'found = true';
+export const DISABLEMENT_WINDOW_COMPARISON = { boundary: 'inclusive', threshold: '24', tolerance: '0' } as const;
+
+/** The attribute the variant captures, and the label P-1's Target System renders it under. */
+export const DISABLEMENT_TIME_ATTRIBUTE = 'disabled_time';
+
+/**
+ * The explicit, frozen declaration that compiler 1's `termination_time` is the bound
+ * source's own column. Nothing guesses that two names are one field, and a date column is
+ * never promoted to an instant.
+ */
+export const DISABLEMENT_WINDOW_MAPPING = [
+  { field: 'termination_time', column: TERMINATION_TIME_COLUMN },
+] as const;
+
+/**
+ * The variant's authored condition, with the `mapping` key when — and only when — the
+ * compiler this build ships actually accepts it.
+ *
+ * The key is a CAPABILITY of the domain, not a guess: the candidate is compiled with the
+ * mapping and the answer decides. A build whose `compileComplianceDraft` does not know
+ * the key refuses the whole condition (its key set is exact), so attaching it blindly
+ * would make the timing choice unsaveable; omitting it forever would silently drop the
+ * declaration the moment the domain gained it. This asks, once, per click.
+ *
+ * Written key by key, never a spread, so nothing incidental can ride into a value a
+ * Procedure Version freezes.
+ */
+export function disablementWindowCondition(
+  templateId: TemplateId,
+  confidenceThreshold: string,
+  conditionId: string = DISABLEMENT_WINDOW_CONDITION_ID,
+): ComplianceConditionInput {
+  const base: ComplianceConditionInput = {
+    conditionId,
+    text: DISABLEMENT_WINDOW_TEXT,
+    applicability: DISABLEMENT_WINDOW_APPLICABILITY,
+    comparison: { ...DISABLEMENT_WINDOW_COMPARISON },
+  };
+  const withMapping = { ...base, mapping: DISABLEMENT_WINDOW_MAPPING.map((entry) => ({ ...entry })) };
+  const probe = compileComplianceDraft(templateId, { conditions: [withMapping], confidenceThreshold });
+  return probe.ok ? (withMapping as ComplianceConditionInput) : base;
+}
+
+/** Whether a compiled condition is the disablement-window variant. */
+export function isDisablementWindow(condition: { readonly text: string }): boolean {
+  return DISABLEMENT_WINDOW_PATTERN.test(condition.text.trim());
+}
+
+/** Said when the variant is authored but the source declares no termination instant. */
+export const WINDOW_NEEDS_TERMINATION_INSTANT = `The 24-hour window compares the disablement time with the termination time, so the bound Population Source must declare a \`${TERMINATION_TIME_COLUMN}\` column. A date column is never read as an instant.`;
 
 /** Said when a list the rule needs is empty. */
 export const LISTS_INCOMPLETE =

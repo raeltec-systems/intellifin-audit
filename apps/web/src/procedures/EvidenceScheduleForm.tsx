@@ -46,6 +46,24 @@ const FREQUENCY_LABEL: Readonly<Record<Frequency, string>> = {
   monthly: 'Monthly',
 };
 
+/**
+ * The attribute a saved `disablement-window` condition reads, or `null`.
+ *
+ * The name comes from the COMPILED rule rather than being retyped here: the rule is what
+ * a Run evaluates, so a second spelling of the attribute would offer a capture the rule
+ * cannot use. It reads the SAVED conditions, not the Compliance editor's local ones —
+ * the two sections are two commands with one shared token, and offering a capture for a
+ * rule nobody has saved yet would name a requirement for a condition that may never
+ * exist.
+ */
+function disablementAttribute(draft: ProcedureVersionView): string | null {
+  for (const condition of draft.complianceConditions) {
+    const rule = condition.rule;
+    if (rule?.kind === 'disablement-window') return rule.disabledField;
+  }
+  return null;
+}
+
 function inputsFrom(draft: ProcedureVersionView): readonly EvidenceRequirementInput[] {
   return draft.evidenceRequirements.map(authoredEvidenceInput);
 }
@@ -116,6 +134,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
   }
 
   const limitReached = requirements.length >= EVIDENCE_DRAFT_LIMITS.requirements;
+  const captureAttribute = disablementAttribute(draft);
 
   async function save(): Promise<void> {
     if (saving.current || section.conflict || unknownOutcome) return;
@@ -271,6 +290,31 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
             </fieldset>
           );
         })}
+        {captureAttribute === null || requirements.some((requirement) => requirement.attributeName.trim() === captureAttribute) ? null : (
+          <div className="ls-stack" data-add-capture={captureAttribute}>
+            <Banner tone="warning" title={`The saved Compliance Rule reads ${captureAttribute}, and no requirement below names it. Nothing would capture the disablement time, so every record would be Unevaluated.`} />
+            <Button
+              type="button"
+              disabledReason={limitReached ? `Evidence Requirements supports at most ${EVIDENCE_DRAFT_LIMITS.requirements} attributes.` : undefined}
+              disabledReasonId={`${id}-limit`}
+              onClick={() => {
+                // The authored input shape EXACTLY: derived capture metadata is the
+                // command's to compute, and an extra key here is refused at save.
+                const next: readonly EvidenceRequirementInput[] = [...requirementsRef.current, {
+                  attributeName: captureAttribute, modelRead: false, groundedBy: ['structural-snapshot'],
+                  screenshot: false, recordingSegment: false,
+                }];
+                const rowId = `${id}-row-${nextId.current++}`;
+                rowIds.current.push(rowId);
+                setRequirements(next);
+                setResult(null);
+                requestAnimationFrame(() => document.getElementById(`${rowId}-name`)?.focus());
+              }}
+            >
+              Add the {captureAttribute} requirement
+            </Button>
+          </div>
+        )}
         {limitReached ? <p id={`${id}-limit`}>Evidence Requirements supports at most {EVIDENCE_DRAFT_LIMITS.requirements} attributes.</p> : null}
         <div id={`${id}-add`}><Button
           type="button"

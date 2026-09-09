@@ -9,6 +9,7 @@ import {
   READINESS_NOTHING_FOUND,
   READINESS_NO_GUARANTEE,
   TERMINATION_TIME_COLUMN,
+  terminationColumnFor,
   isProcedureReadinessCode,
   procedureReadiness,
   type ProcedureReadinessInputs,
@@ -104,6 +105,7 @@ describe('the readiness vocabulary', () => {
       'source-not-bound',
       'agent-judged-without-policy',
       'termination-time-precision-missing',
+      'disablement-capture-missing',
       'model-read-attribute',
     ]);
     for (const code of PROCEDURE_READINESS_CODES) expect(isProcedureReadinessCode(code)).toBe(true);
@@ -214,6 +216,70 @@ describe('procedureReadiness', () => {
     const unbound = codesOf(ready({ complianceConditions: windowed.value.complianceConditions, sourceSnapshot: null }));
     expect(unbound).toContain('source-not-bound');
     expect(unbound).not.toContain('termination-time-precision-missing');
+  });
+
+  it('reads the frozen mapping when the condition carries one, and the default when it does not', () => {
+    const windowed = compileComplianceDraft('P-1', {
+      conditions: [{ conditionId: 'C3', text: 'disabled_time - termination_time <= 24h', applicability: 'found = true', comparison: { boundary: 'inclusive', threshold: '24', tolerance: '0' } }],
+      confidenceThreshold: '0.80',
+    });
+    expect(windowed.ok).toBe(true);
+    if (!windowed.ok) return;
+    const condition = windowed.value.complianceConditions[0]!;
+    // No mapping: the default column, exactly as before the key existed.
+    expect(terminationColumnFor(condition)).toBe(TERMINATION_TIME_COLUMN);
+
+    // A frozen mapping names the column the auditor declared, and readiness asks the
+    // source for THAT one. The key is optional and this build's compiler may not emit it,
+    // so the case is constructed the way a stored row would arrive.
+    const mapped = { ...condition, mapping: [{ field: 'termination_time', column: 'ended_at' }] };
+    expect(terminationColumnFor(mapped)).toBe('ended_at');
+    const gap = procedureReadiness(ready({ complianceConditions: [mapped], sourceSnapshot: TIME_SOURCE })).find(
+      (item) => item.code === 'termination-time-precision-missing',
+    );
+    // `termination_effective_time` is declared and `ended_at` is not, so the mapped
+    // column is what decides — a default read here would have found nothing wrong.
+    expect(gap?.sentence).toContain('ended_at');
+    expect(
+      codesOf(ready({ complianceConditions: [mapped], sourceSnapshot: source(['employee_id', 'ended_at']) })),
+    ).not.toContain('termination-time-precision-missing');
+
+    // A mapping for another field, a malformed entry and a non-array all fall back.
+    for (const value of [[{ field: 'disabled_time', column: 'x' }], [null], [{ field: 'termination_time' }], [{ field: 'termination_time', column: '' }], 'ended_at', null]) {
+      const probe = { ...condition, mapping: value };
+      expect(terminationColumnFor(probe)).toBe(TERMINATION_TIME_COLUMN);
+    }
+  });
+
+  it('raises disablement-capture-missing when nothing captures the disablement time', () => {
+    const windowed = compileComplianceDraft('P-1', {
+      conditions: [{ conditionId: 'C3', text: 'disabled_time - termination_time <= 24h', applicability: 'found = true', comparison: { boundary: 'inclusive', threshold: '24', tolerance: '0' } }],
+      confidenceThreshold: '0.80',
+    });
+    expect(windowed.ok).toBe(true);
+    if (!windowed.ok) return;
+
+    const gap = procedureReadiness(ready({ complianceConditions: windowed.value.complianceConditions })).find(
+      (item) => item.code === 'disablement-capture-missing',
+    );
+    // The subject is the attribute the compiled rule itself names, not a retyped copy.
+    expect(gap?.subject).toBe('disabled_time');
+    expect(gap?.section).toBe('Evidence Requirements');
+    expect(gap?.sentence).toContain('disabled_time');
+
+    // Declaring the requirement closes it, whatever else the Draft declares beside it.
+    expect(
+      codesOf(ready({
+        complianceConditions: windowed.value.complianceConditions,
+        evidenceRequirements: [
+          { attributeName: 'account_status', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: true, recordingSegment: false, platformCaptured: true },
+          { attributeName: 'disabled_time', modelRead: false, groundedBy: ['structural-snapshot'], screenshot: false, recordingSegment: false, platformCaptured: false },
+        ],
+      })),
+    ).not.toContain('disablement-capture-missing');
+
+    // And a Draft with no window condition never asks for the capture.
+    expect(codesOf(ready())).not.toContain('disablement-capture-missing');
   });
 
   it('leaves the status rule alone: it needs no termination time at all', () => {

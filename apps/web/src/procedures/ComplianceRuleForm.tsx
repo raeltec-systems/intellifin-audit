@@ -27,6 +27,11 @@ import {
   valueLines,
   writeSimpleCondition,
   DISABLEMENT_WINDOW_PATTERN,
+  DISABLEMENT_TIME_ATTRIBUTE,
+  DISABLEMENT_WINDOW_CONDITION_ID,
+  WINDOW_NEEDS_TERMINATION_INSTANT,
+  disablementWindowCondition,
+  isDisablementWindow,
   type SimpleCondition,
 } from './simple-condition';
 import { useSection, useSectionSubmissionStatus } from './use-section';
@@ -244,19 +249,13 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
               onChange={(exception) => writeSimple({ ...simple, exception })} />
             <div aria-live="polite">{simpleProblem === null ? null : <Banner tone="warning" title={`Not saved yet: ${simpleProblem}`} />}</div>
             <p className="ls-caption">Rule as it will be saved: <code data-simple-text={condition.conditionId}>{condition.text}</code></p>
-            {draft.templateId === 'P-1' && condition.conditionId === 'C1' ? <Button type="button" onClick={() => changeCondition(condition.conditionId, {
-              text: 'disabled_time - termination_time <= 24h',
-              comparison: { boundary: 'inclusive', threshold: '24', tolerance: '0' },
-            })}>Use 24-hour disablement window</Button> : null}
           </fieldset> : null}
 
           {mode === 'simple' && simple?.kind === 'disablement-window' ? <fieldset className="ls-stack" data-simple-for={condition.conditionId}>
             <legend>Disablement window {condition.conditionId}</legend>
-            <p className="ls-caption">The account must be disabled within the window below, measured from the termination time. Set the hours and the boundary under &ldquo;Comparison&rdquo;; a Target System that does not expose a disablement time leaves every record Unevaluated.</p>
-            <Button type="button" onClick={() => changeCondition(condition.conditionId, {
-              text: writeSimpleCondition({ kind: 'status-set', field: 'account_status', provenAbsence: true, compliant: ['Disabled'], exception: ['Active'] }, draft.templateId, condition.conditionId) ?? condition.text,
-              comparison: null,
-            })}>Use the account-status rule instead</Button>
+            <p className="ls-caption">The account must be disabled within the window below, measured from the termination time. Set the hours and the boundary under &ldquo;Comparison&rdquo;.</p>
+            <p className="ls-caption">{WINDOW_NEEDS_TERMINATION_INSTANT}</p>
+            <p className="ls-caption">The disablement time also has to be captured: declare <code>{DISABLEMENT_TIME_ATTRIBUTE}</code> in Evidence Requirements, or every record is Unevaluated. Readiness before execution lists it until you do.</p>
           </fieldset> : null}
 
           <div className="ls-dialog__field" hidden={mode === 'simple'}>
@@ -264,6 +263,10 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
             <textarea className="ls-input" id={`${fieldId}-text`} rows={6} value={condition.text} maxLength={COMPLIANCE_LIMITS.text}
               aria-describedby={`${fieldId}-error`} aria-invalid={error?.includes(COMPLIANCE_MESSAGES.INPUT) || undefined}
               onChange={(event) => {
+                // Typing here PINS this condition to advanced. Without it, the moment the
+                // text became a shape the simple editor can show, the default would flip
+                // to simple and the textarea would vanish under the person's cursor.
+                setMode('advanced');
                 const next = { ...condition, text: event.target.value, comparison: null };
                 changeCondition(condition.conditionId, { text: next.text, comparison: comparisonFor(draft, next) });
               }} />
@@ -327,6 +330,34 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
           <Button type="button" onClick={() => change({ ...inputRef.current, conditions: inputRef.current.conditions.filter((current) => current.conditionId !== condition.conditionId) })}>Remove condition {condition.conditionId}</Button>
         </fieldset>;
       })}
+      {draft.templateId !== 'P-1' ? null : (() => {
+        // P-1's optional timing variant. It ADDS a condition beside the account-status
+        // one rather than replacing it: an Active account has no disablement instant at
+        // all, so the status condition is what makes that an Exception, and swapping one
+        // for the other would silently drop the finding the Template exists to make.
+        const window = input.conditions.find((candidate) => isDisablementWindow(candidate));
+        return <fieldset className="ls-stack" data-timing-choice>
+          <legend>Timing</legend>
+          <p className="ls-caption">The conditions above ask whether the account is still open. This optional one asks whether it was closed in time, and stands beside them.</p>
+          {window === undefined
+            ? <Button type="button" data-add-window
+                disabledReason={limitReached ? `A Compliance Rule supports at most ${COMPLIANCE_LIMITS.conditions} conditions.` : undefined}
+                disabledReasonId={`${id}-limit`}
+                onClick={() => {
+                  const current = inputRef.current;
+                  // `C3` is the contract's own id for this condition; a Draft that has
+                  // already used it gets a fresh one rather than a silent collision.
+                  const taken = current.conditions.some((candidate) => candidate.conditionId === DISABLEMENT_WINDOW_CONDITION_ID);
+                  const conditionId = taken ? `C-${crypto.randomUUID()}` : DISABLEMENT_WINDOW_CONDITION_ID;
+                  change({ ...current, conditions: [...current.conditions, disablementWindowCondition(draft.templateId, current.confidenceThreshold, conditionId)] });
+                  requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-condition-id="${conditionId}"]`)?.scrollIntoView({ block: 'center' }));
+                }}>Add the 24-hour disablement window</Button>
+            : <>
+                <p className="ls-caption" data-window-condition={window.conditionId}>Condition {window.conditionId} requires the account to be disabled within the window set under its own Comparison controls.</p>
+                <Button type="button" data-remove-window onClick={() => change({ ...inputRef.current, conditions: inputRef.current.conditions.filter((candidate) => !isDisablementWindow(candidate)) })}>Remove the 24-hour disablement window</Button>
+              </>}
+        </fieldset>;
+      })()}
       {limitReached ? <p id={`${id}-limit`}>A Compliance Rule supports at most {COMPLIANCE_LIMITS.conditions} conditions.</p> : null}
       <Button type="button" disabledReason={limitReached ? `A Compliance Rule supports at most ${COMPLIANCE_LIMITS.conditions} conditions.` : undefined} disabledReasonId={`${id}-limit`} onClick={() => {
         const conditionId = `C-${crypto.randomUUID()}`;
