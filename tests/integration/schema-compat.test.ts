@@ -153,7 +153,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
   it.each([
     [
       'run_evidence',
-      ['capture_method', 'capture_time_source', 'captured_at', 'digest', 'evidence_id', 'kind', 'media_type', 'object_key', 'registration_id', 'required', 'run_id', 'size', 'state'],
+      ['capture_method', 'capture_time_source', 'captured_at', 'digest', 'evidence_id', 'kind', 'media_type', 'object_key', 'registration_id', 'required', 'role', 'run_id', 'size', 'state'],
     ],
     [
       'population_evidence',

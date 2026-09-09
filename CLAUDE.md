@@ -1,3 +1,32 @@
+## 2026-09-09 — An Evidence artifact has a ROLE beside its kind, and replay never gates a seal
+
+`EVIDENCE_ARTIFACT_ROLES` is `evidence` and `replay` (generation 43, `run_evidence.role`).
+`evidence` is what a Run concluded FROM; `replay` is what it is WATCHED BY. It cannot be a
+kind, because the same kind sits on both sides — the screenshot an Observation is grounded
+in is Evidence, the screenshot taken after every Tool Action so a session can be replayed is
+not — and it cannot be a naming convention, which is one anybody can satisfy by typing.
+`sealPackageDecision` filters `required && role === 'evidence'`, so a producer that set the
+flag wrongly, or a row an older build wrote, still cannot make a package INCOMPLETE for a
+frame nobody concluded anything from; `reserveArtifact` forces `required: false` on a
+`replay` reservation, and `run_evidence_replay_never_required` is the layer below both that
+no raw writer can route around. Three statements of one rule, in the order this codebase
+always uses: the producer cannot ASK for the contradiction, the domain would not honour it,
+and the database refuses to hold it. `population_evidence` gains no column — a population is
+Evidence by definition and has no other role to hold. The backfill is STRUCTURAL and not a
+guess: every row the table has ever held was written by a producer freezing bytes a Run
+concluded from. `role` is added with a DEFAULT and the default is then DROPPED, so the next
+producer must say which role it means rather than inheriting one.
+
+- **A new column on a reviewed table needs `tests/integration/schema-compat.test.ts` too.**
+  That file asserts the EXACT column set of `run_evidence` and `population_evidence`, and it
+  is the guard working: an unlisted column is a migration nobody reviewed. It was the one
+  failure left out of 487 after generation 43, and it named itself.
+- **A historical-schema upgrade test must NOT get the new column.** `absence-guard-upgrade`
+  and `sealed-evidence-upgrade` build a generation-32/40 schema by hand and then run the real
+  migrator over it; adding `role` to their seed inserts would have them seed a schema that
+  did not exist. They assert the backfill separately and strip `role` before comparing rows.
+  `absence-guard-upgrade`'s `seed()` reads `information_schema` because it seeds BOTH schemas.
+
 ## 2026-09-09 — Live View: a frame is a registered artifact, read through the grant that already exists
 
 `/runs/<id>/live` is a SURFACE, not a sixth Run Detail tab (EXPERIENCE.md reaches it from the rail's **Watch** control and from a notification, breadcrumb `Runs / <run> / Live`), and it authorizes for itself through `openRun` like every tab. A frame is `run_evidence` of kind `screenshot` in state `REGISTERED` bound through `run_evidence_capture` to the `run_tool_action` that captured it — the BINDING is what makes it a frame, and a loose screenshot is not one. Its bytes reach the browser only through the Story 4.4 worker-signed grant, consumed on the web server: `FRAME_LOCATOR` is a third locator naming the KIND of read, issuance branches on it (a `frame` grant requires a `screenshot` of `image/png`; every other locator still requires a Structural Snapshot with an implemented substrate), and generation 42 widens the published binding trigger to admit both kinds and changes nothing else. `downloadWithGrant` was EXTRACTED from the snapshot reader rather than copied, so poll-verify-record has one implementation. **The web still never touches object storage** — `no-evidence-store-in-web` still fails the build — and the structural claim is asserted rather than searched for: every `src` on the surface is under `/api/runs/<id>/`, which a signed store URL fails. The route answers 304 on the digest ETag under a FRESH role check and with no grant; a store disagreement is 502, an unsigned grant a retryable 503. `liveViewChrome` is total over `RUN_STATES` and gives `QUEUED` NO word rather than stretching `LIVE` (the "Active version: Draft" rule); the four stage sentences say why a stage is empty, because an empty stage that says nothing reads as "fine". The Step counter's denominator is READ from the frozen plan. NFR-7 needed an event: `registerAgentCapture` now appends `execution.capture-registered` in the transaction that registers the capture and notifies the channel. Story 5.3 ships READ-ONLY — Pause is 5.4, Flag is 5.5, the scrubber is Replay's — and links to Run Detail for Cancel. Contract: `docs/contracts/live-view-v1.md`.

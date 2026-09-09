@@ -313,6 +313,7 @@ class FakeRepository implements AdapterExecutionRepository {
                 kind: 'population' as const,
                 objectKey: repository.population.objectKey,
                 required: repository.population.evidenceRequired,
+                role: 'evidence' as const,
                 state: (repository.population.rawDigest === null
                   ? 'RESERVED'
                   : 'REGISTERED') as 'RESERVED' | 'REGISTERED' | 'ABANDONED',
@@ -325,6 +326,7 @@ class FakeRepository implements AdapterExecutionRepository {
           objectKey: row.objectKey,
           required: row.required,
           state: row.state,
+          role: row.role,
         })),
       ],
       abandonArtifacts: async (ids) => {

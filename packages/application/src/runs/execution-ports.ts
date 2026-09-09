@@ -2,6 +2,7 @@ import type {
   CoverageObservation,
   EvidenceArtifactKind,
   EvidenceArtifactState,
+  EvidenceArtifactRole,
   EvidenceCaptureMethod,
   EvidenceCaptureTimeSource,
   EvidenceIntegrityFindingKind,
@@ -374,6 +375,11 @@ export interface AdapterEvidenceRecord {
   size: number | null;
   required: boolean;
   state: EvidenceArtifactState;
+  /**
+   * What the artifact is FOR (Story 5.2): `evidence` for what a Run concluded from,
+   * `replay` for what it is watched by. A `replay` row is never `required`.
+   */
+  role: EvidenceArtifactRole;
   /** FR-31's capture provenance, stamped by `registerEvidence` and by nothing else. */
   capturedAt: string | null;
   captureMethod: EvidenceCaptureMethod | null;

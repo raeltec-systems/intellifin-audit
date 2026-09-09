@@ -8,6 +8,7 @@ import {
   type EvidenceArtifactKind,
   type EvidenceCaptureMethod,
   type EvidenceReservation,
+  type EvidenceArtifactRole,
 } from '@intellifin/domain';
 import {
   PopulationAcquisitionError,
@@ -51,6 +52,8 @@ export interface ReservedArtifact {
   /** Every object key this reservation addresses; `[0]` is the primary artifact. */
   readonly objectKeys: readonly string[];
   readonly required: boolean;
+  /** What the artifact is FOR: `evidence` for a conclusion, `replay` for the session. */
+  readonly role: EvidenceArtifactRole;
 }
 
 /**
@@ -68,6 +71,16 @@ export function reserveArtifact(input: {
   readonly scope: string;
   /** The frozen Template. An unknown one marks the artifact required: fail closed. */
   readonly templateId: string | null;
+  /**
+   * What the artifact is FOR (Story 5.2). `evidence` when omitted, because every producer
+   * that existed before the role did was freezing bytes a Run concluded from.
+   *
+   * A `replay` reservation is never required, whatever the Template says: a frame the
+   * session is watched by is not something a conclusion rests on, and a Run must never be
+   * INCOMPLETE for one. The domain's seal filter and a CHECK say the same thing; this is
+   * where a producer stops being able to ask for the contradiction in the first place.
+   */
+  readonly role?: EvidenceArtifactRole;
 }): ReservedArtifact {
   const reservation: EvidenceReservation = {
     runId: input.runId,
@@ -79,7 +92,10 @@ export function reserveArtifact(input: {
     idempotencyKey: evidenceIdempotencyKey(reservation),
     evidenceId: evidenceIdFor(reservation),
     objectKeys: evidenceObjectKeys(reservation),
-    required: input.templateId === null ? true : isRequiredArtifact(input.templateId, input.kind),
+    role: input.role ?? 'evidence',
+    required: input.role === 'replay'
+      ? false
+      : input.templateId === null ? true : isRequiredArtifact(input.templateId, input.kind),
   };
 }
 
@@ -94,6 +110,9 @@ export function adapterEvidenceRecord(
     kind: reserved.reservation.kind as AdapterEvidenceRecord['kind'],
     registrationId,
     objectKey: evidenceObjectKey(reserved.reservation),
+    // The role is the RESERVATION's, never the prior row's: a reservation is what decides
+    // what an artifact is for, and a resumed attempt reserves the same thing it did.
+    role: reserved.role,
     mediaType: prior?.mediaType ?? null,
     digest: prior?.digest ?? null,
     size: prior?.size ?? null,

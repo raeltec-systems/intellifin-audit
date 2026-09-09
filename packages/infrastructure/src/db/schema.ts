@@ -1061,8 +1061,21 @@ export const runEvidence = pgTable('run_evidence', {
   capturedAt: timestamp('captured_at',{withTimezone:true}),
   captureMethod: text('capture_method'),
   captureTimeSource: text('capture_time_source'),
+  /**
+   * Generation 43 (Story 5.2): what the artifact is FOR, beside what it IS.
+   *
+   * `evidence` is what a Run concluded from; `replay` is what it is watched by. The same
+   * kind sits on both sides — a screenshot an Observation is grounded in against one
+   * captured after every Tool Action so the session can be replayed — so `kind` cannot
+   * carry the distinction, and a naming convention would be one anybody could satisfy by
+   * typing. A CHECK also refuses a REQUIRED replay row, so no raw writer can make a Run
+   * INCOMPLETE for a frame nobody concluded anything from.
+   */
+  role: text('role').notNull(),
 }, t=>[
   check('run_evidence_kind',sql`${t.kind} IN ('reference-source','adapter-extraction','structural-snapshot','screenshot')`),
+  check('run_evidence_role',sql`${t.role} IN ('evidence','replay')`),
+  check('run_evidence_replay_never_required',sql`${t.role} <> 'replay' OR ${t.required} = false`),
   check('run_evidence_digest',sql`${t.digest} IS NULL OR ${t.digest} ~ '^[0-9a-f]{64}$'`),
   check('run_evidence_size',sql`${t.size} IS NULL OR ${t.size} >= 0`),
   check('run_evidence_state',sql`${t.state} IN ('RESERVED','REGISTERED','ABANDONED') AND (${t.state}<>'REGISTERED' OR (${t.digest} IS NOT NULL AND ${t.size} IS NOT NULL))`),

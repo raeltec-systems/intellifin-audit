@@ -54,8 +54,8 @@ describe.skipIf(!url)('immutable absence provenance through shared registration 
     await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
       VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,'Absence provenance',${`2026-08-${day}`},${`2026-08-${day}`},'RUNNING','STANDARD',${author},'absence-test','auditor',${at})`;
     const bytes = utf8Bytes(JSON.stringify({ schemaVersion: 1, nodes: [], search: { complete: true } }));
-    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
-      VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${`absence/${runId}`},'application/vnd.intellifin.web-tree+json',${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false)`;
+    await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,role)
+      VALUES(${evidenceId},${runId},'structural-snapshot','loancore',${`absence/${runId}`},'application/vnd.intellifin.web-tree+json',${sha256HexOfBytes(bytes)},${bytes.byteLength},'REGISTERED',false,'evidence')`;
     const record: ObservationRecord = { schemaVersion: 1, observationId: observationIdFor(workItemId,'E-absent'), workItemId, populationRecordKey: 'E-absent',
       targetSystem: 'loancore', found: 'false', observedAt: at, stepExecutionId, captureMethod: 'adapter', matchOrigin: 'platform', identity: null, attributes: [], evidenceIds: [evidenceId] };
     const proof: ObservationAbsenceProof | null = mode === 'missing' ? null : {

@@ -221,12 +221,10 @@ async function seedMatchingAgentContext(waitId: string): Promise<void> {
   await sql`
     INSERT INTO run_evidence(
       evidence_id, run_id, kind, registration_id, object_key, media_type, digest, size,
-      state, required, captured_at, capture_method, capture_time_source
-    ) VALUES (
+      state, required, captured_at, capture_method, capture_time_source,role) VALUES (
       ${supportingEvidenceId}, ${runs.answered}, 'structural-snapshot', 'synthetic-target',
       ${`runs/${runs.answered}/snapshot`}, 'application/json', ${'a'.repeat(64)}, 256,
-      'REGISTERED', false, now(), 'agent', 'registration'
-    )
+      'REGISTERED', false, now(), 'agent', 'registration','evidence')
   `;
   await sql`
     INSERT INTO run_work_item(
@@ -457,9 +455,8 @@ test.describe('the Escalation panel as an Auditor', () => {
     expect((await fetch(objectUrl, { method: 'PUT', headers: { 'if-none-match': '*' }, body: bytes })).status).toBe(200);
     await sql`INSERT INTO run_evidence(
       evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,
-      captured_at,capture_method,capture_time_source
-    ) VALUES (${expiredEvidenceId},${runs.expired},'structural-snapshot','synthetic-target',${key},
-      'application/json',${digest},${bytes.length},'REGISTERED',true,now(),'agent','registration')`;
+      captured_at,capture_method,capture_time_source,role) VALUES (${expiredEvidenceId},${runs.expired},'structural-snapshot','synthetic-target',${key},
+      'application/json',${digest},${bytes.length},'REGISTERED',true,now(),'agent','registration','evidence')`;
     const evidenceBefore = await sql`SELECT * FROM run_evidence WHERE evidence_id=${expiredEvidenceId}`;
     expiredWaitId = await raise(runs.expired, {
       now: () => new Date(Date.now() - 4 * 60 * 60 * 1000 - 60_000),

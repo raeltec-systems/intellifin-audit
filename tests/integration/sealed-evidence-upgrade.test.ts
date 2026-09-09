@@ -114,7 +114,11 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       expect(await runMigrations(historicalUrl)).toBeGreaterThanOrEqual(32);
       await assertProtected();
       await assertOriginalBytes();
-      expect(await sql`SELECT to_jsonb(e)-'captured_at'-'capture_method'-'capture_time_source' AS value FROM run_evidence e WHERE run_id=${runId}`).toEqual(beforeEvidence);
+      // `role` joins the generation-32 columns this comparison already subtracts: the
+      // upgrade adds keys, and every key that existed before must be unchanged.
+      expect(await sql`SELECT to_jsonb(e)-'captured_at'-'capture_method'-'capture_time_source'-'role' AS value FROM run_evidence e WHERE run_id=${runId}`).toEqual(beforeEvidence);
+      // Generation 43's backfill is structural: every historical row was Evidence.
+      expect(await sql`SELECT DISTINCT role FROM run_evidence WHERE run_id=${runId}`).toEqual([{ role: 'evidence' }]);
       expect(await sql`SELECT to_jsonb(e)-'captured_at'-'capture_method'-'capture_time_source' AS value FROM population_evidence e WHERE run_id=${runId}`).toEqual(beforePopulation);
       expect(await sql`SELECT to_jsonb(r) AS value FROM run_result r WHERE run_id=${runId}`).toEqual(beforeResult);
       expect(await sql`SELECT to_jsonb(p) AS value FROM run_evidence_package p WHERE run_id=${runId}`).toEqual(beforeSeal);

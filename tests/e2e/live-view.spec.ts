@@ -115,9 +115,9 @@ async function seedRun(options: { readonly workspace: boolean; readonly frame: b
       VALUES(${toolActionId},${runId},${stepExecutionId},NULL,'agent','loancore','read-attribute','GET',
       ${SOURCE_LOCATION},'[]'::jsonb,'performed',false,0,${at},'PERMITTED')`;
     await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,
-      state,required,captured_at,capture_method,capture_time_source)
+      state,required,captured_at,capture_method,capture_time_source,role)
       VALUES(${evidenceId},${runId},'screenshot','loancore',${`screenshot/${runId}/${evidenceId}`},'image/png',
-      ${digest},${PNG.byteLength},'REGISTERED',false,${at},'agent','registration')`;
+      ${digest},${PNG.byteLength},'REGISTERED',false,${at},'agent','registration','evidence')`;
     await sql`INSERT INTO run_evidence_capture(evidence_id,run_id,tool_action_id,source_location)
       VALUES(${evidenceId},${runId},${toolActionId},${SOURCE_LOCATION})`;
   }

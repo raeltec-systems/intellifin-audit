@@ -148,9 +148,9 @@ async function terminate(runId: string, state: string, at: string): Promise<void
 
 /** One Work Item, one grounded Observation carrying a seeded prompt-like value, one Exception. */
 async function seedFindings(runId: string, item: string, observation: string, evidence: string): Promise<void> {
-  await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required)
+  await sql`INSERT INTO run_evidence(evidence_id,run_id,kind,registration_id,object_key,media_type,digest,size,state,required,role)
             VALUES(${evidence},${runId},'adapter-extraction','accessgate',${`runs/${runId}/extract`},'application/json',
-              ${'c'.repeat(64)},1024,'REGISTERED',false)`;
+              ${'c'.repeat(64)},1024,'REGISTERED',false,'evidence')`;
   await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
             VALUES(${item},${runId},'step-1',1,'accessgate','AccessGate','OBSERVED',1,0,NULL,${evidence},1)`;
   await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at,diagnostic)
