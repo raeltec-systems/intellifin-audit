@@ -1,5 +1,5 @@
 import {
-  adapterLookupColumn, adapterSearchKeys, groundedText, normalizeObservationValue, normalizeObservedAt,
+  adapterLookupColumn, adapterSearchKeys, attributeLabelFor, groundedText, normalizeObservationValue, normalizeObservedAt,
   findProcedureTemplate, isTemplateId,
   observationIdFor, parseSnapshotLocator, readStructuralSnapshot, readSnapshotCell,
   OBSERVATION_SCHEMA_VERSION,
@@ -40,11 +40,15 @@ export function buildFoundAgentObservation(input: {
   if (!isTemplateId(templateId)) return null;
   // Compiler1's shipped label contract is immutable build data. A target must have
   // frozen that label; an unsupported custom mapping stays ungrounded, never guessed.
-  const labels = findProcedureTemplate(templateId).declaredAttributeLabels;
+  const template = findProcedureTemplate(templateId);
+  const labels = template.declaredAttributeLabels;
+  // A variant attribute (P-1's `disabled_time`) is captured only when this version's
+  // Evidence Requirements ask for it; `attributeLabelFor` decides that precedence once.
+  const requested = new Set((input.plan.inputs.evidenceRequirements ?? []).map((requirement) => requirement.attributeName));
   const instant = normalizeObservedAt(input.observedAt);
   if (instant === null) return null;
   const expectedLabel = (name: string): string | null => {
-    const label = labels?.[name];
+    const label = attributeLabelFor(template, name, requested);
     return label !== undefined && input.target.contract.attribute_label_patterns.includes(label) ? label : null;
   };
   const column = adapterLookupColumn(input.plan.inputs.templateId);

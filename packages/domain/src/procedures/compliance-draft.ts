@@ -4,7 +4,7 @@ import { isRuleDecimal } from './population-draft.js';
 /** Frozen, closed data contract. Nothing in this vocabulary is executable authored code. */
 export const COMPLIANCE_SCHEMA_VERSION = 1 as const;
 export const COMPLIANCE_COMPILER_VERSION = '1' as const;
-export const COMPLIANCE_LIMITS = { conditions: 32, text: 10000, expression: 2000, nodes: 64, depth: 12, values: 32 } as const;
+export const COMPLIANCE_LIMITS = { conditions: 32, text: 10000, expression: 2000, nodes: 64, depth: 12, values: 32, mappings: 8, column: 128 } as const;
 export const COMPLIANCE_MESSAGES = {
   INPUT: 'Enter valid Compliance Rule conditions with unique stable ids and storable text.',
   APPLICABILITY: 'Enter a supported applicability expression over declared Observation fields.',
@@ -12,7 +12,23 @@ export const COMPLIANCE_MESSAGES = {
   CONFIDENCE: 'Enter one finite Agent-Judged confidence threshold from 0 to 1.',
   COMPILER: 'This Procedure Version uses an unsupported Compliance Rule compiler version.',
   POLICY: 'Enter a valid role-privilege policy: distinct bounded role names, no role in both lists, bound only to an Agent-Judged condition over a declared roles field.',
+  MAPPING: 'Enter a valid population field mapping: each declared time field at most once, mapped to one declared source column name, and never two columns for one field across conditions.',
 } as const;
+
+/**
+ * An explicit, frozen mapping from a declared TIME field to the population column that
+ * supplies it (owner decision 2, 2026-09-08 — the 24-hour disablement variant).
+ *
+ * Compiler 1 reads `termination_time`; the HR source declares
+ * `termination_effective_time`. Nothing guesses that two names are one field: the
+ * author declares it, the version freezes it, the evaluator applies it, and the audit
+ * trail shows it. Only time fields, because that is the whole of this variant — this is
+ * not a universal mapping platform.
+ */
+export interface PopulationFieldMapping {
+  readonly field: string;
+  readonly column: string;
+}
 
 /**
  * An explicit, reviewable role-privilege policy frozen with ONE Agent-Judged condition.
@@ -57,6 +73,8 @@ export interface ComplianceConditionInput {
    * as nothing. `null` is accepted on input and means absent.
    */
   readonly policy?: ConditionPolicy;
+  /** Optional frozen population field mapping; absent (never `null`) when none. */
+  readonly mapping?: readonly PopulationFieldMapping[];
 }
 export interface ComplianceDraftInput {
   readonly conditions: readonly ComplianceConditionInput[];
@@ -138,8 +156,8 @@ export function isComplianceConfidence(value: unknown): value is string {
 }
 export function complianceInputFromFields(fields: DraftComplianceFields): ComplianceDraftInput {
   return {
-    conditions: fields.complianceConditions.map(({ conditionId, text, applicability, comparison, policy }) =>
-      ({ conditionId, text, applicability, comparison, ...(policy === undefined ? {} : { policy }) })),
+    conditions: fields.complianceConditions.map(({ conditionId, text, applicability, comparison, policy, mapping }) =>
+      ({ conditionId, text, applicability, comparison, ...(policy === undefined ? {} : { policy }), ...(mapping === undefined ? {} : { mapping }) })),
     confidenceThreshold: fields.agentJudgedThreshold,
   };
 }

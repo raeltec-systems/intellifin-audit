@@ -1,6 +1,7 @@
 import {
   adapterLookupColumn,
   agentJudgedNeedsProposal,
+  complianceFieldMappings,
   evaluableTemplateId,
   evaluateComplianceRecord,
   evaluateObservationRecord,
@@ -123,7 +124,7 @@ export function applicableAgentConditionIds(
     context.templateId,
     inputs.plan.inputs,
     {
-      values: observationRuleValues(context.templateId, record, populationValues),
+      values: observationRuleValues(context.templateId, record, populationValues, complianceFieldMappings(inputs.plan.inputs)),
       evidence: observationEvidenceFacts(subject),
       roleMatrix: context.roleExpansion,
     },

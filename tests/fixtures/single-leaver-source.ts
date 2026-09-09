@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 /** An independently declared single-case source keeps the golden row unchanged while
  * allowing its isolated-case expectation to be tested. The complete golden source's
  * unrelated missing dates/duplicate keys remain unchanged and must still fail its Gate. */
-export async function startCanonicalLeaverSource(recordKey: string) {
+export async function startCanonicalLeaverSource(recordKey: string, options: { readonly terminationTime?: boolean } = {}) {
   if (!/^E-[0-9]{6}$/.test(recordKey)) throw new Error('Canonical leaver key is malformed.');
   const generated = JSON.parse(execFileSync('python3', [
     fileURLToPath(new URL('./generate-single-leaver-source.py', import.meta.url)), recordKey,
+    ...(options.terminationTime ? ['with-termination-time'] : []),
   ], { encoding: 'utf8', maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })) as {
     csv: string; cover: { row_count: number; content_digest: { value: string } };
     row: Record<string, string>; schema: string[]; period: { from: string; to: string };

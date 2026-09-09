@@ -233,10 +233,15 @@ function declaredFields(
   plan: ExecutablePlan,
   target: ProcedureTargetSnapshot,
 ): readonly { readonly attributeName: string; readonly label: string }[] {
-  const labels = findProcedureTemplate(P1_TEMPLATE).declaredAttributeLabels;
+  const template = findProcedureTemplate(P1_TEMPLATE);
+  const labels = template.declaredAttributeLabels;
   if (labels === null || !Array.isArray(plan.observations)) return [];
   const declared = new Set(plan.observations.map((observation) => observation.attributeName));
-  return Object.entries(labels)
+  // A variant attribute is offered only when this version's Evidence Requirements ask for
+  // it — the same precedence `attributeLabelFor` applies at capture.
+  const requested = new Set((plan.inputs.evidenceRequirements ?? []).map((requirement) => requirement.attributeName));
+  const variant = Object.entries(template.variantAttributeLabels ?? {}).filter(([attributeName]) => requested.has(attributeName));
+  return [...Object.entries(labels), ...variant]
     .filter(([attributeName]) => attributeName !== 'identity' && attributeName !== 'found')
     .filter(([attributeName]) => declared.has(attributeName))
     .filter(([, label]) => targetLabelAllowed(target, label))

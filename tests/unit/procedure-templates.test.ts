@@ -144,6 +144,13 @@ describe('the four Procedure Templates', () => {
       } else {
         expect(template.secondaryKey).toBeNull();
       }
+      // Variant attribute labels: what §C names for the Template's retained variant.
+      if (template.variantAttributeLabels !== null) {
+        for (const [attribute, label] of Object.entries(template.variantAttributeLabels)) {
+          expect(block).toContain(label);
+          expect(block).toContain(attribute);
+        }
+      }
 
       for (const condition of template.conditions) {
         expectConditionPinned(block, condition);

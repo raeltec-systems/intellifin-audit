@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { classifyRolePrivilege, evaluateComplianceRecord, initialDraftCompliance, isDraftComplianceFields, RETAINED_PRIVILEGED_ASSIGNMENT, type DraftComplianceFields } from '@intellifin/domain';
-import { canonicalLoanCoreCompliance, CANONICAL_LOANCORE_C1, CANONICAL_LOANCORE_C2_POLICY } from '../fixtures/canonical-loancore-compliance';
+import { classifyRolePrivilege, complianceFieldMappings, evaluateComplianceRecord, initialDraftCompliance, isDraftComplianceFields, observationIdFor, observationRuleValues, MISSING_OBSERVATION_FIELD, RETAINED_PRIVILEGED_ASSIGNMENT, type DraftComplianceFields, type ObservationRecord } from '@intellifin/domain';
+import { canonicalLoanCoreCompliance, CANONICAL_LOANCORE_C1, CANONICAL_LOANCORE_C2_POLICY, CANONICAL_LOANCORE_C3_MAPPING, CANONICAL_LOANCORE_C3_WINDOW } from '../fixtures/canonical-loancore-compliance';
 
 const evidence = { inspected: true, complete: true, ambiguous: false, contradictory: false, absenceProven: false };
 function c1(fields: DraftComplianceFields, status: string) {
@@ -61,5 +61,57 @@ describe('the canonical LoanCore role-privilege policy on C2', () => {
     // Without the policy every one of them is the model's alone to decide.
     const original = canonicalLoanCoreCompliance({ c2Policy: false });
     expect(c2(original, rolesOf('E-000118'), { value: 'COMPLIANT', confidence: '0.9' })).toMatchObject({ value: 'COMPLIANT', diagnostics: [] });
+  });
+});
+
+describe('the canonical 24-hour disablement window against the golden fixtures (D3)', () => {
+  const loancore = JSON.parse(readFileSync('fixtures/northstar/datasets/loancore-accounts.json', 'utf8')) as { accounts: { employee_id: string; status: string; roles: string[]; disabled_time: string }[] };
+  const peoplehub = JSON.parse(readFileSync('fixtures/northstar/datasets/peoplehub-employees.json', 'utf8')) as { employees: { employee_id: string; termination_effective_time: string }[] };
+  const leavers = JSON.parse(readFileSync('fixtures/northstar/datasets/leavers-export.json', 'utf8')) as { rows: Record<string, string>[] };
+  const expectations = JSON.parse(readFileSync('fixtures/northstar/expectations/p-1-terminated-users.json', 'utf8')) as { cases: { case_id: string; record_key: string; expected_record_evaluation: string }[] };
+  const d3 = expectations.cases.find((entry) => entry.case_id === 'D3')!;
+  const account = loancore.accounts.find((entry) => entry.employee_id === d3.record_key)!;
+  const employee = peoplehub.employees.find((entry) => entry.employee_id === d3.record_key)!;
+  const fields = canonicalLoanCoreCompliance({ disablementWindow: true });
+  const evidence = { inspected: true, complete: true, ambiguous: false, contradictory: false, absenceProven: false };
+  const captured = (disabledTime: string): ObservationRecord => ({
+    schemaVersion: 1, observationId: observationIdFor('01920000-0000-7000-8000-00000000a001', account.employee_id),
+    workItemId: '01920000-0000-7000-8000-00000000a001', populationRecordKey: account.employee_id, targetSystem: 'loancore',
+    found: 'true', observedAt: '2026-09-05T10:00:00.000Z', stepExecutionId: '01920000-0000-7000-8000-00000000b001',
+    captureMethod: 'agent', matchOrigin: 'platform', identity: null, evidenceIds: ['01920000-0000-7000-8000-00000000c001'],
+    attributes: [
+      { name: 'account_status', originalValue: account.status, normalizedValue: account.status, grounding: null, corroboration: null },
+      { name: 'roles', originalValue: account.roles.join(', '), normalizedValue: account.roles.join(', '), grounding: null, corroboration: null },
+      { name: 'disabled_time', originalValue: disabledTime, normalizedValue: disabledTime, grounding: null, corroboration: null },
+    ],
+  });
+  const evaluate = (population: Record<string, string>, disabledTime = account.disabled_time) => evaluateComplianceRecord('P-1', fields,
+    { values: observationRuleValues('P-1', captured(disabledTime), population, complianceFieldMappings(fields)), evidence },
+    { C2: { value: 'COMPLIANT', confidence: '0.9' } });
+
+  it('freezes the window as a third condition with the explicit mapping, beside the status rule and the policy', () => {
+    expect(fields.complianceConditions.map((condition) => condition.conditionId)).toEqual(['C1', 'C2', 'C3']);
+    expect(fields.complianceConditions[2]).toMatchObject({ text: CANONICAL_LOANCORE_C3_WINDOW, status: 'RULE', mapping: CANONICAL_LOANCORE_C3_MAPPING, rule: { kind: 'disablement-window', hours: '24', boundary: 'inclusive' } });
+    expect(isDraftComplianceFields(fields, 'P-1')).toBe(true);
+  });
+
+  it('reaches the expectation file\'s D3 verdict from the PeopleHub instant and the LoanCore page, exactly 24 hours apart', () => {
+    expect(d3.expected_record_evaluation).toBe('COMPLIANT');
+    expect(account.disabled_time).toBe('2026-08-08T00:00:00+02:00');
+    expect(employee.termination_effective_time).toBe('2026-08-07T00:00:00+02:00');
+    const result = evaluate({ employee_id: account.employee_id, termination_effective_time: employee.termination_effective_time });
+    expect(result.conditions.map((condition) => [condition.conditionId, condition.value])).toEqual([['C1', 'COMPLIANT'], ['C2', 'COMPLIANT'], ['C3', 'COMPLIANT']]);
+    expect(result.value).toBe(d3.expected_record_evaluation);
+    // One second later is the Exception the dataset note promises.
+    expect(evaluate({ employee_id: account.employee_id, termination_effective_time: employee.termination_effective_time }, '2026-08-08T00:00:01+02:00').conditions[2]).toMatchObject({ conditionId: 'C3', value: 'EXCEPTION' });
+  });
+
+  it('cannot substantiate the window from the leavers export, which declares a termination DATE only', () => {
+    const row = leavers.rows.find((entry) => entry['employee_id'] === account.employee_id)!;
+    expect(row['termination_effective_date']).toBe('2026-08-07');
+    expect(Object.hasOwn(row, 'termination_effective_time')).toBe(false);
+    const result = evaluate(row);
+    expect(result.conditions[2]).toMatchObject({ conditionId: 'C3', value: 'UNEVALUATED', diagnostics: [`${MISSING_OBSERVATION_FIELD}termination_time`] });
+    expect(result.value).toBe('UNEVALUATED');
   });
 });

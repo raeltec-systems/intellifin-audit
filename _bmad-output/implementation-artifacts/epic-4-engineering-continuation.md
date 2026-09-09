@@ -697,3 +697,40 @@ Independent isolation34224743734/job102055999739 passes at pushed8eafbfbea65a53b
 The representative model-directed audit remains not accepted: live34223964866 at0c118a8 reaches a correct durable C2 wait because the condition does not define privilege. Read-only independent review confirms roles are present/corroborated and the judged-copy repair preserves independent registration and the human unnamed-value branch. No fixture answer or synthetic privilege policy is inserted to force completion. An approved C2 criterion and existing approved private S3/production worker configuration are genuine release blockers. GitHub reports main12ec596dc3d23907a80a7d395c343a54c4375d5a unprotected; no direct push, bypass, merge or candidate web/worker deployment occurs.
 
 This documentation checkpoint refreshes the engineering report and adds epic-4-live-provider-verification.json with bounded accepted proof, exact tested runtime/provider commits, secret-free configuration/Run IDs and cleanup facts. Original provider identities stay in the scanned Actions artifact. A1472tracked-file scan at8eafbfbe finds zero occurrences of the supplied key; temporary snapshot/delivery/payload/deploy transports remain absent. Standard CI34224604065 has static/images green and remaining gates pending at authoring. The following documentation-only head needs its own standard checks; final results are recorded on PR24 after completion. Next action: push this reviewable handoff, finish hosted checks, diagnose any actual failure, and ask only for the approved C2 judgment policy and evidence-storage configuration. This checkpoint is explicitly not a merge-ready Epic4 release.
+
+## D3: the 24-hour disablement window through the complete evidence path (2026-09-09)
+
+Owner decision 2 (addendum §0b) is implemented as one bounded story, `spec-4-12`. A version
+declares, per condition, which population column supplies compiler 1's `termination_time`
+(`mapping`, time fields only, one column per field across the version, omitted when absent so
+frozen rows recompile byte for byte); LoanCore's account page now renders `Disabled time`, the
+catalogue registers the label, and P-1 carries it as a VARIANT attribute that the planner offers
+and the capture accepts only when the version's Evidence Requirements name `disabled_time`. The
+canonical fixture authors C3 beside the explicit C1 (`canonicalLoanCoreCompliance({
+disablementWindow: true })`), and the single-case source can join the PeopleHub instant into a
+separately declared CSV with its own signed cover (`startCanonicalLeaverSource(id, {
+terminationTime: true })`). No approved version, Run or canonical dataset row is rewritten.
+
+Local verification on this host: 8 domain tests (`disablement-window.test.ts`: compile and
+refusals, below/exactly/above 24 hours, equivalent offsets, missing/invalid/date-only values,
+contradictory evidence, proven absence), 44/44 in `execute-agent-work-item.test.ts` including the
+six D3 cases (capture by label, mapped instant, one second past and the exclusive boundary,
+date-only source, page without the label, page for the wrong employee, variant only when
+requested), the §D E-000105 golden case read from the datasets, and the transcription pins.
+Root, domain, application, web and Northstar typechecks pass.
+
+`tests/e2e/disablement-window-journey.spec.ts` ran against the compiled worker, the rebuilt
+synthetic LoanCore, PostgreSQL 18 at generation 41 and a real object store: the instant-bearing
+source seals PASS after C2 confirmation with C3 origin RULE Compliant, the disablement instant
+captured as `2026-08-08T00:00:00+02:00`, normalized `2026-08-07T22:00:00.000Z`, grounded at a
+`$.nodes[i].value` locator whose registered bytes hold that cell in the identity's record group;
+the date-only source seals INCONCLUSIVE with C3 `missing or invalid Observation field
+termination_time`. Both cases passed (20.1 s and 10.0 s; 5 passed with the auth setup). The first
+attempt never reached a test: the cold Turbopack compile exceeded Playwright's 180 s web-server
+timeout on this host, so the servers were warmed first and reused, which is the documented local
+remedy and changes no configuration. Teardown left zero Procedures, Runs or grants behind.
+
+Remaining for this story: Builder authoring of the mapping and the variant requirement belongs to
+the hero-workflow usability pass; a deployed LoanCore registration gains the `Disabled time`
+label through the authorized configuration flow (a digest change with the Story 2.8 ripple); the
+hosted CI browser gate runs the journey on the pushed candidate.

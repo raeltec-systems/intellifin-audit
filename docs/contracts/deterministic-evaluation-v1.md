@@ -262,6 +262,61 @@ policy: { kind: 'role-privilege', rolesField: 'roles', privileged: [...], nonPri
   privilege case, and E-000119 (OPS_GENERIC, XR_TEMP) is in neither list — still ambiguous,
   still escalated, exactly as `p-1-terminated-users.json` D16-b names it.
 
+## Explicit population field mapping for a time condition (added 2026-09-08, D3)
+
+The owner's decision on the 24-hour disablement variant (`disabled_time - termination_time <=
+24h`): its complete evidence path is authored, frozen and proven end to end, and it is NOT a
+universal mapping platform. A version says, explicitly and reviewably, which population column
+supplies a compiler-1 time field that the bound source stores under another name:
+
+```
+mapping: [{ field: 'termination_time', column: 'termination_effective_time' }]
+```
+
+- **Where it lives.** `PopulationFieldMapping` in `compliance-draft.ts`, an OPTIONAL `mapping`
+  key on `ComplianceConditionInput`, ABSENT (never `null`) on every condition without one — the
+  same byte-for-byte recompilation reason as `policy`. `normalizeFieldMappings` accepts only a
+  field the Template declares with value type `time`, each field at most once, at most
+  `COMPLIANCE_LIMITS.mappings` entries, and a column that is an identifier of at most
+  `COMPLIANCE_LIMITS.column` characters; the list is sorted by field. `compileComplianceDraft`
+  refuses two conditions mapping one field to two columns (`COMPLIANCE_MESSAGES.MAPPING`), and
+  `complianceFieldMappings` is the version's one merged set.
+- **How it is applied.** `observationRuleValues` reads the population's same-named declared
+  columns first, then the explicit mappings — explicit beats a same-named column — and a
+  grounded Observation attribute beats both, because the Target System's reading is what was
+  observed. A mapping to a column the bound source does not carry supplies nothing: the field is
+  `missing or invalid Observation field termination_time` and the condition is `UNEVALUATED`.
+  Nothing guesses that two names are one field, and `termination_effective_date` (a date) is
+  never promoted to an instant.
+- **The other instant is captured by its label, only when the version asks for it.** P-1's
+  `disabled_time` is a VARIANT attribute: `variantAttributeLabels` on the Template (`Disabled
+  time`), offered by the planner and accepted at capture only when the version's Evidence
+  Requirements name the attribute (`attributeLabelFor`) and the target's frozen
+  `attribute_label_patterns` permit the label. A default P-1 version therefore never captures it
+  and its `required-evidence` check is unchanged; a version that asks for it and meets a page
+  without the label fails `required-evidence` (`attribute-ungrounded`) and decides nothing about
+  the window. The value is never read from an expectation fixture or a hidden import: LoanCore's
+  own account page renders it (`apps/northstar/src/loancore.ts`), the catalogue registers the
+  label, and the version freezes both.
+- **The comparison is compiler 1's.** The existing duration grammar with the frozen
+  `comparison.boundary` — `inclusive` makes exactly 24 hours Compliant, `exclusive` an
+  Exception — over UTC-normalized instants (`normalizeObservedAt`), so
+  `2026-08-08T00:00:00+02:00` and `2026-08-07T22:00:00Z` are one instant. A missing, invalid or
+  date-only value on either side is `UNEVALUATED` with the missing field named; a proven absence
+  is not applicable (`found = true` applicability) and C1 is what judges it. Every row this path
+  writes is origin `RULE` with no rationale.
+- **Where it is proven.** `disablement-window.test.ts` (domain: compile and refusals, below,
+  exactly and above 24 hours, equivalent instants in different offsets, missing, invalid and
+  date-only values, contradictory evidence, proven absence);
+  `execute-agent-work-item.test.ts` (application: capture by label, the mapped instant, a page
+  for the wrong employee registers nothing, the variant only when requested);
+  `tests/unit/canonical-loancore-compliance.test.ts` (the §D E-000105 golden case, read from
+  the datasets); and `tests/e2e/disablement-window-journey.spec.ts` (the compiled worker: the
+  termination instant acquired from the declared source with its signed cover sheet, the
+  disablement instant captured from LoanCore's page and grounded at a locator in registered
+  bytes, a Pass after C2 confirmation; the date-only source seals Inconclusive naming the
+  missing value).
+
 ## What this contract does not decide
 
 The Run-level Gate rows, the applicable-condition counts and the mapping of a failing Gate to

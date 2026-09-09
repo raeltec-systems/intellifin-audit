@@ -128,6 +128,14 @@ export interface ProcedureTemplate {
   readonly auditInstructions: string | null;
   readonly conditions: readonly TemplateCondition[];
   readonly declaredAttributeLabels: Readonly<Record<string, string>> | null;
+  /**
+   * Labels for attributes a Template VARIANT captures — captured only when the version's
+   * Evidence Requirements name the attribute, so a default Procedure never fails
+   * required-evidence for a field it never asked for. P-1's 24-hour variant reads
+   * `disabled_time` from the account page under `Disabled time` (owner decision 2,
+   * 2026-09-08). `attributeLabelFor` is the one place that precedence is decided.
+   */
+  readonly variantAttributeLabels: Readonly<Record<string, string>> | null;
   readonly secondaryKey: string | null;
   readonly evidenceRequirements: string | null;
   /**
@@ -209,6 +217,7 @@ const P1: ProcedureTemplate = {
     roles: 'Roles',
     identity: 'Employee ID',
   },
+  variantAttributeLabels: { disabled_time: 'Disabled time' },
   secondaryKey: 'full name',
   evidenceRequirements:
     'username, account_status, roles (each grounded), Structural Snapshot and platform screenshot of the account page bound to the read, source export row.',
@@ -223,7 +232,7 @@ const P1: ProcedureTemplate = {
     'any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.',
   also: [
     'a name-only match with two candidate rows lacking the employee ID (*choose candidate*); an account with status `Suspended` (*unnamed value*; expected terminal outcome Inconclusive with diagnostic); a search timeout exhausting retries (*retry or skip*)',
-    'a 24-hour disablement-window rule (`disabled_time - termination_time <= 24h`, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes `disabled_time`; the §D boundary case for P-1 targets this variant',
+    'a 24-hour disablement-window rule (disabled_time - termination_time <= 24h, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes disabled_time — LoanCore labels it Disabled time on the account page, and the variant reads termination_time from the population\'s termination_effective_time through an explicit frozen field mapping (owner decision 2026-09-08, §0b); the §D boundary case for P-1 targets this variant',
   ],
   goldenBindingReference: 'leavers-export-versioned',
   expectationsVersion: 'p-1-terminated-users',
@@ -266,6 +275,7 @@ const P2: ProcedureTemplate = {
     },
   ],
   declaredAttributeLabels: null,
+  variantAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
   evidenceDefaults: [],
@@ -318,6 +328,7 @@ const P3: ProcedureTemplate = {
     },
   ],
   declaredAttributeLabels: null,
+  variantAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
   evidenceDefaults: [],
@@ -365,6 +376,7 @@ const P4: ProcedureTemplate = {
     },
   ],
   declaredAttributeLabels: null,
+  variantAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
   evidenceDefaults: [],
@@ -414,4 +426,17 @@ export function templateCoverageRule(templateId: string): TemplateCoverageRule {
     PROCEDURE_TEMPLATES.find((candidate) => candidate.id === templateId)?.coverageRule ??
     'must-appear'
   );
+}
+
+/**
+ * The label an attribute is captured under: a declared label always; a variant label only
+ * when the version REQUESTED the attribute (its Evidence Requirements name it). A variant
+ * attribute nobody requested has no label, so it is neither offered to the model nor
+ * carried as an ungrounded attribute that would fail required-evidence.
+ */
+export function attributeLabelFor(template: ProcedureTemplate, attributeName: string, requested: ReadonlySet<string>): string | undefined {
+  const declared = template.declaredAttributeLabels;
+  if (declared !== null && Object.hasOwn(declared, attributeName)) return declared[attributeName];
+  const variant = template.variantAttributeLabels;
+  return variant !== null && requested.has(attributeName) && Object.hasOwn(variant, attributeName) ? variant[attributeName] : undefined;
 }

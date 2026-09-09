@@ -308,6 +308,7 @@ ${field('Username', account.username)}
 ${includeStatus ? field('Status', account.status) : ''}
 ${field('Roles', account.roles.join(', '))}
 ${field('Last login', account.last_login)}
+${account.disabled_time === '' ? '' : field('Disabled time', account.disabled_time)}
 ${field('Account ID', account.account_id)}
 </dl>`;
 }

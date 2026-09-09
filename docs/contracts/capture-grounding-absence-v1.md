@@ -80,7 +80,9 @@ and target bounded by `OBSERVATION_LIMITS.text` and value by `OBSERVATION_LIMITS
     `AgentFieldSelection` is `{attributeName, locator}`. `buildFoundAgentObservation`'s
     `ground(...)` resolves the locator with `parseSnapshotLocator` + `readSnapshotCell`,
     requires `node.role === 'datum'`, requires the node to be in the identity's own `group`,
-    and requires `cell.label` to equal the Template's declared label for that attribute —
+    and requires `cell.label` to equal the label `attributeLabelFor` gives that attribute —
+    the Template's declared label, or its VARIANT label (`variantAttributeLabels`, P-1's
+    `disabled_time` → `Disabled time`) only when an Evidence Requirement names the attribute —
     which must also be present in the target's frozen `attribute_label_patterns`.
 12. **The identity cell must carry the population's own key.** `identityCell.value === key`
     and `identityCell.label === expectedLabel('identity')`, the identity node must be a
@@ -94,7 +96,9 @@ and target bounded by `OBSERVATION_LIMITS.text` and value by `OBSERVATION_LIMITS
     `required-evidence` / `attribute-ungrounded` can still see it.
 14. **The compiler's field union is not a capture obligation.** A field is skipped only
     when the Template declares no label for it AND no
-    `plan.inputs.evidenceRequirements` entry names it.
+    `plan.inputs.evidenceRequirements` entry names it. A variant label counts as declared only
+    when a requirement names its attribute, so a default P-1 version never captures
+    `disabled_time` and never fails `required-evidence` for want of it (D3, 2026-09-08).
 15. **An absence claim needs a page that says it is empty.** `buildAbsentAgentObservation`
     returns `null` unless the snapshot parses as `web_tree` and
     `document.completion?.returned === 0`. It is P-1 only.
