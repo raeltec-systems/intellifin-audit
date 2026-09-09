@@ -14,7 +14,8 @@
     "username": "Username",
     "roles": "Roles",
     "identity": "Employee ID",
-    "full_name": "Full name"
+    "full_name": "Full name",
+    "disabled_time": "Disabled time"
   },
   "page_behaviours": {
     "normal": "The account page renders Status, Username, Roles and Employee ID as labelled fields.",

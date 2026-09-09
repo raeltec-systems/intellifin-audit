@@ -1,5 +1,5 @@
 import {
-  adapterLookupColumn, adapterSearchKeys, canonicalJson, findProcedureTemplate, groundedText,
+  adapterLookupColumn, adapterSearchKeys, attributeLabelFor, canonicalJson, findProcedureTemplate, groundedText,
   hasIdentityGroundingSplit, isObservationRecord, normalizeObservationValue, normalizeObservedAt,
   observationIdFor, parseSnapshotLocator, withinFrozenOrigin, readSnapshotCell, readStructuralSnapshot, sha256HexOfBytes,
   type ExecutablePlan, type JsonValue, type ObservationAttribute, type ProcedureTargetSnapshot, type StoredSnapshot,
@@ -117,7 +117,10 @@ export function applyAgentHumanDecision(input: AgentHumanDecisionInput): AgentHu
   const address = parseSnapshotLocator(candidate.identityLocator);
   if (address === null) return refuse('evidence-mismatch');
   const identityNode = parsed.document.nodes[address.index], identityCell = readSnapshotCell(parsed, address);
-  const labels = findProcedureTemplate('P-1').declaredAttributeLabels!;
+  const template = findProcedureTemplate('P-1');
+  const labels = template.declaredAttributeLabels!;
+  const requested = new Set((input.plan.inputs.evidenceRequirements ?? []).map(requirement => requirement.attributeName));
+  const labelOf = (name: string): string | undefined => attributeLabelFor(template, name === keyColumn ? 'identity' : name, requested);
   if (identityNode?.role !== 'datum' || identityCell === null || identityCell.label !== labels.identity || identityCell.value !== key) return unresolved();
   if (parsed.document.nodes.filter(node => node.group === identityNode.group && node.role === 'datum' && node.label === labels.identity).length !== 1) return unresolved();
   const secondaryLabel = target.contract.secondary_key, secondaryKey = searchKeys.find(name => name !== keyColumn);
@@ -125,14 +128,14 @@ export function applyAgentHumanDecision(input: AgentHumanDecisionInput): AgentHu
   if (secondaryLabel === null || secondaryKey === undefined || secondary.length !== 1 || secondary[0]!.value !== input.population.values[secondaryKey]) return unresolved();
   const ground = (name: string, valueType: string, index: number): ObservationAttribute | null => {
     const node = parsed.document.nodes[index], locator = `$.nodes[${index}].value`, cell = readSnapshotCell(parsed, { collection: 'nodes', index, field: 'value' });
-    const label = labels[name === keyColumn ? 'identity' : name];
+    const label = labelOf(name);
     if (!node || node.role !== 'datum' || node.group !== identityNode.group || !cell || cell.label !== label || !target.contract.attribute_label_patterns.includes(label ?? '')) return null;
     return { name, originalValue: cell.value, normalizedValue: normalizeObservationValue(valueType, cell.value), grounding: { evidenceId: snapshot.evidenceId, locator, label: cell.label, extractedText: groundedText(cell.value) }, corroboration: null };
   };
   const identity = ground(keyColumn, 'text', address.index);
   if (identity === null) return unresolved();
   const attributes = input.plan.observations.filter(field => !['found','identity',keyColumn].includes(field.attributeName)).map(field => {
-    const matches = parsed.document.nodes.flatMap((node, index) => node.group === identityNode.group && node.role === 'datum' && node.label === labels[field.attributeName] ? [index] : []);
+    const matches = parsed.document.nodes.flatMap((node, index) => node.group === identityNode.group && node.role === 'datum' && node.label === labelOf(field.attributeName) ? [index] : []);
     return (matches.length === 1 ? ground(field.attributeName, field.valueType, matches[0]!) : null) ?? { name: field.attributeName, originalValue: null, normalizedValue: null, grounding: null, corroboration: null };
   });
   return { ok: true, kind: 'register', item: base('true', identity, attributes, true), workItemState: 'OBSERVED' };

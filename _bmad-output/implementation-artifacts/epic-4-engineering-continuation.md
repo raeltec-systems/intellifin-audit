@@ -697,3 +697,109 @@ Independent isolation34224743734/job102055999739 passes at pushed8eafbfbea65a53b
 The representative model-directed audit remains not accepted: live34223964866 at0c118a8 reaches a correct durable C2 wait because the condition does not define privilege. Read-only independent review confirms roles are present/corroborated and the judged-copy repair preserves independent registration and the human unnamed-value branch. No fixture answer or synthetic privilege policy is inserted to force completion. An approved C2 criterion and existing approved private S3/production worker configuration are genuine release blockers. GitHub reports main12ec596dc3d23907a80a7d395c343a54c4375d5a unprotected; no direct push, bypass, merge or candidate web/worker deployment occurs.
 
 This documentation checkpoint refreshes the engineering report and adds epic-4-live-provider-verification.json with bounded accepted proof, exact tested runtime/provider commits, secret-free configuration/Run IDs and cleanup facts. Original provider identities stay in the scanned Actions artifact. A1472tracked-file scan at8eafbfbe finds zero occurrences of the supplied key; temporary snapshot/delivery/payload/deploy transports remain absent. Standard CI34224604065 has static/images green and remaining gates pending at authoring. The following documentation-only head needs its own standard checks; final results are recorded on PR24 after completion. Next action: push this reviewable handoff, finish hosted checks, diagnose any actual failure, and ask only for the approved C2 judgment policy and evidence-storage configuration. This checkpoint is explicitly not a merge-ready Epic4 release.
+
+## D3: the 24-hour disablement window through the complete evidence path (2026-09-09)
+
+Owner decision 2 (addendum §0b) is implemented as one bounded story, `spec-4-12`. A version
+declares, per condition, which population column supplies compiler 1's `termination_time`
+(`mapping`, time fields only, one column per field across the version, omitted when absent so
+frozen rows recompile byte for byte); LoanCore's account page now renders `Disabled time`, the
+catalogue registers the label, and P-1 carries it as a VARIANT attribute that the planner offers
+and the capture accepts only when the version's Evidence Requirements name `disabled_time`. The
+canonical fixture authors C3 beside the explicit C1 (`canonicalLoanCoreCompliance({
+disablementWindow: true })`), and the single-case source can join the PeopleHub instant into a
+separately declared CSV with its own signed cover (`startCanonicalLeaverSource(id, {
+terminationTime: true })`). No approved version, Run or canonical dataset row is rewritten.
+
+Local verification on this host: 8 domain tests (`disablement-window.test.ts`: compile and
+refusals, below/exactly/above 24 hours, equivalent offsets, missing/invalid/date-only values,
+contradictory evidence, proven absence), 44/44 in `execute-agent-work-item.test.ts` including the
+six D3 cases (capture by label, mapped instant, one second past and the exclusive boundary,
+date-only source, page without the label, page for the wrong employee, variant only when
+requested), the §D E-000105 golden case read from the datasets, and the transcription pins.
+Root, domain, application, web and Northstar typechecks pass.
+
+`tests/e2e/disablement-window-journey.spec.ts` ran against the compiled worker, the rebuilt
+synthetic LoanCore, PostgreSQL 18 at generation 41 and a real object store: the instant-bearing
+source seals PASS after C2 confirmation with C3 origin RULE Compliant, the disablement instant
+captured as `2026-08-08T00:00:00+02:00`, normalized `2026-08-07T22:00:00.000Z`, grounded at a
+`$.nodes[i].value` locator whose registered bytes hold that cell in the identity's record group;
+the date-only source seals INCONCLUSIVE with C3 `missing or invalid Observation field
+termination_time`. Both cases passed (20.1 s and 10.0 s; 5 passed with the auth setup). The first
+attempt never reached a test: the cold Turbopack compile exceeded Playwright's 180 s web-server
+timeout on this host, so the servers were warmed first and reused, which is the documented local
+remedy and changes no configuration. Teardown left zero Procedures, Runs or grants behind.
+
+Remaining for this story: Builder authoring of the mapping and the variant requirement belongs to
+the hero-workflow usability pass; a deployed LoanCore registration gains the `Disabled time`
+label through the authorized configuration flow (a digest change with the Story 2.8 ripple); the
+hosted CI browser gate runs the journey on the pushed candidate.
+
+## Hosted mutation gates: anchor drift from the C2 policy line (2026-09-09)
+
+The standard CI runs on `db3c6d3` and `ad238db` failed in both mutation jobs with
+`Mutation anchor drift`: the C2 policy commit (`1dee0cb`) widened the worker's audited-retry
+guard to `model-policy-contradiction`, and three harness entries (`invalid-provider-security-
+event`; `worker-malformed-proposal-security-event` and `retrieved-worker-security-denial`)
+anchored on the previous exact line. `6237c4c` repoints the three `before:` anchors; the
+mutation (`return;`, the whole security-event guard removed) and its killing tests are
+unchanged. A local check confirmed every `before:` anchor across the four harnesses occurs
+exactly once, and the guard harness in a disposable detached worktree of `6237c4c` killed all
+ten unit-mode mutations (baseline green, mutant red for each), the repointed entry included.
+The two abuse-harness entries need the hosted job's real worker journeys and are proven there.
+Lesson recorded in CLAUDE.md: a change to a guarded line must repoint its mutation anchors in
+the same commit, or the hosted gates stop before proving anything.
+
+## Live acceptance passed on the policy-bound candidate (2026-09-09)
+
+Standard CI `34298099868` on `6237c4c` is green in all five jobs (typecheck/boundaries/unit;
+PostgreSQL migrations, integration and the guard-mutation gate; the browser suite including
+`disablement-window-journey.spec.ts`; container images; the abuse-mutation gate). The
+docs-only head `07f79e2` was pushed and the `solari-live-acceptance` label re-applied.
+
+Live run `34299424112` on `07f79e275b729893754ce23e5eacbc420c706902` passed all three cases in
+1.3 minutes of Playwright time, on Solari (`us-west`, recording off), OpenAI `gpt-5.6-luna`,
+prompt version 4, against `https://northstar-production-b312.up.railway.app`:
+
+- Policy-bound (E-000102, the frozen role-privilege policy on C2): Run
+  `01a083ca-06ee-7ba3-b2d5-becb0f279232` ended `COMPLETED`, outcome `PENDING_CONFIRMATION`,
+  Gate passed, five model turns (navigate, search, open-record, read-attribute, evaluation),
+  C2 proposal `COMPLIANT` with no diagnostic, one Observation, ten registered artifacts (five
+  Structural Snapshots, five screenshots), workspace `RELEASED` at 01:31:16 before its 02:30
+  expiry. The harness did not impersonate a reviewer; the proposal awaits an authorized human.
+- Undefined-privilege negative case (no policy): Run `01a083ca-7e01-7a3f-b011-5997aaaf8ff1`
+  authenticated, performed the same four actions, and the evaluation turn returned
+  `ambiguous` with the accepted summary "The privileged-role criterion is undefined."; the
+  Run waited durably (`AWAITING_AUDITOR`, `insufficient-evidence`), was cancelled through the
+  real command, and its workspace was released. It asked rather than guessed.
+- Remote isolation: two overlapping Solari sessions kept authentication and browser state
+  apart, refused a forged cross-Run reference and two intercepted out-of-scope fetches, and
+  both released before expiry; zero model requests.
+
+The secret-free reports are the run's retained artifact `10084400638`. This is the
+representative live acceptance the owner asked for; the review path is proven separately by
+`agent-evaluation-journey.spec.ts` and `evaluation-review.spec.ts` with an authorized identity.
+A later candidate (the hero-workflow merge) needs its own live result, per the workflow's rule.
+
+## Populated upgrade from production's generation proven (2026-09-09)
+
+Production runs `main` (`12ec596`) at schema generation 14, and the earlier upgrade proof
+started from 32. A generation-14 database was therefore built by main's own migrator,
+populated by main's own commands (four Procedures across DRAFT, SUBMITTED, APPROVED and
+ACTIVE, a published platform configuration and its platform-authored Draft, delivered
+notifications, one worker heartbeat) and upgraded in place by the candidate's migrator
+(`6237c4c`): exit 0, 12 s, `schema_meta` at 41. Every pre-existing row's generation-14
+columns are byte for byte unchanged (nine named tables digested before and after; the two
+whose full-row digest moved are exactly the two that gained nullable Epic 4 columns), the
+only pre-existing row-count changes are the migration ledger and pg-boss's queue
+definitions, schema parity with a fresh generation-41 install is exact (673 columns, 861
+constraints, 40 triggers) and the migrator is a no-op when run again. The full account is
+`epic-4-populated-upgrade-proof.md`; the readiness table's row now reads passed.
+
+One finding outside the upgrade: two `immutable-versions.test.ts` cases fail on ANY
+database that already holds a published platform configuration, fresh or upgraded, because
+their cleanup restores the `@current` pointer and that restore throws in the driver for a
+pre-existing row. CI never meets it because every CI database is empty; the populated proof
+met it because publishing a configuration was one of its steps. It is a test-isolation gap,
+not a product defect, and it is repaired in the hero-workflow candidate rather than left as
+a note.

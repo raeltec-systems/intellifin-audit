@@ -8,7 +8,48 @@ import {
   RETAINED_PRIVILEGED_ASSIGNMENT, POLICY_CONTRADICTED,
   type ComparisonOperator, type ComplianceComparison, type ComplianceCompilation, type ComplianceConditionInput,
   type CompliancePredicate, type ComplianceRule, type CompiledComplianceCondition, type DraftComplianceFields,
+  type PopulationFieldMapping,
 } from './compliance-draft.js';
+
+const CONDITION_KEYS = ['conditionId', 'text', 'applicability', 'comparison'] as const;
+const OPTIONAL_CONDITION_KEYS = ['policy', 'mapping'] as const;
+function conditionKeysAccepted(candidate: Record<string, unknown>): boolean {
+  const keys = Object.keys(candidate);
+  return (CONDITION_KEYS as readonly string[]).every((key) => Object.hasOwn(candidate, key))
+    && keys.every((key) => (CONDITION_KEYS as readonly string[]).includes(key) || (OPTIONAL_CONDITION_KEYS as readonly string[]).includes(key));
+}
+
+const COLUMN_NAME = /^[A-Za-z_][A-Za-z0-9_-]{0,127}$/;
+/**
+ * Validate and normalize a condition's population field mapping. `null` means none and is
+ * returned as `undefined` so the caller omits the key; a malformed mapping is `false`.
+ * Only a declared TIME field may be mapped, at most once, and the column is a bounded
+ * identifier — it names a declared source column, which the readiness check compares
+ * with the bound schema and the evaluator reads by exactly that name.
+ */
+export function normalizeFieldMappings(templateId: TemplateId, value: unknown): readonly PopulationFieldMapping[] | undefined | false {
+  if (value === null || value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > COMPLIANCE_LIMITS.mappings) return false;
+  const fields = COMPLIANCE_OBSERVATION_FIELDS[templateId];
+  const mappings: PopulationFieldMapping[] = [];
+  for (const entry of value) {
+    if (!complianceObject(entry) || !complianceExactKeys(entry, ['field', 'column'])) return false;
+    const field = entry['field'], column = entry['column'];
+    if (typeof field !== 'string' || !Object.hasOwn(fields, field) || fields[field] !== 'time') return false;
+    if (typeof column !== 'string' || column.length > COMPLIANCE_LIMITS.column || !COLUMN_NAME.test(column) || mappings.some((mapping) => mapping.field === field)) return false;
+    mappings.push({ field, column });
+  }
+  return mappings.sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
+}
+
+/** The version's mappings as one set, field by field; compilation refused any conflict. */
+export function complianceFieldMappings(fields: Pick<DraftComplianceFields, 'complianceConditions'>): readonly PopulationFieldMapping[] {
+  const byField = new Map<string, PopulationFieldMapping>();
+  for (const condition of fields.complianceConditions) for (const mapping of condition.mapping ?? []) {
+    if (!byField.has(mapping.field)) byField.set(mapping.field, mapping);
+  }
+  return [...byField.values()];
+}
 
 /** Only these Observation attributes exist for the shipped Template contracts. No name guessing. */
 export const COMPLIANCE_OBSERVATION_FIELDS: Readonly<Record<TemplateId, Readonly<Record<string, 'boolean' | 'decimal' | 'text' | 'time' | 'roles'>>>> = {
@@ -123,8 +164,7 @@ export function compileComplianceDraft(templateId: TemplateId, input: unknown, c
   if (!isComplianceConfidence(input['confidenceThreshold'])) return { ok: false, reason: COMPLIANCE_MESSAGES.CONFIDENCE };
   const conditions: CompiledComplianceCondition[] = [], ids = new Set<string>();
   for (const candidate of input['conditions'] as unknown[]) {
-    if (!complianceObject(candidate)
-      || !(complianceExactKeys(candidate, ['conditionId', 'text', 'applicability', 'comparison']) || complianceExactKeys(candidate, ['conditionId', 'text', 'applicability', 'comparison', 'policy']))
+    if (!complianceObject(candidate) || !conditionKeysAccepted(candidate)
       || typeof candidate['conditionId'] !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(candidate['conditionId']) || ids.has(candidate['conditionId'])
       || !isComplianceText(candidate['text'], COMPLIANCE_LIMITS.text) || !candidate['text'].trim()
       || !isComplianceText(candidate['applicability'], COMPLIANCE_LIMITS.expression)) return { ok: false, reason: COMPLIANCE_MESSAGES.INPUT };
@@ -168,14 +208,27 @@ export function compileComplianceDraft(templateId: TemplateId, input: unknown, c
     // The prose and its rendered policy are ONE instruction to the model; bound the whole,
     // because a limit on the prose alone would let the pair exceed what the gateway accepts.
     if (policy !== undefined && conditionInstructionText({ text: condition.text, policy }).length > COMPLIANCE_LIMITS.text) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
+    // A population field mapping is frozen on the condition that needs it (D3), omitted
+    // when absent for the same byte-for-byte reason as the policy.
+    const mapping = normalizeFieldMappings(templateId, candidate['mapping']);
+    if (mapping === false) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.MAPPING}` };
     // Preserve the authored string byte-for-byte. A blank string is an authored input;
     // only its compiled meaning defaults to `found = true`. Built key by key, never a
     // spread of the candidate: a spread would carry a `policy: null` into the frozen row.
     conditions.push({
       conditionId: condition.conditionId, text: condition.text, applicability: condition.applicability, comparison: condition.comparison,
       ...(policy === undefined ? {} : { policy }),
+      ...(mapping === undefined ? {} : { mapping }),
       applicabilityAst, rule, status: rule ? 'RULE' : 'AGENT_JUDGED',
     });
+  }
+  // One field, one column, across the whole version: two conditions mapping one field to
+  // two columns would be two answers to which value the rules read.
+  const mapped = new Map<string, string>();
+  for (const condition of conditions) for (const entry of condition.mapping ?? []) {
+    const existing = mapped.get(entry.field);
+    if (existing !== undefined && existing !== entry.column) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.MAPPING}` };
+    mapped.set(entry.field, entry.column);
   }
   return { ok: true, value: { complianceSchemaVersion: COMPLIANCE_SCHEMA_VERSION, complianceCompilerVersion: COMPLIANCE_COMPILER_VERSION, complianceConditions: conditions, agentJudgedThreshold: input['confidenceThreshold'] } };
 }

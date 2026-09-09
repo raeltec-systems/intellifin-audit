@@ -7,6 +7,8 @@ import {
 } from '../procedures/plan-compiler.js';
 import { compareComplianceDecimals, isComplianceConfidence } from '../procedures/compliance-draft.js';
 import type { ComplianceObservation, ComplianceRecordEvaluation } from '../procedures/plan-compiler.js';
+import { complianceFieldMappings } from '../procedures/plan-compiler.js';
+import type { PopulationFieldMapping } from '../procedures/compliance-draft.js';
 import type { DraftComplianceFields } from '../procedures/compliance-draft.js';
 import { isTemplateId, type TemplateId } from '../procedures/templates.js';
 import { isExplicitPeriod, type ExplicitPeriod } from '../procedures/population-draft.js';
@@ -380,6 +382,7 @@ export function observationRuleValues(
   templateId: TemplateId,
   record: ObservationRecord,
   populationValues: Readonly<Record<string, JsonValue>> | null,
+  mappings: readonly PopulationFieldMapping[] = [],
 ): Readonly<Record<string, unknown>> {
   const declared = COMPLIANCE_OBSERVATION_FIELDS[templateId];
   const values: Record<string, unknown> = {};
@@ -387,6 +390,14 @@ export function observationRuleValues(
     for (const [name, valueType] of Object.entries(declared)) {
       if (name === 'found' || !Object.hasOwn(populationValues, name)) continue;
       values[name] = normalizeObservationValue(valueType, populationValues[name] as JsonValue);
+    }
+    // The version's EXPLICIT frozen mappings (D3): a declared time field the population
+    // supplies under another column name. Explicit beats a same-named column; a grounded
+    // attribute below still beats both, because the Target System's reading is what was
+    // observed. Nothing here guesses that two names are one field.
+    for (const mapping of mappings) {
+      if (!Object.hasOwn(populationValues, mapping.column) || !Object.hasOwn(declared, mapping.field)) continue;
+      values[mapping.field] = normalizeObservationValue(declared[mapping.field]!, populationValues[mapping.column] as JsonValue);
     }
   }
   const attributes: readonly (ObservationAttribute | null)[] = [record.identity, ...record.attributes];
@@ -445,7 +456,7 @@ export function evaluateObservationRecord(
   reference: RecordEvaluationReference,
   agentProposals: AgentJudgedEvaluationProposals = {},
 ): RecordEvaluation {
-  const values = observationRuleValues(templateId, input.record, input.populationValues);
+  const values = observationRuleValues(templateId, input.record, input.populationValues, complianceFieldMappings(fields));
   const observation: ComplianceObservation = {
     values,
     evidence: observationEvidenceFacts(input),

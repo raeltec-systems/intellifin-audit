@@ -279,6 +279,15 @@ function isPolicyShape(value: unknown): boolean {
     typeof policy['rolesField'] === 'string' && isRoleList(policy['privileged']) && isRoleList(policy['nonPrivileged']);
 }
 
+/** `null` means no mapping; an array carries bounded `{field, column}` string pairs only. */
+function isMappingShape(value: unknown): boolean {
+  if (value === null) return true;
+  return Array.isArray(value) && value.length <= COMPLIANCE_LIMITS.mappings && value.every((entry: unknown) =>
+    typeof entry === 'object' && entry !== null && !Array.isArray(entry) && Object.keys(entry).length === 2 &&
+    typeof (entry as Record<string, unknown>)['field'] === 'string' && typeof (entry as Record<string, unknown>)['column'] === 'string' &&
+    ((entry as Record<string, unknown>)['column'] as string).length <= COMPLIANCE_LIMITS.column);
+}
+
 function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return false;
   const fields = input as Record<string, unknown>;
@@ -293,12 +302,14 @@ function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields
   return edit['conditions'].every((candidate: unknown) => {
     if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return false;
     const condition = candidate as Record<string, unknown>;
-    const keys = Object.keys(condition).length;
-    if ((keys !== 4 && keys !== 5) || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
+    const keys = Object.keys(condition);
+    if (keys.length < 4 || keys.length > 6 || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
       !Object.hasOwn(condition, 'applicability') || !Object.hasOwn(condition, 'comparison') || typeof condition['conditionId'] !== 'string' ||
       typeof condition['text'] !== 'string' || typeof condition['applicability'] !== 'string') return false;
-    // The optional policy is shape-checked here and validated by the compiler in the command.
-    if (keys === 5 && (!Object.hasOwn(condition, 'policy') || !isPolicyShape(condition['policy']))) return false;
+    // The optional policy and mapping are shape-checked here and validated by the compiler in the command.
+    if (!keys.every((key) => ['conditionId', 'text', 'applicability', 'comparison', 'policy', 'mapping'].includes(key))) return false;
+    if (Object.hasOwn(condition, 'policy') && !isPolicyShape(condition['policy'])) return false;
+    if (Object.hasOwn(condition, 'mapping') && !isMappingShape(condition['mapping'])) return false;
     if (condition['comparison'] === null) return true;
     if (typeof condition['comparison'] !== 'object' || Array.isArray(condition['comparison'])) return false;
     const comparison = condition['comparison'] as Record<string, unknown>;

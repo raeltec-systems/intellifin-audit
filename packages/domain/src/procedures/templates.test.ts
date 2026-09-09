@@ -6,8 +6,7 @@ import {
   PROCEDURE_TEMPLATE_IDS,
   findProcedureTemplate,
   heroProcedureTemplate,
-  isConditionOrigin,
-} from './templates.js';
+  isConditionOrigin, attributeLabelFor } from './templates.js';
 
 /**
  * The Template records, checked in-package.
@@ -100,6 +99,12 @@ describe('the Template records', () => {
       identity: 'Employee ID',
     });
     expect(p1.secondaryKey).toBe('full name');
+    // The 24-hour variant's attribute is a VARIANT label: captured only when requested.
+    expect(p1.variantAttributeLabels).toEqual({ disabled_time: 'Disabled time' });
+    expect(attributeLabelFor(p1, 'disabled_time', new Set())).toBeUndefined();
+    expect(attributeLabelFor(p1, 'disabled_time', new Set(['disabled_time']))).toBe('Disabled time');
+    expect(attributeLabelFor(p1, 'roles', new Set())).toBe('Roles');
+    expect(attributeLabelFor(p1, 'termination_time', new Set(['termination_time']))).toBeUndefined();
     expect(p1.also.length).toBe(2);
     // The escalation seeds and the 24-hour variant are both §C text, pinned to the
     // artifact by the test under `tests/unit`.

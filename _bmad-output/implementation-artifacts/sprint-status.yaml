@@ -83,6 +83,7 @@ development_status:
   4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: in-progress
   4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: in-progress
   4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: in-progress
+  4-12-evaluate-the-24-hour-disablement-window-through-the-complet: in-progress
   epic-4-retrospective: optional
 
   epic-5: backlog

@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 /** Only the already-selected acceptance facts may enter this sink, never raw logs. */
 export async function retainLiveAcceptanceReport(
   testInfo: Pick<TestInfo, 'outputPath' | 'attach'>,
-  name: 'solari-audit-acceptance.json' | 'solari-workspace-isolation.json',
+  name: 'solari-audit-acceptance-policy-bound.json' | 'solari-audit-acceptance-undefined-privilege.json' | 'solari-workspace-isolation.json',
   report: Record<string, unknown>,
   secrets: readonly string[],
 ): Promise<boolean> {

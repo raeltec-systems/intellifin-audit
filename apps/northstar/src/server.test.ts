@@ -98,6 +98,17 @@ describe('LoanCore', () => {
     expect(page).toContain(`<dd>${row.username}</dd>`);
     expect(page).toContain(`<dd>${row.roles.join(', ')}</dd>`);
     expect(page).toContain(`<dd>${row.employee_id}</dd>`);
+    // An Active account has no disablement instant and shows no such row (D3).
+    expect(row.disabled_time).toBe('');
+    expect(page).not.toContain('<dt>Disabled time</dt>');
+  });
+
+  it('renders Disabled time on a disabled account page, verbatim from the dataset (D3)', () => {
+    const row = account('E-000105');
+    const page = text(`/loancore/users/${row.employee_id}`);
+    expect(row.disabled_time).toBe('2026-08-08T00:00:00+02:00');
+    expect(page).toContain('<dt>Disabled time</dt>');
+    expect(page).toContain(`<dd>${row.disabled_time}</dd>`);
   });
 
   it('renders a not-found page for a missing employee, never a 500', () => {

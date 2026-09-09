@@ -23,7 +23,7 @@
       "origin_path": "/loancore",
       "authentication_destination_path": "/loancore/sign-in",
       "permitted_actions": ["navigate", "search", "open-record", "read-attribute", "capture-screenshot"],
-      "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name"],
+      "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name", "Disabled time"],
       "secondary_key": "Full name",
       "credential_ref": "cred://synthetic/loancore-readonly",
       "credential_token": "synthetic-loancore-audit-token-not-a-real-credential",

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  COMPLIANCE_OBSERVATION_FIELDS,
   compileComplianceDraft,
   complianceInputFromFields,
   initialDraftCompliance,
@@ -922,6 +923,100 @@ describe('agent work applies a frozen role-privilege policy before, during and a
     expect(repository.waits).toHaveLength(0);
     expect(evaluationRequests(model)[0]!.evaluation!.conditions[0]!.text).toBe(initialDraftCompliance('P-1').complianceConditions[1]!.text);
     expect(repository.evaluations).toContainEqual(expect.objectContaining({ evaluation: expect.objectContaining({ conditionId: 'C2', value: 'COMPLIANT', confirmation: 'pending' }) }));
+  });
+});
+
+describe('the 24-hour disablement window through capture, mapping and registration (D3)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  function gateBoundary() { vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never); }
+  const WINDOW_TARGET_FIELDS = { ...TARGET_FIELDS, attributeLabelPatterns: [...TARGET_FIELDS.attributeLabelPatterns, 'Disabled time'] };
+  const WINDOW_TARGET: ProcedureTargetSnapshot = { ...TARGET, digest: registrationDigest(WINDOW_TARGET_FIELDS), contract: registrationDigestEnvelope(WINDOW_TARGET_FIELDS) };
+  const EMPLOYEE_KEY = String(RECORD.values.employee_id);
+  const EMPLOYEE_NAME = String(RECORD.values.full_name);
+  const TERMINATED = '2026-08-07T00:00:00+02:00';
+  const DISABLED_REQUIREMENT = { attributeName: 'disabled_time', modelRead: false, groundedBy: ['structural-snapshot' as const], screenshot: false, recordingSegment: false, platformCaptured: false };
+  function windowPlan(options: { readonly requested?: boolean; readonly boundary?: 'inclusive' | 'exclusive' } = {}): ExecutablePlan {
+    const authored = complianceInputFromFields(initialDraftCompliance('P-1'));
+    const compiled = compileComplianceDraft('P-1', { ...authored, conditions: [...authored.conditions, {
+      conditionId: 'C3', text: 'disabled_time - termination_time <= 24h', applicability: 'found = true',
+      comparison: { boundary: options.boundary ?? 'inclusive', threshold: '24', tolerance: '0' },
+      mapping: [{ field: 'termination_time', column: 'termination_effective_time' }],
+    }] });
+    if (!compiled.ok) throw new Error(compiled.reason);
+    const evidence = initialDraftEvidence('P-1');
+    // The real compiler lists EVERY declared field (the union of the rule vocabulary), which
+    // is what lets a requested variant attribute be captured; a hand-trimmed list would hide it.
+    return { ...PLAN, inputs: { ...PLAN.inputs, ...compiled.value, targets: [WINDOW_TARGET],
+      evidenceRequirements: options.requested === false ? evidence.evidenceRequirements : [...evidence.evidenceRequirements, DISABLED_REQUIREMENT] },
+      observations: Object.entries(COMPLIANCE_OBSERVATION_FIELDS['P-1']).map(([attributeName, valueType]) => ({ attributeName, valueType })),
+      credentialReferences: [{ targetSystemId: WINDOW_TARGET.registrationId, credentialRef: WINDOW_TARGET.contract.credential_ref }] } as unknown as ExecutablePlan;
+  }
+  const disabledPage = (disabledTime: string | null, employeeId = EMPLOYEE_KEY) => [
+    ...FOUND_CANDIDATES.slice(5).map(node => node.label === 'Employee ID' ? { ...node, value: employeeId } : node),
+    ...(disabledTime === null ? [] : [{ group: 'record:1', role: 'datum', label: 'Disabled time', value: disabledTime, target: null }]),
+  ];
+  function repositoryWith(plan: ExecutablePlan, population: Record<string, string>): FakeRepository {
+    const repository = new FakeRepository(); repository.plan = plan; repository.records = [{ ordinal: 1, values: population }];
+    return repository;
+  }
+  const c3 = (repository: FakeRepository) => repository.evaluations.map(row => row.evaluation).find(row => row.conditionId === 'C3');
+  const population = { employee_id: EMPLOYEE_KEY, full_name: EMPLOYEE_NAME, termination_effective_time: TERMINATED };
+
+  it('captures Disabled time by its label, maps the population instant, and registers the exact 24-hour boundary as Compliant', async () => {
+    gateBoundary();
+    const repository = repositoryWith(windowPlan(), population);
+    expect(await executeAgentWorkItem(deps(repository, browserFor(repository, disabledPage('2026-08-08T00:00:00+02:00')), evaluationModel(), durableWaitPort(repository)), JOB)).toEqual({ retry: false });
+    expect(repository.observations).toHaveLength(1);
+    const disabled = repository.observations[0]!.record.attributes.find(attribute => attribute.name === 'disabled_time');
+    expect(disabled).toMatchObject({ originalValue: '2026-08-08T00:00:00+02:00', normalizedValue: '2026-08-07T22:00:00.000Z', grounding: expect.objectContaining({ label: 'Disabled time', evidenceId: expect.any(String) }) });
+    expect(repository.observationChecks.filter(row => row.check === 'required-evidence').every(row => row.outcome === 'PASS')).toBe(true);
+    expect(c3(repository)).toMatchObject({ origin: 'RULE', value: 'COMPLIANT', confirmation: null });
+    expect(repository.evaluations.map(row => [row.evaluation.conditionId, row.evaluation.value])).toEqual([['C1', 'COMPLIANT'], ['C2', 'COMPLIANT'], ['C3', 'COMPLIANT']]);
+  });
+
+  it('is an Exception one second past the window, and under an exclusive boundary at exactly 24 hours', async () => {
+    gateBoundary();
+    const late = repositoryWith(windowPlan(), population);
+    await executeAgentWorkItem(deps(late, browserFor(late, disabledPage('2026-08-08T00:00:01+02:00')), evaluationModel(), durableWaitPort(late)), JOB);
+    expect(c3(late)).toMatchObject({ value: 'EXCEPTION', origin: 'RULE' });
+    const exclusive = repositoryWith(windowPlan({ boundary: 'exclusive' }), population);
+    await executeAgentWorkItem(deps(exclusive, browserFor(exclusive, disabledPage('2026-08-08T00:00:00+02:00')), evaluationModel(), durableWaitPort(exclusive)), JOB);
+    expect(c3(exclusive)).toMatchObject({ value: 'EXCEPTION' });
+  });
+
+  it('cannot substantiate the window from a date-only population, and says which value is missing', async () => {
+    gateBoundary();
+    const repository = repositoryWith(windowPlan(), { employee_id: EMPLOYEE_KEY, full_name: EMPLOYEE_NAME, termination_effective_date: '2026-08-07' });
+    await executeAgentWorkItem(deps(repository, browserFor(repository, disabledPage('2026-08-08T00:00:00+02:00')), evaluationModel(), durableWaitPort(repository)), JOB);
+    expect(c3(repository)).toMatchObject({ value: 'UNEVALUATED', diagnostic: 'missing or invalid Observation field termination_time' });
+    expect(repository.evaluations.map(row => row.evaluation).find(row => row.conditionId === 'C1')?.value).toBe('COMPLIANT');
+  });
+
+  it('fails required-evidence when the page has no Disabled time, so nothing about the window is decided', async () => {
+    gateBoundary();
+    const repository = repositoryWith(windowPlan(), population);
+    await executeAgentWorkItem(deps(repository, browserFor(repository, disabledPage(null)), evaluationModel(), durableWaitPort(repository)), JOB);
+    expect(repository.observations[0]!.record.attributes.find(attribute => attribute.name === 'disabled_time')).toMatchObject({ grounding: null, normalizedValue: null });
+    expect(repository.observationChecks.find(row => row.check === 'required-evidence')).toMatchObject({ outcome: 'FAIL', diagnostic: 'attribute-ungrounded' });
+    expect(repository.evaluations.map(row => row.evaluation.value).every(value => value === 'UNEVALUATED')).toBe(true);
+  });
+
+  it('never correlates the disablement instant of another employee: a page for the wrong record registers nothing', async () => {
+    gateBoundary();
+    const repository = repositoryWith(windowPlan(), population);
+    await executeAgentWorkItem(deps(repository, browserFor(repository, disabledPage('2026-08-08T00:00:00+02:00', 'E-000999')), evaluationModel(), durableWaitPort(repository)), JOB);
+    expect(repository.observations.filter(row => row.record.found === 'true')).toHaveLength(0);
+    expect(repository.evaluations.filter(row => row.evaluation.value === 'COMPLIANT')).toHaveLength(0);
+  });
+
+  it('captures a variant attribute only when the version asked for it, so a default Procedure keeps its evidence complete', async () => {
+    gateBoundary();
+    const repository = repositoryWith(windowPlan({ requested: false }), population);
+    await executeAgentWorkItem(deps(repository, browserFor(repository, disabledPage('2026-08-08T00:00:00+02:00')), evaluationModel(), durableWaitPort(repository)), JOB);
+    expect(repository.observations[0]!.record.attributes.some(attribute => attribute.name === 'disabled_time')).toBe(false);
+    expect(repository.observationChecks.find(row => row.check === 'required-evidence')?.outcome).toBe('PASS');
+    // The window still cannot be decided without the instant, and it says so; C1 stands.
+    expect(c3(repository)).toMatchObject({ value: 'UNEVALUATED', diagnostic: 'missing or invalid Observation field disabled_time' });
   });
 });
 
