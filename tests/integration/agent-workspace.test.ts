@@ -437,6 +437,8 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
         }),
       attach: (): Promise<WorkspaceHandle | null> => Promise.resolve(null),
       release: (_ref: WorkspaceRef) => Promise.reject(new Error('the provider did not answer')),
+      /** Story 5.2: this fake provider records nothing. */
+      downloadRecording: () => Promise.resolve(null),
       perform: () => Promise.reject(new BrowserActionError('unavailable')),
     };
     await provisionWorkspace(deps(holding), job);
@@ -492,6 +494,8 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
       create: () => Promise.reject(new WorkspaceProvisionError('unavailable')),
       attach: (): Promise<WorkspaceHandle | null> => Promise.resolve(null),
       release: (_ref: WorkspaceRef) => Promise.resolve(),
+      /** Story 5.2: this fake provider records nothing. */
+      downloadRecording: () => Promise.resolve(null),
       // Story 4.2's port member. A workspace that never provisioned cannot act in one.
       perform: () => Promise.reject(new BrowserActionError('unavailable')),
     };

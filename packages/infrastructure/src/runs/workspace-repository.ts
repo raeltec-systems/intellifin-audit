@@ -5,9 +5,10 @@ import type {
   WorkspaceExecutionContext,
   WorkspaceExecutionRepository,
 } from '@intellifin/application';
+import type { ReplayRecording } from '@intellifin/domain';
 
 import type { Database } from '../db/client.js';
-import { auditRun, runStepExecution, runWorkspace } from '../db/schema.js';
+import { auditRun, runReplayRecording, runStepExecution, runWorkspace } from '../db/schema.js';
 import { DrizzleRunRepository } from './run-repository.js';
 import { evidencePackageContext } from './evidence-package-repository.js';
 import { runResultContext } from './result-repository.js';
@@ -112,6 +113,53 @@ export class PostgresWorkspaceRepository implements WorkspaceExecutionRepository
                 diagnostic: execution.diagnostic,
               },
             });
+        },
+        /**
+         * This Run's recording copy, or `null` before one was attempted (Story 5.2).
+         *
+         * A sibling of the Evidence package, not a row inside it: the copy happens at the
+         * terminal release, which is after `completeRun` has already sealed, and a sealed
+         * package can neither be added to nor rewritten.
+         */
+        async readRecording(): Promise<ReplayRecording | null> {
+          const recording = (
+            await tx.select().from(runReplayRecording).where(eq(runReplayRecording.runId, runId))
+          )[0];
+          if (!recording) return null;
+          return {
+            runId: recording.runId,
+            workspaceId: recording.workspaceId,
+            objectKey: recording.objectKey,
+            mediaType: recording.mediaType,
+            digest: recording.digest,
+            size: recording.size,
+            state: recording.state as ReplayRecording['state'],
+            copiedAt: recording.copiedAt?.toISOString() ?? null,
+            diagnostic: recording.diagnostic as ReplayRecording['diagnostic'],
+          };
+        },
+        /**
+         * The FIRST answer wins, and `DO NOTHING` is what says so.
+         *
+         * A reaper retry, a queue redelivery or a second release must not fetch the
+         * recording again: the provider charges for it, and two answers about one session
+         * is one answer too many.
+         */
+        async saveRecording(recording: ReplayRecording) {
+          await tx
+            .insert(runReplayRecording)
+            .values({
+              runId,
+              workspaceId: recording.workspaceId,
+              objectKey: recording.objectKey,
+              mediaType: recording.mediaType,
+              digest: recording.digest,
+              size: recording.size,
+              state: recording.state,
+              copiedAt: recording.copiedAt === null ? null : new Date(recording.copiedAt),
+              diagnostic: recording.diagnostic,
+            })
+            .onConflictDoNothing({ target: runReplayRecording.runId });
         },
       });
     });

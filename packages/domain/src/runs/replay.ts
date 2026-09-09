@@ -74,3 +74,76 @@ export const NO_MISSING_FRAMES: MissingFrames = { total: 0, sample: [] };
  * capture was misconfigured, which is the failure mode this most has to survive.
  */
 export const FRAME_MISSING_EVENT = 'failure.frame-missing' as const;
+
+/**
+ * The lifecycle of the provider's session recording, copied at Run end.
+ *
+ * `RESERVED` is an object key with nothing verified behind it. `REGISTERED` is bytes whose
+ * size and SHA-256 were verified against the recorded values before the transaction that
+ * wrote this state — the `run_evidence` discipline, one table along. `UNAVAILABLE` is the
+ * honest third answer this table needs and the Evidence package does not: the provider
+ * recorded nothing, or could not serve what it recorded, and a Replay that says so is
+ * better than one that shows an empty player.
+ */
+export const REPLAY_RECORDING_STATES = ['RESERVED', 'REGISTERED', 'UNAVAILABLE'] as const;
+export type ReplayRecordingState = (typeof REPLAY_RECORDING_STATES)[number];
+
+/**
+ * Why there is no recording. A CLOSED vocabulary, never a provider error message: a
+ * message is where an endpoint, a session id or a signed URL rides into durable storage.
+ */
+export const REPLAY_RECORDING_DIAGNOSTICS = [
+  /** This deployment records nothing: the local mode, or `SOLARI_RECORDING` off. */
+  'recording-not-enabled',
+  /** The provider has no recording for this session, or would not serve it. */
+  'recording-unavailable',
+  /** Bytes came back and did not verify against what was uploaded. */
+  'recording-integrity-failed',
+  /**
+   * The recording discloses a credential this Run presented.
+   *
+   * A session recording is the artifact MOST likely to carry one — it is a transcript of a
+   * browser, and a sign-in types a credential into a form field. So the copy is refused
+   * rather than redacted: bytes a provider produced are what they are, and rewriting them
+   * to make them acceptable would falsify the record. Nothing is stored.
+   */
+  'recording-credential-disclosed',
+  /** No credential guard could be built, so nothing could be scanned for. Fail closed. */
+  'recording-unscannable',
+] as const;
+export type ReplayRecordingDiagnostic = (typeof REPLAY_RECORDING_DIAGNOSTICS)[number];
+
+/** What a Run's recording copy is, as the row holds it. */
+export interface ReplayRecording {
+  readonly runId: string;
+  readonly workspaceId: string;
+  readonly objectKey: string;
+  readonly mediaType: string;
+  readonly digest: string | null;
+  readonly size: number | null;
+  readonly state: ReplayRecordingState;
+  readonly copiedAt: string | null;
+  readonly diagnostic: ReplayRecordingDiagnostic | null;
+}
+
+/**
+ * The provider serves the replay as NDJSON (`@solarisdk/browser@0.1.3`: "Download the
+ * replay as NDJSON bytes"). Recorded on the row rather than assumed by a reader, so a
+ * later provider that serves something else is a stored fact and not a surprise.
+ */
+export const REPLAY_RECORDING_MEDIA_TYPE = 'application/x-ndjson';
+
+/**
+ * Where a Run's recording lives in the object store.
+ *
+ * Derived from the Run id and nothing else — like `evidenceObjectKeys`, and for the same
+ * reason: a retried copy after a crash re-derives the same key and reconciles with its own
+ * bytes instead of minting a second object beside the first. There is exactly one
+ * recording per Run, so the key needs no scope.
+ */
+export function replayRecordingObjectKey(runId: string): string {
+  return `replay-recording/${runId}/session.ndjson`;
+}
+
+/** The Timeline event a copied recording appends. Replay stops needing the provider here. */
+export const RECORDING_COPIED_EVENT = 'lifecycle.replay-recording-copied' as const;

@@ -28,7 +28,7 @@ provider's own recording so that nothing about a terminal Run depends on the pro
 | Step Execution | `run_step_execution` | `step_execution_id`, `run_id`, `plan_step_id`, `work_item_id`, `action`, `state`, `attempt`, `started_at` |
 | Escalation | `run_wait` | `wait_id`, `run_id`, `kind`, `options`, `deadline`, `closed_at`, `closure_kind`, `answer_option_id`, `actor` |
 | Observation delta | `audit_events` | `aggregate_id`, `sequence`, `event_type`, `occurred_at`, `outcome`, `payload` |
-| Session recording | `run_evidence` | `evidence_id`, `run_id`, `kind`, `object_key`, `media_type`, `digest`, `size`, `state`, `role` |
+| Session recording | `run_replay_recording` | `run_id`, `workspace_id`, `object_key`, `media_type`, `digest`, `size`, `state`, `copied_at`, `diagnostic` |
 
 `tests/unit/replay-asset-set.test.ts` reads this table off disk and requires every column
 named here to exist on the schema. A contract asserted against a copy of itself proves only
@@ -116,14 +116,61 @@ When it is on, the terminal release copies the recording into platform storage:
 
 1. `releaseWorkspace` releases the provider session with `releaseAndWait`.
 2. The recording becomes available ~1–3 s later (`@solarisdk/browser@0.1.3`).
-3. `downloadRecording` fetches it as NDJSON bytes.
-4. It is reserved, uploaded, verified by size and digest, and registered exactly like every
-   other artifact — through `freezeArtifact`, with `kind = 'session-recording'` and
-   `role = 'replay'`.
+3. `downloadRecording` fetches it as NDJSON bytes, bounded by `RECORDING_COPY_TIMEOUT_MS`.
+4. It is scanned, uploaded, and verified by size and digest through **`freezeArtifact`** —
+   the same implementation every Evidence artifact uses, so "stored and verified" means one
+   thing in this product and not two.
+5. It is written to `run_replay_recording` and a `lifecycle.replay-recording-copied` event
+   says what Replay will have.
 
 After that, **Replay never depends on the provider**. The copy is best-effort by design: a
 provider that cannot serve the recording must not stop a Run from releasing its workspace
 or from concluding, so a failure is recorded and the release proceeds.
+
+### Why it is not a `run_evidence` row
+
+The copy happens at the terminal release, which is **after** `completeRun` has already
+sealed the Evidence package. Generation 21 freezes a sealed Run's Evidence, so an Evidence
+row written here would either be refused outright or would sit outside the seal that names
+what this Run froze — and the second is worse than the first, because the Result would
+publish an artifact list that did not include it, stating something untrue about itself.
+
+The recording is not something the Run concluded from. `run_evidence.role` says what an
+artifact INSIDE the package is for; `run_replay_recording` is where the replay-role
+artifact that arrives after the seal lives. It cascades from `audit_run`, like
+`run_workspace`, because it records no audit outcome.
+
+### The credential wall applies here hardest of all
+
+A session recording is a transcript of a browser, and a sign-in **types** a credential into
+a form field. It is therefore the artifact most likely of all to carry one, and the copy
+takes a `CredentialResolver` as a REQUIRED dependency for exactly that reason: passing
+`NO_CREDENTIALS` here would be a scan for nothing dressed as a scan.
+
+The guard is built from the credential references the **frozen plan** names. A plan that
+names references of which NOT ONE resolves is refused (`recording-unscannable`) rather than
+treated as clean — fail closed, because an unscanned recording is precisely what the wall
+exists to stop. A plan that names none has nothing to disclose and is copied normally.
+
+A disclosure is a REFUSAL and never a redaction (`recording-credential-disclosed`), and
+nothing is stored: the scan runs before the upload, so "nothing is stored" is literally
+true rather than nearly true.
+
+### Why there is no recording, in words
+
+`REPLAY_RECORDING_DIAGNOSTICS` is closed, and never a provider error message — a message is
+where an endpoint, a session id or a signed URL rides into durable storage.
+
+| Diagnostic | What happened |
+|---|---|
+| `recording-not-enabled` | The deployment records nothing: the local mode, or `SOLARI_RECORDING` off. The ordinary case. |
+| `recording-unavailable` | The provider has one and would not serve it, or could not be reached. |
+| `recording-integrity-failed` | Bytes came back and did not verify against what was uploaded. |
+| `recording-credential-disclosed` | The recording carries a credential this Run presented. Nothing stored. |
+| `recording-unscannable` | No credential could be resolved, so there was nothing to scan for. |
+
+The first is a fact about the deployment and the rest are things an operator would act on;
+folding them together would make "this Run has no recording" look like an outage.
 
 Two things this build does NOT do, named rather than left to be discovered:
 

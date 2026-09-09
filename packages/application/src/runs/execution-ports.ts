@@ -7,6 +7,7 @@ import type {
   EvidenceCaptureTimeSource,
   EvidenceIntegrityFindingKind,
   MissingFrames,
+  ReplayRecording,
   GateCheckResult,
   ObservationCheckName,
   PopulationCheck,
@@ -1139,6 +1140,21 @@ export interface BrowserExecution {
   /** Release a workspace and revoke its credentials. Idempotent, by identity. */
   release(ref: WorkspaceRef, timeoutMs: number): Promise<void>;
   /**
+   * The provider's own recording of this session, or `null` (Story 5.2).
+   *
+   * `null` is a real and expected answer: a deployment in the local mode records nothing,
+   * and `SOLARI_RECORDING` is off by default because recording is metered and turning one
+   * on is a cost decision a build must not take for a deployment. It is NOT an error, and
+   * an implementation that threw for it would make "this Run has no recording" — the
+   * ordinary case — look like a provider outage.
+   *
+   * Called AFTER the release: the provider needs the session closed before the recording
+   * exists (`@solarisdk/browser@0.1.3` makes it available ~1-3 s after `releaseAndWait`).
+   * A provider failure THROWS, so a copy that could not happen is recorded as one that
+   * could not happen rather than as one that found nothing.
+   */
+  downloadRecording(ref: WorkspaceRef, timeoutMs: number): Promise<Uint8Array | null>;
+  /**
    * Perform ONE Tool Action the gate has already authorized (Story 4.2).
    *
    * The gate is NOT here and must not be: `authorizeToolAction` runs at this port's call
@@ -1200,6 +1216,10 @@ export interface WorkspaceExecutionContext extends RunResultContext {
   save(checkpoint: WorkspaceCheckpoint, state: RunRecord['state']): Promise<void>;
   /** One attempt at the frozen `create-workspace` step, as Step Execution provenance. */
   saveStepExecution(execution: StepExecutionRecord): Promise<void>;
+  /** This Run's recording copy, or `null` before one was attempted (Story 5.2). */
+  readRecording(): Promise<ReplayRecording | null>;
+  /** Write it. The FIRST answer wins: a copy is attempted once per Run. */
+  saveRecording(recording: ReplayRecording): Promise<void>;
 }
 
 export interface WorkspaceExecutionRepository {

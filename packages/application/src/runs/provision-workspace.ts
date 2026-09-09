@@ -18,6 +18,7 @@ import {
 } from './execution-ports.js';
 import type { PopulationJob } from './acquire-population.js';
 import { completeRun } from './complete-run.js';
+import { copyRecording, type RecordingCopy } from './copy-recording.js';
 import { performCancellation } from './cancel-run.js';
 import { SECURITY_DENIED_EVENT } from './run-gate.js';
 
@@ -53,6 +54,16 @@ export interface WorkspaceDependencies {
   browser: BrowserExecution;
   clock: Clock;
   ids: UuidV7Generator;
+  /**
+   * Copy the provider's own session recording at Run end (Story 5.2).
+   *
+   * OPTIONAL, and absent means this deployment copies none — said by name in the worker's
+   * startup log rather than left to be discovered, the `populationExecution` shape. It
+   * needs an object store and a credential resolver, and a deployment may have neither;
+   * refusing to release a workspace over it would be a startup guard stopping the duty it
+   * was configured for (the PR 23 lesson).
+   */
+  recording?: RecordingCopy;
 }
 
 /**
@@ -619,6 +630,24 @@ export async function releaseWorkspace(
     // An unexpired identity may still be alive. A provider failure must leave its identity
     // on the row so the reaper can retry it, rather than falsely marking it released.
     await deps.browser.release(claim.ref, WORKSPACE_RELEASE_TIMEOUT_MS);
+    // AFTER the release, because that is when the provider produces the recording, and
+    // best effort, because the Run has already concluded and sealed: a provider that
+    // cannot serve one must not stop a workspace from being given back. `copyRecording`
+    // records its own outcome, so a failure here is already durable.
+    if (deps.recording !== undefined) {
+      const copy = deps.recording;
+      await deps.repository
+        .transaction(runId, async (context) => {
+          if (context.run === null) return;
+          await copyRecording(deps.browser, context, {
+            ref: claim.ref,
+            run: context.run,
+            copy,
+            now: () => deps.clock.now().toISOString(),
+          });
+        })
+        .catch(() => undefined);
+    }
   } else {
     // A persisted Solari deadline is authoritative: the provider has already auto-released
     // this identity. Release is only a courtesy, so an unavailable provider cannot keep a

@@ -1,11 +1,22 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { completeRun } from '@intellifin/application';
-import { FRAME_MISSING_EVENT, MISSING_FRAME_SAMPLE_LIMIT } from '@intellifin/domain';
+import { completeRun, copyRecording, RECORDING_COPY_TIMEOUT_MS, type ResolvedCredential } from '@intellifin/application';
+import {
+  bytesDiscloseCompiled,
+  compileSecret,
+  redactCompiled,
+  replayRecordingObjectKey,
+  sha256HexOfBytes,
+  utf8Bytes,
+  FRAME_MISSING_EVENT,
+  MISSING_FRAME_SAMPLE_LIMIT,
+  RECORDING_COPIED_EVENT,
+} from '@intellifin/domain';
 import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresProceduresUnitOfWork,
+  PostgresWorkspaceRepository,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
@@ -48,6 +59,7 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     if (!sql) return;
     try {
       for (const runId of runs) {
+        await sql`DELETE FROM run_replay_recording WHERE run_id=${runId}`;
         await sql`DELETE FROM run_result WHERE run_id=${runId}`;
         await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
         await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
@@ -207,5 +219,118 @@ describe.skipIf(!url)('the Replay asset set on PostgreSQL', () => {
     expect(events[0]!.outcome).toBe('failure');
     expect(events[0]!.payload['missing']).toBe(1);
     expect((events[0]!.payload['actions'] as unknown[])).toHaveLength(1);
+  });
+
+  /**
+   * The provider's session recording, copied at Run end (Story 5.2, acceptance criterion 4).
+   *
+   * The LIVE leg is not provable here and cannot be: `SOLARI_RECORDING` is off by default,
+   * the flag cannot be turned on for a session that already exists, and this environment
+   * holds no provider key. What these cases prove is everything the platform owns — the row,
+   * its four CHECKs, the credential wall and the first-answer-wins rule — against a real
+   * PostgreSQL 18 and a synthetic provider.
+   */
+  describe('the session recording copy on PostgreSQL', () => {
+    const TOKEN = 'SECRET-TOKEN-replay-recording-do-not-store-me';
+    const BYTES = utf8Bytes('{"type":"meta","href":"http://localhost:4300/loancore"}\n');
+
+    /** The same shape the infrastructure factory builds: methods, never a field. */
+    const credential = (reference: string, token: string): ResolvedCredential => {
+      const secret = compileSecret(token);
+      return {
+        reference,
+        authorize: (headers) => headers.set('authorization', `Bearer ${token}`),
+        enter: (field) => field.set(token),
+        redact: (text) => redactCompiled(text, secret),
+        discloses: (bytes) => bytesDiscloseCompiled(bytes, secret),
+      };
+    };
+
+    const store = () => {
+      const objects = new Map<string, Uint8Array>();
+      return {
+        objects,
+        putIfAbsent: async (key: string, bytes: Uint8Array) => {
+          if (!objects.has(key)) objects.set(key, bytes);
+        },
+        read: async (key: string) => objects.get(key) ?? null,
+      };
+    };
+
+    const copy = async (runId: string, bytes: Uint8Array | null, objects = store()) => {
+      const recording = await new PostgresWorkspaceRepository(db).transaction(runId, async (context) =>
+        copyRecording(
+          { downloadRecording: async () => bytes } as never,
+          context,
+          {
+            ref: { runId, workspaceId: 'sess_replay_recording', mode: 'solari' },
+            run: context.run!,
+            copy: {
+              store: objects,
+              credentials: { resolve: async (reference: string) => credential(reference, TOKEN) },
+              timeoutMs: RECORDING_COPY_TIMEOUT_MS,
+            },
+            now: () => new Date().toISOString(),
+          },
+        ),
+      );
+      return { recording, objects };
+    };
+
+    it('stores a verified copy, and the row says what it holds', async () => {
+      const run = await seedRun();
+      const { recording, objects } = await copy(run.runId, BYTES);
+      expect(recording).toMatchObject({ state: 'REGISTERED', digest: sha256HexOfBytes(BYTES), size: BYTES.byteLength });
+      expect(objects.objects.get(replayRecordingObjectKey(run.runId))).toEqual(BYTES);
+
+      const rows = await sql<{ state: string; digest: string; diagnostic: string | null }[]>`
+        SELECT state, digest, diagnostic FROM run_replay_recording WHERE run_id=${run.runId}`;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ state: 'REGISTERED', digest: sha256HexOfBytes(BYTES), diagnostic: null });
+      const events = await sql<{ outcome: string }[]>`
+        SELECT outcome FROM audit_events WHERE aggregate_id=${run.runId} AND event_type=${RECORDING_COPIED_EVENT}`;
+      expect(events).toEqual([{ outcome: 'success' }]);
+    });
+
+    it('refuses one that discloses a credential, and stores nothing at all', async () => {
+      const run = await seedRun();
+      const leaked = utf8Bytes(`{"type":"input","text":"${TOKEN}"}\n`);
+      const { recording, objects } = await copy(run.runId, leaked);
+      expect(recording).toMatchObject({ state: 'UNAVAILABLE', diagnostic: 'recording-credential-disclosed' });
+      expect(objects.objects.size).toBe(0);
+      // And the assertion that matters most: the value is nowhere in the row it wrote.
+      const rows = await sql<{ row: string }[]>`
+        SELECT run_replay_recording::text AS row FROM run_replay_recording WHERE run_id=${run.runId}`;
+      expect(rows[0]!.row.includes(TOKEN)).toBe(false);
+    });
+
+    it('answers once per Run, so a reaper retry cannot buy a second recording', async () => {
+      const run = await seedRun();
+      await copy(run.runId, BYTES);
+      const { recording } = await copy(run.runId, utf8Bytes('{"type":"different"}\n'));
+      // The FIRST answer wins, in the database and not only in the command.
+      expect(recording).toMatchObject({ state: 'REGISTERED', digest: sha256HexOfBytes(BYTES) });
+      const events = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM audit_events WHERE aggregate_id=${run.runId} AND event_type=${RECORDING_COPIED_EVENT}`;
+      expect(events[0]!.n).toBe(1);
+    });
+
+    it('refuses a row that says it is stored and has nothing behind it', async () => {
+      const run = await seedRun();
+      // `run_replay_recording_registered`: REGISTERED means bytes whose size and SHA-256 were
+      // verified before the transaction said so. A constraint tested through the command
+      // proves nothing about the constraint.
+      await expect(sql`INSERT INTO run_replay_recording(run_id,workspace_id,object_key,media_type,state)
+        VALUES(${run.runId},'sess_x','k','application/x-ndjson','REGISTERED')`).rejects.toMatchObject({ code: '23514' });
+      // `run_replay_recording_unavailable`: either half alone permits a row that reads as the
+      // other — a diagnostic on a stored recording, or an UNAVAILABLE row with no reason.
+      await expect(sql`INSERT INTO run_replay_recording(run_id,workspace_id,object_key,media_type,state)
+        VALUES(${run.runId},'sess_x','k','application/x-ndjson','UNAVAILABLE')`).rejects.toMatchObject({ code: '23514' });
+      await expect(sql`INSERT INTO run_replay_recording(run_id,workspace_id,object_key,media_type,state,digest,size,copied_at,diagnostic)
+        VALUES(${run.runId},'sess_x','k','application/x-ndjson','REGISTERED',${'a'.repeat(64)},1,now(),'recording-unavailable')`)
+        .rejects.toMatchObject({ code: '23514' });
+      await expect(sql`INSERT INTO run_replay_recording(run_id,workspace_id,object_key,media_type,state,digest)
+        VALUES(${run.runId},'sess_x','k','application/x-ndjson','RESERVED','not-a-digest')`).rejects.toMatchObject({ code: '23514' });
+    });
   });
 });

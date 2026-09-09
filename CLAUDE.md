@@ -1,3 +1,71 @@
+## 2026-09-09 — The Replay asset set: a frame that is missing, and the recording that arrives after the seal
+
+Story 5.2 adds NO capture path. AD-17 already says a live frame is a Replay asset the moment
+it is registered, so Live View and Replay read the same rows and a second path would give
+two surfaces two answers about one session. What the story adds is the `role` (generation
+43), the event that says the set is not whole, and the copy of the provider's own recording.
+Whole rule: `docs/contracts/replay-asset-set-v1.md`, whose asset table
+`tests/unit/replay-asset-set.test.ts` reads off disk and pins to the schema — a renamed
+column that silently breaks Replay is what that catches, and it fails with a named message.
+
+- **A screenshot bound to a Tool Action keeps `role = 'evidence'` and is still a frame.**
+  The one judgement call. It serves both purposes — `required-evidence` reads it per
+  Observation, Live View and Replay render it — and demoting it for the sake of the label
+  would take it out of the seal's reach and out of `required-evidence`'s, weakening an
+  audit to tidy a name. The role says what an artifact is FOR when the two purposes differ;
+  where they coincide, the stronger one wins.
+- **`failure.frame-missing` is derived from three stored facts and one absence**: the action
+  `performed`, its `capture` is `PERMITTED`, and no `screenshot` is `REGISTERED` against its
+  `run_evidence_capture` binding. A credential-entry action is excluded BY THE PREDICATE
+  (`capture = 'SUPPRESSED'`, generation 29) and not by a rule the reader remembers —
+  suppression and absence are different statements, and reporting the first as the second
+  raises a finding against the guarantee that produced it. ONE event per Run with the exact
+  total and a bounded sample; the count also goes on `publication.evidence.framesMissing`,
+  because "flagged on export" needs a fact the document carries. **The seal is never
+  blocked, and that is a property of WHERE the read sits** — after `sealPackage` has already
+  returned. A `RESERVED` binding turned out to be unreachable (a published trigger refuses a
+  capture bound to unregistered Evidence), so that is asserted rather than worked around.
+- **The session recording is `run_replay_recording` (generation 44) and NOT a
+  `run_evidence` row.** The copy happens at the terminal RELEASE, which is after
+  `completeRun` has already sealed; generation 21 freezes a sealed Run's Evidence, so an
+  Evidence row here would either be refused or would sit outside the seal that names what
+  this Run froze — and the second is worse, because the Result would publish an artifact
+  list that did not include it. It cascades from `audit_run` like `run_workspace`: it
+  records no audit outcome, so no existing teardown has to learn a new table name.
+- **The credential wall applies here hardest of all, so the resolver is REQUIRED.** A
+  session recording is a transcript of a browser and a sign-in TYPES a credential into a
+  form field. `copyRecording` builds its guard from the credential references the frozen
+  plan names; a plan whose references NONE resolve is refused (`recording-unscannable`)
+  rather than treated as clean. Upload and verification go through `freezeArtifact` — the
+  same implementation every Evidence artifact uses — so the scan-before-upload rule has one
+  home. Proven by two mutations: swapping in a permissive guard, and treating "nothing
+  resolved" as clean.
+- **`downloadRecording` returning `null` is the ORDINARY answer**, not an error: the local
+  mode records nothing and `SOLARI_RECORDING` is off by default. Only a provider that fails
+  throws. `REPLAY_RECORDING_DIAGNOSTICS` keeps the five reasons apart, because an operator
+  acts on four of them and not on the first.
+- **`[NOT BUILT, NAMED]` Provider retention is not set to minimum.**
+  `@solarisdk/browser@0.1.3` exposes `create`, `release`, `releaseAndWait`, `getReplayUrl`
+  and `downloadReplay` and no retention control at all. The 2026-09-01 decision asks for it;
+  the SDK this build ships cannot express it, so it is an owner action against the provider
+  account. **And the live leg is unproven here**: this environment holds no provider key and
+  recording cannot be enabled for a session that already exists, so every case runs against
+  a synthetic provider.
+
+Two mechanical lessons, both about the migration chain:
+
+- **A hand-written migration needs a GENERATED snapshot.** `0043_snapshot.json` was made by
+  hand without the new column, so the next `db:generate` re-emitted generation 43's whole
+  DDL into 0044 — and CI's drift check caught it as the one red job out of five. Regenerate
+  the snapshot from the real schema (temporarily remove the NEXT change, generate, restore
+  the hand-written SQL under its own tag), then generate the next one on top.
+- **Never let a PUSHED migration's journal `when` move.** Regenerating 0043's snapshot
+  rewrote its `when` to an earlier value, and the migrator applies what sorts AFTER the last
+  applied `created_at` — so every database that had already applied 0043 silently skipped
+  0044 and reported success at 43. Restore the original `when` and give the new migration a
+  later one. A fresh install still reached 44, which is exactly what makes this the kind of
+  defect that ships: only an UPGRADE can see it.
+
 ## 2026-09-09 — An Evidence artifact has a ROLE beside its kind, and replay never gates a seal
 
 `EVIDENCE_ARTIFACT_ROLES` is `evidence` and `replay` (generation 43, `run_evidence.role`).

@@ -1,6 +1,6 @@
 {
-  "id": "2c38ec46-ad4d-44cd-9804-6d895920a9fb",
-  "prevId": "5f55cf48-b284-440a-b728-37747e26a268",
+  "id": "7d3932d5-1b7f-43b9-9db1-eed50889825b",
+  "prevId": "2c38ec46-ad4d-44cd-9804-6d895920a9fb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5109,6 +5109,104 @@
         "run_observation_evaluation_agent_proposal": {
           "name": "run_observation_evaluation_agent_proposal",
           "value": "coalesce((\n    (\"run_observation_evaluation\".\"agent_proposed_value\" IS NULL AND \"run_observation_evaluation\".\"agent_proposed_confidence\" IS NULL AND \"run_observation_evaluation\".\"agent_proposed_rationale\" IS NULL)\n    OR (\n      \"run_observation_evaluation\".\"origin\" = 'AGENT_JUDGED'\n      AND \"run_observation_evaluation\".\"agent_proposed_value\" IN ('COMPLIANT','EXCEPTION','UNEVALUATED')\n      AND \"run_observation_evaluation\".\"agent_proposed_confidence\" >= 0 AND \"run_observation_evaluation\".\"agent_proposed_confidence\" <= 1\n      AND length(\"run_observation_evaluation\".\"agent_proposed_rationale\") BETWEEN 1 AND 8192\n    )\n  ), false)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.run_replay_recording": {
+      "name": "run_replay_recording",
+      "schema": "",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "digest": {
+          "name": "digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size": {
+          "name": "size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "copied_at": {
+          "name": "copied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diagnostic": {
+          "name": "diagnostic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "run_replay_recording_run_id_audit_run_run_id_fk": {
+          "name": "run_replay_recording_run_id_audit_run_run_id_fk",
+          "tableFrom": "run_replay_recording",
+          "tableTo": "audit_run",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "run_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "run_replay_recording_state": {
+          "name": "run_replay_recording_state",
+          "value": "\"run_replay_recording\".\"state\" IN ('RESERVED','REGISTERED','UNAVAILABLE')"
+        },
+        "run_replay_recording_digest": {
+          "name": "run_replay_recording_digest",
+          "value": "\"run_replay_recording\".\"digest\" IS NULL OR \"run_replay_recording\".\"digest\" ~ '^[0-9a-f]{64}$'"
+        },
+        "run_replay_recording_registered": {
+          "name": "run_replay_recording_registered",
+          "value": "\"run_replay_recording\".\"state\" <> 'REGISTERED' OR (\"run_replay_recording\".\"digest\" IS NOT NULL AND \"run_replay_recording\".\"size\" IS NOT NULL AND \"run_replay_recording\".\"copied_at\" IS NOT NULL)"
+        },
+        "run_replay_recording_unavailable": {
+          "name": "run_replay_recording_unavailable",
+          "value": "(\"run_replay_recording\".\"state\" = 'UNAVAILABLE') = (\"run_replay_recording\".\"diagnostic\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false

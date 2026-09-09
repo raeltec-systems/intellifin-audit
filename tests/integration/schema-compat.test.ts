@@ -124,6 +124,10 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_observation_evaluation',
       // Story 3.9. The sealed Result: the System Outcome, the §E.1 row that decided it and
       // the published document, written once in the transaction that completes the Run.
+      // Story 5.2. The provider's own session recording, copied at Run end. A SIBLING of
+      // the Evidence package, because the copy happens after the seal and a sealed package
+      // can neither be added to nor rewritten.
+      'run_replay_recording',
       'run_result',
       'run_result_review',
       'run_session_step',

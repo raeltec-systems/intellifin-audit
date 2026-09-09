@@ -181,7 +181,7 @@ class FakeContext implements RunResultContext {
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => this.population;
   /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
-  readMissingFrames = async () => ({ total: 0, sample: [] });
+  readMissingFrames: RunResultContext['readMissingFrames'] = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.result;

@@ -416,6 +416,8 @@ class FakeBrowser implements BrowserExecution {
   create = (): Promise<never> => Promise.reject(new BrowserActionError('unavailable'));
   attach = (): Promise<null> => Promise.resolve(null);
   release = (): Promise<void> => Promise.resolve();
+  /** Story 5.2: this fake provider records nothing. */
+  downloadRecording = (): Promise<Uint8Array | null> => Promise.resolve(null);
 
   perform = async (
     _ref: WorkspaceRef,

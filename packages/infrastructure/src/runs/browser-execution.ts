@@ -647,6 +647,48 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
   }
 
   /**
+   * The provider's own recording of this session, or `null` (Story 5.2).
+   *
+   * `null` is the ORDINARY answer and never an error: the local mode records nothing, and
+   * `SOLARI_RECORDING` is off by default because recording is metered and turning one on
+   * is a cost decision this build must not take for a deployment. Answering `null` when a
+   * recording was never made is what keeps "this Run has no recording" distinguishable
+   * from "the provider could not be reached", which throws.
+   *
+   * Called after `release`, because the provider produces the recording once the session
+   * is closed (`@solarisdk/browser@0.1.3`: available ~1-3 s after `releaseAndWait`). The
+   * SDK's own retry and timeout govern the call; `timeoutMs` bounds the caller's patience
+   * and is passed through as the deadline it is.
+   *
+   * There is NO retention control in this SDK — `create`, `release`, `releaseAndWait`,
+   * `getReplayUrl` and `downloadReplay` are the whole session surface — so the resolved
+   * decision's "provider retention is set to minimum" cannot be expressed from here. It is
+   * an owner action against the provider account, named in the contract rather than
+   * silently skipped.
+   */
+  async downloadRecording(ref: WorkspaceRef, timeoutMs: number): Promise<Uint8Array | null> {
+    if (ref.mode !== 'solari' || this.connection.mode !== 'solari' || !this.connection.recording) {
+      return null;
+    }
+    // Bounded, because an unbounded call is bounded by nothing and this one runs on the
+    // path that gives a workspace back. The SDK takes no per-call deadline, so the bound
+    // is the caller's patience and the request is abandoned rather than cancelled — which
+    // is honest: nothing here can stop a download the provider has already started.
+    const bound = Math.max(1, timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.client().sessions.downloadReplay(ref.workspaceId),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Recording download exceeded its bound')), bound);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /**
    * Perform ONE Tool Action the gate has already authorized (Story 4.2).
    *
    * The GATE is not here. `authorizeToolAction` runs at the port's call site in

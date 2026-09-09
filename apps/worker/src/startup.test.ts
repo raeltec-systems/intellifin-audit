@@ -255,10 +255,29 @@ describe('population execution', () => {
     expect(main).toContain('verifySealedPackage({ repository: sealed, store, clock, ids }, runId)');
     // Inside the storage branch: it reads every registered artifact out of object storage,
     // so a deployment with no bucket has nothing for it to read.
-    const storageBranch = main.slice(main.indexOf('if (evidence.enabled) {'), main.indexOf('} else {'));
+    // Both indexes are taken relative to the branch's OWN start. Taken from the top of the
+    // file, the closing `} else {` of any earlier branch would be found first and the
+    // slice would be empty — which `toContain` reports as a missing call rather than as a
+    // slice that found nothing, so the test would fail for a reason that is not the code's.
+    const start = main.indexOf('if (evidence.enabled) {');
+    const storageBranch = main.slice(start, main.indexOf('} else {', start));
     expect(storageBranch).toContain('startEvidenceIntegritySweep(');
     // And stopped on shutdown, so a SIGTERM does not kill an in-flight verification.
     expect(main).toContain('await stopIntegritySweep?.();');
+  });
+
+  it('wires the Replay recording copy, and disables it BY NAME when it cannot run', () => {
+    // Story 5.2. The copy needs an object store AND a credential resolver — the second
+    // because a session recording is a transcript of a browser and a sign-in types a
+    // credential into a form field, so it is the artifact most likely of all to carry one.
+    //
+    // A deployment with neither still releases its workspaces. The behaviour alone would
+    // not catch a re-added throw, which is why the composition root's own branch is what
+    // is asserted here (the `populationExecution` lesson).
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('if (evidence.enabled && executionCapability.enabled) {');
+    expect(main).toContain('workspace.recording = {');
+    expect(main).toContain("telemetry.info('Replay recording copy disabled'");
   });
 });
 

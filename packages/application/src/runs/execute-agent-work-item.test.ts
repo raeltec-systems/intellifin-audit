@@ -300,6 +300,8 @@ function browserFor(repository: FakeRepository, nodes: readonly unknown[] = SNAP
     async create() { throw new Error('not used'); },
     async attach() { return null; },
     async release() { return undefined; },
+    /** Story 5.2: this fake provider records nothing. */
+    async downloadRecording() { return null; },
     async perform(_ref, action): Promise<BrowserActionResult> {
       repository.eventOrder.push(`browser:${action.action}`);
       count += 1;
@@ -324,6 +326,8 @@ function browserForPages(repository: FakeRepository, pages: readonly (readonly u
     async create() { throw new Error('not used'); },
     async attach() { return null; },
     async release() { return undefined; },
+    /** Story 5.2: this fake provider records nothing. */
+    async downloadRecording() { return null; },
     async perform(_ref, action): Promise<BrowserActionResult> {
       repository.eventOrder.push(`browser:${action.action}`);
       count += 1;

@@ -8,6 +8,7 @@ import {
   runEvidenceCapture,
   runSessionStep,
   runStepExecution,
+  runReplayRecording,
   runToolAction,
   runWait,
 } from '@intellifin/infrastructure/db';
@@ -39,6 +40,7 @@ const TABLES: Readonly<Record<string, object>> = {
   audit_events: auditEvents,
   run_evidence: runEvidence,
   run_evidence_capture: runEvidenceCapture,
+  run_replay_recording: runReplayRecording,
   run_session_step: runSessionStep,
   run_step_execution: runStepExecution,
   run_tool_action: runToolAction,
