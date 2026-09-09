@@ -124,7 +124,16 @@ async function seedRun(options: { readonly workspace: boolean; readonly frame: b
   return { runId, evidenceId, digest };
 }
 
-/** A QUEUED Run: no workspace, no Step Execution, nothing captured. */
+/**
+ * A QUEUED Run: no workspace, no Step Execution, nothing captured.
+ *
+ * It carries a population checkpoint for the same reason the RUNNING fixtures do, and for
+ * that reason ONLY: a QUEUED Run with no checkpoint is exactly what the real worker's
+ * population recovery sweep exists to pick up, and this file runs a real worker. Without
+ * it the sweep claims the fixture and executes it, so the surface under test is no longer
+ * looking at a Queued Run — which is how this passed here and failed in CI. Every
+ * assertion below reads `audit_run.state` and nothing else.
+ */
 async function seedQueuedRun(): Promise<string> {
   const runId = ids.next();
   const at = new Date().toISOString();
@@ -133,6 +142,8 @@ async function seedQueuedRun(): Promise<string> {
     procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
     VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,'Live View journey',
     ${`2026-09-${day}`},${`2026-09-${day}`},'QUEUED','STANDARD',${author},'live-view-fixture','auditor',${at})`;
+  await sql`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,step_id,attempt_id)
+    VALUES(${runId},1,'POPULATION_READY',1,${at},${at},${LEASE},'session-1',${ids.next()})`;
   runs.push(runId);
   return runId;
 }
