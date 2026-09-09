@@ -3,7 +3,7 @@ title: 'Epic 4 deployment readiness'
 type: 'release-readiness'
 created: '2026-09-09'
 status: 'draft'
-candidate: 'codex/epic-4-agent-runs @ 6237c4c (PR 24)'
+candidate: 'codex/epic-4-agent-runs @ 9da4df6 (PR 24)'
 main: '12ec596 (schema generation 14, the deployed build)'
 ---
 
@@ -93,13 +93,14 @@ workflow is read-only and runs only on an explicit label or dispatch with an exa
 
 | Check | Status | Where |
 |---|---|---|
-| Standard CI on the exact candidate | green in all five jobs on `6237c4c` (run `34298099868`); the two mutation gates had been red on `db3c6d3` and `ad238db` for a stale anchor, repaired in `6237c4c`; the docs-only head `07f79e2` has its own run | PR 24 checks |
+| Standard CI on the exact candidate | green in all five jobs on `9da4df6`, the merge of the hero-workflow pass (run `34316930519`); before it, green on `6237c4c` (run `34298099868`) after the stale-anchor repair | PR 24 checks |
 | Fresh install to 41 and upgrade 32 → 41 with schema parity | passed | `epic-4-independent-verification.md` |
 | Populated upgrade 14 → 41 (production's generation) | passed: a generation-14 database built and populated through main's own commands (four Procedures across DRAFT, SUBMITTED, APPROVED and ACTIVE; a published platform configuration; delivered notifications; a worker heartbeat) was upgraded in place by the candidate's migrator in 12 s; every pre-existing row's generation-14 columns are byte for byte unchanged (9 of 9 table digests), schema parity with a fresh generation-41 install is exact (673 columns, 861 constraints, 40 triggers), and the migrator is idempotent on the result | `epic-4-populated-upgrade-proof.md` |
 | Evidence preservation across the sealed-Run backfill (31 → 32) and the absence guard (40 → 41) | passed in CI on every candidate | `tests/integration/sealed-evidence-upgrade.test.ts`, `absence-guard-upgrade.test.ts` |
 | Worker restart, redelivery and lease recovery | passed in CI integration | `tests/integration/*` recovery cases |
-| Live representative audit under the C2 policy, the undefined-privilege negative case, and remote isolation | passed on `07f79e2`: run `34299424112`, artifact `10084400638` (COMPLETED with PENDING_CONFIRMATION and a consistent proposal; AWAITING_AUDITOR asking for clarification, cancelled and released; two isolated sessions released before expiry) | `solari-acceptance.yml` |
+| Live representative audit under the C2 policy, the undefined-privilege negative case, and remote isolation | passed on `9da4df6`: run `34317015975`, artifact `10090483703`; and before it on `07f79e2`: run `34299424112`, artifact `10084400638` (COMPLETED with PENDING_CONFIRMATION and a consistent proposal; AWAITING_AUDITOR asking for clarification, cancelled and released; two isolated sessions released before expiry) | `solari-acceptance.yml` |
 | Story 4.12 journey on the compiled worker | passed locally and in the hosted browser job of run `34298099868` | `tests/e2e/disablement-window-journey.spec.ts` |
+| Hero-workflow pass (owner §3) | passed locally (34 browser tests, keyboard and axe) and in hosted CI on `9da4df6` | `epic-4-hero-workflow-report.md` |
 
 ## 4. Merge plan (owner decision 3, option B)
 

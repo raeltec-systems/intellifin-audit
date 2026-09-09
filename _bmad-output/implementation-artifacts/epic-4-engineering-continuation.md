@@ -835,3 +835,13 @@ cases reach the CHECK they exist to prove.
 
 Hosted CI on the merge head and the live acceptance on it are recorded in
 `epic-4-story-status.md` and on PR 24 as they complete.
+
+## The final candidate is green everywhere (2026-09-09)
+
+`9da4df6`, the merge of the hero-workflow pass, has standard CI `34316930519` green in all
+five jobs and the live acceptance `34317015975` passed on the same head (artifact
+`10090483703`, secret-free): the policy-bound audit, the undefined-privilege negative case
+and the remote isolation gate, on Solari against the hosted Northstar. Nothing remains on
+the engineering side of decision 3; what remains is the owner's: the worker inputs in
+`epic-4-deployment-readiness.md`, the review of PR 24, and the merge. Epic 5 starts on
+`codex/epic-5-live-replay` from this head.
