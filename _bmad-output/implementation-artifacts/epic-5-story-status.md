@@ -23,4 +23,7 @@ Deployed.
 | 5.7 Live View when the stream drops or the Run ends | no | no | no | no | no |
 | 5.8 Replay any terminal Run | no | no | no | no | no |
 
-Order of implementation and why: `epic-5-context.md`.
+Order of implementation and why: `epic-5-context.md`. The order was revised after 5.3:
+5.7 moves to after 5.4 and 5.5, because its central criterion disables controls that do not
+exist until those stories build them. Two of its three criteria are already met by 5.1 and
+5.3; the third lands with the controls it governs.

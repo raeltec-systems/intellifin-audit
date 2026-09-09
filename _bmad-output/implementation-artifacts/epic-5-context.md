@@ -98,6 +98,18 @@ frame is a Replay asset the moment it is registered"). Pause last among the exec
 changes because it touches the worker's Tool Action boundary and the wait mechanism, and
 it is the one story that can leave a Run in a state nothing else produces yet.
 
+**Revised after 5.3 (2026-09-09): 5.7 moves to after 5.4 and 5.5.** Its central criterion
+is "every control disabled until the stream resumes", and the first Live View control is
+5.4's Pause. Built in its planned slot, 5.7 would deliver a liveness gate with no caller —
+a mechanism nothing exercises, which this codebase treats as a mechanism that can be
+inverted silently. Two of its three criteria are already met: the stale and lost states are
+`live-status.ts`'s and are on Live View through the shared banner (5.1), and the flip to
+REPLAY with the terminal Banner and the Run Detail link is 5.3's, proven in a browser
+against a real cancellation. What is left is the gate, and the reconnect-without-gap proof
+at the Live View level, both of which land with the controls they govern. The order is
+therefore 5.2 → 5.8 → 5.4 → 5.5 → 5.7 → 5.6. Nothing about 5.2 or 5.8 depends on 5.7, so
+the change costs no rework.
+
 ## Migrations expected
 
 One generation per story that needs storage, never invented up front: `run_wait.kind`
