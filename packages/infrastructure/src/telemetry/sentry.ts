@@ -28,6 +28,7 @@ export const TELEMETRY_MESSAGES = [
   'Agent Workspace mode selected',
   'Fatal worker error',
   'Plan derivation queue failed',
+  'Queue maintenance failed',
   'Retry Plan Derivation failed',
   'Initiate Run failed',
   'Cancel Run failed',

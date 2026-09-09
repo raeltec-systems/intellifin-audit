@@ -287,6 +287,47 @@ jobs:
         if: always()
         run: docker rm -f web-smoke >/dev/null 2>&1 || true
 
+      # The Agent Workspace's local mode launches a browser INSIDE this image, so an image
+      # without one fails every agent-driven Run at provisioning. This drives the real
+      # `PlaywrightBrowserExecution.create` rather than raw Playwright, so a change to the
+      # launch options it uses — a `headless: false`, a channel — fails here, where the
+      # image is cheap to rebuild, instead of in a Run against a live Target System.
+      # An empty allowlist is the correct policy for a workspace with nothing to visit:
+      # every destination is denied, which is what a desktop-only plan really gets.
+      - name: The worker image can launch its own browser
+        run: |
+          set -euo pipefail
+          cat > /tmp/browser-smoke.mjs <<'SMOKE'
+          import { PlaywrightBrowserExecution } from '@intellifin/infrastructure/browser';
+
+          const execution = new PlaywrightBrowserExecution({ mode: 'local' });
+          const workspace = await execution.create({
+            runId: '00000000-0000-7000-8000-000000000000',
+            policy: { allowedOrigins: [] },
+            timeoutMs: 60000,
+          });
+          const ref = workspace.ref ?? workspace;
+          const page = await workspace.context.newPage();
+          await page.setContent('<h1>ok</h1>');
+          const text = await page.textContent('h1');
+          const shot = await page.screenshot();
+          console.log(`mode=${ref.mode} text=${text} screenshotBytes=${shot.length}`);
+          if (text !== 'ok' || shot.length === 0) {
+            console.error('the browser launched but rendered nothing');
+            process.exit(1);
+          }
+          await execution.release(ref, 30000);
+          await execution.close();
+          console.log('BROWSER SMOKE OK');
+          SMOKE
+          docker run --rm \
+            -v /tmp/browser-smoke.mjs:/app/browser-smoke.mjs:ro \
+            intellifin-worker:ci node /app/browser-smoke.mjs | tee /tmp/browser-smoke.out
+          grep -q 'BROWSER SMOKE OK' /tmp/browser-smoke.out || {
+            echo "::error::the worker image could not launch a browser"
+            exit 1
+          }
+
       - name: Worker exits non-zero and refuses to start when the database is unreachable
         run: |
           set -euo pipefail

@@ -1,3 +1,104 @@
+## 2026-09-09 — Queue maintenance needs a connection of its own
+
+`Plan derivation queue failed` every 60 seconds in production, since the Epic 2 era. The
+cause is one word: `createProceduresQueue` left pg-boss's `supervise` at its DEFAULT
+(`true`), so the built-in supervisor ran on the SHARED pool — and its monitor and maintain
+passes issue a raw `BEGIN; SET LOCAL ...; SELECT pg_advisory_xact_lock(...)` block through
+`plans.locked`, which postgres.js refuses on a pooled client with `UNSAFE_TRANSACTION`
+because a pooled checkout cannot promise the whole block lands on one connection.
+
+**What it actually cost.** Plan derivation itself was fine — proven by pushing a real job
+through — so the visible symptom was only a log line. What was silently not happening is
+DELETION: completed jobs past their queue's deletion window were never removed, so
+`pgboss.job` grew without bound. And ONE PgBoss instance serves every queue this worker
+runs — procedures, runs, waits, evaluation reviews, evidence read grants — so one broken
+supervisor was all five.
+
+- **Maintenance is a sweep with its own client, not the constructor's supervisor.**
+  `startQueueMaintenance(databaseUrl, onError)` owns a `max: 1` client (where the raw block
+  is legal), runs `supervise()` on its own timer, and returns a stop that closes both — the
+  shape `startProceduresRecovery` beside it already uses. `createProceduresQueue` now says
+  `supervise: false` explicitly, which makes it the twelfth of twelve `new PgBoss(...)`
+  constructions in this package to say so rather than the one odd exception.
+- **A dedicated connection is right for a second reason.** A reindex is DDL and can hold
+  its connection for seconds; on the shared pool that would stall the job polling of every
+  worker in the process.
+- **The test that catches the regression asserts the DELETION.** `pgboss.queue.maintain_on`
+  advances even on the broken build — it is set before the statement that fails — so a
+  first version of the test that watched the timestamp alone PASSED against the pooled
+  supervisor and proved nothing. It was deleted rather than kept: a test that cannot fail
+  for the reason it exists is worse than no test, because it reads as coverage. Proven by
+  mutation: putting maintenance back on the pool fails
+  `tests/integration/queue-maintenance.test.ts`.
+- **`supervise()` reaches the raw transaction only when a queue is actually DUE.** The
+  negative test has to push BOTH `monitor_on` and `maintain_on` back, for every queue; with
+  only `maintain_on` reset it resolved happily against the broken build. The failing
+  statement is in the MONITOR pass, not the maintain pass.
+- **The driver's reason is on `error.cause.code`, not the message.** pg-boss reports
+  `Failed query: BEGIN; ...`, so matching that would pass on any failed statement and drift
+  with its formatting. Assert `cause.code === 'UNSAFE_TRANSACTION'`.
+- **The release migrator was never affected** and still installs pg-boss's schema on the
+  pooled client: `migrateProceduresQueue` already sets `supervise: false`, and the install
+  path does not use `plans.locked`. Verified on a fresh database, which reached generation
+  41 with all twelve `pgboss` tables.
+
+Two mechanical notes, both about running this suite locally:
+
+- **`pnpm db:migrate` runs `pnpm install --prod` in its dependency-closure step**, which
+  PRUNES dev dependencies and leaves the workspace unable to typecheck (`Cannot find type
+  definition file for 'node'`). Run `node packages/infrastructure/dist/db/migrate.js`
+  directly against a built tree, or reinstall afterwards.
+- **The integration suite refuses a database whose NAME does not match
+  `(^|[_-])(test|ci)([_-]|$)`.** A database called `qfix` fails eighteen files in their
+  `beforeAll` with "require an isolated local or CI test database" — the Story 1.5
+  throwaway-database guard doing its job, and nothing to do with the code under test.
+
+## 2026-09-09 — The worker image carries its own browser, and only the half it can reach
+
+The Agent Workspace's LOCAL mode calls `chromium.launch()` INSIDE the worker container, so
+`node:24.20.0-bookworm-slim` with no browser meant every agent-driven Run (P-1, P-4) failed
+at provisioning while every adapter Run (P-2, P-3) passed — the deployment looked healthy
+and half the product did not work. Found by reading the Dockerfile against
+`browser-execution.ts` while writing a test plan, not by a failing test, because nothing in
+CI ever launched a browser inside the built image.
+
+- **`chromium-headless-shell`, not `chromium`.** `browser-execution.ts` passes no
+  `headless` option, so Playwright's default applies and the headless shell is what that
+  default launches. Verified rather than assumed, against the real
+  `PlaywrightBrowserExecution.create` on the real `pnpm deploy --prod` tree with only the
+  shell present: create, `newContext`, `newPage`, `textContent`, `screenshot`, `release`
+  and `close` all succeed. 262 MB against the full build's 389 MB. `ffmpeg` is removed too
+  — it exists only to encode video and nothing here records any — and the same proof was
+  re-run with it deleted.
+- **`install-deps` still names `chromium`.** The system libraries are shared, and letting
+  Playwright resolve them for the distribution beats pinning an apt list that goes stale at
+  the next browser revision.
+- **`PLAYWRIGHT_BROWSERS_PATH` is declared ONCE, on the runtime stage.** It has to cover
+  both the install and the running process; set for only one, the browser is downloaded to
+  root's home and the worker looks elsewhere.
+- **The CLI path is RESOLVED, never written out.** `playwright-core` is transitive through
+  `@intellifin/infrastructure`, so under pnpm it lives in `.pnpm/playwright-core@<version>/`
+  and any literal path breaks on upgrade. It is also NOT resolvable from the deploy tree's
+  root — only through the realpath of `node_modules/@intellifin/infrastructure`, which is
+  how Node resolves it at runtime anyway.
+- **A narrow choice needs the test that catches its regression.** `images` in `ci.yml` now
+  runs `PlaywrightBrowserExecution.create` inside the BUILT image, so a later `headless:
+  false`, a channel, or a dropped install fails there rather than in a Run against a live
+  Target System. Testing raw `playwright-core` instead would have proved the binary present
+  and said nothing about the options the product actually uses.
+- **An empty `allowedOrigins` is the right policy for that smoke test**, not a placeholder:
+  it denies every destination, which is exactly what a desktop-only plan really gets.
+- **Solari mode needs none of this** and the image carries it anyway, because the mode is a
+  boot-time choice — an image that worked in only one of them would make a configuration
+  switch into a deployment trap.
+
+`seed-northstar.yml` now DERIVES `CREDENTIAL_CAPABILITIES` from
+`fixtures/northstar/datasets/systems.json` instead of naming one reference by hand. The
+hand-written value named LoanCore's own reference and not the shared fallback the script
+applies to the other nine, so the seed refused before writing anything — the fail-closed
+manifest working exactly as designed, and a list that drifts from the data the moment a
+system is added.
+
 ## 2026-09-09 — The Replay asset set: a frame that is missing, and the recording that arrives after the seal
 
 Story 5.2 adds NO capture path. AD-17 already says a live frame is a Replay asset the moment
@@ -109,6 +210,7 @@ Three mechanical lessons from proving it:
 ## 2026-09-09 — The live Timeline channel: a notification is a wake-up, never the data
 
 `openRunTimelineStream` (`packages/infrastructure/src/runs/run-timeline-channel.ts`) LISTENs on `run_timeline` — the channel every writer already NOTIFYs, pinned by a source scan over the package rather than a list — arms the LISTEN BEFORE replaying `sequence > cursor` from `audit_events`, and on every wake-up and every heartbeat reads `sequence > lastSent` again, in order: a lost or coalesced notification cannot lose an event, and `lastSent` only grows, so nothing is sent twice. The stream carries the chain's ENVELOPE (seq, eventType, occurredAt, outcome, source) and never a payload; a surface re-reads what it renders from PostgreSQL through the reader it already has (`router.refresh()`, throttled to one a second). The heartbeat is an SSE EVENT every 10 seconds, not a comment: a comment is invisible to `EventSource`, and the 15-second stale rule (UX-DR25) needs a signal the page can observe. The cursor is `Last-Event-ID` first and `?after=` second, because a reconnect carries both and only the header is current. Lifetime 14 minutes ending with `event: end`; an aborted request tears its listener down, which the integration test proves by counting hand-overs through a `Proxy` on the real client. `sql.listen` needs the postgres.js client, so the engine lives in infrastructure and the two routes are thin; the list stream reads the row a notification names rather than forwarding the notification. Only the status WORD is `aria-live`; the counting sentence beside it is not. A terminal Run keeps the plain `Updated {time}. Refresh.` banner (UX-DR35), and the bell re-reads only on `execution.escalation-*`. Contract: `docs/contracts/live-timeline-channel-v1.md`.
+
 
 ## 2026-09-09 — The hero workflow: what the Builder now does, and the rules underneath it
 

@@ -1,0 +1,139 @@
+# Register the synthetic Northstar systems into the deployed environment. MANUAL ONLY.
+#
+# The sibling of `seed-demo-accounts.yml`, and it exists for the same reason: this is a
+# DATA change against a real database, AD-15 keeps data changes out of every boot path,
+# and the production `DATABASE_URL` lives in a repository secret that nothing may print.
+# Running it here is what lets the secret stay a secret.
+#
+# READ THIS BEFORE RUNNING IT. A Target System registration is NEVER DELETED — retirement
+# is a status, because a Run that froze a digest must still be able to resolve it. So this
+# is a one-way write to the audit chain. Re-running is safe and idempotent (a system
+# already registered under the same display name is left alone), but nothing here can be
+# taken back out.
+#
+# Everything it registers is synthetic by construction: the catalogue carries the
+# `SYNTHETIC-NORTHSTAR-FIXTURE` marker and the script refuses to register from a file that
+# does not. `CREDENTIAL_CAPABILITIES` is a DECLARATION and holds no secret — opaque
+# references and a read-only verdict — and without it every registration is refused, which
+# is the fail-closed direction: a deployment that has vouched for nothing may register
+# nothing. It is DERIVED from the catalogue rather than typed here, so it cannot drift
+# from the systems it vouches for.
+
+name: Seed synthetic Northstar systems
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "seed" to confirm registering the synthetic systems in production'
+        required: true
+        type: string
+      admin_email:
+        description: 'The PoC Administrator whose authority the registrations are made under'
+        required: true
+        type: string
+        default: administrator@example.test
+      northstar_base_url:
+        description: 'Base URL of the deployed Northstar service (no trailing slash)'
+        required: true
+        type: string
+        default: https://northstar-production-b312.up.railway.app
+
+concurrency: seed-northstar
+
+jobs:
+  seed:
+    name: Register the synthetic systems
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Refuse unless explicitly confirmed
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = "seed" || {
+            echo 'Refusing: type "seed" to confirm.'
+            exit 1
+          }
+
+      - uses: actions/checkout@v5
+
+      - name: Enable corepack and pin pnpm
+        run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `seed-northstar` runs under plain node and imports the packages' BUILT output.
+      - run: pnpm build
+
+      - name: Fail fast when the DATABASE_URL secret is missing
+        run: test -n "${{ secrets.DATABASE_URL }}" || { echo 'DATABASE_URL is not set'; exit 1; }
+
+      - name: Refuse a Northstar the runner cannot reach
+        run: |
+          set -euo pipefail
+          # A registration freezes its allowed origin into every Procedure Version that
+          # selects it, and changing one later mints a platform-authored draft for each.
+          # So the URL is checked BEFORE anything is registered, not after.
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            "${{ inputs.northstar_base_url }}/health" || echo 000)"
+          test "$code" = "200" || {
+            echo "Northstar did not answer 200 on /health (got $code). Nothing was registered."
+            exit 1
+          }
+
+      - name: Register the systems and their Population Sources
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NORTHSTAR_BASE_URL: ${{ inputs.northstar_base_url }}
+          # The fallback `scripts/seed-northstar.mts` itself applies to a system that
+          # names no reference of its own. Set here so the derivation below and the
+          # script read one value rather than two spellings of it.
+          NORTHSTAR_CREDENTIAL_REF: cred://synthetic/northstar-readonly
+        run: |
+          set -euo pipefail
+          # DERIVED from the catalogue, never retyped. The first version of this step
+          # declared one reference by hand and the seed refused before writing anything:
+          # the catalogue names LoanCore's own reference as well as the shared fallback,
+          # and a hand-copied list drifts from the data the moment a system is added or
+          # starts declaring its own. Reading the catalogue is what stops that.
+          #
+          # A declaration, not a secret: opaque references and a read-only verdict, which
+          # is why it can be printed. Reading the verdict out of a reference's spelling
+          # would make the guarantee a naming convention anybody can satisfy by typing.
+          CREDENTIAL_CAPABILITIES="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const catalogue = JSON.parse(
+              readFileSync("fixtures/northstar/datasets/systems.json", "utf8"),
+            );
+            const references = new Set([process.env.NORTHSTAR_CREDENTIAL_REF]);
+            for (const system of catalogue.target_systems) {
+              if (system.credential_ref) references.add(system.credential_ref);
+            }
+            process.stdout.write(
+              JSON.stringify(
+                Object.fromEntries([...references].sort().map((r) => [r, "read-only"])),
+              ),
+            );
+          ')"
+          export CREDENTIAL_CAPABILITIES
+          echo "Declared read-only: ${CREDENTIAL_CAPABILITIES}"
+          pnpm seed:northstar --admin-email "${{ inputs.admin_email }}"
+
+      - name: Say what is now registered
+        if: always()
+        run: |
+          {
+            echo '## Synthetic Northstar systems'
+            echo
+            echo "Registered under \`${{ inputs.admin_email }}\`, against"
+            echo "\`${{ inputs.northstar_base_url }}\`."
+            echo
+            echo 'Every registration is audited exactly like one typed into the'
+            echo 'Administration screens. A registration is never deleted — retirement is a'
+            echo 'status — so re-running this changes nothing that is already there.'
+          } >> "$GITHUB_STEP_SUMMARY"
