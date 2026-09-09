@@ -13,10 +13,11 @@
 #
 # Everything it registers is synthetic by construction: the catalogue carries the
 # `SYNTHETIC-NORTHSTAR-FIXTURE` marker and the script refuses to register from a file that
-# does not. `CREDENTIAL_CAPABILITIES` is a DECLARATION and holds no secret — an opaque
-# reference and a read-only verdict — and without it every registration is refused, which
+# does not. `CREDENTIAL_CAPABILITIES` is a DECLARATION and holds no secret — opaque
+# references and a read-only verdict — and without it every registration is refused, which
 # is the fail-closed direction: a deployment that has vouched for nothing may register
-# nothing.
+# nothing. It is DERIVED from the catalogue rather than typed here, so it cannot drift
+# from the systems it vouches for.
 
 name: Seed synthetic Northstar systems
 
@@ -89,11 +90,39 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NORTHSTAR_BASE_URL: ${{ inputs.northstar_base_url }}
-          # A declaration, not a secret: an opaque reference and a read-only verdict. It is
-          # what proves the audit credential read-only, and reading the verdict out of the
-          # reference's spelling would make the guarantee a naming convention.
-          CREDENTIAL_CAPABILITIES: '{"cred://synthetic/loancore-readonly":"read-only"}'
-        run: pnpm seed:northstar --admin-email "${{ inputs.admin_email }}"
+          # The fallback `scripts/seed-northstar.mts` itself applies to a system that
+          # names no reference of its own. Set here so the derivation below and the
+          # script read one value rather than two spellings of it.
+          NORTHSTAR_CREDENTIAL_REF: cred://synthetic/northstar-readonly
+        run: |
+          set -euo pipefail
+          # DERIVED from the catalogue, never retyped. The first version of this step
+          # declared one reference by hand and the seed refused before writing anything:
+          # the catalogue names LoanCore's own reference as well as the shared fallback,
+          # and a hand-copied list drifts from the data the moment a system is added or
+          # starts declaring its own. Reading the catalogue is what stops that.
+          #
+          # A declaration, not a secret: opaque references and a read-only verdict, which
+          # is why it can be printed. Reading the verdict out of a reference's spelling
+          # would make the guarantee a naming convention anybody can satisfy by typing.
+          CREDENTIAL_CAPABILITIES="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const catalogue = JSON.parse(
+              readFileSync("fixtures/northstar/datasets/systems.json", "utf8"),
+            );
+            const references = new Set([process.env.NORTHSTAR_CREDENTIAL_REF]);
+            for (const system of catalogue.target_systems) {
+              if (system.credential_ref) references.add(system.credential_ref);
+            }
+            process.stdout.write(
+              JSON.stringify(
+                Object.fromEntries([...references].sort().map((r) => [r, "read-only"])),
+              ),
+            );
+          ')"
+          export CREDENTIAL_CAPABILITIES
+          echo "Declared read-only: ${CREDENTIAL_CAPABILITIES}"
+          pnpm seed:northstar --admin-email "${{ inputs.admin_email }}"
 
       - name: Say what is now registered
         if: always()
