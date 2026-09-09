@@ -109,7 +109,7 @@ against PostgreSQL 18 at schema generation 41, Node 24.20.0, pnpm 11.25.0.
 | Build | passed |
 | Browser (`hero-workflow`, `procedures`, `version-review`, `executable-plan`, `disablement-window-journey`) | 34 passed, 0 failed, 5.4 minutes; keyboard-only operation of the simple editor and the direct save; WCAG 2.1 AA scans on the Builder before and after the window, on the scope dialog and on the completed Draft, all clean |
 | Mutation anchors | every `before:` anchor in the four harnesses occurs exactly once on the merged tree |
-| Screenshots | 15, one per proven state, in `hero-ux-screenshots/` |
+| Screenshots | 16, one per proven state, each framing the element the state is about, in `hero-ux-screenshots/` |
 
 The hosted CI result on the merge head and the live acceptance are recorded in
 `epic-4-story-status.md` and on PR 24 when they complete.
