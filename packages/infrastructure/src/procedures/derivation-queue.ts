@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { PgBoss, fromDrizzle, type Db } from 'pg-boss';
 import type { PlanDerivationJob, PlanDerivationQueue, PlanDelivery } from '@intellifin/application';
-import type { Database, Transaction } from '../db/client.js';
+import { createDb, createSqlClient, type Database, type Transaction } from '../db/client.js';
 import { queuePlanDerivation } from '@intellifin/application';
 import { procedureVersion } from '../db/schema.js';
 import { DrizzleProcedureWriter } from './procedure-repository.js';
@@ -17,9 +17,63 @@ export function queueDatabase(connection: Database | Transaction): Db {
       ? JSON.stringify(value) : value)) };
 }
 
-/** Runtime uses the existing TLS/connection policy and never installs a schema. */
+/** How often queue maintenance runs. pg-boss's own supervisor default, kept deliberately. */
+export const QUEUE_MAINTENANCE_INTERVAL_MS = 60_000;
+
+/** Runtime uses the existing TLS/connection policy and never installs a schema.
+ *
+ * `supervise: false` because pg-boss's built-in supervisor cannot run on this connection:
+ * it issues a raw `BEGIN; SET LOCAL ...; SELECT pg_advisory_xact_lock(...)` block, and
+ * postgres.js refuses a raw transaction on a POOLED client with `UNSAFE_TRANSACTION` --
+ * a pooled checkout cannot promise the whole block lands on one connection. Left at its
+ * default it threw every 60 seconds and archived nothing. `startQueueMaintenance` below is
+ * where maintenance actually happens, on a connection where that block is legal. */
 export function createProceduresQueue(db: Database): PgBoss {
-  return new PgBoss({ db: queueDatabase(db), migrate: false, createSchema: false, schedule: false });
+  return new PgBoss({ db: queueDatabase(db), migrate: false, createSchema: false, schedule: false, supervise: false });
+}
+
+/** Archive completed jobs, prune stats partitions and reindex, on a connection of its own.
+ *
+ * A sweep with its own client and its own timer -- the shape `startProceduresRecovery`
+ * below already uses -- rather than the constructor's supervisor, for two reasons. The
+ * raw transaction block above needs `max: 1`, which the shared pool is not; and
+ * maintenance can hold that connection for seconds (a reindex is DDL), which on the
+ * shared pool would stall the job polling of every worker this process runs.
+ *
+ * ONE process-wide instance is enough and is what the worker starts: a single PgBoss
+ * instance serves every queue here, so its maintenance covers all of them. Without it
+ * `pgboss.job` grows without bound. */
+export function startQueueMaintenance(databaseUrl: string, onError: (error: unknown) => void): () => Promise<void> {
+  const sql = createSqlClient(databaseUrl, { max: 1 });
+  const queue = new PgBoss({ db: queueDatabase(createDb(sql)), migrate: false, createSchema: false, schedule: false, supervise: false });
+  let running = false;
+  // `start()` resolves to the PgBoss instance, not void; the value is unused and the
+  // promise is kept only so a restarted sweep does not start the instance twice.
+  let started: Promise<unknown> | null = null;
+  const sweep = async (): Promise<void> => {
+    if (running) return;
+    running = true;
+    try {
+      started ??= queue.start();
+      await started;
+      await queue.supervise();
+    } catch (error) {
+      // A failed sweep is reported and retried on the next tick. It must never throw out
+      // of the timer: an unhandled rejection here would take the worker down over
+      // housekeeping, which is the opposite of what maintenance is for.
+      onError(error);
+    } finally {
+      running = false;
+    }
+  };
+  void sweep();
+  const timer = setInterval(() => void sweep(), QUEUE_MAINTENANCE_INTERVAL_MS);
+  timer.unref();
+  return async () => {
+    clearInterval(timer);
+    await queue.stop().catch(() => undefined);
+    await sql.end({ timeout: 5 }).catch(() => undefined);
+  };
 }
 
 /** No start is needed for send. Both queue lookup and INSERT use this transaction. */
