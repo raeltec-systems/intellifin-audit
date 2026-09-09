@@ -6,10 +6,10 @@ altitude: feature
 paradigm: 'ports-and-adapters modular monolith with durable asynchronous, human-interruptible Audit Runner execution'
 scope: 'Exploratory PoC and reusable commercial-product foundations'
 status: final
-revision: 3
+revision: 4
 created: '2026-09-01'
-updated: 2026-09-04
-supersedes: 'revision 2; revision 3 applies the owner-approved activation-time handover correction of 2026-09-04'
+updated: 2026-09-05
+supersedes: 'revision 3; revision 4 applies the owner-approved adapter retry policy of 2026-09-05 and retains activation-time handover'
 binds:
   - 'PRD FR-1..FR-50'
   - 'PRD NFR-1..NFR-15'
@@ -28,6 +28,10 @@ companions: []
 ## 0. Owner-approved timing correction — 2026-09-04
 
 Approval of a regression-gated successor records pending regression and its successor relationship without a speculative handover date. Actual activation after regression passes sets the authoritative boundary strictly after activation. The owner explicitly selected this behavior. This supersedes approval-time wording and invalidates prior downstream timing reviews: Story 2.8 and later Regression Run/scheduler contracts require revalidation. Execution and scheduler handover remain outside Epic 2.
+
+### Owner-approved adapter retry policy — 2026-09-05
+
+For adapter Work Items, AD-3's general retry/skip Escalation rule is superseded by one automatic additional bounded retry cycle after first exhaustion. A second exhaustion marks the Work Item `FAILED`; the Run continues and incomplete coverage yields `INCONCLUSIVE`. Each cycle uses the frozen retry bound and every attempt consumes Run budgets. Agent-driven Escalations, Session Step exhaustion and denied-action mappings remain unchanged. This aligns the architecture with addendum revision 3 and Story 3.8; prior downstream adapter retry reviews require revalidation.
 
 ## Design Paradigm
 

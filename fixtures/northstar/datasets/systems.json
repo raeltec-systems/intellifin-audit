@@ -21,10 +21,14 @@
       "display_name": "LoanCore",
       "kind": "web",
       "origin_path": "/loancore",
+      "authentication_destination_path": "/loancore/sign-in",
       "permitted_actions": ["navigate", "search", "open-record", "read-attribute", "capture-screenshot"],
-      "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name"],
+      "attribute_label_patterns": ["Status", "Username", "Roles", "Employee ID", "Full name", "Disabled time"],
       "secondary_key": "Full name",
-      "note": "Synthetic loan origination and servicing web application. Agent-driven (P-1). The audit account is signed in already and holds read access only."
+      "credential_ref": "cred://synthetic/loancore-readonly",
+      "credential_token": "synthetic-loancore-audit-token-not-a-real-credential",
+      "credential_note": "LoanCore is the one authenticated synthetic system (Story 4.2). credential_ref is the opaque reference a registration freezes and a Procedure Version carries; credential_token is the INVENTED value this fixture's own sign-in form checks, declared here so the agent, the worker manifest and the system all read one place. It is synthetic and it authenticates nothing outside this repository: registering a real credential is the one thing this environment must not have.",
+      "note": "Synthetic loan origination and servicing web application. Agent-driven (P-1). The audit account holds read access only and signs in through a real form: /loancore serves the sign-in form to a caller with no session, POST /loancore/sign-in carries the credential in a body and grants a session cookie, and every other /loancore path answers 401 with a challenge naming the form. The POST is declared non-mutating on its route because it creates a session and no audited business data; the system-level guard refuses every operation a route has not declared, which is what FR-3 constrains."
     },
     {
       "id": "prodconsole",
@@ -32,7 +36,7 @@
       "kind": "web",
       "origin_path": "/prodconsole",
       "permitted_actions": ["navigate", "read-attribute", "read-metadata", "capture-screenshot"],
-      "attribute_label_patterns": ["Parameter", "Value", "Snapshot identifier", "Expected parameter count"],
+      "attribute_label_patterns": ["Parameter", "Value", "Snapshot identifier", "Expected parameter count", "Snapshot taken at"],
       "secondary_key": "",
       "note": "Synthetic production configuration surface. Agent-driven (P-4). Publishes a signed snapshot identifier and an expected parameter count."
     },
@@ -45,6 +49,16 @@
       "attribute_label_patterns": ["account_id", "employee_id", "username", "status", "roles"],
       "secondary_key": "employee_id",
       "note": "Application identity store. Adapter-acquired (P-2). It is both the population and the Target System."
+    },
+    {
+      "id": "coredirectory",
+      "display_name": "CoreDirectory",
+      "kind": "api",
+      "origin_path": "/coredirectory",
+      "permitted_actions": ["list-records", "read-attribute", "read-metadata"],
+      "attribute_label_patterns": ["account_id", "employee_id", "username", "status", "roles"],
+      "secondary_key": "employee_id",
+      "note": "Identity store for the CLEAN P-2 source. Adapter-acquired, same shape as AccessGate and expanded through the same RoleMatrix. It seeds no failure of its own, which is what lets a Run over it reach Pass or Control Failure; neither golden population can, because each carries a Source-level defect that no inclusion rule escapes."
     },
     {
       "id": "approvenow",
@@ -147,6 +161,26 @@
       "declared_count_mechanism": "count-endpoint",
       "sensitive_fields": ["username"],
       "note": "The P-2 population. The count endpoint declares the active population, so the bound location narrows to the same rule."
+    },
+    {
+      "id": "coredirectory-accounts-compliant",
+      "display_name": "CoreDirectory accounts, no prohibited pair (versioned file)",
+      "kind": "versioned-file",
+      "location_path": "/files/coredirectory-accounts-compliant.csv",
+      "declared_schema": ["account_id", "employee_id", "username", "status", "roles", "disabled_time"],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": ["username"],
+      "note": "The clean P-2 population. Distinct primary keys, no missing value, every role declared exactly once in RoleMatrix — so no file-level or inclusion-level Gate row fails and the per-record verdicts decide the outcome."
+    },
+    {
+      "id": "coredirectory-accounts-conflict",
+      "display_name": "CoreDirectory accounts, one prohibited pair (versioned file)",
+      "kind": "versioned-file",
+      "location_path": "/files/coredirectory-accounts-conflict.csv",
+      "declared_schema": ["account_id", "employee_id", "username", "status", "roles", "disabled_time"],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": ["username"],
+      "note": "The same clean shape carrying one true conflict: CD-3103 expands to CREATE_VENDOR + APPROVE_VENDOR. One Exception on an otherwise passing Gate."
     },
     {
       "id": "ledgerflow-transactions",

@@ -6,8 +6,10 @@ import { describe, expect, it } from 'vitest';
 import {
   PROCEDURE_TEMPLATES,
   PROCEDURE_TEMPLATE_IDS,
+  TEMPLATE_COVERAGE_RULES,
   heroProcedureTemplate,
   isTemplateId,
+  templateCoverageRule,
   type ProcedureTemplate,
   type TemplateCondition,
 } from '@intellifin/domain';
@@ -142,10 +144,54 @@ describe('the four Procedure Templates', () => {
       } else {
         expect(template.secondaryKey).toBeNull();
       }
+      // Variant attribute labels: what §C names for the Template's retained variant.
+      if (template.variantAttributeLabels !== null) {
+        for (const [attribute, label] of Object.entries(template.variantAttributeLabels)) {
+          expect(block).toContain(label);
+          expect(block).toContain(attribute);
+        }
+      }
 
       for (const condition of template.conditions) {
         expectConditionPinned(block, condition);
       }
+    }
+  });
+
+  it('derives every coverage rule from the §C prose that states it', () => {
+    // §H computes per-record coverage "per the Template's coverage rule (§C)", so the
+    // machine-readable rule is DERIVED here from the addendum block rather than compared
+    // with a copy of itself. §C states a permissive rule two ways and only two: P-3's
+    // coverage bullet says "(found or proven absent)" in as many words, and P-1's C1 makes
+    // "found = false (proven absence)" the Compliant finding. P-2 requires each account to
+    // APPEAR in the extraction and P-4 requires each parameter grounded in the page, so
+    // neither block says either phrase and both are `must-appear`.
+    const permissive: string[] = [];
+    for (const template of PROCEDURE_TEMPLATES) {
+      const block = BLOCKS[template.id];
+      if (block === undefined) throw new Error(`no §C block pinned for ${template.id}`);
+      const absenceSatisfiesCoverage =
+        block.includes('found or proven absent') || block.includes('(proven absence)');
+      if (absenceSatisfiesCoverage) permissive.push(template.id);
+      expect(template.coverageRule, `${template.id} coverage rule`).toBe(
+        absenceSatisfiesCoverage ? 'found-or-proven-absent' : 'must-appear',
+      );
+      expect(TEMPLATE_COVERAGE_RULES).toContain(template.coverageRule);
+    }
+    // Said out loud, so a §C edit that made every block match (or none) could not turn
+    // this test into one that proves nothing.
+    expect(permissive).toEqual(['P-1', 'P-3']);
+  });
+
+  it('resolves a coverage rule for every shipped id and fails closed for anything else', () => {
+    for (const template of PROCEDURE_TEMPLATES) {
+      expect(templateCoverageRule(template.id)).toBe(template.coverageRule);
+    }
+    // A frozen plan's Template id is arbitrary text here. `must-appear` can only DEGRADE
+    // coverage, so an id this build ships no contract for cannot produce a Compliant
+    // absence. `constructor` is the inherited-property trap, for the sixth time.
+    for (const unknown of ['P-9', '', 'constructor', 'toString', '__proto__']) {
+      expect(templateCoverageRule(unknown), unknown).toBe('must-appear');
     }
   });
 

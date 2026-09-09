@@ -19,7 +19,7 @@ import {
   type UpdateEvidenceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { COMPLIANCE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
+import { COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -50,8 +50,19 @@ export type RenameActionResult =
     }
   | { readonly ok: false; readonly reason: string };
 
-/** Said when the command threw. It never names a driver, a table or a host. */
-const UNAVAILABLE = 'The change could not be saved. Nothing was changed.';
+/**
+ * Said when the command THREW. It never names a driver, a table or a host — and it never
+ * claims nothing was saved, because this path does not know.
+ *
+ * `[REVISED 2026-09-08]` It read "Nothing was changed", which is a statement about the
+ * database that only a REFUSAL can make. A throw can come from before the transaction,
+ * from inside it, or from after it committed with the response lost on the way back —
+ * and the third is exactly the case the Builder's own `UnknownSaveOutcome` was built
+ * for. A sentence promising nothing happened sends somebody to retype a change that may
+ * already be saved.
+ */
+const UNAVAILABLE =
+  'The save could not be confirmed. The change may have been saved. Reload to review the saved version before trying again.';
 
 /** Said when the request was not the shape this action accepts. One sentence for all. */
 const MALFORMED = 'That request was not valid. Nothing was changed.';
@@ -253,6 +264,30 @@ export interface ComplianceDraftFields {
   readonly edit: ComplianceDraftInput;
 }
 
+function isRoleList(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= ROLE_PRIVILEGE_LIMITS.roles &&
+    value.every((entry: unknown) => typeof entry === 'string' && entry.length <= ROLE_PRIVILEGE_LIMITS.roleLength);
+}
+
+/** `null` means no policy; an object must carry exactly the frozen policy keys with bounded string lists. */
+function isPolicyShape(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  const policy = value as Record<string, unknown>;
+  return Object.keys(policy).length === 4 && Object.hasOwn(policy, 'kind') && Object.hasOwn(policy, 'rolesField') &&
+    Object.hasOwn(policy, 'privileged') && Object.hasOwn(policy, 'nonPrivileged') && typeof policy['kind'] === 'string' &&
+    typeof policy['rolesField'] === 'string' && isRoleList(policy['privileged']) && isRoleList(policy['nonPrivileged']);
+}
+
+/** `null` means no mapping; an array carries bounded `{field, column}` string pairs only. */
+function isMappingShape(value: unknown): boolean {
+  if (value === null) return true;
+  return Array.isArray(value) && value.length <= COMPLIANCE_LIMITS.mappings && value.every((entry: unknown) =>
+    typeof entry === 'object' && entry !== null && !Array.isArray(entry) && Object.keys(entry).length === 2 &&
+    typeof (entry as Record<string, unknown>)['field'] === 'string' && typeof (entry as Record<string, unknown>)['column'] === 'string' &&
+    ((entry as Record<string, unknown>)['column'] as string).length <= COMPLIANCE_LIMITS.column);
+}
+
 function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return false;
   const fields = input as Record<string, unknown>;
@@ -267,9 +302,14 @@ function isComplianceDraftFields(input: unknown): input is ComplianceDraftFields
   return edit['conditions'].every((candidate: unknown) => {
     if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return false;
     const condition = candidate as Record<string, unknown>;
-    if (Object.keys(condition).length !== 4 || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
+    const keys = Object.keys(condition);
+    if (keys.length < 4 || keys.length > 6 || !Object.hasOwn(condition, 'conditionId') || !Object.hasOwn(condition, 'text') ||
       !Object.hasOwn(condition, 'applicability') || !Object.hasOwn(condition, 'comparison') || typeof condition['conditionId'] !== 'string' ||
       typeof condition['text'] !== 'string' || typeof condition['applicability'] !== 'string') return false;
+    // The optional policy and mapping are shape-checked here and validated by the compiler in the command.
+    if (!keys.every((key) => ['conditionId', 'text', 'applicability', 'comparison', 'policy', 'mapping'].includes(key))) return false;
+    if (Object.hasOwn(condition, 'policy') && !isPolicyShape(condition['policy'])) return false;
+    if (Object.hasOwn(condition, 'mapping') && !isMappingShape(condition['mapping'])) return false;
     if (condition['comparison'] === null) return true;
     if (typeof condition['comparison'] !== 'object' || Array.isArray(condition['comparison'])) return false;
     const comparison = condition['comparison'] as Record<string, unknown>;

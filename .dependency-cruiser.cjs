@@ -21,6 +21,13 @@ const FORBIDDEN_VENDORS = [
   'pg',
   '@solarisdk/browser',
   '@solarisdk/sandbox',
+  // Story 4.1. Solari is DRIVEN with the Playwright client API, so the client is as much
+  // a vendor as the provider SDK is: the `BrowserExecution` port is structural and no
+  // `Page`, `Browser` or `Route` type may cross into business code.
+  'playwright',
+  'playwright-core',
+  '@playwright/test',
+  'patchright-core',
   'ai',
   '@ai-sdk/openai',
   '@ai-sdk/anthropic',
@@ -113,10 +120,78 @@ module.exports = {
       to: { path: '^packages/infrastructure/(src|dist)/registrations/probe', reachable: true },
     },
     {
+      name: 'no-population-acquisition-in-web',
+      comment:
+        'AD-10: the worker acquires a Population Source from a registered Target System and ' +
+        'writes what it got; the web only reads those rows. Nothing under apps/web may reach ' +
+        "the acquisition adapter. It is exported through the package's ./acquisition subpath " +
+        'and deliberately kept out of the barrel, because the web imports the barrel and a ' +
+        're-export would make the module reachable transitively. `reachable: true`, so an ' +
+        'import through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/population-acquisition-http', reachable: true },
+    },
+    {
+      name: 'no-evidence-store-in-web',
+      comment:
+        'The evidence store holds the object-storage credentials and writes immutable Evidence. ' +
+        'Only the worker composes it, through the ./evidence subpath; keeping it out of the ' +
+        'barrel also keeps the S3 SDK out of the web bundle graph. `reachable: true`.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/evidence/', reachable: true },
+    },
+    {
+      name: 'no-adapter-extraction-in-web',
+      comment:
+        'AD-10: the worker reads a registered Target System and writes what it got; the web ' +
+        'only reads those rows. Nothing under apps/web may reach the extraction adapter, which ' +
+        'also presents an audit credential on the wire. It is exported through the ' +
+        "package's ./extraction subpath and deliberately kept out of the barrel, because the " +
+        'web imports the barrel and a re-export would make the module reachable transitively. ' +
+        '`reachable: true`, so an import through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/adapter-extraction-http', reachable: true },
+    },
+    {
+      name: 'no-credential-resolver-in-web',
+      comment:
+        'The credential resolver is the only module that turns an opaque reference into a ' +
+        'usable audit credential. The web process must never be able to reach one: it makes no ' +
+        'outbound call to a Target System, so it has no use for a token and every reason not to ' +
+        'hold one. Composed by the worker through the ./credentials subpath. `reachable: true`.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/credential-resolver', reachable: true },
+    },
+    {
+      name: 'no-browser-execution-in-web',
+      comment:
+        'AD-4/AD-10: the Agent Workspace implementation drives a real browser and holds the ' +
+        "provider API key. Only the worker composes it, through the ./browser subpath; " +
+        'keeping it out of the barrel also keeps the Playwright and Solari clients out of ' +
+        'the web bundle graph. The web makes no outbound call to a Target System, so it has ' +
+        'no use for a browser and every reason not to hold one. `reachable: true`, so an ' +
+        'import through a barrel is caught as well as a direct one.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/browser-execution', reachable: true },
+    },
+    {
+      name: 'no-agent-model-in-web',
+      comment: 'Story4.6: the execution model gateway belongs only to worker composition.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: { path: '^packages/infrastructure/(src|dist)/runs/agent-model-gateway', reachable: true },
+    },
+    {
       name: 'no-vendor-sdk-in-business-code',
       comment:
         'AD-1: business code (domain + application) must not import Drizzle, pg-boss, Solari, ' +
-        'the AI SDK, Resend, S3, Railway, Better Auth, Next.js, Pino or Sentry — types included. ' +
+        'Playwright, the AI SDK, Resend, S3, Railway, Better Auth, Next.js, Pino or Sentry — ' +
+        'types included. ' +
         'Put the vendor behind a port implemented in packages/infrastructure.',
       severity: 'error',
       from: { path: '^packages/(domain|application)/src' },

@@ -851,7 +851,11 @@ So that Inconclusive and Run Failed are the honest outcomes whenever Evidence fa
 **When** it occurs
 **Then** the Run ends `RUN_FAILED`, and a denied action or scope violation is also logged as a security event (FR23, FR34, FR35, AD-3)
 
-**Given** a per-Work-Item failure (skip or a second exhaustion to `FAILED`)
+**Given** an adapter Work Item exhausts its first bounded retry cycle
+**When** execution continues
+**Then** it automatically receives one additional bounded cycle, without a human retry/skip Escalation; both cycles obey the frozen retry limit and every attempt counts against the Run limits (owner decision 2026-09-05, addendum section 0)
+
+**Given** a per-Work-Item failure (a second adapter retry-cycle exhaustion to `FAILED`, or an explicit skip on a later agent-driven path)
 **When** it happens
 **Then** the Run continues rather than stopping, and the coverage check later yields `INCONCLUSIVE` (FR34)
 

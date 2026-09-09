@@ -3,6 +3,7 @@ import {
   canonicalJson,
   isPermittedReadAction,
   isTargetSystemKind,
+  isValidAuthenticationDestination,
   registrationDigest,
   sha256Hex,
   type JsonValue,
@@ -52,7 +53,7 @@ export const MANAGE_REGISTRATIONS_ACTION = 'administration.registrations.manage'
 export const REGISTRATION_CREATED_EVENT = 'configuration.registration-created' as const;
 
 /**
- * `RegistrationChanged` — appended when one of the SIX digest-bearing fields moves.
+ * `RegistrationChanged` — appended when one of the digest-bearing fields moves.
  *
  * Epic 2 turns this event into a platform-authored draft for every Procedure Version
  * that froze the old digest. That is why a display-name edit does not produce one: it
@@ -61,7 +62,7 @@ export const REGISTRATION_CREATED_EVENT = 'configuration.registration-created' a
 export const REGISTRATION_CHANGED_EVENT = 'configuration.registration-changed' as const;
 
 /**
- * Appended when a registration changes but NONE of the six digest-bearing fields move —
+ * Appended when a registration changes but NONE of the digest-bearing fields move —
  * a display name, a note, or the retirement status.
  *
  * The spec said such a change "publishes nothing". That was written about
@@ -91,6 +92,7 @@ export const REGISTRATION_LIMITS = {
   labelPattern: 200,
   labelPatterns: 100,
   secondaryKey: 200,
+  authenticationDestination: 2048,
   note: 2000,
 } as const;
 
@@ -108,6 +110,8 @@ export const REGISTRATION_REFUSALS = {
   NAME_REQUIRED: 'Enter a display name.',
   KIND_INVALID: 'Choose a system kind.',
   ORIGIN_REQUIRED: 'Enter at least one allowed origin.',
+  AUTHENTICATION_DESTINATION_INVALID:
+    'Enter a query-free authentication destination inside an allowed origin for a web system.',
   IDENTITY_REQUIRED: 'Enter the application identity.',
   CREDENTIAL_REQUIRED: 'Enter a credential reference.',
   ACTIONS_REQUIRED: 'Choose at least one permitted read action.',
@@ -141,7 +145,7 @@ export interface RegistrationDependencies {
   readonly ids: UuidV7Generator;
 }
 
-/** The six digest-bearing fields plus the three that are not. */
+/** The digest-bearing fields plus the three that are not. */
 export interface RegistrationFields {
   readonly displayName: string;
   readonly kind: TargetSystemKind;
@@ -151,6 +155,8 @@ export interface RegistrationFields {
   readonly permittedActions: readonly PermittedReadAction[];
   readonly attributeLabelPatterns: readonly string[];
   readonly secondaryKey: string;
+  /** Exact query-free HTTP(S) form action for credential entry, when configured. */
+  readonly authenticationDestination?: string;
   readonly note: string;
   readonly status: RegistrationStatus;
 }
@@ -183,8 +189,8 @@ export interface ChangeTargetSystemInput extends RegisterTargetSystemInput {
    * the administrator never saw, so the chain records a decision nobody made — and, once
    * Epic 2 reads these events, mints drafts from it.
    *
-   * It was the DIGEST, and that covered six of the row's ten fields. `displayName`,
-   * `note` and `status` sit outside the digest by design, so they were exactly the
+   * It was the DIGEST, and the display-only fields `displayName`, `note` and `status` sit
+   * outside it by design, so they were exactly the
    * fields the token could not protect: one administrator retired a registration (the
    * digest does not move), a second saved a note from a tab opened before that, and the
    * guard passed while the write silently set `status` back to `active`. Retirement is
@@ -207,7 +213,7 @@ export type ChangeTargetSystemResult = RegistrationOutcome<{
   readonly registrationId: string;
   readonly digest: string;
   readonly priorDigest: string;
-  /** `true` when one of the six moved and `RegistrationChanged` was published. */
+  /** `true` when one of the digest-bearing fields moved and `RegistrationChanged` was published. */
   readonly published: boolean;
   /** `true` when a display name, note or status moved and the change was audited. */
   readonly annotated: boolean;
@@ -267,6 +273,12 @@ export function validateRegistrationFields(fields: RegistrationFields): string |
   if (fields.secondaryKey.length > REGISTRATION_LIMITS.secondaryKey) {
     return REGISTRATION_REFUSALS.TOO_LONG;
   }
+  if (
+    fields.authenticationDestination !== undefined &&
+    fields.authenticationDestination.length > REGISTRATION_LIMITS.authenticationDestination
+  ) {
+    return REGISTRATION_REFUSALS.TOO_LONG;
+  }
 
   const credentialRef = fields.credentialRef.trim();
   if (credentialRef === '') return REGISTRATION_REFUSALS.CREDENTIAL_REQUIRED;
@@ -287,6 +299,19 @@ export function validateRegistrationFields(fields: RegistrationFields): string |
     if (origins.some((origin) => origin.length > REGISTRATION_LIMITS.origin)) {
       return REGISTRATION_REFUSALS.TOO_LONG;
     }
+  }
+
+  if (
+    fields.authenticationDestination !== undefined &&
+    !isValidAuthenticationDestination(fields.authenticationDestination, {
+      kind: fields.kind,
+      // The command stores this set after trimming and de-duplicating. Validate the
+      // endpoint against that exact representation so harmless origin whitespace does
+      // not produce a contract the next reader cannot reproduce.
+      allowedOrigins: setOf(fields.allowedOrigins),
+    })
+  ) {
+    return REGISTRATION_REFUSALS.AUTHENTICATION_DESTINATION_INVALID;
   }
 
   const patterns = cleaned(fields.attributeLabelPatterns);
@@ -310,6 +335,7 @@ export function validateRegistrationFields(fields: RegistrationFields): string |
     fields.applicationIdentity,
     fields.credentialRef,
     fields.secondaryKey,
+    ...(fields.authenticationDestination === undefined ? [] : [fields.authenticationDestination]),
     fields.note,
     ...fields.allowedOrigins,
     ...fields.attributeLabelPatterns,
@@ -338,6 +364,10 @@ function toRecord(registrationId: string, fields: RegistrationFields): Registrat
   const permittedActions = [...new Set(fields.permittedActions)].sort();
   const attributeLabelPatterns = setOf(fields.attributeLabelPatterns);
   const secondaryKey = fields.secondaryKey.trim();
+  const authenticationDestination =
+    fields.authenticationDestination === undefined
+      ? undefined
+      : fields.authenticationDestination.trim();
 
   return {
     registrationId,
@@ -349,6 +379,7 @@ function toRecord(registrationId: string, fields: RegistrationFields): Registrat
     permittedActions,
     attributeLabelPatterns,
     secondaryKey,
+    ...(authenticationDestination === undefined ? {} : { authenticationDestination }),
     note: fields.note.trim(),
     status: fields.status,
     digest: registrationDigest({
@@ -359,12 +390,13 @@ function toRecord(registrationId: string, fields: RegistrationFields): Registrat
       permittedActions,
       attributeLabelPatterns,
       secondaryKey,
+      ...(authenticationDestination === undefined ? {} : { authenticationDestination }),
     }),
   };
 }
 
 /**
- * A version token over the WHOLE row: all ten fields, not the six the digest covers.
+ * A version token over the WHOLE row: all fields, not only the digest-bearing fields.
  *
  * Deliberately not the AD-2 digest and deliberately not `updated_at`. The digest is a
  * frozen contract about what the agent may touch and must not change when a note does;
@@ -390,11 +422,14 @@ export function registrationRowVersion(record: RegistrationRecord): string {
       registrationId: record.registrationId,
       secondaryKey: record.secondaryKey,
       status: record.status,
+      ...(record.authenticationDestination === undefined
+        ? {}
+        : { authenticationDestination: record.authenticationDestination }),
     } as unknown as JsonValue),
   );
 }
 
-/** The six digest-bearing field names, for the audit payload. */
+/** The digest-bearing field names, for the audit payload. */
 export const DIGEST_BEARING_FIELDS = [
   'allowedOrigins',
   'applicationIdentity',
@@ -403,9 +438,10 @@ export const DIGEST_BEARING_FIELDS = [
   'kind',
   'permittedActions',
   'secondaryKey',
+  'authenticationDestination',
 ] as const;
 
-/** Which of the six moved. Empty means the digest cannot have moved. */
+/** Which digest-bearing fields moved. Empty means the digest cannot have moved. */
 function changedDigestFields(
   before: RegistrationRecord,
   after: RegistrationRecord,
@@ -428,13 +464,16 @@ function changedDigestFields(
     changed.push('attributeLabelPatterns');
   }
   if (before.secondaryKey !== after.secondaryKey) changed.push('secondaryKey');
+  if (before.authenticationDestination !== after.authenticationDestination) {
+    changed.push('authenticationDestination');
+  }
   return changed;
 }
 
 /**
  * The three fields the digest does NOT cover.
  *
- * They are listed here rather than derived from "everything that is not one of the six"
+ * They are listed here rather than derived from "everything that is not digest-bearing"
  * so that a field added to `RegistrationRecord` by a later story is silently in neither
  * list and shows up as an unaudited write in review, instead of being folded into this
  * event with no thought about whether it belongs in the digest.
@@ -592,10 +631,10 @@ export async function registerTargetSystem(
 /**
  * Change an existing registration.
  *
- * A change to one of the six digest-bearing fields recomputes the digest and publishes
+ * A change to one of the digest-bearing fields recomputes the digest and publishes
  * `RegistrationChanged` in the same transaction. A change to anything else — the
  * display name, the note, the status — publishes nothing, because the digest covers
- * exactly six fields and an event that claims a registration changed when nothing the
+ * exact digest-bearing fields and an event that claims a registration changed when nothing the
  * agent may touch has changed would mint a platform-authored draft for every Procedure
  * that references it.
  */
@@ -647,7 +686,7 @@ export async function changeTargetSystem(
         }
         // Both directions, because each has a way of being wrong on its own. The
         // converse (below) catches a projection that moved the digest with none of the
-        // six changed; this catches a stored column that disagrees with what the digest
+        // digest-bearing fields changed; this catches a stored column that disagrees with what the digest
         // hashed, which is how `RegistrationChanged` came to be publishable with
         // priorDigest === newDigest.
         if (changed.length > 0 && before.digest === next.digest) {
@@ -664,9 +703,9 @@ export async function changeTargetSystem(
         if (changed.length === 0) {
           // The digest cannot have moved, so there is nothing for Epic 2 to mint a draft
           // from. Asserted rather than assumed: a projection bug that changed the digest
-          // without changing one of the six would otherwise pass silently.
+          // without changing a digest-bearing field would otherwise pass silently.
           if (before.digest !== next.digest) {
-            throw new Error('the digest moved without any of the six fields changing');
+            throw new Error('the digest moved without any digest-bearing field changing');
           }
           // A rename or a retirement is still a configuration change (FR-45), so it is
           // audited under its own event type. A save that moved nothing at all appends

@@ -187,6 +187,29 @@ describe('registerTargetSystem', () => {
     expect(test.events[0]?.aggregateId).toBe(record.registrationId);
   });
 
+  it('persists a configured authentication destination as part of the frozen digest', async () => {
+    const test = harness();
+    const authenticationDestination = 'https://northstar.synthetic.invalid/sign-in';
+    const outcome = await register(test, { authenticationDestination });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const record = test.stored.get(outcome.registrationId) as RegistrationRecord;
+    expect(record.authenticationDestination).toBe(authenticationDestination);
+    expect(record.digest).toBe(
+      registrationDigest({
+        kind: 'web',
+        allowedOrigins: ['https://northstar.synthetic.invalid'],
+        applicationIdentity: '',
+        credentialRef: 'cred://synthetic/northstar-readonly',
+        permittedActions: ['navigate', 'read-attribute'],
+        attributeLabelPatterns: ['Invoice *'],
+        secondaryKey: '',
+        authenticationDestination,
+      }),
+    );
+  });
+
   it('refuses an Auditor before it reads any input, and stores nothing', async () => {
     const test = harness({ role: 'auditor' });
     const outcome = await register(test, { displayName: '' });
@@ -261,6 +284,14 @@ describe('registerTargetSystem', () => {
       REGISTRATION_REFUSALS.IDENTITY_REQUIRED,
     ],
     [{ kind: 'ftp' as unknown as 'web' }, REGISTRATION_REFUSALS.KIND_INVALID],
+    [
+      { authenticationDestination: 'https://other.synthetic.invalid/sign-in' },
+      REGISTRATION_REFUSALS.AUTHENTICATION_DESTINATION_INVALID,
+    ],
+    [
+      { authenticationDestination: 'https://northstar.synthetic.invalid/sign-in?next=elsewhere' },
+      REGISTRATION_REFUSALS.AUTHENTICATION_DESTINATION_INVALID,
+    ],
   ])('refuses %j', async (overrides, reason) => {
     const test = harness();
     await expect(register(test, overrides as Partial<RegistrationFields>)).resolves.toEqual({
@@ -321,6 +352,28 @@ describe('changeTargetSystem', () => {
       changedFields: ['allowedOrigins'],
     });
     expect((test.stored.get(registrationId) as RegistrationRecord).digest).not.toBe(digest);
+  });
+
+  it('publishes an authentication-destination change and stores the new contract', async () => {
+    const { test, registrationId, digest, rowVersion } = await seeded();
+    const authenticationDestination = 'https://northstar.synthetic.invalid/sign-in';
+
+    const outcome = await changeTargetSystem(test.dependencies, {
+      ...FIELDS,
+      session: ADMIN,
+      correlationId: 'corr-auth-destination',
+      registrationId,
+      expectedRowVersion: rowVersion,
+      authenticationDestination,
+    });
+
+    expect(outcome).toMatchObject({ ok: true, published: true, priorDigest: digest });
+    expect(test.events[0]?.payload).toMatchObject({
+      changedFields: ['authenticationDestination'],
+    });
+    expect((test.stored.get(registrationId) as RegistrationRecord).authenticationDestination).toBe(
+      authenticationDestination,
+    );
   });
 
   it('publishes no RegistrationChanged when only a non-digest field changes, but audits it', async () => {

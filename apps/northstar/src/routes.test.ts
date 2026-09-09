@@ -56,4 +56,27 @@ describe('the route table', () => {
       expect(route.summary.length, route.id).toBeGreaterThan(0);
     }
   });
+
+  it('declares what every route serves without mutating audited business data', () => {
+    // A route may legitimately declare nothing — the read-only rule then refuses every
+    // method on it, which is the fail-closed default — but no route in this table means
+    // to. A route that lost its declaration would go on passing `read-only.test.ts`,
+    // because the refusal half of that suite would simply cover one more method; this is
+    // what notices that it stopped serving anything at all.
+    for (const route of ROUTES) {
+      expect(route.nonMutating, route.id).toBeDefined();
+      expect(route.nonMutating, route.id).toContain('GET');
+      expect(route.nonMutating, route.id).toContain('HEAD');
+    }
+  });
+
+  it('spells every declaration in upper case, the way a method arrives', () => {
+    // `enforceReadOnly` compares exactly. A declaration spelled `post` would permit
+    // nothing and read as though it permitted something.
+    for (const route of ROUTES) {
+      for (const method of route.nonMutating ?? []) {
+        expect(method, route.id).toBe(method.toUpperCase());
+      }
+    }
+  });
 });

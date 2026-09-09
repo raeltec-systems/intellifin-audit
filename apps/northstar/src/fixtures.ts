@@ -172,8 +172,32 @@ export interface AccessGateDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly population_rule: string;
   readonly accounts: readonly AccessGateAccount[];
+}
+
+/**
+ * CoreDirectory: the clean P-2 source, published as two versioned files with ONE
+ * extraction endpoint over both. Same row shape as AccessGate, deliberately — a Run that
+ * swaps one source for the other changes its binding and nothing else.
+ */
+export interface CoreDirectoryPopulation {
+  readonly population_id: string;
+  readonly title: string;
+  /** The generated CSV this population is published as. */
+  readonly covers: string;
+  readonly note: string;
+  readonly accounts: readonly AccessGateAccount[];
+}
+
+export interface CoreDirectoryDataset {
+  readonly synthetic: SyntheticBlock;
+  readonly title: string;
+  readonly generation: string;
+  readonly declared_schema: readonly string[];
+  readonly population_rule: string;
+  readonly populations: readonly CoreDirectoryPopulation[];
 }
 
 export interface ApprovalRow {
@@ -190,6 +214,7 @@ export interface ApproveNowDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly approvals: readonly ApprovalRow[];
 }
 
@@ -204,6 +229,7 @@ export interface PeopleHubDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly employees: readonly EmployeeRow[];
 }
 
@@ -221,6 +247,7 @@ export interface LedgerFlowDataset {
   readonly synthetic: SyntheticBlock;
   readonly title: string;
   readonly generation: string;
+  readonly declared_schema: readonly string[];
   readonly transactions: readonly TransactionRow[];
 }
 
@@ -243,7 +270,19 @@ export interface ProdConsoleDataset {
   readonly observed_parameters: readonly ObservedParameter[];
 }
 
-/** A generated count declaration, served verbatim by a count endpoint. */
+export interface EffectivePeriod {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * A generated count declaration, served verbatim by a count endpoint.
+ *
+ * The older ProdConsole and LoanCore pages still consume `declared_count`. API
+ * population declarations carry the v1 fields below as well; keeping the old
+ * field is a compatibility alias for those existing synthetic surfaces, not a
+ * second source of truth.
+ */
 export interface CountDeclaration {
   readonly synthetic: SyntheticBlock;
   readonly source: string;
@@ -252,13 +291,79 @@ export interface CountDeclaration {
   readonly counted_from: string;
   readonly count_rule: string;
   readonly produced_by: string;
+  readonly schema_version?: 1;
+  readonly representation?: 'population-rows-v1';
+  readonly generated_at?: string;
+  readonly effective_period?: EffectivePeriod;
+  readonly schema?: readonly string[];
+  readonly count?: number;
+  readonly sha256?: string;
+  readonly complete?: boolean;
+}
+
+/** The normalized v1 declaration used by API population adapters. */
+export interface ApiPopulationDeclaration extends CountDeclaration {
+  readonly schema_version: 1;
+  readonly representation: 'population-rows-v1';
+  readonly generated_at: string;
+  readonly effective_period: EffectivePeriod;
+  readonly schema: readonly string[];
+  readonly count: number;
+  readonly sha256: string;
+  readonly complete: true;
+}
+
+/**
+ * The synthetic Target System catalogue, as `scripts/seed-northstar.mts` reads it.
+ *
+ * The catalogue is the ONE place a system's identity, its origin prefix and — since Story
+ * 4.2 — LoanCore's credential are declared. The seed script registers from it, the worker's
+ * `CREDENTIAL_TOKENS` is built from it, and this process checks the credential against it,
+ * so there is no second copy of the value to drift.
+ */
+export interface TargetSystemDeclaration {
+  readonly id: string;
+  readonly display_name: string;
+  readonly kind: string;
+  readonly origin_path: string;
+  /** LoanCore's opaque reference. Absent for the systems that need no credential. */
+  readonly credential_ref?: string;
+  /** LoanCore's INVENTED credential value. Synthetic; it authenticates nothing real. */
+  readonly credential_token?: string;
+}
+
+export interface SystemsCatalogue {
+  readonly synthetic: SyntheticBlock;
+  readonly title: string;
+  readonly target_systems: readonly TargetSystemDeclaration[];
+}
+
+/**
+ * LoanCore's synthetic credential, read from the catalogue.
+ *
+ * Refused rather than defaulted when the catalogue does not declare it: a synthetic system
+ * whose credential silently became the empty string would authenticate every request, which
+ * is the one failure this whole mechanism exists to prevent.
+ */
+export function loanCoreCredential(): { readonly reference: string; readonly token: string } {
+  const catalogue = readJson('datasets/systems.json') as SystemsCatalogue;
+  const system = catalogue.target_systems.find((entry) => entry.id === 'loancore');
+  const reference = system?.credential_ref ?? '';
+  const token = system?.credential_token ?? '';
+  if (reference === '' || token === '') {
+    throw new Error('datasets/systems.json declares no LoanCore credential; refusing to serve it');
+  }
+  return { reference, token };
 }
 
 export const datasets = {
+  systems: (): SystemsCatalogue => readJson('datasets/systems.json') as SystemsCatalogue,
   leavers: (): LeaversExport => readJson('datasets/leavers-export.json') as LeaversExport,
   loancore: (): LoanCoreDataset => readJson('datasets/loancore-accounts.json') as LoanCoreDataset,
   accessgate: (): AccessGateDataset =>
     readJson('datasets/accessgate-accounts.json') as AccessGateDataset,
+  coredirectory: (): CoreDirectoryDataset =>
+    readJson('datasets/coredirectory-accounts.json') as CoreDirectoryDataset,
   approvenow: (): ApproveNowDataset =>
     readJson('datasets/approvenow-approvals.json') as ApproveNowDataset,
   peoplehub: (): PeopleHubDataset =>
@@ -271,4 +376,21 @@ export const datasets = {
 
 export function countDeclaration(fileName: string): CountDeclaration {
   return readJson(`generated/${fileName}`) as CountDeclaration;
+}
+
+export function apiDeclaration(fileName: string): ApiPopulationDeclaration {
+  const declaration = countDeclaration(fileName);
+  if (
+    declaration.schema_version !== 1 ||
+    declaration.representation !== 'population-rows-v1' ||
+    typeof declaration.generated_at !== 'string' ||
+    declaration.effective_period === undefined ||
+    !Array.isArray(declaration.schema) ||
+    typeof declaration.count !== 'number' ||
+    typeof declaration.sha256 !== 'string' ||
+    declaration.complete !== true
+  ) {
+    throw new Error(`generated/${fileName} is not a population-rows-v1 declaration`);
+  }
+  return declaration as ApiPopulationDeclaration;
 }

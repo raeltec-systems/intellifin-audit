@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -6,7 +7,27 @@ import { describe, expect, it } from 'vitest';
 import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
-  BUILDER_SECTION_NOT_EDITABLE_SENTENCE,
+  BUILDER_CONTROL_NAME_EDITABLE_SENTENCE,
+  BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE,
+  CAPTURE_TIME_UNRECORDED,
+  EXECUTION_FAILURE_HEADING,
+  GATE_NOT_EVALUATED,
+  MASKED_BY_BINDING,
+  MASKED_VALUE,
+  MISSED_SCHEDULED_START_TEMPLATE,
+  NOT_COMPARABLE_SENTENCE,
+  NO_EVIDENCE_HEADLINE,
+  RUNS_EMPTY_STATE,
+  RUN_TAB_EMPTY,
+  SAFE_NEXT_ACTION_HEADING,
+  STALE_DATA_ACTION,
+  STALE_DATA_TEMPLATE,
+  SUBMIT_UNAVAILABLE,
+  UNTRUSTED_CONTENT_CLAUSE,
+  UNTRUSTED_CONTENT_SENTENCE,
+  gateCount,
+  runChangeSummary,
+  updatedAtTitle,
   BUILDER_DESKTOP_ONLY_SENTENCE,
   AUTHOR_CANNOT_APPROVE_SENTENCE,
   DECLARED_COUNT_MISSING_SENTENCE,
@@ -16,7 +37,11 @@ import {
   FULLY_QUOTED_EMPTY_STATES,
   PROCEDURE_CARD_ABSENT,
   REGISTRATION_CHANGE_WARNING_TEMPLATE,
+  RUN_CANCELED_BY_TEMPLATE,
+  RUN_UNCHANGED_SENTENCE,
   registrationChangeWarning,
+  runCanceledBy,
+  ESCALATION_PANEL_COPY,
 } from './copy';
 
 /**
@@ -178,15 +203,71 @@ describe('the Procedure card absent-cells', () => {
   });
 });
 
-describe('the Builder read-only sentence', () => {
-  it('states that the section is not editable yet, and is rendered from this module', () => {
-    expect(BUILDER_SECTION_NOT_EDITABLE_SENTENCE).toContain('not editable yet');
-    const source = readFileSync(
-      fileURLToPath(new URL('../procedures/BuilderSections.tsx', import.meta.url)),
-      'utf8',
-    );
-    expect(source).toContain('BUILDER_SECTION_NOT_EDITABLE_SENTENCE');
-    expect(source).not.toContain('not editable yet. A later release');
+/**
+ * Every `.ts` and `.tsx` under `apps/web`, so a claim refused here is refused wherever a
+ * later surface might retype it — the `form-method.test.ts` walk, one file along. A
+ * broken symlink is skipped rather than allowed to fail the suite.
+ */
+function webSourceFiles(dir = fileURLToPath(new URL('../../', import.meta.url))): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    let info;
+    try {
+      info = statSync(full);
+    } catch {
+      continue;
+    }
+    if (info.isDirectory()) {
+      if (entry === 'node_modules' || entry === '.next') continue;
+      found.push(...webSourceFiles(full));
+    } else if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+
+describe('the Builder read-only sentences', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../procedures/BuilderSections.tsx', import.meta.url)),
+    'utf8',
+  );
+
+  it('says the section comes from the Template, and is rendered from this module', () => {
+    expect(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE).toContain('pre-filled from the Template');
+    expect(source).toContain('BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE');
+    expect(source).not.toContain(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE);
+  });
+
+  it('names where the Control name is edited, rather than claiming it cannot be', () => {
+    expect(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE).toContain('Control name');
+    expect(source).toContain('BUILDER_CONTROL_NAME_EDITABLE_SENTENCE');
+    expect(source).not.toContain(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE);
+  });
+
+  /**
+   * The claim that was stale: every authored section is editable now, and the Control
+   * NAME is editable from the very page that carried the sentence. Refused anywhere in
+   * `apps/web`, not only in the component it was written for, so a later surface cannot
+   * revive it by retyping it somewhere else.
+   *
+   * Comments are stripped first — `copy.ts` records WHY the sentence was revised, and a
+   * note to the next reader is not a claim to the person using the product, exactly as
+   * `stylesheet.test.ts` strips comments before looking for a token read. This file is
+   * skipped because it has to name the phrase it forbids.
+   */
+  it('nowhere claims a Builder section is not editable yet', () => {
+    const self = fileURLToPath(import.meta.url);
+    const offenders = webSourceFiles()
+      .filter((file) => file !== self)
+      .filter((file) =>
+        readFileSync(file, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^[ \t]*\/\/.*$/gm, '')
+          .includes('not editable yet'),
+      );
+    expect(offenders).toEqual([]);
   });
 });
 
@@ -226,5 +307,151 @@ describe('the manual-upload restriction', () => {
       expect(source, surface).toContain('MANUAL_UPLOAD_SENTENCE');
       expect(source, surface).not.toContain('Upload-only.');
     }
+  });
+});
+
+describe('the Run surfaces copy (Story 3.11)', () => {
+  it("is EXPERIENCE.md's stale-data banner, character for character", () => {
+    // The contract writes it in quotation marks in the "Any / Stale data" row, so the
+    // quotes are part of the match: a paraphrase elsewhere would not satisfy it.
+    expect(experience).toContain(`"${STALE_DATA_TEMPLATE}"`);
+    expect(STALE_DATA_TEMPLATE.endsWith(STALE_DATA_ACTION)).toBe(true);
+    expect(updatedAtTitle('2026-09-06T09:00:00.000Z')).toBe('Updated 2026-09-06T09:00:00.000Z.');
+    expect(updatedAtTitle('x')).not.toContain('{');
+    expect(updatedAtTitle('x')).not.toContain(STALE_DATA_ACTION);
+  });
+
+  it("is EXPERIENCE.md's Evidence empty-state headline", () => {
+    expect(experience).toContain(`"${NO_EVIDENCE_HEADLINE}"`);
+    expect(RUN_TAB_EMPTY.evidence.headline).toBe(NO_EVIDENCE_HEADLINE);
+  });
+
+  it("is EXPERIENCE.md's incomparable-change sentence", () => {
+    expect(experience).toContain(`"${NOT_COMPARABLE_SENTENCE}"`);
+  });
+
+  it("is EXPERIENCE.md's missed-start row, transcribed for the story that grows a Schedule", () => {
+    // Transcribed and deliberately NOT rendered: Epic 3 initiates every Run by hand, so
+    // nothing could truthfully fill `{time}`. Quoting it now is what stops the Schedule
+    // story retyping it — the fourth-retyping lesson from the denial strings.
+    expect(experience).toContain(`"${MISSED_SCHEDULED_START_TEMPLATE}"`);
+    for (const surface of ['../../app/runs/page.tsx', '../runs/RunsTable.tsx']) {
+      const source = readFileSync(fileURLToPath(new URL(surface, import.meta.url)), 'utf8');
+      expect(source, surface).not.toContain('Missed');
+    }
+  });
+
+  it("is EXPERIENCE.md's two disabled-Submit sentences, transcribed for Story 6.3", () => {
+    expect(experience).toContain(`"${SUBMIT_UNAVAILABLE.unsealed}"`);
+    expect(experience).toContain(`"${SUBMIT_UNAVAILABLE.inconclusive}"`);
+  });
+
+  it("derives the Gate header count from DESIGN.md's own example", () => {
+    expect(design).toContain(`"${gateCount(18, 20)}"`);
+    expect(gateCount(18, 20)).toBe('18 of 20 checks passed');
+    expect(gateCount(0, 20)).not.toContain('{');
+  });
+
+  it("builds the untrusted-content sentence from DESIGN.md's own clause", () => {
+    expect(design).toContain(UNTRUSTED_CONTENT_CLAUSE);
+    expect(UNTRUSTED_CONTENT_SENTENCE).toBe('Source content cannot change the Run objective, tool scope, or evaluation.');
+    // Comments stripped first: the component's own doc comment QUOTES the rule it
+    // implements, and a scan that matched prose would fail on the explanation.
+    const source = readFileSync(fileURLToPath(new URL('../runs/UntrustedText.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('UNTRUSTED_CONTENT_SENTENCE');
+    expect(source.replace(/\/\*[\s\S]*?\*\//g, '')).not.toContain('cannot change the Run objective, tool scope');
+  });
+
+  it("is EXPERIENCE.md's masking marker and sentence", () => {
+    expect(experience).toContain(MASKED_VALUE);
+    expect(experience).toContain(`"${MASKED_BY_BINDING}"`);
+  });
+
+  it('names the two panels DESIGN.md names, and renders them from this module', () => {
+    expect(experience).toContain(SAFE_NEXT_ACTION_HEADING);
+    expect(design).toContain(`${EXECUTION_FAILURE_HEADING.toLowerCase()} panel`);
+    const source = readFileSync(fileURLToPath(new URL('../runs/ResultSections.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('SAFE_NEXT_ACTION_HEADING');
+    expect(source).toContain('EXECUTION_FAILURE_HEADING');
+  });
+
+  it('gives every empty state and absent sentence of ours the EmptyState rule', () => {
+    // OURS, not quoted — EXPERIENCE.md gives these surfaces no verbatim sentence, and
+    // pinning one against a file that does not contain it is a test that cannot pass.
+    // They must still name what would appear and refuse to imply a passed control.
+    const ours = [RUNS_EMPTY_STATE, ...Object.values(RUN_TAB_EMPTY)];
+    for (const state of ours) {
+      expect(state.sentence.length).toBeGreaterThan(40);
+      expect(state.sentence.trim().endsWith('.')).toBe(true);
+      expect(state.sentence).toMatch(/does not mean a control passed|not mean a control passed/);
+    }
+    for (const sentence of Object.values(GATE_NOT_EVALUATED)) {
+      expect(sentence).toContain('not the same as a check that passed');
+    }
+  });
+
+  it('renders the Runs empty state from this module, not from inline copy', () => {
+    const source = readFileSync(fileURLToPath(new URL('../runs/RunsTable.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('RUNS_EMPTY_STATE');
+    expect(source).not.toContain('An empty list does not mean');
+  });
+
+  it('says "No change" rather than leaving the Change cell blank', () => {
+    expect(runChangeSummary(0, 0)).toBe('No change');
+    expect(runChangeSummary(2, 1)).toBe('2 new, 1 resolved');
+    expect(runChangeSummary(2, 1)).not.toContain('{');
+  });
+
+  it('states what an Evidence item could not record, in words', () => {
+    expect(CAPTURE_TIME_UNRECORDED).toBe('Capture time was not recorded.');
+    expect(CAPTURE_TIME_UNRECORDED).not.toMatch(/^[-—\s]*$/);
+  });
+});
+
+describe('the Run lifecycle copy', () => {
+  it("is EXPERIENCE.md's corrective-action sentence, character for character", () => {
+    expect(experience).toContain(RUN_UNCHANGED_SENTENCE);
+  });
+
+  it("is EXPERIENCE.md's Canceled Run Detail sentence, substituted rather than retyped", () => {
+    expect(experience).toContain(RUN_CANCELED_BY_TEMPLATE);
+    expect(runCanceledBy('dana', '2026-09-06 09:00:00 UTC')).toBe(
+      'Canceled by dana at 2026-09-06 09:00:00 UTC',
+    );
+    expect(runCanceledBy('dana', 'x')).not.toContain('{');
+  });
+
+  it('renders both from the constants rather than repeating them', () => {
+    const actions = readFileSync(
+      fileURLToPath(new URL('../runs/RunLifecycleActions.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(actions).toContain('RUN_UNCHANGED_SENTENCE');
+    expect(actions).not.toContain('This Run remains unchanged.');
+    // Story 3.11 moved the cancellation banners into the shared Run Detail frame, so
+    // every one of the five tabs states them from the one constant.
+    const detail = readFileSync(
+      fileURLToPath(new URL('../runs/detail.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(detail).toContain('runCanceledBy(');
+    expect(detail).not.toContain('Canceled by ${');
+  });
+});
+
+describe('the Escalation panel copy', () => {
+  it("keeps the contract's pause, note and timeout wording verbatim", () => {
+    expect(experience).toContain(ESCALATION_PANEL_COPY.answerNoteLabel);
+    expect(experience).toContain(ESCALATION_PANEL_COPY.pauseUnavailable);
+    expect(experience).toContain(ESCALATION_PANEL_COPY.timeoutTemplate);
+  });
+
+  it('renders the paused action reason from the shared copy module', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../runs/RunLifecycleActions.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('ESCALATION_PANEL_COPY.pauseUnavailable');
+    expect(source).not.toContain('A Run waiting on an answer cannot be paused.');
   });
 });

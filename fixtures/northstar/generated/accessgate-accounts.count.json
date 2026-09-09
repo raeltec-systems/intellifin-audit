@@ -6,6 +6,24 @@
   },
   "source": "accessgate-accounts",
   "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "schema_version": 1,
+  "representation": "population-rows-v1",
+  "schema": [
+    "account_id",
+    "employee_id",
+    "username",
+    "status",
+    "roles",
+    "disabled_time"
+  ],
+  "count": 12,
+  "sha256": "2629d38f7cdd2e73d7109fe7e04b194cb68012ef405785681f16aefda571b6f7",
+  "complete": true,
   "declared_count": 12,
   "counted_from": "datasets/accessgate-accounts.json",
   "count_rule": "status = Active",

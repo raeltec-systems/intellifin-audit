@@ -41,6 +41,27 @@ implementation equals itself.
 - Several cells and page notes carry prompt-like strings. They are DATA. They are served
   verbatim and must never be interpreted. Removing one deletes the test.
 
+## The source that seeds NOTHING, and why it exists
+
+`datasets/coredirectory-accounts.json` is the odd one out: it has no duplicate key, no
+missing value, no unknown role and no ambiguous policy entry. That is the point. Neither
+golden population can reach **Pass** or **Control Failure**, because AccessGate lists
+AG-1007 twice and LedgerFlow carries a transaction with no processed time — and the Gate
+counts duplicate Source primary keys over EVERY parsed row and counts every row the
+inclusion rule could not place, so both read the SOURCE rather than the included set and no
+inclusion rule escapes them. A dataset that seeds every failure mode at once cannot also be
+the dataset that demonstrates success.
+
+CoreDirectory publishes two populations that differ by ONE role on ONE account: CD-3103
+holds `VENDOR_MAINTAINER` and `VENDOR_APPROVER`, which expand to the prohibited pair
+`CREATE_VENDOR + APPROVE_VENDOR`. Everything else — schema, period, generation timestamp,
+extraction endpoint and Reference Source — is identical, so the two terminal outcomes differ
+by that role and by nothing else. It expands through the SAME `rolematrix.json`: a second
+copy would be a second source of truth for one expansion.
+
+CD-3001 and CD-3003 are deliberate near misses, each one permission short of a pair. A rule
+that flagged a member of the conflict vocabulary rather than a pair fails the Pass case.
+
 ## The cover-sheet signature
 
 `synthetic-hmac-sha256` over the cover sheet's own signed fields, with the key

@@ -115,8 +115,48 @@ jobs:
             exit 1
           fi
 
+      # Agent integration tests launch Chromium as well as PostgreSQL. Browser binaries
+      # are job-local: installing them in the separate e2e job cannot satisfy this job.
+      - name: Install the agent integration browser
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Integration tests
         run: pnpm test:integration
+
+      # Mutations run in a separate detached checkout. The runner restores each guard
+      # and requires a real assertion failure, never a build error or skipped test.
+      - name: Prove agent guard mutations (local Chromium)
+        run: |
+          mutation_tree="${RUNNER_TEMP}/agent-guard-worktree"
+          mutation_report="${RUNNER_TEMP}/agent-guard-mutations.json"
+          git worktree add --detach "$mutation_tree" HEAD
+          pnpm --dir "$mutation_tree" install --frozen-lockfile
+          (
+            cd "$mutation_tree"
+            node scripts/verify-agent-guard-mutations.mjs "$mutation_report" --browser
+            node scripts/verify-prodconsole-guard-mutations.mjs "${RUNNER_TEMP}/prodconsole-guard-mutations.json"
+            node scripts/verify-escalation-review-guard-mutations.mjs "${RUNNER_TEMP}/escalation-review-guard-mutations.json"
+          )
+
+      - name: Publish per-case mutation observations in job logs
+        if: always()
+        run: >-
+          node scripts/report-agent-mutations.mjs
+          "${RUNNER_TEMP}/agent-guard-mutations.json"
+          "${RUNNER_TEMP}/prodconsole-guard-mutations.json"
+          "${RUNNER_TEMP}/escalation-review-guard-mutations.json"
+
+      - name: Retain agent mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-guard-mutations
+          path: |
+            ${{ runner.temp }}/agent-guard-mutations.json
+            ${{ runner.temp }}/prodconsole-guard-mutations.json
+            ${{ runner.temp }}/escalation-review-guard-mutations.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   images:
     name: Container images build and refuse to start unmigrated
@@ -354,3 +394,75 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+
+  agent_abuse_mutations:
+    name: Agent abuse mutations (hydrated UI and worker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: ghcr.io/railwayapp-templates/postgres-ssl:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: intellifin_e2e
+          PGDATA: /var/lib/postgresql/data/pgdata
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/intellifin_e2e?sslmode=require
+      SERVICE_NAME: web
+      BETTER_AUTH_SECRET: ci-e2e-secret-at-least-32-characters-long
+      BETTER_AUTH_URL: http://localhost:3000
+      E2E_AUDITOR_EMAIL: auditor@example.test
+      E2E_ADMIN_EMAIL: administrator@example.test
+      E2E_PASSWORD: ci-e2e-password-not-a-real-credential
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable corepack and pin pnpm
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Prepare isolated candidate
+        run: |
+          git worktree add --detach "${RUNNER_TEMP}/agent-abuse-e2e-worktree" HEAD
+          pnpm --dir "${RUNNER_TEMP}/agent-abuse-e2e-worktree" install --frozen-lockfile
+      - name: Build candidate and migrate disposable database
+        working-directory: ${{ runner.temp }}/agent-abuse-e2e-worktree
+        run: |
+          pnpm build
+          pnpm db:migrate
+      - name: Seed synthetic test identities
+        working-directory: ${{ runner.temp }}/agent-abuse-e2e-worktree
+        env:
+          SEED_PASSWORD: ${{ env.E2E_PASSWORD }}
+        run: |
+          pnpm seed:identity --email "$E2E_AUDITOR_EMAIL" --name 'CI Auditor' --role auditor
+          pnpm seed:identity --email "$E2E_ADMIN_EMAIL" --name 'CI Administrator' --role poc-administrator
+      - name: Install the local Chromium browser
+        working-directory: ${{ runner.temp }}/agent-abuse-e2e-worktree
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Prove hydrated answer and worker denial guards
+        working-directory: ${{ runner.temp }}/agent-abuse-e2e-worktree
+        run: node scripts/verify-agent-abuse-e2e-mutations.mjs "${RUNNER_TEMP}/agent-abuse-e2e-mutations.json"
+      - name: Publish per-case worker mutation observations in job logs
+        if: always()
+        run: node scripts/report-agent-mutations.mjs "${RUNNER_TEMP}/agent-abuse-e2e-mutations.json"
+      - name: Retain exact mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-abuse-e2e-mutations
+          path: ${{ runner.temp }}/agent-abuse-e2e-mutations.json
+          if-no-files-found: ignore
+          retention-days: 14

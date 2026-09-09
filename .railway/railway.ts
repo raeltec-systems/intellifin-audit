@@ -75,6 +75,58 @@ export default defineRailway(() => {
       DATABASE_URL: postgres.env.DATABASE_URL,
       SERVICE_NAME: 'worker',
       NODE_ENV: 'production',
+      // Story 3.7. Every Exception is written with a keyed HMAC-SHA-256 fingerprint, and
+      // this is that key. A SECRET, so it is set once in the Railway dashboard and
+      // preserved here rather than written from code -- the BETTER_AUTH_SECRET rule. It is
+      // the WORKER'S alone: only the worker evaluates a compiled condition, and
+      // `loadConfig` refuses a production web container that carries it.
+      //
+      // Absent, adapter execution is disabled and says so by name, exactly as an absent
+      // CREDENTIAL_TOKENS disables it. That is deliberate: an Exception with no fingerprint
+      // is a permanent row nobody can later check, and a worker that refused to BOOT would
+      // stop plan derivation, notification delivery and the liveness row as well.
+      EXCEPTION_FINGERPRINT_KEY: preserve(),
+      // The label retained beside every fingerprint, so a rotated key still says which key
+      // signed which row. It carries no secret, so it is declared here rather than
+      // preserved. Change it in the SAME apply that rotates the key.
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+      // Story 4.1. The managed remote browser the Agent Workspace runs in. A SECRET, set
+      // once in the Railway dashboard and preserved here rather than written from code --
+      // the BETTER_AUTH_SECRET rule again. The WORKER'S alone: only the worker provisions a
+      // workspace, and `loadConfig` refuses a production web container that carries it.
+      //
+      // Absent, the workspace falls back to a LOCAL Chromium rather than refusing to boot.
+      // That is not an equivalent: local isolates browser state per Run and does NOT
+      // isolate the worker process, and egress is policed inside the browser rather than at
+      // the network. Every workspace row records which mode it actually had.
+      SOLARI_API_KEY: preserve(),
+      // Session recording, which Epic 5's replay reads. It carries no secret, so it is
+      // declared here rather than preserved. It can ONLY be set at session creation -- the
+      // replay endpoint 404s forever for a session created without it -- so turning it on
+      // applies to Runs made after the change and never to Runs already recorded.
+      SOLARI_RECORDING: 'false',
+      // Stories 3.2 to 3.5. The PRIVATE S3-compatible bucket every Evidence artifact is
+      // frozen into. All five together or none: `loadConfig` refuses a partial set. Absent,
+      // the worker starts, logs `Population execution disabled` and ends every Run
+      // RUN_FAILED with a closed diagnostic rather than fabricating a Run nobody can read.
+      // Endpoint, region and bucket carry no secret but are this deployment's to name.
+      EVIDENCE_S3_ENDPOINT: preserve(),
+      EVIDENCE_S3_REGION: preserve(),
+      EVIDENCE_S3_BUCKET: preserve(),
+      EVIDENCE_S3_ACCESS_KEY_ID: preserve(),
+      EVIDENCE_S3_SECRET_ACCESS_KEY: preserve(),
+      // Story 3.3. The JSON manifest from opaque credential reference to token value; the
+      // WORKER'S alone, and a production web container that carries it refuses to start.
+      // Absent, adapter and agent extraction are disabled by name. Two keys that trim to
+      // one reference refuse the whole manifest.
+      CREDENTIAL_TOKENS: preserve(),
+      // Epic 4. The agent model gateway: Anthropic is primary when both keys are present,
+      // OpenAI the fallback; the model ids override the build's defaults and are the
+      // owner's deliberate choice, so they are preserved rather than written from code.
+      ANTHROPIC_API_KEY: preserve(),
+      OPENAI_API_KEY: preserve(),
+      AGENT_ANTHROPIC_MODEL: preserve(),
+      AGENT_OPENAI_MODEL: preserve(),
     },
   });
 

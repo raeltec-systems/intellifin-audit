@@ -1,0 +1,173 @@
+---
+title: "Story 3.9: Seal the Result and publish the adapter Run's outputs"
+type: 'feature'
+created: '2026-09-05'
+status: 'done'
+review_loop_iteration: 0
+followup_review_recommended: false
+context:
+  - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
+  - '{project-root}/docs/contracts/evidence-package-v1.md'
+  - '{project-root}/docs/contracts/observation-registration-v1.md'
+warnings: []
+deferred: []
+---
+
+<intent-contract>
+
+## Intent
+
+**Problem:** A Run can pass its Gate and still say nothing an auditor can act on. There is no System Outcome, no sealed Result, and nothing that reports the population, the exclusions, the coverage or the Template's control-specific fields.
+
+**Approach:** Compute the System Outcome exactly once, in the same transaction that completes the Run, by applying the addendum E.1 outcome table in order and taking the first matching row. Seal the Result so the outcome can never change, and publish everything the Template promises.
+
+## Boundaries & Constraints
+
+**Always:** `SealResult` runs inside `CompleteRun`'s transaction and computes the outcome exactly once. The addendum E.1 rows apply in order and the FIRST matching row wins, across Canceled, Run Failed, Inconclusive, Pending Confirmation, Control Failure and Pass. Pass requires every Gate check passed, the Result sealed, and no condition Exception or Unevaluated; a passed Gate is necessary but never sufficient. Control Failure applies when any Exception counts toward the outcome, and any Unevaluated records are listed. Sealing increments the Result version and the outcome never changes afterwards. Publication reports the population, the exclusions with their reasons, inspected and uninspected records per Target System, per-condition counts by origin and confirmation state, and the Template's control-specific fields from addendum C. Excluded, uninspected and Unevaluated records are never counted Compliant. The version's stored scope statement is shown verbatim. A version that opted in to a zero-record Pass with a post-inclusion population of zero seals as Pass with population 0 and every count 0, and its generated statement says that no record was inspected.
+
+**Block If:** Two outcome rows would both match and the order between them is not fixed by addendum E.1.
+
+**Never:** Do not let any later mutation change a sealed outcome. Do not compute the outcome twice or outside the completing transaction. Do not count an excluded, uninspected or Unevaluated record as Compliant to reach Pass.
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|----------|--------------|---------------------------|----------------|
+| Clean Run | Gate all passed, no Exception, no Unevaluated | Pass, sealed, Result version incremented | Once only |
+| Exception present | Gate passed, at least one Exception | Control Failure, Unevaluated records listed | Once only |
+| Gate failed | Any Gate row failed | Inconclusive; first matching row wins over Control Failure | Ordered table |
+| Zero-record opt-in | Opted in, post-inclusion population 0, Gate passed | Pass, population 0, all counts 0, statement says nothing was inspected | Explicit opt-in only |
+| Zero-record without opt-in | Population 0, no opt-in | Not Pass | Never fabricated |
+| Sealed then mutated | An attempt to change a sealed outcome | Refused | Immutable |
+| Scope statement | A stored scope statement | Shown verbatim | Never reworded |
+
+</intent-contract>
+
+## Code Map
+
+- Addendum E.1 in `_bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/addendum.md` — the outcome table whose rows apply IN ORDER, first match wins, across Canceled, Run Failed, Inconclusive, Pending Confirmation, Control Failure and Pass. Transcribe it; the order is the contract.
+- Addendum C — the per-Template control-specific fields the Result must report. P-2 reports every prohibited pair found; P-3 reports the approval decision and the approver limit.
+- `packages/application/src/runs/run-gate.ts` and `packages/domain/src/runs/gate.ts` (Story 3.8) — the Gate outcome the Result reports and the INCONCLUSIVE mapping it must not contradict.
+- `packages/application/src/runs/seal-package.ts` and `packages/domain/src/runs/evidence.ts` (Story 3.5) — `sealIfTerminal`, the abandonment list, and the constraint trigger that already refuses a terminal Run with no package row. `SealResult` commits in the same transaction as `CompleteRun`.
+- `packages/domain/src/runs/evaluation.ts` and `packages/infrastructure/drizzle/0023_*.sql` (Story 3.7) — the per-record evaluations and the Exception rows the Result counts. Counts are by origin and confirmation state.
+- `packages/domain/src/runs/observation.ts` — the coverage vocabulary. Excluded, uninspected and Unevaluated records are never counted Compliant, which Story 3.4's composite foreign key already makes unreachable at the database.
+- `packages/application/src/runs/acquire-population.ts` and `packages/domain/src/runs/population.ts` — the population, the exclusions with their reasons, and the zero-record opt-in flag the Gate consumes.
+- `packages/infrastructure/src/db/schema.ts` and generations 19 through 24 — a generation 25 migration adds the Result with its version and an immutability trigger; raise `SUPPORTED_SCHEMA_MIN`/`MAX` together and list any new table in `tests/integration/schema-compat.test.ts`.
+- The version's stored scope statement, on the frozen Procedure Version — shown verbatim, never reworded.
+
+## Tasks & Acceptance
+
+**Execution:**
+- `packages/domain/src/runs/outcome.ts` (new) — the addendum E.1 table as ordered data with the first-match rule, and the pure outcome decision. No I/O.
+- `packages/domain/src/runs/result.ts` (new) — the published Result shape: population, exclusions with reasons, inspected and uninspected per Target System, per-condition counts by origin and confirmation state, the Template's addendum C fields, and the verbatim scope.
+- `packages/application/src/runs/complete-run.ts` (new) — `CompleteRun` with `SealResult` inside its transaction, computing the outcome exactly once, incrementing the Result version, and sealing the Evidence Package in the same commit.
+- `packages/infrastructure/` generation 25, schema, `db/compat.ts`, `tests/integration/schema-compat.test.ts` — the Result table, its version, and a trigger making a sealed outcome immutable.
+- Tests — domain tests walking every addendum E.1 row in order including a case where two rows could match and the earlier must win; integration coverage of every matrix row; and golden reconciliation asserting both full populations seal Inconclusive with their expected per-record counts.
+
+**Acceptance Criteria:**
+- Given a COMPLETED Run with no evaluation pending, when `CompleteRun` runs, then `SealResult` computes the outcome exactly once in the same transaction, and a passed Gate alone never yields Pass.
+- Given the addendum E.1 table, when an outcome is computed, then the rows apply in order and the first matching row wins.
+- Given a sealed Result, when anything later attempts to change the outcome, then it is refused and the Result version is unchanged.
+- Given the Result, when it is published, then it reports the population, the exclusions with reasons, inspected and uninspected per Target System, per-condition counts by origin and confirmation state, and the Template's addendum C fields, with the stored scope shown verbatim.
+- Given a version that opted in to a zero-record Pass and a post-inclusion population of zero, when the Gate passes, then the outcome is Pass with every count 0 and a statement saying no record was inspected.
+
+## Spec Change Log
+
+## Review Triage Log
+
+## Design Notes
+
+**Implement all seven E.1 rows, in order, even though Epic 3 can reach only five of them.**
+Epic 3 produces evaluations of origin `RULE` only: there is no Agent-Judged evaluation, so
+no evaluation is ever `pending`, so the **Pending Confirmation** row cannot fire here. The
+`COMPLETED -> INCONCLUSIVE` row fires only "by human rejection", which is Epic 6. Both rows
+are still written, still ordered and still tested with a constructed state, because the
+order is the contract and a table that grows a row per epic ends up with no table at all.
+
+**Where an Epic 3 `UNEVALUATED` record turns into Inconclusive matters.** It is the GATE
+row, not a sealing row: Condition completeness, Identity corroboration and Observation
+corroboration in addendum H each yield `INCONCLUSIVE`, and the Gate row sits ABOVE both
+sealing rows in E.1. So a Run with an unevaluated record never reaches sealing at all. That
+is why both full golden populations are Inconclusive, and it is why "Gate passed" must be
+read from the Gate rows Story 3.8 wrote rather than inferred from the absence of an
+Exception.
+
+**A passed Gate is necessary and never sufficient for Pass.** The two are separate
+questions: the Gate asks whether the Evidence supports a conclusion, and the outcome asks
+what that conclusion is. Deriving one from the other in either direction is the mistake
+this story exists to prevent.
+
+**Sealing is once, in the completing transaction.** Computing the outcome twice invites two
+answers; computing it outside the transaction invites an outcome that describes a state the
+Run has already left. The immutability is enforced at the database, like the frozen-field
+refusals generation 14 added for Approved versions, not only in the command.
+
+**The scope statement is shown verbatim.** It is the auditor's own sentence about what the
+Run covered. Rewording it, truncating it or generating a replacement would put the
+platform's words where a human's belong.
+
+## Verification
+
+**Commands:**
+- `pnpm typecheck`, `pnpm boundaries`, `pnpm test` (alone) — expected: pass.
+- `pnpm db:migrate` then `pnpm test:integration` — expected: the new generation applied, all pass against PostgreSQL 18 on a `test`- or `ci`-named database.
+- `pnpm db:generate` — expected: no drift.
+- `pnpm build`, `pnpm --filter @intellifin/web build`, `pnpm test:e2e` — expected: pass, no accessibility violations.
+
+## Auto Run Result
+
+Status: done
+Blocking condition: none
+
+**Implemented.** The System Outcome is computed exactly once, in the transaction that
+completes the Run, by applying the addendum §E.1 rows in order and taking the first match.
+The Result is sealed so the outcome can never change, and it publishes the population, the
+exclusions with their reasons, inspected and uninspected records per Target System,
+per-condition counts by origin and confirmation state, the Template's §C control-specific
+fields, and the version's scope statement verbatim. The whole rule is
+`docs/contracts/run-result-v1.md`.
+
+**All seven rows ship, in the addendum's order, each carrying the addendum's own cell text**,
+and `tests/unit/outcome-rules.test.ts` reads the §E.1 table off disk and compares cell by
+cell. The row that decided is stored on the Result, so a reader can see WHY a Run concluded
+as it did rather than inferring it. The two rows this epic cannot reach are still written and
+are tested with constructed state, because the order is the contract.
+
+**The table had a hole, and closing it is this story's most important decision.** §E.1's
+Inconclusive row says a condition is `UNEVALUATED` "(by human rejection)". Read as a
+PREDICATE, a record unevaluated any other way — a rule that could not read a value, which is
+exactly P-2's account with an empty role list — matches no row at all and falls through to
+Pass, whose own cell requires every condition on every record Compliant. The parenthetical is
+treated as PROVENANCE instead: every other route to `UNEVALUATED` is caught by a §H row
+above, and where one is not, "excluded, uninspected and Unevaluated records are never counted
+Compliant" is the rule that has to hold. The Pass row independently requires zero unevaluated
+and zero pending, so the door is shut twice.
+
+**A passed Gate is necessary and never sufficient.** `gatePassed` is read from the twenty
+stored Gate rows — fewer than twenty is not a pass — and
+`run_result_pass_requires_gate` holds the necessary half at the database. Hard-coding it true
+passed EVERY integration test, because the Gate sets the Run state first and the state was
+silently standing in for the check; that is recorded in `CLAUDE.md`.
+
+**There is no seam a composition root could omit.** `completeRun` replaced the previous seal
+call at all six terminal-transition sites in both producers, and its context is extended by
+the Gate and population contexts rather than injected beside them. Generation 25 adds a
+deferred trigger refusing any Run that reaches a terminal state without a Result — the same
+forcing function the Evidence package already uses — plus constraints tying the outcome to
+the Run state, to the row that produced it, and to a passed Gate.
+
+**Mutation-proved.** Reordering the Gate row below Control Failure fails the domain table,
+the integration ordering test AND both golden populations. Dropping the timeout clause,
+disabling the unevaluated row, editing a verbatim cell, accepting a partial Gate, and eight
+more each failed their own test and were reverted.
+
+**Verification — independently re-run in the main thread against PostgreSQL 18:** typecheck
+PASS; boundaries PASS; `db:migrate` schemaVersion 25; unit 2522/2522; integration 319/319;
+`db:generate` no drift; both builds PASS; browser + axe 110/110 with zero accessibility
+violations. Every number matches what the implementing agent reported.
+
+**Residual risks.** The Pending Confirmation and human-rejection rows produce nothing in this
+epic and are proved only with constructed state; Epic 4 and Epic 6 make them reachable. Every
+test file that writes Run rows must now delete `run_result` before `audit_run` — the fourth
+such table — and a file that raises real Exceptions must NOT delete them first, because
+generation 23 refuses it and the Observation cascade carries them.

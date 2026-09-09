@@ -9,7 +9,7 @@
   "addendum_reference": "A.2 RoleMatrix; C P-2",
   "serves": "versioned-file",
   "generation": "2026-09-01.1",
-  "declared_schema": ["role", "permission"],
+  "declared_schema": ["entry", "role", "permission"],
   "prohibited_pairs": [
     ["CREATE_VENDOR", "APPROVE_VENDOR"],
     ["CREATE_PAYMENT", "RELEASE_PAYMENT"],
@@ -17,6 +17,7 @@
   ],
   "notes": [
     "This is a LIST of entries, not an object keyed by role, so that a duplicate conflicting policy entry is expressible: AMBIGUOUS_DUAL appears twice with different permissions.",
+    "The served CSV therefore carries a leading `entry` ordinal: it is the 1-based position of the policy ENTRY each row was flattened from, so an acquired artifact can still tell two conflicting entries for one role apart from one entry listing every permission. Without it AMBIGUOUS_DUAL's four rows union to CREATE_PAYMENT + RELEASE_PAYMENT + VIEW_PAYMENT, which contains a prohibited pair and inverts expectation case D5-c from Unevaluated to an Exception.",
     "UNKNOWN_ROLE_X is deliberately absent: an unknown role must yield Inconclusive, never Compliant.",
     "BRANCH_SUPERVISOR and CREDIT_COMMITTEE conflict only AFTER expansion. A rule that compares role names and not permissions misses it."
   ],

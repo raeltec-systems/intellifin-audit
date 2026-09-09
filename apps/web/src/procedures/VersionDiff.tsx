@@ -2,7 +2,7 @@ import { ExecutablePlanSchema } from '@intellifin/domain';
 import { ACTION_LABELS } from './plan-step-labels';
 import type { JsonValue, VersionSectionDiff } from '@intellifin/domain';
 function label(value: string): string {
-  const special: Record<string,string> = { sourceSnapshot: 'Population Source', credential_ref: 'Credential reference', allowed_origins: 'Allowed origins or application identity', permitted_actions: 'Permitted read actions', applicabilityAst: 'Compiled applicability', rule: 'Compiled condition', status: 'Evaluation origin', groundedBy: 'Grounding Evidence', modelRead: 'Read by the model', platformCaptured: 'Captured by the platform', zeroRecordPass: 'Permit a zero-record Pass', allowVersionedDuplicates: 'Permit versioned duplicate primary keys', from: 'Start date', to: 'End date' };
+  const special: Record<string,string> = { sourceSnapshot: 'Population Source', credential_ref: 'Credential reference', allowed_origins: 'Allowed origins or application identity', permitted_actions: 'Permitted read actions', applicabilityAst: 'Compiled applicability', rule: 'Compiled condition', status: 'Evaluation origin', policy: 'Role-privilege policy', rolesField: 'Roles field', privileged: 'Privileged roles', nonPrivileged: 'Known non-privileged roles', groundedBy: 'Grounding Evidence', modelRead: 'Read by the model', platformCaptured: 'Captured by the platform', zeroRecordPass: 'Permit a zero-record Pass', allowVersionedDuplicates: 'Permit versioned duplicate primary keys', from: 'Start date', to: 'End date' };
   return special[value] ?? value.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_',' ').replace(/^./, c => c.toUpperCase());
 }
 function Value({ value }: { value: JsonValue }): React.JSX.Element {

@@ -1,4 +1,4 @@
-import { addComplianceDecimals, subtractComplianceDecimals, type CompliancePredicate, type ComplianceRule, type ComparisonOperator } from '@intellifin/domain';
+import { addComplianceDecimals, subtractComplianceDecimals, type CompliancePredicate, type ComplianceRule, type ComparisonOperator, type RolePrivilegePolicy } from '@intellifin/domain';
 
 const field = (name: string) => name.replaceAll('_', ' ');
 const operator: Readonly<Record<ComparisonOperator, string>> = {
@@ -43,4 +43,10 @@ export function ruleText(rule: ComplianceRule): string {
     case 'permission-pairs': return `Expand ${field(rule.rolesField)} through the complete versioned role matrix. Exception when both permissions in any pair are present: ${rule.prohibitedPairs.map(([left, right]) => `${left} + ${right}`).join('; ')}. Report every matching pair. Compliant when no pair matches. Missing roles, unknown roles, incomplete expansion or conflicting matrix entries are Unevaluated.`;
     case 'baseline': return `Match ${field(rule.parameterField)} to exactly one baseline effective at ${field(rule.observationTimeField)}: its start is inclusive and its end is exclusive. For an approved parameter, Compliant requires a found value equal to the baseline; decimal values may differ by at most ${rule.tolerance} (inclusive), and other text must match exactly. A differing value is an Exception. A prohibited parameter is Compliant only when proven absent. Missing or stale observations, an unknown parameter, or missing or overlapping baselines are Unevaluated.`;
   }
+}
+
+/** The frozen role-privilege policy in business language; outcome wording follows the evaluator. */
+export function policyText(policy: RolePrivilegePolicy): string {
+  const list = (roles: readonly string[]) => roles.length ? roles.join(', ') : 'none declared';
+  return `Privileged roles: ${list(policy.privileged)}. Known non-privileged roles: ${list(policy.nonPrivileged)}. An account holding any privileged role is an Exception even when disabled (retained privileged assignment). An account holding only known non-privileged roles can be Compliant. A role in neither list, or roles that cannot be read, stop the evaluation and ask a person; privilege is never inferred from a role name.`;
 }

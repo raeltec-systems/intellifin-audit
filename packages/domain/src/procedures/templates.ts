@@ -77,6 +77,26 @@ export interface TemplateCondition {
 export const PROCEDURE_TEMPLATE_IDS = ['P-1', 'P-2', 'P-3', 'P-4'] as const;
 export type TemplateId = (typeof PROCEDURE_TEMPLATE_IDS)[number];
 
+/**
+ * Whether a proven absence satisfies §H per-record coverage for this Template.
+ *
+ * §H's per-record coverage row does not state one rule for every Procedure: it says
+ * coverage is "computed over Observations per the Template's coverage rule (§C)", and the
+ * four §C rules genuinely differ. P-3 spells the permissive one out — "a grounded approval
+ * lookup result (found or proven absent)" — and P-1's C1 makes a proven absence the
+ * COMPLIANT finding for a terminated employee. P-2 requires that "every population account
+ * appears in the extraction with a grounded role list", and P-4 requires each parameter
+ * "grounded in the page's Structural Snapshot": for those two, an account or a parameter
+ * nothing could read is a gap, not a finding.
+ *
+ * `must-appear` therefore makes `found = false` `UNINSPECTED` however honestly the absence
+ * was proven, which the `run_observation_evaluation` composite foreign key already makes
+ * impossible to call Compliant. It is a coverage rule, not a new check: the absence proof
+ * is still judged by `search-completeness`, which says whether the adapter looked.
+ */
+export const TEMPLATE_COVERAGE_RULES = ['must-appear', 'found-or-proven-absent'] as const;
+export type TemplateCoverageRule = (typeof TEMPLATE_COVERAGE_RULES)[number];
+
 export function isTemplateId(value: unknown): value is TemplateId {
   return typeof value === 'string' && (PROCEDURE_TEMPLATE_IDS as readonly string[]).includes(value);
 }
@@ -93,14 +113,29 @@ export interface ProcedureTemplate {
   readonly targetSystems: string;
   /**
    * The Target Systems this Template names, structured, for the Builder to OFFER by name.
-   * The kinds drive the P-1 web/desktop coverage diagnostic. A registration is never minted
-   * from these — an unavailable or ambiguous match is selected explicitly (FR-7).
+   * These are guidance, not mandatory additions to the auditor-selected scope. A registration
+   * is never minted from these — an unavailable or ambiguous match is selected explicitly (FR-7).
    */
   readonly defaultTargets: readonly { readonly name: string; readonly kind: TargetSystemKind }[];
   readonly workItemCoverage: string;
+  /**
+   * The same rule as `workItemCoverage`, machine-readable, because §H reads it (see
+   * `TEMPLATE_COVERAGE_RULES`). The prose above is what §C states; this is the half a
+   * Run can apply. `procedure-templates.test.ts` derives the expected value from the §C
+   * block on disk, so the two cannot drift.
+   */
+  readonly coverageRule: TemplateCoverageRule;
   readonly auditInstructions: string | null;
   readonly conditions: readonly TemplateCondition[];
   readonly declaredAttributeLabels: Readonly<Record<string, string>> | null;
+  /**
+   * Labels for attributes a Template VARIANT captures — captured only when the version's
+   * Evidence Requirements name the attribute, so a default Procedure never fails
+   * required-evidence for a field it never asked for. P-1's 24-hour variant reads
+   * `disabled_time` from the account page under `Disabled time` (owner decision 2,
+   * 2026-09-08). `attributeLabelFor` is the one place that precedence is decided.
+   */
+  readonly variantAttributeLabels: Readonly<Record<string, string>> | null;
   readonly secondaryKey: string | null;
   readonly evidenceRequirements: string | null;
   /**
@@ -170,6 +205,9 @@ const P1: ProcedureTemplate = {
     { name: 'LedgerDesk', kind: 'desktop' },
   ],
   workItemCoverage: 'one Work Item per population record per Target System.',
+  // C1 is Compliant when `found = false` (proven absence): for a terminated employee
+  // the absence of an account IS the finding, so it satisfies per-record coverage.
+  coverageRule: 'found-or-proven-absent',
   auditInstructions:
     'For each terminated employee, sign in to each Target System, search by employee ID, and if there is no ID match search by full name. Open the account record and note whether an account exists, its status, username, and assigned roles.',
   conditions: [P1_C1, P1_C2],
@@ -179,6 +217,7 @@ const P1: ProcedureTemplate = {
     roles: 'Roles',
     identity: 'Employee ID',
   },
+  variantAttributeLabels: { disabled_time: 'Disabled time' },
   secondaryKey: 'full name',
   evidenceRequirements:
     'username, account_status, roles (each grounded), Structural Snapshot and platform screenshot of the account page bound to the read, source export row.',
@@ -193,7 +232,7 @@ const P1: ProcedureTemplate = {
     'any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.',
   also: [
     'a name-only match with two candidate rows lacking the employee ID (*choose candidate*); an account with status `Suspended` (*unnamed value*; expected terminal outcome Inconclusive with diagnostic); a search timeout exhausting retries (*retry or skip*)',
-    'a 24-hour disablement-window rule (`disabled_time - termination_time <= 24h`, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes `disabled_time`; the §D boundary case for P-1 targets this variant',
+    'a 24-hour disablement-window rule (disabled_time - termination_time <= 24h, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes disabled_time — LoanCore labels it Disabled time on the account page, and the variant reads termination_time from the population\'s termination_effective_time through an explicit frozen field mapping (owner decision 2026-09-08, §0b); the §D boundary case for P-1 targets this variant',
   ],
   goldenBindingReference: 'leavers-export-versioned',
   expectationsVersion: 'p-1-terminated-users',
@@ -213,6 +252,9 @@ const P2: ProcedureTemplate = {
   defaultTargets: [{ name: 'AccessGate', kind: 'api' }],
   workItemCoverage:
     'one adapter Work Item covering the whole population; per-record coverage is satisfied when every population account appears in the extraction with a grounded role list.',
+  // "appears in the extraction with a grounded role list" — and no "or proven absent".
+  // An account whose permissions nothing could read is a gap, never a Compliant record.
+  coverageRule: 'must-appear',
   auditInstructions: null,
   conditions: [
     {
@@ -233,6 +275,7 @@ const P2: ProcedureTemplate = {
     },
   ],
   declaredAttributeLabels: null,
+  variantAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
   evidenceDefaults: [],
@@ -262,6 +305,9 @@ const P3: ProcedureTemplate = {
   defaultTargets: [{ name: 'ApproveNow', kind: 'api' }],
   workItemCoverage:
     'one adapter Work Item per extraction; per-record coverage is satisfied when every population transaction has a grounded approval lookup result (found or proven absent).',
+  // §C says "(found or proven absent)" in as many words: a transaction with no approval
+  // row is the Exception this Procedure exists to find, not an uninspected record.
+  coverageRule: 'found-or-proven-absent',
   auditInstructions: null,
   conditions: [
     {
@@ -282,6 +328,7 @@ const P3: ProcedureTemplate = {
     },
   ],
   declaredAttributeLabels: null,
+  variantAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
   evidenceDefaults: [],
@@ -307,6 +354,9 @@ const P4: ProcedureTemplate = {
   defaultTargets: [{ name: 'ProdConsole', kind: 'web' }],
   workItemCoverage:
     "one agent Work Item for the ProdConsole page read, owning one Observation per baseline parameter, each grounded in the page's Structural Snapshot with the parameter name as identity attribute.",
+  // Every Observation must be grounded in the page's Structural Snapshot. A parameter the
+  // page never showed is "required parameter absent from the observation" — Unevaluated.
+  coverageRule: 'must-appear',
   auditInstructions: null,
   conditions: [
     {
@@ -326,6 +376,7 @@ const P4: ProcedureTemplate = {
     },
   ],
   declaredAttributeLabels: null,
+  variantAttributeLabels: null,
   secondaryKey: null,
   evidenceRequirements: null,
   evidenceDefaults: [],
@@ -356,4 +407,36 @@ export function findProcedureTemplate(id: TemplateId): ProcedureTemplate {
   const template = PROCEDURE_TEMPLATES.find((candidate) => candidate.id === id);
   if (!template) throw new Error(`no Procedure Template ${id}`);
   return template;
+}
+
+/**
+ * The §H coverage rule of one FROZEN Template id, fail-closed.
+ *
+ * The id arrives from a plan a Procedure Version froze, so it is arbitrary text as far as
+ * this function is concerned. An id this build ships no contract for gets `must-appear`,
+ * which is the direction that can only DEGRADE coverage: a proven absence under an unknown
+ * Template becomes `UNINSPECTED` rather than a Compliant record nobody has a rule for.
+ *
+ * `Array.prototype.find`, not an object index: a plain-object lookup keyed by frozen input
+ * inherits from `Object.prototype`, so `'constructor'` returns a function and the caller
+ * carries on with it — five times now in this repository.
+ */
+export function templateCoverageRule(templateId: string): TemplateCoverageRule {
+  return (
+    PROCEDURE_TEMPLATES.find((candidate) => candidate.id === templateId)?.coverageRule ??
+    'must-appear'
+  );
+}
+
+/**
+ * The label an attribute is captured under: a declared label always; a variant label only
+ * when the version REQUESTED the attribute (its Evidence Requirements name it). A variant
+ * attribute nobody requested has no label, so it is neither offered to the model nor
+ * carried as an ungrounded attribute that would fail required-evidence.
+ */
+export function attributeLabelFor(template: ProcedureTemplate, attributeName: string, requested: ReadonlySet<string>): string | undefined {
+  const declared = template.declaredAttributeLabels;
+  if (declared !== null && Object.hasOwn(declared, attributeName)) return declared[attributeName];
+  const variant = template.variantAttributeLabels;
+  return variant !== null && requested.has(attributeName) && Object.hasOwn(variant, attributeName) ? variant[attributeName] : undefined;
 }

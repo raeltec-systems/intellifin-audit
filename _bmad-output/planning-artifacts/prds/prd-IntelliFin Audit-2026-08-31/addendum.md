@@ -1,9 +1,9 @@
 ---
 title: "IntelliFin Audit PoC — Product Detail Addendum"
 status: final
-revision: 2
+revision: 4
 created: 2026-08-31
-updated: 2026-09-01
+updated: 2026-09-09
 ---
 
 # IntelliFin Audit PoC — Product Detail Addendum
@@ -11,6 +11,14 @@ updated: 2026-09-01
 This addendum preserves inferred product detail needed to make the PoC requirements testable, plus user-contributed depth that belongs downstream. It is not an architecture specification.
 
 **Status legend:** `[ASSUMPTION]` means the product decision awaits explicit confirmation. "Normative" means the rule is binding for implementation and testing of this PoC draft, but it does not convert the underlying product decision into a confirmed long-term requirement.
+
+## 0. Owner-approved adapter retry policy — 2026-09-05
+
+For adapter-acquired Work Items, the owner selected one automatic additional bounded retry cycle after first exhaustion. A second exhaustion marks the Work Item `FAILED`; the Run continues and incomplete coverage yields `INCONCLUSIVE`. No human retry/skip Escalation is required on this path. Each cycle remains bounded by the frozen per-Step retry limit and all attempts count against the Run limits. Agent-driven retry/skip Escalations and Session Step failure mapping remain unchanged. This scoped rule supersedes the general retry/skip wording in sections E and E.1 for adapter Work Items. Prior downstream adapter retry assumptions require revalidation; Story 3.8, AD-3, the build SPEC and Epic 3 context are updated with this decision.
+
+## 0b. Owner decision — the 24-hour variant's complete evidence path (2026-09-08)
+
+The owner selected one bounded story for the P-1 24-hour disablement variant: an explicit frozen field mapping from the compiled `termination_time` to the population's `termination_effective_time` (declared on the condition, never inferred from a name); employee identity correlation through the existing identity grounding and corroboration; acquisition of both timestamps through approved interfaces (the bound population source for the termination instant, the Target System's account page for the disablement instant, which LoanCore exposes as the labelled attribute **Disabled time**); locators and provenance on both; and a deterministic comparison with the authored inclusive/exclusive boundary over instants, so equivalent instants with different offsets compare equal and a date-only source cannot substantiate the window. Frozen versions are preserved: the mapping and the variant label are additive, and this is not a universal mapping platform.
 
 ## A. Synthetic Organization, Population Sources, and Target Systems
 
@@ -87,7 +95,7 @@ Each Template pre-populates the Procedure Builder. Auditors edit Templates into 
 - **Evidence Requirements default:** username, account_status, roles (each grounded), Structural Snapshot and platform screenshot of the account page bound to the read, source export row.
 - **Schedule default:** weekly.
 - **Inconclusive:** any population record uninspected in any Target System, declared-count mismatch at file or inclusion level, missing required Evidence, contradictory corroboration, unproven absence, unresolved ambiguous match, unnamed value, or missing C2 evaluation.
-- **Template variant retained:** a 24-hour disablement-window rule (`disabled_time - termination_time <= 24h`, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes `disabled_time`; the §D boundary case for P-1 targets this variant.
+- **Template variant retained:** a 24-hour disablement-window rule (`disabled_time - termination_time <= 24h`, exactly 24 hours Compliant) is available as an alternative C1 when a Target System exposes `disabled_time` — LoanCore labels it **Disabled time** on the account page, and the variant reads `termination_time` from the population's `termination_effective_time` through an explicit frozen field mapping (owner decision 2026-09-08, §0b); the §D boundary case for P-1 targets this variant.
 
 ### P-2: Segregation-of-Duties Conflicts
 

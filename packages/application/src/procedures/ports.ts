@@ -151,3 +151,11 @@ export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
   /** Registration-owned read, bound to this transaction, for resolving Target selections. */
   readonly targetRegistrations: TargetSystemRegistrationReader;
 }
+
+/** Procedures owns historical period resolution; Runs never reads Procedure tables. */
+export interface ProcedurePeriodOwnerReader {
+  findPeriodOwner(procedureId: string, period: import('@intellifin/domain').ExplicitPeriod): Promise<ProcedureVersionRecord | null>;
+}
+export interface FrozenExecutionReader {
+  readFrozenExecution(versionId: string, procedureId: string): Promise<import('@intellifin/domain').ExecutablePlan | null>;
+}

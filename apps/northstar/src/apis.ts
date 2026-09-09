@@ -1,4 +1,10 @@
-import { countDeclaration, datasets, type CountDeclaration } from './fixtures.js';
+import {
+  apiDeclaration,
+  countDeclaration,
+  datasets,
+  type ApiPopulationDeclaration,
+  type CountDeclaration,
+} from './fixtures.js';
 import { json, type NorthstarRequest, type NorthstarResponse } from './http.js';
 
 /**
@@ -32,9 +38,8 @@ function orderedBy<T>(rows: readonly T[], key: (row: T) => string): readonly T[]
 }
 
 function collection(options: {
-  readonly source: string;
   readonly title: string;
-  readonly generation: string;
+  readonly declaration: ApiPopulationDeclaration;
   readonly countRoute: string;
   readonly items: readonly unknown[];
   readonly itemsKey: string;
@@ -46,9 +51,15 @@ function collection(options: {
       statement:
         'Every value in this response is invented. No production data and no personal data.',
     },
-    source: options.source,
+    schema_version: options.declaration.schema_version,
+    representation: options.declaration.representation,
+    source: options.declaration.source,
     title: options.title,
-    generation: options.generation,
+    generation: options.declaration.generation,
+    generated_at: options.declaration.generated_at,
+    effective_period: options.declaration.effective_period,
+    schema: options.declaration.schema,
+    complete: options.declaration.complete,
     /**
      * How many rows THIS response carries. Deliberately not called `declared_count`: the
      * declaration lives at the count endpoint and is produced by the fixture generator,
@@ -77,10 +88,10 @@ export function accessgateAccounts(request: NorthstarRequest): NorthstarResponse
   const data = datasets.accessgate();
   const status = (request.query.get('status') ?? '').trim();
   const filtered = status === '' ? data.accounts : data.accounts.filter((a) => a.status === status);
+  const declaration = apiDeclaration('accessgate-accounts.count.json');
   return collection({
-    source: 'accessgate-accounts',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/accessgate/accounts/count',
     items: orderedBy(filtered, (account) => account.account_id),
     itemsKey: 'accounts',
@@ -91,12 +102,91 @@ export function accessgateCount(): NorthstarResponse {
   return countResponse('accessgate-accounts.count.json');
 }
 
+/**
+ * A DELIBERATELY HOSTILE AccessGate surface: it echoes the caller's credential back
+ * (Story 4.3, NFR-13).
+ *
+ * This is the path nobody predicts. A Target System that puts the presented
+ * `Authorization` header into its own response body hands the platform a working
+ * credential inside bytes the platform is about to freeze as Evidence — where, the chain
+ * being immutable, it could never be taken out again. The guarantee Story 4.3 owns is
+ * that such an artifact FAILS registration rather than being stored, and a guarantee
+ * proven only against a stub is proven against the stub: this exists so a real Run,
+ * against a real synthetic system, over a real object store, can be shown to refuse it.
+ *
+ * It is bound by NO Procedure Version this repository seeds and named in NO expectation
+ * file. `scripts/seed-northstar.mts` does not register it. The only thing that reaches it
+ * is `tests/e2e/credential-containment.spec.ts`, which registers a Target System pointing
+ * at it on purpose.
+ *
+ * It carries the NFR-13 synthetic marker like every other response, and it invents no
+ * credential of its own: it repeats what the caller sent, so the value in it is whatever
+ * the test's own `CREDENTIAL_TOKENS` declared. Registering a real credential is the one
+ * thing this environment must not have, and nothing here does.
+ *
+ * The envelope is the SAME closed collection envelope every other endpoint serves — the
+ * one `COLLECTION_ENVELOPE_KEYS` names — so this is a well-formed, complete extraction in
+ * every respect except the one that matters.
+ */
+export function accessgateCredentialEcho(request: NorthstarRequest): NorthstarResponse {
+  const data = datasets.accessgate();
+  const declaration = apiDeclaration('accessgate-accounts.count.json');
+  const presented = request.headers['authorization'] ?? '';
+  return collection({
+    title: `${data.title} (credential echo)`,
+    declaration,
+    countRoute: '/accessgate/accounts/count',
+    items: [
+      {
+        account_id: 'AG-ECHO-0001',
+        employee_id: 'E-000000',
+        username: 'echo.service',
+        status: 'Active',
+        // The disclosure. Verbatim, because entity-encoding or truncating it here would
+        // delete the test rather than pass it — the rule `server.test.ts` already applies
+        // to the seeded prompt-like strings.
+        full_name: presented,
+        roles: [],
+      },
+    ],
+    itemsKey: 'accounts',
+  });
+}
+
+/**
+ * CoreDirectory accounts: every account of BOTH published populations, in one response.
+ *
+ * The extraction endpoint is the Target System, not the population. A Run binds one of
+ * the two published CSVs and looks each of its accounts up here, and P-2's coverage rule
+ * is `must-appear` — so what the Gate asks is that every bound account appears in this
+ * extraction, not that the extraction carries nothing else. One endpoint over both
+ * populations is therefore honest, and it is what an identity store looks like.
+ */
+export function coredirectoryAccounts(): NorthstarResponse {
+  const data = datasets.coredirectory();
+  const declaration = apiDeclaration('coredirectory-accounts.count.json');
+  return collection({
+    title: data.title,
+    declaration,
+    countRoute: '/coredirectory/accounts/count',
+    items: orderedBy(
+      data.populations.flatMap((population) => population.accounts),
+      (account) => account.account_id,
+    ),
+    itemsKey: 'accounts',
+  });
+}
+
+export function coredirectoryCount(): NorthstarResponse {
+  return countResponse('coredirectory-accounts.count.json');
+}
+
 export function approvenowApprovals(): NorthstarResponse {
   const data = datasets.approvenow();
+  const declaration = apiDeclaration('approvenow-approvals.count.json');
   return collection({
-    source: 'approvenow-approvals',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/approvenow/approvals/count',
     items: orderedBy(data.approvals, (approval) => approval.approval_id),
     itemsKey: 'approvals',
@@ -109,10 +199,10 @@ export function approvenowCount(): NorthstarResponse {
 
 export function peoplehubEmployees(): NorthstarResponse {
   const data = datasets.peoplehub();
+  const declaration = apiDeclaration('peoplehub-employees.count.json');
   return collection({
-    source: 'peoplehub-employees',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/peoplehub/employees/count',
     items: orderedBy(data.employees, (employee) => employee.employee_id),
     itemsKey: 'employees',
@@ -125,10 +215,10 @@ export function peoplehubCount(): NorthstarResponse {
 
 export function ledgerflowTransactions(): NorthstarResponse {
   const data = datasets.ledgerflow();
+  const declaration = apiDeclaration('ledgerflow-transactions.count.json');
   return collection({
-    source: 'ledgerflow-transactions',
     title: data.title,
-    generation: data.generation,
+    declaration,
     countRoute: '/ledgerflow/transactions/count',
     items: orderedBy(data.transactions, (transaction) => transaction.transaction_id),
     itemsKey: 'transactions',

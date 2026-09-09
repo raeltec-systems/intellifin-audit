@@ -1,0 +1,445 @@
+{
+  "producer": "Python 3.11.15 + rfc8785 0.1.4 + csv + json",
+  "producedBy": "scripts/make-snapshot-extraction-golden.py",
+  "regenerateWith": "uv run scripts/make-snapshot-extraction-golden.py",
+  "why": "Structural Snapshot extraction vectors, produced by an implementation that is NOT the code under test. packages/domain/src/runs/structural-snapshot.ts is checked against these cells and verdicts; a fixture produced by that module would prove only that it equals itself, which is no evidence at all for an extractor whose whole job is to be a second opinion on what an adapter asserted.",
+  "grammar": "A locator is $.<collection>[<index>].<field>, anchored, with no '.', '[' or ']' inside either name and no leading zero on the index. For a sheet the collection segment is exactly 'rows', the index is the 0-based DATA row after the header and after a leading '# SYNTHETIC' marker line, and the label is the header cell. For json the collection is an envelope key holding a list of objects, the index is the 0-based position in it, and the label is the property key.",
+  "matching": "An attribute is matched only when the locator resolves, the re-read label equals the declared label, the re-read value equals originalValue as RFC 8785 canonical bytes, the grounding's extractedText is the text of that value, and normalizedValue is either that value or its UTC normalization. Anything else is contradictory, and nothing is ever repaired by preferring one side.",
+  "snapshots": [
+    {
+      "name": "accessgate-accounts",
+      "substrate": "json",
+      "evidenceId": "01990000-0000-7000-8000-00000000c001",
+      "text": "{\"synthetic\":{\"marker\":\"SYNTHETIC-NORTHSTAR-FIXTURE\"},\"schema_version\":1,\"representation\":\"population-rows-v1\",\"source\":\"accounts\",\"complete\":true,\"returned\":3,\"schema\":[\"account_id\",\"roles\",\"status\",\"opened_at\"],\"accounts\":[{\"account_id\":\"AG-1001\",\"roles\":[\"AP_CLERK\"],\"status\":\"Active\",\"opened_at\":\"2026-08-10T10:30:00+02:00\"},{\"account_id\":\"007\",\"roles\":[\"OPS_CLERK\"],\"status\":\"Active\",\"opened_at\":\"2026-08-11T00:00:00Z\"},{\"account_id\":\"7\",\"roles\":[\"OPS_CLERK\"],\"status\":\"Disabled\",\"opened_at\":\"2026-08-12T00:00:00Z\"}]}"
+    },
+    {
+      "name": "role-matrix",
+      "substrate": "sheet",
+      "evidenceId": "01990000-0000-7000-8000-00000000c001",
+      "text": "# SYNTHETIC-NORTHSTAR-FIXTURE | Northstar Financial Group | RoleMatrix — the versioned Reference Source that expands a role to permissions (P-2) | generation 2026-09-01.1\nentry,role,permission\n1,AP_CLERK,CREATE_PAYMENT\n1,AP_CLERK,VIEW_PAYMENT\n2,LOAN_VIEWER,VIEW_LOAN\n3,REPORT_READER,VIEW_REPORT\n4,VENDOR_MAINTAINER,CREATE_VENDOR\n4,VENDOR_MAINTAINER,VIEW_VENDOR\n5,VENDOR_APPROVER,APPROVE_VENDOR\n5,VENDOR_APPROVER,VIEW_VENDOR\n6,PAYMENT_CREATOR,CREATE_PAYMENT\n6,PAYMENT_CREATOR,VIEW_PAYMENT\n7,PAYMENT_RELEASER,RELEASE_PAYMENT\n7,PAYMENT_RELEASER,VIEW_PAYMENT\n8,BRANCH_SUPERVISOR,CONFIGURE_LIMITS\n8,BRANCH_SUPERVISOR,VIEW_LOAN\n9,CREDIT_COMMITTEE,APPROVE_LOAN\n9,CREDIT_COMMITTEE,VIEW_LOAN\n10,AMBIGUOUS_DUAL,CREATE_PAYMENT\n10,AMBIGUOUS_DUAL,VIEW_PAYMENT\n11,AMBIGUOUS_DUAL,RELEASE_PAYMENT\n11,AMBIGUOUS_DUAL,VIEW_PAYMENT\n12,COLLECTIONS_AGENT,VIEW_LOAN\n13,TREASURY_ANALYST,VIEW_PAYMENT\n14,SERVICING_CLERK,VIEW_LOAN\n15,RISK_ANALYST,VIEW_REPORT\n16,RISK_VIEWER,VIEW_REPORT\n17,OPS_CLERK,VIEW_LOAN\n18,COMPLIANCE_REVIEWER,VIEW_REPORT\n19,FINANCE_CLERK,VIEW_PAYMENT\n20,LOAN_OFFICER,CREATE_LOAN\n20,LOAN_OFFICER,VIEW_LOAN\n21,LOAN_ADMIN,CONFIGURE_LIMITS\n21,LOAN_ADMIN,VIEW_LOAN\n22,SYSTEM_ADMIN,MANAGE_USERS\n22,SYSTEM_ADMIN,VIEW_REPORT\n23,OPS_GENERIC,VIEW_LOAN\n24,XR_TEMP,VIEW_LOAN\n",
+      "source": "fixtures/northstar/generated/role-matrix.csv"
+    }
+  ],
+  "cells": [
+    {
+      "name": "json value and its property key",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[0].account_id",
+      "resolves": true,
+      "value": "AG-1001",
+      "label": "account_id"
+    },
+    {
+      "name": "json array value",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[0].roles",
+      "resolves": true,
+      "value": [
+        "AP_CLERK"
+      ],
+      "label": "roles"
+    },
+    {
+      "name": "json offset time",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[0].opened_at",
+      "resolves": true,
+      "value": "2026-08-10T10:30:00+02:00",
+      "label": "opened_at"
+    },
+    {
+      "name": "json leading-zero identifier",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[1].account_id",
+      "resolves": true,
+      "value": "007",
+      "label": "account_id"
+    },
+    {
+      "name": "json identifier without the zeros",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[2].account_id",
+      "resolves": true,
+      "value": "7",
+      "label": "account_id"
+    },
+    {
+      "name": "json index past the end",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[3].account_id",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "json field the row does not carry",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.accounts[0].closed_at",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "json collection the envelope does not carry",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.employees[0].account_id",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "json envelope key that is not a row list",
+      "snapshot": "accessgate-accounts",
+      "locator": "$.schema[0].account_id",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "sheet header cell",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[0].role",
+      "resolves": true,
+      "value": "AP_CLERK",
+      "label": "role"
+    },
+    {
+      "name": "sheet ordinal is a string",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[0].entry",
+      "resolves": true,
+      "value": "1",
+      "label": "entry"
+    },
+    {
+      "name": "sheet first ambiguous entry",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[16].entry",
+      "resolves": true,
+      "value": "10",
+      "label": "entry"
+    },
+    {
+      "name": "sheet second ambiguous entry",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[18].entry",
+      "resolves": true,
+      "value": "11",
+      "label": "entry"
+    },
+    {
+      "name": "sheet permission column",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[18].permission",
+      "resolves": true,
+      "value": "RELEASE_PAYMENT",
+      "label": "permission"
+    },
+    {
+      "name": "sheet last data row",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[35].role",
+      "resolves": true,
+      "value": "XR_TEMP",
+      "label": "role"
+    },
+    {
+      "name": "sheet index past the last data row",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[36].role",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "sheet collection that is not rows",
+      "snapshot": "role-matrix",
+      "locator": "$.sheet[0].role",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "sheet column the header does not declare",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[0].scope",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "locator with a leading-zero index",
+      "snapshot": "role-matrix",
+      "locator": "$.rows[00].role",
+      "resolves": false,
+      "value": null,
+      "label": null
+    },
+    {
+      "name": "locator that is not the grammar",
+      "snapshot": "role-matrix",
+      "locator": "rows[0].role",
+      "resolves": false,
+      "value": null,
+      "label": null
+    }
+  ],
+  "attributes": [
+    {
+      "name": "a faithful capture of a json string",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "account_id",
+        "originalValue": "AG-1001",
+        "normalizedValue": "AG-1001",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[0].account_id",
+          "label": "account_id",
+          "extractedText": "AG-1001"
+        },
+        "corroboration": null
+      },
+      "corroboration": "matched",
+      "failure": null
+    },
+    {
+      "name": "a faithful capture of a json array",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "roles",
+        "originalValue": [
+          "AP_CLERK"
+        ],
+        "normalizedValue": [
+          "AP_CLERK"
+        ],
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[0].roles",
+          "label": "roles",
+          "extractedText": "[\"AP_CLERK\"]"
+        },
+        "corroboration": null
+      },
+      "corroboration": "matched",
+      "failure": null
+    },
+    {
+      "name": "an offset time normalized to UTC with the original retained",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "opened_at",
+        "originalValue": "2026-08-10T10:30:00+02:00",
+        "normalizedValue": "2026-08-10T08:30:00.000Z",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[0].opened_at",
+          "label": "opened_at",
+          "extractedText": "2026-08-10T10:30:00+02:00"
+        },
+        "corroboration": null
+      },
+      "corroboration": "matched",
+      "failure": null
+    },
+    {
+      "name": "an offset time silently shifted instead of normalized",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "opened_at",
+        "originalValue": "2026-08-10T10:30:00+02:00",
+        "normalizedValue": "2026-08-10T10:30:00.000Z",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[0].opened_at",
+          "label": "opened_at",
+          "extractedText": "2026-08-10T10:30:00+02:00"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "normalization-unauthorized"
+    },
+    {
+      "name": "a value the snapshot does not hold",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "status",
+        "originalValue": "Active",
+        "normalizedValue": "Active",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[2].status",
+          "label": "status",
+          "extractedText": "Active"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "value-contradicted"
+    },
+    {
+      "name": "a label the snapshot does not use",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "status",
+        "originalValue": "Active",
+        "normalizedValue": "Active",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[0].status",
+          "label": "Status",
+          "extractedText": "Active"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "label-drift"
+    },
+    {
+      "name": "a leading-zero identifier kept as it was served",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "account_id",
+        "originalValue": "007",
+        "normalizedValue": "007",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[1].account_id",
+          "label": "account_id",
+          "extractedText": "007"
+        },
+        "corroboration": null
+      },
+      "corroboration": "matched",
+      "failure": null
+    },
+    {
+      "name": "a leading-zero identifier normalized to its numeric spelling",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "account_id",
+        "originalValue": "007",
+        "normalizedValue": "7",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[1].account_id",
+          "label": "account_id",
+          "extractedText": "007"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "normalization-unauthorized"
+    },
+    {
+      "name": "007 recorded against the row that holds 7",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "account_id",
+        "originalValue": "007",
+        "normalizedValue": "007",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[2].account_id",
+          "label": "account_id",
+          "extractedText": "007"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "value-contradicted"
+    },
+    {
+      "name": "extracted text that is not the text at the locator",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "account_id",
+        "originalValue": "AG-1001",
+        "normalizedValue": "AG-1001",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[0].account_id",
+          "label": "account_id",
+          "extractedText": "AG-1002"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "extracted-text-contradicted"
+    },
+    {
+      "name": "a locator that resolves to nothing",
+      "snapshot": "accessgate-accounts",
+      "attribute": {
+        "name": "account_id",
+        "originalValue": "AG-1001",
+        "normalizedValue": "AG-1001",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.accounts[9].account_id",
+          "label": "account_id",
+          "extractedText": "AG-1001"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "locator-unresolved"
+    },
+    {
+      "name": "a sheet cell read through its header",
+      "snapshot": "role-matrix",
+      "attribute": {
+        "name": "role",
+        "originalValue": "AP_CLERK",
+        "normalizedValue": "AP_CLERK",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.rows[0].role",
+          "label": "role",
+          "extractedText": "AP_CLERK"
+        },
+        "corroboration": null
+      },
+      "corroboration": "matched",
+      "failure": null
+    },
+    {
+      "name": "a sheet ordinal that keeps two policy entries apart",
+      "snapshot": "role-matrix",
+      "attribute": {
+        "name": "entry",
+        "originalValue": "11",
+        "normalizedValue": "11",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.rows[18].entry",
+          "label": "entry",
+          "extractedText": "11"
+        },
+        "corroboration": null
+      },
+      "corroboration": "matched",
+      "failure": null
+    },
+    {
+      "name": "a sheet ordinal recorded from the wrong entry",
+      "snapshot": "role-matrix",
+      "attribute": {
+        "name": "entry",
+        "originalValue": "10",
+        "normalizedValue": "10",
+        "grounding": {
+          "evidenceId": "01990000-0000-7000-8000-00000000c001",
+          "locator": "$.rows[18].entry",
+          "label": "entry",
+          "extractedText": "10"
+        },
+        "corroboration": null
+      },
+      "corroboration": "contradictory",
+      "failure": "value-contradicted"
+    }
+  ]
+}

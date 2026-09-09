@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bindingDigest, bindingDigestEnvelope, canonicalJson, defaultTargetsFor,
-  deriveExecutablePlan, initialDraftCompliance, initialDraftEvidence,
+  classifyPlanTargets, deriveExecutablePlan, ExecutablePlanSchema, initialDraftCompliance, initialDraftEvidence,
   initialDraftPopulation, initialDraftSections, isAgentDrivenKind,
   registrationDigest, snapshotFromRegistration, withPlatformCaptured,
   type FrozenPlanInputs, type JsonValue, type TemplateId,
@@ -68,5 +68,34 @@ describe('all four executable Template contracts', () => {
     expect(plan.credentialReferences.map((reference) => reference.credentialRef)).toEqual(input.targets.map((target) => target.contract.credential_ref));
     const repeated = deriveExecutablePlan(structuredClone(input));
     expect(repeated.ok && canonicalJson(repeated.plan as unknown as JsonValue)).toBe(canonicalJson(plan as unknown as JsonValue));
+  });
+});
+
+describe('explicit P-1 target scope', () => {
+  it('derives the selected LoanCore journey without adding an unselected desktop', () => {
+    const defaults = authored('P-1', cases[0].columns);
+    const targets = defaults.targets.filter(target => target.contract.kind === 'web');
+    const input = { ...defaults, targets, instructions: defaults.instructions.filter(instruction => targets.some(target => target.registrationId === instruction.registrationId)) };
+    const result = deriveExecutablePlan(input);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(ExecutablePlanSchema.safeParse(result.plan).success).toBe(true);
+    expect(result.plan.inputs.targets).toEqual(targets);
+    expect(result.plan.targetSystems.map(target => target.registrationId)).toEqual(targets.map(target => target.registrationId));
+    expect(result.plan.credentialReferences).toEqual(targets.map(target => ({ targetSystemId: target.registrationId, credentialRef: target.contract.credential_ref })));
+    expect(classifyPlanTargets(result.plan).unsupported).toBeNull();
+    expect(classifyPlanTargets(result.plan).agents.map(entry => entry.target)).toEqual(targets);
+  });
+
+  it('retains every selected target in authored order and refuses selected unsupported desktop execution', () => {
+    const defaults = authored('P-1', cases[0].columns);
+    const targets = [...defaults.targets].reverse();
+    const result = deriveExecutablePlan({ ...defaults, targets });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.inputs.targets).toEqual(targets);
+    expect(result.plan.targetSystems.map(target => target.registrationId)).toEqual(targets.map(target => target.registrationId));
+    expect(result.plan.credentialReferences).toEqual(targets.map(target => ({ targetSystemId: target.registrationId, credentialRef: target.contract.credential_ref })));
+    expect(classifyPlanTargets(result.plan).unsupported).toBe('agent-driven-target');
   });
 });

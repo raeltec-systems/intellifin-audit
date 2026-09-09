@@ -72,6 +72,56 @@ describe('the frozen Target System snapshot', () => {
     ]);
   });
 
+  it('freezes an exact configured authentication destination and keeps legacy snapshots readable', () => {
+    const configured = registration({
+      ...LOANCORE,
+      authenticationDestination: 'http://localhost:4300/loancore/sign-in',
+    });
+    const snapshot = snapshotFromRegistration(configured);
+    expect(snapshot.contract.authentication_destination).toBe(
+      'http://localhost:4300/loancore/sign-in',
+    );
+    expect(isProcedureTargetSnapshot(snapshot)).toBe(true);
+    expect(isProcedureTargetSnapshot(snapshotFromRegistration(LOANCORE))).toBe(true);
+  });
+
+  it.each([
+    'http://localhost:4300/loancore/sign-in?next=/write',
+    'http://localhost:4300/loancore/sign-in#write',
+    'http://localhost:4300/loancore-other/sign-in',
+    'https://other.synthetic.invalid/sign-in',
+    'ftp://localhost:4300/loancore/sign-in',
+  ])('rejects an authentication destination that is not an exact in-scope HTTP(S) URL: %s', (destination) => {
+    const configured = registration({ ...LOANCORE, authenticationDestination: destination });
+    expect(isProcedureTargetSnapshot(snapshotFromRegistration(configured))).toBe(false);
+  });
+
+  it('rejects an authentication destination on a non-web Target System', () => {
+    const configured = registration({
+      ...LEDGERDESK,
+      authenticationDestination: 'https://ledger.synthetic.invalid/sign-in',
+    });
+    expect(isProcedureTargetSnapshot(snapshotFromRegistration(configured))).toBe(false);
+  });
+
+  it('makes an authentication destination digest-bearing', () => {
+    const first = registration({
+      ...LOANCORE,
+      authenticationDestination: 'http://localhost:4300/loancore/sign-in',
+    });
+    const second = registration({
+      ...LOANCORE,
+      authenticationDestination: 'http://localhost:4300/loancore/authenticate',
+    });
+    expect(first.digest).not.toBe(second.digest);
+    expect(
+      isProcedureTargetSnapshot({
+        ...snapshotFromRegistration(first),
+        contract: snapshotFromRegistration(second).contract,
+      }),
+    ).toBe(false);
+  });
+
   it('refuses a snapshot whose stored digest was copied from elsewhere', () => {
     const snapshot = snapshotFromRegistration(LOANCORE);
     expect(isProcedureTargetSnapshot({ ...snapshot, digest: '0'.repeat(64) })).toBe(false);
@@ -162,13 +212,10 @@ describe('the completeness diagnostics', () => {
     ]);
   });
 
-  it('flags a missing selection, then missing P-1 web/desktop coverage', () => {
-    expect(targetBlockersFor('P-1', [])).toEqual([
-      'targets-missing',
-      'web-coverage-missing',
-      'desktop-coverage-missing',
-    ]);
-    expect(targetBlockersFor('P-1', [web])).toEqual(['desktop-coverage-missing']);
+  it('requires a selection without adding unselected template defaults to its scope', () => {
+    expect(targetBlockersFor('P-1', [])).toEqual(['targets-missing']);
+    expect(targetBlockersFor('P-1', [web])).toEqual([]);
+    expect(targetBlockersFor('P-1', [desktop])).toEqual([]);
     expect(targetBlockersFor('P-1', [web, desktop])).toEqual([]);
   });
 

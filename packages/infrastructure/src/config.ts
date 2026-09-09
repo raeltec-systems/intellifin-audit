@@ -30,6 +30,21 @@ const sampleRate = z
   .default('0')
   .transform(Number);
 
+const optionalNonEmpty = (max: number) =>
+  z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.string().trim().min(1).max(max).optional(),
+  );
+
+const optionalHttpUrl = z.preprocess(
+  (value) => (value === '' || value === undefined ? undefined : value),
+  z
+    .string()
+    .regex(/^https?:\/\//, 'must start with http:// or https://')
+    .max(2048)
+    .optional(),
+);
+
 /**
  * The capability a credential reference may be DECLARED to have (FR-8).
  *
@@ -86,6 +101,42 @@ export function parseCredentialCapabilities(
   return manifest;
 }
 
+/**
+ * Parse `CREDENTIAL_TOKENS`: a JSON object mapping an opaque credential reference to the
+ * token an adapter presents. `null` means the value is not that shape.
+ *
+ * This function is a SHAPE check and holds nothing: it lives here so that validation can
+ * run in `loadConfig` without dragging `runs/credential-resolver.ts` — the one module
+ * that turns a manifest into a usable credential — into the barrel the web imports.
+ *
+ * The duplicate-key rule is `parseCredentialCapabilities`'s, for the same reason:
+ * `{"prod":"a"," prod":"b"}` trimmed to one key would silently take the LAST entry, so
+ * two keys that look different in the JSON would resolve to one credential nobody chose.
+ * A deployment whose manifest is ambiguous has declared nothing, and the whole manifest
+ * is refused — which resolves nothing and fails every extraction closed.
+ *
+ * An absent variable is an empty manifest. Nothing here is ever logged or echoed; a
+ * refusal names the variable, never its content.
+ */
+export function parseCredentialTokens(raw: string): Map<string, string> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const manifest = new Map<string, string>();
+  for (const [reference, token] of Object.entries(parsed)) {
+    const key = reference.trim();
+    if (key === '' || key.length > 512) return null;
+    if (typeof token !== 'string' || token === '' || token.length > 4096) return null;
+    if (manifest.has(key)) return null;
+    manifest.set(key, token);
+  }
+  return manifest;
+}
+
 export const configSchema = z
   .object({
     DATABASE_URL: z
@@ -137,6 +188,54 @@ export const configSchema = z
         ),
     ),
     /**
+     * Audit credential VALUES, as JSON, for the just-in-time resolver (Story 3.3).
+     *
+     * A secret. Set it on the WORKER service only: the worker is the only process that
+     * composes `ManifestCredentialResolver`, and `no-credential-resolver-in-web` fails
+     * the build on any import of that module from the web. In production a non-empty
+     * value on any other service is refused outright below, so the guarantee does not
+     * rest on a deployment remembering.
+     *
+     * Absent means an empty manifest, which resolves nothing and fails every adapter
+     * Work Item closed. See {@link parseCredentialTokens}.
+     */
+    CREDENTIAL_TOKENS: z.preprocess(
+      (value) => (value === '' || value === undefined ? '{}' : value),
+      z
+        .string()
+        .refine(
+          (raw) => parseCredentialTokens(raw) !== null,
+          'must be a JSON object mapping a credential reference to its token, with no duplicate reference',
+        ),
+    ),
+    /**
+     * The key every Exception fingerprint is computed with (Story 3.7), and its id.
+     *
+     * A secret, and the worker's alone: the worker is the only process that evaluates a
+     * compiled condition and therefore the only one that can raise an Exception. There is
+     * no default and no fallback — an unkeyed fingerprint over a small closed vocabulary
+     * of record keys and condition ids is a dictionary anybody holding the fingerprints
+     * can invert, and the row it is written into is permanent.
+     *
+     * Absent, adapter execution is DISABLED and says so by name, exactly as an absent
+     * `CREDENTIAL_TOKENS` disables it: refusing to boot would stop plan derivation,
+     * notification delivery and the liveness row as well, for a stage that could not run
+     * anyway. What must never happen is an Exception written with no fingerprint, and no
+     * evaluation happens at all without a key.
+     *
+     * `EXCEPTION_FINGERPRINT_KEY_ID` carries NO secret — it is the label retained beside
+     * every fingerprint so a rotated key still says which key signed which row — so it has
+     * a default and is declared rather than preserved.
+     */
+    EXCEPTION_FINGERPRINT_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(32, 'must be at least 32 characters').max(4096).optional(),
+    ),
+    EXCEPTION_FINGERPRINT_KEY_ID: z.preprocess(
+      (value) => (value === '' || value === undefined ? 'k1' : value),
+      z.string().min(1).max(64),
+    ),
+    /**
      * Read only to decide whether `http://` is acceptable for BETTER_AUTH_URL. It is
      * not otherwise application configuration: what the build supports is a property
      * of the build (see `db/compat.ts`), not of the environment.
@@ -147,8 +246,65 @@ export const configSchema = z
     MODEL_PROMPT_VERSION: z.preprocess((value) => value === '' ? undefined : value, z.literal(SUPPORTED_MODEL_PROMPT_VERSION).default(SUPPORTED_MODEL_PROMPT_VERSION)),
     MODEL_MAX_OUTPUT_TOKENS: z.preprocess((value) => value === '' || value === undefined ? String(DEFAULT_MODEL_OUTPUT_TOKENS) : value, z.string().regex(/^[0-9]+$/).transform(Number).pipe(z.number().int().min(1024).max(MAX_CONFIGURED_MODEL_OUTPUT_TOKENS))),
     MODEL_API_KEY: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),
+    /** Agent execution uses provider-native worker secrets, independently of plan derivation. */
+    ANTHROPIC_API_KEY: optionalNonEmpty(10_000),
+    OPENAI_API_KEY: optionalNonEmpty(10_000),
+    AGENT_ANTHROPIC_MODEL: optionalNonEmpty(300),
+    AGENT_OPENAI_MODEL: optionalNonEmpty(300),
+    RAILWAY_GIT_COMMIT_SHA: z.preprocess((value) => value === '' ? undefined : value, z.string().regex(/^[a-f0-9]{40}$/).optional()),
+    /**
+     * The managed browser provider for the Agent Workspace (Story 4.1, AD-4).
+     *
+     * `SOLARI_API_KEY` is a SECRET and the worker's alone: the worker is the only process
+     * that provisions a workspace, and `no-browser-execution-in-web` fails the build on any
+     * import of that module from the web. In production a value on any other service is
+     * refused outright below, so the guarantee does not rest on a deployment remembering.
+     *
+     * Absent, the LOCAL Chromium mode is used and the composition root says so once, by
+     * name. The two modes are the same code path — Solari is driven WITH the Playwright
+     * client API — but they are NOT the same guarantee: local isolates browser state per
+     * Run and does not isolate the worker process at all. `run_workspace.mode` records
+     * which one a Run actually had.
+     *
+     * `SOLARI_REGION` and `SOLARI_BASE_URL` are the SDK's own two ways of naming a
+     * gateway; `baseUrl` replaces `region` when both are set. Neither is hard-coded (AD-11).
+     *
+     * `SOLARI_RECORDING` decides session replay, which CANNOT be enabled afterwards: the
+     * replay endpoint 404s forever for a session created without it. Epic 5 is what reads a
+     * replay and Story 4.1 is where the decision is taken, so the flag is threaded through
+     * now even though nothing reads one yet. It is OFF by default, matching the provider's
+     * own default: recording is a metered feature and turning one on is a cost decision
+     * this build must not take for a deployment. **The consequence is that a Run made
+     * before it is switched on has no replay, permanently** — so Epic 5 turns it on before
+     * the Runs whose replay it wants, and cannot recover the ones behind it.
+     */
+    SOLARI_API_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(8).max(512).optional(),
+    ),
+    SOLARI_REGION: optionalNonEmpty(64),
+    SOLARI_BASE_URL: optionalHttpUrl,
+    SOLARI_RECORDING: z.preprocess(
+      (value) => (value === '' || value === undefined ? 'false' : value),
+      z.enum(['true', 'false']).transform((value) => value === 'true'),
+    ),
+    /** Private S3-compatible Evidence storage. All five values are required together. */
+    EVIDENCE_S3_ENDPOINT: optionalHttpUrl,
+    EVIDENCE_S3_REGION: optionalNonEmpty(128),
+    EVIDENCE_S3_BUCKET: optionalNonEmpty(255),
+    EVIDENCE_S3_ACCESS_KEY_ID: optionalNonEmpty(512),
+    EVIDENCE_S3_SECRET_ACCESS_KEY: optionalNonEmpty(2048),
+    EVIDENCE_S3_FORCE_PATH_STYLE: z.preprocess(
+      (value) => (value === '' || value === undefined ? 'true' : value),
+      z.enum(['true', 'false']).transform((value) => value === 'true'),
+    ),
   })
   .superRefine((config, ctx) => {
+    if (config.NODE_ENV === 'production' && config.SERVICE_NAME !== 'worker') {
+      for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'] as const) {
+        if (config[key] !== undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'must not be set on any process other than the worker' });
+      }
+    }
     if (config.MODEL_PROVIDER !== undefined) {
       if (!config.MODEL_ID) ctx.addIssue({ code: 'custom', path: ['MODEL_ID'], message: 'is required when MODEL_PROVIDER is configured' });
       if (config.SERVICE_NAME === 'worker' && !config.MODEL_API_KEY) ctx.addIssue({ code: 'custom', path: ['MODEL_API_KEY'], message: 'is required by the configured worker model' });
@@ -170,9 +326,81 @@ export const configSchema = z
           'must use https:// when NODE_ENV is production; an http origin yields a session cookie with no Secure attribute',
       });
     }
+
+    // The token manifest is the worker's alone. A production web container started with
+    // it would hold audit credentials in memory for a process AD-10 forbids an outbound
+    // call, so it refuses to start instead. Outside production one environment file is
+    // routinely shared by both processes, and refusing there would break local runs for
+    // a value the web has no code path to use.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.SERVICE_NAME !== 'worker' &&
+      config.CREDENTIAL_TOKENS !== '{}'
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CREDENTIAL_TOKENS'],
+        message: 'must not be set on any process other than the worker',
+      });
+    }
+
+    // The Exception fingerprint key is the worker's alone for the same reason and with the
+    // same outside-production allowance: only the worker evaluates a compiled condition, so
+    // only the worker can raise an Exception, and a production web container holding the
+    // key would hold a secret it has no code path to use.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.SERVICE_NAME !== 'worker' &&
+      config.EXCEPTION_FINGERPRINT_KEY !== undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['EXCEPTION_FINGERPRINT_KEY'],
+        message: 'must not be set on any process other than the worker',
+      });
+    }
+
+    // The provider key is the worker's alone, for the same reason and with the same
+    // outside-production allowance as the credential manifest: only the worker provisions a
+    // workspace, and a production web container holding the key would hold a capability it
+    // has no code path to use.
+    if (
+      config.NODE_ENV === 'production' &&
+      config.SERVICE_NAME !== 'worker' &&
+      config.SOLARI_API_KEY !== undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SOLARI_API_KEY'],
+        message: 'must not be set on any process other than the worker',
+      });
+    }
+
+    const evidenceFields = [
+      ['EVIDENCE_S3_ENDPOINT', config.EVIDENCE_S3_ENDPOINT],
+      ['EVIDENCE_S3_REGION', config.EVIDENCE_S3_REGION],
+      ['EVIDENCE_S3_BUCKET', config.EVIDENCE_S3_BUCKET],
+      ['EVIDENCE_S3_ACCESS_KEY_ID', config.EVIDENCE_S3_ACCESS_KEY_ID],
+      ['EVIDENCE_S3_SECRET_ACCESS_KEY', config.EVIDENCE_S3_SECRET_ACCESS_KEY],
+    ] as const;
+    const anyEvidenceConfigured = evidenceFields.some(([, value]) => value !== undefined);
+    if (anyEvidenceConfigured) {
+      for (const [key, value] of evidenceFields) {
+        if (value === undefined) ctx.addIssue({ code: 'custom', path: [key], message: 'is required when Evidence S3 storage is configured' });
+      }
+    }
   });
 
 export type AppConfig = z.infer<typeof configSchema>;
+
+export interface EvidenceS3Config {
+  readonly endpoint: string;
+  readonly region: string;
+  readonly bucket: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly forcePathStyle: boolean;
+}
 
 /** Thrown when the process environment does not satisfy {@link configSchema}. */
 export class ConfigError extends Error {
@@ -216,12 +444,30 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
     CREDENTIAL_CAPABILITIES: env['CREDENTIAL_CAPABILITIES'],
+    CREDENTIAL_TOKENS: env['CREDENTIAL_TOKENS'],
+    EXCEPTION_FINGERPRINT_KEY: env['EXCEPTION_FINGERPRINT_KEY'],
+    EXCEPTION_FINGERPRINT_KEY_ID: env['EXCEPTION_FINGERPRINT_KEY_ID'],
     NODE_ENV: env['NODE_ENV'],
     MODEL_PROVIDER: env['MODEL_PROVIDER'],
     MODEL_ID: env['MODEL_ID'],
     MODEL_PROMPT_VERSION: env['MODEL_PROMPT_VERSION'],
     MODEL_API_KEY: env['MODEL_API_KEY'],
     MODEL_MAX_OUTPUT_TOKENS: env['MODEL_MAX_OUTPUT_TOKENS'],
+    ANTHROPIC_API_KEY: env['ANTHROPIC_API_KEY'],
+    OPENAI_API_KEY: env['OPENAI_API_KEY'],
+    AGENT_ANTHROPIC_MODEL: env['AGENT_ANTHROPIC_MODEL'],
+    AGENT_OPENAI_MODEL: env['AGENT_OPENAI_MODEL'],
+    RAILWAY_GIT_COMMIT_SHA: env['RAILWAY_GIT_COMMIT_SHA'],
+    SOLARI_API_KEY: env['SOLARI_API_KEY'],
+    SOLARI_REGION: env['SOLARI_REGION'],
+    SOLARI_BASE_URL: env['SOLARI_BASE_URL'],
+    SOLARI_RECORDING: env['SOLARI_RECORDING'],
+    EVIDENCE_S3_ENDPOINT: env['EVIDENCE_S3_ENDPOINT'],
+    EVIDENCE_S3_REGION: env['EVIDENCE_S3_REGION'],
+    EVIDENCE_S3_BUCKET: env['EVIDENCE_S3_BUCKET'],
+    EVIDENCE_S3_ACCESS_KEY_ID: env['EVIDENCE_S3_ACCESS_KEY_ID'],
+    EVIDENCE_S3_SECRET_ACCESS_KEY: env['EVIDENCE_S3_SECRET_ACCESS_KEY'],
+    EVIDENCE_S3_FORCE_PATH_STYLE: env['EVIDENCE_S3_FORCE_PATH_STYLE'],
 
   });
 
@@ -237,11 +483,38 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
 }
 
 /**
+ * Return the configured production Evidence backend, or null when deployment has not
+ * supplied storage settings yet. A partial configuration is refused by loadConfig;
+ * callers never silently fall back to a local filesystem store.
+ */
+export function evidenceS3Config(config: AppConfig): EvidenceS3Config | null {
+  if (config.EVIDENCE_S3_ENDPOINT === undefined) return null;
+  return {
+    endpoint: config.EVIDENCE_S3_ENDPOINT,
+    region: config.EVIDENCE_S3_REGION!,
+    bucket: config.EVIDENCE_S3_BUCKET!,
+    accessKeyId: config.EVIDENCE_S3_ACCESS_KEY_ID!,
+    secretAccessKey: config.EVIDENCE_S3_SECRET_ACCESS_KEY!,
+    forcePathStyle: config.EVIDENCE_S3_FORCE_PATH_STYLE,
+  };
+}
+
+/**
  * The declared manifest, as the provider needs it.
  *
  * `loadConfig` has already refused anything that is not the right shape, so this cannot
  * fail; the fallback is an empty manifest, which refuses every registration.
  */
+/**
+ * The declared token manifest, as the resolver needs it.
+ *
+ * `loadConfig` has already refused anything that is not the right shape, so this cannot
+ * fail; the fallback is an empty manifest, which resolves nothing.
+ */
+export function credentialTokenManifest(config: AppConfig): ReadonlyMap<string, string> {
+  return parseCredentialTokens(config.CREDENTIAL_TOKENS) ?? new Map();
+}
+
 export function credentialCapabilityManifest(
   config: AppConfig,
 ): ReadonlyMap<string, DeclaredCredentialCapability> {

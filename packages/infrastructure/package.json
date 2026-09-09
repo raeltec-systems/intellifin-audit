@@ -25,6 +25,34 @@
     "./probe-runner": {
       "types": "./src/registrations/probe-runner.ts",
       "default": "./dist/registrations/probe-runner.js"
+    },
+    "./acquisition": {
+      "types": "./src/runs/population-acquisition-http.ts",
+      "default": "./dist/runs/population-acquisition-http.js"
+    },
+    "./evidence": {
+      "types": "./src/evidence/s3-evidence-store.ts",
+      "default": "./dist/evidence/s3-evidence-store.js"
+    },
+    "./extraction": {
+      "types": "./src/runs/adapter-extraction-http.ts",
+      "default": "./dist/runs/adapter-extraction-http.js"
+    },
+    "./credentials": {
+      "types": "./src/runs/credential-resolver.ts",
+      "default": "./dist/runs/credential-resolver.js"
+    },
+    "./browser": {
+      "types": "./src/runs/browser-execution.ts",
+      "default": "./dist/runs/browser-execution.js"
+    },
+    "./agent-model": {
+      "types": "./src/runs/agent-model-gateway.ts",
+      "default": "./dist/runs/agent-model-gateway.js"
+    },
+    "./evidence-read-signer": {
+      "types": "./src/evidence/s3-evidence-read-signer.ts",
+      "default": "./dist/evidence/s3-evidence-read-signer.js"
     }
   },
   "files": [
@@ -42,14 +70,18 @@
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.47",
     "@ai-sdk/openai": "4.0.58",
+    "@aws-sdk/client-s3": "3.1124.0",
+    "@aws-sdk/s3-request-presigner": "3.1124.0",
     "@intellifin/application": "workspace:*",
     "@intellifin/domain": "workspace:*",
     "@sentry/node": "10.73.0",
+    "@solarisdk/browser": "0.1.3",
     "ai": "7.0.89",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
     "pg-boss": "12.29.0",
     "pino": "10.3.1",
+    "playwright-core": "1.62.1",
     "postgres": "3.4.9",
     "zod": "4.5.4"
   },

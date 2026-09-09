@@ -1,0 +1,1013 @@
+import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import {
+  acquirePopulation,
+  initiateRun,
+  PopulationAcquisitionError,
+  type EvidenceStore,
+  type PopulationAcquisitionPort,
+} from '@intellifin/application';
+import {
+  bindingDigest,
+  bindingDigestEnvelope,
+  initialDraftPopulation,
+  initialDraftCompliance,
+  initialDraftEvidence,
+  initialDraftSections,
+  evidenceIdFor,
+  evidenceObjectKeys,
+  registrationDigest,
+  snapshotFromRegistration,
+  sha256Hex,
+  utf8Bytes,
+} from '@intellifin/domain';
+import {
+  createDb,
+  createSqlClient,
+  CryptoUuidV7Generator,
+  DrizzleRoleRepository,
+  DrizzleRunRepository,
+  PostgresRunsUnitOfWork,
+  PostgresProceduresUnitOfWork,
+  PostgresPopulationRepository,
+  SystemClock,
+  PostgresAuditChainReader,
+  type Sql,
+  type Database,
+} from '@intellifin/infrastructure';
+import { activeRunVersion } from '../fixtures/active-run-version.js';
+const url = process.env.DATABASE_URL;
+describe.skipIf(!url)('durable population execution', () => {
+  let sql: Sql, db: Database;
+  const ids = new CryptoUuidV7Generator(),
+    author = ids.next(),
+    procedures: string[] = [],
+    bindings: string[] = [];
+  const raw = utf8Bytes(
+    'account_id,status\n001,Active\n001,Active\n002,Inactive\n',
+  );
+  const declaration = {
+    schema_version: 1,
+    representation: 'csv-raw-v1',
+    source: 'accounts',
+    generation: 'g1',
+    generated_at: '2026-09-01T00:00:00.000Z',
+    effective_period: { from: '2026-01-01', to: '2026-08-31' },
+    schema: ['account_id', 'status'],
+    count: 3,
+    sha256: sha256Hex(
+      'account_id,status\n001,Active\n001,Active\n002,Inactive\n',
+    ),
+    complete: true,
+  };
+  beforeAll(async () => {
+    const target = new URL(url!);
+    if (
+      !['localhost', '127.0.0.1', '[::1]', 'postgres', 'db'].includes(
+        target.hostname,
+      ) ||
+      !/(?:^|[_-])(?:test|ci)(?:[_-]|$)/i.test(target.pathname.slice(1))
+    )
+      throw new Error(
+        'Population tests require an isolated local or CI test database',
+      );
+    sql = createSqlClient(url!, { max: 5 });
+    db = createDb(sql);
+    await sql`INSERT INTO auth_user(id,name,email) VALUES(${author},'Population test',${author + '@test.invalid'})`;
+    await sql`INSERT INTO user_role(user_id,role) VALUES(${author},'auditor')`;
+  });
+  afterAll(async () => {
+    if (!sql) return;
+    try {
+      for (const id of procedures) {
+        const runs =
+          await sql`SELECT run_id::text AS id FROM audit_run WHERE procedure_id=${id}`;
+        for (const r of runs) {
+          await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${r.id}`;
+          await sql`DELETE FROM population_row WHERE run_id=${r.id}`;
+          await sql`DELETE FROM population_snapshot WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_gate_check WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_result WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_evidence_integrity WHERE run_id=${r.id}`;
+          await sql`DELETE FROM run_evidence_package WHERE run_id=${r.id}`;
+          await sql`DELETE FROM population_evidence WHERE run_id=${r.id}`;
+          await sql`DELETE FROM population_execution WHERE run_id=${r.id}`;
+          await sql`DELETE FROM audit_events WHERE aggregate_id=${r.id}`;
+          await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${r.id}`;
+          await sql`DELETE FROM run_initiation_request WHERE run_id=${r.id} OR refused_run_id=${r.id}`;
+        }
+        await sql`DELETE FROM audit_run WHERE procedure_id=${id}`;
+        await sql`DELETE FROM procedure_version WHERE procedure_id=${id}`;
+        await sql`DELETE FROM procedure WHERE procedure_id=${id}`;
+      }
+      for (const id of bindings)
+        await sql`DELETE FROM population_source_binding WHERE binding_id=${id}`;
+      await sql`DELETE FROM auth_user WHERE id=${author}`;
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  });
+  async function seed(
+    options: {
+      period?: { from: string; to: string };
+      withDate?: boolean;
+      agentDriven?: boolean;
+    } = {},
+  ) {
+    const fields = {
+      kind: 'versioned-file' as const,
+      location: 'https://synthetic.invalid/accounts.csv',
+      declaredSchema: options.withDate
+        ? ['account_id', 'status', 'date']
+        : ['account_id', 'status'],
+      sensitiveFields: [],
+      declaredCountMechanism: 'cover-sheet' as const,
+    };
+    const registration = {
+      registrationId: ids.next(),
+      displayName: 'AccessGate',
+      kind: options.agentDriven ? ('web' as const) : ('api' as const),
+      allowedOrigins: ['https://synthetic.invalid'],
+      applicationIdentity: '',
+      credentialRef: 'vault://synthetic/access',
+      permittedActions: options.agentDriven
+        ? (['navigate', 'read-attribute'] as const)
+        : (['list-records', 'read-attribute'] as const),
+      attributeLabelPatterns: ['Account'],
+      secondaryKey: '',
+    };
+    const inputs = {
+      ...initialDraftPopulation('P-2'),
+      ...initialDraftCompliance('P-2'),
+      ...initialDraftEvidence('P-2'),
+      templateId: 'P-2' as const,
+      controlName: 'Population integration',
+      sections: initialDraftSections('P-2'),
+      scope: 'All accounts',
+      period: { from: '2026-08-01', to: '2026-08-31' },
+      sourceSnapshot: {
+        bindingId: ids.next(),
+        displayName: 'Accounts',
+        digest: bindingDigest(fields),
+        contract: bindingDigestEnvelope(fields),
+      },
+      schedule: {
+        frequency: 'once' as const,
+        startTime: '00:00',
+        periodDerivationRule: 'explicit-period' as const,
+      },
+      targets: [
+        snapshotFromRegistration({
+          ...registration,
+          digest: registrationDigest(registration),
+        }),
+      ],
+      instructions: options.agentDriven
+        ? [
+            {
+              registrationId: registration.registrationId,
+              text: 'Read account status.',
+            },
+          ]
+        : [],
+      ...(options.withDate
+        ? {
+            inclusionRule: {
+              schemaVersion: 1 as const,
+              all: [{ column: 'date', kind: 'within-period' as const }],
+            },
+          }
+        : {}),
+    };
+    bindings.push(inputs.sourceSnapshot.bindingId);
+    await sql`INSERT INTO population_source_binding(binding_id,display_name,kind,location,declared_schema,declared_count_mechanism,digest) VALUES (${inputs.sourceSnapshot.bindingId},'Accounts',${fields.kind},${fields.location},${fields.declaredSchema},${fields.declaredCountMechanism},${inputs.sourceSnapshot.digest})`;
+    const row = activeRunVersion(ids.next(), ids.next(), author, inputs);
+    procedures.push(row.procedureId);
+    await new PostgresProceduresUnitOfWork(db).execute(async (c) => {
+      await c.procedures.insertProcedure(row);
+      await c.procedures.insertVersion(row);
+    });
+    const started = await initiateRun(
+      {
+        roles: new DrizzleRoleRepository(db),
+        unitOfWork: new PostgresRunsUnitOfWork(db),
+        ids,
+        clock: new SystemClock(),
+      },
+      {
+        session: { userId: author, sessionId: author },
+        request: {
+          procedureId: row.procedureId,
+          period: options.period ?? inputs.period,
+          requestToken: ids.next(),
+        },
+      },
+    );
+    if (!started.ok) throw new Error(started.reason);
+    const run = (await new DrizzleRunRepository(db).findRun(started.runId))!;
+    return {
+      schemaVersion: 1 as const,
+      runId: run.runId,
+      correlationId: run.correlationId,
+    };
+  }
+  function dependencies(
+    acquisition: PopulationAcquisitionPort = {
+      acquire: async () => ({ bytes: raw, mediaType: 'text/csv', declaration }),
+    },
+  ) {
+    const objects = new Map<string, Uint8Array>();
+    const store: EvidenceStore = {
+      read: async (key) => objects.get(key) ?? null,
+      putIfAbsent: async (key, bytes) => {
+        if (objects.has(key) && String(objects.get(key)) !== String(bytes))
+          throw new PopulationAcquisitionError('integrity');
+        objects.set(key, bytes);
+      },
+    };
+    return {
+      repository: new PostgresPopulationRepository(db),
+      acquisition,
+      store,
+      clock: new SystemClock(),
+      ids,
+      objects,
+    };
+  }
+
+  it('uses the approved binding and Run period without changing frozen plan bytes', async () => {
+    const period = { from: '2026-07-01', to: '2026-07-31' };
+    const job = await seed({ period, withDate: true });
+    const run = (await new DrizzleRunRepository(db).findRun(job.runId))!;
+    const before =
+      await sql`SELECT compiled_plan::text, frozen_review::text FROM procedure_version WHERE version_id=${run.versionId}`;
+    const bindingId = bindings[bindings.length - 1]!;
+    const changed = {
+      kind: 'versioned-file' as const,
+      location: 'https://synthetic.invalid/replacement.csv',
+      declaredSchema: ['account_id', 'status', 'date'],
+      sensitiveFields: [],
+      declaredCountMechanism: 'cover-sheet' as const,
+    };
+    await sql`UPDATE population_source_binding SET location=${changed.location},digest=${bindingDigest(changed)} WHERE binding_id=${bindingId}`;
+    const text =
+      'account_id,status,date\n001,Active,2026-07-15\n002,Active,2026-08-15\n';
+    let calls = 0;
+    const deps = dependencies({
+      acquire: async (source, actualPeriod) => {
+        calls++;
+        expect(source.bindingId).toBe(bindingId);
+        expect(source.contract.location).toBe(
+          'https://synthetic.invalid/accounts.csv',
+        );
+        expect(source.digest).not.toBe(bindingDigest(changed));
+        expect(actualPeriod).toEqual(period);
+        return {
+          bytes: utf8Bytes(text),
+          mediaType: 'text/csv',
+          declaration: {
+            ...declaration,
+            schema: ['account_id', 'status', 'date'],
+            count: 2,
+            sha256: sha256Hex(text),
+          },
+        };
+      },
+    });
+    await acquirePopulation(deps, job);
+    expect(calls).toBe(1);
+    expect(
+      (await deps.repository.readPopulation(job.runId))?.summary,
+    ).toMatchObject({ included: 1, excluded: 1, indeterminate: 0 });
+    expect(
+      await sql`SELECT ordinal,disposition FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`,
+    ).toEqual([
+      { ordinal: 1, disposition: 'included' },
+      { ordinal: 2, disposition: 'excluded' },
+    ]);
+    expect(
+      await sql`SELECT compiled_plan::text, frozen_review::text FROM procedure_version WHERE version_id=${run.versionId}`,
+    ).toEqual(before);
+  });
+  it('enforces the durable Run timeout after restart without making another acquisition', async () => {
+    const job = await seed(),
+      deps = dependencies();
+    let calls = 0;
+    deps.acquisition = {
+      acquire: async () => {
+        calls++;
+        throw new PopulationAcquisitionError('transport');
+      },
+    };
+    await acquirePopulation(deps, job);
+    expect(calls).toBe(1);
+    await sql`UPDATE population_execution SET started_at=now()-interval '3601 seconds' WHERE run_id=${job.runId}`;
+    expect(
+      await acquirePopulation(
+        { ...deps, repository: new PostgresPopulationRepository(db) },
+        job,
+      ),
+    ).toEqual({ retry: false });
+    expect(calls).toBe(1);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(
+      'INCONCLUSIVE',
+    );
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({
+      status: 'TERMINAL',
+      diagnostic: 'run-time-limit',
+    });
+  });
+  it('ACQUIRES the population of an agent plan, whose workspace step precedes it', async () => {
+    // This asserted a REFUSAL until Story 4.2. `acquirePopulation` read `sessionSteps[0]`
+    // literally, and the compiler emits `create-workspace` FIRST whenever a Target is
+    // agent-driven — so every agent Run was refused `unsupported-frozen-plan` before
+    // anything could sign in. `populationSessionStep` is where the compiler's own ordering
+    // now lives, and the refusal moved to the phase that actually cannot proceed.
+    const job = await seed({ agentDriven: true }),
+      deps = dependencies();
+    let calls = 0;
+    await deps.repository.transaction(job.runId, async (context) => {
+      const plan = await context.frozenPlan();
+      expect(plan?.sessionSteps[0]?.action).toBe('create-workspace');
+      expect(plan?.sessionSteps[1]?.action).toBe('acquire-population');
+    });
+    deps.acquisition = {
+      acquire: async () => {
+        calls++;
+        return { bytes: raw, mediaType: 'text/csv', declaration };
+      },
+    };
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect(calls).toBe(1);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUNNING');
+    const view = await deps.repository.readPopulation(job.runId);
+    expect(view).toMatchObject({ status: 'POPULATION_READY', diagnostic: null });
+    // The step id is the FROZEN one, taken from where the compiler PUT it rather than from
+    // position 0: `create-workspace` occupies `session-1` in an agent plan.
+    await deps.repository.transaction(job.runId, async (context) => {
+      expect(context.checkpoint?.stepId).toBe('session-2');
+    });
+  });
+  it('registers exact bytes, duplicate rows, counts and each check in one durable checkpoint', async () => {
+    const job = await seed(),
+      deps = dependencies();
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    const view = await deps.repository.readPopulation(job.runId);
+    expect(view?.status).toBe('POPULATION_READY');
+    expect(view?.summary).toMatchObject({
+      included: 2,
+      excluded: 1,
+      indeterminate: 0,
+    });
+    expect(deps.objects.get(`population/${job.runId}/raw`)).toEqual(raw);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(
+      'RUNNING',
+    );
+    expect(
+      await new PostgresAuditChainReader(db).verify(job.runId),
+    ).toMatchObject({ valid: true });
+    const events =
+      await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId}`;
+    await acquirePopulation(deps, job);
+    expect(
+      await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId}`,
+    ).toHaveLength(events.length);
+  });
+  it('retains raw evidence and explicit failed checks after declaration mismatch', async () => {
+    const job = await seed(),
+      deps = dependencies({
+        acquire: async () => ({
+          bytes: raw,
+          mediaType: 'text/csv',
+          declaration: { ...declaration, count: 4 },
+        }),
+      });
+    await acquirePopulation(deps, job);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(
+      'INCONCLUSIVE',
+    );
+    const view = await deps.repository.readPopulation(job.runId);
+    expect(view?.evidence?.rawDigest).toBe(declaration.sha256);
+    // Generation 32 (owner decision, 2026-09-06): BOTH numbers are stored, so a reader can
+    // see by HOW MUCH and in WHICH DIRECTION the source and the platform disagree. The
+    // stored §H verdict says only that they did.
+    expect(view?.summary).toMatchObject({ declaredCount: 4, retrievedCount: 3 });
+    expect(view?.summary?.checks.find((check) => check.name === 'declared-count')?.passed).toBe(false);
+  });
+  it('persists the declared and retrieved counts, attributable to the two frozen artifacts', async () => {
+    const job = await seed(),
+      deps = dependencies();
+    await acquirePopulation(deps, job);
+    const view = await deps.repository.readPopulation(job.runId);
+    // The declaration states 3 and the raw artifact parses to 3, so the §H row passes —
+    // and the two numbers are stored beside the verdict rather than only behind it.
+    expect(view?.summary).toMatchObject({ declaredCount: declaration.count, retrievedCount: 3 });
+    // The attribution is a REFERENCE to the reservation's own two object keys, never a
+    // second copy of `evidenceObjectKeys` and never bytes a surface read for itself: the
+    // declaration is frozen in the envelope, the rows in the raw artifact.
+    const keys = evidenceObjectKeys({ runId: job.runId, kind: 'population', scope: '' });
+    expect(view?.evidence).toMatchObject({ objectKey: keys[0], envelopeKey: keys[1] });
+    // FR-31's capture provenance, MEASURED at the registration that verified the bytes.
+    expect(view?.evidence?.captureMethod).toBe('adapter');
+    expect(view?.evidence?.captureTimeSource).toBe('registration');
+    expect(Date.parse(view!.evidence!.capturedAt!)).toBeGreaterThan(0);
+    // A redelivery re-verifies the artifact and must NOT move the instant it was captured
+    // at: re-reading bytes is not re-capturing them.
+    await acquirePopulation(deps, job);
+    expect((await deps.repository.readPopulation(job.runId))?.evidence?.capturedAt).toBe(view!.evidence!.capturedAt);
+    // The retrieved count is pinned to the dispositions by the database, so a row cannot
+    // claim to have retrieved a number its own partition contradicts.
+    await expect(
+      sql`UPDATE population_snapshot SET retrieved_count = retrieved_count + 1 WHERE run_id=${job.runId}`,
+    ).rejects.toThrow(/population_snapshot_retrieved/);
+    await expect(
+      sql`UPDATE population_snapshot SET declared_count = -1 WHERE run_id=${job.runId}`,
+    ).rejects.toThrow(/population_snapshot_counts/);
+  });
+  it('records no declared count when the declaration states none this build can store', async () => {
+    // Never defaulted to the retrieved count: a declaration that stated nothing is a
+    // different fact from one that stated the right number, and writing the retrieved
+    // count here would make every unreconciled population look reconciled.
+    const job = await seed(),
+      deps = dependencies({
+        acquire: async () => ({
+          bytes: raw,
+          mediaType: 'text/csv',
+          declaration: { ...declaration, count: 3.5 },
+        }),
+      });
+    await acquirePopulation(deps, job);
+    expect((await deps.repository.readPopulation(job.runId))?.summary).toMatchObject({
+      declaredCount: null,
+      retrievedCount: 3,
+    });
+  });
+  it('persists four attempts across fresh handlers and refuses a mismatched queued identity', async () => {
+    const job = await seed();
+    let calls = 0;
+    const deps = dependencies({
+      acquire: async () => {
+        calls++;
+        throw new PopulationAcquisitionError('transport');
+      },
+    });
+    await acquirePopulation(deps, { ...job, correlationId: ids.next() });
+    expect(calls).toBe(0);
+    for (let n = 0; n < 4; n++)
+      await acquirePopulation(
+        { ...deps, repository: new PostgresPopulationRepository(db) },
+        job,
+      );
+    expect(calls).toBe(4);
+    expect((await deps.repository.readPopulation(job.runId))?.attempts).toBe(4);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(
+      'RUN_FAILED',
+    );
+  });
+  it('recovers uploaded envelope without refetching and detects envelope tamper', async () => {
+    const job = await seed(),
+      deps = dependencies();
+    const original = deps.store.putIfAbsent;
+    let fail = true;
+    deps.store.putIfAbsent = async (key, bytes, ms) => {
+      await original(key, bytes, ms);
+      if (key.endsWith('acquisition-v1') && fail) {
+        fail = false;
+        throw new PopulationAcquisitionError('transport');
+      }
+    };
+    await acquirePopulation(deps, job);
+    deps.acquisition = {
+      acquire: async () => {
+        throw new Error('Must not refetch');
+      },
+    };
+    await acquirePopulation(deps, job);
+    expect((await deps.repository.readPopulation(job.runId))?.status).toBe(
+      'POPULATION_READY',
+    );
+    const other = await seed(),
+      bad = dependencies();
+    bad.store.putIfAbsent = async (key, bytes, ms) => {
+      await original(key, bytes, ms);
+      bad.objects.set(key, bytes);
+      if (key.endsWith('acquisition-v1'))
+        throw new PopulationAcquisitionError('transport');
+    };
+    await acquirePopulation(bad, other);
+    bad.objects.set(
+      `population/${other.runId}/acquisition-v1`,
+      utf8Bytes('{}'),
+    );
+    await acquirePopulation(bad, other);
+    expect(
+      (await new DrizzleRunRepository(db).findRun(other.runId))?.state,
+    ).toBe('RUN_FAILED');
+  });
+  it('rejects a live duplicate claim and resumes an abandoned lease', async () => {
+    const job = await seed();
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((r) => (enter = r)),
+      held = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const deps = dependencies({
+      acquire: async () => {
+        calls++;
+        enter();
+        await held;
+        return { bytes: raw, mediaType: 'text/csv', declaration };
+      },
+    });
+    const first = acquirePopulation(deps, job);
+    await entered;
+    try {
+      expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+      expect(calls).toBe(1);
+    } finally {
+      release();
+    }
+    await first;
+    const other = await seed(),
+      resume = dependencies();
+    await resume.repository.transaction(other.runId, async (c) => {
+      const now = new Date(Date.now() - 130000).toISOString();
+      await c.save(
+        {
+          revision: 1,
+          status: 'ACQUIRING',
+          attempts: 1,
+          startedAt: now,
+          attemptStartedAt: now,
+          leaseUntil: now,
+          evidenceRequired: true,
+          evidenceId: ids.next(),
+          objectKey: `population/${other.runId}/raw`,
+          envelopeKey: `population/${other.runId}/acquisition-v1`,
+          rawDigest: null,
+          envelopeDigest: null,
+          size: null,
+          diagnostic: null,
+          stepId: 'session-1',
+          attemptId: ids.next(),
+          // A reservation has captured nothing; the provenance is stamped at registration.
+          capturedAt: null,
+          captureMethod: null,
+          captureTimeSource: null,
+        },
+        'RUNNING',
+      );
+    });
+    expect(await resume.repository.recoverableRunIds(100)).toContain(
+      other.runId,
+    );
+    await acquirePopulation(resume, other);
+    expect(
+      (await resume.repository.readPopulation(other.runId))?.attempts,
+    ).toBe(2);
+  });
+  it('rolls back rows, Evidence registration and checkpoint when Timeline fails, then recovers original bytes', async () => {
+    const job = await seed(),
+      deps = dependencies(),
+      repository = deps.repository;
+    let fail = true;
+    const wrapped = {
+      recoverableRunIds: (limit: number) => repository.recoverableRunIds(limit),
+      transaction: <T>(
+        id: string,
+        work: (
+          context: import('@intellifin/application').PopulationExecutionContext,
+        ) => Promise<T>,
+      ) =>
+        repository.transaction(id, (c) =>
+          work({
+            ...c,
+            auditEvents: {
+              append: async (e) => {
+                if (fail && e.payload['diagnostic'] === 'population-ready') {
+                  fail = false;
+                  throw new Error('Injected rollback');
+                }
+                return c.auditEvents.append(e);
+              },
+            },
+          }),
+        ),
+    };
+    await acquirePopulation({ ...deps, repository: wrapped }, job);
+    expect(
+      await sql`SELECT * FROM population_snapshot WHERE run_id=${job.runId}`,
+    ).toHaveLength(0);
+    expect(
+      (await repository.readPopulation(job.runId))?.evidence?.rawDigest,
+    ).toBeNull();
+    await acquirePopulation(deps, job);
+    expect((await repository.readPopulation(job.runId))?.status).toBe(
+      'POPULATION_READY',
+    );
+  });
+
+  it.each(['success', 'failure'] as const)('ignores stale %s after another handler takes over the lease', async outcome => {
+    const job = await seed(), deps = dependencies();
+    let entered!: () => void, release!: () => void, enteredNew!: () => void, releaseNew!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const startedNew = new Promise<void>(resolve => { enteredNew = resolve; });
+    const heldNew = new Promise<void>(resolve => { releaseNew = resolve; });
+    let newer: Promise<{ retry: boolean }> | undefined;
+    const old = acquirePopulation({ ...deps, acquisition: { acquire: async () => {
+      entered(); await held;
+      if (outcome === 'failure') throw new PopulationAcquisitionError('transport');
+      return { bytes: raw, mediaType: 'text/csv', declaration };
+    } } }, job);
+    await started;
+    try {
+      await sql`UPDATE population_execution SET lease_until=now()-interval '1 second' WHERE run_id=${job.runId}`;
+      newer = acquirePopulation({ ...deps, acquisition: { acquire: async () => {
+        enteredNew(); await heldNew;
+        return { bytes: raw, mediaType: 'text/csv', declaration };
+      } } }, job);
+      await startedNew;
+      const before = await sql`SELECT * FROM population_execution WHERE run_id=${job.runId}`;
+      const events = await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} ORDER BY sequence`;
+      // Both attempts are live. Status alone cannot reject the old completion;
+      // this interleaving specifically requires the revision/ownership guard.
+      expect(before[0]).toMatchObject({ revision: 2, attempts: 2, status: 'ACQUIRING' });
+      release();
+      expect(await old).toEqual({ retry: false });
+      expect(await sql`SELECT * FROM population_execution WHERE run_id=${job.runId}`).toEqual(before);
+      expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} ORDER BY sequence`).toEqual(events);
+      expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUNNING');
+      expect(await sql`SELECT ordinal FROM population_row WHERE run_id=${job.runId}`).toHaveLength(0);
+      releaseNew();
+      expect(await newer).toEqual({ retry: false });
+      expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'POPULATION_READY', attempts: 2 });
+      expect(await sql`SELECT ordinal FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual([{ ordinal: 1 }, { ordinal: 2 }, { ordinal: 3 }]);
+    } finally { release(); releaseNew(); await old; await newer; }
+  });
+
+  it('pages all reasons once in source order with included rows interspersed', async () => {
+    const job = await seed();
+    const records = Array.from({ length: 123 }, (_, index) => ({ ordinal: index + 1, status: index % 3 === 0 ? 'Active' : index % 3 === 1 ? 'Inactive' : '' }));
+    const text = 'account_id,status\n' + records.map(row => `${row.ordinal},${row.status}\n`).join('');
+    const deps = dependencies({ acquire: async () => ({ bytes: utf8Bytes(text), mediaType: 'text/csv', declaration: { ...declaration, count: records.length, sha256: sha256Hex(text) } }) });
+    await acquirePopulation(deps, job);
+    const expected = records.filter(row => row.status !== 'Active').map(row => row.ordinal);
+    const first = await deps.repository.readPopulation(job.runId);
+    expect(first?.summary).toMatchObject({ included: 41, excluded: 41, indeterminate: 41 });
+    expect(first?.rows.map(row => row.ordinal)).toEqual(expected.slice(0, 50));
+    expect(first?.next).toBe(expected[49]);
+    const second = await deps.repository.readPopulation(job.runId, first!.next!);
+    expect(second?.rows.map(row => row.ordinal)).toEqual(expected.slice(50));
+    expect(second?.next).toBeNull();
+    expect([...first!.rows, ...second!.rows].map(row => row.disposition)).toEqual(expected.map(ordinal => ordinal % 3 === 2 ? 'excluded' : 'indeterminate'));
+    expect([...first!.rows, ...second!.rows].every(row => row.reasons.length > 0)).toBe(true);
+  });
+
+  it.each(['raw', 'acquisition-v1'] as const)('detects registered %s tamper on ready redelivery without overwriting evidence', async suffix => {
+    const job = await seed(), deps = dependencies();
+    await acquirePopulation(deps, job);
+    const evidence = await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`;
+    const rows = await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`;
+    const key = `population/${job.runId}/${suffix}`, damaged = utf8Bytes('damaged');
+    deps.objects.set(key, damaged);
+    let acquisitions = 0;
+    deps.acquisition = { acquire: async () => { acquisitions++; throw new Error('Must not reacquire'); } };
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect(acquisitions).toBe(0);
+    expect(deps.objects.get(key)).toEqual(damaged);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUN_FAILED');
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'TERMINAL', attempts: 2, diagnostic: 'population-integrity-failed' });
+    expect(await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`).toEqual(evidence);
+    expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual(rows);
+  });
+
+  it('rolls back a completion that reaches the overall deadline while recording its events', async () => {
+    const job = await seed(), deps = dependencies();
+    const base = Date.now(); let now = base;
+    const clock = { now: () => new Date(now) };
+    await acquirePopulation({ ...deps, clock, acquisition: { acquire: async () => { throw new PopulationAcquisitionError('transport'); } } }, job);
+    now = base + 3_599_000;
+    const repository = {
+      recoverableRunIds: (limit: number) => deps.repository.recoverableRunIds(limit),
+      transaction: <T>(id: string, work: (context: import('@intellifin/application').PopulationExecutionContext) => Promise<T>) => deps.repository.transaction(id, context => work({
+        ...context, auditEvents: { append: async event => {
+          const result = await context.auditEvents.append(event);
+          if (event.payload['diagnostic'] === 'population-ready') now = base + 3_600_000;
+          return result;
+        } },
+      })),
+    };
+    expect(await acquirePopulation({ ...deps, clock, repository }, job)).toEqual({ retry: false });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('INCONCLUSIVE');
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'TERMINAL', attempts: 2, evidence: { rawDigest: null } });
+    expect(await sql`SELECT * FROM population_snapshot WHERE run_id=${job.runId}`).toHaveLength(0);
+    expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId}`).toHaveLength(0);
+    expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='population-ready'`).toHaveLength(0);
+    expect(deps.objects.get(`population/${job.runId}/raw`)).toEqual(raw);
+  });
+
+  /* --------------------------------------------------------------- Story 3.5 --- */
+
+  it('seals the package on the terminal transition and names its one open reservation', async () => {
+    const job = await seed();
+    const deps = dependencies({
+      acquire: async () => {
+        throw new PopulationAcquisitionError('contract');
+      },
+    });
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUN_FAILED');
+
+    const [seal] =
+      await sql`SELECT state,run_state,required_total,registered,missing_required,abandoned FROM run_evidence_package WHERE run_id=${job.runId}`;
+    // The population is required, its upload never completed, and the package says so.
+    expect(seal).toMatchObject({ state: 'INCOMPLETE', run_state: 'RUN_FAILED', required_total: 1, registered: 0 });
+    const raw = `population/${job.runId}/raw`;
+    expect((seal!.missing_required as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    expect((seal!.abandoned as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    expect((await sql`SELECT state,raw_digest FROM population_evidence WHERE run_id=${job.runId}`)[0]).toMatchObject({
+      state: 'ABANDONED',
+      raw_digest: null,
+    });
+    const [event] =
+      await sql`SELECT payload FROM audit_events WHERE aggregate_id=${job.runId} AND event_type='lifecycle.evidence-package-sealed'`;
+    expect(event!.payload).toMatchObject({ seal: 'INCOMPLETE', runState: 'RUN_FAILED' });
+  });
+
+  /**
+   * Story 3.10. The worker honours a recorded cancellation at its own claim boundary.
+   *
+   * A `RUNNING` Run is held by a worker, so `CancelRun` records the request and performs
+   * nothing. This is the other half: the next claim reads the request from the Run state
+   * its own transaction just read, stops before making any acquisition, and commits the
+   * `CANCELED` transition with the Result and the sealed package.
+   */
+  it('stops at the claim boundary when a cancellation is recorded, and acquires nothing', async () => {
+    const job = await seed();
+    let acquisitions = 0;
+    const deps = dependencies({
+      acquire: async () => {
+        acquisitions += 1;
+        return { bytes: raw, mediaType: 'text/csv', declaration };
+      },
+    });
+    // What `CancelRun` writes for a Run a worker owns: the marker and nothing else.
+    await sql`UPDATE audit_run SET state='RUNNING',cancel_requested_at=now(),cancel_requested_by=${author},cancel_requested_session='browser-session',cancel_reason='Wrong period.' WHERE run_id=${job.runId}`;
+
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+
+    expect(acquisitions).toBe(0);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('CANCELED');
+    expect(await sql`SELECT outcome,outcome_row,run_state FROM run_result WHERE run_id=${job.runId}`)
+      .toMatchObject([{ outcome: 'CANCELED', outcome_row: 'canceled', run_state: 'CANCELED' }]);
+    expect(await sql`SELECT run_state FROM run_evidence_package WHERE run_id=${job.runId}`).toMatchObject([{ run_state: 'CANCELED' }]);
+    // Nothing was acquired, so nothing was reserved either.
+    expect(await sql`SELECT run_id FROM population_evidence WHERE run_id=${job.runId}`).toHaveLength(0);
+    const canceled = await sql`SELECT actor_id,session_id,payload FROM audit_events WHERE aggregate_id=${job.runId} AND event_type='lifecycle.run-canceled'`;
+    expect(canceled).toHaveLength(1);
+    expect(canceled[0]).toMatchObject({ actor_id: author, session_id: 'browser-session', payload: { priorState: 'RUNNING', state: 'CANCELED', reason: 'Wrong period.', performedBy: 'worker' } });
+    // A redelivery of the same job changes nothing: the Run is terminal and the claim
+    // refuses it, so the outcome stays the one that was computed exactly once.
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect(await sql`SELECT count(*)::int AS c FROM run_result WHERE run_id=${job.runId}`).toMatchObject([{ c: 1 }]);
+    expect(await sql`SELECT count(*)::int AS c FROM audit_events WHERE aggregate_id=${job.runId} AND event_type='lifecycle.run-canceled'`).toMatchObject([{ c: 1 }]);
+  });
+
+  it('preserves an already frozen population and stops before the next stage', async () => {
+    const job = await seed();
+    const deps = dependencies();
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    const [before] = await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`;
+    expect(before).toMatchObject({ state: 'REGISTERED' });
+    await sql`UPDATE audit_run SET cancel_requested_at=now(),cancel_requested_by=${author},cancel_requested_session='browser-session',cancel_reason='Enough.' WHERE run_id=${job.runId}`;
+
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('CANCELED');
+    // Evidence already registered is preserved exactly as it stands.
+    expect(await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`).toEqual([before]);
+    expect(await sql`SELECT status,diagnostic FROM population_execution WHERE run_id=${job.runId}`).toMatchObject([{ status: 'TERMINAL', diagnostic: 'canceled' }]);
+    expect(await sql`SELECT state,registered FROM run_evidence_package WHERE run_id=${job.runId}`).toMatchObject([{ state: 'SEALED', registered: 1 }]);
+  });
+
+  it('preserves a partial reservation on cancellation and names it on the seal', async () => {
+    const job = await seed();
+    let attempts = 0;
+    const deps = dependencies({
+      acquire: async () => {
+        attempts += 1;
+        throw new PopulationAcquisitionError('transport');
+      },
+    });
+    // One transient failure: the reservation exists, nothing was ever registered.
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: true });
+    expect(await sql`SELECT state,raw_digest FROM population_evidence WHERE run_id=${job.runId}`).toMatchObject([{ state: 'RESERVED', raw_digest: null }]);
+    await sql`UPDATE audit_run SET cancel_requested_at=now(),cancel_requested_by=${author},cancel_requested_session='browser-session',cancel_reason='Stop.' WHERE run_id=${job.runId}`;
+
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+
+    // No further acquisition was attempted, and the reservation was NOT removed.
+    expect(attempts).toBe(1);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('CANCELED');
+    const [seal] = await sql`SELECT state,required_total,registered,missing_required,abandoned FROM run_evidence_package WHERE run_id=${job.runId}`;
+    expect(seal).toMatchObject({ state: 'INCOMPLETE', required_total: 1, registered: 0 });
+    const raw = `population/${job.runId}/raw`;
+    expect((seal!.abandoned as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    expect((seal!.missing_required as { objectKey: string }[]).map(entry => entry.objectKey)).toEqual([raw]);
+    // The row is still there, marked as what it is: abandoned, never deleted.
+    expect(await sql`SELECT state FROM population_evidence WHERE run_id=${job.runId}`).toMatchObject([{ state: 'ABANDONED' }]);
+  });
+
+  it('names the population reservation from the Run and freezes both objects it addresses', async () => {
+    const job = await seed();
+    const deps = dependencies();
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    const reservation = { runId: job.runId, kind: 'population' as const, scope: '' };
+    const [row] =
+      await sql`SELECT evidence_id::text AS id,object_key,envelope_key,required,state FROM population_evidence WHERE run_id=${job.runId}`;
+    expect(row).toMatchObject({ id: evidenceIdFor(reservation), required: true, state: 'REGISTERED' });
+    expect([row!.object_key, row!.envelope_key]).toEqual(evidenceObjectKeys(reservation));
+    // Both objects are really in the store: the envelope goes through the same
+    // reserve-upload-verify sequence the raw bytes do.
+    for (const key of evidenceObjectKeys(reservation)) expect(deps.objects.get(key)).toBeDefined();
+  });
+
+  it.each(['\u0000', '\ud800'])('preserves an invalid declaration string %j while failing reconciliation', async invalid => {
+    const job = await seed();
+    const rejected = { ...declaration, generation: invalid };
+    const deps = dependencies({ acquire: async () => ({ bytes: raw, mediaType: 'text/csv', declaration: rejected }) });
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('INCONCLUSIVE');
+    const view = await deps.repository.readPopulation(job.runId);
+    expect(view?.evidence?.rawDigest).toBe(declaration.sha256);
+    expect(view?.summary?.checks).toContainEqual({ name: 'declaration', passed: false });
+    expect(deps.objects.get(`population/${job.runId}/raw`)).toEqual(raw);
+    const envelope = JSON.parse(new TextDecoder().decode(deps.objects.get(`population/${job.runId}/acquisition-v1`)!));
+    expect(envelope.declaration).toBeNull();
+    expect(JSON.parse(envelope.rejectedDeclarationJson)).toEqual(rejected);
+    expect(await sql`SELECT ordinal FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual([{ ordinal: 1 }, { ordinal: 2 }, { ordinal: 3 }]);
+  });
+
+  it('records each audit check outcome independently of the final Inconclusive state', async () => {
+    const job = await seed();
+    const deps = dependencies({ acquire: async () => ({ bytes: raw, mediaType: 'text/csv', declaration: { ...declaration, count: 4 } }) });
+    await acquirePopulation(deps, job);
+    const view = await deps.repository.readPopulation(job.runId);
+    const events = await sql`SELECT outcome,payload FROM audit_events WHERE aggregate_id=${job.runId} ORDER BY sequence`;
+    expect(view?.summary?.checks.some(check => check.passed)).toBe(true);
+    expect(view?.summary?.checks.some(check => !check.passed)).toBe(true);
+    for (const check of view!.summary!.checks) {
+      const matching = events.filter(event => event.payload.diagnostic === `${check.name}:${check.passed ? 'passed' : 'failed'}`);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]).toMatchObject({ outcome: check.passed ? 'success' : 'failure', payload: { state: 'INCONCLUSIVE', evidenceId: view!.evidence!.evidenceId, rawDigest: declaration.sha256 } });
+    }
+  });
+
+  it('durably recovers a temporary ready-verification failure without reacquiring or inserting rows again', async () => {
+    const job = await seed(), deps = dependencies();
+    await acquirePopulation(deps, job);
+    const rows = await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`;
+    const evidence = await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`;
+    const snapshots = await sql`SELECT * FROM population_snapshot WHERE run_id=${job.runId}`;
+    const read = deps.store.read;
+    deps.store.read = async () => { throw new PopulationAcquisitionError('transport'); };
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: true });
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'RETRY', attempts: 2, diagnostic: 'population-verification-retry' });
+    const restarted = new PostgresPopulationRepository(db);
+    expect(await restarted.recoverableRunIds(100)).toContain(job.runId);
+    deps.store.read = read;
+    let acquisitions = 0, writes = 0;
+    deps.acquisition = { acquire: async () => { acquisitions++; throw new Error('No new acquisition'); } };
+    deps.store.putIfAbsent = async () => { writes++; throw new Error('No new objects'); };
+    expect(await acquirePopulation({ ...deps, repository: restarted }, job)).toEqual({ retry: false });
+    expect(await restarted.readPopulation(job.runId)).toMatchObject({ status: 'POPULATION_READY', attempts: 3, diagnostic: null });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUNNING');
+    expect(acquisitions).toBe(0); expect(writes).toBe(0);
+    expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual(rows);
+    expect(await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`).toEqual(evidence);
+    expect(await sql`SELECT * FROM population_snapshot WHERE run_id=${job.runId}`).toEqual(snapshots);
+    expect(await sql`SELECT outcome FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='population-evidence-reverified'`).toEqual([{ outcome: 'success' }]);
+    expect(await restarted.recoverableRunIds(100)).not.toContain(job.runId);
+  });
+
+  it('exhausts four durable attempts when registered-evidence verification keeps failing', async () => {
+    const job = await seed(), deps = dependencies();
+    await acquirePopulation(deps, job);
+    const rows = await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`;
+    let reads = 0;
+    deps.store.read = async () => { reads++; throw new PopulationAcquisitionError('transport'); };
+    for (const attempts of [2, 3, 4]) {
+      const repository = new PostgresPopulationRepository(db);
+      expect(await acquirePopulation({ ...deps, repository }, job)).toEqual({ retry: attempts < 4 });
+      expect(await repository.readPopulation(job.runId)).toMatchObject({ attempts, status: attempts < 4 ? 'RETRY' : 'TERMINAL' });
+    }
+    expect(reads).toBe(3);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUN_FAILED');
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ diagnostic: 'population-transport-failed' });
+    expect(await deps.repository.recoverableRunIds(100)).not.toContain(job.runId);
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: false });
+    expect(reads).toBe(3);
+    expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual(rows);
+  });
+
+  it('stops at the Run time limit after a successful re-verification WITHOUT discarding the population', async () => {
+    // This test used to be called "rejects ready verification when the overall deadline
+    // expires after hashing", and it pinned the OLD decision: the deadline check that ran
+    // after a SUCCESSFUL verification threw, and the failure path recorded the Run as
+    // Inconclusive, spent a durable attempt on work nobody did, and left the Result
+    // reporting a count with no artifact named. The owner's 2026-09-06 decision reverses
+    // that half: the limit is real and unchanged, and the Evidence it already acquired,
+    // stored and verified is preserved, registered and REFERENCED on the sealed Result.
+    const job = await seed(), deps = dependencies();
+    const base = Date.now();
+    await acquirePopulation({ ...deps, clock: { now: () => new Date(base) } }, job);
+    const before = (await deps.repository.readPopulation(job.runId))!;
+    const read = deps.store.read;
+    let rawReturned = false, afterReadChecks = 0, reads = 0;
+    deps.store.read = async (key, timeout) => {
+      reads++;
+      const bytes = await read(key, timeout);
+      if (key.endsWith('/raw')) rawReturned = true;
+      return bytes;
+    };
+    // The first time check after both reads is before hashing; the second is after.
+    const clock = { now: () => new Date(rawReturned && ++afterReadChecks >= 2 ? base + 3_600_000 : base + 3_599_000) };
+    expect(await acquirePopulation({ ...deps, clock }, job)).toEqual({ retry: false });
+    // Both artifacts really were re-read and re-hashed before the limit was observed.
+    expect(reads).toBe(2);
+    expect(afterReadChecks).toBeGreaterThanOrEqual(2);
+    // The limit is NOT weakened: the Run still ends Inconclusive on `run-time-limit`.
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('INCONCLUSIVE');
+    const after = (await deps.repository.readPopulation(job.runId))!;
+    expect(after).toMatchObject({ status: 'TERMINAL', diagnostic: 'run-time-limit' });
+    expect(await sql`SELECT outcome FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='run-time-limit'`).toEqual([{ outcome: 'failure' }]);
+    // Preserved: the artifact is still REGISTERED with the digests, size and capture
+    // provenance the acquisition recorded, and no attempt was spent on the limit.
+    expect(after.evidence).toEqual(before.evidence);
+    expect(after.evidence?.state).toBe('REGISTERED');
+    expect(after.attempts).toBe(before.attempts);
+    // And REFERENCED: the sealed Result names the artifact, so "Inconclusive with
+    // Evidence" is a different document from "Inconclusive with nothing".
+    const [result] = await sql<{ publication: { evidence: { state: string; registered: number; artifacts: { evidenceId: string; kind: string; objectKey: string }[] } } }[]>`
+      SELECT publication FROM run_result WHERE run_id=${job.runId}`;
+    expect(result?.publication.evidence).toMatchObject({ state: 'SEALED', registered: 1 });
+    expect(result?.publication.evidence.artifacts).toEqual([
+      { evidenceId: before.evidence!.evidenceId, kind: 'population', objectKey: before.evidence!.objectKey },
+    ]);
+    expect(await sql`SELECT state FROM run_evidence_package WHERE run_id=${job.runId}`).toEqual([{ state: 'SEALED' }]);
+  });
+
+  it('does no new work when a redelivered ready job arrives after the Run time limit', async () => {
+    // The other half of the same decision: a timeout must not START anything. The limit is
+    // observed BEFORE any store read, so nothing is fetched, nothing is re-verified and no
+    // durable attempt is spent — and what was already frozen is still there.
+    const job = await seed(), deps = dependencies();
+    const base = Date.now();
+    await acquirePopulation({ ...deps, clock: { now: () => new Date(base) } }, job);
+    const before = (await deps.repository.readPopulation(job.runId))!;
+    let reads = 0, acquisitions = 0;
+    const read = deps.store.read;
+    deps.store.read = async (key, timeout) => { reads++; return read(key, timeout); };
+    const acquire = deps.acquisition.acquire;
+    deps.acquisition = { acquire: async (...args) => { acquisitions++; return acquire(...args); } };
+    expect(await acquirePopulation({ ...deps, clock: { now: () => new Date(base + 3_600_001) } }, job)).toEqual({ retry: false });
+    expect(reads).toBe(0);
+    expect(acquisitions).toBe(0);
+    const after = (await deps.repository.readPopulation(job.runId))!;
+    expect(after).toMatchObject({ status: 'TERMINAL', diagnostic: 'run-time-limit', attempts: before.attempts });
+    expect(after.evidence).toEqual(before.evidence);
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('INCONCLUSIVE');
+    // The snapshot the successful acquisition wrote is untouched: the counts an auditor
+    // reads are the ones the population really had.
+    expect(after.summary).toEqual(before.summary);
+  });
+
+  it.each(['recover', 'exhaust'] as const)('rolls back reverify Timeline failure and can %s without changing registered rows', async disposition => {
+    const job = await seed(), deps = dependencies();
+    await acquirePopulation(deps, job);
+    const rows = await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`;
+    const evidence = await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`;
+    const read = deps.store.read;
+    deps.store.read = async () => { throw new PopulationAcquisitionError('transport'); };
+    expect(await acquirePopulation(deps, job)).toEqual({ retry: true });
+    deps.store.read = read;
+    const repository = {
+      recoverableRunIds: (limit: number) => deps.repository.recoverableRunIds(limit),
+      transaction: <T>(id: string, work: (context: import('@intellifin/application').PopulationExecutionContext) => Promise<T>) => deps.repository.transaction(id, context => work({
+        ...context, auditEvents: { append: async event => {
+          if (event.payload['diagnostic'] === 'population-evidence-reverified') throw new Error('Injected Timeline transaction failure');
+          return context.auditEvents.append(event);
+        } },
+      })),
+    };
+    expect(await acquirePopulation({ ...deps, repository }, job)).toEqual({ retry: true });
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: 'RETRY', attempts: 3, diagnostic: 'population-verification-retry' });
+    expect(await deps.repository.recoverableRunIds(100)).toContain(job.runId);
+    expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='population-evidence-reverified'`).toHaveLength(0);
+    expect(await acquirePopulation({ ...deps, repository: disposition === 'recover' ? new PostgresPopulationRepository(db) : repository }, job)).toEqual({ retry: false });
+    expect(await deps.repository.readPopulation(job.runId)).toMatchObject({ status: disposition === 'recover' ? 'POPULATION_READY' : 'TERMINAL', attempts: 4 });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe(disposition === 'recover' ? 'RUNNING' : 'RUN_FAILED');
+    expect(await sql`SELECT * FROM population_row WHERE run_id=${job.runId} ORDER BY ordinal`).toEqual(rows);
+    expect(await sql`SELECT * FROM population_evidence WHERE run_id=${job.runId}`).toEqual(evidence);
+    expect(await sql`SELECT * FROM audit_events WHERE aggregate_id=${job.runId} AND payload->>'diagnostic'='population-evidence-reverified'`).toHaveLength(disposition === 'recover' ? 1 : 0);
+  });
+});

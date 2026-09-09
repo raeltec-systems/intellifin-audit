@@ -4,10 +4,52 @@ import {
   COMPLIANCE_COMPILER_VERSION, COMPLIANCE_SCHEMA_VERSION, COMPLIANCE_LIMITS, COMPLIANCE_MESSAGES,
   addComplianceDecimals, subtractComplianceDecimals, multiplyComplianceDecimal, compareComplianceDecimals,
   complianceObject, complianceExactKeys, isComplianceText, isComplianceConfidence, complianceCanonical,
-  complianceInputFromFields,
+  complianceInputFromFields, normalizeConditionPolicy, conditionInstructionText, classifyRolePrivilege,
+  RETAINED_PRIVILEGED_ASSIGNMENT, POLICY_CONTRADICTED,
   type ComparisonOperator, type ComplianceComparison, type ComplianceCompilation, type ComplianceConditionInput,
   type CompliancePredicate, type ComplianceRule, type CompiledComplianceCondition, type DraftComplianceFields,
+  type PopulationFieldMapping,
 } from './compliance-draft.js';
+
+const CONDITION_KEYS = ['conditionId', 'text', 'applicability', 'comparison'] as const;
+const OPTIONAL_CONDITION_KEYS = ['policy', 'mapping'] as const;
+function conditionKeysAccepted(candidate: Record<string, unknown>): boolean {
+  const keys = Object.keys(candidate);
+  return (CONDITION_KEYS as readonly string[]).every((key) => Object.hasOwn(candidate, key))
+    && keys.every((key) => (CONDITION_KEYS as readonly string[]).includes(key) || (OPTIONAL_CONDITION_KEYS as readonly string[]).includes(key));
+}
+
+const COLUMN_NAME = /^[A-Za-z_][A-Za-z0-9_-]{0,127}$/;
+/**
+ * Validate and normalize a condition's population field mapping. `null` means none and is
+ * returned as `undefined` so the caller omits the key; a malformed mapping is `false`.
+ * Only a declared TIME field may be mapped, at most once, and the column is a bounded
+ * identifier — it names a declared source column, which the readiness check compares
+ * with the bound schema and the evaluator reads by exactly that name.
+ */
+export function normalizeFieldMappings(templateId: TemplateId, value: unknown): readonly PopulationFieldMapping[] | undefined | false {
+  if (value === null || value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > COMPLIANCE_LIMITS.mappings) return false;
+  const fields = COMPLIANCE_OBSERVATION_FIELDS[templateId];
+  const mappings: PopulationFieldMapping[] = [];
+  for (const entry of value) {
+    if (!complianceObject(entry) || !complianceExactKeys(entry, ['field', 'column'])) return false;
+    const field = entry['field'], column = entry['column'];
+    if (typeof field !== 'string' || !Object.hasOwn(fields, field) || fields[field] !== 'time') return false;
+    if (typeof column !== 'string' || column.length > COMPLIANCE_LIMITS.column || !COLUMN_NAME.test(column) || mappings.some((mapping) => mapping.field === field)) return false;
+    mappings.push({ field, column });
+  }
+  return mappings.sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
+}
+
+/** The version's mappings as one set, field by field; compilation refused any conflict. */
+export function complianceFieldMappings(fields: Pick<DraftComplianceFields, 'complianceConditions'>): readonly PopulationFieldMapping[] {
+  const byField = new Map<string, PopulationFieldMapping>();
+  for (const condition of fields.complianceConditions) for (const mapping of condition.mapping ?? []) {
+    if (!byField.has(mapping.field)) byField.set(mapping.field, mapping);
+  }
+  return [...byField.values()];
+}
 
 /** Only these Observation attributes exist for the shipped Template contracts. No name guessing. */
 export const COMPLIANCE_OBSERVATION_FIELDS: Readonly<Record<TemplateId, Readonly<Record<string, 'boolean' | 'decimal' | 'text' | 'time' | 'roles'>>>> = {
@@ -122,7 +164,7 @@ export function compileComplianceDraft(templateId: TemplateId, input: unknown, c
   if (!isComplianceConfidence(input['confidenceThreshold'])) return { ok: false, reason: COMPLIANCE_MESSAGES.CONFIDENCE };
   const conditions: CompiledComplianceCondition[] = [], ids = new Set<string>();
   for (const candidate of input['conditions'] as unknown[]) {
-    if (!complianceObject(candidate) || !complianceExactKeys(candidate, ['conditionId', 'text', 'applicability', 'comparison'])
+    if (!complianceObject(candidate) || !conditionKeysAccepted(candidate)
       || typeof candidate['conditionId'] !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(candidate['conditionId']) || ids.has(candidate['conditionId'])
       || !isComplianceText(candidate['text'], COMPLIANCE_LIMITS.text) || !candidate['text'].trim()
       || !isComplianceText(candidate['applicability'], COMPLIANCE_LIMITS.expression)) return { ok: false, reason: COMPLIANCE_MESSAGES.INPUT };
@@ -155,9 +197,38 @@ export function compileComplianceDraft(templateId: TemplateId, input: unknown, c
       rule = withComparison(rule, condition.comparison);
       if (!rule) return { ok: false, reason: COMPLIANCE_MESSAGES.NUMBER };
     }
+    // A policy binds ONLY an Agent-Judged condition over a Template that declares `roles`.
+    // A Rule-Classified condition already decides itself, and a policy beside one would be
+    // a second rule nobody evaluates; a Template with no roles field has nothing to
+    // classify. `null` on input means absent, and the key is OMITTED from the compiled
+    // condition when absent so every legacy row still recompiles byte for byte.
+    const policy = normalizeConditionPolicy(candidate['policy']);
+    if (policy === false) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
+    if (policy !== undefined && (rule !== null || COMPLIANCE_OBSERVATION_FIELDS[templateId][policy.rolesField] !== 'roles')) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
+    // The prose and its rendered policy are ONE instruction to the model; bound the whole,
+    // because a limit on the prose alone would let the pair exceed what the gateway accepts.
+    if (policy !== undefined && conditionInstructionText({ text: condition.text, policy }).length > COMPLIANCE_LIMITS.text) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.POLICY}` };
+    // A population field mapping is frozen on the condition that needs it (D3), omitted
+    // when absent for the same byte-for-byte reason as the policy.
+    const mapping = normalizeFieldMappings(templateId, candidate['mapping']);
+    if (mapping === false) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.MAPPING}` };
     // Preserve the authored string byte-for-byte. A blank string is an authored input;
-    // only its compiled meaning defaults to `found = true`.
-    conditions.push({ ...condition, applicabilityAst, rule, status: rule ? 'RULE' : 'AGENT_JUDGED' });
+    // only its compiled meaning defaults to `found = true`. Built key by key, never a
+    // spread of the candidate: a spread would carry a `policy: null` into the frozen row.
+    conditions.push({
+      conditionId: condition.conditionId, text: condition.text, applicability: condition.applicability, comparison: condition.comparison,
+      ...(policy === undefined ? {} : { policy }),
+      ...(mapping === undefined ? {} : { mapping }),
+      applicabilityAst, rule, status: rule ? 'RULE' : 'AGENT_JUDGED',
+    });
+  }
+  // One field, one column, across the whole version: two conditions mapping one field to
+  // two columns would be two answers to which value the rules read.
+  const mapped = new Map<string, string>();
+  for (const condition of conditions) for (const entry of condition.mapping ?? []) {
+    const existing = mapped.get(entry.field);
+    if (existing !== undefined && existing !== entry.column) return { ok: false, reason: `${condition.conditionId}: ${COMPLIANCE_MESSAGES.MAPPING}` };
+    mapped.set(entry.field, entry.column);
   }
   return { ok: true, value: { complianceSchemaVersion: COMPLIANCE_SCHEMA_VERSION, complianceCompilerVersion: COMPLIANCE_COMPILER_VERSION, complianceConditions: conditions, agentJudgedThreshold: input['confidenceThreshold'] } };
 }
@@ -215,7 +286,26 @@ export interface AgentJudgedEvaluation {
 interface Truth { readonly value: boolean | null; readonly diagnostics: readonly string[] }
 const truth = (value: boolean): Truth => ({ value, diagnostics: [] });
 const unknown = (message: string): Truth => ({ value: null, diagnostics: [message] });
-const missing = (field: string): Truth => unknown(`missing or invalid Observation field ${field}`);
+/**
+ * The prefix a diagnostic carries when a compiled condition names a value it could not read.
+ *
+ * A MISSING value, which §H's mandatory-values and coverage rows are about — not an
+ * UNNAMED one. The two are exported separately and matched separately, because the
+ * addendum gives them different rows and different repairs.
+ */
+export const MISSING_OBSERVATION_FIELD = 'missing or invalid Observation field ';
+const missing = (field: string): Truth => unknown(`${MISSING_OBSERVATION_FIELD}${field}`);
+
+/**
+ * §B, verbatim: "when a compiled condition meets an attribute value outside the set it
+ * names, the condition evaluates Unevaluated with diagnostic `rule does not name value
+ * <v>`".
+ *
+ * Exported because the Run-level Gate's §H unnamed-value row matches on it (Story 3.8). A
+ * retyped copy of this sentence inside a SQL `LIKE` is a copy that drifts silently the
+ * first time the wording changes, and the row it decides is whether a Run may conclude.
+ */
+export const RULE_DOES_NOT_NAME_VALUE = 'rule does not name value ';
 
 function numericTruth(left: string, right: string, operator: ComparisonOperator, tolerance: string): Truth {
   const difference = subtractComplianceDecimals(left, right);
@@ -250,7 +340,7 @@ function evaluatePredicate(predicate: CompliancePredicate, values: Readonly<Reco
       if (typeof value !== 'string') return missing(predicate.field);
       if (predicate.compliant.includes(value)) return truth(true);
       if (predicate.exception.includes(value)) return truth(false);
-      return unknown(`rule does not name value ${value}`);
+      return unknown(`${RULE_DOES_NOT_NAME_VALUE}${value}`);
     }
     case 'not': { const result = evaluatePredicate(predicate.expression, values); return result.value === null ? result : truth(!result.value); }
     case 'all':
@@ -288,13 +378,13 @@ function evaluateRule(rule: ComplianceRule, observation: ComplianceObservation):
     const amount = values[rule.amountField];
     if (!isRuleDecimal(amount)) return missing(rule.amountField);
     const currency = values[rule.currencyField];
-    if (currency !== 'USD') return typeof currency === 'string' ? unknown(`rule does not name value ${currency}`) : missing(rule.currencyField);
+    if (currency !== 'USD') return typeof currency === 'string' ? unknown(`${RULE_DOES_NOT_NAME_VALUE}${currency}`) : missing(rule.currencyField);
     const requiresApproval = numericTruth(amount, rule.threshold, rule.boundary === 'inclusive' ? 'gte' : 'gt', rule.tolerance).value;
     if (!requiresApproval) return truth(true); // Pure condition; never changes Population inclusion.
     if (values['found'] === false) return truth(false);
     const decision = values[rule.decisionField];
     if (decision === 'REJECTED') return truth(false);
-    if (decision !== 'APPROVED') return typeof decision === 'string' ? unknown(`rule does not name value ${decision}`) : missing(rule.decisionField);
+    if (decision !== 'APPROVED') return typeof decision === 'string' ? unknown(`${RULE_DOES_NOT_NAME_VALUE}${decision}`) : missing(rule.decisionField);
     const decided = instant(values[rule.decisionTimeField]), processed = instant(values[rule.processedTimeField]);
     const limit = values[rule.limitField];
     if (decided === null) return missing(rule.decisionTimeField);
@@ -309,7 +399,7 @@ function evaluateRule(rule: ComplianceRule, observation: ComplianceObservation):
     const permissions = new Set<string>();
     for (const role of roles as string[]) {
       const entries = matrix.entries.filter((entry) => entry.role === role);
-      if (entries.length === 0) return unknown(`rule does not name value ${role}`);
+      if (entries.length === 0) return unknown(`${RULE_DOES_NOT_NAME_VALUE}${role}`);
       if (entries.some((entry) => !Array.isArray(entry.permissions) || !entry.permissions.every((permission: unknown) => typeof permission === 'string'))) return unknown('incomplete role expansion');
       const signatures = entries.map((entry) => complianceCanonical([...new Set(entry.permissions)].sort()));
       if (new Set(signatures).size > 1) return unknown(`duplicate conflicting policy entries for ${role}`);
@@ -324,7 +414,7 @@ function evaluateRule(rule: ComplianceRule, observation: ComplianceObservation):
   if (observation.stale !== false) return unknown('observation freshness is missing or stale');
   if (!observation.baselines) return unknown('missing effective baseline');
   const entries = observation.baselines.filter((entry) => entry.parameter === parameter);
-  if (!entries.length) return unknown(`rule does not name value ${parameter}`);
+  if (!entries.length) return unknown(`${RULE_DOES_NOT_NAME_VALUE}${parameter}`);
   const effective = [];
   for (const entry of entries) {
     const from = instant(entry.effectiveFrom), to = entry.effectiveTo === null ? null : instant(entry.effectiveTo);
@@ -362,9 +452,24 @@ export function evaluateComplianceRecord(
     if (!evidenceValid) return { ...base, value: 'UNEVALUATED', diagnostics: ['missing, ambiguous, contradictory, uninspected, or unproven Evidence'] };
     if (!application.value) return { ...base, value: 'COMPLIANT', diagnostics: [] };
     if (!condition.rule) {
+      // A frozen role-privilege policy is applied BEFORE the proposal is read. Roles that
+      // cannot be read are the missing-field case; a role the policy does not name is §B's
+      // unnamed value, escalated and never guessed. Neither needs, or may receive, a model
+      // proposal (`agentJudgedNeedsProposal` says so to the producer and the registrar).
+      const classification = condition.policy === undefined ? null : classifyRolePrivilege(condition.policy, observation.values[condition.policy.rolesField]);
+      if (classification?.kind === 'unreadable') return { ...base, value: 'UNEVALUATED', diagnostics: missing(condition.policy!.rolesField).diagnostics };
+      if (classification?.kind === 'unclassified') return { ...base, value: 'UNEVALUATED', diagnostics: classification.unclassified.map((role) => `${RULE_DOES_NOT_NAME_VALUE}${role}`) };
       const evaluation = Object.hasOwn(agentEvaluations, condition.conditionId) ? agentEvaluations[condition.conditionId] : undefined;
       if (!evaluation || !['EXCEPTION', 'COMPLIANT', 'UNEVALUATED'].includes(evaluation.value) || !isComplianceConfidence(evaluation.confidence)) return { ...base, value: 'UNEVALUATED', diagnostics: [`missing Agent-Judged evaluation for ${condition.conditionId}`] };
       if (compareComplianceDecimals(evaluation.confidence, fields.agentJudgedThreshold) < 0) return { ...base, value: 'UNEVALUATED', diagnostics: [`Agent-Judged confidence for ${condition.conditionId} is below the stored threshold`] };
+      if (classification !== null && evaluation.value !== 'UNEVALUATED') {
+        // The policy is the backstop: a proposal it contradicts is Unevaluated with the
+        // contradiction named, never silently corrected into the value the policy implies —
+        // C2 stays Agent-Judged and its human-review contract stays intact.
+        const expected = classification.kind === 'privileged' ? 'EXCEPTION' : 'COMPLIANT';
+        if (evaluation.value !== expected) return { ...base, value: 'UNEVALUATED', diagnostics: [`${POLICY_CONTRADICTED}: ${evaluation.value} proposed for roles ${classification.roles.join(', ')}`] };
+        if (classification.kind === 'privileged') return { ...base, value: 'EXCEPTION', diagnostics: [`${RETAINED_PRIVILEGED_ASSIGNMENT}${classification.privileged.join(', ')}`] };
+      }
       return { ...base, value: evaluation.value, diagnostics: [] };
     }
     const result = evaluateRule(condition.rule, observation);
@@ -372,4 +477,17 @@ export function evaluateComplianceRecord(
     return { ...base, value, diagnostics: result.diagnostics };
   });
   return { value: reduceComplianceEvaluations(conditions.map((condition) => condition.value)), conditions, diagnostics: conditions.flatMap((condition) => condition.diagnostics) };
+}
+
+/**
+ * Whether an applicable Agent-Judged condition still needs a model proposal.
+ *
+ * A frozen policy can decide a condition WITHOUT the model — unreadable roles are the
+ * missing-field case and an unnamed role is escalated — and such a row must carry no
+ * proposal: the producer does not ask for one and the registrar refuses one. One
+ * predicate, shared by both, so they cannot disagree about which rows those are.
+ */
+export function agentJudgedNeedsProposal(evaluation: Pick<ComplianceConditionEvaluation, 'origin' | 'applicable' | 'diagnostics'>): boolean {
+  return evaluation.origin === 'AGENT_JUDGED' && evaluation.applicable === true
+    && !evaluation.diagnostics.some((diagnostic) => diagnostic.startsWith(MISSING_OBSERVATION_FIELD) || diagnostic.startsWith(RULE_DOES_NOT_NAME_VALUE));
 }

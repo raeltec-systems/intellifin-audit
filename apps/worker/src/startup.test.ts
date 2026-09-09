@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  loadConfig,
   SUPPORTED_SCHEMA_MAX,
   SUPPORTED_SCHEMA_RANGE,
   UnsupportedDatabaseError,
@@ -8,8 +9,11 @@ import {
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
+import { AGENT_PROMPT_VERSION } from '@intellifin/infrastructure/agent-model';
 
-import { createHeartbeatLoop, runStartupChecks, type Logger } from './startup.js';
+import { adapterExtraction, agentExecution, agentModel, agentWorkspace, createHeartbeatLoop, populationExecution, runStartupChecks, type Logger } from './startup.js';
+import { readFileSync } from 'node:fs';
+import type { AppConfig } from '@intellifin/infrastructure';
 
 interface LogLine {
   level: 'info' | 'error';
@@ -196,5 +200,280 @@ describe('createHeartbeatLoop', () => {
 
     await loop.beat();
     expect(calls()).toBe(2);
+  });
+});
+
+describe('population execution', () => {
+  const storage = {
+    EVIDENCE_S3_ENDPOINT: 'https://objects.example.test',
+    EVIDENCE_S3_REGION: 'auto',
+    EVIDENCE_S3_BUCKET: 'evidence',
+    EVIDENCE_S3_ACCESS_KEY_ID: 'key',
+    EVIDENCE_S3_SECRET_ACCESS_KEY: 'secret',
+    EVIDENCE_S3_FORCE_PATH_STYLE: true,
+  } as unknown as AppConfig;
+
+  it('is disabled, with a named reason, when no object storage is configured', () => {
+    expect(populationExecution({} as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'EVIDENCE_S3_ENDPOINT is not configured',
+    });
+  });
+
+  it('is enabled with the deployment settings when storage is configured', () => {
+    const decision = populationExecution(storage);
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.config).toMatchObject({ endpoint: 'https://objects.example.test', bucket: 'evidence' });
+  });
+
+  it('never lets missing storage stop the rest of the worker', () => {
+    // The composition root runs this check after plan derivation and recovery have
+    // started and before the heartbeat. A throw there would take derivation,
+    // notification delivery and the liveness row down with it, on a deployment whose
+    // bucket is simply not provisioned yet. The behaviour above is only half the
+    // guarantee: this asserts the composition root actually branches on it.
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const evidence = populationExecution(config);');
+    expect(main).toContain('if (evidence.enabled) {');
+    expect(main).toMatch(/Population execution disabled/);
+    // No unconditional refusal on the storage settings.
+    expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*EVIDENCE_S3/);
+    // The worker still beats: the heartbeat wiring is outside the branch.
+    expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
+  });
+
+  it('gives the post-Run Evidence integrity check a production caller', () => {
+    // `verifySealedPackage` shipped with tests and NOTHING in the product calling it, so
+    // an object deleted or altered after a Run terminated was never detected — while the
+    // Run page went on printing "Sealed. Every artifact this Run required is registered and
+    // verified" in the present tense about storage nothing re-checked. The sweep's own
+    // behaviour is proved in `evidence-integrity-sweep.test.ts`; what is proved here is
+    // that the composition root starts it, and stops it.
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('startEvidenceIntegritySweep(');
+    expect(main).toContain('verifySealedPackage({ repository: sealed, store, clock, ids }, runId)');
+    // Inside the storage branch: it reads every registered artifact out of object storage,
+    // so a deployment with no bucket has nothing for it to read.
+    const storageBranch = main.slice(main.indexOf('if (evidence.enabled) {'), main.indexOf('} else {'));
+    expect(storageBranch).toContain('startEvidenceIntegritySweep(');
+    // And stopped on shutdown, so a SIGTERM does not kill an in-flight verification.
+    expect(main).toContain('await stopIntegritySweep?.();');
+  });
+});
+
+describe('adapterExtraction', () => {
+  it('is disabled, with a named reason, when no audit credential is declared', () => {
+    // An empty manifest is not "extraction with no credentials": every Work Item would
+    // fail closed with `credential-unresolved`, which reads as a Target System problem
+    // and is not one. Say so once, at boot, where an operator can act on it.
+    expect(adapterExtraction({ CREDENTIAL_TOKENS: '{}' } as unknown as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'CREDENTIAL_TOKENS declares no audit credential',
+    });
+  });
+
+  it('is disabled, with a named reason, when no Exception fingerprint key is configured', () => {
+    // Extraction registers Observations, registration evaluates them, and an EXCEPTION
+    // evaluation writes a PERMANENT row that must carry a keyed fingerprint. Without a key
+    // there is no honest fingerprint, so the stage is off rather than the row being
+    // written with a value nobody can later check.
+    expect(
+      adapterExtraction({
+        CREDENTIAL_TOKENS: '{"cred://a":"token"}',
+        EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+      } as unknown as AppConfig),
+    ).toEqual({ enabled: false, reason: 'EXCEPTION_FINGERPRINT_KEY is not configured' });
+  });
+
+  it('is enabled with the declared manifest and a fingerprint key', () => {
+    const decision = adapterExtraction({
+      CREDENTIAL_TOKENS: '{"cred://a":"token"}',
+      EXCEPTION_FINGERPRINT_KEY: 'exception-fingerprint-key-at-least-32',
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+    } as unknown as AppConfig);
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.credentials.get('cred://a')).toBe('token');
+    expect(decision.exceptions.keyId).toBe('k1');
+    // The key has nowhere to live: the port carries the id and a function, and nothing
+    // else, so no checkpoint, payload, log line or error message can pick the value up.
+    expect(JSON.stringify(decision.exceptions)).toBe('{"keyId":"k1"}');
+  });
+
+  it('never lets a missing manifest stop the rest of the worker', () => {
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const credentials = adapterExtraction(config);');
+    expect(main).toMatch(/Adapter extraction disabled/);
+    // Composed only where it is used, and never unconditionally refused.
+    expect(main).toContain('new ManifestCredentialResolver(executionCapability.credentials)');
+    expect(main).toContain('exceptions:executionCapability.exceptions');
+    expect(main).toContain('if (!credentials.enabled && agent !== null)');
+    expect(main).toContain('canExecuteWithoutAuditCredentials(await context.frozenPlan())');
+    expect(main).toContain("stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')");
+    expect(main).not.toMatch(/throw new ConfigError\(\[[^\]]*CREDENTIAL_TOKENS/);
+    expect(main).toContain('createHeartbeatLoop(db, host, telemetry)');
+  });
+});
+
+describe('agentExecution', () => {
+  it('enables the agent phase with an empty resolver map for credential-free P-4 access', () => {
+    const decision = agentExecution({
+      CREDENTIAL_TOKENS: '{}',
+      EXCEPTION_FINGERPRINT_KEY: 'exception-fingerprint-key-at-least-32',
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+    } as unknown as AppConfig);
+
+    expect(decision.enabled).toBe(true);
+    if (!decision.enabled) throw new Error('unreachable');
+    expect(decision.credentials.size).toBe(0);
+    expect(decision.exceptions.keyId).toBe('k1');
+    expect(JSON.stringify(decision.exceptions)).toBe('{"keyId":"k1"}');
+  });
+
+  it('keeps the agent phase disabled without the Exception fingerprint key', () => {
+    expect(agentExecution({ CREDENTIAL_TOKENS: '{}' } as unknown as AppConfig)).toEqual({
+      enabled: false,
+      reason: 'EXCEPTION_FINGERPRINT_KEY is not configured',
+    });
+  });
+
+  it('does not loosen the adapter extraction guard for the same empty manifest', () => {
+    const config = {
+      CREDENTIAL_TOKENS: '{}',
+      EXCEPTION_FINGERPRINT_KEY: 'exception-fingerprint-key-at-least-32',
+      EXCEPTION_FINGERPRINT_KEY_ID: 'k1',
+    } as unknown as AppConfig;
+
+    expect(agentExecution(config).enabled).toBe(true);
+    expect(adapterExtraction(config)).toEqual({
+      enabled: false,
+      reason: 'CREDENTIAL_TOKENS declares no audit credential',
+    });
+  });
+});
+
+describe('agentWorkspace', () => {
+  it('falls back to a local browser, and names the weaker guarantee', () => {
+    // A workspace is never disabled the way population execution and adapter extraction
+    // are: the local mode is the SAME code path against a locally launched Chromium, so
+    // the question is never whether this worker can provision one, only which guarantee it
+    // provides — and the weaker one has to be said rather than assumed.
+    const decision = agentWorkspace({} as AppConfig);
+    expect(decision.connection).toEqual({ mode: 'local' });
+    expect(decision.reason).toContain('SOLARI_API_KEY is not configured');
+    expect(decision.reason).toContain('not the worker process');
+  });
+
+  it('uses the provider when a key is configured, with every escalation feature off', () => {
+    const decision = agentWorkspace({
+      SOLARI_API_KEY: 'slr_live_example',
+      SOLARI_REGION: 'us-west',
+      SOLARI_RECORDING: true,
+    } as unknown as AppConfig);
+    // `recording` cannot be turned on after a session exists — the replay endpoint 404s
+    // forever — so the decision is taken here, in Epic 4, for Epic 5 to read.
+    expect(decision.connection).toEqual({
+      mode: 'solari',
+      apiKey: 'slr_live_example',
+      region: 'us-west',
+      baseUrl: undefined,
+      recording: true,
+    });
+    // Nothing here can turn on `proxy`, `stealth` or `captcha`: an escalation ladder that
+    // swaps egress mid-session is the opposite of confining a Run to its frozen origins.
+    expect(Object.keys(decision.connection)).not.toContain('proxy');
+    expect(Object.keys(decision.connection)).not.toContain('stealth');
+  });
+
+  it('is composed by the worker, reaped on a sweep, and closed on shutdown', () => {
+    const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(main).toContain('const provider = agentWorkspace(config);');
+    expect(main).toContain('new PlaywrightBrowserExecution(provider.connection)');
+    expect(main).toContain('startWorkspaceReaper(');
+    // Provisioning runs BEFORE population acquisition: `create-workspace` is the frozen
+    // plan's first Session Step for an agent Run.
+    const handler = main.slice(main.indexOf('const handle = async (job'));
+    expect(handler.indexOf('provisionWorkspace(workspace, job)')).toBeLessThan(
+      handler.indexOf('acquirePopulation(population, job)'),
+    );
+    // Released at the Run's end, in a `finally`, so a stage that threw still gives it back.
+    expect(main).toContain('await releaseWorkspace(workspace, job.runId)');
+    // `solari.close()` is REQUIRED in Node: the client keeps a loopback proxy server open
+    // for its connection-retry path and that handle keeps the event loop alive, so a worker
+    // that closes only its browsers never exits.
+    expect(main).toContain('await closeBrowsers?.()');
+    // Outside the storage branch: a workspace needs no bucket, and a deployment with no
+    // object storage still has workspaces to reap from before it lost one.
+    expect(main.indexOf('startWorkspaceReaper(')).toBeLessThan(
+      main.indexOf('const evidence = populationExecution(config);'),
+    );
+  });
+});
+
+/**
+ * A capability disabled by name must also stop the work that depends on it.
+ *
+ * The PR 23 repair was right to let the worker start without object storage, and it opened
+ * this: with the whole Run block inside `if (evidence.enabled)`, NO consumer was registered
+ * for the `runs` queue while the web's Initiate Run action stayed enabled and went on
+ * enqueueing, so every Run sat QUEUED for ever with no worker, no diagnostic and no Result.
+ * One stage along it was worse: with storage configured but no credential manifest, the
+ * handler acknowledged the job after acquisition, leaving the Run RUNNING at
+ * POPULATION_READY with its Evidence frozen and neither sweep able to select it again.
+ *
+ * The BEHAVIOUR is proved in `stop-unexecutable-run.test.ts` and against PostgreSQL. What is
+ * proved here is that the composition root actually branches that way — a regression would
+ * be a wiring change, and behaviour alone would not catch a consumer quietly moved back
+ * inside the branch.
+ */
+describe('a Run this deployment cannot execute', () => {
+  const main = (): string => readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+
+  it('consumes the runs queue even when population execution is off', () => {
+    const source = main();
+    const disabled = source.slice(source.indexOf('} else {'));
+    expect(disabled).toContain('startPopulationWorker(queue,');
+    expect(disabled).toContain("stopUnexecutableRun(stoppable, job, 'evidence-store-unconfigured')");
+    // And it still says so once, by name, where an operator can act on it.
+    expect(source).toMatch(/Population execution disabled/);
+  });
+
+  it('stops a Run instead of acknowledging a job it cannot finish, when extraction is off', () => {
+    const source = main();
+    // The old line was `if (acquired.retry || adapter === null) return acquired;` — the
+    // second half of which acknowledged the job and stranded the Run.
+    expect(source).not.toMatch(/adapter === null\) return acquired/);
+    expect(source).toContain("if (adapter === null) return stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured');");
+  });
+
+  it('sweeps for Runs an earlier claim left at POPULATION_READY, whether or not extraction is on', () => {
+    // The population sweep stops selecting a Run once its population is ready, so a Run
+    // left mid-flight by a process that has since restarted is found by this read alone.
+    const source = main();
+    const recovery = source.slice(source.indexOf('const recover = adapter === null'));
+    expect(recovery).toContain("stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')");
+    expect(recovery).toContain('executeAdapterSteps(adapter, job)');
+    expect(recovery).toContain('startPopulationRecovery(db,adapterRepository,recover,');
+  });
+});
+
+
+describe('agent model composition', () => {
+  const base = { DATABASE_URL: 'postgres://u:p@localhost/intellifin_test', SERVICE_NAME: 'worker' };
+  it('has no script fallback when neither provider is configured', () => {
+    expect(agentModel(loadConfig(base))).toBeNull();
+  });
+  it('uses Anthropic primary and OpenAI fallback with secret-free identity', () => {
+    const gateway = agentModel(loadConfig({ ...base, ANTHROPIC_API_KEY: 'synthetic-anthropic-secret', OPENAI_API_KEY: 'synthetic-openai-secret', RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40) }));
+    expect(gateway?.identity).toMatchObject({ provider: 'anthropic', buildVersion: 'a'.repeat(40), promptVersion: AGENT_PROMPT_VERSION });
+    expect(gateway?.identity.promptVersion).not.toBe(loadConfig(base).MODEL_PROMPT_VERSION);
+    expect(gateway?.fallbackIdentity).toMatchObject({ provider: 'openai' });
+    expect(JSON.stringify([gateway?.identity, gateway?.fallbackIdentity])).not.toContain('secret');
+  });
+  it('supports one provider and truthfully labels an unidentified build', () => {
+    const gateway = agentModel(loadConfig({ ...base, OPENAI_API_KEY: 'synthetic-openai-secret', AGENT_OPENAI_MODEL: 'approved-model' }));
+    expect(gateway?.identity).toMatchObject({ provider: 'openai', modelId: 'approved-model', buildVersion: 'unidentified-build' });
+    expect(gateway?.fallbackIdentity).toBeNull();
   });
 });

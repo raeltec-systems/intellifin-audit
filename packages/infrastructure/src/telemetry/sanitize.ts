@@ -14,6 +14,14 @@ export const TELEMETRY_FIELD_KEYS = [
   'hostname',
   'intervalMs',
   'method',
+  /**
+   * Which browser an Agent Workspace runs in — `solari` or `local` (Story 4.1).
+   *
+   * Two values, both build constants, and neither says anything about what was read. It is
+   * logged because the two modes are not the same guarantee and an operator reading this
+   * stream must be able to tell which one a deployment is running.
+   */
+  'mode',
   'operation',
   'outcome',
   'postgresMajor',

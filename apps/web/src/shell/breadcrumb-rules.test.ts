@@ -22,10 +22,12 @@ describe('which routes get a trail', () => {
   });
 
   it('gives a detail route one crumb per segment, the last one current', () => {
-    expect(crumbsFor('/runs/RUN-2437/live')).toEqual([
-      { href: '/runs', label: 'Runs', mono: false },
-      { href: '/runs/RUN-2437', label: 'RUN-2437', mono: true },
-      { href: '/runs/RUN-2437/live', label: 'live', mono: true },
+    // Not a Run route: Story 3.11 made Run Detail trail itself, so the shell stands
+    // down there. Administration still gets the shell's trail.
+    expect(crumbsFor('/administration/registrations/REG-1')).toEqual([
+      { href: '/administration', label: 'Administration', mono: false },
+      { href: '/administration/registrations', label: 'Target System registrations', mono: false },
+      { href: '/administration/registrations/REG-1', label: 'REG-1', mono: true },
     ]);
   });
 
@@ -52,8 +54,11 @@ describe('hostile path segments', () => {
     // `decodeURIComponent('%E0%A4%A')` throws URIError; unhandled, that is a 500 on
     // every page under the shell.
     expect(readableSegment('%E0%A4%A')).toBe('%E0%A4%A');
+    // `/runs/%E0%A4%A` is still the URL anybody can type; it is checked below on a
+    // route the shell trails, plus here for the throw itself.
     expect(() => crumbsFor('/runs/%E0%A4%A')).not.toThrow();
-    expect(crumbsFor('/runs/%E0%A4%A')[1]?.label).toBe('%E0%A4%A');
+    expect(() => crumbsFor('/administration/%E0%A4%A')).not.toThrow();
+    expect(crumbsFor('/administration/%E0%A4%A')[1]?.label).toBe('%E0%A4%A');
   });
 
   it('decodes an escape sequence that is valid', () => {
@@ -115,10 +120,25 @@ describe('surfaces that trail themselves', () => {
     ]);
   });
 
+  it('stands down on Run Detail and on every one of its five tabs', () => {
+    // Story 3.10 shipped a page trail beside the shell's, which gave Run Detail two
+    // `<nav aria-label="Breadcrumb">` landmarks nobody could tell apart — and the
+    // accessibility gate could not see it, because `landmark-unique` is a best-practice
+    // rule rather than a WCAG-tagged one and never reaches `results.violations`. The
+    // page's trail is the one worth keeping: it knows the Control name and the tab.
+    const id = '019823ab-0000-7000-8000-000000000001';
+    for (const tab of ['', '/evidence', '/exceptions', '/review', '/timeline']) {
+      expect(rendersOwnTrail(`/runs/${id}${tab}`), tab).toBe(true);
+      expect(crumbsFor(`/runs/${id}${tab}`), tab).toEqual([]);
+    }
+  });
+
   it('leaves every other section alone', () => {
-    expect(rendersOwnTrail('/runs/RUN-2437')).toBe(false);
     expect(rendersOwnTrail('/administration/sources')).toBe(false);
     expect(rendersOwnTrail('/procedures')).toBe(false);
+    // A list route has no parent, so it gets no trail either way.
+    expect(rendersOwnTrail('/runs')).toBe(false);
+    expect(crumbsFor('/runs')).toEqual([]);
   });
 
   it('answers a prototype-shaped segment as an identifier, not an inherited value', () => {

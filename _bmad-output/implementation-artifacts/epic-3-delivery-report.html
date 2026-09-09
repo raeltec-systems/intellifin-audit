@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Epic 3 Adapter Runs</title>
+<style>
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ink:        #102A43;
+    --ink-soft:   #334E68;
+    --body:       #42566B;
+    --muted:      #6B7F94;
+    --ground:     #F6F8FA;
+    --card:       #FFFFFF;
+    --sunken:     #EDF2F6;
+    --rule:       #DDE5EC;
+    --rule-soft:  #E9EFF4;
+    --teal:       #0F766E;
+    --teal-deep:  #115E59;
+    --teal-wash:  #EAF6F4;
+    --amber:      #9A5B06;
+    --amber-wash: #FBF2E3;
+    --shadow:     0 1px 2px rgba(16,42,67,.05), 0 8px 24px -16px rgba(16,42,67,.28);
+
+    --serif: "Spectral", "Iowan Old Style", Georgia, serif;
+    --sans:  "IBM Plex Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    --mono:  "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    color-scheme: light;
+  }
+  :root:not([data-theme="light"]) { }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink:        #E8EFF6;
+      --ink-soft:   #C6D5E3;
+      --body:       #AEC0D1;
+      --muted:      #8298AC;
+      --ground:     #0A1826;
+      --card:       #102336;
+      --sunken:     #16304697;
+      --rule:       #26425C;
+      --rule-soft:  #1D3549;
+      --teal:       #4FD1C5;
+      --teal-deep:  #7EE0D6;
+      --teal-wash:  #123A3B;
+      --amber:      #E9B872;
+      --amber-wash: #33270F;
+      --shadow:     0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.7);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink:        #E8EFF6;
+    --ink-soft:   #C6D5E3;
+    --body:       #AEC0D1;
+    --muted:      #8298AC;
+    --ground:     #0A1826;
+    --card:       #102336;
+    --sunken:     #16304697;
+    --rule:       #26425C;
+    --rule-soft:  #1D3549;
+    --teal:       #4FD1C5;
+    --teal-deep:  #7EE0D6;
+    --teal-wash:  #123A3B;
+    --amber:      #E9B872;
+    --amber-wash: #33270F;
+    --shadow:     0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.7);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--body);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 96px; }
+
+  /* ---------- masthead ---------- */
+  .mast { border-bottom: 2px solid var(--ink); padding-bottom: 22px; margin-bottom: 34px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--teal); margin: 0 0 12px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; color: var(--ink);
+    font-size: clamp(2.1rem, 5vw, 3.05rem); line-height: 1.08;
+    margin: 0 0 14px; text-wrap: balance; letter-spacing: -.012em;
+  }
+  .standfirst {
+    font-family: var(--serif); font-size: clamp(1.05rem, 2vw, 1.24rem);
+    line-height: 1.55; color: var(--ink-soft); margin: 0; max-width: 62ch;
+  }
+
+  /* ---------- verdict ---------- */
+  .verdict {
+    display: grid; grid-template-columns: 1.35fr 1fr; gap: 0;
+    border: 1px solid var(--rule); border-radius: 3px; background: var(--card);
+    box-shadow: var(--shadow); overflow: hidden; margin-bottom: 40px;
+  }
+  .verdict > div { padding: 24px 26px; }
+  .verdict-main { border-right: 1px solid var(--rule); }
+  .verdict h2, .figures h2 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 14px; font-weight: 500;
+  }
+  .verdict-line {
+    font-family: var(--serif); font-size: 1.42rem; line-height: 1.3;
+    color: var(--ink); margin: 0 0 10px; font-weight: 600;
+  }
+  .verdict-note { margin: 0; font-size: .93rem; color: var(--body); }
+  .figures { background: var(--sunken); }
+  .figgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 20px; }
+  .fig dt {
+    font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 3px;
+  }
+  .fig dd {
+    margin: 0; font-family: var(--mono); font-size: 1.32rem;
+    font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500;
+  }
+
+  /* ---------- sections ---------- */
+  section { margin-bottom: 46px; scroll-margin-top: 24px; }
+  .sechead { display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: baseline; margin-bottom: 16px; }
+  .secnum {
+    font-family: var(--mono); font-size: 12px; color: var(--teal);
+    font-variant-numeric: tabular-nums; padding-top: .45em;
+  }
+  h2.title {
+    font-family: var(--serif); font-weight: 600; color: var(--ink);
+    font-size: clamp(1.35rem, 2.6vw, 1.72rem); line-height: 1.22;
+    margin: 0; text-wrap: balance; letter-spacing: -.006em;
+  }
+  .secbody { margin-left: 54px; max-width: 68ch; }
+  @media (max-width: 640px) {
+    .sechead { grid-template-columns: 1fr; gap: 2px; }
+    .secnum { padding-top: 0; }
+    .secbody { margin-left: 0; }
+    .verdict { grid-template-columns: 1fr; }
+    .verdict-main { border-right: none; border-bottom: 1px solid var(--rule); }
+  }
+  p { margin: 0 0 15px; }
+  .secbody > p:last-child { margin-bottom: 0; }
+  strong { color: var(--ink); font-weight: 600; }
+  em { color: var(--ink-soft); }
+  code {
+    font-family: var(--mono); font-size: .88em; color: var(--teal-deep);
+    background: var(--teal-wash); padding: .1em .34em; border-radius: 2px;
+  }
+
+  /* stage list — the pipeline is a real sequence, so it is numbered */
+  ol.stages { list-style: none; counter-reset: stage; padding: 0; margin: 0; }
+  ol.stages > li {
+    counter-increment: stage; position: relative;
+    padding: 0 0 18px 34px; margin: 0;
+    border-left: 1px solid var(--rule); margin-left: 8px;
+  }
+  ol.stages > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  ol.stages > li::before {
+    content: counter(stage); position: absolute; left: -9px; top: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--rule);
+    color: var(--muted); font-family: var(--mono); font-size: 10px;
+    display: grid; place-items: center; font-variant-numeric: tabular-nums;
+  }
+  ol.stages b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
+
+  /* pull quote — the one invariant */
+  .invariant {
+    border-left: 3px solid var(--teal); background: var(--teal-wash);
+    padding: 20px 24px; border-radius: 0 3px 3px 0; margin: 0 0 18px;
+  }
+  .invariant p {
+    font-family: var(--serif); font-size: 1.22rem; line-height: 1.42;
+    color: var(--ink); margin: 0; font-weight: 600;
+  }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin: 0 0 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  caption {
+    text-align: left; font-family: var(--mono); font-size: 11px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    padding-bottom: 9px;
+  }
+  th, td { text-align: left; padding: 9px 14px 9px 0; border-bottom: 1px solid var(--rule-soft); }
+  thead th {
+    font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; padding-right: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.total td { border-top: 1px solid var(--rule); border-bottom: none; color: var(--ink); font-weight: 600; }
+  tr.total td.num { color: var(--ink); }
+
+  /* ---------- pills ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--sans); font-size: 11.5px; font-weight: 500;
+    letter-spacing: .02em; padding: 2px 9px 2px 7px; border-radius: 2px;
+    white-space: nowrap;
+  }
+  .pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; flex: none; }
+  .pill.proven { background: var(--teal-wash); color: var(--teal-deep); }
+  .pill.proven::before { background: var(--teal); }
+  .pill.pending { background: var(--amber-wash); color: var(--amber); }
+  .pill.pending::before { background: var(--amber); }
+
+  /* ---------- decision cards ---------- */
+  .decisions { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: dec; }
+  .decisions li {
+    counter-increment: dec;
+    display: grid; grid-template-columns: 26px 1fr; gap: 14px;
+    background: var(--card); border: 1px solid var(--rule);
+    border-left: 3px solid var(--amber);
+    border-radius: 0 3px 3px 0; padding: 16px 20px;
+  }
+  .decisions li::before {
+    content: counter(dec); font-family: var(--mono); font-size: 12px;
+    color: var(--amber); font-variant-numeric: tabular-nums; padding-top: .2em;
+  }
+  .decisions b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 3px; }
+  .decisions p { margin: 0; font-size: .93rem; }
+
+  /* ---------- deferred / plain list ---------- */
+  ul.plain { list-style: none; padding: 0; margin: 0 0 15px; display: grid; gap: 11px; }
+  ul.plain li { padding-left: 18px; position: relative; }
+  ul.plain li::before {
+    content: ""; position: absolute; left: 0; top: .68em;
+    width: 6px; height: 1px; background: var(--muted);
+  }
+  ul.plain b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-size: .87rem; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 6px 20px; justify-content: space-between;
+  }
+  footer code { background: none; color: var(--muted); padding: 0; }
+  a { color: var(--teal-deep); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, li:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">IntelliFin Audit · Delivery report · revised 6 September 2026</p>
+    <h1>Epic&nbsp;3: adapter Runs, end to end</h1>
+    <p class="standfirst">A Procedure Version now executes itself against synthetic Target Systems and reaches a sealed conclusion &mdash; refusing, at every stage, rather than guessing when it cannot prove what it needs.</p>
+  </header>
+
+  <div class="verdict">
+    <div class="verdict-main">
+      <h2>Verdict</h2>
+      <p class="verdict-line">Eleven stories delivered. Your review is answered in full.</p>
+      <p class="verdict-note">Every story was gated twice &mdash; by the agent that built it, and independently against a real database before it was committed. No story was committed on a reported result. An automated review then found <strong>ten more defects</strong>; all ten are repaired and section&nbsp;3 says what they were. <strong>Your five review items are done</strong>, with the branch and commit for each in section&nbsp;9, and the four questions section&nbsp;8 put to you are now decided and built. <strong>Nothing is merged.</strong></p>
+    </div>
+    <div class="figures">
+      <h2>Final state</h2>
+      <dl class="figgrid">
+        <div class="fig"><dt>Schema</dt><dd>27</dd></div>
+        <div class="fig"><dt>Unit tests</dt><dd>2,749</dd></div>
+        <div class="fig"><dt>Integration</dt><dd>340</dd></div>
+        <div class="fig"><dt>Browser</dt><dd>124</dd></div>
+      </dl>
+    </div>
+  </div>
+
+  <section id="s1">
+    <div class="sechead"><span class="secnum">01</span><h2 class="title">What an adapter Run now does</h2></div>
+    <div class="secbody">
+      <ol class="stages">
+        <li><b>Initiate</b> An auditor names a Procedure and a date period. The platform walks the activated succession chain to find which version owns that period &mdash; not by version number and not by approval time, because neither expresses succession &mdash; and refuses if the lineage is broken or forked.</li>
+        <li><b>Acquire the population</b> A worker claims the Run under a lease and reconciles the source against a declaration generated independently of the data. The bytes and that declaration are hashed as a pair before the object is written, so a resumed attempt verifies the pair it already promised.</li>
+        <li><b>Freeze the Reference Sources</b> Each versioned file is acquired once, before any Work Item runs, and every rule that later consults it reads those frozen bytes rather than a fresh fetch.</li>
+        <li><b>Extract</b> Each API system becomes one Work Item, using a credential that has nowhere to live: the resolved object holds a reference and a method that sets a header, and no field holding a value. A web or desktop system is refused <em>by name</em> rather than skipped &mdash; skipping would let a Run conclude about a system nothing read.</li>
+        <li><b>Register the Observations</b> One transactional contract for every producer. Rows, check outcomes, corroboration, evaluations, the audit event and the notification commit together or not at all. A record the system does not carry counts as an honest absence only if the adapter derived a query key, stored the empty result as Evidence, and completed its extraction.</li>
+        <li><b>Corroborate</b> The stage that froze the artifact re-reads it, comparing as canonical bytes so three spellings of one number stay three different things. &ldquo;Nothing could read it&rdquo; and &ldquo;it read differently&rdquo; are recorded as different words.</li>
+        <li><b>Evaluate</b> The version&rsquo;s compiled conditions are applied with no free-text rationale, because a rationale is where retrieved content gets quoted back as the reason for an outcome. Money compares on scaled integers.</li>
+        <li><b>Gate, seal and publish</b> Every Gate row is decided when the last Work Item completes, and the outcome table applies in order with the first match winning. Evidence falling short is Inconclusive; execution failing is Run&nbsp;Failed.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="s2">
+    <div class="sechead"><span class="secnum">02</span><h2 class="title">The central invariant, and where it actually lives</h2></div>
+    <div class="secbody">
+      <div class="invariant"><p>An uninspected, excluded, ambiguous or contradicted record is never Compliant.</p></div>
+      <p>That sentence is not a rule a command has to remember. It is a <strong>composite foreign key</strong>. An evaluation row carries the coverage state and corroboration verdict of the Observation it belongs to, held to that Observation&rsquo;s own values by a key over the three columns together, under a constraint forbidding a Compliant value beside a contradicted corroboration. Claiming the right coverage in the evaluation row does not help: the pair has to exist in the Observation.</p>
+      <p>No command, no migration and no database session can route around it. The command refuses first, so a caller gets a named refusal rather than a constraint violation &mdash; but the constraint is what makes the guarantee <em>true</em> rather than intended.</p>
+      <p>Two independent adversarial reviews tried to find a path around it and could not.</p>
+    </div>
+  </section>
+
+  <section id="s3">
+    <div class="sechead"><span class="secnum">03</span><h2 class="title">Verification actually run</h2></div>
+    <div class="secbody">
+      <p>Each run covers typecheck, the dependency-boundary check, the migration, the unit suite run alone, the integration suite against real PostgreSQL&nbsp;18, a schema-drift check, both builds, and the browser suite with an accessibility gate that has no allowlist.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>Independent verification, per story</caption>
+          <thead>
+            <tr><th scope="col">Story</th><th scope="col" class="num">Schema</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Integration</th><th scope="col" class="num">Browser</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>3.3&ensp;Extract and freeze Reference Sources</td><td class="num">19</td><td class="num">2,184</td><td class="num">262</td><td class="num">109</td></tr>
+            <tr><td>3.4&ensp;Register Observations</td><td class="num">20</td><td class="num">2,266</td><td class="num">270</td><td class="num">109</td></tr>
+            <tr><td>3.5&ensp;Seal Evidence</td><td class="num">21</td><td class="num">2,305</td><td class="num">281</td><td class="num">109</td></tr>
+            <tr><td>3.6&ensp;Corroborate against the snapshot</td><td class="num">22</td><td class="num">2,367</td><td class="num">285</td><td class="num">109</td></tr>
+            <tr><td>3.7&ensp;Evaluate and raise Exceptions</td><td class="num">23</td><td class="num">2,408</td><td class="num">288</td><td class="num">109</td></tr>
+            <tr><td>3.8&ensp;The Run-level Gate</td><td class="num">24</td><td class="num">2,450</td><td class="num">303</td><td class="num">109</td></tr>
+            <tr><td>3.9&ensp;Seal the Result</td><td class="num">25</td><td class="num">2,522</td><td class="num">319</td><td class="num">110</td></tr>
+            <tr><td>3.10&ensp;Cancel and rerun</td><td class="num">26</td><td class="num">2,560</td><td class="num">330</td><td class="num">111</td></tr>
+            <tr><td>3.11&ensp;See a Run</td><td class="num">26</td><td class="num">2,653</td><td class="num">338</td><td class="num">122</td></tr>
+            <tr><td>End-to-end validation</td><td class="num">26</td><td class="num">2,730</td><td class="num">338</td><td class="num">124</td></tr>
+            <tr class="total"><td>Review repairs</td><td class="num">27</td><td class="num">2,749</td><td class="num">340</td><td class="num">124</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Zero accessibility violations on every browser run. Two adversarial reviews then read the landed stories against the contracts and the golden fixtures rather than against the code; they agreed on all twelve named per-record cases and found <strong>seven defects around the evaluator rather than in it</strong>, repaired in two further passes.</p>
+
+      <h3 style="margin-top:2rem">Ten more, found after I called it done</h3>
+      <p>Marking the pull request ready for review triggered an automated review, which posted ten findings. <strong>All ten were real.</strong> Four of them contradicted an invariant this project's own decision log already states in words &mdash; which is the strongest possible signal a finding is genuine: the rule was written down correctly and implemented incompletely.</p>
+      <ul>
+        <li><strong>A bucket outage was recorded as tampering.</strong> The missing-object check counted <code>NoSuchBucket</code>, so a deleted or misconfigured bucket made every read return nothing &mdash; which the verifier reads as a genuinely absent artifact. One outage would have written a permanent integrity finding, and its immutable event, against every artifact of every finished Run. S3 answers <code>NoSuchBucket</code> with HTTP 404, so removing the name alone would not have fixed it.</li>
+        <li><strong>A fully covered Run could seal Inconclusive.</strong> The coverage read was capped at 100,000 rows, but the matrix is records &times; systems &mdash; and every dropped <em>covered</em> cell read as missing coverage.</li>
+        <li><strong>Runs could queue with nothing to run them,</strong> and <strong>Runs could strand mid-flight</strong> with their Evidence already frozen. Both are the direct cost of an earlier repair on this same pull request: letting the worker start without object storage was right, leaving the work that depends on it startable was not.</li>
+        <li><strong>A Gate total that had to be exact</strong> was the length of a truncated read, and <strong>a bad list cursor</strong> rendered an empty page instead of the first &mdash; its test asserted the defect, three lines under a comment saying the opposite.</li>
+      </ul>
+      <p>Two findings touched decisions recorded as deliberate. Both decisions survive; the narrower defect underneath each is fixed. A Run that outruns a cancellation still concludes on its own merits &mdash; but the request is no longer answered by silence, which is what it was. And deleting a whole Run is still allowed, while deleting one Evidence row out from under its sealed package is not.</p>
+      <p class="note">I swept for more instances of the same patterns and found none. The lesson is in the decision log in its own words: <strong>a rule stated correctly in prose and implemented incompletely.</strong></p>
+    </div>
+  </section>
+
+  <section id="s4">
+    <div class="sechead"><span class="secnum">04</span><h2 class="title">Decisions taken, and why</h2></div>
+    <div class="secbody">
+      <p>These are the calls a reader would otherwise have to reconstruct from the diff. Every one is recorded beside the code it governs.</p>
+      <ul class="plain">
+        <li><b>A Gate row&rsquo;s failure outcome belongs to its diagnostic, not its row.</b> The contract gives two rows both possible outcomes, so a table keyed by row loses half of it. One failure genuinely lands on two rows, and the contract says so twice.</li>
+        <li><b>Per-record coverage is per Template, and is now machine-readable.</b> The four Template rules genuinely differ &mdash; one accepts a proven absence, another needs the account to appear with a grounded role list. That rule was prose, so the permissive reading was applied to all four, and <em>an account whose permissions nothing could read passed its own control</em>. It now fails closed to the strict reading, which can only degrade coverage.</li>
+        <li><b>An unaccounted population row is decided at the Gate, not at acquisition.</b> Exactly one check moved. The outcome is unchanged &mdash; only when it is decided, and what exists by then. Every other check still stops the Run where it did, because those ask whether the bytes are what they claim.</li>
+        <li><b>An Evidence artifact frozen before it is parsed is named with its attempt.</b> Otherwise a retry uploads different bytes to the first attempt&rsquo;s key, the store refuses them, and every retry dies accusing storage of an integrity failure against a system that is answering correctly.</li>
+        <li><b>A refusal is thrown from inside a unit of work, never returned.</b> A returned refusal commits everything written before it. The oldest rule in this codebase, and it still applies to every command added here.</li>
+        <li><b>Canceled is never produced by a timeout or a limit.</b> That state is reserved for a person cancelling. A timeout that wrote it would put a sentence naming an actor on a Run nobody touched.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="s5">
+    <div class="sechead"><span class="secnum">05</span><h2 class="title">What is deferred, and named</h2></div>
+    <div class="secbody">
+      <p>Nothing here is hidden. Each item is named in the code or a story specification as well.</p>
+      <ul class="plain">
+        <li><b>The desktop Target System</b> and its execution port, deferred since Epic&nbsp;1. The desktop path is exercised with a registered synthetic desktop rather than a real one.</li>
+        <li><b>The token limit mapping</b> is implemented and unit-tested but never exercised, because nothing in this epic calls a model. It is wired so the agent epic fills it, rather than adding a limit that was never mapped.</li>
+        <li><b>Two Gate rows are transcribed backstops.</b> They can only fail from a Session Step failure that already stops the Run before the Gate runs. They are tested in the domain.</li>
+        <li><b>A residual storage race.</b> Object immutability rests on a read before write plus a conditional header. Two writers landing between one&rsquo;s read and its write, on a backend that ignores the header, is still possible. Written down rather than claimed away.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="s6">
+    <div class="sechead"><span class="secnum">06</span><h2 class="title">How this was built and checked</h2></div>
+    <div class="secbody">
+      <p>Each story was specified before it was built, implemented by a separate agent against that specification, then verified independently against a real database before it was committed. Where a fix mattered it was <strong>mutation-proven</strong>: the fix was inverted, the test was watched failing, and the fix restored. A test that has never failed is not a test.</p>
+      <p><strong>Two interruptions are worth recording rather than hiding.</strong> Three background agents were killed at once by a session rate limit; one had already written its work, which was picked up and verified rather than redone. Separately, two mistakes of mine cost time: editing the verification script while it was running, which corrupted that run, and killing a browser suite so its cleanup never ran, which left a row that failed an unrelated test afterwards. Both are now in the project&rsquo;s decision log, and the verification script no longer exits successfully over a failing step.</p>
+    </div>
+  </section>
+
+  <section id="s7">
+    <div class="sechead"><span class="secnum">07</span><h2 class="title">Whether the epic is actually done</h2></div>
+    <div class="secbody">
+      <p><strong>Yes &mdash; against a bar that was corrected once during the work.</strong> The brief assumed eight demonstrable terminal outcomes. Six are demonstrable in this epic and two are not, and the two are named rather than counted.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>Terminal outcomes</caption>
+          <thead><tr><th scope="col">Outcome</th><th scope="col">Proven by</th><th scope="col">State</th></tr></thead>
+          <tbody>
+            <tr><td>Inconclusive &mdash; segregation of duties</td><td>Full golden population, real worker</td><td><span class="pill proven">Proven</span></td></tr>
+            <tr><td>Inconclusive &mdash; high-value approvals</td><td>Full golden population, real worker</td><td><span class="pill proven">Proven</span></td></tr>
+            <tr><td>Pass</td><td>A clean synthetic source, real worker</td><td><span class="pill proven">Proven</span></td></tr>
+            <tr><td>Control Failure</td><td>Same source, one conflicting account</td><td><span class="pill proven">Proven</span></td></tr>
+            <tr><td>Run Failed</td><td>A Session Step failing after bounded retries</td><td><span class="pill proven">Proven</span></td></tr>
+            <tr><td>Canceled</td><td>A human cancellation, Evidence preserved</td><td><span class="pill proven">Proven</span></td></tr>
+            <tr><td>Pending Confirmation</td><td>Needs an Agent-Judged evaluation &mdash; Epic&nbsp;4</td><td><span class="pill pending">Not reachable</span></td></tr>
+            <tr><td>Completed to Inconclusive</td><td>Needs a human rejection &mdash; Epic&nbsp;6</td><td><span class="pill pending">Not reachable</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Both unreachable rows are implemented, sit in the contract&rsquo;s order, and are tested with constructed state. They are not skipped; they simply cannot be produced by anything this epic builds.</p>
+      <p><strong>Why the golden populations could not show success.</strong> They seed every failure mode at once &mdash; one lists an account twice, the other has a transaction with no processed time &mdash; and two Gate checks deliberately read the <em>source</em> rather than the included set, because a duplicate that scoping filters out is still two rows claiming one identity. No inclusion rule escapes them. That is the datasets working correctly, and it is why a clean source had to be built.</p>
+      <p><strong>What &ldquo;proven&rdquo; means here.</strong> The real worker process, the real synthetic service over the network, real PostgreSQL and a real object store. Every assertion reads what the Run actually stored and compares it with an expectation file written by hand before any Run existed. The Pass and Control&nbsp;Failure populations differ by <em>one role on one account</em>, and two further accounts sit one permission short of a prohibited pair, so the rule&rsquo;s boundary is tested rather than avoided. The fixture was mutated to confirm it can fail.</p>
+      <p><strong>One gap is recorded rather than closed.</strong> No browser journey cancels a Run that has already acquired Evidence; that seam is proven against the database rather than through the worker process.</p>
+    </div>
+  </section>
+
+  <section id="s8">
+    <div class="sechead"><span class="secnum">08</span><h2 class="title">What you decided, and where it landed</h2></div>
+    <div class="secbody">
+      <p>This section asked for four decisions. <strong>You took all of them on 6&nbsp;September</strong>, and each is now built rather than pending. Three needed storage and are one migration &mdash; generation&nbsp;32 &mdash; because they are one release.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>Five questions, five answers, all built</caption>
+          <thead><tr><th scope="col">The question as asked</th><th scope="col">Your decision</th><th scope="col">Where it landed</th></tr></thead>
+          <tbody>
+            <tr><td>A redelivered job past the Run time limit <strong>discards a population</strong> already acquired and verified</td><td>Keep it. The limit is unchanged and the Run still ends Inconclusive &mdash; but with its Evidence</td><td>No store read, no attempt spent, digests carried through verbatim</td></tr>
+            <tr><td>Replaying an initiation token after a refusal <strong>redirects into the other auditor&rsquo;s Run</strong></td><td>A token records a <em>decision</em>, not a Run</td><td>A new table and a written contract for it</td></tr>
+            <tr><td><strong>No Evidence table records a capture time</strong>, though the requirement asks for one</td><td>Store it per artifact, never derive it</td><td>Three columns on both Evidence tables</td></tr>
+            <tr><td><strong>The declared record count is never persisted</strong> &mdash; only its verdict</td><td>Show both numbers, each traceable to the artifact it came from</td><td>Declared and retrieved counts on the population snapshot</td></tr>
+            <tr><td><strong>The desktop Target System stays deferred</strong></td><td>Confirmed: Epic&nbsp;7</td><td>Unchanged</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Two carry a consequence worth stating plainly. <strong>Capture time was only honestly backfillable for one table:</strong> older rows for one of them take their instant from the step that froze the bytes and say so, while the other keeps saying <em>&ldquo;Capture time was not recorded.&rdquo;</em> There is deliberately no third value meaning &ldquo;we made one up&rdquo;. And <strong>the declared count was not backfilled either</strong> &mdash; the declaration lives in object storage, which SQL cannot read, and defaulting it to the retrieved count would make every unreconciled population look reconciled.</p>
+      <div class="invariant" style="border-left-color:var(--amber);background:var(--amber-wash)">
+        <p style="font-size:1.05rem">Still yours: the desktop deferral is written in three places and two of them are wrong.</p>
+      </div>
+      <p>The epics document says <strong>Epic&nbsp;7</strong> and is authoritative. A fixture file still says Epic&nbsp;3, and the deferred-work list does not mention it at all. These are planning artefacts, so the disagreement <em>is</em> the finding &mdash; reported rather than silently reconciled.</p>
+    </div>
+  </section>
+
+  <section id="s9">
+    <div class="sechead"><span class="secnum">09</span><h2 class="title">Revised close-out: which commit carries each repair</h2></div>
+    <div class="secbody">
+      <p>Added after your review. <strong>Nothing is merged.</strong> Both branches are pushed and awaiting the review this section exists for.</p>
+
+      <div class="tablewrap">
+        <table>
+          <caption>Your five review items</caption>
+          <thead><tr><th scope="col">Item</th><th scope="col">Commit</th><th scope="col">State</th></tr></thead>
+          <tbody>
+            <tr><td>1&ensp;Reconcile Epic&nbsp;4 with the repaired Epic&nbsp;3 baseline</td><td><code>6c3ebd6</code></td><td><span class="pill proven">Done</span></td></tr>
+            <tr><td>2&ensp;Workspace replacement losing its cleanup reference</td><td><code>beb2825</code></td><td><span class="pill proven">Done</span></td></tr>
+            <tr><td>3&ensp;Configured Solari mode vs live-provider validation</td><td><code>b59b115</code></td><td><span class="pill proven">Done</span></td></tr>
+            <tr><td>4&ensp;Revisit the LoanCore authentication decision</td><td><code>604b7c3</code> + <code>c74c6c5</code></td><td><span class="pill proven">Done</span></td></tr>
+            <tr><td>5&ensp;The five report decisions above</td><td><code>717da6f</code></td><td><span class="pill proven">Done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>The Epic&nbsp;3 defect repairs themselves are on <code>codex/epic-3-adapter-runs</code> at <code>4fb496e</code>, with this report amended at <code>665c5a3</code>. Everything above is on <code>codex/epic-4-agent-runs</code>.</p>
+
+      <div class="tablewrap">
+        <table>
+          <caption>Gates re-run after each repair, against PostgreSQL&nbsp;18</caption>
+          <thead><tr><th scope="col">After</th><th scope="col" class="num">Unit</th><th scope="col" class="num">Integration</th><th scope="col" class="num">Browser</th></tr></thead>
+          <tbody>
+            <tr><td><code>4fb496e</code>&ensp;Epic&nbsp;3 defects</td><td class="num">2,749</td><td class="num">340</td><td class="num">124</td></tr>
+            <tr><td><code>6c3ebd6</code>&ensp;Merge</td><td class="num">2,946</td><td class="num">364</td><td class="num">133</td></tr>
+            <tr><td><code>beb2825</code>&ensp;Workspace release</td><td class="num">2,949</td><td class="num">365</td><td class="num">133</td></tr>
+            <tr><td><code>c74c6c5</code>&ensp;LoanCore sign-in</td><td class="num">3,009</td><td class="num">368</td><td class="num">134</td></tr>
+            <tr class="total"><td><code>717da6f</code>&ensp;The five decisions</td><td class="num">3,027</td><td class="num">381</td><td class="num">134</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>No schema drift and both builds clean at every row. Each run was made in the main thread after the implementing agent&rsquo;s own run, never on a reported result.</p>
+
+      <h3 style="margin-top:2rem">Item&nbsp;1 &mdash; the migration collision, both paths proven</h3>
+      <p>Both branches claimed generation&nbsp;27 for different changes: Epic&nbsp;3&rsquo;s adds database triggers only, Epic&nbsp;4&rsquo;s adds the workspace table. <strong>Both changes are preserved.</strong> Epic&nbsp;3&rsquo;s keeps 27 and Epic&nbsp;4&rsquo;s three move up to 28, 29 and 30 &mdash; which needed exactly one line rewritten, because Epic&nbsp;3&rsquo;s migration adds no table and so leaves the table set its successor was diffed against unchanged.</p>
+      <p>You asked for proof of both paths. Both were run against a real PostgreSQL&nbsp;18:</p>
+      <ul class="plain">
+        <li><b>Fresh install</b> &mdash; empty database to 30. Exactly 30 recorded generations, no duplicate.</li>
+        <li><b>Upgrade</b> &mdash; a generation-26 database to 30. Same end state.</li>
+        <li><b>The two schemas are structurally identical:</b> 392 columns, 575 constraints, 12 triggers.</li>
+      </ul>
+      <p>Generation&nbsp;26 is the honest place to start the upgrade, because a database carrying Epic&nbsp;4&rsquo;s pre-merge numbers holds generations the merge reassigns, and no build after the merge can reproduce it. Production is at 14.</p>
+
+      <h3 style="margin-top:2rem">Item&nbsp;3 &mdash; what is proven live, and what is not</h3>
+      <p>You asked to separate <em>configured</em> from <em>validated</em>. They are two questions, and the decision document answered only the first while sounding like it had answered both: it claimed the epic was &ldquo;verified against&rdquo; Solari when nothing had been. There was no key at the time, and an intention was written as a result. That is corrected, and the error is kept on the page rather than deleted.</p>
+      <div class="tablewrap">
+        <table>
+          <caption>Live provider validation, 6 September</caption>
+          <thead><tr><th scope="col">You asked for</th><th scope="col">Proven by</th></tr></thead>
+          <tbody>
+            <tr><td>Actual remote creation</td><td>A session and its plan deadline returned by the provider in 827&nbsp;ms</td></tr>
+            <tr><td>Target reachability</td><td><code>example.com</code> answered <strong>200</strong> to a navigation made <em>by the remote browser</em></td></tr>
+            <tr><td>Capture</td><td>A <strong>17,202-byte</strong> screenshot and a page-text read</td></tr>
+            <tr><td>Release</td><td>Confirmed release, then a clean client close</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The remote browser reported Chromium&nbsp;<strong>151.0.7922.34</strong>, which is the provider&rsquo;s build and not this machine&rsquo;s &mdash; itself the evidence that the browser ran remotely.</p>
+      <div class="invariant" style="border-left-color:var(--amber);background:var(--amber-wash)">
+        <p style="font-size:1.05rem">A remote browser cannot reach our synthetic systems. They live on this machine&rsquo;s loopback.</p>
+      </div>
+      <p>Measured, not assumed: the connection is refused. That is a fact about where the fixture is served, not a defect in the provider or the platform. What follows, stated plainly: <strong>the golden journeys run on local Chromium</strong>; <strong>live validation covers the provider against a public target only</strong>; and <strong>local execution is never cited as evidence that the Solari path works</strong>. A hosted address for the synthetic systems is the thing that would close it, and has been named as deferred since Epic&nbsp;1.</p>
+      <p>Reaching the provider from here also cost a wrong ask, recorded because it was mine. This environment&rsquo;s allowlist governs only traffic through its proxy; the provider&rsquo;s client dials a socket directly and has no proxy support, so <em>no allowlist entry could ever have helped it</em>. I had asked you to allow a host. Measurement replaced the ask, and a test-only bridge &mdash; on no shipped path &mdash; is what carried the probe through.</p>
+
+      <h3 style="margin-top:2rem">Gate runs that failed, and were repaired rather than smoothed over</h3>
+      <ul class="plain">
+        <li>The merge gate caught a guard that reads the worker&rsquo;s own source to check a decision. A reformat had broken it. <b>The source was restored; the guard was not loosened.</b></li>
+        <li>Two more failures in the same run were a test database still carrying the pre-merge generations. The startup guard refusing it was <em>correct behaviour</em>, and the database was rebuilt from zero as CI does every run.</li>
+      </ul>
+
+      <h3 style="margin-top:2rem">What this close-out does not cover</h3>
+      <ul class="plain">
+        <li><b>Unfinished agent, live and scheduling work is Epic&nbsp;4 and later</b>, kept deliberately out of the Epic&nbsp;3 defect close-out. Stories 4.4 to 4.11 are specified and not yet built.</li>
+        <li><b>Desktop execution stays deferred to Epic&nbsp;7.</b></li>
+        <li><b>Neither branch is merged</b>, per your review.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span><code>codex/epic-3-adapter-runs</code> at <code>4fb496e</code> &middot; <code>codex/epic-4-agent-runs</code> at <code>b59b115</code> &middot; <strong>neither merged</strong></span>
+    <span>Verified against PostgreSQL&nbsp;18 &middot; schema generation&nbsp;27 and 30</span>
+  </footer>
+
+</div>
+
+</body>
+</html>

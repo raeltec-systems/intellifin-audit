@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "candidateSha": "07f79e275b729893754ce23e5eacbc420c706902",
+  "provider": "solari",
+  "region": "us-west",
+  "recording": false,
+  "target": "https://northstar-production-b312.up.railway.app",
+  "modelProvider": "openai",
+  "modelId": "gpt-5.6-luna",
+  "procedureId": "01a083ca-73a8-7128-8f55-522004cff136",
+  "versionId": "01a083ca-73a8-7ad2-b3f1-dc9885e02181",
+  "employeeId": "E-000102",
+  "liveCase": "undefined-privilege",
+  "authoredC1": "found = false or account_status in [Disabled] else [Active]",
+  "authoredC2Policy": null,
+  "infrastructure": {
+    "database": "disposable CI PostgreSQL",
+    "evidenceStorage": "synthetic HTTP S3 through production AWS adapter",
+    "populationSource": "worker-local independently declared single canonical leaver, acquired through the production HTTP adapter; deployed HR source acceptance is not asserted"
+  },
+  "populationSourceFixture": {
+    "location": "http://127.0.0.1:44433/single-leaver.csv",
+    "canonicalEmployee": "E-000102",
+    "declaredCount": 1,
+    "rawDigest": "8f7c8c40a71d8ae94c49214198caaed3276f31a69896a270923e7ddac4d24cd1"
+  },
+  "beganAt": "2026-09-09T01:31:18.350Z",
+  "acceptance": "passed",
+  "cleanup": "confirmed",
+  "planInputDigest": "810ff26d4b0e1904d02ba5eeb50a051c2b2a36ab404a8733341c0bf38a980290",
+  "registrationDigest": "491f30ce0cf55fe8f0cdfe049183143818e15705165c4216308c929dc5cb0250",
+  "sourceBindingDigest": "a2cf34bec9325894f20c66a8730869afe7590d65544b6833266406ae7cf80623",
+  "limits": {
+    "retriesPerStep": 3,
+    "runStepExecutions": 10000,
+    "runTimeoutSeconds": 3600,
+    "runTokens": 1000000,
+    "stepTimeoutSeconds": 120
+  },
+  "harnessBounds": {
+    "employeeCount": 1,
+    "maximumModelTurns": 12,
+    "auditDeadlineSeconds": 420,
+    "modelOutputTokensPerTurn": 1024
+  },
+  "runId": "01a083ca-7e01-7a3f-b011-5997aaaf8ff1",
+  "result": {
+    "state": "AWAITING_AUDITOR",
+    "outcome": null,
+    "sealed": null,
+    "gate_passed": null
+  },
+  "negativeOutcome": "asked-for-clarification",
+  "humanReview": "The negative case ends at the clarification request; the waiting Run is cancelled through the real command below and its workspace release is confirmed.",
+  "turnsAtStop": [
+    {
+      "sequence": 1,
+      "status": "COMPLETED",
+      "phase": "actions",
+      "uncertainty": "none",
+      "uncertainty_summary": null,
+      "selected_actions": [
+        "navigate"
+      ],
+      "diagnostic": "other"
+    },
+    {
+      "sequence": 2,
+      "status": "COMPLETED",
+      "phase": "actions",
+      "uncertainty": "none",
+      "uncertainty_summary": null,
+      "selected_actions": [
+        "search"
+      ],
+      "diagnostic": "other"
+    },
+    {
+      "sequence": 3,
+      "status": "COMPLETED",
+      "phase": "actions",
+      "uncertainty": "none",
+      "uncertainty_summary": null,
+      "selected_actions": [
+        "open-record"
+      ],
+      "diagnostic": "other"
+    },
+    {
+      "sequence": 4,
+      "status": "COMPLETED",
+      "phase": "actions",
+      "uncertainty": "none",
+      "uncertainty_summary": null,
+      "selected_actions": [
+        "read-attribute"
+      ],
+      "diagnostic": "other"
+    },
+    {
+      "sequence": 5,
+      "status": "COMPLETED",
+      "phase": "evaluation",
+      "uncertainty": "ambiguous",
+      "uncertainty_summary": "The privileged-role criterion is undefined.",
+      "selected_actions": null,
+      "diagnostic": "other"
+    }
+  ],
+  "executionAtStop": {
+    "state": "AWAITING_AUDITOR",
+    "population_status": "POPULATION_READY",
+    "population_diagnostic": null,
+    "authentication_status": "SIGNED_IN",
+    "authentication_diagnostic": null,
+    "agent_status": "WAITING",
+    "agent_diagnostic": "insufficient-evidence"
+  },
+  "workspace": {
+    "mode": "solari",
+    "workspace_id": "ip-10-0-10-40:f64c80a4-ab6f-4326-a4ef-a0824120f3a3:cmtq5387l00eeo101zic44zc7:1788917482204.UznH-C0kU-eftY5cTr-TJg",
+    "status": "RELEASED",
+    "expires_at": "2026-09-09 02:31:22.204+00",
+    "released_at": "2026-09-09 01:31:48.238+00",
+    "diagnostic": null
+  },
+  "finishedAt": "2026-09-09T01:31:49.708Z"
+}

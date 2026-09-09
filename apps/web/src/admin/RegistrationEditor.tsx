@@ -60,6 +60,12 @@ export function RegistrationEditor({
           <dt>Kind</dt>
           <dd>{kindLabel(registration.kind)}</dd>
         </div>
+        {registration.kind === 'web' ? (
+          <div>
+            <dt>Authentication destination</dt>
+            <dd className="ls-mono">{registration.authenticationDestination ?? 'Not configured'}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Registration digest</dt>
           <Digest as="dd" value={registration.digest} label="Registration" />

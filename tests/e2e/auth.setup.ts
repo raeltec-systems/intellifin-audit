@@ -4,6 +4,10 @@ import { createSqlClient } from '@intellifin/infrastructure';
 
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 
+// Without a persistent dev cache, the first sign-in also compiles the auth routes.
+// Keep the normal CI budget; allow cold compilation in the explicit local mode.
+if (process.env['INTELLIFIN_LOW_DISK'] === '1') setup.setTimeout(120_000);
+
 /**
  * The two real sign-ins in the whole suite.
  *

@@ -116,6 +116,22 @@ describe('the registration digest envelope', () => {
     expect(new Set(variants.map(registrationDigest)).size).toBe(variants.length);
   });
 
+  it('adds a configured exact authentication destination to the frozen digest contract', () => {
+    const input = {
+      ...BASE,
+      authenticationDestination: 'https://northstar.synthetic.invalid/loancore/sign-in',
+    };
+    const envelope = registrationDigestEnvelope(input);
+    expect(envelope).toMatchObject({
+      authentication_destination: 'https://northstar.synthetic.invalid/loancore/sign-in',
+    });
+    expect(Object.keys(envelope).sort()).toEqual([
+      ...SIX_KEYS,
+      'authentication_destination',
+    ].sort());
+    expect(registrationDigest(input)).not.toBe(registrationDigest(BASE));
+  });
+
   it('is 64 lower-case hex characters', () => {
     expect(registrationDigest(BASE)).toMatch(/^[0-9a-f]{64}$/);
   });

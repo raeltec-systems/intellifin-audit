@@ -60,6 +60,7 @@ const VALID = {
   permittedActions: ['navigate', 'read-attribute'],
   attributeLabelPatterns: ['Invoice *'],
   secondaryKey: '',
+  authenticationDestination: 'https://northstar.synthetic.invalid/sign-in',
   note: '',
   status: 'active',
 } as const;
@@ -145,6 +146,10 @@ describe('the registration Server Actions', () => {
     ['an inherited key', { ...VALID, kind: 'constructor' }],
     ['a display name past its bound', { ...VALID, displayName: 'x'.repeat(201) }],
     ['an origin past its bound', { ...VALID, allowedOrigins: ['x'.repeat(401)] }],
+    [
+      'an authentication destination past its bound',
+      { ...VALID, authenticationDestination: 'x'.repeat(2049) },
+    ],
   ])('refuses %s with one sentence, without reaching the command', async (_label, body) => {
     requireServerAction.mockResolvedValue(ALLOWED);
 

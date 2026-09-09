@@ -52,6 +52,7 @@ const SELECTION = {
   permittedActions: targetSystemRegistration.permittedActions,
   attributeLabelPatterns: targetSystemRegistration.attributeLabelPatterns,
   secondaryKey: targetSystemRegistration.secondaryKey,
+  authenticationDestination: targetSystemRegistration.authenticationDestination,
   note: targetSystemRegistration.note,
   status: targetSystemRegistration.status,
   digest: targetSystemRegistration.digest,
@@ -69,6 +70,7 @@ interface SelectedRow {
   permittedActions: string[];
   attributeLabelPatterns: string[];
   secondaryKey: string;
+  authenticationDestination: string | null;
   note: string;
   status: string;
   digest: string;
@@ -102,6 +104,9 @@ function toRegistration(
     permittedActions: row.permittedActions as readonly PermittedReadAction[],
     attributeLabelPatterns: row.attributeLabelPatterns,
     secondaryKey: row.secondaryKey,
+    ...(row.authenticationDestination === null
+      ? {}
+      : { authenticationDestination: row.authenticationDestination }),
     note: row.note,
     status: row.status satisfies RegistrationStatus,
     digest: row.digest,
@@ -282,6 +287,7 @@ export class DrizzleRegistrationWriter implements RegistrationWriter {
       permittedActions: [...record.permittedActions],
       attributeLabelPatterns: [...record.attributeLabelPatterns],
       secondaryKey: record.secondaryKey,
+      authenticationDestination: record.authenticationDestination ?? null,
       note: record.note,
       status: record.status,
       digest: record.digest,
@@ -300,6 +306,7 @@ export class DrizzleRegistrationWriter implements RegistrationWriter {
         permittedActions: [...record.permittedActions],
         attributeLabelPatterns: [...record.attributeLabelPatterns],
         secondaryKey: record.secondaryKey,
+        authenticationDestination: record.authenticationDestination ?? null,
         note: record.note,
         status: record.status,
         digest: record.digest,

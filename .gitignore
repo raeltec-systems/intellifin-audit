@@ -27,3 +27,9 @@ playwright/.auth/
 # illegal import here, runs the AD-1 check, then deletes it. A crashed run can
 # leave one behind; it must never be committed.
 **/__boundary_violation__/
+
+# Agent worktrees. `git worktree add` under the repository puts a whole second
+# checkout here, and a `git add -A` would sweep it in -- the same class as the
+# lesson already recorded about staging while a subagent is planting and
+# reverting violations. Stage explicit paths; keep this ignored either way.
+.claude/worktrees/

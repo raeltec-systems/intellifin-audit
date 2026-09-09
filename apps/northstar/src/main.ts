@@ -33,20 +33,60 @@ function port(): number {
   return parsed;
 }
 
-function respond(request: IncomingMessage, response: ServerResponse): void {
-  const answer = handleRequest(request.method ?? 'GET', request.url ?? '/');
-  const body = typeof answer.body === 'string' ? Buffer.from(answer.body, 'utf8') : Buffer.from(answer.body);
-  response.writeHead(answer.status, { ...answer.headers, 'content-length': String(body.byteLength) });
+/**
+ * How much of a request body this process will read before it stops listening.
+ *
+ * A sign-in form field, and a very large amount of room around it. The bound is here
+ * rather than in `handleRequest` because it is a property of the SOCKET: a synthetic
+ * system whose memory a caller can choose is a system that can be made to stop answering
+ * while a Run is being observed, and a pure function from a request to a response has no
+ * socket to stop reading from.
+ */
+const MAX_BODY_BYTES = 64 * 1024;
+
+/** The request body as UTF-8, bounded. Resolves with what arrived. */
+async function readBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf8');
+    size += buffer.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      request.destroy();
+      return '';
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+function respond(request: IncomingMessage, response: ServerResponse, body: string): void {
+  const answer = handleRequest(request.method ?? 'GET', request.url ?? '/', request.headers, body);
+  const payload = typeof answer.body === 'string' ? Buffer.from(answer.body, 'utf8') : Buffer.from(answer.body);
+  response.writeHead(answer.status, { ...answer.headers, 'content-length': String(payload.byteLength) });
   // HEAD carries the headers of the GET and none of the body (RFC 9110). Writing one
   // would make a HEAD and a GET disagree about what the system serves.
   if ((request.method ?? 'GET').toUpperCase() === 'HEAD') response.end();
-  else response.end(body);
+  else response.end(payload);
 }
 
 const server = createServer((request, response) => {
+  // The body is read before the request is judged, so a refused method still consumes what
+  // was sent and the socket can be reused. Nothing but the sign-in reads it.
+  readBody(request).then(
+    (body) => {
+      try {
+        respond(request, response, body);
+      } catch (error) {
+        internalError(response, error);
+      }
+    },
+    (error: unknown) => internalError(response, error),
+  );
+});
+
+function internalError(response: ServerResponse, error: unknown): void {
   try {
-    respond(request, response);
-  } catch (error) {
     // A synthetic system that throws a stack trace at a Run is a system that taught the
     // Run nothing. Answer in the same shape as every other refusal.
     process.stderr.write(`northstar: ${String(error)}\n`);
@@ -59,8 +99,11 @@ const server = createServer((request, response) => {
       'content-length': String(body.byteLength),
     });
     response.end(body);
+  } catch {
+    // The response has already begun, or the socket is gone. There is nothing left to say.
+    response.destroy();
   }
-});
+}
 
 const listenPort = port();
 server.listen(listenPort, () => {

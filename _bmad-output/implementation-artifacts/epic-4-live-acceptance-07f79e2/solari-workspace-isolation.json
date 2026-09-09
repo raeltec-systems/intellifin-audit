@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "candidateSha": "07f79e275b729893754ce23e5eacbc420c706902",
+  "provider": "solari",
+  "region": "us-west",
+  "target": "https://northstar-production-b312.up.railway.app",
+  "recording": false,
+  "maximumProviderSessions": 2,
+  "modelRequests": 0,
+  "proofScope": "Two concurrent managed browser sessions; cookie/session/local/session/cache state and production adapter request interception. Worker memory and provider-side firewall policy are not asserted.",
+  "beganAt": "2026-09-09T01:31:50.174Z",
+  "acceptance": "passed",
+  "mutationExecution": "Not executed live; mappings identify existing local/offline guards and required remote assertions, not live mutation results.",
+  "runA": {
+    "runId": "01a083ca-f08c-7165-bc78-a69f59d1d7af",
+    "procedureId": "01a083ca-f06b-7c10-9378-58cc29d68c8e",
+    "versionId": "01a083ca-f06b-7d85-b195-616d170ab13b",
+    "planInputDigest": "0835a4710e9befe8c4039ea1ba776e99782ad248c8ce5cacee4cab1b3321c9ff"
+  },
+  "workspaceA": {
+    "mode": "solari",
+    "workspace_id": "ip-10-0-10-40:a518a7e3-2d9f-4f15-bf89-04a14b95ecfb:cmtq5387l00eeo101zic44zc7:1788917510681.NV2k7OEnW0vDlENiYaKYng",
+    "status": "RELEASED",
+    "expires_at": "2026-09-09 02:31:50.681+00",
+    "released_at": "2026-09-09 01:31:59.207+00",
+    "diagnostic": null
+  },
+  "runB": {
+    "runId": "01a083ca-f63d-7159-8f53-57cef93dd070",
+    "procedureId": "01a083ca-f620-7173-bfcc-7812586e36f5",
+    "versionId": "01a083ca-f620-7a93-aeaa-51d248df72c6",
+    "planInputDigest": "5b9f4df1e1e1357dca6f52369ea6a7eb0b3c83bcd76cfa1b474c12354f5c0db2"
+  },
+  "workspaceB": {
+    "mode": "solari",
+    "workspace_id": "ip-10-0-11-65:98c6f639-6872-49df-b998-02de660bfdd2:cmtq5387l00eeo101zic44zc7:1788917511817.sC1obSKkXYYwXmB148_s8A",
+    "status": "RELEASED",
+    "expires_at": "2026-09-09 02:31:51.817+00",
+    "released_at": "2026-09-09 01:32:00.133+00",
+    "diagnostic": null
+  },
+  "overlap": "A browser operation remained pending while B completed an authenticated captured read.",
+  "webBoundary": "Denied a synthetic web-app origin under the real remote browser interceptor; no deployed private web service was contacted.",
+  "egressDenials": [
+    {
+      "event_type": "security.action-denied",
+      "payload": {
+        "cause": "scope-violation",
+        "method": "GET",
+        "diagnostic": "workspace-egress-denied",
+        "destination": "https://intellifin-web.synthetic.invalid/runs",
+        "resourceType": "fetch"
+      }
+    },
+    {
+      "event_type": "security.action-denied",
+      "payload": {
+        "cause": "scope-violation",
+        "method": "GET",
+        "diagnostic": "workspace-egress-denied",
+        "destination": "https://northstar-production-b312.up.railway.app/prodconsole",
+        "resourceType": "fetch"
+      }
+    }
+  ],
+  "finishedAt": "2026-09-09T01:32:00.180Z"
+}

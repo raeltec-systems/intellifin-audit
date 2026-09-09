@@ -66,7 +66,15 @@ describe.skipIf(!databaseUrl)('durable plan delivery recovery against PostgreSQL
         if (job.versionId === row.versionId) observed.push(metadata.retriesRemaining!);
         return derivePlan(dependencies(job.versionId === row.versionId ? model : null), job, metadata);
       });
-      await until(async () => (await delivery(row.versionId)).state === 'completed', 'exhausted derivation did not finish queue delivery');
+      // Both conditions, because they are two different facts and the queue row reaches
+      // its final state slightly before the last handler invocation is visible in this
+      // process. Waiting on the row alone made this test read `observed` as `[1]` roughly
+      // one run in three. A regression in which the retry never happens still fails here,
+      // loudly, on the timeout message rather than on a bare count mismatch.
+      await until(
+        async () => (await delivery(row.versionId)).state === 'completed' && observed.length === 2,
+        'exhausted derivation did not finish queue delivery, or the retry was never delivered',
+      );
     } finally { await queue.stop({ graceful: true, timeout: 5000 }); }
     expect(observed).toEqual([1, 0]); expect(errors).toEqual([]);
     const failed = (await repository.findVersion(row.versionId))!;

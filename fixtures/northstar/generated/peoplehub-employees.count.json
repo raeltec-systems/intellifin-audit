@@ -6,6 +6,22 @@
   },
   "source": "peoplehub-employees",
   "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "schema_version": 1,
+  "representation": "population-rows-v1",
+  "schema": [
+    "employee_id",
+    "full_name",
+    "employment_status",
+    "termination_effective_time"
+  ],
+  "count": 27,
+  "sha256": "d978cea850ae8f7ad94ad89a8162016bf3d088d5e3cad4575ce011888dc69003",
+  "complete": true,
   "declared_count": 27,
   "counted_from": "datasets/peoplehub-employees.json",
   "count_rule": "every employee record PeopleHub publishes",

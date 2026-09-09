@@ -159,7 +159,11 @@ test.describe('as a PoC Administrator', () => {
     // ways to lock this deployment out of itself, and recovery is shell access.
     await page.goto('/administration');
 
-    const ownRow = page.getByRole('row', { name: /administrator@example\.test/ });
+    // The signed-in administrator's OWN row, whichever account `E2E_ADMIN_EMAIL` names.
+    // A hard-coded address here asserted the wrong row the moment the suite was pointed at
+    // a differently-named administrator: somebody else's select is correctly ENABLED, so
+    // the failure read as a broken self-demotion guard rather than as a wrong locator.
+    const ownRow = page.getByRole('row', { name: ACCOUNTS.administrator.email });
     const ownSelect = ownRow.getByRole('combobox');
     await expect(ownSelect).toBeDisabled();
 

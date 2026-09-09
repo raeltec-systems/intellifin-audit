@@ -70,6 +70,70 @@ export const ARTIFACTS: ReadonlyMap<string, Artifact> = new Map([
     },
   ],
   [
+    'accessgate-active-accounts.csv',
+    {
+      file: 'accessgate-active-accounts.csv',
+      contentType: CSV,
+      description: 'The current AccessGate Active accounts export.',
+    },
+  ],
+  [
+    'accessgate-active-accounts.cover-sheet.json',
+    {
+      file: 'accessgate-active-accounts.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Row count and digest of the current AccessGate Active export.',
+    },
+  ],
+  [
+    'accessgate-active-accounts-truncated.csv',
+    {
+      file: 'accessgate-active-accounts-truncated.csv',
+      contentType: CSV,
+      description: 'Seeded incomplete AccessGate Active population.',
+    },
+  ],
+  [
+    'accessgate-active-accounts-truncated.cover-sheet.json',
+    {
+      file: 'accessgate-active-accounts-truncated.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Declares the full AccessGate Active export over a truncated file.',
+    },
+  ],
+  [
+    'coredirectory-accounts-compliant.csv',
+    {
+      file: 'coredirectory-accounts-compliant.csv',
+      contentType: CSV,
+      description: 'CoreDirectory accounts with no prohibited permission pair. Seeds nothing.',
+    },
+  ],
+  [
+    'coredirectory-accounts-compliant.cover-sheet.json',
+    {
+      file: 'coredirectory-accounts-compliant.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Row count and digest of the compliant CoreDirectory population.',
+    },
+  ],
+  [
+    'coredirectory-accounts-conflict.csv',
+    {
+      file: 'coredirectory-accounts-conflict.csv',
+      contentType: CSV,
+      description: 'CoreDirectory accounts carrying exactly one prohibited permission pair.',
+    },
+  ],
+  [
+    'coredirectory-accounts-conflict.cover-sheet.json',
+    {
+      file: 'coredirectory-accounts-conflict.cover-sheet.json',
+      contentType: JSON_TYPE,
+      description: 'Row count and digest of the CoreDirectory population with one conflict.',
+    },
+  ],
+  [
     'role-matrix.csv',
     {
       file: 'role-matrix.csv',

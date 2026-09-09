@@ -17,7 +17,6 @@ import type {
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { ConfirmDialog } from '../design/ConfirmDialog';
 import { AUDIT_INSTRUCTIONS_NO_AGENT } from './labels';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
@@ -61,7 +60,6 @@ export function AuditInstructionsForm({
   const texts = section.value;
   const textsRef = { get current() { return section.current.current.value; } };
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateTargetDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -85,7 +83,6 @@ export function AuditInstructionsForm({
   async function save(): Promise<void> {
     if (saving.current || unknownOutcome || section.current.current.conflict) return;
     saving.current = true;
-    setConfirming(false);
     setBusy(true);
     const edit: DraftTargetEdit = {
       section: 'audit-instructions',
@@ -147,7 +144,10 @@ export function AuditInstructionsForm({
             event.preventDefault();
             if (saving.current || unknownOutcome || section.current.current.conflict) return;
             setResult(null);
-            setConfirming(true);
+            // Direct save (owner decision 2026-09-08). A scope-widening warning is
+            // advisory and never blocks the save; it is shown beside the field it
+            // names, before the click, which is where it can be acted on.
+            void save();
           }}
         >
           {agentTargets.map((target) => {
@@ -192,18 +192,6 @@ export function AuditInstructionsForm({
           </div>
         </form>
       )}
-
-      <ConfirmDialog
-        open={confirming}
-        weight="routine"
-        title="Save the Audit Instructions?"
-        consequence={`This sets the Audit Instructions for Draft version ${draft.versionNumber} of ${draft.controlName}. A scope-widening warning is advisory and does not block this save. The change is recorded in the audit chain against your name.`}
-        confirmLabel="Save Audit Instructions"
-        onConfirm={() => {
-          void save();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
     </div>
   );
 }

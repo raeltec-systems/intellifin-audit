@@ -27,7 +27,6 @@ test('queued preview progresses from pending through failure to a read-only acce
     await expect(preview).toContainText('Re-deriving');
     await page.getByLabel('New Control name').fill(`E2E queued plan ${versionId}`);
     await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Save Control name', exact: true }).click();
     await expect.poll(async () => Number((await sql`SELECT count(*) AS n FROM pgboss.job WHERE data->>'versionId' = ${versionId}`)[0]?.['n'])).toBe(1);
     await expect(preview).toContainText('Re-deriving');
     await startProceduresWorker(queue, (job) => derivePlan(dependencies, job));
@@ -50,6 +49,14 @@ test('queued preview progresses from pending through failure to a read-only acce
     await expect(preview).toContainText('Rule-Classified');
     await expect(preview).toContainText('test-provider / demonstration-model');
     await expect(preview.locator('input, textarea, select, button, [contenteditable="true"]')).toHaveCount(0);
+    // Settle before scanning. This preview POLLS, so a refresh can be in flight when the
+    // scan starts, and axe then reads a document that is not this page: a navigation that
+    // has begun committing briefly has no title, which axe reports as a `document-title`
+    // violation with `serious` impact. It failed exactly once that way in a full-suite run
+    // and passed alone immediately after — the shape of a race, not of a missing title.
+    // Asserting the title first removes the race AND asserts something true, since this
+    // page sets that title and WCAG 2.4.2 requires it.
+    await expect(page).toHaveTitle('Builder · IntelliFin Audit');
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
     await page.setViewportSize({ width: 800, height: 900 });
     await expect(page.getByText('Open on a desktop browser to author or approve.', { exact: true })).toBeVisible();

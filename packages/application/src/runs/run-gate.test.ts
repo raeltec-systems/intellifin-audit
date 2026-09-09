@@ -1,0 +1,242 @@
+import { describe, expect, it } from 'vitest';
+import { RUN_LIMIT_CAUSES, type ExecutablePlan, type GateCheckResult, type PackageArtifact, type RunRecord } from '@intellifin/domain';
+import { runRunLevelGate } from './run-gate.js';
+import type {
+  GateCheckRow,
+  GateFactTally,
+  PackageSeal,
+  RunGateContext,
+  RunGatePopulationFacts,
+  StoredRunResult,
+} from './execution-ports.js';
+
+/**
+ * The Run-level Gate over facts it was handed rather than facts a stage produced.
+ *
+ * `execute-adapter-steps.test.ts` drives the Gate end to end, which is where its normal
+ * behaviour is pinned. What cannot be driven that way is a Gate reached with NO readable
+ * plan: `executeAdapterSteps` refuses that plan as `unsupported-frozen-plan` before its
+ * first Work Item, so the branch is unreachable from the composed stage — and a branch
+ * nothing exercises is a branch that can be inverted silently. `runRunLevelGate` takes
+ * `plan: ExecutablePlan | null`, so it is exercised here, at the seam that accepts it.
+ */
+
+const RUN: RunRecord = {
+  runId: '01a06fd8-0000-7000-8000-0000000000f1',
+  correlationId: '01a06fd8-0000-7000-8000-0000000000f2',
+  procedureId: '01a06fd8-0000-7000-8000-0000000000f3',
+  versionId: '01a06fd8-0000-7000-8000-0000000000f4',
+  versionNumber: 1,
+  procedureName: 'Segregation of duties',
+  period: { from: '2026-08-01', to: '2026-08-31' },
+  state: 'RUNNING',
+  kind: 'STANDARD',
+  initiatorId: 'auditor',
+  sessionId: 'session',
+  initiatedAt: '2026-09-02T00:00:00.000Z',
+  authorizationRole: 'auditor',
+  predecessorRunId: null,
+  rerunReason: null,
+  cancellation: null,
+  requestToken: '01a06fd8-0000-7000-8000-0000000000f5',
+};
+
+const DECIDED_AT = '2026-09-05T00:00:00.000Z';
+const NO_TALLY: GateFactTally = { total: 0, sample: [] };
+
+/** A Run with nothing wrong with it except whatever the test supplies. */
+const CLEAN_POPULATION: RunGatePopulationFacts = {
+  checks: [
+    { name: 'parse', passed: true },
+    { name: 'declaration', passed: true },
+    { name: 'response-contract', passed: true },
+    { name: 'declared-count', passed: true },
+    { name: 'declared-digest', passed: true },
+    { name: 'declared-schema', passed: true },
+    { name: 'declared-period', passed: true },
+    { name: 'complete-extraction', passed: true },
+    { name: 'generation', passed: true },
+    { name: 'source-identity', passed: true },
+    { name: 'freshness', passed: true },
+    { name: 'complete-inclusion', passed: true },
+    { name: 'nonempty-population', passed: true },
+  ],
+  included: 1,
+  excluded: 0,
+  indeterminate: 0,
+  rowsParsed: 1,
+  unexplained: [],
+  generatedAt: '2026-09-01T00:00:00.000Z',
+};
+
+class FakeGate implements RunGateContext {
+  rows: GateCheckRow[] = [];
+  state: RunRecord['state'] | null = null;
+  seal: PackageSeal | null = null;
+  events: { eventType: string; payload: Record<string, unknown> }[] = [];
+  /** Every `expected` this Gate asked the condition-gap reader for. */
+  askedFor: number[] = [];
+  private sequence = 0;
+
+  auditEvents = {
+    append: async (draft: { eventType: string; payload: Record<string, unknown> }) => {
+      this.sequence += 1;
+      this.events.push({ eventType: draft.eventType, payload: draft.payload });
+      return { sequence: this.sequence } as never;
+    },
+  };
+
+  readPackageArtifacts = async (): Promise<readonly PackageArtifact[]> => [];
+  abandonArtifacts = async (): Promise<void> => undefined;
+  readSeal = async (): Promise<PackageSeal | null> => this.seal;
+  writeSeal = async (seal: PackageSeal): Promise<void> => {
+    this.seal = seal;
+  };
+  notifyTimeline = async (): Promise<void> => undefined;
+
+  readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.rows;
+  readCancellation = async (): Promise<null> => null;
+  saveGateChecks = async (rows: readonly GateCheckRow[]): Promise<void> => {
+    this.rows = [...rows];
+  };
+  saveRunState = async (state: RunRecord['state']): Promise<void> => {
+    this.state = state;
+  };
+  readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => CLEAN_POPULATION;
+  readPopulationRows = async () => [];
+  readGateObservations = async () => [];
+  readFailedObservationChecks = async () => ({});
+  readConditionGaps = async (expected: number): Promise<GateFactTally> => {
+    this.askedFor.push(expected);
+    // The real reader answers "no gaps" for `expected <= 0`: every Observation has at
+    // least zero evaluations. That is exactly why a Run with no readable plan must not
+    // reach this reader at all.
+    return NO_TALLY;
+  };
+  readUnnamedValues = async (): Promise<GateFactTally> => NO_TALLY;
+  readIncompleteExtractions = async () => [];
+  readAccessFailures = async () => ({ failedSessionSteps: [], denied: [] });
+  readIntegrityFindings = async () => [];
+
+  /** Story 3.9: the Result the Gate's terminal transition completes the Run with. */
+  result: StoredRunResult | null = null;
+  readResult = async (): Promise<StoredRunResult | null> => this.result;
+  writeResult = async (result: StoredRunResult): Promise<void> => {
+    this.result = result;
+  };
+  readResultExclusions = async () => [];
+  readConditionCounts = async () => [];
+  readResultFindings = async () => ({
+    exceptions: { total: 0, records: [] },
+    unevaluated: { total: 0, records: [] },
+  });
+}
+
+function row(results: readonly GateCheckResult[], check: string): GateCheckResult {
+  const found = results.find((result) => result.check === check);
+  expect(found, `no ${check} row`).toBeDefined();
+  return found!;
+}
+
+/** A plan carrying `n` frozen compiled conditions, and nothing else this Gate reads. */
+function plan(conditions: number, templateId: 'P-2' | 'P-4' = 'P-2'): ExecutablePlan {
+  return {
+    schemaVersion: 1,
+    compilerVersion: '1',
+    inputs: {
+      templateId,
+      complianceConditions: Array.from({ length: conditions }, (_, index) => ({
+        conditionId: `C${String(index + 1)}`,
+      })),
+      targets: [],
+      allowVersionedDuplicates: false,
+      sourceSnapshot: null,
+    },
+    sessionSteps: [],
+    targetSystems: [],
+    observations: [],
+    credentialReferences: [],
+    limits: {
+      retriesPerStep: 3,
+      stepTimeoutSeconds: 120,
+      runStepExecutions: 10000,
+      runTimeoutSeconds: 3600,
+      runTokens: 1000000,
+    },
+  } as unknown as ExecutablePlan;
+}
+
+describe('runRunLevelGate', () => {
+  it.each(RUN_LIMIT_CAUSES)('retains truthful passing quality checks but seals %s as Inconclusive', async limitCause => {
+    const context = new FakeGate();
+    const ordinary = new FakeGate();
+    await runRunLevelGate(ordinary, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT });
+    const outcome = await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT, limitCause });
+    expect(context.state).toBe('INCONCLUSIVE');
+    expect(context.rows).toEqual(ordinary.rows);
+    expect(context.rows).toHaveLength(20);
+    expect(outcome.decision).toMatchObject({ passed: true, state: 'COMPLETED' });
+    expect(outcome.terminalState).toBe('INCONCLUSIVE');
+    expect(context.seal?.runState).toBe('INCONCLUSIVE');
+    expect(context.result).toMatchObject({ runState: 'INCONCLUSIVE', outcome: 'INCONCLUSIVE', sealed: true });
+    const before = JSON.stringify({ rows: context.rows, events: context.events, seal: context.seal, result: context.result });
+    const replay = await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT });
+    expect(replay).toMatchObject({ terminalState: 'INCONCLUSIVE', recorded: false });
+    expect(JSON.stringify({ rows: context.rows, events: context.events, seal: context.seal, result: context.result })).toBe(before);
+  });
+
+  it('preserves an independent Gate execution failure when a Run limit also expired', async () => {
+    const context = new FakeGate();
+    context.readPopulationFacts = async () => ({ ...CLEAN_POPULATION, checks: [{ name: 'parse', passed: false }] });
+    await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT, limitCause: 'run-time-limit' });
+    expect(context.rows).toHaveLength(20);
+    expect(context.state).toBe('RUN_FAILED');
+    expect(context.result).toMatchObject({ runState: 'RUN_FAILED', outcome: 'RUN_FAILED' });
+  });
+
+  it('counts condition gaps against the number of conditions the plan froze', async () => {
+    const context = new FakeGate();
+    const outcome = await runRunLevelGate(context, { run: RUN, plan: plan(2), decidedAt: DECIDED_AT });
+    expect(context.askedFor).toEqual([2]);
+    expect(row(outcome.results, 'condition-completeness').outcome).toBe('PASS');
+    expect(outcome.decision).toMatchObject({ passed: true, state: 'COMPLETED' });
+  });
+
+  it('never passes condition completeness for a Run whose plan could not be read', async () => {
+    // A plan this build cannot read declares no conditions, so there is no number to
+    // compare evaluations against and the gap reader would find no gaps — a PASS for want
+    // of a count. §H's row is "every condition has an evaluation for every record its
+    // applicability predicate selects", and a Run with no readable plan has verified that
+    // for exactly nothing.
+    const context = new FakeGate();
+    const outcome = await runRunLevelGate(context, { run: RUN, plan: null, decidedAt: DECIDED_AT });
+    const completeness = row(outcome.results, 'condition-completeness');
+    expect(completeness.outcome).toBe('FAIL');
+    expect(completeness.diagnostics).toEqual(['condition-evaluation-missing']);
+    // The gap reader is never consulted: there is nothing to consult it with.
+    expect(context.askedFor).toEqual([]);
+    expect(outcome.decision).toMatchObject({ passed: false, state: 'INCONCLUSIVE' });
+    expect(context.state).toBe('INCONCLUSIVE');
+    // And the Run is still sealed at that terminal transition, as every other one is.
+    expect(context.seal?.runState).toBe('INCONCLUSIVE');
+  });
+
+  it('routes a missing P-4 page declaration through the existing population §H rows', async () => {
+    const context = new FakeGate();
+    const outcome = await runRunLevelGate(context, {
+      run: RUN,
+      plan: plan(0, 'P-4'),
+      decidedAt: DECIDED_AT,
+    });
+    const population = row(outcome.results, 'population-acquisition');
+    expect(population.outcome).toBe('FAIL');
+    expect(population.diagnostics).toEqual(['declaration-absent']);
+    expect(row(outcome.results, 'count-reconciliation-file')).toMatchObject({
+      outcome: 'FAIL',
+      diagnostics: ['declared-count-mismatch'],
+    });
+    expect(outcome.decision.state).toBe('INCONCLUSIVE');
+    // The page claim is an additional fact; the source snapshot's checks were not edited.
+    expect(CLEAN_POPULATION.checks.every((check) => check.passed)).toBe(true);
+  });
+});

@@ -34,6 +34,11 @@ export default defineConfig(() => {
         '@intellifin/infrastructure/db': sub('infrastructure/src/db/index'),
         '@intellifin/infrastructure/probe-runner': sub('infrastructure/src/registrations/probe-runner'),
         '@intellifin/infrastructure/probe': sub('infrastructure/src/registrations/probe'),
+        '@intellifin/infrastructure/acquisition': sub('infrastructure/src/runs/population-acquisition-http'),
+        '@intellifin/infrastructure/evidence': sub('infrastructure/src/evidence/s3-evidence-store'),
+        '@intellifin/infrastructure/extraction': sub('infrastructure/src/runs/adapter-extraction-http'),
+        '@intellifin/infrastructure/credentials': sub('infrastructure/src/runs/credential-resolver'),
+        '@intellifin/infrastructure/browser': sub('infrastructure/src/runs/browser-execution'),
         '@intellifin/infrastructure': pkg('infrastructure'),
       },
     },
@@ -44,7 +49,9 @@ export default defineConfig(() => {
       testTimeout: 30_000,
       hookTimeout: 30_000,
       fileParallelism: false,
-      reporters: ['default'],
+      // A stalled database/browser hook previously left CI silent for ten minutes. Name
+      // the active module before hooks start without logging queries or target content.
+      reporters: process.env['CI'] ? ['default', './tests/integration/progress-reporter.mjs'] : ['default'],
     },
   };
 });

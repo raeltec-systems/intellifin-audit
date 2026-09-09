@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
   // Server Action arguments can contain passwords or authored text. Framework logs
   // bypass the application telemetry sanitizer, including during local development.
   logging: { serverFunctions: false },
+  // Optional local verification mode: persistent Turbopack compaction can need
+  // more than a GiB of extra disk. Keep the warm in-memory server on small hosts.
+  experimental: {
+    turbopackFileSystemCacheForDev: process.env['INTELLIFIN_LOW_DISK'] !== '1',
+    turbopackFileSystemCacheForBuild: process.env['INTELLIFIN_LOW_DISK'] !== '1',
+  },
   // `next dev` otherwise writes its own AGENTS.md and CLAUDE.md into apps/web. This
   // repository already owns both file names as the shared decision log and the agent
   // block, so a generated pair beside them is at best untracked noise and at worst a

@@ -1,0 +1,54 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "coredirectory-accounts",
+  "title": "CoreDirectory identity store — the two clean P-2 populations AND their Target System",
+  "addendum_reference": "A.1 Population Sources; A.2 Target Systems; C P-2; E.1 outcome rules",
+  "serves": "read-only-api",
+  "generation": "2026-09-01.1",
+  "declared_schema": ["account_id", "employee_id", "username", "status", "roles", "disabled_time"],
+  "sensitive_fields": ["username"],
+  "population_rule": "status = Active",
+  "why_this_exists": [
+    "Neither golden population can produce Pass or Control Failure, and that is the golden datasets working as designed: accessgate-accounts.json lists AG-1007 twice and ledgerflow-transactions.json carries TX-500007 with no processed_time. The duplicate-primary-key check counts over EVERY parsed Source row and the inclusion reconciliation counts every row it could not place, so both read the SOURCE rather than the included set and no inclusion rule escapes them. Each failing Gate row is Inconclusive.",
+    "CoreDirectory is therefore a THIRD population source with no seeded failure at all: distinct primary keys, no missing values, every role declared exactly once in the SAME RoleMatrix the golden P-2 Run expands through. A second copy of RoleMatrix would be a second source of truth for one expansion, so this dataset declares no role vocabulary of its own.",
+    "It seeds exactly one thing: CD-3103 holds VENDOR_MAINTAINER and VENDOR_APPROVER, which expand to CREATE_VENDOR + APPROVE_VENDOR. That is the only difference between the two populations below, so the two terminal outcomes differ by one record and by nothing else."
+  ],
+  "notes": [
+    "The compliant population deliberately carries near misses: CD-3001 has CREATE_PAYMENT without RELEASE_PAYMENT and CD-3003 has CREATE_VENDOR without APPROVE_VENDOR. Each is one permission short of a prohibited pair, so a rule that flags a single member of the conflict vocabulary reports an Exception and fails the Pass case.",
+    "No account carries UNKNOWN_ROLE_X, AMBIGUOUS_DUAL or an empty role list, and no account_id repeats. Those are the AccessGate seeds and they belong there; a clean source that inherited one could not demonstrate a passing Gate.",
+    "disabled_time is empty on every row because every account is Active. P-2 reads status and roles only; the column exists so the declared schema matches AccessGate's, and a Run that swaps one source for the other needs no other change.",
+    "Both populations are served from ONE extraction endpoint, /coredirectory/accounts, which lists all eight accounts. P-2's coverage rule is `must-appear`, so what matters is that every account of the bound population appears in the extraction — not that the extraction carries nothing else."
+  ],
+  "populations": [
+    {
+      "population_id": "coredirectory-accounts-compliant",
+      "title": "CoreDirectory accounts with no prohibited permission pair",
+      "covers": "coredirectory-accounts-compliant.csv",
+      "expected_outcome_reference": "clean-pass",
+      "note": "No account expands to a prohibited pair, so every record is Compliant and the Run reaches addendum E.1 row 7.",
+      "accounts": [
+        { "account_id": "CD-3001", "employee_id": "E-000401", "username": "t.banda", "status": "Active", "roles": ["AP_CLERK"], "disabled_time": "" },
+        { "account_id": "CD-3002", "employee_id": "E-000402", "username": "m.chanda", "status": "Active", "roles": ["LOAN_VIEWER", "REPORT_READER"], "disabled_time": "" },
+        { "account_id": "CD-3003", "employee_id": "E-000403", "username": "k.zulu", "status": "Active", "roles": ["VENDOR_MAINTAINER"], "disabled_time": "" },
+        { "account_id": "CD-3004", "employee_id": "E-000404", "username": "p.mwale", "status": "Active", "roles": ["REPORT_READER"], "disabled_time": "" }
+      ]
+    },
+    {
+      "population_id": "coredirectory-accounts-conflict",
+      "title": "CoreDirectory accounts carrying exactly one prohibited permission pair",
+      "covers": "coredirectory-accounts-conflict.csv",
+      "expected_outcome_reference": "clean-control-failure",
+      "note": "CD-3103 expands to CREATE_VENDOR + APPROVE_VENDOR and is the only Exception. The other three records prove the rule does not over-fire, so the Run reaches addendum E.1 row 6 on one record.",
+      "accounts": [
+        { "account_id": "CD-3101", "employee_id": "E-000411", "username": "s.phiri", "status": "Active", "roles": ["AP_CLERK"], "disabled_time": "" },
+        { "account_id": "CD-3102", "employee_id": "E-000412", "username": "n.tembo", "status": "Active", "roles": ["LOAN_VIEWER"], "disabled_time": "" },
+        { "account_id": "CD-3103", "employee_id": "E-000413", "username": "j.lungu", "status": "Active", "roles": ["VENDOR_MAINTAINER", "VENDOR_APPROVER"], "disabled_time": "" },
+        { "account_id": "CD-3104", "employee_id": "E-000414", "username": "d.mumba", "status": "Active", "roles": ["REPORT_READER"], "disabled_time": "" }
+      ]
+    }
+  ]
+}

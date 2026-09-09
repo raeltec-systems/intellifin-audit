@@ -19,9 +19,14 @@
  *
  *   pnpm build
  *   DATABASE_URL=postgres://... \
- *   CREDENTIAL_CAPABILITIES='{"cred://synthetic/northstar-readonly":"read-only"}' \
+ *   CREDENTIAL_CAPABILITIES='{"cred://synthetic/northstar-readonly":"read-only",
+ *                             "cred://synthetic/loancore-readonly":"read-only"}' \
  *   NORTHSTAR_BASE_URL=http://localhost:4300 \
  *   pnpm seed:northstar --admin-email administrator@example.test
+ *
+ * Every reference the catalogue names has to be declared, LoanCore's own included: it is
+ * the one authenticated synthetic system (Story 4.2) and declares its reference in
+ * `fixtures/northstar/datasets/systems.json` rather than sharing the shared one.
  *
  * `CREDENTIAL_CAPABILITIES` is a DECLARATION and holds no secret — a reference and a
  * verdict. Without it every registration is refused, which is the fail-closed direction:
@@ -71,9 +76,21 @@ interface TargetSystemDeclaration {
   readonly display_name: string;
   readonly kind: string;
   readonly origin_path: string;
+  /** Exact query-free form action for credential entry, when the catalogue configures one. */
+  readonly authentication_destination_path?: string;
   readonly permitted_actions: readonly string[];
   readonly attribute_label_patterns: readonly string[];
   readonly secondary_key: string;
+  /**
+   * The system's OWN credential reference, when it declares one (Story 4.2).
+   *
+   * LoanCore is the one authenticated synthetic system, so it names its own reference in
+   * the catalogue rather than sharing the one `NORTHSTAR_CREDENTIAL_REF` supplies. Every
+   * reference a registration uses still has to be declared read-only in
+   * `CREDENTIAL_CAPABILITIES`, or the command refuses the registration verbatim — which
+   * is the fail-closed direction and is checked below before any row is written.
+   */
+  readonly credential_ref?: string;
   readonly note: string;
 }
 
@@ -160,6 +177,19 @@ async function main(): Promise<void> {
   }
 
   const catalogue = readCatalogue();
+  // Every reference the catalogue names, checked BEFORE any row is written. A system that
+  // declares its own reference — LoanCore does, because it is the one authenticated
+  // synthetic system — is refused by the command if the deployment has not vouched for it,
+  // and nine audited denials say less than one sentence naming the variable to set.
+  for (const system of catalogue.target_systems) {
+    const reference = system.credential_ref ?? credentialRef;
+    if (declared.get(reference) !== 'read-only') {
+      fail(
+        `${system.id}: the credential reference "${reference}" is not declared read-only. ` +
+          `Add it to CREDENTIAL_CAPABILITIES as '{"${reference}":"read-only"}'.`,
+      );
+    }
+  }
   const sql = createSqlClient(databaseUrl, { max: 2 });
   const db = createDb(sql);
 
@@ -200,7 +230,14 @@ async function main(): Promise<void> {
     // running a seed script twice.
     const existingSystems = new Map(
       (await new DrizzleRegistrationRepository(db).listRegistrations()).map(
-        (registration) => [registration.displayName, registration.allowedOrigins] as const,
+        (registration) =>
+          [
+            registration.displayName,
+            {
+              allowedOrigins: registration.allowedOrigins,
+              authenticationDestination: registration.authenticationDestination,
+            },
+          ] as const,
       ),
     );
     const existingBindings = new Set(
@@ -214,16 +251,25 @@ async function main(): Promise<void> {
       const already = existingSystems.get(system.display_name);
       if (already !== undefined) {
         const wanted = [origin(base, system.origin_path)];
+        const wantedAuthenticationDestination =
+          system.authentication_destination_path === undefined
+            ? undefined
+            : origin(base, system.authentication_destination_path);
         const same =
-          already.length === wanted.length && wanted.every((value) => already.includes(value));
+          already.allowedOrigins.length === wanted.length &&
+          wanted.every((value) => already.allowedOrigins.includes(value)) &&
+          already.authenticationDestination === wantedAuthenticationDestination;
         say(
           same
             ? `target system "${system.display_name}" already registered; leaving it alone`
             : `target system "${system.display_name}" already registered, but it points at ` +
-                `${already.join(', ') || '(no origin)'} and this run wanted ` +
-                `${wanted.join(', ')}. Left alone: changing an origin is a ` +
-                `digest change and mints a draft for every Procedure that froze it. Change it ` +
-                `on the Administration surface, or retire this one and register a new system.`,
+                `${already.allowedOrigins.join(', ') || '(no origin)'} ` +
+                `(authentication ${already.authenticationDestination ?? '(not configured)'}) ` +
+                `and this run wanted ${wanted.join(', ')} ` +
+                `(authentication ${wantedAuthenticationDestination ?? '(not configured)'}). ` +
+                `Left alone: changing an origin or authentication destination is a digest ` +
+                `change and mints a draft for every Procedure that froze it. Change it on the ` +
+                `Administration surface, or retire this one and register a new system.`,
         );
         continue;
       }
@@ -237,10 +283,13 @@ async function main(): Promise<void> {
         kind: system.kind,
         allowedOrigins: [origin(base, system.origin_path)],
         applicationIdentity: '',
-        credentialRef,
+        credentialRef: system.credential_ref ?? credentialRef,
         permittedActions: actions,
         attributeLabelPatterns: [...system.attribute_label_patterns],
         secondaryKey: system.secondary_key,
+        ...(system.authentication_destination_path === undefined
+          ? {}
+          : { authenticationDestination: origin(base, system.authentication_destination_path) }),
         note: system.note,
         status: 'active',
       };

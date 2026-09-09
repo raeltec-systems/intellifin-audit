@@ -20,7 +20,6 @@ import type { ProcedureVersionView, UpdateEvidenceDraftResult } from '@intellifi
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { ConfirmDialog } from '../design/ConfirmDialog';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 
@@ -46,6 +45,24 @@ const FREQUENCY_LABEL: Readonly<Record<Frequency, string>> = {
   weekly: 'Weekly',
   monthly: 'Monthly',
 };
+
+/**
+ * The attribute a saved `disablement-window` condition reads, or `null`.
+ *
+ * The name comes from the COMPILED rule rather than being retyped here: the rule is what
+ * a Run evaluates, so a second spelling of the attribute would offer a capture the rule
+ * cannot use. It reads the SAVED conditions, not the Compliance editor's local ones —
+ * the two sections are two commands with one shared token, and offering a capture for a
+ * rule nobody has saved yet would name a requirement for a condition that may never
+ * exist.
+ */
+function disablementAttribute(draft: ProcedureVersionView): string | null {
+  for (const condition of draft.complianceConditions) {
+    const rule = condition.rule;
+    if (rule?.kind === 'disablement-window') return rule.disabledField;
+  }
+  return null;
+}
 
 function inputsFrom(draft: ProcedureVersionView): readonly EvidenceRequirementInput[] {
   return draft.evidenceRequirements.map(authoredEvidenceInput);
@@ -83,7 +100,6 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
   useEffect(() => { setTouched(new Set()); }, [section.baseline]);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -118,11 +134,11 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
   }
 
   const limitReached = requirements.length >= EVIDENCE_DRAFT_LIMITS.requirements;
+  const captureAttribute = disablementAttribute(draft);
 
   async function save(): Promise<void> {
     if (saving.current || section.conflict || unknownOutcome) return;
     saving.current = true;
-    setConfirming(false);
     setBusy(true);
     const normalized = normalize(requirementsRef.current);
     section.begin(normalized);
@@ -186,7 +202,9 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           setSubmitted(true);
           setTouched(new Set(rowIds.current));
           if (anyError) return;
-          setConfirming(true);
+          // Direct save (owner decision 2026-09-08); the visible saved, unsaved and
+          // error states replace the confirmation.
+          void save();
         }}
       >
         {requirements.length === 0 ? <p>No Evidence Requirement is defined yet.</p> : null}
@@ -272,6 +290,31 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
             </fieldset>
           );
         })}
+        {captureAttribute === null || requirements.some((requirement) => requirement.attributeName.trim() === captureAttribute) ? null : (
+          <div className="ls-stack" data-add-capture={captureAttribute}>
+            <Banner tone="warning" title={`The saved Compliance Rule reads ${captureAttribute}, and no requirement below names it. Nothing would capture the disablement time, so every record would be Unevaluated.`} />
+            <Button
+              type="button"
+              disabledReason={limitReached ? `Evidence Requirements supports at most ${EVIDENCE_DRAFT_LIMITS.requirements} attributes.` : undefined}
+              disabledReasonId={`${id}-limit`}
+              onClick={() => {
+                // The authored input shape EXACTLY: derived capture metadata is the
+                // command's to compute, and an extra key here is refused at save.
+                const next: readonly EvidenceRequirementInput[] = [...requirementsRef.current, {
+                  attributeName: captureAttribute, modelRead: false, groundedBy: ['structural-snapshot'],
+                  screenshot: false, recordingSegment: false,
+                }];
+                const rowId = `${id}-row-${nextId.current++}`;
+                rowIds.current.push(rowId);
+                setRequirements(next);
+                setResult(null);
+                requestAnimationFrame(() => document.getElementById(`${rowId}-name`)?.focus());
+              }}
+            >
+              Add the {captureAttribute} requirement
+            </Button>
+          </div>
+        )}
         {limitReached ? <p id={`${id}-limit`}>Evidence Requirements supports at most {EVIDENCE_DRAFT_LIMITS.requirements} attributes.</p> : null}
         <div id={`${id}-add`}><Button
           type="button"
@@ -298,17 +341,6 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           {busy ? 'Saving…' : 'Save Evidence Requirements'}
         </Button>
       </form>
-      <ConfirmDialog
-        open={confirming}
-        weight="routine"
-        title="Save Evidence Requirements?"
-        consequence={`This sets ${requirements.length} Evidence Requirement${requirements.length === 1 ? '' : 's'} for Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`}
-        confirmLabel="Save Evidence Requirements"
-        onConfirm={() => {
-          void save();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
     </div>
   );
 }
@@ -327,7 +359,6 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
   const { frequency, startTime } = section.value;
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -341,7 +372,6 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
   async function save(): Promise<void> {
     if (saving.current || frequency === '' || section.conflict || unknownOutcome) return;
     saving.current = true;
-    setConfirming(false);
     setBusy(true);
     section.begin({ frequency, startTime });
     try {
@@ -396,7 +426,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
           setResult(null);
           setTouched(true);
           if (error !== null) return;
-          setConfirming(true);
+          void save();
         }}
         onBlur={() => setTouched(true)}
       >
@@ -443,17 +473,6 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
           {busy ? 'Saving…' : 'Save Schedule'}
         </Button>
       </form>
-      <ConfirmDialog
-        open={confirming}
-        weight="routine"
-        title="Save the Schedule?"
-        consequence={`This sets the Schedule for Draft version ${draft.versionNumber} of ${draft.controlName}. The change is recorded in the audit chain against your name.`}
-        confirmLabel="Save Schedule"
-        onConfirm={() => {
-          void save();
-        }}
-        onCancel={() => setConfirming(false)}
-      />
     </div>
   );
 }

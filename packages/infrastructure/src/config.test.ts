@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, credentialCapabilityManifest, loadConfig } from './config.js';
+import { ConfigError, credentialCapabilityManifest, evidenceS3Config, loadConfig } from './config.js';
 
 const validEnv = {
   DATABASE_URL: 'postgres://user:pw@localhost:5432/intellifin',
@@ -264,5 +264,62 @@ describe('CREDENTIAL_CAPABILITIES', () => {
       expect((error as ConfigError).keys).toContain('CREDENTIAL_CAPABILITIES');
       expect((error as ConfigError).message).not.toContain('cred://a');
     }
+  });
+});
+
+describe('private Evidence S3 configuration', () => {
+  const storage = {
+    EVIDENCE_S3_ENDPOINT: 'https://objects.example.test',
+    EVIDENCE_S3_REGION: 'us-east-1',
+    EVIDENCE_S3_BUCKET: 'audit-evidence',
+    EVIDENCE_S3_ACCESS_KEY_ID: 'synthetic-access-key',
+    EVIDENCE_S3_SECRET_ACCESS_KEY: 'synthetic-secret-value',
+  } as const;
+
+  it('is absent until the production backend is configured', () => {
+    expect(evidenceS3Config(loadConfig(validEnv))).toBeNull();
+  });
+
+  it('returns the complete private backend configuration without changing its values', () => {
+    const config = loadConfig({ ...validEnv, ...storage, EVIDENCE_S3_FORCE_PATH_STYLE: 'false' });
+    expect(evidenceS3Config(config)).toEqual({
+      endpoint: storage.EVIDENCE_S3_ENDPOINT,
+      region: storage.EVIDENCE_S3_REGION,
+      bucket: storage.EVIDENCE_S3_BUCKET,
+      accessKeyId: storage.EVIDENCE_S3_ACCESS_KEY_ID,
+      secretAccessKey: storage.EVIDENCE_S3_SECRET_ACCESS_KEY,
+      forcePathStyle: false,
+    });
+  });
+
+  it('refuses partial backend configuration without echoing a secret', () => {
+    try {
+      loadConfig({ ...validEnv, EVIDENCE_S3_ENDPOINT: storage.EVIDENCE_S3_ENDPOINT, EVIDENCE_S3_SECRET_ACCESS_KEY: storage.EVIDENCE_S3_SECRET_ACCESS_KEY });
+      expect.unreachable('expected partial Evidence S3 configuration to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      expect(String(error)).toContain('EVIDENCE_S3_REGION');
+      expect(String(error)).not.toContain(storage.EVIDENCE_S3_SECRET_ACCESS_KEY);
+    }
+  });
+});
+
+describe('agent provider configuration', () => {
+  it('keeps provider keys worker-only in production without echoing them', () => {
+    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) {
+      const value = 'synthetic-provider-secret';
+      expect(loadConfig({ ...validEnv, SERVICE_NAME: 'worker', NODE_ENV: 'production', [key]: value })).toHaveProperty(key, value);
+      try {
+        loadConfig({ ...validEnv, NODE_ENV: 'production', [key]: value });
+        expect.unreachable();
+      } catch (error) {
+        expect(String(error)).toContain(key);
+        expect(String(error)).not.toContain(value);
+      }
+    }
+  });
+  it('retains a deployment commit only when it is a complete SHA', () => {
+    expect(loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40) }).RAILWAY_GIT_COMMIT_SHA).toBe('a'.repeat(40));
+    expect(() => loadConfig({ ...validEnv, RAILWAY_GIT_COMMIT_SHA: 'latest' })).toThrow(/RAILWAY_GIT_COMMIT_SHA/);
   });
 });

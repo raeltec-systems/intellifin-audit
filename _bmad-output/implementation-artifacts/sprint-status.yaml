@@ -57,32 +57,33 @@ development_status:
   2-8-immutable-versions-and-platform-authored-drafts: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-initiate-a-run-for-an-active-version-and-period: backlog
-  3-2-acquire-the-population-source-deterministically: backlog
-  3-3-extract-adapter-acquired-target-systems-and-freeze-reference: backlog
-  3-4-register-observations-in-the-one-wire-schema-in-batches: backlog
-  3-5-seal-evidence-with-reservation-and-digest-verification: backlog
-  3-6-corroborate-observations-against-the-stored-structural-snaps: backlog
-  3-7-evaluate-corroborated-observations-deterministically-and-rai: backlog
-  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: backlog
-  3-9-seal-the-result-and-publish-the-adapter-run-s-outputs: backlog
-  3-10-cancel-an-active-run-and-start-a-linked-rerun: backlog
-  3-11-see-runs-and-inspect-an-adapter-run-s-result-evidence-except: backlog
+  epic-3: done
+  3-1-initiate-a-run-for-an-active-version-and-period: done
+  3-2-acquire-the-population-source-deterministically: done
+  3-3-extract-adapter-acquired-target-systems-and-freeze-reference: done
+  3-4-register-observations-in-the-one-wire-schema-in-batches: done
+  3-5-seal-evidence-with-reservation-and-digest-verification: done
+  3-6-corroborate-observations-against-the-stored-structural-snaps: done
+  3-7-evaluate-corroborated-observations-deterministically-and-rai: done
+  3-8-run-the-full-evidence-quality-gate-and-map-limit-exhaustion: done
+  3-9-seal-the-result-and-publish-the-adapter-run-s-outputs: done
+  3-10-cancel-an-active-run-and-start-a-linked-rerun: done
+  3-11-see-runs-and-inspect-an-adapter-run-s-result-evidence-except: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-provision-an-isolated-agent-workspace-per-run: backlog
-  4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: backlog
-  4-3-supply-credentials-just-in-time-and-suppress-capture-during: backlog
-  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: backlog
-  4-5-prove-absence-for-an-employee-with-no-account: backlog
-  4-6-bound-agent-execution-and-render-retrieved-content-inert: backlog
-  4-7-raise-typed-escalations-as-durable-waits: backlog
-  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: backlog
-  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: backlog
-  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: backlog
-  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: backlog
+  epic-4: in-progress
+  4-1-provision-an-isolated-agent-workspace-per-run: done
+  4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: done
+  4-3-supply-credentials-just-in-time-and-suppress-capture-during: done
+  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: review
+  4-5-prove-absence-for-an-employee-with-no-account: review
+  4-6-bound-agent-execution-and-render-retrieved-content-inert: review
+  4-7-raise-typed-escalations-as-durable-waits: review
+  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: review
+  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: review
+  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: review
+  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: review
+  4-12-evaluate-the-24-hour-disablement-window-through-the-complet: review
   epic-4-retrospective: optional
 
   epic-5: backlog

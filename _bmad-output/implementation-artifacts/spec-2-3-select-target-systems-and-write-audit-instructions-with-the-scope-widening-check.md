@@ -129,3 +129,23 @@ Blocking condition: none
 - SW-1 matches a named token as a substring of a selected system's display name, so a short token inside a longer name reads as in-scope. Advisory only (FR-8), and a false negative rather than a false positive; execution-time denial is the enforced control.
 
 **Note on later revision.** The verification above was run at commit `13ea030`, the Story 2.3 implementation. Commit `17fff4b` subsequently revised this story's forms, domain module and command; that revision is re-verified by the gate run recorded against Story 2.4's baseline, not by the run above.
+
+## Owner decision (2026-09-08): explicit selection defines scope
+
+Supersedes the completeness rule above where it says "missing web/desktop coverage for P-1"
+is a diagnostic, and the acceptance line "P-1 identifies required web and desktop coverage":
+
+- The explicitly selected Target Systems define the audit scope. Addendum §C names LoanCore
+  and LedgerDesk as P-1 DEFAULTS, offered by name; they are guidance, not a mandate.
+  `targetBlockersFor` reports only `targets-missing`; an unselected desktop never blocks
+  submission, approval or a Run.
+- A selected system this build cannot execute (a `desktop` registration, Epic 7) is
+  identified and refused (`agent-driven-target`), never silently skipped, and never dropped
+  from the Result: `requiredTargetSystems` keeps every selected non-reference system as
+  required coverage, and the published Result's `targetSystems` names each selected system
+  with its support status and each unselected Template default as out of scope.
+- Regression: `packages/domain/src/procedures/target-draft.test.ts` (blockers),
+  `packages/domain/src/runs/execution.test.ts` and `result.test.ts` (coverage and the
+  published list), `packages/application/src/runs/complete-run.test.ts` (publication),
+  `apps/web/src/runs/RunDetail.test.ts` (the "Target Systems in scope" section). Desktop
+  execution remains deferred to Epic 7.

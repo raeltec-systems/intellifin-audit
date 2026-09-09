@@ -6,6 +6,25 @@
   },
   "source": "ledgerflow-transactions",
   "generation": "2026-09-01.1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "schema_version": 1,
+  "representation": "population-rows-v1",
+  "schema": [
+    "transaction_id",
+    "amount",
+    "currency",
+    "initiator",
+    "processed_time",
+    "approval_id",
+    "memo"
+  ],
+  "count": 13,
+  "sha256": "48da7364d2d99b9d976f9dcb79ba958c947a351cb8d442e067d45e5acbed46b1",
+  "complete": true,
   "declared_count": 13,
   "counted_from": "datasets/ledgerflow-transactions.json",
   "count_rule": "every processed transaction LedgerFlow publishes",

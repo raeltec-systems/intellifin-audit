@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { countDeclaration, datasets } from './fixtures.js';
+import { CREDENTIAL_FIELD, SIGN_IN_PATH } from './authentication.js';
+import { loanCoreCredential, apiDeclaration, countDeclaration, datasets } from './fixtures.js';
 import { ARTIFACTS } from './files.js';
 import { handleRequest } from './server.js';
 
@@ -14,19 +15,50 @@ import { handleRequest } from './server.js';
  * agree about nothing.
  */
 
+/**
+ * A signed-in LoanCore session, on every request (Story 4.2).
+ *
+ * Obtained the only way there is to obtain one: by submitting the real sign-in form. There
+ * is no header sign-in — leaving one would make the form decorative — so this cookie is
+ * the product of the same POST a Run performs. LoanCore requires it and every other
+ * synthetic system ignores it, so presenting it everywhere keeps these assertions about
+ * what each system SERVES rather than about who is asking. `authentication.test.ts` is
+ * where the refusal itself is asserted.
+ */
+const AUDIT_HEADERS = {
+  cookie: (
+    handleRequest(
+      'POST',
+      SIGN_IN_PATH,
+      { 'content-type': 'application/x-www-form-urlencoded' },
+      new URLSearchParams({ [CREDENTIAL_FIELD]: loanCoreCredential().token }).toString(),
+    ).headers['set-cookie'] ?? ''
+  ).split(';')[0]!,
+} as const;
+
 function text(url: string, method = 'GET'): string {
-  const response = handleRequest(method, url);
+  const response = handleRequest(method, url, AUDIT_HEADERS);
   return typeof response.body === 'string'
     ? response.body
     : Buffer.from(response.body).toString('utf8');
 }
 
 function statusOf(url: string): number {
-  return handleRequest('GET', url).status;
+  return handleRequest('GET', url, AUDIT_HEADERS).status;
 }
 
 function payload(url: string): Record<string, unknown> {
   return JSON.parse(text(url)) as Record<string, unknown>;
+}
+
+/** The v1 rows projection, kept independent from the generator implementation. */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
 }
 
 /** Undo the transport encoding so a seeded string can be compared byte for byte. */
@@ -48,6 +80,14 @@ function account(employeeId: string) {
 }
 
 describe('LoanCore', () => {
+  it('publishes a generic search entry point without fixture-valued query links', () => {
+    const page = text('/loancore');
+    expect(page).toContain('<a href="/loancore/users">Search accounts</a>');
+    expect(page).not.toContain('/loancore/users?');
+    expect(page).not.toContain('E-000103');
+    expect(page).not.toContain('Rita Musonda');
+  });
+
   it('renders Status, Username, Roles and Employee ID on an account page', () => {
     const row = account('E-000103');
     const page = text(`/loancore/users/${row.employee_id}`);
@@ -58,10 +98,21 @@ describe('LoanCore', () => {
     expect(page).toContain(`<dd>${row.username}</dd>`);
     expect(page).toContain(`<dd>${row.roles.join(', ')}</dd>`);
     expect(page).toContain(`<dd>${row.employee_id}</dd>`);
+    // An Active account has no disablement instant and shows no such row (D3).
+    expect(row.disabled_time).toBe('');
+    expect(page).not.toContain('<dt>Disabled time</dt>');
+  });
+
+  it('renders Disabled time on a disabled account page, verbatim from the dataset (D3)', () => {
+    const row = account('E-000105');
+    const page = text(`/loancore/users/${row.employee_id}`);
+    expect(row.disabled_time).toBe('2026-08-08T00:00:00+02:00');
+    expect(page).toContain('<dt>Disabled time</dt>');
+    expect(page).toContain(`<dd>${row.disabled_time}</dd>`);
   });
 
   it('renders a not-found page for a missing employee, never a 500', () => {
-    const response = handleRequest('GET', '/loancore/users/E-999999');
+    const response = handleRequest('GET', '/loancore/users/E-999999', AUDIT_HEADERS);
     expect(response.status).toBe(404);
     expect(text('/loancore/users/E-999999')).toContain('No account exists for employee ID E-999999');
   });
@@ -119,7 +170,9 @@ describe('LoanCore', () => {
   it('returns two candidates with no Employee ID column for a name-only match', () => {
     const row = account('E-000117');
     // The ID search must find nothing, or the fallback name search never happens.
-    expect(text(`/loancore/users?employee_id=${row.employee_id}`)).toContain('No accounts match');
+    const empty = text(`/loancore/users?employee_id=${row.employee_id}`);
+    expect(empty).toContain('No accounts match');
+    expect(empty).toContain('<p role="status" aria-label="result-summary">Showing 0 of 0 matching accounts.</p>');
     const results = text(`/loancore/users?name=${encodeURIComponent(row.full_name)}`);
     expect(results).not.toContain('Employee ID');
     for (const username of row.candidate_usernames ?? []) {
@@ -239,6 +292,32 @@ describe('the read-only APIs', () => {
       expect(body['returned'], collection.url).toBeTypeOf('number');
     }
   });
+
+  it('publishes metadata and a rows digest that matches the independent declaration', () => {
+    const cases = [
+      ['/accessgate/accounts?status=Active', 'accounts', 'accessgate-accounts.count.json'],
+      ['/approvenow/approvals', 'approvals', 'approvenow-approvals.count.json'],
+      ['/peoplehub/employees', 'employees', 'peoplehub-employees.count.json'],
+      ['/ledgerflow/transactions', 'transactions', 'ledgerflow-transactions.count.json'],
+    ] as const;
+    for (const [url, key, declarationFile] of cases) {
+      const body = payload(url);
+      const declaration = apiDeclaration(declarationFile);
+      const rows = body[key];
+      expect(body['schema_version'], url).toBe(1);
+      expect(body['representation'], url).toBe('population-rows-v1');
+      expect(body['source'], url).toBe(declaration.source);
+      expect(body['generation'], url).toBe(declaration.generation);
+      expect(body['generated_at'], url).toBe(declaration.generated_at);
+      expect(body['effective_period'], url).toEqual(declaration.effective_period);
+      expect(body['schema'], url).toEqual(declaration.schema);
+      expect(body['complete'], url).toBe(true);
+      expect(createHash('sha256').update(canonical({ schema_version: 1, rows }), 'utf8').digest('hex')).toBe(
+        declaration.sha256,
+      );
+      expect(body['returned'], url).toBe(declaration.count);
+    }
+  });
 });
 
 describe('the published files', () => {
@@ -258,6 +337,18 @@ describe('the published files', () => {
     );
   });
 
+  it('serves the AccessGate Active CSV bytes and count declared by its cover', () => {
+    const served = handleRequest('GET', '/files/accessgate-active-accounts.csv').body;
+    const sheet = JSON.parse(text('/files/accessgate-active-accounts.cover-sheet.json')) as {
+      row_count: number;
+      content_digest: { algorithm: string; value: string };
+    };
+    const csv = Buffer.from(served);
+    expect(sheet.content_digest.algorithm).toBe('sha256');
+    expect(createHash('sha256').update(csv).digest('hex')).toBe(sheet.content_digest.value);
+    expect(csv.toString('utf8').trimEnd().split('\n').length - 2).toBe(sheet.row_count);
+  });
+
   it('refuses a name that is not published, without touching the filesystem', () => {
     // `/files/..%2f..%2fetc%2fpasswd` is a URL anybody can type. The served set is a Map
     // keyed by name and the name is never joined onto a path, so there is nothing to walk.
@@ -274,5 +365,20 @@ describe('the published files', () => {
     const lines = text('/files/leavers-export-truncated.csv').trimEnd().split('\n');
     expect(sheet.seeded_case).toBe('declared-count-mismatch');
     expect(lines.length - 2).toBeLessThan(sheet.row_count);
+  });
+
+  it('preserves the AccessGate truncation count and digest mismatch', () => {
+    const served = handleRequest('GET', '/files/accessgate-active-accounts-truncated.csv').body;
+    const sheet = JSON.parse(
+      text('/files/accessgate-active-accounts-truncated.cover-sheet.json'),
+    ) as {
+      row_count: number;
+      seeded_case: string;
+      content_digest: { value: string };
+    };
+    const csv = Buffer.from(served);
+    expect(sheet.seeded_case).toBe('declared-count-mismatch');
+    expect(createHash('sha256').update(csv).digest('hex')).not.toBe(sheet.content_digest.value);
+    expect(csv.toString('utf8').trimEnd().split('\n').length - 2).toBeLessThan(sheet.row_count);
   });
 });

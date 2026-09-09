@@ -54,41 +54,59 @@ export class Utf8EncodingError extends Error {
  * refuses as well, which is why the golden fixture and this function agree.
  */
 export function utf8Bytes(text: string): Uint8Array {
-  const bytes: number[] = [];
+  // Count before allocating: a number[] amplifies multi-megabyte Evidence into
+  // hundreds of megabytes of temporary storage. Preserve strict surrogate checks.
+  let size = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) size++;
+    else if (code < 0x800) size += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      const low = text.charCodeAt(index + 1);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) throw new Utf8EncodingError('a lone high surrogate has no UTF-8 encoding');
+      size += 4; index++;
+    } else if (code >= 0xdc00 && code <= 0xdfff) throw new Utf8EncodingError('a lone low surrogate has no UTF-8 encoding');
+    else size += 3;
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
   for (let index = 0; index < text.length; index += 1) {
     const code = text.charCodeAt(index);
     if (code < 0x80) {
-      bytes.push(code);
+      bytes[offset++] = code;
     } else if (code < 0x800) {
-      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+      bytes[offset++] = 0xc0 | (code >> 6); bytes[offset++] = 0x80 | (code & 0x3f);
     } else if (code >= 0xd800 && code <= 0xdbff) {
       const low = text.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {
         throw new Utf8EncodingError('a lone high surrogate has no UTF-8 encoding');
       }
       const point = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
-      bytes.push(
-        0xf0 | (point >> 18),
-        0x80 | ((point >> 12) & 0x3f),
-        0x80 | ((point >> 6) & 0x3f),
-        0x80 | (point & 0x3f),
-      );
+      bytes[offset++] = 0xf0 | (point >> 18);
+      bytes[offset++] = 0x80 | ((point >> 12) & 0x3f);
+      bytes[offset++] = 0x80 | ((point >> 6) & 0x3f);
+      bytes[offset++] = 0x80 | (point & 0x3f);
       index += 1;
     } else if (code >= 0xdc00 && code <= 0xdfff) {
       throw new Utf8EncodingError('a lone low surrogate has no UTF-8 encoding');
     } else {
-      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+      bytes[offset++] = 0xe0 | (code >> 12); bytes[offset++] = 0x80 | ((code >> 6) & 0x3f); bytes[offset++] = 0x80 | (code & 0x3f);
     }
   }
-  return Uint8Array.from(bytes);
+  return bytes;
 }
 
 function rotateRight(value: number, amount: number): number {
   return ((value >>> amount) | (value << (32 - amount))) >>> 0;
 }
 
-/** Lower-case SHA-256 hex of the given bytes (FIPS 180-4). */
-export function sha256HexOfBytes(input: Uint8Array): string {
+/**
+ * The 32 raw SHA-256 bytes of the input (FIPS 180-4).
+ *
+ * `sha256HexOfBytes` renders these; `hmacSha256Hex` chains them. One implementation, so
+ * the hex form and the keyed form cannot disagree about what SHA-256 is.
+ */
+export function sha256Bytes(input: Uint8Array): Uint8Array {
   const bitLength = input.length * 8;
   // One 0x80 byte, then zeros, then the 64-bit big-endian bit length in the last 8.
   const paddedLength = (((input.length + 9 + 63) / 64) | 0) * 64;
@@ -150,12 +168,48 @@ export function sha256HexOfBytes(input: Uint8Array): string {
     state[7] = ((state[7] as number) + h) >>> 0;
   }
 
+  const digest = new Uint8Array(32);
+  const out = new DataView(digest.buffer);
+  for (let i = 0; i < 8; i += 1) out.setUint32(i * 4, state[i] as number, false);
+  return digest;
+}
+
+/** Lower-case SHA-256 hex of the given bytes (FIPS 180-4). */
+export function sha256HexOfBytes(input: Uint8Array): string {
   let hex = '';
-  for (const word of state) hex += word.toString(16).padStart(8, '0');
+  for (const byte of sha256Bytes(input)) hex += byte.toString(16).padStart(2, '0');
   return hex;
 }
 
 /** Lower-case SHA-256 hex of the UTF-8 bytes of `text`. */
 export function sha256Hex(text: string): string {
   return sha256HexOfBytes(utf8Bytes(text));
+}
+
+/** SHA-256's block size in bytes. HMAC pads or re-hashes the key to exactly this (RFC 2104). */
+const HMAC_BLOCK_BYTES = 64;
+
+/**
+ * HMAC-SHA-256 (RFC 2104), lower-case hex.
+ *
+ * `H((K ^ opad) || H((K ^ ipad) || message))`, with a key longer than one block replaced
+ * by its own digest and a shorter one zero-padded. Hand-written for the same reason
+ * SHA-256 is: `packages/domain` has no `@types/node`, so `node:crypto` is unreachable, and
+ * adding the types to get it would trade the compiler-enforced AD-11 invariant for a
+ * convenience. `tests/unit/sha256.test.ts` checks it against `node:crypto` over the key
+ * lengths where a padding mistake hides — shorter than a block, exactly a block, and
+ * longer than one — and against the published RFC 4231 vectors.
+ */
+export function hmacSha256Hex(key: Uint8Array, message: Uint8Array): string {
+  const block = new Uint8Array(HMAC_BLOCK_BYTES);
+  block.set(key.length > HMAC_BLOCK_BYTES ? sha256Bytes(key) : key, 0);
+  const inner = new Uint8Array(HMAC_BLOCK_BYTES + message.length);
+  const outer = new Uint8Array(HMAC_BLOCK_BYTES + 32);
+  for (let i = 0; i < HMAC_BLOCK_BYTES; i += 1) {
+    inner[i] = (block[i] as number) ^ 0x36;
+    outer[i] = (block[i] as number) ^ 0x5c;
+  }
+  inner.set(message, HMAC_BLOCK_BYTES);
+  outer.set(sha256Bytes(inner), HMAC_BLOCK_BYTES);
+  return sha256HexOfBytes(outer);
 }

@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { Utf8EncodingError, sha256Hex, sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
+import { Utf8EncodingError, hmacSha256Hex, sha256Bytes, sha256Hex, sha256HexOfBytes, utf8Bytes } from '@intellifin/domain';
 
 /**
  * The hand-written SHA-256 in `packages/domain`, checked against one that is not it.
@@ -95,5 +95,62 @@ describe('utf8Bytes', () => {
     expect(() => utf8Bytes('\uD83D')).toThrow(Utf8EncodingError);
     // A well-formed pair is fine.
     expect(() => utf8Bytes('🔎')).not.toThrow();
+  });
+});
+
+/**
+ * HMAC-SHA-256, checked against one that is not it (Story 3.7).
+ *
+ * The Exception fingerprint is keyed, and a keyed hash has one more place to get padding
+ * wrong than a plain one: RFC 2104 zero-pads a key shorter than the 64-byte block and
+ * REPLACES a longer one with its own digest. Those three key lengths are where a mistake
+ * hides, so they are the ones exercised, alongside the published RFC 4231 vectors.
+ */
+describe('hmacSha256Hex', () => {
+  const nodeHmac = (key: Uint8Array, message: Uint8Array): string =>
+    createHmac('sha256', Buffer.from(key)).update(Buffer.from(message)).digest('hex');
+
+  it.each([
+    ['shorter than a block', 20],
+    ['exactly a block', 64],
+    ['longer than a block', 100],
+    ['empty', 0],
+  ])('agrees with node:crypto for a key %s', (_name, keyLength) => {
+    const key = Uint8Array.from({ length: keyLength }, (_value, index) => (index * 7 + 3) & 0xff);
+    for (const length of BOUNDARY_LENGTHS) {
+      const message = Uint8Array.from({ length }, (_value, index) => (index * 11 + 5) & 0xff);
+      expect(hmacSha256Hex(key, message), `key ${String(keyLength)} message ${String(length)}`).toBe(
+        nodeHmac(key, message),
+      );
+    }
+  });
+
+  it('matches the published RFC 4231 vectors', () => {
+    // Test case 1: a 20-byte 0x0b key over "Hi There".
+    expect(hmacSha256Hex(new Uint8Array(20).fill(0x0b), utf8Bytes('Hi There'))).toBe(
+      'b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7',
+    );
+    // Test case 2: the key "Jefe" over "what do ya want for nothing?".
+    expect(hmacSha256Hex(utf8Bytes('Jefe'), utf8Bytes('what do ya want for nothing?'))).toBe(
+      '5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843',
+    );
+    // Test case 6: a 131-byte key, longer than one block, so the key is itself hashed.
+    expect(
+      hmacSha256Hex(
+        new Uint8Array(131).fill(0xaa),
+        utf8Bytes('Test Using Larger Than Block-Size Key - Hash Key First'),
+      ),
+    ).toBe('60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54');
+  });
+
+  it('renders the same digest as the hex form it shares an implementation with', () => {
+    for (const length of BOUNDARY_LENGTHS) {
+      const input = Uint8Array.from({ length }, (_value, index) => index & 0xff);
+      const raw = sha256Bytes(input);
+      expect(raw).toHaveLength(32);
+      expect([...raw].map((byte) => byte.toString(16).padStart(2, '0')).join('')).toBe(
+        sha256HexOfBytes(input),
+      );
+    }
   });
 });
