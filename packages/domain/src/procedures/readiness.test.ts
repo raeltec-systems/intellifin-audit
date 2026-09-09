@@ -14,6 +14,7 @@ import {
   procedureReadiness,
   type ProcedureReadinessInputs,
 } from './readiness.js';
+import { type CompiledComplianceCondition } from './compliance-draft.js';
 import { snapshotFromRegistration, type RegistrationSixFields } from './target-draft.js';
 
 /**
@@ -246,7 +247,9 @@ describe('procedureReadiness', () => {
 
     // A mapping for another field, a malformed entry and a non-array all fall back.
     for (const value of [[{ field: 'disabled_time', column: 'x' }], [null], [{ field: 'termination_time' }], [{ field: 'termination_time', column: '' }], 'ended_at', null]) {
-      const probe = { ...condition, mapping: value };
+      // Deliberately NOT the compiled type: these are the shapes a stored row could carry,
+      // and the reader has to fall back on every one of them rather than trust the type.
+      const probe = { ...condition, mapping: value } as unknown as CompiledComplianceCondition;
       expect(terminationColumnFor(probe)).toBe(TERMINATION_TIME_COLUMN);
     }
   });
