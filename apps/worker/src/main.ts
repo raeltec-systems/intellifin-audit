@@ -10,7 +10,7 @@ import {
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
   PostgresWorkspaceRepository, SystemClock,
   DrizzleNotificationRepository, InAppNotificationSender, startNotificationWorker,
-  createProceduresQueue, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
+  createProceduresQueue, startQueueMaintenance, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
   createSqlClient,
   createTelemetry,
@@ -68,6 +68,7 @@ async function main(): Promise<void> {
   queue.on('error', (error) => telemetry.captureError('Plan derivation queue failed', error, {}));
 
   let interval: NodeJS.Timeout | undefined;
+  let stopQueueMaintenance: (() => Promise<void>) | undefined;
   let stopNotificationDelivery: (() => Promise<void>) | undefined;
   let stopEvidenceReadRecovery: (() => Promise<void>) | undefined;
   let stopReviewRecovery: (() => Promise<void>) | undefined;
@@ -92,6 +93,7 @@ async function main(): Promise<void> {
     await stopPopulationRecovery?.();
     await stopIntegritySweep?.();
     await stopWorkspaceReaper?.();
+    await stopQueueMaintenance?.();
     // `solari.close()` is REQUIRED in Node and `browser.close()` is not enough: the client
     // keeps a loopback proxy server open for its connection-retry path, and that handle
     // keeps the event loop alive. A worker that closes only its browsers never exits.
@@ -119,6 +121,12 @@ async function main(): Promise<void> {
   await startProceduresWorker(queue, (job, delivery) => derivePlan(derivation, job, delivery));
   stopRecovery = await startProceduresRecovery(db, (job) => reconcilePlanDerivation(derivation, job),
     () => telemetry.captureError('Plan derivation queue failed', new Error('Plan recovery failed'), {}));
+  // One process-wide sweep, on a connection of its own: a single PgBoss instance serves
+  // every queue this worker runs, so this is the maintenance for all of them. Started
+  // AFTER the startup checks, because there is nothing to archive on a schema this build
+  // refuses to serve.
+  stopQueueMaintenance = startQueueMaintenance(config.DATABASE_URL,
+    (error) => telemetry.captureError('Queue maintenance failed', error, {}));
 
   // The Agent Workspace (Story 4.1, AD-4). Composed HERE and nowhere else: the worker is
   // the only process that may drive a browser against a registered Target System, and the

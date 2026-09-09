@@ -1,3 +1,58 @@
+## 2026-09-09 — Queue maintenance needs a connection of its own
+
+`Plan derivation queue failed` every 60 seconds in production, since the Epic 2 era. The
+cause is one word: `createProceduresQueue` left pg-boss's `supervise` at its DEFAULT
+(`true`), so the built-in supervisor ran on the SHARED pool — and its monitor and maintain
+passes issue a raw `BEGIN; SET LOCAL ...; SELECT pg_advisory_xact_lock(...)` block through
+`plans.locked`, which postgres.js refuses on a pooled client with `UNSAFE_TRANSACTION`
+because a pooled checkout cannot promise the whole block lands on one connection.
+
+**What it actually cost.** Plan derivation itself was fine — proven by pushing a real job
+through — so the visible symptom was only a log line. What was silently not happening is
+DELETION: completed jobs past their queue's deletion window were never removed, so
+`pgboss.job` grew without bound. And ONE PgBoss instance serves every queue this worker
+runs — procedures, runs, waits, evaluation reviews, evidence read grants — so one broken
+supervisor was all five.
+
+- **Maintenance is a sweep with its own client, not the constructor's supervisor.**
+  `startQueueMaintenance(databaseUrl, onError)` owns a `max: 1` client (where the raw block
+  is legal), runs `supervise()` on its own timer, and returns a stop that closes both — the
+  shape `startProceduresRecovery` beside it already uses. `createProceduresQueue` now says
+  `supervise: false` explicitly, which makes it the twelfth of twelve `new PgBoss(...)`
+  constructions in this package to say so rather than the one odd exception.
+- **A dedicated connection is right for a second reason.** A reindex is DDL and can hold
+  its connection for seconds; on the shared pool that would stall the job polling of every
+  worker in the process.
+- **The test that catches the regression asserts the DELETION.** `pgboss.queue.maintain_on`
+  advances even on the broken build — it is set before the statement that fails — so a
+  first version of the test that watched the timestamp alone PASSED against the pooled
+  supervisor and proved nothing. It was deleted rather than kept: a test that cannot fail
+  for the reason it exists is worse than no test, because it reads as coverage. Proven by
+  mutation: putting maintenance back on the pool fails
+  `tests/integration/queue-maintenance.test.ts`.
+- **`supervise()` reaches the raw transaction only when a queue is actually DUE.** The
+  negative test has to push BOTH `monitor_on` and `maintain_on` back, for every queue; with
+  only `maintain_on` reset it resolved happily against the broken build. The failing
+  statement is in the MONITOR pass, not the maintain pass.
+- **The driver's reason is on `error.cause.code`, not the message.** pg-boss reports
+  `Failed query: BEGIN; ...`, so matching that would pass on any failed statement and drift
+  with its formatting. Assert `cause.code === 'UNSAFE_TRANSACTION'`.
+- **The release migrator was never affected** and still installs pg-boss's schema on the
+  pooled client: `migrateProceduresQueue` already sets `supervise: false`, and the install
+  path does not use `plans.locked`. Verified on a fresh database, which reached generation
+  41 with all twelve `pgboss` tables.
+
+Two mechanical notes, both about running this suite locally:
+
+- **`pnpm db:migrate` runs `pnpm install --prod` in its dependency-closure step**, which
+  PRUNES dev dependencies and leaves the workspace unable to typecheck (`Cannot find type
+  definition file for 'node'`). Run `node packages/infrastructure/dist/db/migrate.js`
+  directly against a built tree, or reinstall afterwards.
+- **The integration suite refuses a database whose NAME does not match
+  `(^|[_-])(test|ci)([_-]|$)`.** A database called `qfix` fails eighteen files in their
+  `beforeAll` with "require an isolated local or CI test database" — the Story 1.5
+  throwaway-database guard doing its job, and nothing to do with the code under test.
+
 ## 2026-09-09 — The worker image carries its own browser, and only the half it can reach
 
 The Agent Workspace's LOCAL mode calls `chromium.launch()` INSIDE the worker container, so
