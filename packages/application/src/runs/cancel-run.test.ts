@@ -95,6 +95,8 @@ class FakeContext implements RunCancellationContext {
     this.states.push(state);
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.result;

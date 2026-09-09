@@ -8,11 +8,13 @@ import type {
 } from '@intellifin/application';
 import {
   GATE_AFFECTED_LIMIT,
+  MISSING_FRAME_SAMPLE_LIMIT,
   POPULATION_LIMITS,
   RESULT_SAMPLE_LIMIT,
   TARGET_DRAFT_LIMITS,
   type CoverageObservation,
   type GateCheckResult,
+  type MissingFrames,
   type ObservationAttribute,
   type OutcomeRowId,
   type PopulationCheck,
@@ -33,6 +35,9 @@ import {
   runGateCheck,
   runObservation,
   runObservationEvaluation,
+  runToolAction,
+  runEvidence,
+  runEvidenceCapture,
   runEvaluationReview,
   runResult,
 } from '../db/schema.js';
@@ -155,6 +160,63 @@ export function runResultContext(
         rowsParsed: counted[0]?.total ?? 0,
         unexplained: unexplained.map((row) => row.ordinal),
         generatedAt: snapshot.generatedAt?.toISOString() ?? null,
+      };
+    },
+
+    /**
+     * Every Tool Action that should have left a frame and did not (Story 5.2).
+     *
+     * The predicate is three stored facts and one absence: the action `performed`, its
+     * `capture` was `PERMITTED`, and no `screenshot` artifact is `REGISTERED` against its
+     * `run_evidence_capture` binding. A credential-entry action carries
+     * `capture = 'SUPPRESSED'` and is excluded BY THE PREDICATE rather than by a rule this
+     * reader remembers — the suppression is what the platform derived from its own request
+     * (generation 29), and reporting it as a gap would raise a finding against the
+     * guarantee that produced it.
+     *
+     * TWO statements: an exact `count(*)` and a bounded sample. A `LIMIT` answers the
+     * sample's question and not the count's, and this codebase has already shipped a §H
+     * `total` that was a sample length (PR 23, `readConditionGaps`). The sample is ordered
+     * on `(started_at, tool_action_id)`, so a bound that binds drops the same rows every
+     * time rather than an arbitrary set.
+     */
+    async readMissingFrames(): Promise<MissingFrames> {
+      const missing = sql`${runToolAction.runId}=${runId}
+        AND ${runToolAction.outcome}='performed'
+        AND ${runToolAction.capture}='PERMITTED'
+        AND NOT EXISTS (
+          SELECT 1 FROM ${runEvidenceCapture}
+          JOIN ${runEvidence} ON ${runEvidence.evidenceId}=${runEvidenceCapture.evidenceId}
+          WHERE ${runEvidenceCapture.toolActionId}=${runToolAction.toolActionId}
+            AND ${runEvidence.kind}='screenshot'
+            AND ${runEvidence.state}='REGISTERED')`;
+      const counted = await tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(runToolAction)
+        .where(missing);
+      const sample = await tx
+        .select({
+          toolActionId: runToolAction.toolActionId,
+          stepExecutionId: runToolAction.stepExecutionId,
+          targetSystem: runToolAction.targetSystem,
+          completedAt: runToolAction.completedAt,
+          startedAt: runToolAction.startedAt,
+        })
+        .from(runToolAction)
+        .where(missing)
+        .orderBy(asc(runToolAction.startedAt), asc(runToolAction.toolActionId))
+        .limit(MISSING_FRAME_SAMPLE_LIMIT);
+      return {
+        total: counted[0]?.total ?? 0,
+        sample: sample.map((row) => ({
+          toolActionId: row.toolActionId,
+          stepExecutionId: row.stepExecutionId,
+          targetSystem: row.targetSystem,
+          // A performed action has a completion time; the column is nullable for one that
+          // is still in flight, and this reader runs at a terminal transition. Falling back
+          // to the start rather than to an invented instant keeps the row honest either way.
+          completedAt: (row.completedAt ?? row.startedAt).toISOString(),
+        })),
       };
     },
 

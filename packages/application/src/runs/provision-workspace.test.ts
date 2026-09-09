@@ -192,6 +192,8 @@ class FakeContext implements WorkspaceExecutionContext {
     this.store.run = this.store.run === null ? null : { ...this.store.run, state };
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.store.result;

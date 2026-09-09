@@ -175,6 +175,20 @@ export interface RunResultEvidence {
    * rendering an empty list, which a reader takes for "nothing was frozen".
    */
   readonly artifacts?: readonly RunResultEvidenceArtifact[];
+  /**
+   * How many Tool Actions completed with capture PERMITTED and left no registered frame
+   * (Story 5.2). Zero is the ordinary answer and says the Replay asset set is whole.
+   *
+   * It is here rather than only in the Timeline because "flagged on Replay and export"
+   * needs a fact the Result carries: an export reader has the Result document and not the
+   * chain. It is NEVER `missingRequired`: a frame is a `replay`-role asset, so it cannot
+   * gate the seal, and a Run whose frames are incomplete still concluded from Evidence
+   * that is whole.
+   *
+   * An older document has no `framesMissing` key, which is "this build did not record it"
+   * and not "none were missing"; a surface says which rather than rendering a zero.
+   */
+  readonly framesMissing?: number;
 }
 
 /** The addendum §H verdict this Result reports, read from the Gate rows, never re-judged. */

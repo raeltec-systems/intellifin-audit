@@ -407,6 +407,7 @@ class FakeRepository implements AdapterExecutionRepository {
         repository.run = { ...repository.run, state };
       },
       readPopulationFacts: async () => repository.populationFacts,
+      readMissingFrames: async () => ({ total: 0, sample: [] }),
       readPopulationRows: async () => repository.populationRows,
       readGateObservations: async () =>
         repository.observations.map((row) => ({

@@ -6,6 +6,7 @@ import type {
   EvidenceCaptureMethod,
   EvidenceCaptureTimeSource,
   EvidenceIntegrityFindingKind,
+  MissingFrames,
   GateCheckResult,
   ObservationCheckName,
   PopulationCheck,
@@ -878,6 +879,21 @@ export interface RunResultContext extends EvidencePackageContext {
   /** The terminal transition being committed. Sealed in the same transaction. */
   saveRunState(state: RunRecord['state']): Promise<void>;
   readPopulationFacts(): Promise<RunGatePopulationFacts | null>;
+  /**
+   * Every Tool Action that completed with capture PERMITTED and left no registered frame
+   * (Story 5.2), as an exact total beside a bounded sample.
+   *
+   * It is on the RESULT context and not the Gate's because a missing frame is not an
+   * Evidence-quality failure: a `replay`-role asset can never gate a seal (AD-5), and a
+   * Run whose frames are incomplete still concluded from Evidence that is whole. It is
+   * read after `sealPackage` has already returned, so nothing it finds can block one.
+   *
+   * A credential-entry action is excluded by the stored `capture = 'SUPPRESSED'` rather
+   * than by a rule this reader remembers to apply: suppression is a fact the platform
+   * derived from its own request, and reporting it as a missing frame would raise a
+   * finding against the guarantee that produced it.
+   */
+  readMissingFrames(): Promise<MissingFrames>;
   /** Every parsed population row, in source order. Bounded by `POPULATION_LIMITS.rows`. */
   readPopulationRows(): Promise<readonly PopulationGateRow[]>;
   /** Every Observation, as the per-record coverage matrix reads it. */

@@ -370,6 +370,8 @@ class FakeContext implements AgentExecutionContext {
     this.state.run = this.state.run === null ? null : { ...this.state.run, state };
   };
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;
+  /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */
+  readMissingFrames = async () => ({ total: 0, sample: [] });
   readPopulationRows = async () => [];
   readGateObservations = async () => [];
   readResult = async (): Promise<StoredRunResult | null> => this.state.result;
