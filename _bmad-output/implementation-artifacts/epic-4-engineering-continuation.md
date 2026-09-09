@@ -734,3 +734,18 @@ Remaining for this story: Builder authoring of the mapping and the variant requi
 the hero-workflow usability pass; a deployed LoanCore registration gains the `Disabled time`
 label through the authorized configuration flow (a digest change with the Story 2.8 ripple); the
 hosted CI browser gate runs the journey on the pushed candidate.
+
+## Hosted mutation gates: anchor drift from the C2 policy line (2026-09-09)
+
+The standard CI runs on `db3c6d3` and `ad238db` failed in both mutation jobs with
+`Mutation anchor drift`: the C2 policy commit (`1dee0cb`) widened the worker's audited-retry
+guard to `model-policy-contradiction`, and three harness entries (`invalid-provider-security-
+event`; `worker-malformed-proposal-security-event` and `retrieved-worker-security-denial`)
+anchored on the previous exact line. `6237c4c` repoints the three `before:` anchors; the
+mutation (`return;`, the whole security-event guard removed) and its killing tests are
+unchanged. A local check confirmed every `before:` anchor across the four harnesses occurs
+exactly once, and the guard harness in a disposable detached worktree of `6237c4c` killed all
+ten unit-mode mutations (baseline green, mutant red for each), the repointed entry included.
+The two abuse-harness entries need the hosted job's real worker journeys and are proven there.
+Lesson recorded in CLAUDE.md: a change to a guarded line must repoint its mutation anchors in
+the same commit, or the hosted gates stop before proving anything.
