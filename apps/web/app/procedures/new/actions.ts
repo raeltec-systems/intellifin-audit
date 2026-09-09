@@ -34,8 +34,19 @@ export type NewProcedureActionResult =
   | { readonly ok: true; readonly procedureId: string; readonly versionId: string }
   | { readonly ok: false; readonly reason: string };
 
-/** Said when the command threw. It never names a driver, a table or a host. */
-const UNAVAILABLE = 'The Procedure could not be created. Nothing was changed.';
+/**
+ * Said when the command THREW. It never names a driver, a table or a host — and it never
+ * claims nothing was created, because this path does not know.
+ *
+ * `[REVISED 2026-09-08]` It read "Nothing was changed", which is a statement about the
+ * database that only a refusal can make. A throw can come from anywhere: before the
+ * transaction, inside it, or after it committed and the response was lost on the way
+ * back. Saying "nothing was changed" there sends somebody to create a second Procedure
+ * on the strength of a sentence the code could not check — the exact shape of the
+ * sign-out defect, where nothing happening looked like success.
+ */
+const UNAVAILABLE =
+  'The Procedure could not be confirmed. It may have been created. Open Procedures to check before creating another.';
 
 /** Said when the request was not the shape this action accepts. One sentence for all. */
 const MALFORMED = 'That request was not valid. Nothing was changed.';

@@ -50,8 +50,19 @@ export type RenameActionResult =
     }
   | { readonly ok: false; readonly reason: string };
 
-/** Said when the command threw. It never names a driver, a table or a host. */
-const UNAVAILABLE = 'The change could not be saved. Nothing was changed.';
+/**
+ * Said when the command THREW. It never names a driver, a table or a host — and it never
+ * claims nothing was saved, because this path does not know.
+ *
+ * `[REVISED 2026-09-08]` It read "Nothing was changed", which is a statement about the
+ * database that only a REFUSAL can make. A throw can come from before the transaction,
+ * from inside it, or from after it committed with the response lost on the way back —
+ * and the third is exactly the case the Builder's own `UnknownSaveOutcome` was built
+ * for. A sentence promising nothing happened sends somebody to retype a change that may
+ * already be saved.
+ */
+const UNAVAILABLE =
+  'The save could not be confirmed. The change may have been saved. Reload to review the saved version before trying again.';
 
 /** Said when the request was not the shape this action accepts. One sentence for all. */
 const MALFORMED = 'That request was not valid. Nothing was changed.';
