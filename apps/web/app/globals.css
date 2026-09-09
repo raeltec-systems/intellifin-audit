@@ -26,6 +26,19 @@ body {
   padding: 0;
 }
 
+/*
+ * `hidden` means hidden, whatever a component class says.
+ *
+ * The browser's own `[hidden] { display: none }` is a low-specificity user-agent rule,
+ * so ANY class here that sets `display` beats it — `.ls-dialog__field` sets
+ * `display: flex`, so a field marked `hidden` stayed fully visible and fully focusable.
+ * A control the page believes is hidden and a person can still tab into and type into is
+ * worse than one that was never hidden at all.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html {
   /* DESIGN.md → Typography: tabular numerals everywhere a number can appear. */
   font-feature-settings: 'tnum';
