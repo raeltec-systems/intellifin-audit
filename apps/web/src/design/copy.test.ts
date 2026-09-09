@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -6,7 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { REGISTRATION_REFUSALS } from '@intellifin/application';
 
 import {
-  BUILDER_SECTION_NOT_EDITABLE_SENTENCE,
+  BUILDER_CONTROL_NAME_EDITABLE_SENTENCE,
+  BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE,
   CAPTURE_TIME_UNRECORDED,
   EXECUTION_FAILURE_HEADING,
   GATE_NOT_EVALUATED,
@@ -201,15 +203,71 @@ describe('the Procedure card absent-cells', () => {
   });
 });
 
-describe('the Builder read-only sentence', () => {
-  it('states that the section is not editable yet, and is rendered from this module', () => {
-    expect(BUILDER_SECTION_NOT_EDITABLE_SENTENCE).toContain('not editable yet');
-    const source = readFileSync(
-      fileURLToPath(new URL('../procedures/BuilderSections.tsx', import.meta.url)),
-      'utf8',
-    );
-    expect(source).toContain('BUILDER_SECTION_NOT_EDITABLE_SENTENCE');
-    expect(source).not.toContain('not editable yet. A later release');
+/**
+ * Every `.ts` and `.tsx` under `apps/web`, so a claim refused here is refused wherever a
+ * later surface might retype it — the `form-method.test.ts` walk, one file along. A
+ * broken symlink is skipped rather than allowed to fail the suite.
+ */
+function webSourceFiles(dir = fileURLToPath(new URL('../../', import.meta.url))): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    let info;
+    try {
+      info = statSync(full);
+    } catch {
+      continue;
+    }
+    if (info.isDirectory()) {
+      if (entry === 'node_modules' || entry === '.next') continue;
+      found.push(...webSourceFiles(full));
+    } else if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+
+describe('the Builder read-only sentences', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../procedures/BuilderSections.tsx', import.meta.url)),
+    'utf8',
+  );
+
+  it('says the section comes from the Template, and is rendered from this module', () => {
+    expect(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE).toContain('pre-filled from the Template');
+    expect(source).toContain('BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE');
+    expect(source).not.toContain(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE);
+  });
+
+  it('names where the Control name is edited, rather than claiming it cannot be', () => {
+    expect(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE).toContain('Control name');
+    expect(source).toContain('BUILDER_CONTROL_NAME_EDITABLE_SENTENCE');
+    expect(source).not.toContain(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE);
+  });
+
+  /**
+   * The claim that was stale: every authored section is editable now, and the Control
+   * NAME is editable from the very page that carried the sentence. Refused anywhere in
+   * `apps/web`, not only in the component it was written for, so a later surface cannot
+   * revive it by retyping it somewhere else.
+   *
+   * Comments are stripped first — `copy.ts` records WHY the sentence was revised, and a
+   * note to the next reader is not a claim to the person using the product, exactly as
+   * `stylesheet.test.ts` strips comments before looking for a token read. This file is
+   * skipped because it has to name the phrase it forbids.
+   */
+  it('nowhere claims a Builder section is not editable yet', () => {
+    const self = fileURLToPath(import.meta.url);
+    const offenders = webSourceFiles()
+      .filter((file) => file !== self)
+      .filter((file) =>
+        readFileSync(file, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^[ \t]*\/\/.*$/gm, '')
+          .includes('not editable yet'),
+      );
+    expect(offenders).toEqual([]);
   });
 });
 

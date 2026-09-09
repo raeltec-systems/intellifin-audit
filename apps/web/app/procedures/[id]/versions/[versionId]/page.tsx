@@ -7,6 +7,7 @@ import { getRuntime } from '../../../../../src/bootstrap';
 import { currentIdentity, requireServerAction } from '../../../../../src/server-session';
 import { Banner } from '../../../../../src/design/Banner';
 import { AUTHOR_CANNOT_APPROVE_SENTENCE, BUILDER_DESKTOP_ONLY_SENTENCE } from '../../../../../src/design/copy';
+import { EditVersionPanel } from '../../../../../src/procedures/EditVersionPanel';
 import { ExecutablePlanPreview } from '../../../../../src/procedures/ExecutablePlanPreview';
 import { VersionActions } from '../../../../../src/procedures/VersionActions';
 import { VersionStatus } from '../../../../../src/procedures/VersionStatus';
@@ -38,6 +39,7 @@ export default async function VersionReviewPage({ params }: { params: Promise<{ 
     <p className="ls-desktop-only" role="note">{BUILDER_DESKTOP_ONLY_SENTENCE}</p>
     <div className="ls-builder-authoring ls-stack">
       <VersionStatus version={row} successorNumber={successors.get(row.versionId) ?? null} />
+      <EditVersionPanel version={row} headingId="version-editing" />
       {latest ? <section><h2>Saved decision</h2><p>{latest.decision} · {latest.actorId} · {latest.occurredAt}</p></section> : null}
       {(row.decisions?.length ?? 0) > 0 ? <section aria-label="Decision history"><h2>Decision history</h2><ol>{row.decisions!.map((decision,index) => <li key={`${decision.aggregateRevision}:${index}`}><p>{decision.decision} · {decision.actorId} · <time dateTime={decision.occurredAt}>{decision.occurredAt}</time></p>{decision.rationale ? <p>Rationale: {decision.rationale}</p> : null}</li>)}</ol></section> : null}
       <p>{baseline ? `Compared with version ${baseline.versionNumber} (${baseline.versionId}).` : 'First version: every section is expanded for review.'}</p>

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { BUILDER_DESKTOP_ONLY_SENTENCE, BUILDER_SECTION_NOT_EDITABLE_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
+import { BUILDER_CONTROL_NAME_EDITABLE_SENTENCE, BUILDER_DESKTOP_ONLY_SENTENCE, BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
 import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
 import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
@@ -232,7 +232,7 @@ test.describe('as an Auditor', () => {
       // The sections are pre-filled and read-only, each under the pinned sentence.
       const sections = page.locator('.ls-card', { hasText: 'Objective' });
       await expect(sections.first()).toBeVisible();
-      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE).first()).toBeVisible();
+      await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE).first()).toBeVisible();
 
       await expect(page.getByLabel('Period start')).toBeVisible();
       await expect(page.getByLabel('Population Source', { exact: true })).toBeVisible();
@@ -253,9 +253,15 @@ test.describe('as an Auditor', () => {
       if (template.id === 'P-1') {
         await expect(page.getByLabel('Attribute name').first()).toBeVisible();
       }
-      await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(2);
-      const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_NOT_EDITABLE_SENTENCE });
+      await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(2);
+      const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE });
       await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
+      // The Control section says where its editable half is, exactly once, and the
+      // Objective — which has no editable half — does not repeat it.
+      await expect(page.getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE)).toHaveCount(1);
+      await expect(
+        page.locator('.ls-card').filter({ hasText: 'Objective' }).getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE),
+      ).toHaveCount(0);
 
       // The Builder forms are real forms and post. Story 2.3 added a second one (the
       // Target System picker), so this asserts EVERY form on the surface names
@@ -1012,6 +1018,6 @@ test.describe('as a PoC Administrator', () => {
     );
     // No section content, no editable field.
     await expect(page.getByLabel('New Control name')).toHaveCount(0);
-    await expect(page.getByText(BUILDER_SECTION_NOT_EDITABLE_SENTENCE)).toHaveCount(0);
+    await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(0);
   });
 });

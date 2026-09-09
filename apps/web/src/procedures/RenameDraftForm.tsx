@@ -13,18 +13,24 @@ import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
 
 /**
- * The Builder's one editable field (FR-7, scoped to this story).
+ * The Draft's Control name (FR-7).
  *
- * The Control name is the only thing this story lets a person change, and it carries a
- * full-row optimistic-concurrency token: the form is rendered with the row version the
- * server computed for THIS page load, sends it back as `expectedRowVersion`, and adopts
- * the token the command returns so the next save guards against the row as it now is.
- * A save from a stale tab is refused rather than allowed to blind-overwrite.
+ * `[REVISED 2026-09-08]` This doc used to say the Control name was "the only thing this
+ * story lets a person change", which stopped being true at Story 2.2 and has been read
+ * as a statement about the product ever since. Every authored section of the Builder is
+ * editable; this is the editor for one of them.
  *
- * The confirmation is `weight="routine"` — renaming a Draft is recorded in the audit
- * chain against the person's name, and the dialog names the exact object being changed,
- * because a confirmation that says only "this Procedure" is one a person cannot check
- * against what they meant to change.
+ * It carries a full-row optimistic-concurrency token: the form is rendered with the row
+ * version the server computed for THIS page load, sends it back as `expectedRowVersion`,
+ * and adopts the token the command returns so the next save guards against the row as it
+ * now is. A save from a stale tab is refused rather than allowed to blind-overwrite.
+ *
+ * There is no confirmation dialog. The owner revised EXPERIENCE.md's confirmation table
+ * on 2026-09-08: an ordinary Draft section save is a direct save with a visible saved,
+ * unsaved and error state, and the focus-trapping confirmation is kept for the decisions
+ * a person cannot take back from this page — submit, approve, reject, activation, scope
+ * expansion, cancellation and rerun. Renaming a Draft is none of those, and the rename
+ * is still recorded in the audit chain against the person's name.
  */
 
 export interface RenameDraftFormProps {
