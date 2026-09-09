@@ -7,6 +7,7 @@ import { getRuntime } from '../../../../../src/bootstrap';
 import { currentIdentity, requireServerAction } from '../../../../../src/server-session';
 import { Banner } from '../../../../../src/design/Banner';
 import { AUTHOR_CANNOT_APPROVE_SENTENCE, BUILDER_DESKTOP_ONLY_SENTENCE } from '../../../../../src/design/copy';
+import { AgentSummary } from '../../../../../src/procedures/AgentSummary';
 import { EditVersionPanel } from '../../../../../src/procedures/EditVersionPanel';
 import { ExecutablePlanPreview } from '../../../../../src/procedures/ExecutablePlanPreview';
 import { VersionActions } from '../../../../../src/procedures/VersionActions';
@@ -44,6 +45,7 @@ export default async function VersionReviewPage({ params }: { params: Promise<{ 
       {(row.decisions?.length ?? 0) > 0 ? <section aria-label="Decision history"><h2>Decision history</h2><ol>{row.decisions!.map((decision,index) => <li key={`${decision.aggregateRevision}:${index}`}><p>{decision.decision} · {decision.actorId} · <time dateTime={decision.occurredAt}>{decision.occurredAt}</time></p>{decision.rationale ? <p>Rationale: {decision.rationale}</p> : null}</li>)}</ol></section> : null}
       <p>{baseline ? `Compared with version ${baseline.versionNumber} (${baseline.versionId}).` : 'First version: every section is expanded for review.'}</p>
       <VersionDiff diff={diff} first={baseline === null} />
+      <AgentSummary draft={snapshot ? { ...row, compiledPlan: snapshot.definition.compiledPlan, derivationModel: snapshot.definition.modelConfiguration, planAttempts: [], planDerivable: true, planStatus: 'succeeded' } : row} headingId="version-agent-summary" />
       <ExecutablePlanPreview draft={snapshot ? { ...row, compiledPlan: snapshot.definition.compiledPlan, derivationModel: snapshot.definition.modelConfiguration, planAttempts: [], planDerivable: true, planStatus: 'succeeded' } : row} modelConfiguration={snapshot?.definition.modelConfiguration} />
       <VersionActions procedureId={id} versionId={versionId} rowVersion={procedureVersionRowVersion(row)} actions={row.state === 'SUBMITTED' ? [{ decision: 'approve', label: 'Approve', reason: own ? AUTHOR_CANNOT_APPROVE_SENTENCE : approval.allowed ? null : approval.reason }, { decision: 'reject', label: 'Reject', reason: rejection.allowed ? null : rejection.reason }] : row.state === 'REJECTED' ? [{ decision: 'edit', label: 'Edit', reason: null }] : []} />
     </div>

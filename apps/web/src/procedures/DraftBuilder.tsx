@@ -13,6 +13,7 @@ import { TargetSelectionForm } from './TargetSelectionForm';
 import { AuditInstructionsForm } from './AuditInstructionsForm';
 import { ComplianceRuleForm } from './ComplianceRuleForm';
 import { EvidenceRequirementsForm, ScheduleForm } from './EvidenceScheduleForm';
+import { AgentSummary } from './AgentSummary';
 import { ExecutablePlanPreview } from './ExecutablePlanPreview';
 import { useSection, useSectionSubmissionStatus, useSubmissionGuard, BuilderSubmissionProvider } from './use-section';
 import { SectionConflict } from './SectionConflict';
@@ -184,6 +185,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     <UnknownSaveOutcome visible={unknownOutcome} />
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
     <BuilderSections sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
+    <AgentSummary draft={draft} headingId={`${id}-agent-summary`} />
     <ExecutablePlanPreview draft={draft} />
     <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
