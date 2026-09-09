@@ -617,6 +617,7 @@ describe('the Execution Timeline', () => {
           diagnostic: null,
           stepId: 'session-1',
           mode: 'local',
+          workspaceId: null,
           startedAt: '2026-09-06T09:00:00.000Z',
           releasedAt: null,
         },

@@ -17,6 +17,7 @@ import { getRuntime } from '../bootstrap';
 import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
+import { WatchControl } from './WatchControl';
 import { ESCALATION_PANEL_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
@@ -222,6 +223,10 @@ export async function RunDetailFrame({
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       <CancellationBanners run={run} />
       <RerunLinks runId={run.runId} />
+      {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
+          is its own surface, not a sixth tab, so it is reached from here and from a
+          notification rather than from the tab bar. */}
+      <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
       <RunLifecycleActions
         runId={run.runId}
         active={isActiveRunState(run.state)}

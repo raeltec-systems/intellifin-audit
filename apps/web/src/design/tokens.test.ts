@@ -310,6 +310,14 @@ const IMPLEMENTED = [
   'confirmation-dialog.radius',
   'confirmation-dialog.shadow',
   'confirmation-dialog.scrim',
+  'session-viewer.chrome-background',
+  'session-viewer.chrome-text',
+  'session-viewer.live-dot',
+  'session-viewer.replay-dot',
+  'session-viewer.paused-dot',
+  'session-viewer.awaiting-dot',
+  'session-viewer.stage-background',
+  'session-viewer.stage-min-height',
 ] as const;
 
 /** Every documented token value, so a literal can be recognised behind its token. */
@@ -398,14 +406,7 @@ const DEFERRED_PATTERNS = [
   'escalation-panel.heading-text',
   'escalation-panel.question-background',
   'escalation-panel.question-font',
-  'session-viewer.chrome-background',
-  'session-viewer.chrome-text',
-  'session-viewer.live-dot',
-  'session-viewer.replay-dot',
-  'session-viewer.paused-dot',
-  'session-viewer.awaiting-dot',
-  'session-viewer.stage-background',
-  'session-viewer.stage-min-height',
+  // The Step scrubber is Replay's control: Live View watches and does not scrub.
   'session-viewer.scrubber-pill-height',
   'builder-section.label-width',
   'builder-section.label-type',

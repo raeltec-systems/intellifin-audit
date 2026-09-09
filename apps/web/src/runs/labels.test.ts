@@ -4,6 +4,7 @@ import { GATE_CHECKS, RUN_STATES, SYSTEM_OUTCOMES, WORK_ITEM_STATES } from '@int
 
 import { STATUS_VOCABULARY } from '../design/status';
 import {
+  toolActionNameWord,
   countText,
   durationText,
   elapsedText,
@@ -169,5 +170,21 @@ describe('which snapshots the grounding inspector can open', () => {
     // for it would promise a re-read nothing performed.
     expect(inspectableSubstrate('text/html')).toBeNull();
     expect(inspectableSubstrate(null)).toBeNull();
+  });
+});
+
+describe('the Tool Action name vocabulary (Story 5.3)', () => {
+  it('gives every permitted read action a word, so a supervision surface never shows an identifier', async () => {
+    const { PERMITTED_READ_ACTIONS } = await import('@intellifin/domain');
+    for (const action of PERMITTED_READ_ACTIONS) {
+      const word = toolActionNameWord(action);
+      expect(word, action).not.toBe(action);
+      expect(word[0], action).toBe(word[0]?.toUpperCase());
+    }
+  });
+
+  it('shows an unknown action as it was stored rather than guessing a word for it', () => {
+    expect(toolActionNameWord('write-everything')).toBe('write-everything');
+    expect(toolActionNameWord('constructor')).toBe('constructor');
   });
 });

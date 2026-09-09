@@ -14,9 +14,9 @@ Deployed.
 
 | Story | Implemented | Locally verified | Remotely verified | Owner-reviewed | Deployed |
 |---|---|---|---|---|---|
-| 5.1 Stream the Execution Timeline live over SSE | yes | yes: 24 unit, 6 integration with the real commands, 3 browser journeys with axe (`spec-5-1-…`, Verification status) | pending: the Epic 5 pull request's CI | no | no |
+| 5.1 Stream the Execution Timeline live over SSE | yes | yes: 24 unit, 6 integration with the real commands, 3 browser journeys with axe (`spec-5-1-…`, Verification status) | CI `34318755939` green in all five jobs on `3a426a4` (PR 25) | no | no |
 | 5.2 Capture the platform-owned Replay asset set | no | no | no | no | no |
-| 5.3 Watch a Running Run in Live View | no | no | no | no | no |
+| 5.3 Watch a Running Run in Live View | yes | yes: 42 unit, 5 integration on generation 42, 9 browser journeys with axe and the real worker signing grants, 2 mutations killed (`spec-5-3-…`, Verification status) | pending on PR 25 | no | no |
 | 5.4 Pause and resume a Running Run | no | no | no | no | no |
 | 5.5 Cancel and flag from Live View | no | no | no | no | no |
 | 5.6 Answer an Escalation without leaving Live View | no | no | no | no | no |

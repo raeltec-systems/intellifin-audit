@@ -154,12 +154,14 @@ function grantFromRow(row: RawRow): EvidenceReadGrant | null {
 function evidenceFromRow(row: RawRow): RegisteredEvidenceForRead | null {
   const runId = text(row.run_id)?.toLowerCase() ?? null;
   const evidenceId = text(row.evidence_id)?.toLowerCase() ?? null;
+  const kind = text(row.kind);
   const state = text(row.state);
   const objectKey = text(row.object_key);
-  if (runId === null || evidenceId === null || state === null || objectKey === null || !isUuidText(runId) || !isUuidText(evidenceId)) return null;
+  if (runId === null || evidenceId === null || kind === null || state === null || objectKey === null || !isUuidText(runId) || !isUuidText(evidenceId)) return null;
   return {
     runId,
     evidenceId,
+    kind,
     state,
     objectKey,
     mediaType: text(row.media_type),
@@ -184,7 +186,7 @@ async function readGrant(connection: Database | Transaction, grantId: string, lo
 
 async function readRegisteredEvidence(connection: Database | Transaction, runId: string, evidenceId: string): Promise<RegisteredEvidenceForRead | null> {
   const result = await connection.execute(sql`
-    SELECT run_id::text AS run_id, evidence_id::text AS evidence_id, state, object_key,
+    SELECT run_id::text AS run_id, evidence_id::text AS evidence_id, kind, state, object_key,
            media_type, digest, size
     FROM run_evidence
     WHERE run_id = ${runId} AND evidence_id = ${evidenceId}

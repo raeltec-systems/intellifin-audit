@@ -42,6 +42,9 @@ import {
   registrationChangeWarning,
   runCanceledBy,
   ESCALATION_PANEL_COPY,
+  LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
+  LIVE_VIEW_QUEUED_SENTENCE,
+  SESSION_ISOLATION_NOTE,
 } from './copy';
 
 /**
@@ -453,5 +456,37 @@ describe('the Escalation panel copy', () => {
     );
     expect(source).toContain('ESCALATION_PANEL_COPY.pauseUnavailable');
     expect(source).not.toContain('A Run waiting on an answer cannot be paused.');
+  });
+});
+
+describe('the Live View copy', () => {
+  it("is EXPERIENCE.md's responsive floor for Live View, character for character", () => {
+    // The "Live View | Below 1024px" row. Read off disk, and deliberately a DIFFERENT
+    // sentence from the Builder's 900px floor above: one is about supervising a Run,
+    // the other about authoring a Draft, and a surface that says the wrong one teaches
+    // a sentence nobody will meet again.
+    expect(experience).toContain(`"${LIVE_VIEW_DESKTOP_ONLY_SENTENCE}"`);
+    expect(LIVE_VIEW_DESKTOP_ONLY_SENTENCE).not.toBe(BUILDER_DESKTOP_ONLY_SENTENCE);
+  });
+
+  it("is EXPERIENCE.md's Queued Watch reason, character for character", () => {
+    expect(experience).toContain(`"${LIVE_VIEW_QUEUED_SENTENCE}"`);
+  });
+
+  it("is DESIGN.md's session-viewer isolation note, character for character", () => {
+    // The interpunct and its spacing are the contract's own; retyping them is how a
+    // hyphen or a bullet gets substituted and nothing notices.
+    expect(design).toContain(`"${SESSION_ISOLATION_NOTE}"`);
+  });
+
+  it('is rendered from this module by the session viewer, not retyped', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../runs/LiveViewer.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('LIVE_VIEW_DESKTOP_ONLY_SENTENCE');
+    expect(source).toContain('SESSION_ISOLATION_NOTE');
+    expect(source).not.toContain('Open on a desktop browser to supervise');
+    expect(source).not.toContain('isolated credentials\'');
   });
 });
