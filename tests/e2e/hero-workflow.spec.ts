@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   BUILDER_CONTROL_NAME_EDITABLE_SENTENCE,
@@ -47,16 +47,18 @@ const SHOTS =
 mkdirSync(SHOTS, { recursive: true });
 
 let step = 0;
-async function shot(page: Page, name: string): Promise<void> {
+/**
+ * One picture per proven state. A `target` frames the element the state is about — the
+ * readiness panel, one condition, the dialog — because a full-page capture of the Builder
+ * is ten thousand pixels tall, unreadable at any zoom and three quarters of a megabyte;
+ * without a target the viewport is captured. JPEG, because these are pictures of a page
+ * and not fixtures anything reads back.
+ */
+async function shot(page: Page, name: string, target?: Locator): Promise<void> {
   step += 1;
-  // JPEG at 85: a full-page PNG of the Builder is three quarters of a megabyte, and
-  // fifteen of them per verified run is more repository than the pictures are worth.
-  await page.screenshot({
-    path: path.join(SHOTS, `${String(step).padStart(2, '0')}-${name}.jpg`),
-    type: 'jpeg',
-    quality: 85,
-    fullPage: true,
-  });
+  const options = { path: path.join(SHOTS, `${String(step).padStart(2, '0')}-${name}.jpg`), type: 'jpeg' as const, quality: 85 };
+  if (target) await target.screenshot(options);
+  else await page.screenshot({ ...options, fullPage: false });
 }
 
 async function scan(page: Page): Promise<void> {
@@ -172,7 +174,7 @@ test.describe('the hero workflow', () => {
     for (const code of ['targets-missing', 'source-not-bound', 'agent-judged-without-policy']) {
       await expect(page.locator(`[data-readiness-item="${code}"]`), code).toHaveCount(1);
     }
-    await shot(page, 'readiness-on-a-fresh-draft');
+    await shot(page, 'readiness-on-a-fresh-draft', page.locator('[data-readiness]'));
 
     /* ------------------------------- C1 in business language, in simple mode -- */
     const c1 = page.locator('[data-condition-id="C1"]');
@@ -187,7 +189,7 @@ test.describe('the hero workflow', () => {
     await expect(compliant).toHaveValue('disabled');
     await expect(exception).toHaveValue('active');
     await expect(page.getByText(EXACT_VALUE_SENTENCE)).toBeVisible();
-    await shot(page, 'compliance-simple-mode');
+    await shot(page, 'compliance-simple-mode', c1);
 
     // Resolve the casing explicitly, the way a LoanCore auditor would.
     await compliant.fill('Disabled');
@@ -210,7 +212,7 @@ test.describe('the hero workflow', () => {
     const text = c1.getByLabel('Condition text C1', { exact: true });
     await expect(text).toBeVisible();
     await expect(text).toHaveValue(saved);
-    await shot(page, 'compliance-advanced-mode');
+    await shot(page, 'compliance-advanced-mode', c1);
     await c1.getByLabel('Simple — choose the values').check();
     await expect(text).toBeHidden();
     await expect(compliant).toHaveValue('Disabled');
@@ -228,7 +230,7 @@ test.describe('the hero workflow', () => {
     await expect(c2.getByText(/A role cannot be both privileged and non-privileged.*LOAN_ADMIN/)).toBeVisible();
     await nonPrivileged.fill('VIEWER');
     await expect(c2.locator('[data-policy-counts="C2"]')).toContainText('2 privileged, 1 known non-privileged');
-    await shot(page, 'role-privilege-policy');
+    await shot(page, 'role-privilege-policy', c2);
 
     /* ------------------------------------------- a direct save, with state ---- */
     // Unsaved state is visible BEFORE the save.
@@ -241,7 +243,7 @@ test.describe('the hero workflow', () => {
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.')).toBeVisible();
     await expect(save).toBeFocused();
     await expect(page.getByText('Compliance Rule has unsaved changes.')).toHaveCount(0);
-    await shot(page, 'compliance-saved-directly');
+    await shot(page, 'compliance-saved-directly', page.locator('section.ls-card', { has: save }).last());
 
     // The saved rule survives a reload, in the author's own spelling and casing.
     await page.reload();
@@ -249,7 +251,7 @@ test.describe('the hero workflow', () => {
     await expect(page.locator('[data-condition-id="C2"]').getByLabel('Privileged roles C2', { exact: true })).toHaveValue('LOAN_ADMIN\nSYSTEM_ADMIN');
     // The readiness item C2 raised is gone now that a policy is frozen with it.
     await expect(page.locator('[data-readiness-item="agent-judged-without-policy"]')).toHaveCount(0);
-    await shot(page, 'readiness-after-policy');
+    await shot(page, 'readiness-after-policy', page.locator('[data-readiness]'));
 
     /* -------------------------------------------- keyboard reach and axe ------ */
     // The simple editor is operable without a mouse, which is the floor for every
@@ -280,7 +282,7 @@ test.describe('the hero workflow', () => {
     await expect(absence).toBeChecked();
     await expect(c1After.locator('[data-simple-text="C1"]')).toHaveText(saved);
     await scan(page);
-    await shot(page, 'builder-scanned');
+    await shot(page, 'builder-scanned', c1After);
 
     /* --------------------------- readiness CLEARS as the Draft is completed --- */
     // Submit is unavailable while the Draft is incomplete, and it says why — the same
@@ -300,7 +302,7 @@ test.describe('the hero workflow', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await expect(page.locator('[data-readiness-item="source-not-bound"]')).toHaveCount(0);
-    await shot(page, 'readiness-after-source');
+    await shot(page, 'readiness-after-source', page.locator('[data-readiness]'));
 
     /* ------------------- the optional timing rule, and what it needs ---------- */
     // P-1's 24-hour disablement window ADDS a condition beside the account-status one.
@@ -335,7 +337,8 @@ test.describe('the hero workflow', () => {
     await expect(precision).toContainText('termination_effective_time');
     await expect(capture).toHaveCount(1);
     await expect(capture).toContainText('disabled_time');
-    await shot(page, 'timing-window-added-readiness');
+    await shot(page, 'timing-window-condition', c3);
+    await shot(page, 'timing-window-readiness', page.locator('[data-readiness]'));
 
     // The capture gap is closed where it belongs — in Evidence Requirements, whose own
     // command owns that section — and the Builder offers the exact requirement rather
@@ -351,7 +354,7 @@ test.describe('the hero workflow', () => {
     await expect(page.locator('[data-readiness-item="disablement-capture-missing"]')).toHaveCount(0);
     // The source gap is NOT cleared by declaring a capture: they are two findings.
     await expect(page.locator('[data-readiness-item="termination-time-precision-missing"]')).toHaveCount(1);
-    await shot(page, 'timing-capture-declared');
+    await shot(page, 'timing-capture-declared', page.locator('section.ls-card', { has: page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }) }).last());
 
     // Withdrawing the choice clears the finding, which is the other half of "readiness
     // shows and clears". The account-status rule is still exactly as it was authored.
@@ -370,7 +373,7 @@ test.describe('the hero workflow', () => {
     const scopeDialog = page.getByRole('dialog');
     await expect(scopeDialog).toBeVisible();
     await expect(scopeDialog).toContainText(`E2E hero LoanCore ${stamp}`);
-    await shot(page, 'scope-expansion-confirmation');
+    await shot(page, 'scope-expansion-confirmation', scopeDialog);
     await scan(page);
     await scopeDialog.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await expect(page.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible();
@@ -382,7 +385,7 @@ test.describe('the hero workflow', () => {
     await page.getByRole('button', { name: 'Save Audit Instructions', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Audit Instructions are recorded in the audit chain.')).toBeVisible();
-    await shot(page, 'draft-complete');
+    await shot(page, 'draft-complete', page.locator('[data-agent-summary]'));
 
     /* ---------------------------------- submit stops, and says what it needs -- */
     // Every SECTION of the Draft is complete now, so the only thing left between it and
@@ -397,7 +400,7 @@ test.describe('the hero workflow', () => {
     // the ordinary saves above needed no dialog and this one still does.
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByText('Wait for the executable plan to finish deriving.')).toBeVisible();
-    await shot(page, 'submit-unavailable-with-its-reason');
+    await shot(page, 'submit-unavailable-with-its-reason', page.locator('.ls-actions').last().locator('xpath=..'));
 
     // And the reason is NOT a missing section: every completeness blocker the Builder
     // could raise is gone, and readiness lists nothing about targets or the source.

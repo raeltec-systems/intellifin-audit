@@ -803,3 +803,35 @@ pre-existing row. CI never meets it because every CI database is empty; the popu
 met it because publishing a configuration was one of its steps. It is a test-isolation gap,
 not a product defect, and it is repaired in the hero-workflow candidate rather than left as
 a note.
+
+## The hero-workflow pass lands on the candidate (2026-09-09)
+
+The usability pass the owner asked for in §3 was built on `codex/epic-4-hero-ux` (six
+commits by the UX agent, then this session's `7a8f372` finishing the 24-hour window as a
+third condition with its readiness items and the capture offer) and merged with
+`codex/epic-4-agent-runs` at `d1d9ade`+`efa6625`. One file overlapped (`builder/actions.ts`:
+the mapping shape check from D3 and the honest lost-response sentence from the pass) and
+merged cleanly. The whole account is `epic-4-hero-workflow-report.md`; the pictures are in
+`hero-ux-screenshots/`.
+
+Gates on the merged tree, PostgreSQL 18 at generation 41: typecheck green (one post-merge
+type error in `readiness.test.ts`, where the malformed-mapping probes are deliberately not
+the compiled type and now say so with a cast); unit 3641 passed (two `session-route`
+timeouts under CPU contention, 38 of 38 alone); boundaries 519 modules; build; browser 34
+of 34 across the hero journey, `procedures`, `version-review`, `executable-plan` and the
+Story 4.12 journey, with axe clean at every scanned state; every mutation anchor in the four
+harnesses occurs exactly once. The one browser test the agent had left red — it drove the
+old "Use 24-hour window" swap button — now drives the Timing control and asserts C1 survives;
+the six failures after it were its shadow (Playwright restarts its worker after a failure
+and runs `afterAll` early).
+
+Two test repairs ride with it, both from the `sql.json` finding recorded in CLAUDE.md:
+`immutable-versions.test.ts` restores the `@current` pointer through `::text::jsonb` and
+passes with a published configuration in place (the pointer is restored afterwards, which
+the pre-repair cleanup could not do — the first reproduction here left a dangling pointer
+that broke every Procedure creation on the test database until it was repaired by hand),
+and `procedures.test.ts` asserts the SQLSTATE of each raw-SQL Period refusal, so the three
+cases reach the CHECK they exist to prove.
+
+Hosted CI on the merge head and the live acceptance on it are recorded in
+`epic-4-story-status.md` and on PR 24 as they complete.
