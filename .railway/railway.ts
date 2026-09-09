@@ -105,6 +105,28 @@ export default defineRailway(() => {
       // replay endpoint 404s forever for a session created without it -- so turning it on
       // applies to Runs made after the change and never to Runs already recorded.
       SOLARI_RECORDING: 'false',
+      // Stories 3.2 to 3.5. The PRIVATE S3-compatible bucket every Evidence artifact is
+      // frozen into. All five together or none: `loadConfig` refuses a partial set. Absent,
+      // the worker starts, logs `Population execution disabled` and ends every Run
+      // RUN_FAILED with a closed diagnostic rather than fabricating a Run nobody can read.
+      // Endpoint, region and bucket carry no secret but are this deployment's to name.
+      EVIDENCE_S3_ENDPOINT: preserve(),
+      EVIDENCE_S3_REGION: preserve(),
+      EVIDENCE_S3_BUCKET: preserve(),
+      EVIDENCE_S3_ACCESS_KEY_ID: preserve(),
+      EVIDENCE_S3_SECRET_ACCESS_KEY: preserve(),
+      // Story 3.3. The JSON manifest from opaque credential reference to token value; the
+      // WORKER'S alone, and a production web container that carries it refuses to start.
+      // Absent, adapter and agent extraction are disabled by name. Two keys that trim to
+      // one reference refuse the whole manifest.
+      CREDENTIAL_TOKENS: preserve(),
+      // Epic 4. The agent model gateway: Anthropic is primary when both keys are present,
+      // OpenAI the fallback; the model ids override the build's defaults and are the
+      // owner's deliberate choice, so they are preserved rather than written from code.
+      ANTHROPIC_API_KEY: preserve(),
+      OPENAI_API_KEY: preserve(),
+      AGENT_ANTHROPIC_MODEL: preserve(),
+      AGENT_OPENAI_MODEL: preserve(),
     },
   });
 
