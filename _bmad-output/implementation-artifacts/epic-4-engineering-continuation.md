@@ -780,3 +780,26 @@ The secret-free reports are the run's retained artifact `10084400638`. This is t
 representative live acceptance the owner asked for; the review path is proven separately by
 `agent-evaluation-journey.spec.ts` and `evaluation-review.spec.ts` with an authorized identity.
 A later candidate (the hero-workflow merge) needs its own live result, per the workflow's rule.
+
+## Populated upgrade from production's generation proven (2026-09-09)
+
+Production runs `main` (`12ec596`) at schema generation 14, and the earlier upgrade proof
+started from 32. A generation-14 database was therefore built by main's own migrator,
+populated by main's own commands (four Procedures across DRAFT, SUBMITTED, APPROVED and
+ACTIVE, a published platform configuration and its platform-authored Draft, delivered
+notifications, one worker heartbeat) and upgraded in place by the candidate's migrator
+(`6237c4c`): exit 0, 12 s, `schema_meta` at 41. Every pre-existing row's generation-14
+columns are byte for byte unchanged (nine named tables digested before and after; the two
+whose full-row digest moved are exactly the two that gained nullable Epic 4 columns), the
+only pre-existing row-count changes are the migration ledger and pg-boss's queue
+definitions, schema parity with a fresh generation-41 install is exact (673 columns, 861
+constraints, 40 triggers) and the migrator is a no-op when run again. The full account is
+`epic-4-populated-upgrade-proof.md`; the readiness table's row now reads passed.
+
+One finding outside the upgrade: two `immutable-versions.test.ts` cases fail on ANY
+database that already holds a published platform configuration, fresh or upgraded, because
+their cleanup restores the `@current` pointer and that restore throws in the driver for a
+pre-existing row. CI never meets it because every CI database is empty; the populated proof
+met it because publishing a configuration was one of its steps. It is a test-isolation gap,
+not a product defect, and it is repaired in the hero-workflow candidate rather than left as
+a note.
