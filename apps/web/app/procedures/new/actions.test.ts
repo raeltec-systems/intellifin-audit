@@ -332,7 +332,7 @@ describe('the Procedure Server Actions', () => {
     // is the proof the body got past every shape check.
     await expect(createProcedureAction(VALID_NEW)).resolves.toEqual({
       ok: false,
-      reason: 'The Procedure could not be created. Nothing was changed.',
+      reason: 'The Procedure could not be confirmed. It may have been created. Open Procedures to check before creating another.',
     });
   });
 
@@ -347,7 +347,7 @@ describe('the Procedure Server Actions', () => {
     // transaction.
     await expect(renameProcedureDraftAction(VALID_RENAME)).resolves.toEqual({
       ok: false,
-      reason: 'The change could not be saved. Nothing was changed.',
+      reason: 'The save could not be confirmed. The change may have been saved. Reload to review the saved version before trying again.',
     });
   });
 });

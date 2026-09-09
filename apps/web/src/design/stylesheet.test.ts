@@ -164,6 +164,20 @@ describe('every class a component names has a rule that paints it', () => {
   });
 });
 
+describe('the hidden attribute wins over every component class', () => {
+  it('is enforced once, at the root, with the specificity to beat a display rule', () => {
+    // The browser's own `[hidden] { display: none }` is a user-agent rule, so any class
+    // that sets `display` beats it. `.ls-dialog__field` does exactly that, so a field
+    // marked `hidden` stayed visible and focusable. A control the page believes is
+    // hidden and a person can still tab into is worse than one never hidden at all.
+    const raw = readFileSync(
+      fileURLToPath(new URL('../../app/globals.css', import.meta.url)),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(raw).toMatch(/\[hidden\]\s*\{[^}]*display:\s*none\s*!important/);
+  });
+});
+
 describe('every custom property the stylesheet reads is defined', () => {
   it('names no token that does not exist', () => {
     // `.ls-definition dt` read `var(--font-size-sm, 0.875rem)`, a token defined

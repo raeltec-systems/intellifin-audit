@@ -75,15 +75,15 @@ development_status:
   4-1-provision-an-isolated-agent-workspace-per-run: done
   4-2-sign-in-to-loancore-and-enforce-read-only-allowlisted-action: done
   4-3-supply-credentials-just-in-time-and-suppress-capture-during: done
-  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: in-progress
-  4-5-prove-absence-for-an-employee-with-no-account: in-progress
-  4-6-bound-agent-execution-and-render-retrieved-content-inert: in-progress
-  4-7-raise-typed-escalations-as-durable-waits: in-progress
-  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: in-progress
-  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: in-progress
-  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: in-progress
-  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: in-progress
-  4-12-evaluate-the-24-hour-disablement-window-through-the-complet: in-progress
+  4-4-locate-a-record-capture-evidence-and-register-a-grounded-obs: review
+  4-5-prove-absence-for-an-employee-with-no-account: review
+  4-6-bound-agent-execution-and-render-retrieved-content-inert: review
+  4-7-raise-typed-escalations-as-durable-waits: review
+  4-8-answer-an-escalation-from-run-detail-and-notify-audit-manage: review
+  4-9-confirm-or-reject-agent-judged-evaluations-to-seal-the-resul: review
+  4-10-prove-the-agent-path-on-prodconsole-with-one-observation-per: review
+  4-11-prove-abuse-resistance-and-workspace-isolation-with-negative: review
+  4-12-evaluate-the-24-hour-disablement-window-through-the-complet: review
   epic-4-retrospective: optional
 
   epic-5: backlog

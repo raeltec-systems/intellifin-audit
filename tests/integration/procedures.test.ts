@@ -702,8 +702,17 @@ describe.skipIf(!databaseUrl)('Procedures against PostgreSQL 18', () => {
     });
     it('refuses invalid raw SQL Period, rule, scope, snapshot and blocker data', async () => {
       const { seed } = await setupPopulation();
-      for (const period of [{ from: '2025-02-29', to: '2025-03-01' }, { from: '2026-02-01', to: '2026-01-01' }, { from: '2026-01-01' }]) {
-        await expect(sql`UPDATE procedure_version SET period = ${sql.json(period)} WHERE version_id = ${seed.versionId}`).rejects.toThrow();
+      // Each refusal is PostgreSQL's, by SQLSTATE: an impossible date fails the CHECK's own
+      // `::date` cast (22008); a reversed or half-missing Period fails the CHECK (23514).
+      // The parameter travels as text and is cast on the server, because `sql.json` on a
+      // client `createDb` has wrapped throws in the driver before any statement is sent —
+      // which is exactly how these three cases used to pass without reaching the CHECK.
+      for (const [period, code] of [
+        [{ from: '2025-02-29', to: '2025-03-01' }, '22008'],
+        [{ from: '2026-02-01', to: '2026-01-01' }, '23514'],
+        [{ from: '2026-01-01' }, '23514'],
+      ] as const) {
+        await expect(sql`UPDATE procedure_version SET period = ${JSON.stringify(period)}::text::jsonb WHERE version_id = ${seed.versionId}`).rejects.toMatchObject({ code });
       }
       await expect(sql`UPDATE procedure_version SET inclusion_rule = '{"schemaVersion":2,"all":[]}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_rule_shape/);
       await expect(sql`UPDATE procedure_version SET source_snapshot = '{}'::jsonb WHERE version_id = ${seed.versionId}`).rejects.toThrow(/procedure_version_source_shape/);

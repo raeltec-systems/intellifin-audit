@@ -388,7 +388,7 @@ describe.skipIf(!url)('immutable activation and transactional platform successor
       expect((await sql`SELECT configuration FROM procedure_configuration WHERE revision='@current'`)[0]?.configuration).toMatchObject({revision:again});
       expect(await sql`SELECT version_id FROM procedure_version WHERE configuration_revision=${again}`).toHaveLength(0);
     }finally{
-      if(priorPointer)await sql`UPDATE procedure_configuration SET configuration=${sql.json(priorPointer)} WHERE revision='@current'`;else await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;
+      if(priorPointer)await sql`UPDATE procedure_configuration SET configuration=${JSON.stringify(priorPointer)}::text::jsonb WHERE revision='@current'`;else await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;
     }
   });
   it('operational configuration file entry point mints a supported reviewed model contract and replays its durable revision',async()=>{
@@ -437,6 +437,6 @@ describe.skipIf(!url)('immutable activation and transactional platform successor
       expect(await sql`SELECT * FROM procedure_configuration ORDER BY revision`).toEqual(snapshot);
       await writeFile(file,JSON.stringify({revision:`${revision}-unsupported`,model:{provider:'anthropic',modelId:revision,promptVersion:'2'},interpreterContract:'executable-plan-v1',changeKind:'prompt'}));
       await expect(applyConfigurationFile(url!,file)).rejects.toThrow('Unsupported');
-    }finally{await unlink(file);await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;if(priorPointer!==undefined)await sql`INSERT INTO procedure_configuration(revision,configuration) VALUES ('@current',${sql.json(priorPointer)})`;}
+    }finally{await unlink(file);await sql`DELETE FROM procedure_configuration WHERE revision='@current'`;if(priorPointer!==undefined)await sql`INSERT INTO procedure_configuration(revision,configuration) VALUES ('@current',${JSON.stringify(priorPointer)}::text::jsonb)`;}
   });
 });

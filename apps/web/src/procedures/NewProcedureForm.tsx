@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { heroProcedureTemplate, PROCEDURE_TEMPLATES, type TemplateId } from '@intellifin/domain';
 import { PROCEDURE_REFUSALS } from '@intellifin/application';
 
+import Link from 'next/link';
+
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
@@ -25,6 +27,14 @@ import type { NewProcedureActionResult, NewProcedureFormFields } from '../../app
  * is recorded in the audit chain, but it is still the moment the person confirms what
  * they are about to make.
  */
+
+/**
+ * Said when the create response was lost. It never claims nothing was created, because
+ * this path cannot know: `createProcedure` mints its ids inside the command and carries
+ * no request token, so a retry after a lost response creates a SECOND Procedure.
+ */
+export const UNKNOWN_CREATE_OUTCOME =
+  'The create response was lost. The Procedure may have been created. Open Procedures to check before creating another.';
 
 export interface NewProcedureFormProps {
   readonly onCreate: (fields: NewProcedureFormFields) => Promise<NewProcedureActionResult>;
@@ -54,9 +64,10 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
   const [confirming, setConfirming] = useState(false);
   /** Written and read in the same tick; `busy` is a render behind. See `BindingForm`. */
   const submittingRef = useRef(false);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
 
   async function submit(): Promise<void> {
-    if (submittingRef.current) return;
+    if (submittingRef.current || unknownOutcome) return;
     submittingRef.current = true;
     setConfirming(false);
     setBusy(true);
@@ -70,8 +81,15 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
       }
     } catch {
       // A rejected Server Action — a network drop, a deploy mid-request — must not end
-      // as a stopped spinner and no message.
-      setResult({ ok: false, reason: 'The Procedure could not be created. Nothing was changed.' });
+      // as a stopped spinner and no message, and must NOT claim nothing was created.
+      // The request may have committed and lost its response on the way back; the only
+      // honest answer is to say so and send the person to the list to look, exactly as
+      // the Builder's `UnknownSaveOutcome` does for a Draft section save. A second
+      // attempt is blocked, because creation carries no idempotency token: a retry after
+      // a lost response would make a SECOND Procedure (named as a follow-up in the
+      // hero-UX report).
+      setUnknownOutcome(true);
+      setResult(null);
       setAnnouncement((count) => count + 1);
     } finally {
       submittingRef.current = false;
@@ -81,7 +99,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
 
   function onRequestSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (submittingRef.current) return;
+    if (submittingRef.current || unknownOutcome) return;
     if (template === UNCHOSEN) {
       // The refusal the spec asks for: no sentence, no stored row — and a refusal the
       // person can act on, stated where the choice is. Read from the command's own
@@ -97,7 +115,17 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
 
   return (
     <div className="ls-stack">
-      {result === null ? null : (
+      {unknownOutcome ? (
+        <div className="ls-stack" data-create-unknown>
+          <Banner key={announcement} tone="warning" title={UNKNOWN_CREATE_OUTCOME} />
+          <p>
+            <Link className="ls-button ls-button--secondary ls-button--md" href="/procedures">
+              Open Procedures
+            </Link>
+          </p>
+        </div>
+      ) : null}
+      {result === null || unknownOutcome ? null : (
         <Banner
           key={announcement}
           tone={result.ok ? 'success' : 'danger'}
@@ -170,7 +198,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
         </div>
 
         <div className="ls-admin__actions">
-          <Button type="submit" variant="primary" size="md" busy={busy}>
+          <Button type="submit" variant="primary" size="md" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_CREATE_OUTCOME : undefined}>
             {busy ? 'Creating…' : 'Create Procedure'}
           </Button>
         </div>

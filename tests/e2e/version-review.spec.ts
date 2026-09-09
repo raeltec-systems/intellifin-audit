@@ -12,7 +12,10 @@ import { executablePlanInputs } from '../fixtures/executable-plan';
 import { AUTH_STATE, ACCOUNTS, assertThrowawayDatabase, signIn } from './accounts';
 test.use({ storageState: AUTH_STATE.auditor });
 const scan = async (page: Page) => expect((await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);
-async function save(page: Page, label: string, confirmation = label) { await page.getByRole('button', { name: label, exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: confirmation, exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); }
+/** An ordinary Draft section save: direct, with NO dialog between the click and the change. */
+async function save(page: Page, label: string) { await page.getByRole('button', { name: label, exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); }
+/** An action that keeps its focus-trapping confirmation: submit, approve, reject, edit, scope expansion. */
+async function confirmed(page: Page, label: string, confirmation = label) { await page.getByRole('button', { name: label, exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: confirmation, exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0); }
 
 test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → rejection/edit → approval', async ({ page, browser, baseURL }) => {
   test.setTimeout(180000); page.setDefaultTimeout(15000);
@@ -46,18 +49,18 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     await sql`INSERT INTO auth_user(id,name,email,email_verified) VALUES (${managerId},'Synthetic Audit Manager',${email},true)`;
     await sql`INSERT INTO auth_account(id,issuer,account_id,provider_id,user_id,password) SELECT ${ids.next()},issuer,${managerId},provider_id,${managerId},password FROM auth_account WHERE user_id = (SELECT id FROM auth_user WHERE email = ${ACCOUNTS.auditor.email}) AND provider_id = 'credential'`;
     await sql`INSERT INTO user_role(user_id,role) VALUES (${managerId},'audit-manager')`;
-    await page.goto('/procedures/new'); await page.getByLabel('Template', { exact: true }).selectOption('P-1'); await page.getByLabel('Control name', { exact: true }).fill(controlName); await save(page,'Create Procedure');
+    await page.goto('/procedures/new'); await page.getByLabel('Template', { exact: true }).selectOption('P-1'); await page.getByLabel('Control name', { exact: true }).fill(controlName); await confirmed(page,'Create Procedure');
     await expect(page).toHaveURL(/\/builder$/); procedureId = page.url().split('/').at(-2)!;
     const submit = page.getByRole('button', { name: 'Submit for approval', exact: true }); await expect(submit).toBeDisabled(); await expect(submit).toHaveAccessibleDescription(/Choose a Population Source/);
-    await page.getByLabel('Period start').fill('2026-08-01'); await page.getByLabel('Period end').fill('2026-08-31'); await page.getByLabel('Scope statement').fill('All terminated employees in the Finance department.'); await save(page,'Save Period and scope','Save Draft changes'); await expect(page.getByRole('button',{name:'Save Period and scope',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
+    await page.getByLabel('Period start').fill('2026-08-01'); await page.getByLabel('Period end').fill('2026-08-31'); await page.getByLabel('Scope statement').fill('All terminated employees in the Finance department.'); await save(page,'Save Period and scope'); await expect(page.getByRole('button',{name:'Save Period and scope',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await page.getByLabel('Population Source', { exact: true }).selectOption(sourceId);
     await page.getByRole('button', { name: 'Add clause', exact: true }).click();
     const clauses = page.getByLabel(/^Declared column /); const count = await clauses.count();
     await clauses.last().selectOption('department'); await page.getByLabel(`Comparison value ${count}`, { exact: true }).fill('Finance');
     await page.getByLabel('Permit versioned duplicate primary keys', { exact: true }).check();
-    await save(page,'Save Population Source binding','Save Draft changes'); await expect(page.getByRole('button',{name:'Save Population Source binding',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
+    await save(page,'Save Population Source binding'); await expect(page.getByRole('button',{name:'Save Population Source binding',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     for (const id of [webId,desktopId]) { await page.getByLabel('Add a Target System').selectOption(id); await page.getByRole('button', { name: 'Add Target System', exact: true }).click(); }
-    await save(page,'Save Target Systems'); await expect(page.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible();
+    await confirmed(page,'Save Target Systems'); await expect(page.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible();
     for (const name of [webName,desktopName]) await page.getByLabel(`Audit Instructions for ${name}`, { exact: true }).fill('Read account status for each terminated employee by employee_id and full_name.');
     await save(page,'Save Audit Instructions'); await expect(page.getByText('Saved. The Audit Instructions are recorded in the audit chain.')).toBeVisible();
     await page.reload(); await expect(page.getByLabel('Permit versioned duplicate primary keys', { exact: true })).toBeChecked(); await expect(page.getByLabel(`Comparison value ${count}`, { exact: true })).toHaveValue('Finance');
@@ -75,25 +78,25 @@ test('P-1 authored Builder → actual worker/SDK HTTP → submitted review → r
     expect(output).toContain('Synthetic Anthropic HTTP response delivered');
     // Author once more with the real worker running, then prove its current result.
     await page.getByLabel('Scope statement').fill('All terminated employees in Finance, reviewed with the worker running.');
-    await save(page,'Save Period and scope','Save Draft changes'); await expect(page.getByRole('button',{name:'Save Period and scope',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
+    await save(page,'Save Period and scope'); await expect(page.getByRole('button',{name:'Save Period and scope',exact:true})).toBeEnabled(); await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await page.reload();
     await expect(page.getByLabel('Scope statement')).toHaveValue('All terminated employees in Finance, reviewed with the worker running.');
     await expect(submit).toBeEnabled({ timeout: 45000 });
     await expect(submit).toBeEnabled(); await scan(page);
     await submit.focus(); await page.keyboard.press('Enter'); await expect(page.getByRole('dialog')).toBeVisible(); await page.keyboard.press('Escape'); await expect(submit).toBeFocused();
-    await save(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
+    await confirmed(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
     const reviewUrl = page.url(); await expect(page.getByRole('button',{ name:'Approve',exact:true })).toBeDisabled(); await expect(page.getByRole('button',{ name:'Approve',exact:true })).toHaveAccessibleDescription(/You cannot approve a version you authored\./);
     await expect(page.locator('details')).toHaveCount(12); await expect(page.locator('details:not([open])')).toHaveCount(0); await scan(page);
     await signIn(manager,email); await expect(manager).toHaveURL(new URL('/', baseURL!).href); await manager.goto('/notifications'); await expect(manager.getByRole('link',{ name:/Procedure Version submitted/ })).toBeVisible({ timeout: 10000 }); await manager.getByRole('link',{ name:/Procedure Version submitted/ }).click(); await expect(manager).toHaveURL(reviewUrl);
     await manager.getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByLabel('Rationale')).toBeFocused(); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('A rationale is required.')).toBeVisible(); await scan(manager);
     await manager.getByLabel('Rationale').fill('Clarify the saved scope before approval.'); await manager.getByRole('dialog').getByRole('button',{ name:'Reject',exact:true }).click(); await expect(manager.getByText('Rationale: Clarify the saved scope before approval.')).toBeVisible();
-    await page.reload(); await save(page,'Edit'); await expect(page).toHaveURL(/\/builder\?version=/); await save(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
+    await page.reload(); await confirmed(page,'Edit'); await expect(page).toHaveURL(/\/builder\?version=/); await confirmed(page,'Submit for approval'); await expect(page).toHaveURL(/\/versions\//);
     await manager.goto(reviewUrl);
     await expect(manager.getByRole('region',{name:'Decision history'})).toContainText('Clarify the saved scope before approval.');
     let decisionPosts = 0;
     await manager.route(reviewUrl, async route => { if (route.request().method() !== 'POST') return route.continue(); decisionPosts++; await route.fetch(); await route.abort('failed'); });
-    await save(manager,'Approve');
+    await confirmed(manager,'Approve');
     await expect(manager.getByText('The decision may have been saved. Reload the page before trying again.')).toBeVisible();
     await expect(manager.getByRole('button',{name:'Approve',exact:true})).toBeDisabled();
     await expect(manager.getByRole('button',{name:'Reject',exact:true})).toBeDisabled();
@@ -143,27 +146,27 @@ test('Population, Target and Instruction editors preserve dirty values, reset co
     await page.goto(builder); await other.goto(builder);
     // A checkbox round trip proves the freshly loaded second form is hydrated.
     await other.getByLabel('Permit a zero-record Pass').check(); await other.getByLabel('Permit a zero-record Pass').uncheck();
-    await page.getByLabel('Permit a zero-record Pass').check(); await other.getByLabel('Permit versioned duplicate primary keys').check(); await save(other,'Save Population Source binding','Save Draft changes');
+    await page.getByLabel('Permit a zero-record Pass').check(); await other.getByLabel('Permit versioned duplicate primary keys').check(); await save(other,'Save Population Source binding');
     await expect(other.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible(); await page.bringToFront();
     await expect(page.getByText('Population Source changed in another session. Review the saved values before replacing them.')).toBeVisible({ timeout:20000 }); await expect(page.getByRole('button',{name:'Submit for approval',exact:true})).toHaveAccessibleDescription(/conflict/);
     await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked(); await page.getByRole('button',{name:'Use saved Population Source'}).click(); await expect(page.getByLabel('Permit a zero-record Pass')).not.toBeChecked(); await expect(page.getByLabel('Permit versioned duplicate primary keys')).toBeChecked();
-    async function lose(label: string, confirmation: string) {
+    async function lose(label: string, confirmation?: string) {
       const address = page.url(); let posts = 0;
       await page.route(address,async route => { if (route.request().method() !== 'POST') return route.continue(); posts++; await route.fetch(); await route.abort('failed'); });
-      await save(page,label,confirmation);
+      if (confirmation === undefined) await save(page,label); else await confirmed(page,label,confirmation);
       await expect(page.getByRole('paragraph').filter({hasText:'The save response was lost.'})).toBeVisible(); await expect(page.getByRole('button',{name:'Submit for approval',exact:true})).toHaveAccessibleDescription(/unknown save outcome/); await expect(page.getByRole('button',{name:label,exact:true})).toHaveAttribute('aria-disabled','true');
       expect(posts).toBe(1); await page.unroute(address); await page.getByRole('button',{name:'Reload saved version'}).click();
     }
-    await page.getByLabel('Permit a zero-record Pass').check(); await lose('Save Population Source binding','Save Draft changes'); await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
+    await page.getByLabel('Permit a zero-record Pass').check(); await lose('Save Population Source binding'); await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
     await other.reload(); await page.getByRole('button',{name:'Remove ProdConsole',exact:true}).click(); await page.getByLabel('Add a Target System').selectOption(targetB); await page.getByRole('button',{name:'Add Target System',exact:true}).click();
-    await other.getByRole('button',{name:'Remove ProdConsole',exact:true}).click(); await other.getByLabel('Add a Target System').selectOption(targetC); await other.getByRole('button',{name:'Add Target System',exact:true}).click(); await save(other,'Save Target Systems');
+    await other.getByRole('button',{name:'Remove ProdConsole',exact:true}).click(); await other.getByLabel('Add a Target System').selectOption(targetC); await other.getByRole('button',{name:'Add Target System',exact:true}).click(); await confirmed(other,'Save Target Systems');
     await expect(other.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible(); await page.bringToFront();
     await expect(page.getByText('Target Systems changed in another session. Review the saved values before replacing them.')).toBeVisible({timeout:20000}); await expect(page.getByRole('button',{name:'Submit for approval',exact:true})).toHaveAccessibleDescription(/conflict/); await expect(page.getByRole('button',{name:'Remove Conflict target B',exact:true})).toBeVisible(); await page.getByRole('button',{name:'Use saved Target Systems'}).click(); await expect(page.getByRole('button',{name:'Remove Conflict target C',exact:true})).toBeVisible();
     await page.getByLabel('Add a Target System').selectOption(targetB); await page.getByRole('button',{name:'Add Target System',exact:true}).click(); await lose('Save Target Systems','Save Target Systems'); await expect(page.getByRole('button',{name:'Remove Conflict target B',exact:true})).toBeVisible();
     await other.reload(); const label = 'Audit Instructions for Conflict target C'; await page.getByLabel(label,{exact:true}).fill('Locally edited instructions.'); await other.getByLabel(label,{exact:true}).fill('Saved remote instructions.'); await save(other,'Save Audit Instructions');
     await expect(other.getByText('Saved. The Audit Instructions are recorded in the audit chain.')).toBeVisible(); await page.bringToFront();
     await expect(page.getByText('Audit Instructions changed in another session. Review the saved values before replacing them.')).toBeVisible({timeout:20000}); await expect(page.getByRole('button',{name:'Submit for approval',exact:true})).toHaveAccessibleDescription(/conflict/); await expect(page.getByLabel(label,{exact:true})).toHaveValue('Locally edited instructions.'); await page.getByRole('button',{name:'Use saved Audit Instructions'}).click(); await expect(page.getByLabel(label,{exact:true})).toHaveValue('Saved remote instructions.');
-    await page.getByLabel(label,{exact:true}).fill('Committed instruction response was lost.'); await lose('Save Audit Instructions','Save Audit Instructions'); await expect(page.getByLabel(label,{exact:true})).toHaveValue('Committed instruction response was lost.'); await scan(page);
+    await page.getByLabel(label,{exact:true}).fill('Committed instruction response was lost.'); await lose('Save Audit Instructions'); await expect(page.getByLabel(label,{exact:true})).toHaveValue('Committed instruction response was lost.'); await scan(page);
   } finally { await other.close(); await sql`DELETE FROM pgboss.job WHERE data->>'versionId' = ${versionId}`; await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`; for (const id of [targetB,targetC]) await sql`DELETE FROM target_system_registration WHERE registration_id = ${id}`; await sql.end({timeout:5}); }
 });
 

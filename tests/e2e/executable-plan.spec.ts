@@ -27,7 +27,6 @@ test('queued preview progresses from pending through failure to a read-only acce
     await expect(preview).toContainText('Re-deriving');
     await page.getByLabel('New Control name').fill(`E2E queued plan ${versionId}`);
     await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Save Control name', exact: true }).click();
     await expect.poll(async () => Number((await sql`SELECT count(*) AS n FROM pgboss.job WHERE data->>'versionId' = ${versionId}`)[0]?.['n'])).toBe(1);
     await expect(preview).toContainText('Re-deriving');
     await startProceduresWorker(queue, (job) => derivePlan(dependencies, job));

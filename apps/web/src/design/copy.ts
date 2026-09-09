@@ -125,15 +125,29 @@ export const PROCEDURE_CARD_ABSENT = {
 } as const;
 
 /**
- * What the Builder says under every section this story renders read-only.
+ * What the Builder says under a section it renders read-only.
  *
- * Stories 2.2–2.5 make each section editable in turn; until then a pre-filled value
- * must not read as an editable field, and the sentence says when it will be. It lives
- * here, not inline in the component, because it is a contract sentence about what this
- * release does not do — the same class of sentence as the empty states.
+ * `[REVISED 2026-09-08]` It used to read "…is not editable yet. A later release makes
+ * it editable", which was written when Stories 2.2–2.5 were still ahead. Every authored
+ * section is editable now, so the sentence promised a release that had already happened
+ * and — worse — sat under the Control section, whose NAME a person can change from this
+ * very page. A sentence that says a thing cannot be done, beside the control that does
+ * it, is worse than no sentence: it stops somebody looking.
+ *
+ * Two sections remain read-only, and each says the true thing about itself. It lives
+ * here, not inline, because it is a contract sentence about what the Builder does — the
+ * same class of sentence as the empty states.
  */
-export const BUILDER_SECTION_NOT_EDITABLE_SENTENCE =
-  'This section is pre-filled from the Template and is not editable yet. A later release makes it editable.';
+export const BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE =
+  'This section is pre-filled from the Template and is not edited in the Builder.';
+
+/**
+ * Said under the Control section only, because the Control NAME is editable and the
+ * Control statement is not. It names where the editable half is, so the reader is not
+ * left to hunt for it.
+ */
+export const BUILDER_CONTROL_NAME_EDITABLE_SENTENCE =
+  'The Control name is edited under "Control name" at the end of this Builder. Editing a Draft never changes the Template it came from.';
 
 /**
  * The responsive floor for the Builder (NFR-11, EXPERIENCE.md → Responsive breakpoints).
