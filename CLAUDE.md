@@ -1704,6 +1704,17 @@ to be held to the rule the work is.
   `/api/health`, a route handler, so the PAGE is still cold when the suite starts. A second
   run with the cache warm is the honest answer; `INTELLIFIN_LOW_DISK=1` exists for the
   opposite problem and would make it slower.
+- **A test script that mutates the DOM before hydration makes React log a defect that is
+  not one.** The full browser run prints twenty `A tree hydrated but some attributes of the
+  server rendered HTML didn't match the client properties` blocks, each ending in a
+  `<details … data-plan-detail>` whose server HTML carries `open=""` and whose client
+  property is `open={false}`. `DraftBuilder.tsx` sets no `open` prop at all; what sets it is
+  `keepBuilderStepsOpen`, whose `addInitScript` opens the Builder's three disclosures before
+  React arrives — React's own message names that case ("a browser extension … which messes
+  with the HTML before React loaded"). So it is the harness, it is deliberate, and the right
+  response is to know it rather than to remove the `open` that no component writes. Read the
+  COMPONENT before believing a hydration diff, and check whether a spec's init script
+  touches the element the diff names.
 
 ### Credentials just in time, and capture suppressed while one is on the wire (added with Story 4.3)
 
