@@ -1,3 +1,83 @@
+## 2026-09-10 — PR 29 review findings: one rule with three holes, and one limit in four places
+
+Codex reviewed the Epic 5 branch and left ten findings. Every one reproduced. Eight are
+fixed here; two are named at the bottom because each needs a change wider than the finding
+and neither belongs in a pull request that is otherwise ready.
+
+**Three findings were one rule with three holes.** Story 5.7's gate withdrew the controls
+that ASKED it — and the Escalation panel did not ask, a `ConfirmDialog` already open never
+re-asked, and the sub-1024px rule only showed a sentence. So the gate moved DOWN, into
+`ConfirmDialog` itself: every confirmation in the product goes through it, so a dialog now
+dismisses itself and refuses its confirm when the gate closes, once, rather than in each
+control that remembers to check. Outside a gated surface the gate is open, so administration
+and authoring are untouched.
+
+- **The viewport gate defaults to DESKTOP where none can be observed, and that is not the
+  fail-safe direction — it is the correct one.** Withdrawing on the server would disable
+  **Flag** permanently for a reader with no JavaScript, and Flag is the ONE control here
+  designed to work without it (`flag-run.spec.ts` proves that with `javaScriptEnabled:
+  false`). Closing a gate on a viewport nobody has measured breaks a guarantee that is real
+  to close a hole that is not. A unit test caught the first attempt.
+
+**A timed-out pause recorded an Escalation.** `wakeEscalation` hard-coded the event type,
+the actor and `priorState: 'AWAITING_AUDITOR'` — so every pause that ran out its thirty
+minutes wrote, into a row that can never be corrected, that an Escalation timed out from a
+state the Run was never in. All three are DERIVED from the wait's own kind now, through the
+same `waitRunState` the command, the insert, the closure and the recovery read already call.
+`execution.pause-timeout` needs no migration: `EVENT_TYPE_PATTERN` closes the FAMILY and not
+the suffix. It also keeps the bell right by construction — `BellLive` re-reads on
+`execution.escalation-`, and a pause is not in the inbox.
+
+**One limit in four places.** Replay renders up to `REPLAY_FRAME_LIMIT` frames and then
+joins each one against the Tool Actions, the Step Executions, the waits, the Exceptions and
+the Observation deltas — every one of which capped at `Math.min(limit, RUN_DETAIL_PAGE_SIZE)`,
+so a caller could only ever NARROW. Past the fiftieth: `No Tool Action` over an action the
+database held, jump targets missing with nothing saying so, and the Observation count frozen
+at the fiftieth delta. `REPLAY_PAGE_SIZE` is the ceiling for exactly those reads and equals
+the frame limit, because one lookup per rendered frame is the cardinality it must cover; the
+defaults stay `RUN_DETAIL_PAGE_SIZE`, so Run Detail is unchanged. **Second appearance of
+"a limit belongs to the cardinality of the READ, not to the table it starts from"** — the
+PR 23 second pass wrote that rule about `readGateObservations`, in this same file.
+
+**The inbox applied its limit twice and added the results.** `openFor(session, 100)` bounded
+the wait query and the flag query independently and concatenated them, so it could return
+200 — and `openFor(session, 1)` could return 2. One limit over the MERGED list, after a
+deterministic order across both kinds.
+
+Three mechanical lessons, and the first is the one that cost the most:
+
+- **A test whose fixture the server never sees cannot assert what the server does.**
+  `live-drop.spec.ts` intercepted the events route with SYNTHETIC sequences and asserted the
+  page resumed at them. CI failed it twice and this machine passed it every time. The second
+  CI failure said why in one line — ten reconnects, every cursor `0`, never `42` — and the
+  reason is not a race: `router.refresh()` re-reads a server cursor that never advances past
+  the seeded head, `useLiveTimeline` seeds `lastSeqRef` from that cursor and re-runs on
+  `[url, cursor]`, so a remount re-subscribes at the SERVER's number. Correct in production,
+  where every frame the client holds came FROM the chain and the server is therefore never
+  behind it; unobservable in a test whose frames did not. **The first diagnosis here was
+  "a race", and it was wrong** — the fix that followed it made the assertion clearer, which
+  is how the second CI run could say so plainly. Read the second failure too, and when a
+  spec passes locally and fails in CI, suspect the FIXTURE's relationship to the server
+  before suspecting the clock.
+- **A test's NAME is a claim, and a name that promises more than the test can establish is
+  the same defect as a label stating something untrue.** Renamed to what it proves; the
+  resume rule itself stays proven deterministically in `live-status.test.ts`, which is why
+  AD-17's comparison was put there rather than in a browser.
+- **Copy the working sibling, third time in one session.** Three rounds went on
+  `run_step_execution.action`, `run_tool_action`'s real column set and a teardown that
+  deletes Tool Actions before the Step Executions they name — each already written correctly
+  in `agent-execution.test.ts` or a few lines up in the same file. Every refusal was a
+  constraint doing its job.
+
+**`[NOT FIXED, NAMED]` Two findings are real and deliberately not in this PR.** A `PAUSED`
+Run that is cancelled leaves its pause wait `closed_at` NULL for ever, and that row then
+sits in `recoverableWaits`' bounded page permanently — but generation 45's `run_wait_closure`
+says a pause closes by `resume` or `timeout`, and a cancellation is neither, so the honest
+fix is a **new closure kind and therefore generation 47**. And `parsePauseRequest` takes
+`{runId}` alone while `parseResumeRequest` takes the revision, so a stale Live View can pause
+a Run the worker has advanced — but `RunRecord` carries no `revision` to compare against, so
+the fix touches every reader of that record. Both are on PR 29 with the patch each needs.
+
 ## 2026-09-10 — Replay reaches nothing, and a jump that lands nowhere says so
 
 Story 5.8, the last of Epic 5. `/runs/<id>/replay` replays any terminal Run from the assets
