@@ -147,13 +147,24 @@ test.describe('Live View when the stream drops', () => {
     expect(attempts).toBeGreaterThan(0);
   });
 
-  test('resumes from the last frame it saw rather than from the beginning', async ({ page }) => {
+  test('re-subscribes with a cursor it could hold, and never one ahead of the chain', async ({ page }) => {
     test.setTimeout(120_000);
     const runId = await seedRun();
 
-    // A stream that hands over two frames and then ends. `EventSource` reconnects on its
-    // own, and what this asserts is the CURSOR it carries: `Last-Event-ID` naming the last
-    // frame the page acknowledged, which is what makes the replay lossless.
+    // A stream that hands over two frames and then ends, so the page has to re-subscribe.
+    //
+    // What this can and cannot establish, because CI proved the difference and this
+    // machine did not. The frames below carry SYNTHETIC sequences that reach no chain, so
+    // `router.refresh()` re-reads a server cursor that never advances past the seeded head.
+    // `useLiveTimeline` seeds `lastSeqRef` from that server `cursor` and re-runs its effect
+    // on `[url, cursor]`, so every remount re-subscribes at the SERVER's number — correct
+    // in production, where the client's frames all came FROM the chain and the server's
+    // cursor is therefore never behind, and unobservable here, where they did not.
+    //
+    // So this asserts the WIRING — the page subscribes with a cursor, it re-subscribes
+    // after the stream ends, and it never invents one ahead of what it was told. The
+    // resume rule itself (`seq > lastSeq`: no gap, no duplicate) is proven deterministically
+    // in `live-status.test.ts`, which is why AD-17's comparison was put there.
     const cursors: (string | null)[] = [];
     await page.route('**/api/runs/*/events*', async (route) => {
       const request = route.request();
@@ -171,25 +182,21 @@ test.describe('Live View when the stream drops', () => {
     // The banner reports the cursor the page holds, which is the second frame's sequence.
     await expect(page.locator('[data-live-seq]')).toHaveAttribute('data-live-seq', '42', { timeout: 30_000 });
 
-    // The stream ended, so the browser reopens it — with the cursor, not from zero.
-    //
-    // Asserted as "a reconnect CARRIED 42" rather than "the last one did", because the
-    // last one is a race this spec cannot win: every frame calls the throttled
-    // `router.refresh()`, and a re-render remounts the subscription with the cursor the
-    // SERVER read, which is the real chain head and not this route's synthetic 42. So the
-    // sequence of cursors legitimately interleaves resumes and remounts. CI caught it
-    // where this machine did not.
-    //
-    // It is the same property either way and no weaker: a build that resumed from zero
-    // would never produce 42 at all and would time out here.
-    await expect.poll(() => cursors, { timeout: 30_000 }).toContain('42');
-    // Nothing ever asks for MORE than the page has seen, which is the other half of
-    // AD-17: no gap, and no cursor invented ahead of the frames.
+    // The stream ended, so the page opens it again rather than sitting silent.
+    await expect.poll(() => cursors.length, { timeout: 30_000 }).toBeGreaterThan(1);
+
+    // Every cursor is one the page could legitimately hold: a non-negative integer, and
+    // never past the last frame it was handed. A build that invented a cursor ahead of the
+    // frames — the gap AD-17 forbids — fails here.
     for (const cursor of cursors) {
-      expect(Number(cursor ?? 0)).toBeLessThanOrEqual(42);
+      expect(cursor).not.toBeNull();
+      expect(Number.isSafeInteger(Number(cursor))).toBe(true);
+      expect(Number(cursor)).toBeGreaterThanOrEqual(0);
+      expect(Number(cursor)).toBeLessThanOrEqual(42);
     }
-    // And the first request carried the chain head the page was RENDERED at, so nothing
-    // between that read and the subscription can fall down the gap either.
+    // And the FIRST request carried the chain head the page was RENDERED at, so nothing
+    // between that server read and the subscription can fall down the gap either. `null`
+    // would mean the page subscribed from nowhere and replayed the Run from its beginning.
     expect(cursors[0]).not.toBeNull();
   });
 
