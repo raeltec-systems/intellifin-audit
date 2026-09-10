@@ -54,3 +54,55 @@ export function targetCoverageMissing(kind: 'web' | 'desktop'): string {
 /** Shown in the Audit Instructions section when no agent-driven system is selected yet. */
 export const AUDIT_INSTRUCTIONS_NO_AGENT =
   'Select a web or desktop Target System above to write its Audit Instructions. API and file systems are adapter-acquired and take no agent instructions.';
+
+/**
+ * What a Template SUGGESTS, said against what this deployment actually registered.
+ *
+ * A Template names its default systems by name and a registration is never minted from
+ * one — deliberately, because scope is the auditor's to declare. What that leaves is a
+ * caption naming systems the deployment may not have: P-1 suggests LedgerDesk, no
+ * deployment registers a desktop system because this release cannot execute one, and an
+ * auditor reading "This Template suggests: LoanCore (web), LedgerDesk (desktop)" then
+ * goes looking for LedgerDesk in a list that does not contain it. Nothing on the surface
+ * distinguished "nobody has set this up" from "you are looking in the wrong place", so
+ * the honest reading was that the Procedure could not be built at all.
+ *
+ * The match is by display name and kind, which is a HEURISTIC — a deployment may
+ * register the same system under another name — so the wording says "no system with
+ * this name", never "this system does not exist".
+ */
+export interface SuggestedTarget {
+  readonly name: string;
+  readonly kind: TargetSystemKind;
+  readonly registered: boolean;
+}
+
+export function suggestedTargets(
+  suggestions: readonly { readonly name: string; readonly kind: TargetSystemKind }[],
+  registrations: readonly { readonly displayName: string; readonly kind: TargetSystemKind }[],
+): readonly SuggestedTarget[] {
+  return suggestions.map((suggestion) => ({
+    name: suggestion.name,
+    kind: suggestion.kind,
+    registered: registrations.some(
+      (registration) =>
+        registration.kind === suggestion.kind &&
+        registration.displayName.trim().toLowerCase() === suggestion.name.trim().toLowerCase(),
+    ),
+  }));
+}
+
+/** How one suggestion reads: its state, and what to do about it. */
+export function suggestedTargetNote(target: SuggestedTarget): string {
+  if (target.kind === 'desktop') {
+    // Registered or not, the answer is the same and it is the stronger fact: this
+    // release stops a Run that reaches a desktop system. `procedureReadiness` says so
+    // again, at greater length, once one is actually selected.
+    return target.registered
+      ? 'set up, but this release cannot run a desktop system — a Run that reaches one stops without a conclusion. Leave it out.'
+      : 'no system with this name is set up here, and this release cannot run a desktop system anyway. Leave it out.';
+  }
+  return target.registered
+    ? 'ready to add below.'
+    : 'no system with this name is set up here. Ask a PoC Administrator to add it under Administration, or add a different system below.';
+}
