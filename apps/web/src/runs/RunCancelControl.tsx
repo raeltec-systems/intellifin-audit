@@ -6,6 +6,7 @@ import { cancelRunAction } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { useLiveGate } from './LiveGate';
 
 /**
  * Cancel, on Run Detail AND on Live View (Story 5.5).
@@ -41,6 +42,9 @@ export interface RunCancelControlProps {
 
 export function RunCancelControl({ runId, procedureName, active, cancelPending }: RunCancelControlProps): React.JSX.Element {
   const router = useRouter();
+  // Live View withdraws its controls when the channel is lost or the Run has ended
+  // (Story 5.7). Outside that surface the gate is open and this is `null`.
+  const gate = useLiveGate();
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => { setClientReady(true); }, []);
   const [confirming, setConfirming] = useState(false);
@@ -78,7 +82,9 @@ export function RunCancelControl({ runId, procedureName, active, cancelPending }
     </div>}
     {unknown && <p><a href={`/runs/${runId}`}>Reload this Run</a></p>}
     <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
-      {...(cancelPending ? { disabledReason: ALREADY_REQUESTED } : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Cancel Run</Button>
+      {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
+        : cancelPending ? { disabledReason: ALREADY_REQUESTED }
+        : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Cancel Run</Button>
     <ConfirmDialog open={confirming} weight="routine"
       title="Cancel this Run?"
       consequence={`This stops the Run for ${procedureName}. Evidence already collected is preserved and no conclusion is issued. The cancellation is recorded against your name.`}

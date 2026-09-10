@@ -6,6 +6,7 @@ import { flagRunFormAction, type FlagRunActionResult } from '../../app/runs/acti
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { FLAG_COPY } from '../design/copy';
+import { useLiveGate } from './LiveGate';
 import { utcStamp } from './labels';
 
 /**
@@ -45,6 +46,9 @@ export interface RunFlagControlProps {
 
 export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps): React.JSX.Element {
   const router = useRouter();
+  // Live View withdraws its controls when the channel is lost or the Run has ended
+  // (Story 5.7). Outside that surface the gate is open and this is `null`.
+  const gate = useLiveGate();
   const [state, formAction, pending] = useActionState<FlagRunActionResult | null, FormData>(flagRunFormAction, null);
   // The flag list is a SERVER read, so a successful flag has to make the page re-read for
   // the new entry to appear. Without script the POST already re-rendered it.
@@ -72,7 +76,8 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
           />
           <p id="run-flag-note-help" className="ls-caption">{FLAG_COPY.noteHelp}</p>
         </div>
-        <Button type="submit" variant="secondary" busy={pending}>{FLAG_COPY.submit}</Button>
+        <Button type="submit" variant="secondary" busy={pending}
+          {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}>{FLAG_COPY.submit}</Button>
       </form>
     ) : null}
     <h3>Flags on this Run</h3>

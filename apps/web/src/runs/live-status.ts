@@ -52,6 +52,70 @@ export function liveSentence(status: LiveStatus, seconds: number): string {
 }
 
 /**
+ * The Timeline events that mean this Run has ENDED (Story 5.7).
+ *
+ * `completeRun` is the one place a Run reaches a terminal state and it appends
+ * `lifecycle.result-sealed` on every path, so that one event covers Completed,
+ * Inconclusive and Run Failed together; `lifecycle.run-canceled` is appended beside it on
+ * the cancellation path. One home, because the bell composes the same list and two copies
+ * would diverge on the first terminal path a later story adds.
+ */
+export const RUN_ENDING_EVENTS = ['lifecycle.result-sealed', 'lifecycle.run-canceled'] as const;
+
+export function isRunEndingEvent(eventType: string): boolean {
+  return (RUN_ENDING_EVENTS as readonly string[]).includes(eventType);
+}
+
+/**
+ * Whether the live controls may be used, and why not when they may not (Story 5.7,
+ * UX-DR25).
+ *
+ * THREE reasons, and `stale` is deliberately not one of them. UX-DR25 disables the
+ * controls after sixty seconds of silence, not fifteen: a quiet Run goes stale routinely,
+ * and a surface that locked itself every fifteen seconds would be unusable exactly when
+ * somebody most wants to pause it.
+ *
+ * `ended` is included although the contract names only `lost`, because `ended` is the
+ * stronger case: a lost stream is reconnecting on its own and an ended one is not, so a
+ * page that gated the recoverable state and not the permanent one would have it backwards.
+ *
+ * `runEnded` outranks both. It is set the moment the terminal event ARRIVES, which is what
+ * closes the window between that event and the server re-read that removes the controls —
+ * about a second, in which every control was live on a Run that had already finished.
+ */
+export const LIVE_GATE_REASONS = {
+  runEnded: 'This Run has ended, so its live controls are no longer available.',
+  lost: 'Controls are unavailable while the connection to this Run is lost.',
+  ended: 'Controls are unavailable because this page is no longer updating on its own. Refresh to continue.',
+} as const;
+
+export type LiveGateReason = keyof typeof LIVE_GATE_REASONS;
+
+export function liveGateReason(status: LiveStatus, runEnded: boolean): LiveGateReason | null {
+  if (runEnded) return 'runEnded';
+  if (status === 'lost') return 'lost';
+  if (status === 'ended') return 'ended';
+  return null;
+}
+
+/**
+ * Whether a per-Run subscription renders the frame it just received (Stories 5.1, 5.7).
+ *
+ * A reconnect resumes at the last sequence the page SAW, so the server replays from there
+ * and the first frames after a drop are ones the page may already hold — that is what
+ * makes the replay lossless, and it is also what would make it duplicate. Strictly
+ * greater is both halves of the rule: no gap, because the cursor is the last seen and the
+ * server replays everything after it; no duplicate, because anything at or below it is
+ * already rendered.
+ *
+ * The cursor therefore only ever grows, which is why a frame that arrives out of order
+ * after a slow reconnect cannot walk it backwards.
+ */
+export function acceptsLiveSeq(lastSeq: number, seq: number): boolean {
+  return Number.isSafeInteger(seq) && seq > lastSeq;
+}
+
+/**
  * The cursor a per-Run stream request names: the `Last-Event-ID` header `EventSource`
  * sends on reconnect, else `after` in the query, else 0. The header wins because a
  * reconnect carries BOTH — the query the page first opened with and the header naming

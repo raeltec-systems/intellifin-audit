@@ -20,7 +20,7 @@ Deployed.
 | 5.4 Pause and resume a Running Run | yes | yes: 3,854 unit (16 on the commands, 4 on the three stage boundaries, 2 mutations killed), 17 integration on generation 45 against real PostgreSQL 18 including all five new CHECKs in both directions and the `opened_at` backfill read off the migration on disk, 2 browser journeys with axe (`pause-resume.spec.ts`); both migration paths reach 45 with identical shape (532/759/26). **Re-verified 2026-09-10 on a clean database run ALONE**: 43 integration files / 515 tests green, and 22 browser tests green across `escalations`, `live-view`, `pause-resume` and `runs` | pending | no | no |
 | 5.5 Cancel and flag from Live View | yes | yes: 3,901 unit (27 on the command, 8 on the notification ports and the control, 4 on the domain vocabulary, 3 mutations killed), 16 integration on generation 46 against real PostgreSQL 18 including the immutability trigger, the note CHECK in both directions and all three arms of `notification_context`, 8 browser tests with axe (`flag-run.spec.ts`) one of which runs with `javaScriptEnabled: false`; both migration paths reach 46 with identical shape (539/764/41) | pending | no | no |
 | 5.6 Answer an Escalation without leaving Live View | no | no | no | no | no |
-| 5.7 Live View when the stream drops or the Run ends | no | no | no | no | no |
+| 5.7 Live View when the stream drops or the Run ends | yes | yes: 3,918 unit (19 on `live-status`, 4 SSR renders of the gate itself), 531 integration across 44 files, `pnpm boundaries` clean over 562 modules, 140 browser tests green with axe across every web surface — 4 of them the new `live-drop.spec.ts`, whose terminal case HOLDS the server re-read so the `runEnded` window is observable | pending | no | no |
 | 5.8 Replay any terminal Run | no | no | no | no | no |
 
 **Story 5.2's live leg is unproven and cannot be proven here.** The recording copy runs
@@ -45,6 +45,15 @@ Action as a new attempt marked superseded. The story spec was followed — it is
 acceptance criteria and is the safer of the two, because a browser page held for thirty
 minutes is not the page the agent left. The disagreement is reported rather than edited
 away; `docs/contracts/run-pause-v1.md` states which was chosen and why.
+
+**Story 5.7's verification repaired Story 5.5's fallout in `escalations.spec.ts`.** Story
+5.5 renamed the inbox's open section and the plain-words pass replaced the printed
+escalation kind with the question it means; neither re-ran that file, so its region locator
+matched nothing, its `count()` returned zero and the bell assertion failed naming the wrong
+thing. Both locators are repaired, the region is named once, the bell/inbox comparison
+re-reads both sides together, and the row now asserts the plain-words question is present
+AND that the identifier is not. Story 5.5's row above is unchanged: its own subject was
+proven, and this is a test that was not re-run rather than a product defect.
 
 Order of implementation and why: `epic-5-context.md`. The order was revised after 5.3:
 5.7 moves to after 5.4 and 5.5, because its central criterion disables controls that do not

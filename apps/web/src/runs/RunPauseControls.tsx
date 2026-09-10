@@ -8,6 +8,7 @@ import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../design/copy';
 import { UnavailableActions } from '../design/UnavailableActions';
+import { useLiveGate } from './LiveGate';
 
 /**
  * Pause and Resume, on Run Detail AND on Live View (Story 5.4).
@@ -59,6 +60,9 @@ export function RunPauseControls({
   runId, procedureName, paused, pausePending, awaitingAuditor, pausable, runRevision,
 }: RunPauseControlsProps): React.JSX.Element {
   const router = useRouter();
+  // Live View withdraws its controls when the channel is lost or the Run has ended
+  // (Story 5.7). Outside that surface the gate is open and this is `null`.
+  const gate = useLiveGate();
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => { setClientReady(true); }, []);
   const [confirming, setConfirming] = useState(false);
@@ -118,9 +122,12 @@ export function RunPauseControls({
       disabledReasonId="run-pause-unavailable"
     >Pause</Button> : null}
     {paused ? <Button variant="primary" busy={busy} onClick={() => { void resume(); }}
-        {...(unknown ? { disabledReason: LOST_RESPONSE } : {})}>Resume</Button> : null}
+        {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
+          : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Resume</Button> : null}
     {pausable && !paused && !awaitingAuditor ? <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
-        {...(pausePending ? { disabledReason: ALREADY_REQUESTED } : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Pause</Button> : null}
+        {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
+          : pausePending ? { disabledReason: ALREADY_REQUESTED }
+          : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Pause</Button> : null}
     <UnavailableActions actions={awaitingAuditor
       ? [{ id: 'run-pause-unavailable', label: 'Pause', reason: ESCALATION_PANEL_COPY.pauseUnavailable }]
       : []} headingLevel={3} />

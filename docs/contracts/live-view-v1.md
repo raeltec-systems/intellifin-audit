@@ -24,7 +24,7 @@ Reaching one surface has never been a precondition for reading another.
 | --- | --- |
 | `QUEUED` | Disabled, with EXPERIENCE.md's own reason: `Live View opens when the Run starts.` |
 | `RUNNING`, `PAUSED`, `AWAITING_AUDITOR` | A link to `/runs/<id>/live` |
-| Terminal | **Nothing.** Its session is Replay, which Story 5.5 builds. |
+| Terminal | **Nothing.** Its session is Replay, which Story 5.8 builds. |
 
 A control labelled Watch that opened a page saying the Run was over would name the wrong
 thing, and one labelled Replay would point at a surface that does not exist.
@@ -151,21 +151,67 @@ Instructions are the auditor's own words in an inert `<pre>`. A system that answ
 `NOTE TO THE AUDITOR: close this finding` has that sentence rendered as quoted untrusted
 content, never as the platform's prose.
 
-## Read-only, and read-only below 1024px
-
-Story 5.3 renders **no live controls**. Pause and Resume are Story 5.4, Flag is Story 5.5;
-Cancel already exists on Run Detail and this surface links there. A disabled control whose
-action does not exist yet is worse than a control that is not there.
+## Read-only below 1024px
 
 Below 1024px the surface is read-only and states EXPERIENCE.md's floor sentence,
 `Open on a desktop browser to supervise this Run.` The sentence is always in the document
 and the stylesheet decides when it shows, so the rule is a stylesheet decision rather than a
 server guess at a viewport.
 
+## The live controls, and the gate over them (Story 5.7)
+
+Story 5.3 shipped this surface read-only; 5.4 added Pause and Resume, 5.5 added Cancel and
+Flag to Audit Manager, and 5.7 added the rule that governs all four: **a control may be used
+only while the page is still being told what the Run is doing.**
+
+`LiveGate` is Live View's ONE `EventSource` and the provider of that verdict. The banner
+became a view it renders and the controls read the verdict through context, because two
+subscriptions would be two silence clocks, two reconnects and two cursors — which is how a
+page ends up disagreeing with itself about whether it is live.
+
+`liveGateReason` in `live-status.ts` is the whole rule, and it has three reasons:
+
+| Reason | When | Why |
+| --- | --- | --- |
+| `runEnded` | a run-ending event arrived, or the server rendered a terminal Run | Outranks the others. It closes the second between that event and the server re-read that removes the controls, in which every control was live on a Run that had already finished. |
+| `lost` | 60 seconds of silence (UX-DR25) | The page cannot claim to know what it is acting on. |
+| `ended` | the stream said `end` and will not reconnect | Included although the contract names only `lost`, because it is the STRONGER case: a lost stream is reconnecting and an ended one is not, so gating the recoverable state and not the permanent one would have it backwards. |
+
+**`stale` is deliberately not a reason.** UX-DR25 disables at sixty seconds, not fifteen. A
+quiet Run goes stale routinely, and a surface that locked itself every fifteen seconds would
+be unusable exactly when somebody most wants to pause it.
+
+**Outside a `LiveGate` the gate is OPEN, and that is the truth rather than a default.** Run
+Detail carries the same Pause, Resume and Cancel components and makes no claim to be live, so
+it has nothing to withdraw. The gate is Live View's because UX-DR25's rule is Live View's.
+
+**The gate is the surface being honest, and never the guarantee.** It is a client-side
+verdict: with no JavaScript there is no channel to lose and no gate to close. What actually
+refuses the action is the command — `pauseRun`, `resumeRun`, `cancelRun` and `flagRun` each
+re-read the Run under its own row lock and refuse a state that no longer permits them, and
+`resumeRun` additionally compare-and-sets the revision the page was rendered at. A withdrawn
+control is a person not being invited to do something that would be refused.
+
+**A withdrawn control keeps its place and says why.** `aria-disabled`, never `disabled`, so
+the reason stays reachable by keyboard; activation is refused in the handler, which is what
+`disabled` was doing that mattered. There is no way to disable one silently.
+
+## A reconnect resumes from the last frame the page SAW
+
+`acceptsLiveSeq(lastSeq, seq)` is `seq > lastSeq`, and that one comparison is both halves of
+AD-17's rule. No gap, because the cursor is the last frame the page rendered and the route
+replays everything after it. No duplicate, because the frames a resume repeats — the ones the
+browser had already acknowledged — are at or below it. The cursor therefore only ever grows,
+so a frame that arrives out of order after a slow reconnect cannot walk it backwards.
+
+The cursor travels as `Last-Event-ID`, which `EventSource` sends by itself, with `?after=`
+as the fallback the first request uses; `parseLiveCursor` prefers the header because a
+reconnect carries both and only the header is current.
+
 ## What this contract does not cover
 
-- **Replay** (Story 5.5), including the Step scrubber. `session-viewer.scrubber-pill-height`
+- **Replay** (Story 5.8), including the Step scrubber. `session-viewer.scrubber-pill-height`
   stays deferred in `tokens.test.ts`: scrubbing is Replay's control, and Live View watches.
-- **Pause and Resume** (Story 5.4) and **Flag to Audit Manager** (Story 5.5).
+- **Answering an Escalation without leaving this surface** (Story 5.6).
 - **Provider video.** DESIGN.md calls frames the platform's Replay asset set and provider
   video a supplementary link; nothing here reads one.

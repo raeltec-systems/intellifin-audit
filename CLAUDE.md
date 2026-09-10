@@ -1,3 +1,71 @@
+## 2026-09-10 — A control is live only while the page is being told what the Run is doing
+
+Story 5.7. Live View gains ONE gate over the four controls 5.4 and 5.5 put on it, and the
+surface gains ONE `EventSource`. Whole rule: `docs/contracts/live-view-v1.md`, section "The
+live controls, and the gate over them". No migration: the gate is a client-side verdict over
+facts the page already had.
+
+- **One subscription for the surface, because two would be two silence clocks.** The banner
+  and every control need the same answer to "is this page still live", and two `EventSource`s
+  would be two reconnects and two cursors — which is how a page ends up disagreeing with
+  itself. So `LiveGate` subscribes, `LiveBannerView` became the markup it renders and
+  `useThrottledRefresh` the throttle it shares, and the controls read the verdict through
+  context. A second throttle would have been a second answer to "how often may this page
+  re-read".
+- **`useLiveGate` returns OPEN with no provider, and that is the TRUTH rather than a
+  default.** Run Detail mounts the same `RunPauseControls`, `RunCancelControl` and
+  `RunFlagControl` and makes no claim to be live, so it has nothing to withdraw. The gate is
+  Live View's because UX-DR25's rule is Live View's — and it is why the three components
+  spread `disabledReason` conditionally instead of taking a new required prop.
+- **`runEnded` outranks `lost`, and it exists for a second.** It is latched on the first
+  `lifecycle.result-sealed` or `lifecycle.run-canceled` and never cleared — a Run that has
+  ended does not start again — and what it closes is the window between that event arriving
+  and the server re-read that removes the controls entirely. Normally a fraction of a second;
+  the browser test HOLDS the re-read to observe it, and holds rather than refuses it, because
+  a refused RSC fetch can send the router to a full navigation, which would perform exactly
+  the read being held back.
+- **`stale` is deliberately NOT a gate reason.** UX-DR25 disables at SIXTY seconds, not
+  fifteen. A quiet Run goes stale routinely, and a surface that locked itself every fifteen
+  seconds would be unusable exactly when somebody most wants to pause it. `ended` IS one,
+  although the contract names only `lost`, because it is the STRONGER case: a lost stream is
+  reconnecting and an ended one is not, so gating the recoverable state and not the permanent
+  one would have it backwards.
+- **The gate is the surface being honest and never the guarantee.** With no JavaScript there
+  is no channel to lose and no gate to close; what actually refuses the action is the command,
+  which re-reads the Run under its own row lock (and, for Resume, compare-and-sets the
+  revision the page was rendered at). A withdrawn control is a person not being invited to do
+  something that would be refused.
+- **`acceptsLiveSeq(lastSeq, seq)` is `seq > lastSeq`, and that one comparison is both halves
+  of AD-17.** No gap, because the cursor is the last frame the page rendered and the route
+  replays everything after it; no duplicate, because the frames a resume repeats are at or
+  below it. It moved into `live-status.ts` so the property is tested without a browser.
+
+Four mechanical notes:
+
+- **A renamed surface leaves a `getByRole` that resolves to NOTHING, and nothing fails.**
+  Story 5.5 renamed the inbox's open section from `Runs waiting for your answer` to `Runs
+  that need you` (a flag asks no question) and the plain-words pass replaced the printed
+  kind identifier `choose-candidate` with the question it means. `escalations.spec.ts` was
+  not re-run by either story, and its region locator then matched no element — so
+  `open.locator('li').count()` returned **0**, the expectation it computed became `0
+  unread`, and the failure named the BELL. Two rules out of it: the region is named ONCE in
+  that file now, and an expectation is never computed from a bare `count()` — both sides are
+  re-read together, so a page still refreshing cannot fix the expected value at a number the
+  bell has already left. It also asserts `choose-candidate` is NOT rendered, which is the
+  plain-words rule stated in the place it was broken.
+- **Playwright refuses to click an `aria-disabled` element**, and reports the guard working
+  as `element is not enabled` after the full timeout. A test whose subject is that the
+  handler refuses activation must click with `{ force: true }`; without it the assertion
+  never runs and the failure names the wrong thing.
+- **A terminal Run renders no live control at all**, so the `runEnded` sentence is not on the
+  page after the re-read lands — every control removes itself on state, which is a STRONGER
+  withdrawal than a closed one. Asserting the sentence there was asserting a state the
+  product deliberately does not reach; the two facts are two tests.
+- **An SSR unit test must not assert a combination the server cannot pass.** `LiveGate.test.ts`
+  first rendered `cursor: null` (terminal) beside `flaggable: true`, which no server read
+  produces. Its helper takes the same predicate the page does, so the fixture cannot drift
+  from what is really rendered.
+
 ## 2026-09-10 — The Builder speaks the auditor's language, and asks one question at a time
 
 The owner opened the deployed authoring screens and could not use them: *"im reading this as

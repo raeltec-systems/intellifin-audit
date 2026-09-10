@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LIVE_LOST_MS, LIVE_SENTENCES, LIVE_STALE_MS, LIVE_STATUSES, liveSentence, liveStatus, parseLiveCursor, silenceSeconds } from './live-status';
+import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_STALE_MS, LIVE_STATUSES, RUN_ENDING_EVENTS, isRunEndingEvent, acceptsLiveSeq, liveGateReason, liveSentence, liveStatus, parseLiveCursor, silenceSeconds } from './live-status';
 
 describe('the live status machine', () => {
   const base = { ended: false, everConnected: true, lastMessageAt: 100_000 };
@@ -55,5 +55,109 @@ describe('the live cursor', () => {
       expect(parseLiveCursor(at(`?after=${encodeURIComponent(bad)}`), null)).toBeNull();
     }
     expect(parseLiveCursor(at(''), 'x')).toBeNull();
+  });
+});
+
+describe('which Timeline events mean a Run has ended (Story 5.7)', () => {
+  it('names the one event every terminal transition appends, and the cancellation beside it', () => {
+    expect([...RUN_ENDING_EVENTS]).toEqual(['lifecycle.result-sealed', 'lifecycle.run-canceled']);
+    for (const type of RUN_ENDING_EVENTS) expect(isRunEndingEvent(type)).toBe(true);
+  });
+  it('is not fooled by an event that only sounds terminal', () => {
+    for (const type of [
+      'lifecycle.run-queued', 'lifecycle.run-paused', 'lifecycle.run-resumed',
+      'lifecycle.run-pause-requested', 'lifecycle.run-flagged', 'lifecycle.cancellation-superseded',
+      'lifecycle.pause-superseded', 'execution.escalation-raised', 'failure.evidence-integrity',
+      // A prefix of a real one, and an inherited property name.
+      'lifecycle.result-seal', 'constructor', 'toString', '',
+    ]) {
+      expect(isRunEndingEvent(type)).toBe(false);
+    }
+  });
+});
+
+describe('the live control gate (Story 5.7, UX-DR25)', () => {
+  it('is OPEN while the page is connecting, live, or merely stale', () => {
+    // Stale is deliberately not a gate: a quiet Run goes stale routinely, and a surface
+    // that locked itself every fifteen seconds would be unusable exactly when somebody
+    // most wants to pause it. UX-DR25 disables at sixty seconds, not fifteen.
+    for (const status of ['connecting', 'live', 'stale'] as const) {
+      expect(liveGateReason(status, false)).toBeNull();
+    }
+  });
+  it('closes on a lost stream and on an ended one', () => {
+    expect(liveGateReason('lost', false)).toBe('lost');
+    expect(liveGateReason('ended', false)).toBe('ended');
+  });
+  it('closes on a Run that has ended, whatever the stream is doing', () => {
+    // The terminal event outranks every stream state: it is set the moment that event
+    // arrives, which closes the second between it and the server re-read.
+    for (const status of LIVE_STATUSES) {
+      expect(liveGateReason(status, true)).toBe('runEnded');
+    }
+  });
+  it('gives every reason a sentence that says what is unavailable and why', () => {
+    for (const [reason, sentence] of Object.entries(LIVE_GATE_REASONS)) {
+      expect(sentence.length).toBeGreaterThan(20);
+      expect(sentence.endsWith('.')).toBe(true);
+      // A disabled control must never be disabled silently, and a reason nobody can read
+      // is the tooltip-only explanation DESIGN.md forbids.
+      expect(sentence).not.toBe(reason);
+    }
+  });
+});
+
+describe('a reconnect replays every missed event, in order, with no gap and no duplicate', () => {
+  /**
+   * What the page actually renders, composed from the SAME primitive the hook composes.
+   * `deliveries` is what the wire hands over across one or more connections; the cursor a
+   * reconnect resumes from is whatever the page last saw.
+   */
+  function rendered(cursor: number, deliveries: readonly number[]): { seqs: number[]; cursor: number } {
+    const seqs: number[] = [];
+    let lastSeq = cursor;
+    for (const seq of deliveries) {
+      if (!acceptsLiveSeq(lastSeq, seq)) continue;
+      lastSeq = seq;
+      seqs.push(seq);
+    }
+    return { seqs, cursor: lastSeq };
+  }
+
+  it('renders a first connection in order', () => {
+    expect(rendered(0, [1, 2, 3])).toEqual({ seqs: [1, 2, 3], cursor: 3 });
+  });
+
+  it('replays an OVERLAPPING resume without rendering anything twice', () => {
+    // The page saw 1..3 and the server, resumed from 1 because that was the last frame
+    // the browser acknowledged, replays 2..5. Nothing is skipped and nothing repeats.
+    const first = rendered(0, [1, 2, 3]);
+    const after = rendered(first.cursor, [2, 3, 4, 5]);
+    expect([...first.seqs, ...after.seqs]).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('renders the whole gap when the drop lasted a while', () => {
+    const first = rendered(0, [1]);
+    const after = rendered(first.cursor, [2, 3, 4, 5, 6, 7]);
+    expect([...first.seqs, ...after.seqs]).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('renders nothing when the resume carries only frames already seen', () => {
+    const first = rendered(0, [1, 2, 3]);
+    expect(rendered(first.cursor, [1, 2, 3])).toEqual({ seqs: [], cursor: 3 });
+  });
+
+  it('never walks the cursor backwards, whatever arrives', () => {
+    // A slow reconnect can deliver an old frame after a newer one. The cursor only grows,
+    // so that frame is refused rather than re-opening a window the page has passed.
+    const out = rendered(0, [1, 5, 2, 3, 6, 4]);
+    expect(out).toEqual({ seqs: [1, 5, 6], cursor: 6 });
+  });
+
+  it('refuses a sequence that is not a safe integer', () => {
+    for (const seq of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, Number.MAX_SAFE_INTEGER + 2]) {
+      expect(acceptsLiveSeq(0, seq)).toBe(false);
+    }
+    expect(acceptsLiveSeq(0, Number.MAX_SAFE_INTEGER)).toBe(true);
   });
 });

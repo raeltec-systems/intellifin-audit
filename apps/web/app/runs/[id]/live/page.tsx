@@ -12,13 +12,13 @@ import {
 import { getRuntime } from '../../../../src/bootstrap';
 import { LIVE_VIEW_QUEUED_SENTENCE } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
-import { LiveBanner } from '../../../../src/runs/LiveBanner';
+import { LiveGate } from '../../../../src/runs/LiveGate';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
 import { PauseBanners } from '../../../../src/runs/detail';
-import { EndedBanner, LiveViewer } from '../../../../src/runs/LiveViewer';
+import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
@@ -142,122 +142,124 @@ export default async function RunLivePage({
         )}
       </header>
 
-      {/* The channel subscribes only while the Run is active (UX-DR35). A terminal Run
-          gets the ended Banner instead, and nothing reconnects. */}
-      {liveCursor === null ? (
-        <EndedBanner runId={run.runId} state={run.state} />
-      ) : (
-        <LiveBanner
-          url={`/api/runs/${run.runId}/events`}
-          cursor={liveCursor}
-          readAt={readAt.toISOString()}
-          href={here}
+      {/* ONE subscription for the surface, and the gate over every control under it
+          (Story 5.7). The channel subscribes only while the Run is active (UX-DR35); a
+          terminal Run gets the ended Banner instead, nothing reconnects, and the gate is
+          closed from the first render.
+
+          EXPERIENCE.md → session viewer: "Live controls: Pause / Resume, Cancel, Flag to
+          Audit Manager". Each is the SAME component Run Detail mounts, and each asks the
+          gate whether it may act — which is open everywhere else. */}
+      <LiveGate
+        runId={run.runId}
+        state={run.state}
+        url={`/api/runs/${run.runId}/events`}
+        cursor={liveCursor}
+        readAt={readAt.toISOString()}
+        href={here}
+      >
+        <PauseBanners run={run} pause={waits?.pause ?? null} />
+        <RunPauseControls
+          runId={run.runId}
+          procedureName={run.procedureName}
+          paused={run.state === 'PAUSED'}
+          pausePending={run.pauseRequest !== null}
+          awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+          pausable={runPauseTransition(run.state) !== null}
+          runRevision={waits?.runRevision ?? null}
         />
-      )}
+        <RunCancelControl
+          runId={run.runId}
+          procedureName={run.procedureName}
+          active={isActiveRunState(run.state)}
+          cancelPending={run.cancellation !== null}
+        />
 
-      {/* EXPERIENCE.md → session viewer: "Live controls: Pause / Resume, Cancel, Flag to
-          Audit Manager". Each is the SAME component Run Detail mounts. */}
-      <PauseBanners run={run} pause={waits?.pause ?? null} />
-      <RunPauseControls
-        runId={run.runId}
-        procedureName={run.procedureName}
-        paused={run.state === 'PAUSED'}
-        pausePending={run.pauseRequest !== null}
-        awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-        pausable={runPauseTransition(run.state) !== null}
-        runRevision={waits?.runRevision ?? null}
-      />
-      <RunCancelControl
-        runId={run.runId}
-        procedureName={run.procedureName}
-        active={isActiveRunState(run.state)}
-        cancelPending={run.cancellation !== null}
-      />
-
-      <LiveViewer
-        runId={run.runId}
-        chrome={chrome}
-        stateSentence={
-          chrome === null
-            ? 'This Run has not started, so there is no session to watch.'
-            : `Session ${chrome}.`
-        }
-        workspace={
-          timeline.workspace === null
-            ? null
-            : {
-                mode: timeline.workspace.mode,
-                workspaceId: timeline.workspace.workspaceId,
-                status: timeline.workspace.status,
-              }
-        }
-        stepsStarted={timeline.stepExecutions.total}
-        plannedSteps={plannedStepCount(plan)}
-        frame={
-          frame === null
-            ? null
-            : {
-                evidenceId: frame.evidenceId,
-                narration: frameNarration(frame, frameStep, systemOf(frameStep?.workItemId ?? frame.workItemId)),
-                sourceLocation: frame.sourceLocation,
-                digest: frame.digest,
-                capturedAt: frame.capturedAt,
-              }
-        }
-        stageNote={stageNote}
-        step={
-          current === null
-            ? null
-            : {
-                narration: stepNarration(current, systemOf(current.workItemId)),
-                state: current.state,
-                attempt: current.attempt,
-                diagnostic: current.diagnostic,
-              }
-        }
-        workItem={
-          workItem === null
-            ? null
-            : {
-                displayName: workItem.displayName,
-                state: workItem.state,
-                subjectKey: null,
-                observations: workItem.observations,
-              }
-        }
-        observations={timeline.workItems.reduce((total, item) => total + item.observations, 0)}
-        evidence={evidence.map((item) => ({
-          evidenceId: item.evidenceId,
-          kind: item.kind,
-          digest: item.digest,
-          capturedAt: item.capturedAt,
-        }))}
-        instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
-          system: targetName(instruction.registrationId) ?? instruction.registrationId,
-          text: instruction.text,
-        }))}
-        adapterSteps={timeline.sessionSteps
-          .filter((step) => step.action === 'extract-adapter')
-          .map((step) => ({
-            stepId: step.stepId,
-            displayName: `${planActionWord(step.action)} · ${step.displayName}`,
-            state: step.state,
-            attempts: step.attempts,
-            digest: null,
+        <LiveViewer
+          runId={run.runId}
+          chrome={chrome}
+          stateSentence={
+            chrome === null
+              ? 'This Run has not started, so there is no session to watch.'
+              : `Session ${chrome}.`
+          }
+          workspace={
+            timeline.workspace === null
+              ? null
+              : {
+                  mode: timeline.workspace.mode,
+                  workspaceId: timeline.workspace.workspaceId,
+                  status: timeline.workspace.status,
+                }
+          }
+          stepsStarted={timeline.stepExecutions.total}
+          plannedSteps={plannedStepCount(plan)}
+          frame={
+            frame === null
+              ? null
+              : {
+                  evidenceId: frame.evidenceId,
+                  narration: frameNarration(frame, frameStep, systemOf(frameStep?.workItemId ?? frame.workItemId)),
+                  sourceLocation: frame.sourceLocation,
+                  digest: frame.digest,
+                  capturedAt: frame.capturedAt,
+                }
+          }
+          stageNote={stageNote}
+          step={
+            current === null
+              ? null
+              : {
+                  narration: stepNarration(current, systemOf(current.workItemId)),
+                  state: current.state,
+                  attempt: current.attempt,
+                  diagnostic: current.diagnostic,
+                }
+          }
+          workItem={
+            workItem === null
+              ? null
+              : {
+                  displayName: workItem.displayName,
+                  state: workItem.state,
+                  subjectKey: null,
+                  observations: workItem.observations,
+                }
+          }
+          observations={timeline.workItems.reduce((total, item) => total + item.observations, 0)}
+          evidence={evidence.map((item) => ({
+            evidenceId: item.evidenceId,
+            kind: item.kind,
+            digest: item.digest,
+            capturedAt: item.capturedAt,
           }))}
-      />
-      {/* Flag sits AFTER the viewer: it is the one control here that is not about stopping
-          or holding the Run, and it carries the record of the flags already raised. */}
-      <RunFlagControl
-        runId={run.runId}
-        flaggable={isFlaggableRunState(run.state)}
-        flags={flagRows.map((row) => ({
-          flagId: row.flagId,
-          flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
-          flaggedAt: row.flaggedAt,
-          note: row.note,
-        }))}
-      />
+          instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
+            system: targetName(instruction.registrationId) ?? instruction.registrationId,
+            text: instruction.text,
+          }))}
+          adapterSteps={timeline.sessionSteps
+            .filter((step) => step.action === 'extract-adapter')
+            .map((step) => ({
+              stepId: step.stepId,
+              displayName: `${planActionWord(step.action)} · ${step.displayName}`,
+              state: step.state,
+              attempts: step.attempts,
+              digest: null,
+            }))}
+        />
+        {/* Flag sits AFTER the viewer: it is the one control here that is not about stopping
+            or holding the Run, and it carries the record of the flags already raised. */}
+        <RunFlagControl
+          runId={run.runId}
+          flaggable={isFlaggableRunState(run.state)}
+          flags={flagRows.map((row) => ({
+            flagId: row.flagId,
+            flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
+            flaggedAt: row.flaggedAt,
+            note: row.note,
+          }))}
+        />
+      </LiveGate>
       <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
     </div>
   );
