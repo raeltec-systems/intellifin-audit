@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { bindingDigest, registrationDigest } from '@intellifin/domain';
 import { createSqlClient, CryptoUuidV7Generator, type Sql } from '@intellifin/infrastructure';
 
 import { startSyntheticS3 } from '../fixtures/s3-server';
@@ -11,7 +12,9 @@ import {
   CREDENTIAL_TOKENS,
   EXCEPTION_FINGERPRINT_KEY,
   EXCEPTION_FINGERPRINT_KEY_ID,
+  READ_ONLY_CREDENTIAL,
 } from './credentials';
+import { NORTHSTAR_BASE_URL } from './northstar';
 import { openStep, openPlanDetail } from './builder';
 
 /**
@@ -38,11 +41,58 @@ const SCOPE = 'Every active AccessGate account for August 2026.';
 const MANAGER_ID = `walkthrough-manager-${STAMP}`;
 const MANAGER_EMAIL = `${MANAGER_ID}@example.test`;
 
+/**
+ * The AccessGate registration and binding this journey selects, made HERE.
+ *
+ * `scripts/seed-northstar.mts` registers the same two against a deployed environment, and
+ * CI's browser job deliberately does not run it: a spec that depended on a seed would pass
+ * on a developer's machine and fail on a runner. The values are the catalogue's own — the
+ * same origin, actions, labels, schema and count endpoint — so what this walks is what an
+ * auditor walks; only the display names carry a stamp so the pickers are unambiguous and
+ * the teardown can find them.
+ */
+const TARGET_NAME = `E2E walkthrough AccessGate ${STAMP}`;
+const REFERENCE_NAME = `E2E walkthrough RoleMatrix ${STAMP}`;
+const SOURCE_NAME = `E2E walkthrough AccessGate accounts ${STAMP}`;
+const TARGET_FIELDS = {
+  kind: 'api' as const,
+  allowedOrigins: [`${NORTHSTAR_BASE_URL}/accessgate`],
+  applicationIdentity: '',
+  credentialRef: READ_ONLY_CREDENTIAL,
+  permittedActions: ['list-records', 'read-attribute', 'read-metadata'] as const,
+  attributeLabelPatterns: ['account_id', 'employee_id', 'username', 'status', 'roles'],
+  secondaryKey: 'employee_id',
+};
+/**
+ * P-2's Reference Source. A `versioned-file` Target System produces a Reference Source
+ * Session Step and NO Work Item: it is what expands a role name into permissions, and
+ * without it every role is an incomplete expansion and therefore Unevaluated.
+ */
+const REFERENCE_FIELDS = {
+  kind: 'versioned-file' as const,
+  allowedOrigins: [`${NORTHSTAR_BASE_URL}/files/role-matrix.csv`],
+  applicationIdentity: '',
+  credentialRef: READ_ONLY_CREDENTIAL,
+  permittedActions: ['read-file', 'read-metadata'] as const,
+  attributeLabelPatterns: ['role', 'permission'],
+  secondaryKey: '',
+};
+const SOURCE_FIELDS = {
+  kind: 'read-only-api' as const,
+  location: `${NORTHSTAR_BASE_URL}/accessgate/accounts?status=Active`,
+  declaredSchema: ['account_id', 'employee_id', 'username', 'status', 'roles', 'disabled_time'],
+  declaredCountMechanism: 'count-endpoint' as const,
+  sensitiveFields: ['username'],
+};
+
 let sql: Sql | undefined;
 let storage: Awaited<ReturnType<typeof startSyntheticS3>> | undefined;
 let stopWorker: (() => Promise<void>) | undefined;
 let workerLog = '';
 let procedureId = '';
+const TARGET_ID = ids.next();
+const REFERENCE_ID = ids.next();
+const SOURCE_ID = ids.next();
 
 test.describe.configure({ mode: 'serial' });
 test.use({ storageState: AUTH_STATE.auditor });
@@ -61,6 +111,27 @@ test.beforeAll(async () => {
     SELECT ${ids.next()},issuer,${MANAGER_ID},provider_id,${MANAGER_ID},password FROM auth_account
     WHERE user_id = (SELECT id FROM auth_user WHERE email = ${ACCOUNTS.auditor.email}) AND provider_id = 'credential'`;
   await sql`INSERT INTO user_role(user_id,role) VALUES (${MANAGER_ID},'audit-manager')`;
+
+  await sql`INSERT INTO target_system_registration
+    (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref,
+     permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
+    VALUES (${TARGET_ID}, ${TARGET_NAME}, ${TARGET_FIELDS.kind}, ${TARGET_FIELDS.allowedOrigins},
+     ${TARGET_FIELDS.applicationIdentity}, ${TARGET_FIELDS.credentialRef},
+     ${[...TARGET_FIELDS.permittedActions]}, ${TARGET_FIELDS.attributeLabelPatterns},
+     ${TARGET_FIELDS.secondaryKey}, '', 'active', ${registrationDigest(TARGET_FIELDS)})`;
+  await sql`INSERT INTO target_system_registration
+    (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref,
+     permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
+    VALUES (${REFERENCE_ID}, ${REFERENCE_NAME}, ${REFERENCE_FIELDS.kind}, ${REFERENCE_FIELDS.allowedOrigins},
+     ${REFERENCE_FIELDS.applicationIdentity}, ${REFERENCE_FIELDS.credentialRef},
+     ${[...REFERENCE_FIELDS.permittedActions]}, ${REFERENCE_FIELDS.attributeLabelPatterns},
+     ${REFERENCE_FIELDS.secondaryKey}, '', 'active', ${registrationDigest(REFERENCE_FIELDS)})`;
+  await sql`INSERT INTO population_source_binding
+    (binding_id, display_name, kind, location, declared_schema, declared_count_mechanism,
+     sensitive_fields, note, status, digest)
+    VALUES (${SOURCE_ID}, ${SOURCE_NAME}, ${SOURCE_FIELDS.kind}, ${SOURCE_FIELDS.location},
+     ${SOURCE_FIELDS.declaredSchema}, ${SOURCE_FIELDS.declaredCountMechanism},
+     ${SOURCE_FIELDS.sensitiveFields}, '', 'active', ${bindingDigest(SOURCE_FIELDS)})`;
 
   storage = await startSyntheticS3();
   // The model identity a version freezes comes from the WEB, and `playwright.config.ts`
@@ -136,6 +207,8 @@ test.afterAll(async () => {
       await sql`DELETE FROM procedure_version WHERE procedure_id = ${procedureId}`;
       await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`;
     }
+    await sql`DELETE FROM population_source_binding WHERE binding_id = ${SOURCE_ID}`;
+    await sql`DELETE FROM target_system_registration WHERE registration_id = ANY(${[TARGET_ID, REFERENCE_ID]}::uuid[])`;
     await sql`DELETE FROM notification WHERE recipient_id = ${MANAGER_ID}`;
     await sql`DELETE FROM user_role WHERE user_id = ${MANAGER_ID}`;
     await sql`DELETE FROM auth_session WHERE user_id = ${MANAGER_ID}`;
@@ -224,7 +297,7 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
 
   /* ------------------------------------------------- 3. records to test ----- */
   await step(page, 'Population Source binding', async () => {
-    await chooseOption(page.getByLabel('Where the records come from'), /AccessGate active accounts/);
+    await chooseOption(page.getByLabel('Where the records come from'), new RegExp(SOURCE_NAME));
   }, async () => {
     await page.getByRole('button', { name: 'Save records to test', exact: true }).click();
   }, 'Saved. The Draft change is recorded in the audit chain.');
@@ -233,9 +306,13 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
   // Adding a system WIDENS scope, so this one save keeps its confirmation. The Template
   // suggests AccessGate and nothing adds it for you.
   await step(page, 'Target System selection', async () => {
-    await expect(page.locator('[data-suggested-target="AccessGate"]')).toContainText('ready to add below.');
-    await chooseOption(page.getByLabel('Add a system'), /^AccessGate \(/);
-    await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
+    // The Template suggests "AccessGate"; this deployment's registration is stamped, so
+    // the suggestion honestly reports that no system with that exact name is set up.
+    await expect(page.locator('[data-suggested-target="AccessGate"]')).toBeVisible();
+    for (const name of [TARGET_NAME, REFERENCE_NAME]) {
+      await chooseOption(page.getByLabel('Add a system'), new RegExp(name));
+      await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
+    }
   }, async () => {
     await confirmed(page, 'Save Target Systems');
   }, /Saved\. The Target System selection is recorded/);
