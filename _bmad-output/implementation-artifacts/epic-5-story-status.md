@@ -21,7 +21,7 @@ Deployed.
 | 5.5 Cancel and flag from Live View | yes | yes: 3,901 unit (27 on the command, 8 on the notification ports and the control, 4 on the domain vocabulary, 3 mutations killed), 16 integration on generation 46 against real PostgreSQL 18 including the immutability trigger, the note CHECK in both directions and all three arms of `notification_context`, 8 browser tests with axe (`flag-run.spec.ts`) one of which runs with `javaScriptEnabled: false`; both migration paths reach 46 with identical shape (539/764/41) | pending | no | no |
 | 5.6 Answer an Escalation without leaving Live View | yes | yes: 3,925 unit (8 on the milestone ladder and the polite region, 3 on the shared mount's branch table, 1 pinning the skip link to EXPERIENCE.md on disk), 531 integration across 44 files, `pnpm boundaries` clean over 563 modules, 88 browser tests green with axe — one of them the Flow 3 journey `live-escalation.spec.ts`, which initiates the Run through the real surface, answers a choose-candidate Escalation in place and then pauses and resumes with the 30-minute deadline measured on the wait row | pending | no | no |
 | 5.7 Live View when the stream drops or the Run ends | yes | yes: 3,918 unit (19 on `live-status`, 4 SSR renders of the gate itself), 531 integration across 44 files, `pnpm boundaries` clean over 562 modules, 140 browser tests green with axe across every web surface — 4 of them the new `live-drop.spec.ts`, whose terminal case HOLDS the server re-read so the `runEnded` window is observable | pending | no | no |
-| 5.8 Replay any terminal Run | no | no | no | no | no |
+| 5.8 Replay any terminal Run | yes | yes: 3,955 unit (11 on the jump arithmetic, 9 SSR renders of the surface, 5 new ones on the widened `aria-label` scanner), 531 integration across 44 files, `pnpm boundaries` clean over 568 modules, 145 browser tests green with axe — 7 of them `replay.spec.ts`, which runs with EVERY off-origin destination aborted at the network and asserts the count is zero | pending | no | no |
 
 **Story 5.2's live leg is unproven and cannot be proven here.** The recording copy runs
 against a synthetic provider in every test: this environment holds no Solari key, and
@@ -45,6 +45,17 @@ Action as a new attempt marked superseded. The story spec was followed — it is
 acceptance criteria and is the safer of the two, because a browser page held for thirty
 minutes is not the page the agent left. The disagreement is reported rather than edited
 away; `docs/contracts/run-pause-v1.md` states which was chosen and why.
+
+**Epic 5 is code-complete on this branch.** All eight stories are implemented and locally
+verified against a real PostgreSQL 18 at generation 46, a real Chromium and the real worker
+process. Nothing is remotely verified yet: `ci.yml` triggers only on a pull request to
+`main` and on a push to `main`, so no CI has run on `codex/epic-5-controls` since PR 25.
+
+**Story 5.8 needed no migration and no new capture path**, which is Story 5.2's asset set
+doing its job: `role`, `failure.frame-missing` and the recording copy were built so that the
+surface rendering them would be a read. The one schema-adjacent change is that
+`session-viewer.scrubber-pill-height` moved out of `tokens.test.ts`'s DEFERRED list, where
+it had been since Story 1.4.
 
 **Story 5.6 repaired two defects it did not introduce.** The Escalation countdown carried
 `role="timer" aria-live="polite"` from Story 4.8, so a screen-reader user heard the clock read

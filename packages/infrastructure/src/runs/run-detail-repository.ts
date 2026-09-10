@@ -21,6 +21,7 @@ import { isObservationAbsenceProof, isObservationQueryKey, isRunResultPublicatio
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import {
+  auditEvents,
   populationExecution,
   runAgentWork,
   runEvidence,
@@ -39,6 +40,7 @@ import {
   runSessionStep,
   runStepExecution,
   runToolAction,
+  runWait,
   runWorkItem,
   runWorkspace,
 } from '../db/schema.js';
@@ -58,6 +60,16 @@ import {
 
 /** How many rows of a per-Run list one page of the detail surface shows. */
 export const RUN_DETAIL_PAGE_SIZE = 50;
+
+/**
+ * How many frames one Replay holds (Story 5.8).
+ *
+ * Larger than a detail page, because a scrubber over fifty pills is a scrubber over a
+ * fraction of the session and would silently misrepresent where a Step sits in it. Still
+ * bounded, with the exact total beside it, so a Run that captured more says so rather than
+ * rendering a truncated session as a whole one.
+ */
+export const REPLAY_FRAME_LIMIT = 500;
 
 export interface RunResultRow {
   readonly version: number;
@@ -321,6 +333,31 @@ export interface RunFrameRow {
   readonly actionStartedAt: string;
 }
 
+/** One wait a Run held, closed or open — a Replay jump target (Story 5.8). */
+export interface RunReplayWait {
+  readonly waitId: string;
+  readonly kind: string;
+  readonly openedAt: string;
+  readonly closedAt: string | null;
+  readonly closureKind: string | null;
+  readonly answerOptionId: string | null;
+}
+
+/**
+ * One Observation registration, as the chain recorded it (Story 5.8).
+ *
+ * The DELTA and not the Observations: Replay says how many were registered at that point
+ * in the session, and the Observation rows themselves are Run Detail's Observations tab.
+ * Read from `audit_events`, which is where `replay-asset-set-v1.md` says it lives.
+ */
+export interface RunReplayObservationDelta {
+  readonly sequence: number;
+  readonly occurredAt: string;
+  readonly workItemId: string | null;
+  readonly stepExecutionId: string | null;
+  readonly registered: number;
+}
+
 /** Where the agent phase is, from its own checkpoint (`run_agent_work`), or `null`. */
 export interface RunAgentWorkPosition {
   readonly status: string;
@@ -387,7 +424,7 @@ export class DrizzleRunDetailRepository {
     return row === undefined ? null : frameRow(row);
   }
 
-  private frames(runId: string, evidenceId?: string) {
+  private frames(runId: string, evidenceId?: string, direction: 'asc' | 'desc' = 'desc') {
     return this.db
       .select({
         evidenceId: runEvidence.evidenceId,
@@ -411,7 +448,95 @@ export class DrizzleRunDetailRepository {
         eq(runEvidence.state, 'REGISTERED'),
         ...(evidenceId === undefined ? [] : [eq(runEvidence.evidenceId, evidenceId)]),
       ))
-      .orderBy(desc(runToolAction.startedAt), desc(runToolAction.toolActionId));
+      .orderBy(
+        direction === 'asc' ? asc(runToolAction.startedAt) : desc(runToolAction.startedAt),
+        direction === 'asc' ? asc(runToolAction.toolActionId) : desc(runToolAction.toolActionId),
+      );
+  }
+
+  /**
+   * Every frame of a Run, OLDEST first (Story 5.8).
+   *
+   * The same join `readLatestFrame` uses and the same order reversed, so Live View's
+   * newest frame and Replay's last frame are the same row by construction. Bounded like
+   * every other list this module reads, with the exact total beside the sample: a Run that
+   * captured ten thousand frames must still render.
+   */
+  async readFrames(runId: string, limit = REPLAY_FRAME_LIMIT): Promise<Bounded<RunFrameRow>> {
+    if (!isUuidText(runId)) return { rows: [], total: 0 };
+    const counted = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(runEvidence)
+      .innerJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
+      .innerJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
+      .where(and(eq(runEvidence.runId, runId), eq(runEvidence.kind, 'screenshot'), eq(runEvidence.state, 'REGISTERED')));
+    const total = Number(counted[0]?.total ?? 0);
+    if (total === 0) return { rows: [], total: 0 };
+    const rows = await this.frames(runId, undefined, 'asc').limit(Math.min(limit, REPLAY_FRAME_LIMIT));
+    // A REGISTERED row carries its digest, size and media type by CHECK, so `frameRow`
+    // returning `null` here is unreachable — and it is FILTERED rather than coerced, so an
+    // unserveable row is one the scrubber does not offer instead of a pill that opens
+    // nothing. `total` stays the exact count of bound registered screenshots either way.
+    return { total, rows: rows.map(frameRow).filter((row): row is RunFrameRow => row !== null) };
+  }
+
+  /**
+   * Every wait this Run held, oldest first — a pause among them (Story 5.8).
+   *
+   * A pause is a wait and is not an Escalation, so the KIND is carried and the surface
+   * decides: the jump list names Escalations, and a pause is where the session stopped for
+   * a person rather than for an answer.
+   */
+  async readWaits(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<readonly RunReplayWait[]> {
+    if (!isUuidText(runId)) return [];
+    const rows = await this.db
+      .select({
+        waitId: runWait.waitId,
+        kind: runWait.kind,
+        openedAt: runWait.openedAt,
+        closedAt: runWait.closedAt,
+        closureKind: runWait.closureKind,
+        answerOptionId: runWait.answerOptionId,
+      })
+      .from(runWait)
+      .where(eq(runWait.runId, runId))
+      .orderBy(asc(runWait.openedAt), asc(runWait.waitId))
+      .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+    return rows.map((row) => ({
+      waitId: row.waitId,
+      kind: row.kind,
+      openedAt: row.openedAt.toISOString(),
+      closedAt: row.closedAt === null ? null : row.closedAt.toISOString(),
+      closureKind: row.closureKind,
+      answerOptionId: row.answerOptionId,
+    }));
+  }
+
+  /**
+   * The Observation registrations of a Run, oldest first, read from the chain (Story 5.8).
+   *
+   * A payload field this build does not recognize is read as ABSENT rather than coerced: a
+   * chain row is immutable and an older build may have written a shape this one does not
+   * know, and a fabricated count would read as a fact nobody recorded.
+   */
+  async readObservationDeltas(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<readonly RunReplayObservationDelta[]> {
+    if (!isUuidText(runId)) return [];
+    const rows = await this.db
+      .select({ sequence: auditEvents.sequence, occurredAt: auditEvents.occurredAt, payload: auditEvents.payload })
+      .from(auditEvents)
+      .where(and(eq(auditEvents.aggregateId, runId), eq(auditEvents.eventType, 'execution.observations-registered')))
+      .orderBy(asc(auditEvents.sequence))
+      .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+    return rows.map((row) => {
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      return {
+        sequence: Number(row.sequence),
+        occurredAt: row.occurredAt.toISOString(),
+        workItemId: typeof payload['workItemId'] === 'string' ? payload['workItemId'] : null,
+        stepExecutionId: typeof payload['stepExecutionId'] === 'string' ? payload['stepExecutionId'] : null,
+        registered: typeof payload['registered'] === 'number' ? payload['registered'] : 0,
+      };
+    });
   }
 
   /** The agent phase's own position, read from its checkpoint; `null` before the phase starts. */

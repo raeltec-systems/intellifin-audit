@@ -2000,6 +2000,53 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Replay's own controls (Story 5.8, UX-DR24, UX-DR26). The viewer body takes focus so
+   the arrow keys have somewhere to be pressed, so it needs a visible focus state of its
+   own; the ring is `globals.css`'s one declaration, applied here by :focus-visible. */
+.ls-session__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+/* `{components.session-viewer.scrubber-pill-height}` is 8px: the pills are a position
+   indicator, not a hit target of their own size, so each one carries padding around a
+   short bar and the whole row scrolls rather than shrinking the bars to nothing. */
+.ls-session__scrubber {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing-1);
+  overflow-x: auto;
+  padding: var(--spacing-2) 0;
+}
+
+.ls-scrubber-pill {
+  flex: 0 0 auto;
+  width: var(--spacing-4);
+  height: 8px;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-sunken);
+  cursor: pointer;
+}
+
+.ls-scrubber-pill--current {
+  background: var(--color-teal);
+  border-color: var(--color-teal);
+}
+
+.ls-session__jumps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .ls-session-desktop-only {
   display: none;
   padding: var(--spacing-2) var(--spacing-4);

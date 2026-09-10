@@ -546,6 +546,34 @@ export const ESCALATION_PANEL_COPY = {
 export const LIVE_VIEW_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to supervise this Run.';
 
 /**
+ * Replay's own vocabulary (Story 5.8, FR-30, UX-DR26).
+ *
+ * Platform sentences, not contract quotations: EXPERIENCE.md's Replay row fixes what the
+ * surface DOES — chrome REPLAY, paused at the first frame, a jump list of Work Items,
+ * Exceptions and Escalations, and no provider — and does not write the words.
+ *
+ * `desktopOnly` is the exception and is the SAME sentence Live View shows, deliberately:
+ * UX-DR25's responsive floor is about supervising a session, and Replay is that session
+ * seen afterwards. A second sentence for the same rule is a second thing to keep in step.
+ */
+export const REPLAY_COPY = {
+  play: 'Play',
+  pause: 'Pause',
+  viewerLabel: 'Session replay. Arrow keys step one frame; Space plays and pauses.',
+  scrubberLabel: 'Step scrubber',
+  keys: 'Arrow keys step one frame. Space plays and pauses. Home and End jump to the first and last frame.',
+  noFrames: 'This Run captured no workspace frames, so there is nothing to replay. Its Session Steps, Evidence and Timeline are on Run Detail.',
+  noAction: 'No Tool Action was recorded for this frame.',
+  noJumpTargets: 'This Run recorded no Work Items, Exceptions or Escalations to jump to.',
+  noFrameForTarget: 'no frame was captured here',
+  observationsThrough: '{count} Observations had been registered when this frame was captured.',
+  bounded: 'Showing the first {shown} of {total} frames.',
+  notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',
+  desktopOnly: LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
+} as const;
+
+
+/**
  * Why the Watch control is unavailable on a Queued Run (EXPERIENCE.md → Per-surface
  * states, the "Run Detail | Queued" row).
  *

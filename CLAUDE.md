@@ -1,3 +1,65 @@
+## 2026-09-10 — Replay reaches nothing, and a jump that lands nowhere says so
+
+Story 5.8, the last of Epic 5. `/runs/<id>/replay` replays any terminal Run from the assets
+Story 5.2 froze, with the Workspace Provider unreachable. Whole rule:
+`docs/contracts/replay-v1.md`. No migration — every row it reads already existed.
+
+- **"It reaches nothing outside this platform" is a property of what the path can reach.**
+  Every prop is a row PostgreSQL holds, every frame comes through the Run's own protected
+  route (a worker-signed grant consumed on the server), and `replay.ts` takes rows and
+  returns indices. `tests/e2e/replay.spec.ts` makes it literal: every destination but the
+  application's own origin is ABORTED at the network and COUNTED, and the surface must
+  render whole with the count at zero. A later change that reached for a provider fails
+  there rather than in a deployment whose provider happened to answer.
+- **Nothing is re-executed, for the same reason.** There is no action, no command and no
+  port on this path. A Replay that could re-run a Tool Action could change what it shows.
+- **Where a jump lands is the one thing a reader cannot check.** A Work Item opens at its
+  FIRST frame (jumping to it means starting at it); an Exception at the first frame of the
+  Work Item it was raised against; an Escalation at the LAST frame captured at or BEFORE it
+  was raised — a frame after it belongs to whatever happened next, and jumping there shows
+  a screen the question was not about. A target with no frame is listed and SAYS SO: a pill
+  that opens nothing looks exactly like one that opens the right screen. A PAUSE is not a
+  jump target; EXPERIENCE.md names three kinds and a pause asks nothing.
+- **`SessionChrome` and `SessionStage` were EXTRACTED from `LiveViewer`, not copied.**
+  UX-DR24's "one session viewer for Live View and Replay" is met by sharing the parts that
+  are literally the same markup; two copies would have diverged first on a Replay whose dot
+  said one thing and whose word said another. `readFrames` is `readLatestFrame`'s join with
+  its order reversed, so Live View's newest frame and Replay's last are the same row by
+  construction.
+- **Space belongs to whatever has focus.** Pills and jump rows are real `<button>`s, so the
+  browser already activates them on Space and Enter; the viewer takes Space only when the
+  viewer ITSELF has focus. Otherwise one keystroke would jump AND toggle playback.
+- **It starts paused at the first frame (UX-DR26), and playing STOPS at the last.** A loop
+  would make a finished session look like one still going. SSR is exactly that state, so
+  `ReplayViewer.test.ts` asserts the contract rather than a convenience.
+- **`REPLAY_FRAME_LIMIT` is 500 and says when it binds.** A scrubber over fifty pills is a
+  scrubber over a fraction of the session, which misrepresents where a Step sits in it.
+- **`session-viewer.scrubber-pill-height` came out of `tokens.test.ts`'s DEFERRED list**, a
+  token deferred since Story 1.4 because Live View watches and does not scrub.
+
+Three mechanical lessons:
+
+- **The `aria-label` scanner is role-aware now, and it needed to be.** `<div role="group"
+  aria-label>` is a labelled group and valid ARIA; the guard refused it because it read the
+  TAG and not the role. Widening it exposed the older bug underneath: `[^>]*` ends an
+  opening tag at the `>` of `onClick={() => …}`, so an attribute after a handler was never
+  seen and the rest of the file was read as markup. It parses tags brace- and quote-aware
+  now — and **it has its own tests**, including the two spellings it must keep failing on,
+  because `form-method.test.ts` shipped asserting `/\bmethod=/` and passed `method="get"`.
+- **A seed that fails halfway leaves rows its own teardown must still be able to remove,
+  and a teardown that THROWS takes the rest of the file's cleanup with it.** Three rounds of
+  fixing this fixture left three Procedures and three `AWAITING_AUDITOR` Runs behind,
+  because `afterAll` hit `notification`'s foreign key to `run_wait` before reaching the
+  Procedure delete — and `procedures.spec.ts`'s empty-list test then failed for a reason
+  that was not its own. Read the FIRST failure, and clean the database before trusting the
+  second run.
+- **Copy the working sibling rather than guessing a fixture column by column.** Six rounds
+  went on `run_workspace.released_at`, `run_session_step_acquired`, the Work Item state
+  vocabulary, `run_work_item_run_step`'s subject key, `run_observation`'s real column set
+  and `run_exception.fingerprint_key_id` — every one of which was already written correctly
+  in `run-surfaces.spec.ts` or `live-view.spec.ts`. Each refusal was a constraint doing its
+  job, which is the good news; reading the sibling first would have cost one round.
+
 ## 2026-09-10 — A clock is not a milestone, and an unreadable wait is not an absence
 
 Story 5.6. The Escalation panel is answered on Live View without leaving it, which is the

@@ -67,6 +67,81 @@ export interface LiveViewerProps {
 }
 
 /**
+ * The navy chrome strip, shared by Live View and Replay (UX-DR24, Story 5.8).
+ *
+ * "One session viewer for Live View and Replay" is the design rule, and this is the half
+ * that is literally the same markup in both: the state dot and word, the workspace
+ * identity, the isolation note and the Step counter. Two copies would agree on every case
+ * anybody tried and diverge on the first one nobody did — here that would be a Replay whose
+ * dot said one thing and whose word said another.
+ */
+export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
+  readonly chrome: LiveViewChrome | null;
+  readonly stateSentence: string;
+  readonly workspace: { readonly mode: string; readonly workspaceId: string | null } | null;
+  readonly counter: string;
+}): React.JSX.Element {
+  return (
+    <div className="ls-session__chrome">
+      {/* The state is announced; the dot and word are the same fact for everyone else,
+          so they are hidden from the reader that already heard the sentence. */}
+      <span className="ls-visually-hidden" aria-live="polite">{stateSentence}</span>
+      <span className="ls-session__state" aria-hidden="true">
+        <span className={chrome === null ? 'ls-session__dot ls-session__dot--none' : chromeDotClass(chrome)} />
+        {chrome ?? 'NO SESSION'}
+      </span>
+      <span className="ls-session__workspace">
+        {workspace === null
+          ? 'No Agent Workspace'
+          : `${workspaceModeWord(workspace.mode)}${workspace.workspaceId === null ? '' : ` · ${workspace.workspaceId}`}`}
+      </span>
+      <span className="ls-session__note">{SESSION_ISOLATION_NOTE}</span>
+      <span className="ls-session__counter">{counter}</span>
+    </div>
+  );
+}
+
+/**
+ * The stage: one registered frame, or the sentence saying why there is none.
+ *
+ * Shared for the same reason as the chrome, and it carries the rule that matters most on
+ * both surfaces — every frame is fetched through the Run's own protected route, which
+ * consumes a worker-signed grant on the server, so no object-store URL, signed or
+ * otherwise, is ever in this markup (AD-5).
+ */
+export function SessionStage({ runId, frame, stageNote }: {
+  readonly runId: string;
+  readonly frame: LiveViewerFrame | null;
+  readonly stageNote: string | null;
+}): React.JSX.Element {
+  return (
+    <div className="ls-session__stage">
+      {frame === null ? (
+        <p className="ls-session__stage-note">{stageNote}</p>
+      ) : (
+        <figure className="ls-session__figure">
+          {/* A registered artifact's bytes never change, so the route answers a strong
+              ETag and the browser may revalidate rather than re-read the store. */}
+          <img
+            className="ls-session__frame"
+            src={`/api/runs/${runId}/frames/${frame.evidenceId}`}
+            alt={frame.narration}
+            decoding="async"
+          />
+          <figcaption className="ls-session__caption">
+            <UntrustedText field="captured page location">{frame.sourceLocation}</UntrustedText>
+            <span>
+              {frame.capturedAt === null ? CAPTURE_TIME_UNRECORDED : `Captured ${utcStamp(frame.capturedAt)}`}
+            </span>
+            <Digest value={frame.digest} label="frame integrity digest" />
+          </figcaption>
+        </figure>
+      )}
+    </div>
+  );
+}
+
+/**
  * The session viewer (UX-DR24, DESIGN.md → Session viewer), in its Live mode.
  *
  * A navy chrome strip over a sandboxed stage, with a narration rail beside it. Story 5.3
@@ -86,49 +161,17 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
   return (
     <section className="ls-session" aria-labelledby="live-session-heading">
       <h2 id="live-session-heading" className="ls-visually-hidden">Agent session</h2>
-      <div className="ls-session__chrome">
-        {/* The state is announced; the dot and word are the same fact for everyone else,
-            so they are hidden from the reader that already heard the sentence. */}
-        <span className="ls-visually-hidden" aria-live="polite">{props.stateSentence}</span>
-        <span className="ls-session__state" aria-hidden="true">
-          <span className={props.chrome === null ? 'ls-session__dot ls-session__dot--none' : chromeDotClass(props.chrome)} />
-          {props.chrome ?? 'NO SESSION'}
-        </span>
-        <span className="ls-session__workspace">
-          {props.workspace === null
-            ? 'No Agent Workspace'
-            : `${workspaceModeWord(props.workspace.mode)}${props.workspace.workspaceId === null ? '' : ` · ${props.workspace.workspaceId}`}`}
-        </span>
-        <span className="ls-session__note">{SESSION_ISOLATION_NOTE}</span>
-        <span className="ls-session__counter">{counter}</span>
-      </div>
+      <SessionChrome
+        chrome={props.chrome}
+        stateSentence={props.stateSentence}
+        workspace={props.workspace}
+        counter={counter}
+      />
 
       <p className="ls-session-desktop-only">{LIVE_VIEW_DESKTOP_ONLY_SENTENCE}</p>
 
       <div className="ls-session__body">
-        <div className="ls-session__stage">
-          {props.frame === null ? (
-            <p className="ls-session__stage-note">{props.stageNote}</p>
-          ) : (
-            <figure className="ls-session__figure">
-              {/* A registered artifact's bytes never change, so the route answers a strong
-                  ETag and the browser may revalidate rather than re-read the store. */}
-              <img
-                className="ls-session__frame"
-                src={`/api/runs/${props.runId}/frames/${props.frame.evidenceId}`}
-                alt={props.frame.narration}
-                decoding="async"
-              />
-              <figcaption className="ls-session__caption">
-                <UntrustedText field="captured page location">{props.frame.sourceLocation}</UntrustedText>
-                <span>
-                  {props.frame.capturedAt === null ? CAPTURE_TIME_UNRECORDED : `Captured ${utcStamp(props.frame.capturedAt)}`}
-                </span>
-                <Digest value={props.frame.digest} label="frame integrity digest" />
-              </figcaption>
-            </figure>
-          )}
-        </div>
+        <SessionStage runId={props.runId} frame={props.frame} stageNote={props.stageNote} />
 
         <div className="ls-session__rail ls-stack">
           <section aria-labelledby="live-step-heading" className="ls-stack">
