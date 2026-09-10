@@ -1,4 +1,10 @@
-# Seed two demo accounts into the deployed environment. MANUAL ONLY.
+# Seed the three demo accounts into the deployed environment. MANUAL ONLY.
+#
+# THREE, not two, and the third is not a convenience. FR-2 gives version approval to an
+# Audit Manager alone, and denies it to the person who authored the version -- so an
+# auditor and an administrator between them cannot get a Procedure Version approved at
+# all, and the create -> approve -> run journey stops dead one step in. The Audit
+# Manager is what makes that journey walkable.
 #
 # This exists because there is no other way to create a user: Better Auth has
 # `disableSignUp: true`, so the running application has no sign-up endpoint at all, and
@@ -59,7 +65,7 @@ jobs:
       - name: Fail fast when the DATABASE_URL secret is missing
         run: test -n "${{ secrets.DATABASE_URL }}" || { echo 'DATABASE_URL is not set'; exit 1; }
 
-      - name: Create the two accounts
+      - name: Create the accounts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           # Generated per run, NOT the deployment's real secret, and that is safe: this
@@ -80,21 +86,42 @@ jobs:
           PASSWORD="Demo-$(openssl rand -hex 6)"
           export SEED_PASSWORD="$PASSWORD"
 
-          pnpm seed:identity --email administrator@example.test \
-            --name 'Demo PoC Administrator' --role poc-administrator
-          pnpm seed:identity --email auditor@example.test \
-            --name 'Demo Auditor' --role auditor
+          # `seed-identity` says which of the two things it did, and the difference is
+          # the whole point of the summary: an address that already existed kept its OLD
+          # password, so printing the new one beside it would hand somebody a credential
+          # that does not work and no way to tell. Row by row, honestly.
+          rows=''
+          seed() {
+            local email="$1" name="$2" role="$3" label="$4" out
+            out="$(pnpm seed:identity --email "$email" --name "$name" --role "$role")"
+            echo "$out"
+            if grep -q '^created user ' <<<"$out"; then
+              rows="${rows}| ${label} | ${email} | \`${PASSWORD}\` | created now |"$'\n'
+            else
+              rows="${rows}| ${label} | ${email} | *(unchanged — set when it was created)* | already existed |"$'\n'
+            fi
+          }
+
+          seed administrator@example.test 'Demo PoC Administrator' poc-administrator 'PoC Administrator'
+          seed auditor@example.test       'Demo Auditor'           auditor           'Auditor'
+          seed manager@example.test       'Demo Audit Manager'     audit-manager     'Audit Manager'
 
           {
             echo '## Demo accounts'
             echo
             echo 'Throwaway credentials for walking the PoC. Change or delete them after.'
             echo
-            echo '| Role | Email | Password |'
-            echo '|---|---|---|'
-            echo "| PoC Administrator | administrator@example.test | \`$PASSWORD\` |"
-            echo "| Auditor | auditor@example.test | \`$PASSWORD\` |"
+            echo '| Role | Email | Password | This run |'
+            echo '|---|---|---|---|'
+            printf '%s' "$rows"
             echo
-            echo 'If an address already existed, its password was NOT reset — the run only'
-            echo 're-asserted the role, and the password above will not work for it.'
+            echo 'The Auditor authors and submits a Procedure Version and starts Runs; the'
+            echo 'Audit Manager approves it (FR-2 denies approval to the version'"'"'s own'
+            echo 'author, so one account cannot do both); the PoC Administrator registers'
+            echo 'Target Systems and Population Sources and manages users, and may author'
+            echo 'nothing.'
+            echo
+            echo 'A password is NEVER reset. An account marked "already existed" keeps the'
+            echo 'password it was created with — recover it from the run that created it,'
+            echo 'or delete the row and re-run this workflow.'
           } >> "$GITHUB_STEP_SUMMARY"
