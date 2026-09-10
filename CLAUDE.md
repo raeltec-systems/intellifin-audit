@@ -182,6 +182,13 @@ Four mechanical lessons, three of them about tests:
   an hour ago.
 - **`Date` is not a bindable parameter on a client `createDb` has wrapped.** Same family as
   the `sql.json` note: ISO text with an explicit `::timestamptz` is right on both.
+- **Regenerating an UNPUSHED migration moves its journal `when`, which makes the migrator
+  re-apply it to a database that already has it.** `column ... already exists`, in
+  `migrate.test.ts`, which is the guard working: the migrator applies what sorts after the
+  last applied `created_at`. Folding a fix into an unreleased generation is right — a 46
+  that fixes a 45 nobody ran is worse — but the LOCAL database that applied the old one has
+  to be rebuilt afterwards, not patched. CLAUDE.md's "never let a PUSHED migration's `when`
+  move" is unchanged and is the case this is not.
 
 ## 2026-09-09 — Queue maintenance needs a connection of its own
 

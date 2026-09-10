@@ -70,9 +70,12 @@ describe.skipIf(!url)('durable escalation notification delivery', () => {
     `;
     await sql`
       INSERT INTO run_wait(
-        wait_id, run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor
+        wait_id, run_id, kind, options, opened_at, opened_by, deadline, closed_at, closure_kind, answer_option_id, actor
       ) VALUES (
         ${waitId}, ${runId}, 'choose-candidate', ${JSON.stringify([{ id: 'mark-ambiguous', label: 'Mark ambiguous' }])}::jsonb,
+        -- Generation 45: when the wait opened, and who caused it to. An Escalation names
+        -- nobody, because the platform raised it; `run_wait_opened_by` refuses one that does.
+        now(), NULL,
         ${notification.deadline}::timestamptz, NULL, NULL, NULL, NULL
       )
     `;
