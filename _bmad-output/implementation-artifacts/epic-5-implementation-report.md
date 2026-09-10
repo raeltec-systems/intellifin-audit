@@ -10,8 +10,9 @@ status: 'final'
 >
 > **Stories 5.1, 5.2 and 5.3 are already on `main`** (PR 25). This branch,
 > `codex/epic-5-controls`, carries **5.4, 5.5, 5.7, 5.6 and 5.8** — the revised order, which
-> `epic-5-context.md` explains. Nothing on this branch is merged and no CI has run on it:
-> `ci.yml` triggers only on a pull request to `main`.
+> `epic-5-context.md` explains. Nothing on this branch is merged.
+> [PR 29](https://github.com/raeltec-systems/intellifin-audit/pull/29) is open against `main`
+> and carries the first CI this branch has ever had: `ci.yml` triggers only on a pull request.
 
 ## 1. What an auditor can now do
 
@@ -92,8 +93,9 @@ row, and resumes.
 
 ### 3.2 What is NOT claimed
 
-- **Nothing is remotely verified.** No CI run exists for this branch, because no pull request
-  is open. See §5.
+- **Everything in §3 is LOCAL verification.** The remote verdict is CI on
+  [PR 29](https://github.com/raeltec-systems/intellifin-audit/pull/29), which is the first CI
+  this branch has had; read the five checks there rather than this table for it.
 - **Story 5.2's live recording leg is unproven and cannot be proven here.** This environment
   holds no Solari key, and recording cannot be enabled for a session that already exists, so
   every recording case runs against a synthetic provider.
@@ -135,9 +137,10 @@ workspace port and no outbound fetch anywhere on the path.
 
 Three of these are decisions only you can take. Two are one-line answers.
 
-1. **Open the pull request.** No CI has run on `codex/epic-5-controls`, because `ci.yml`
-   triggers only on a pull request to `main`. Everything above is local verification. Say the
-   word and the PR goes up with this report linked.
+1. **Merge [PR 29](https://github.com/raeltec-systems/intellifin-audit/pull/29)** once its
+   five checks are green. The PR is open with this report linked; opening it is what started
+   the first CI this branch has had, so §3 above is local verification and CI is the remote
+   one. The merge decision is yours — nothing here merges itself.
 2. **Rotate the Solari API key** that was pasted into chat earlier in this engagement. It must
    be treated as disclosed.
 3. **Set Solari recording retention to minimum.** `@solarisdk/browser@0.1.3` exposes no
