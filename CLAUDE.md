@@ -1676,6 +1676,34 @@ to be held to the rule the work is.
   panicked at turbopack/.../aggregation_update.rs` is followed by `Aborting.`, and every
   spec after it fails `net::ERR_CONNECTION_REFUSED` in about a second. Sixteen red tests,
   one cause, none of them the product. Read the first failure — again.
+- **A one-time module import inside a test's own timeout is a flake waiting for a busy
+  machine.** `session-route.test.ts` and `sign-in-route.test.ts` are fully mocked and touch
+  no database, and neither resets the module registry — so only the FIRST `await
+  import('../app/api/...')` ever pays the transform, and on this workspace's graph that can
+  exceed a 5-second test timeout or a 10-second hook one. The first case then fails and its
+  work leaks into the second (`roleLookups` read 2 where 1 was expected), and a timed-out
+  HOOK reports its 37 tests as **skipped** rather than failed — which reads as a collection
+  quirk, not as coverage that did not run. Warm the module in a `beforeAll` with room; every
+  assertion stays as it was, and the per-test times went from 5,354 ms to 6 ms.
+- **PostgreSQL 18 in this container dies under load, and running two suites at once is that
+  load.** Started together, the browser suite and the unit suite killed the cluster: the web
+  process logged `ECONNREFUSED`, `/api/health` answered 503 twenty times, and Playwright
+  ended with `Timed out waiting 180000ms from config.webServer` — while the unit run showed
+  four failures in the two files above, all of them the missing database. One cause, two
+  suites, six red results, none of them the product. It recovers cleanly with
+  `rm -f /tmp/pgdata18/postmaster.pid && pg_ctl -D /tmp/pgdata18 -o '-p 5434' start`.
+- **A background wrapper reports the SHELL's exit code, not the command's.** A run spelled
+  `pnpm exec playwright test > log; echo "E2E=$?"` was reported as **exit code 0** by the
+  task harness while the log said `Timed out waiting 180000ms` — the `echo` succeeded, so
+  the shell did. Read the log, never the wrapper's code. Same family as the `&&` chain that
+  reports a failure that never ran.
+- **The FIRST browser run after a cold `.next` pays route compilation inside a 10-second
+  assertion.** `auth.setup.ts` clicks Sign in and waits for the shell; Next compiles `/` on
+  that first navigation, and on this box it does not finish in ten seconds, so the setup
+  fails and all 188 specs report `did not run`. The webServer's own health check hits
+  `/api/health`, a route handler, so the PAGE is still cold when the suite starts. A second
+  run with the cache warm is the honest answer; `INTELLIFIN_LOW_DISK=1` exists for the
+  opposite problem and would make it slower.
 
 ### Credentials just in time, and capture suppressed while one is on the wire (added with Story 4.3)
 

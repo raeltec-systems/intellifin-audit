@@ -74,7 +74,11 @@ const load = () => import('./sign-in-route');
  * loaded full-suite run is a timeout that reads as a hang in the code under test rather
  * than as what it is. A hook gets the 10-second hook budget and pays it exactly once.
  */
-beforeAll(async () => { await load(); });
+// Transforming this workspace's graph can take longer than a hook's default 10 seconds on
+// a loaded machine, and a timed-out hook SKIPS every test in the file — 37 of them reported
+// as skipped rather than failed, which reads as a collection quirk. The import is measured
+// once, here, with room; nothing about what the tests assert changes.
+beforeAll(async () => { await load(); }, 60_000);
 
 describe('subjectHashOf', () => {
   it('is the SHA-256 of the lower-cased, trimmed address', async () => {
