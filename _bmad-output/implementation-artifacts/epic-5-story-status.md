@@ -109,3 +109,23 @@ Order of implementation and why: `epic-5-context.md`. The order was revised afte
 5.7 moves to after 5.4 and 5.5, because its central criterion disables controls that do not
 exist until those stories build them. Two of its three criteria are already met by 5.1 and
 5.3; the third lands with the controls it governs.
+
+## The journey a person walks
+
+Not a story, and the reason it is here: the owner could not test the product, and the block
+was not in Epic 5. It is in `epic-5-implementation-report.md` §3.4 and in the top `2026-09-10`
+entry of `CLAUDE.md`.
+
+| Finding | Verification level |
+|---|---|
+| **No deployment could approve a Procedure Version.** Approval is an Audit Manager's alone AND is denied to the version's own author; the environment held one auditor and one administrator | `seed-demo-accounts.yml` seeds three accounts; run against production 2026-09-10 |
+| **The whole journey through the interface was never tested end to end** — each half was, and the seam between them was not | `tests/e2e/owner-walkthrough.spec.ts`: real web server, real worker process, real object store, real PostgreSQL, real synthetic systems; reaches the golden P-2 Inconclusive with eleven Observations and four failed Gate rows |
+| The Builder named suggested systems the deployment does not have and said nothing about it | Unit (`target-suggestions.test.ts`) + browser; the caption states one of three things per system |
+
+One test lesson from it, in `CLAUDE.md`:
+
+- **A spec that selects seeded rows passes on a developer's machine and fails on a runner.**
+  CI's browser job deliberately does not run `seed-northstar`, so the walkthrough makes its own
+  registration and binding from the catalogue's own values. It also needed RoleMatrix beside
+  AccessGate: a `versioned-file` Target System is what turns a role name into permissions, and
+  without it no role expands and the Run reproduces only part of its golden outcome.

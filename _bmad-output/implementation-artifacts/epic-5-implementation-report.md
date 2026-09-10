@@ -140,6 +140,46 @@ derived from the wait's own kind now.
 
 The full round, and the traps inside it, is the top entry in `CLAUDE.md`.
 
+### 3.4 The journey nobody had joined up
+
+The owner could not test the product at all, and the reason was not in Epic 5. **The deployed
+environment held one auditor and one administrator, and `procedure.version.approve` belongs to
+an Audit Manager alone AND is denied to the version's own author** — so the auditor wrote a
+version and was refused as its author, the administrator was refused by role, and the
+create → approve → run journey stopped one step in, at a disabled Approve button whose reason
+was correct and whose remedy did not exist.
+
+**No suite could notice.** Every suite that approves a version mints its own `audit-manager` by
+raw SQL first (`version-review.spec.ts`, `immutable-versions.spec.ts`, `runs.spec.ts`,
+`version-decisions.test.ts`), and the browser suite's `ACCOUNTS` fixture holds exactly the two
+roles it signs in as. A green suite says nothing about what a deployed environment *contains*.
+
+Three things came out of it:
+
+- **`tests/e2e/owner-walkthrough.spec.ts`** walks the whole journey through the interface —
+  create, author four sections, wait for derivation, submit, approve as a manager, initiate,
+  read the sealed Result — in about twenty seconds against a real worker, a real object store,
+  real PostgreSQL and the real synthetic systems. Each half was already proven and the seam was
+  not: `hero-workflow` authors to Submit and stops (no worker runs in it), `version-review`
+  drives submit → reject → edit → approve, `clean-source` runs a P-2 Procedure from a version
+  it INSERTS. It reproduces the whole golden P-2 outcome — eleven Observations and four failed
+  Gate rows, which `p-2-sod-conflicts.json` names as its own reason for Inconclusive.
+- **`seed-demo-accounts.yml` seeds three accounts.** An environment that is already seeded needs
+  no re-run: a PoC Administrator can add an Audit Manager from Administration → Users, which is
+  the same audited command. The workflow was run against production on 2026-09-10, so
+  `manager@example.test` exists there now.
+- **The Builder says which suggested systems the deployment actually has.** A Template offers
+  its defaults by name and a registration is never minted from one — correct, because scope is
+  the auditor's to declare — but P-1 suggests LedgerDesk, no deployment registers a desktop
+  system because this release cannot execute one, and the caption listed it beside systems that
+  *are* registered with nothing telling the two apart. An auditor reading it went looking for a
+  system that is not in the picker, and the honest reading of that is that the Procedure cannot
+  be built. Each suggestion now says one of three things: ready to add, no system with this name
+  is set up here (and who can add it), or a desktop system this release cannot run.
+
+`_bmad-output/implementation-artifacts/owner-walkthrough.md` is the same journey written for a
+person, with the exact click path and what to look at when a step stops.
+
 ## 4. Decisions worth knowing
 
 **A pause is a wait; a flag is not.** `run_wait` gained a `pause` kind because every mechanism
@@ -170,7 +210,7 @@ workspace port and no outbound fetch anywhere on the path.
 
 ## 5. What needs you
 
-Three of these are decisions only you can take. Two are one-line answers.
+Three of these are decisions only you can take. The rest are one-line answers.
 
 1. **Merge [PR 29](https://github.com/raeltec-systems/intellifin-audit/pull/29)** once its
    five checks are green. Every review finding is closed — nine fixed, one examined and
@@ -193,7 +233,14 @@ Three of these are decisions only you can take. Two are one-line answers.
 5. **Confirm the desktop deferral.** `fixtures/northstar/datasets/systems.json` still says
    Epic 3 for LedgerDesk while `epics.md` places the desktop kind in Epic 7. You reaffirmed
    Epic 7 on 2026-09-06; the fixture text is the last place that disagrees. Nothing is blocked
-   by it.
+   by it, and the Builder now states the consequence where an auditor meets it (§3.4).
+6. **Check the worker's `CREDENTIAL_TOKENS` declares `cred://synthetic/northstar-readonly`.**
+   That is the reference the seeded Northstar systems carry. A worker without an entry for it
+   fails every adapter Work Item on the first attempt with `credential-unresolved`, and the Run
+   reports every record uninspected — a real Result, for the wrong reason. The value is
+   synthetic and authenticates nothing; every Northstar system is read-only at the system level
+   and ignores it. This session cannot read the variable's value, so it is named rather than
+   asserted.
 
 ## 6. Where to look
 
