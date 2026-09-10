@@ -43,7 +43,7 @@ export function ExecutablePlanPreview({ draft, modelConfiguration }: { readonly 
         return <div key={system.registrationId} className="ls-stack">
           <h4>{target.displayName}</h4>
           {instruction === undefined ? null : <p className="ls-whitespace">{instruction.text}</p>}
-          <p>Permitted read actions: {target.contract.permitted_actions.join(', ')}.</p>
+          <p>What the agent may do here: {target.contract.permitted_actions.join(', ')}.</p>
           <ol>{system.planSteps.map((step) => <li key={step.id}><strong>{ACTION_LABELS[step.action]}</strong><p>{step.text}</p></li>)}</ol>
         </div>;
       })}
@@ -59,10 +59,10 @@ export function ExecutablePlanPreview({ draft, modelConfiguration }: { readonly 
         <StatusBadge family="evaluation-origin" state={condition.status === 'RULE' ? 'Rule-Classified' : 'Agent-Judged (pending)'} />
         <p className="ls-whitespace">{condition.text}</p><p>Applies when: {condition.applicability}</p>
         <p>Compiled applicability: {predicateText(condition.applicabilityAst)}.</p>
-        {condition.rule === null ? <p>Agent-Judged confidence threshold: {plan.inputs.agentJudgedThreshold}. The judgment must reach this threshold; otherwise the condition is Unevaluated.</p> : <p>Compiled rule: {ruleText(condition.rule)}</p>}
+        {condition.rule === null ? <p>The agent must be at least {plan.inputs.agentJudgedThreshold} certain. Below that, the record is left for a person to decide.</p> : <p>Compiled rule: {ruleText(condition.rule)}</p>}
         {condition.policy === undefined ? null : <p>Frozen role-privilege policy: {policyText(condition.policy)}</p>}
       </div>)}
-      <h3>Credential references</h3>
+      <h3>Sign-in credentials</h3>
       <ul>{plan.credentialReferences.map((reference) => <li key={reference.targetSystemId}>{plan.inputs.targets.find((target) => target.registrationId === reference.targetSystemId)?.displayName}: <code>{reference.credentialRef}</code></li>)}</ul>
       <h3>Execution limits</h3>
       <dl><dt>Retries per Step Execution</dt><dd>{plan.limits.retriesPerStep}</dd><dt>Seconds per Step Execution</dt><dd>{plan.limits.stepTimeoutSeconds}</dd><dt>Step Executions per Run</dt><dd>{plan.limits.runStepExecutions}</dd><dt>Seconds per Run</dt><dd>{plan.limits.runTimeoutSeconds}</dd><dt>Tokens per Run</dt><dd>{plan.limits.runTokens}</dd></dl>

@@ -11,7 +11,7 @@ import { requireServerAction } from '../../../../src/server-session';
 import { changeBindingAction } from '../actions';
 
 export const metadata: Metadata = {
-  title: 'Population Source binding · IntelliFin Audit',
+  title: 'Population source · IntelliFin Audit',
 };
 
 /** The role is read per request; this surface can never be cached (AD-7). */
@@ -39,7 +39,7 @@ export default async function SourcePage({
   if (!decision.allowed) {
     return (
       <div className="ls-stack">
-        <h1>Population Source binding</h1>
+        <h1>Population source</h1>
         <Banner tone="danger" title={decision.reason} />
       </div>
     );
@@ -57,10 +57,11 @@ export default async function SourcePage({
       <header className="ls-page-header">
         <h1>{binding.displayName}</h1>
         <p>
-          Changing the kind, the location, the declared schema, the declared-count
-          mechanism or the sensitive fields recomputes the binding digest and is recorded
-          in the audit chain. Changing the name, the note or the status is recorded too,
-          under an event that affects no Procedure.
+          Changing where the records come from, which fields they carry, how the count is
+          confirmed, or which fields are hidden gives this source a new fingerprint, and
+          every procedure that uses it needs approving again. Changing only its name, note
+          or status changes no procedure. Either way, the change is recorded against your
+          name.
         </p>
       </header>
       <BindingEditor

@@ -5,8 +5,21 @@ import { deriveExecutablePlan } from '@intellifin/domain';
 import { createSqlClient, createDb, createProceduresQueue, startProceduresWorker, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator } from '@intellifin/infrastructure';
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { keepBuilderStepsOpen } from './builder';
 
 test.use({ storageState: AUTH_STATE.auditor });
+/**
+ * Keep the Builder's steps open for this file.
+ *
+ * The Builder is a list of questions whose answered steps start closed. This file's
+ * subject is what is INSIDE those steps, so it opens them all rather than clicking a
+ * disclosure before every assertion; the disclosure itself is proved by "the Builder
+ * opens as a short list of questions" in `procedures.spec.ts`, which runs without this.
+ */
+test.beforeEach(async ({ page }) => {
+  await keepBuilderStepsOpen(page);
+});
+
 test('queued preview progresses from pending through failure to a read-only accessible plan', async ({ page }) => {
   test.setTimeout(90_000);
   const databaseUrl = process.env['DATABASE_URL']!; assertThrowawayDatabase(databaseUrl);

@@ -2,7 +2,17 @@ import { canonicalJson, type JsonValue } from '../canonical-json.js';
 import { bindingDigest, bindingDigestEnvelope, isDeclaredCountMechanism, isPopulationSourceKind, type BindingDigestEnvelope } from '../sources/population-source.js';
 
 export interface ExplicitPeriod { readonly from: string; readonly to: string }
-export type DecimalOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
+/**
+ * The comparisons a decimal inclusion predicate can make.
+ *
+ * A runtime list, with the type derived from it, because the validator below and the
+ * Builder's one filter dropdown both have to enumerate them: spelled out twice they
+ * agree on every operator anybody thinks to try and diverge on the first one nobody
+ * does — a stored predicate the editor cannot show, which then reads as the first
+ * entry in the list.
+ */
+export const DECIMAL_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] as const;
+export type DecimalOperator = (typeof DECIMAL_OPERATORS)[number];
 export type InclusionPredicate =
   | { readonly column: string; readonly kind: 'text'; readonly operator: 'eq'; readonly value: string }
   | { readonly column: string; readonly kind: 'decimal'; readonly operator: DecimalOperator; readonly value: string }
@@ -78,7 +88,7 @@ export function isInclusionRule(value: unknown, declaredColumns?: readonly strin
     if (predicate['kind'] === 'within-period') return exact(predicate, ['column', 'kind']);
     if (!exact(predicate, ['column', 'kind', 'operator', 'value'])) return false;
     if (predicate['kind'] === 'text') return predicate['operator'] === 'eq' && typeof predicate['value'] === 'string' && predicate['value'].length <= POPULATION_DRAFT_LIMITS.text && storable(predicate['value']);
-    return predicate['kind'] === 'decimal' && typeof predicate['operator'] === 'string' && ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'].includes(predicate['operator']) && isRuleDecimal(predicate['value']);
+    return predicate['kind'] === 'decimal' && typeof predicate['operator'] === 'string' && (DECIMAL_OPERATORS as readonly string[]).includes(predicate['operator']) && isRuleDecimal(predicate['value']);
   });
 }
 export function isProcedureSourceSnapshot(value: unknown): value is ProcedureSourceSnapshot {

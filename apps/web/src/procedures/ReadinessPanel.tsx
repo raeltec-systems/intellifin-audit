@@ -36,7 +36,7 @@ export function ReadinessPanel({
   return (
     <section className="ls-card ls-stack" aria-labelledby={headingId} data-readiness>
       <Heading className="ls-card__title" id={headingId}>
-        Readiness before execution
+        Before you run this
       </Heading>
       {items.length === 0 ? (
         <p data-readiness-empty>{READINESS_NOTHING_FOUND}</p>

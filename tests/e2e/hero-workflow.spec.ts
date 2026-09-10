@@ -17,6 +17,7 @@ import {
 import { READINESS_NO_GUARANTEE, bindingDigest, registrationDigest } from '@intellifin/domain';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { openPlanDetail, openStep } from './builder';
 
 /**
  * The hero workflow, end to end in a real browser: create a Procedure from the P-1
@@ -160,14 +161,18 @@ test.describe('the hero workflow', () => {
     /* ------------------------------------------- the Draft says it is editable */
     // Two sections stay read-only, and the Control section names where its editable
     // half is rather than claiming the Draft cannot be edited.
-    await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(2);
+    await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(1);
     await expect(page.getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE)).toHaveCount(1);
     await expect(page.getByText('not editable yet')).toHaveCount(0);
 
     /* --------------------------------- what the agent will do, and readiness -- */
+    // Readiness is what an auditor must meet before spending a Run, so it is on the
+    // page. The compiled plan is one fold down, where somebody who wants it can get it.
+    await expect(page.locator('[data-readiness]')).toBeVisible();
+    await expect(page.locator('[data-plan-detail]')).toHaveJSProperty('open', false);
+    await openPlanDetail(page);
     const summary = page.locator('[data-agent-summary]');
     await expect(summary).toBeVisible();
-    await expect(page.locator('[data-readiness]')).toBeVisible();
     await expect(page.getByText(READINESS_NO_GUARANTEE)).toBeVisible();
     // A fresh P-1 Draft has selected no Target System and bound no source, so both are
     // listed — and C2 is Agent-Judged over a Roles field with no policy frozen.
@@ -177,6 +182,9 @@ test.describe('the hero workflow', () => {
     await shot(page, 'readiness-on-a-fresh-draft', page.locator('[data-readiness]'));
 
     /* ------------------------------- C1 in business language, in simple mode -- */
+    // The Template already answered this step, so it opens closed with its own summary.
+    // The auditor clicks it to change the rule; so does this journey.
+    await openStep(page, 'Compliance Rule conditions');
     const c1 = page.locator('[data-condition-id="C1"]');
     // The simple block only exists once React has rendered the client tree, so waiting
     // for it is also the hydration proof this file needs before it types anything.
@@ -208,18 +216,18 @@ test.describe('the hero workflow', () => {
     });
 
     /* ------------------ advanced shows the SAME text; switching writes nothing - */
-    await c1.getByLabel('Advanced — write the expression').check();
-    const text = c1.getByLabel('Condition text C1', { exact: true });
+    await c1.getByLabel('Write it out myself').check();
+    const text = c1.getByLabel('Rule text C1', { exact: true });
     await expect(text).toBeVisible();
     await expect(text).toHaveValue(saved);
     await shot(page, 'compliance-advanced-mode', c1);
-    await c1.getByLabel('Simple — choose the values').check();
+    await c1.getByLabel('Pick the values from a list').check();
     await expect(text).toBeHidden();
     await expect(compliant).toHaveValue('Disabled');
 
     /* ---------------------------------------- C2's role-privilege policy ------ */
     const c2 = page.locator('[data-condition-id="C2"]');
-    await c2.getByRole('button', { name: 'Add role-privilege policy C2' }).click();
+    await c2.getByRole('button', { name: 'Add the list of privileged roles C2' }).click();
     // `exact`: "Privileged roles C2" is a substring of "Known non-privileged roles C2".
     const privileged = c2.getByLabel('Privileged roles C2', { exact: true });
     const nonPrivileged = c2.getByLabel('Known non-privileged roles C2');
@@ -243,10 +251,11 @@ test.describe('the hero workflow', () => {
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.')).toBeVisible();
     await expect(save).toBeFocused();
     await expect(page.getByText('Compliance Rule has unsaved changes.')).toHaveCount(0);
-    await shot(page, 'compliance-saved-directly', page.locator('section.ls-card', { has: save }).last());
+    await shot(page, 'compliance-saved-directly', page.locator('[data-step="Compliance Rule conditions"]'));
 
     // The saved rule survives a reload, in the author's own spelling and casing.
     await page.reload();
+    await openStep(page, 'Compliance Rule conditions');
     await expect(page.locator('[data-condition-id="C1"]').getByLabel('Values that count as Compliant C1')).toHaveValue('Disabled');
     await expect(page.locator('[data-condition-id="C2"]').getByLabel('Privileged roles C2', { exact: true })).toHaveValue('LOAN_ADMIN\nSYSTEM_ADMIN');
     // The readiness item C2 raised is gone now that a policy is frozen with it.
@@ -259,17 +268,17 @@ test.describe('the hero workflow', () => {
     // it and select as they go, and Tab leaves it — so this drives the real contract
     // rather than the one a Tab-per-radio assumption would invent.
     const c1After = page.locator('[data-condition-id="C1"]');
-    const simpleRadio = c1After.getByLabel('Simple — choose the values');
-    const advancedRadio = c1After.getByLabel('Advanced — write the expression');
+    const simpleRadio = c1After.getByLabel('Pick the values from a list');
+    const advancedRadio = c1After.getByLabel('Write it out myself');
     await simpleRadio.focus();
     await expect(simpleRadio).toBeFocused();
     await page.keyboard.press('ArrowRight');
     await expect(advancedRadio).toBeFocused();
     await expect(advancedRadio).toBeChecked();
-    await expect(c1After.getByLabel('Condition text C1', { exact: true })).toBeVisible();
+    await expect(c1After.getByLabel('Rule text C1', { exact: true })).toBeVisible();
     await page.keyboard.press('ArrowLeft');
     await expect(simpleRadio).toBeChecked();
-    await expect(c1After.getByLabel('Condition text C1', { exact: true })).toBeHidden();
+    await expect(c1After.getByLabel('Rule text C1', { exact: true })).toBeHidden();
     // Tab leaves the group and lands on the next control, which Space operates: the
     // proven-absence choice rewrites the one saved rule, by keyboard alone.
     await page.keyboard.press('Tab');
@@ -297,8 +306,8 @@ test.describe('the hero workflow', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
 
-    await page.getByLabel('Population Source', { exact: true }).selectOption(sourceId);
-    await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
+    await page.getByLabel('Where the records come from').selectOption(sourceId);
+    await page.getByRole('button', { name: 'Save records to test', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await expect(page.locator('[data-readiness-item="source-not-bound"]')).toHaveCount(0);
@@ -316,10 +325,10 @@ test.describe('the hero workflow', () => {
 
     const c3 = page.locator('[data-condition-id="C3"]');
     await expect(c3).toBeVisible();
-    await expect(c3.getByLabel('Condition text C3', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
+    await expect(c3.getByLabel('Rule text C3', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
     // Exactly 24 hours is Compliant, and both halves stay editable.
-    await expect(c3.getByLabel('Comparison threshold C3', { exact: true })).toHaveValue('24');
-    await expect(c3.getByLabel('Comparison boundary C3', { exact: true })).toHaveValue('inclusive');
+    await expect(c3.getByLabel('Limit C3', { exact: true })).toHaveValue('24');
+    await expect(c3.getByLabel('A record exactly at the limit C3', { exact: true })).toHaveValue('inclusive');
     await expect(c3.getByText('Rule-Classified', { exact: true })).toBeVisible();
     // C1 is untouched — the assertion that fails if the button ever replaces it again.
     await expect(page.locator('[data-condition-id="C1"]').locator('[data-simple-text="C1"]')).toHaveText(saved);
@@ -343,10 +352,11 @@ test.describe('the hero workflow', () => {
     // The capture gap is closed where it belongs — in Evidence Requirements, whose own
     // command owns that section — and the Builder offers the exact requirement rather
     // than leaving somebody to type an attribute name the rule may not match.
+    await openStep(page, 'Evidence Requirements');
     const offer = page.locator('[data-add-capture="disabled_time"]');
     await expect(offer).toBeVisible();
     await offer.getByRole('button', { name: 'Add the disabled_time requirement', exact: true }).click();
-    const captureRow = page.getByRole('textbox', { name: 'Attribute name' }).last();
+    const captureRow = page.getByRole('textbox', { name: 'What to record' }).last();
     await expect(captureRow).toHaveValue('disabled_time');
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -354,7 +364,7 @@ test.describe('the hero workflow', () => {
     await expect(page.locator('[data-readiness-item="disablement-capture-missing"]')).toHaveCount(0);
     // The source gap is NOT cleared by declaring a capture: they are two findings.
     await expect(page.locator('[data-readiness-item="termination-time-precision-missing"]')).toHaveCount(1);
-    await shot(page, 'timing-capture-declared', page.locator('section.ls-card', { has: page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }) }).last());
+    await shot(page, 'timing-capture-declared', page.locator('[data-step="Evidence Requirements"]'));
 
     // Withdrawing the choice clears the finding, which is the other half of "readiness
     // shows and clears". The account-status rule is still exactly as it was authored.
@@ -367,7 +377,7 @@ test.describe('the hero workflow', () => {
 
     // Adding a Target System EXPANDS the audited scope, so this one save still confirms
     // — and the dialog names the system being added rather than restating the section.
-    await page.getByLabel('Add a Target System').selectOption(targetId);
+    await page.getByLabel('Add a system').selectOption(targetId);
     await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
     await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     const scopeDialog = page.getByRole('dialog');
@@ -379,12 +389,14 @@ test.describe('the hero workflow', () => {
     await expect(page.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible();
     await expect(page.locator('[data-readiness-item="targets-missing"]')).toHaveCount(0);
 
-    await page.getByLabel(`Audit Instructions for E2E hero LoanCore ${stamp}`).fill(
+    await openStep(page, 'Audit Instructions');
+    await page.getByLabel(`What the agent should do in E2E hero LoanCore ${stamp}`).fill(
       'Search by employee ID, then by full name. Open the account record and read its status, username and roles.',
     );
     await page.getByRole('button', { name: 'Save Audit Instructions', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Audit Instructions are recorded in the audit chain.')).toBeVisible();
+    await openPlanDetail(page);
     await shot(page, 'draft-complete', page.locator('[data-agent-summary]'));
 
     /* ---------------------------------- submit stops, and says what it needs -- */

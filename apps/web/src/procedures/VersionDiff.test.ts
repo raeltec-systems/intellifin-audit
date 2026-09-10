@@ -25,8 +25,8 @@ describe('successor review rendering',()=>{
     expect(scope.previous).toContain('Prior saved scope'); expect(scope.previous).not.toContain('Current submitted scope');
     expect(scope.current).toContain('Current submitted scope'); expect(scope.current).not.toContain('Prior saved scope');
     const evidence=columns(html,'Evidence Requirements');
-    expect(evidence.previous).toContain('Recording Segment</strong></dt><dd><span>No');
-    expect(evidence.current).toContain('Recording Segment</strong></dt><dd><span>Yes');
+    expect(evidence.previous).toContain('Clip of the session recording</strong></dt><dd><span>No');
+    expect(evidence.current).toContain('Clip of the session recording</strong></dt><dd><span>Yes');
     const plan=columns(html,'Executable plan');
     expect(plan.previous).toContain('Previous acquisition instructions'); expect(plan.previous).not.toContain('Current acquisition instructions');
     expect(plan.current).toContain('Current acquisition instructions'); expect(plan.current).not.toContain('Previous acquisition instructions');

@@ -113,6 +113,13 @@ const DYNAMIC_CLASSES = [
   '.ls-gate__row--fail',
   '.ls-corroboration-badge--contradictory',
   '.ls-corroboration-badge--neutral',
+  // `ls-step__mark--${state}`, one per `SectionState`. A Builder step whose mark had no
+  // rule would render the word with none of the treatment that separates "To do" from
+  // "Set" at a glance.
+  '.ls-step__mark--done',
+  '.ls-step__mark--todo',
+  '.ls-step__mark--attention',
+  '.ls-step__mark--reference',
 ];
 
 function tsxSources(dir: string): { path: string; source: string }[] {

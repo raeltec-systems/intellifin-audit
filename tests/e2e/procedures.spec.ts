@@ -7,6 +7,7 @@ import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/
 import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { BUILDER_STEPS, keepBuilderStepsOpen } from './builder';
 
 /**
  * Authoring a Procedure from a Template through the real interface (FR-4, FR-5, UX-DR7,
@@ -63,6 +64,18 @@ test.afterAll(async () => {
   }
 });
 
+/**
+ * Keep the Builder's steps open for this file.
+ *
+ * The Builder is a list of questions whose answered steps start closed. This file's
+ * subject is what is INSIDE those steps, so it opens them all rather than clicking a
+ * disclosure before every assertion; the disclosure itself is proved by "the Builder
+ * opens as a short list of questions" in `procedures.spec.ts`, which runs without this.
+ */
+test.beforeEach(async ({ page }) => {
+  await keepBuilderStepsOpen(page);
+});
+
 test.describe('as an Auditor', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
@@ -92,7 +105,7 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E period conflict ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Executable plan preview' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Set this up' })).toBeVisible();
     await expect(async () => {
       await page.getByLabel('Scope statement').focus();
       await page.getByLabel('Scope statement').blur();
@@ -157,8 +170,8 @@ test.describe('as an Auditor', () => {
     // P-1's C1 opens in the SIMPLE editor; prose has no simple form, so the advanced
     // mode is where it is written. Checking the radio is also this test's hydration
     // proof: the radios exist only once React has rendered the client tree.
-    await page.locator('[data-condition-id="C1"]').getByLabel('Advanced — write the expression').check();
-    const conditionText = page.getByLabel('Condition text C1', { exact: true });
+    await page.locator('[data-condition-id="C1"]').getByLabel('Write it out myself').check();
+    const conditionText = page.getByLabel('Rule text C1', { exact: true });
     const savedText = 'Confirm that each retained access right has a documented business reason.';
     await expect(async () => {
       await conditionText.fill(savedText);
@@ -230,46 +243,57 @@ test.describe('as an Auditor', () => {
       await expect(page.getByRole('heading', { level: 1, name: controlName })).toBeVisible();
       await expect(page.getByText(`Template ${template.id} · ${template.label}`)).toBeVisible();
 
-      // The sections are pre-filled and read-only, each under the pinned sentence.
+      // Control and Objective are pre-filled and read-only, read once at the top under
+      // the pinned sentence rather than as two cards each repeating it.
       const sections = page.locator('.ls-card', { hasText: 'Objective' });
       await expect(sections.first()).toBeVisible();
       await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE).first()).toBeVisible();
+      // Every step states what is set in it and says whether it still needs an answer.
+      await expect(page.locator('[data-builder-progress]')).toBeVisible();
+      for (const step of BUILDER_STEPS) {
+        await expect(page.locator(`[data-step="${step}"]`)).toHaveCount(1);
+      }
 
       await expect(page.getByLabel('Period start')).toBeVisible();
-      await expect(page.getByLabel('Population Source', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Where the records come from')).toBeVisible();
       // Compliance Rule conditions are editable too (Story 2.4). Evidence Requirements
       // and the Schedule are editable now too (Story 2.5): exactly TWO sections remain
       // read-only — Control, Objective.
-      await expect(page.getByLabel('Add a Target System')).toBeVisible();
+      await expect(page.getByLabel('Add a system')).toBeVisible();
       // The Compliance Rule is editable in both modes. A condition with a simple form
       // opens on it and its authored text is one radio away; one with no simple form
       // says so and shows the text directly. Exactly one of those, never neither.
       const c1Editor = page.locator('[data-condition-id="C1"]');
-      const advancedRadio = c1Editor.getByLabel('Advanced — write the expression');
+      const advancedRadio = c1Editor.getByLabel('Write it out myself');
       const hasSimple = (await advancedRadio.count()) > 0;
       expect(hasSimple || (await c1Editor.locator('[data-simple-unavailable]').count()) > 0).toBe(true);
       if (hasSimple) await advancedRadio.check();
-      await expect(page.getByLabel('Condition text C1', { exact: true })).toBeVisible();
-      await expect(page.getByLabel('Agent-Judged confidence threshold')).toHaveValue('0.80');
+      await expect(page.getByLabel('Rule text C1', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('How certain the agent must be')).toHaveValue('0.80');
       await expect(page.locator('[data-condition-id="C1"]').getByText('Rule-Classified', { exact: true })).toBeVisible();
       if (template.id === 'P-1') {
         await expect(page.locator('[data-condition-id="C2"]').getByText('Agent-Judged (pending)', { exact: true })).toBeVisible();
-        await expect(page.getByLabel('Applicability C1', { exact: true })).toHaveValue('all records');
-        await expect(page.getByLabel('Applicability C2', { exact: true })).toHaveValue('found = true');
+        await expect(page.getByLabel('Applies to C1', { exact: true })).toHaveValue('all records');
+        await expect(page.getByLabel('Applies to C2', { exact: true })).toHaveValue('found = true');
       }
       await expect(page.getByLabel('Frequency')).toBeVisible();
-      await expect(page.getByLabel('Fixed UTC start time')).toBeVisible();
+      await expect(page.getByLabel('Start time (UTC)')).toBeVisible();
       if (template.id === 'P-1') {
-        await expect(page.getByLabel('Attribute name').first()).toBeVisible();
+        await expect(page.getByLabel('What to record').first()).toBeVisible();
       }
-      await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(2);
+      // Said once, over the one panel that carries both Template sections, and the panel
+      // has nothing to edit in it.
+      await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(1);
       const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE });
       await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
-      // The Control section says where its editable half is, exactly once, and the
-      // Objective — which has no editable half — does not repeat it.
+      // The Control says where its editable half is, exactly once, and the Objective —
+      // which has no editable half — does not repeat it.
       await expect(page.getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE)).toHaveCount(1);
       await expect(
-        page.locator('.ls-card').filter({ hasText: 'Objective' }).getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE),
+        page
+          .locator('.ls-template-fact')
+          .filter({ hasText: 'Objective' })
+          .getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE),
       ).toHaveCount(0);
 
       // The Builder forms are real forms and post. Story 2.3 added a second one (the
@@ -334,38 +358,38 @@ test.describe('as an Auditor', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await scan(page);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
-    await page.getByLabel('Population Source', { exact: true }).selectOption(manualId);
+    await page.getByLabel('Where the records come from').selectOption(manualId);
     // P-1 starts weekly. The selected upload immediately shows the pairing warning,
     // and saving remains available because it is a completeness blocker.
     await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(1);
-    await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
+    await page.getByRole('button', { name: 'Save records to test', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
 
     // Saving a recurring Schedule now surfaces the pairing as a completeness blocker on
     // BOTH sections, never as a refusal on either.
     await page.getByLabel('Frequency').selectOption('weekly');
-    await page.getByLabel('Fixed UTC start time').fill('02:00');
+    await page.getByLabel('Start time (UTC)').fill('02:00');
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.')).toBeVisible();
     await page.reload();
     await expect(page.getByText(MANUAL_UPLOAD_SENTENCE, { exact: true })).toHaveCount(2);
 
-    await page.getByLabel('Population Source', { exact: true }).selectOption(sourceId);
+    await page.getByLabel('Where the records come from').selectOption(sourceId);
     await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Declared column 2')).toHaveValue('termination_effective_date');
-    await page.getByLabel('Permit a zero-record Pass').check();
-    await page.getByRole('button', { name: 'Save Population Source binding', exact: true }).click();
+    await expect(page.getByLabel('Field 2')).toHaveValue('termination_effective_date');
+    await page.getByLabel('Let this procedure pass when no records match').check();
+    await page.getByRole('button', { name: 'Save records to test', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     // The Banner arrives with the command's answer; reload only after persistence.
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.')).toBeVisible();
     await page.reload();
     await expect(page.getByLabel('Period start')).toHaveValue('2026-08-01');
     await expect(page.getByLabel('Scope statement')).toHaveValue('  All terminated staff in August.  ');
-    await expect(page.getByLabel('Population Source', { exact: true })).toHaveValue('retain');
-    await expect(page.getByLabel('Permit a zero-record Pass')).toBeChecked();
-    await expect(page.getByLabel('Permit versioned duplicate primary keys')).not.toBeChecked();
+    await expect(page.getByLabel('Where the records come from')).toHaveValue('retain');
+    await expect(page.getByLabel('Let this procedure pass when no records match')).toBeChecked();
+    await expect(page.getByLabel('Allow the same record to appear more than once')).not.toBeChecked();
     await expect(page.getByText(DECLARED_COUNT_MISSING_SENTENCE, { exact: true })).toBeVisible();
     // The bound source is now versioned-file, so the upload/frequency blocker is gone —
     // it moves with the CURRENT binding kind, not the one that once triggered it.
@@ -386,15 +410,15 @@ test.describe('as an Auditor', () => {
     await expect(page).toHaveURL(/\/procedures\/[^/]+\/builder$/);
     await expect(page).toHaveTitle('Builder · IntelliFin Audit');
     const c1 = page.locator('[data-condition-id="C1"]');
-    const c1Text = page.getByLabel('Condition text C1', { exact: true });
-    const applicability = page.getByLabel('Applicability C1', { exact: true });
-    const threshold = page.getByLabel('Agent-Judged confidence threshold');
+    const c1Text = page.getByLabel('Rule text C1', { exact: true });
+    const applicability = page.getByLabel('Applies to C1', { exact: true });
+    const threshold = page.getByLabel('How certain the agent must be');
     await expect(c1.getByText('Rule-Classified', { exact: true })).toBeVisible();
 
     // No prior compiled badge may survive an unsupported prose edit. Retrying this
     // first interaction covers a fill that arrives before React hydration completes.
     const prose = '  Check whether this account has a justified business need.  ';
-    await c1.getByLabel('Advanced — write the expression').check();
+    await c1.getByLabel('Write it out myself').check();
     await expect(async () => {
       await c1Text.fill(prose);
       await c1Text.blur();
@@ -422,16 +446,16 @@ test.describe('as an Auditor', () => {
 
     // Add is keyboard reachable and puts focus in the new condition. Its stable id
     // survives deletion of an earlier row, saves, and a server reload.
-    const add = page.getByRole('button', { name: 'Add condition', exact: true });
+    const add = page.getByRole('button', { name: 'Add a rule', exact: true });
     await add.focus();
     await page.keyboard.press('Enter');
     const added = page.locator('[data-condition-id]').last();
     const addedId = await added.getAttribute('data-condition-id');
     expect(addedId).toBeTruthy();
-    await expect(added.getByRole('textbox', { name: /^Condition text/ })).toBeFocused();
-    await added.getByRole('textbox', { name: /^Condition text/ }).fill('account_status in [disabled] else [active]');
+    await expect(added.getByRole('textbox', { name: /^Rule text/ })).toBeFocused();
+    await added.getByRole('textbox', { name: /^Rule text/ }).fill('account_status in [disabled] else [active]');
     await expect(added.getByText('Rule-Classified', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Remove condition C2', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove rule C2', exact: true }).click();
     await expect(page.locator('[data-condition-id="C2"]')).toHaveCount(0);
 
     // The reverse direction matters too: a Compliance Rule save must retain dirty
@@ -464,8 +488,8 @@ test.describe('as an Auditor', () => {
     const added2 = page.locator(`[data-condition-id="${addedId}"]`);
     await expect(added2.getByLabel(/^Values that count as Compliant/)).toHaveValue('disabled');
     await expect(added2.getByLabel(/^Values that count as an Exception/)).toHaveValue('active');
-    await added2.getByLabel('Advanced — write the expression').check();
-    await expect(added2.getByRole('textbox', { name: /^Condition text/ })).toHaveValue('account_status in [disabled] else [active]');
+    await added2.getByLabel('Write it out myself').check();
+    await expect(added2.getByRole('textbox', { name: /^Rule text/ })).toHaveValue('account_status in [disabled] else [active]');
     await expect(page.locator('[data-condition-id="C2"]')).toHaveCount(0);
     await expect(page.getByLabel('Scope statement')).toHaveValue('Unsaved August scope');
     await scan(page);
@@ -485,13 +509,13 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E comparison control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    const boundary = page.getByLabel('Comparison boundary C1', { exact: true });
-    const amount = page.getByLabel('Comparison threshold C1', { exact: true });
-    const tolerance = page.getByLabel('Numeric tolerance C1', { exact: true });
+    const boundary = page.getByLabel('A record exactly at the limit C1', { exact: true });
+    const amount = page.getByLabel('Limit C1', { exact: true });
+    const tolerance = page.getByLabel('Allowed difference C1', { exact: true });
     await expect(boundary).toHaveValue('inclusive');
     await expect(amount).toHaveValue('100000');
     await expect(tolerance).toHaveValue('0');
-    await expect(page.getByLabel('Applicability C1', { exact: true })).toHaveValue('all records');
+    await expect(page.getByLabel('Applies to C1', { exact: true })).toHaveValue('all records');
     await expect(async () => {
       await amount.fill('1e5');
       await amount.blur();
@@ -510,8 +534,8 @@ test.describe('as an Auditor', () => {
     await expect(tolerance).toHaveValue('0.0100');
 
     // The P-3 comparison edit must not change the separate Population inclusion rule.
-    await expect(page.getByLabel('Comparison value 2')).toHaveValue('100000');
-    await expect(page.getByLabel('Decimal operator 2')).toHaveValue('gte');
+    await expect(page.getByLabel('Value 2')).toHaveValue('100000');
+    await expect(page.getByLabel('Test 2')).toHaveValue('decimal:gte');
 
     await page.goto('/procedures/new');
     await page.getByLabel('Template').selectOption('P-1');
@@ -526,12 +550,12 @@ test.describe('as an Auditor', () => {
     await expect(page.locator('[data-window-condition]')).toHaveCount(0);
     await page.getByRole('button', { name: 'Add the 24-hour disablement window', exact: true }).click();
     const c3 = page.locator('[data-condition-id="C3"]');
-    await expect(c3.getByLabel('Condition text C3', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
+    await expect(c3.getByLabel('Rule text C3', { exact: true })).toHaveValue('disabled_time - termination_time <= 24h');
     await expect(c3.getByText('Rule-Classified', { exact: true })).toBeVisible();
     await expect(page.locator('[data-window-condition="C3"]')).toBeVisible();
-    const hours = page.getByLabel('Comparison threshold C3', { exact: true });
-    const windowBoundary = page.getByLabel('Comparison boundary C3', { exact: true });
-    const windowTolerance = page.getByLabel('Numeric tolerance C3', { exact: true });
+    const hours = page.getByLabel('Limit C3', { exact: true });
+    const windowBoundary = page.getByLabel('A record exactly at the limit C3', { exact: true });
+    const windowTolerance = page.getByLabel('Allowed difference C3', { exact: true });
     await expect(hours).toHaveValue('24');
     await expect(windowBoundary).toHaveValue('inclusive');
     await windowTolerance.fill('0.001');
@@ -557,36 +581,36 @@ test.describe('as an Auditor', () => {
     // P-1's structured defaults are platform-captured: no agent-driven Target System is
     // selected yet, so nothing here starts platform-captured, but the Template still
     // seeds three attributes.
-    const attributeNames = page.getByLabel('Attribute name');
+    const attributeNames = page.getByLabel('What to record');
     await expect(attributeNames).toHaveCount(3);
 
     // The grounding rule: a screenshot or a recording segment alone never grounds an
     // attribute value.
-    const first = page.locator('fieldset', { hasText: 'Evidence Requirement 1' });
-    await first.getByLabel('Structural Snapshot').uncheck();
-    await first.getByLabel('Source file excerpt').uncheck();
+    const first = page.locator('fieldset', { hasText: 'Evidence item 1' });
+    await first.getByLabel('A saved copy of the page it was read from').uncheck();
+    await first.getByLabel('The lines of the source file it came from').uncheck();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText(/Attribute "username": Ground every attribute value/)).toBeVisible();
 
     // Declaring model-read exempts it from deterministic grounding.
-    await first.getByLabel('Declare model-read (exempt from deterministic grounding)').check();
+    await first.getByLabel('Accept a reading with no saved proof behind it').check();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.reload();
-    await expect(first.getByLabel('Declare model-read (exempt from deterministic grounding)')).toBeChecked();
-    await expect(first.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(first.getByLabel('Accept a reading with no saved proof behind it')).toBeChecked();
+    await expect(first.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
 
     // Adding a new Evidence Requirement is keyboard reachable and focuses its name field.
-    const add = page.getByRole('button', { name: 'Add Evidence Requirement', exact: true });
+    const add = page.getByRole('button', { name: 'Add an evidence item', exact: true });
     await add.focus();
     await page.keyboard.press('Enter');
-    const added = page.getByLabel('Attribute name').last();
+    const added = page.getByLabel('What to record').last();
     await expect(added).toBeFocused();
     await added.fill(' USERNAME ');
-    const addedFieldset = page.locator('fieldset', { hasText: 'Evidence Requirement 4' });
-    await addedFieldset.getByLabel('Source file excerpt').check();
+    const addedFieldset = page.locator('fieldset', { hasText: 'Evidence item 4' });
+    await addedFieldset.getByLabel('The lines of the source file it came from').check();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(addedFieldset.getByText(/An attribute can appear only once/)).toBeVisible();
@@ -594,13 +618,13 @@ test.describe('as an Auditor', () => {
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel('Attribute name')).toHaveCount(4);
-    const stableId = await page.getByLabel('Attribute name').nth(1).getAttribute('id');
-    await page.getByRole('button', { name: 'Remove Evidence Requirement 1', exact: true }).click();
-    await expect(page.getByLabel('Attribute name').first()).toHaveAttribute('id', stableId!);
-    await expect(page.getByLabel('Attribute name').first()).toBeFocused();
+    await expect(page.getByLabel('What to record')).toHaveCount(4);
+    const stableId = await page.getByLabel('What to record').nth(1).getAttribute('id');
+    await page.getByRole('button', { name: 'Remove evidence item 1', exact: true }).click();
+    await expect(page.getByLabel('What to record').first()).toHaveAttribute('id', stableId!);
+    await expect(page.getByLabel('What to record').first()).toBeFocused();
     for (let count = 3; count > 0; count -= 1) {
-      await page.getByRole('button', { name: `Remove Evidence Requirement ${count}`, exact: true }).click();
+      await page.getByRole('button', { name: `Remove evidence item ${count}`, exact: true }).click();
     }
     await expect(add).toBeFocused();
     await page.reload();
@@ -608,18 +632,18 @@ test.describe('as an Auditor', () => {
     // The Schedule: a frequency, a fixed UTC start, and the recorded period-derivation
     // rule — this Procedure Version records it and never runs it.
     await page.getByLabel('Frequency').selectOption('daily');
-    await page.getByLabel('Fixed UTC start time').fill('06:00');
+    await page.getByLabel('Start time (UTC)').fill('06:00');
     await expect(page.getByText('Period covered: Previous calendar day, in UTC.')).toBeVisible();
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.getByLabel('Frequency').selectOption('');
     await page.getByLabel('Frequency').blur();
     await expect(page.getByLabel('Frequency')).toHaveAttribute('aria-invalid', 'true');
-    await expect(page.getByLabel('Fixed UTC start time')).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByLabel('Start time (UTC)')).not.toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toHaveCount(0);
     await page.reload();
     await expect(page.getByLabel('Frequency')).toHaveValue('daily');
-    await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('06:00');
+    await expect(page.getByLabel('Start time (UTC)')).toHaveValue('06:00');
     await scan(page);
   });
 
@@ -631,12 +655,12 @@ test.describe('as an Auditor', () => {
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByLabel('Frequency').selectOption('daily');
-    await page.getByLabel('Fixed UTC start time').fill('06:00');
+    await page.getByLabel('Start time (UTC)').fill('06:00');
     await page.getByLabel('New Control name').fill(`E2E schedule refresh renamed ${stamp}`);
     await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: `E2E schedule refresh renamed ${stamp}` })).toBeVisible();
     await expect(page.getByLabel('Frequency')).toHaveValue('daily');
-    await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('06:00');
+    await expect(page.getByLabel('Start time (UTC)')).toHaveValue('06:00');
 
     let committed!: () => void;
     const committedResponse = new Promise<void>((resolve) => { committed = resolve; });
@@ -653,10 +677,10 @@ test.describe('as an Auditor', () => {
     try {
       await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
       await committedResponse;
-      await page.getByLabel('Fixed UTC start time').fill('07:00');
+      await page.getByLabel('Start time (UTC)').fill('07:00');
       release();
       await expect(page.getByRole('button', { name: 'Save Schedule', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
-      await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('07:00');
+      await expect(page.getByLabel('Start time (UTC)')).toHaveValue('07:00');
       await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.')).toHaveCount(0);
     } finally { release(); await page.unroute(builderUrl); }
 
@@ -672,7 +696,7 @@ test.describe('as an Auditor', () => {
     await expect(page.getByRole('button', { name: 'Save Schedule', exact: true })).toHaveAttribute('aria-disabled', 'true');
     await page.unroute(builderUrl);
     await page.getByRole('button', { name: 'Reload saved version' }).click();
-    await expect(page.getByLabel('Fixed UTC start time')).toHaveValue('07:00');
+    await expect(page.getByLabel('Start time (UTC)')).toHaveValue('07:00');
     await expect(page.getByLabel('Frequency')).toHaveValue('daily');
     await scan(page);
   });
@@ -697,54 +721,54 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E capture ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    const first = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence Requirement 1$/ }) });
-    await first.getByLabel('Structural Snapshot').uncheck();
+    const first = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 1$/ }) });
+    await first.getByLabel('A saved copy of the page it was read from').uncheck();
     await first.getByLabel('Screenshot', { exact: true }).uncheck();
-    await first.getByLabel('Declare model-read (exempt from deterministic grounding)').check();
-    await first.getByLabel('Attribute name').fill('retained_name');
-    await page.getByLabel('Add a Target System').selectOption(webId);
+    await first.getByLabel('Accept a reading with no saved proof behind it').check();
+    await first.getByLabel('What to record').fill('retained_name');
+    await page.getByLabel('Add a system').selectOption(webId);
     await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
     await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
-    await expect(first.getByLabel('Attribute name')).toHaveValue('retained_name');
-    await expect(first.getByLabel('Structural Snapshot')).toBeDisabled();
-    await expect(first.getByLabel('Structural Snapshot')).toBeChecked();
-    await expect(first.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeChecked();
-    await expect(first.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeDisabled();
-    await page.getByRole('button', { name: 'Add Evidence Requirement', exact: true }).click();
-    const addedCapture = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence Requirement 4$/ }) });
-    await addedCapture.getByLabel('Attribute name').fill('capture_note');
-    await expect(addedCapture.getByLabel('Structural Snapshot')).toBeChecked();
-    await expect(addedCapture.getByLabel('Structural Snapshot')).toBeDisabled();
-    await expect(addedCapture.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeChecked();
-    await expect(addedCapture.getByLabel('Screenshot (platform-captured)', { exact: true })).toBeDisabled();
+    await expect(first.getByLabel('What to record')).toHaveValue('retained_name');
+    await expect(first.getByLabel('A saved copy of the page it was read from')).toBeDisabled();
+    await expect(first.getByLabel('A saved copy of the page it was read from')).toBeChecked();
+    await expect(first.getByLabel('Screenshot of the page (always kept for a system the agent drives)', { exact: true })).toBeChecked();
+    await expect(first.getByLabel('Screenshot of the page (always kept for a system the agent drives)', { exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Add an evidence item', exact: true }).click();
+    const addedCapture = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 4$/ }) });
+    await addedCapture.getByLabel('What to record').fill('capture_note');
+    await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).toBeChecked();
+    await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).toBeDisabled();
+    await expect(addedCapture.getByLabel('Screenshot of the page (always kept for a system the agent drives)', { exact: true })).toBeChecked();
+    await expect(addedCapture.getByLabel('Screenshot of the page (always kept for a system the agent drives)', { exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     // A reload and an unrelated evidence edit must not turn forced capture into authorship.
     await page.reload();
-    await addedCapture.getByLabel('Attribute name').fill('capture_note_edited');
+    await addedCapture.getByLabel('What to record').fill('capture_note_edited');
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Remove Capture web ${stamp}`, exact: true }).click();
-    await page.getByLabel('Add a Target System').selectOption(apiId);
+    await page.getByLabel('Add a system').selectOption(apiId);
     await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
     await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
-    await expect(first.getByLabel('Structural Snapshot')).toBeEnabled();
-    await expect(first.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(first.getByLabel('A saved copy of the page it was read from')).toBeEnabled();
+    await expect(first.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
     await expect(first.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
     await expect(first.getByLabel('Screenshot', { exact: true })).toBeEnabled();
-    await expect(first.getByLabel('Attribute name')).toHaveValue('retained_name');
+    await expect(first.getByLabel('What to record')).toHaveValue('retained_name');
     await page.reload();
-    await expect(first.getByLabel('Declare model-read (exempt from deterministic grounding)')).toBeChecked();
-    await expect(first.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(first.getByLabel('Accept a reading with no saved proof behind it')).toBeChecked();
+    await expect(first.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
     await expect(first.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
-    await expect(addedCapture.getByLabel('Structural Snapshot')).not.toBeChecked();
+    await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
     await expect(addedCapture.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
-    const authored = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence Requirement 2$/ }) });
-    await expect(authored.getByLabel('Structural Snapshot')).toBeChecked();
+    const authored = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 2$/ }) });
+    await expect(authored.getByLabel('A saved copy of the page it was read from')).toBeChecked();
     await expect(authored.getByLabel('Screenshot', { exact: true })).toBeChecked();
-    await addedCapture.getByLabel('Source file excerpt').check();
+    await addedCapture.getByLabel('The lines of the source file it came from').check();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
     await scan(page);
@@ -774,7 +798,7 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E targets control ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    await expect(page.getByLabel('Add a Target System')).toBeVisible();
+    await expect(page.getByLabel('Add a system')).toBeVisible();
 
     // Template guidance is visible, but no registration is selected or silently inferred.
     await expect(page.getByText('LoanCore (web)')).toBeVisible();
@@ -791,7 +815,7 @@ test.describe('as an Auditor', () => {
     await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
 
     // Select LoanCore (web); the section shows its credential reference and frozen digest.
-    await page.getByLabel('Add a Target System').selectOption(webId);
+    await page.getByLabel('Add a system').selectOption(webId);
     await page.getByRole('button', { name: 'Add Target System' }).click();
     // `li.ls-card`, not `.ls-card`: the selected systems are list items INSIDE the
     // section's own `.ls-card`, so the bare class matches the section as well as the
@@ -803,7 +827,7 @@ test.describe('as an Auditor', () => {
     await expect(page.getByText(targetCoverageMissing('web'))).toHaveCount(0);
     await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
 
-    await page.getByLabel('Add a Target System').selectOption(desktopId);
+    await page.getByLabel('Add a system').selectOption(desktopId);
     await page.getByRole('button', { name: 'Add Target System' }).click();
     await expect(page.getByText(targetCoverageMissing('desktop'))).toHaveCount(0);
 

@@ -78,17 +78,38 @@ async function fillForm(
   },
 ): Promise<void> {
   await page.getByLabel('Display name').fill(options.name);
-  await page.getByLabel('Binding kind').selectOption(options.kind);
+  await page.getByLabel('How the records arrive').selectOption(options.kind);
   if (options.kind !== 'manual-upload') {
-    await page.getByLabel('Location').fill(options.location ?? '');
+    await page.getByLabel('Where to find it').fill(options.location ?? '');
   }
-  await page.getByLabel('Declared schema').fill(options.schema);
-  await page.getByLabel('Declared-count mechanism').selectOption(options.mechanism);
-  await page.getByLabel('Sensitive fields (optional)').fill(options.sensitive ?? '');
+  await page.getByLabel('Fields this source provides').fill(options.schema);
+  await page.getByLabel('How the record count is confirmed').selectOption(options.mechanism);
+  if (options.sensitive !== undefined && options.sensitive !== '') {
+    // The rarely-set fields are behind a disclosure on the create form, which is the
+    // point of the rewrite: the ordinary path is name it, say how records arrive, say
+    // where they are, list the fields, save. A person opens this the same way.
+    await revealMoreOptions(page);
+    await page.getByLabel('Fields to hide in lists').fill(options.sensitive);
+  }
+}
+
+/**
+ * Open the "More options" disclosure on whichever form is on screen.
+ *
+ * Idempotent, because the create form closes it on every page load and the change form
+ * opens it: a blind click would close the one it was meant to open.
+ */
+async function revealMoreOptions(page: Page): Promise<void> {
+  const disclosure = page
+    .locator('form.ls-admin__form details.ls-disclosure')
+    .filter({ has: page.locator('summary', { hasText: 'More options' }) })
+    .first();
+  if (await disclosure.evaluate((element) => (element as HTMLDetailsElement).open)) return;
+  await disclosure.locator('summary').click();
 }
 
 /** Submit the create form and confirm it in the dialog. */
-async function submitAndConfirm(page: Page, label: 'Register binding' | 'Save changes') {
+async function submitAndConfirm(page: Page, label: 'Register source' | 'Save changes') {
   await page.getByRole('button', { name: label }).click();
   await page.getByRole('dialog').getByRole('button', { name: label }).click();
 }
@@ -119,12 +140,12 @@ test.describe('as a PoC Administrator', () => {
       sensitive: 'salary',
     });
 
-    await page.getByRole('button', { name: 'Register binding' }).click();
+    await page.getByRole('button', { name: 'Register source' }).click();
 
     // The dialog stands between the click and the change, and states the consequence.
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('reconciles the rows it read against the declared count');
+    await expect(dialog).toContainText('checks the count it was given');
     // No Procedure exists yet, so the draft warning must NOT appear: "a draft for 0
     // Procedures" is a sentence that cannot be true.
     await expect(dialog).not.toContainText('platform-authored draft');
@@ -145,7 +166,7 @@ test.describe('as a PoC Administrator', () => {
       mechanism: 'cover-sheet',
       sensitive: 'salary',
     });
-    await submitAndConfirm(page, 'Register binding');
+    await submitAndConfirm(page, 'Register source');
 
     await expect(page.locator('.ls-banner--success')).toContainText(
       `Registered ${versionedName}.`,
@@ -158,7 +179,7 @@ test.describe('as a PoC Administrator', () => {
     // And what it froze is beside it: the location, the schema and the masked field.
     await expect(row).toContainText('s3://synthetic-bucket/hr/leavers/2026-08.csv');
     await expect(row).toContainText('termination_date');
-    await expect(row).toContainText('Signed cover sheet');
+    await expect(row).toContainText('A signed cover sheet');
   });
 
   test('registers a read-only API, and its digest differs from the file binding', async ({
@@ -172,7 +193,7 @@ test.describe('as a PoC Administrator', () => {
       schema: 'account_id\nowner\nstatus',
       mechanism: 'count-endpoint',
     });
-    await submitAndConfirm(page, 'Register binding');
+    await submitAndConfirm(page, 'Register source');
     await expect(page.locator('.ls-banner--success')).toContainText(`Registered ${apiName}.`);
 
     await page.reload();
@@ -183,8 +204,8 @@ test.describe('as a PoC Administrator', () => {
     expect(apiDigest).toMatch(/^[0-9a-f]{64}$/);
     // Two different contracts freeze two different numbers.
     expect(apiDigest).not.toBe(fileDigest);
-    await expect(apiRow).toContainText('Count endpoint');
-    await expect(apiRow).toContainText('None designated');
+    await expect(apiRow).toContainText('The system reports its own total');
+    await expect(apiRow).toContainText('No fields are hidden.');
   });
 
   test('marks a manual upload upload-only and states the `once` restriction', async ({ page }) => {
@@ -194,13 +215,13 @@ test.describe('as a PoC Administrator', () => {
     // open on `manual-upload`: they could not fail from the branch they name. The
     // starting state is asserted first, so the change is what is being tested.
     const uploadNotice = page.locator('.ls-banner--info');
-    await expect(page.getByLabel('Location')).toBeVisible();
+    await expect(page.getByLabel('Where to find it')).toBeVisible();
     await expect(uploadNotice).toHaveCount(0);
 
-    await page.getByLabel('Binding kind').selectOption('manual-upload');
+    await page.getByLabel('How the records arrive').selectOption('manual-upload');
     // A manual upload names nowhere: the file arrives with the Run, so the field is gone
     // rather than present and ignored.
-    await expect(page.getByLabel('Location')).toHaveCount(0);
+    await expect(page.getByLabel('Where to find it')).toHaveCount(0);
 
     // The restriction is stated where it can still be acted on. FR-6 and AD-23: the
     // Builder enforces it in Epic 2, but nobody should first learn about it from somebody
@@ -214,12 +235,12 @@ test.describe('as a PoC Administrator', () => {
       mechanism: 'cover-sheet',
       sensitive: 'amount',
     });
-    await submitAndConfirm(page, 'Register binding');
+    await submitAndConfirm(page, 'Register source');
     await expect(page.locator('.ls-banner--success')).toContainText(`Registered ${uploadName}.`);
 
     await page.reload();
     const row = page.getByRole('row', { name: new RegExp(uploadName) });
-    await expect(row).toContainText('Manual upload');
+    await expect(row).toContainText('Uploaded by hand each time');
     await expect(row).toContainText('valid only for a `once` Schedule');
     // The location cell says what it means rather than being empty, which a reader takes
     // for a missing value.
@@ -241,7 +262,7 @@ test.describe('as a PoC Administrator', () => {
     const warning = page.locator('.ls-banner--warning');
     await expect(warning).toContainText('Population Source must declare an expected record count.');
 
-    await submitAndConfirm(page, 'Register binding');
+    await submitAndConfirm(page, 'Register source');
     // Saved, not refused. The absence has to be visible somewhere a person can close it,
     // and a binding that does not exist shows nobody anything.
     await expect(page.locator('.ls-banner--success')).toContainText(`Registered ${noCountName}.`);
@@ -249,7 +270,7 @@ test.describe('as a PoC Administrator', () => {
     await page.reload();
     const row = page.getByRole('row', { name: new RegExp(noCountName) });
     await expect(row).toBeVisible();
-    await expect(row).toContainText('None declared');
+    await expect(row).toContainText('Nothing confirms it');
     await expect(row).toContainText('Population Source must declare an expected record count.');
   });
 
@@ -265,7 +286,7 @@ test.describe('as a PoC Administrator', () => {
       mechanism: 'cover-sheet',
       sensitive: 'salary',
     });
-    await submitAndConfirm(page, 'Register binding');
+    await submitAndConfirm(page, 'Register source');
 
     await expect(page.locator('main#content').getByRole('alert')).toHaveText(
       'A sensitive field must be one of the declared schema fields.',
@@ -290,19 +311,19 @@ test.describe('as a PoC Administrator', () => {
     // A display name is not one of the five.
     await page.getByLabel('Display name').fill(`${versionedName} renamed`);
     await submitAndConfirm(page, 'Save changes');
-    await expect(page.locator('.ls-banner--success')).toContainText('The digest did not change');
+    await expect(page.locator('.ls-banner--success')).toContainText('The fingerprint did not change');
     await page.reload();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).toHaveText(before);
 
     // Reordering the declared schema IS a change: a schema declares field positions, and a
     // parser told the other order reads the wrong column.
     await page
-      .getByLabel('Declared schema')
+      .getByLabel('Fields this source provides')
       .fill('salary\nemployee_id\nemployment_status\ntermination_date');
     await submitAndConfirm(page, 'Save changes');
     // The specific sentence, not a phrase both messages share: "recorded in the audit
     // chain" appears on the annotated path too, so this would pass with nothing published.
-    await expect(page.locator('.ls-banner--success')).toContainText('The digest is now ');
+    await expect(page.locator('.ls-banner--success')).toContainText('The fingerprint is now ');
     await page.reload();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).not.toHaveText(before);
   });
@@ -317,8 +338,8 @@ test.describe('as a PoC Administrator', () => {
     // The two Banners are the only markup this story adds that the registrations surface
     // does not have, so they get their own scan rather than relying on the default state.
     await page.goto('/administration/sources');
-    await page.getByLabel('Binding kind').selectOption('manual-upload');
-    await page.getByLabel('Declared-count mechanism').selectOption('none');
+    await page.getByLabel('How the records arrive').selectOption('manual-upload');
+    await page.getByLabel('How the record count is confirmed').selectOption('none');
     await expect(page.locator('.ls-banner--warning')).toBeVisible();
     await expect(page.locator('.ls-banner--info')).toBeVisible();
     await scan(page);
@@ -335,7 +356,7 @@ test.describe('as a PoC Administrator', () => {
       schema: 'row_id',
       mechanism: 'cover-sheet',
     });
-    await page.getByRole('button', { name: 'Register binding' }).click();
+    await page.getByRole('button', { name: 'Register source' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await scan(page);
   });
@@ -353,7 +374,7 @@ test.describe('as an Auditor', () => {
     // Not the list, not the form, not one location, field name or digest.
     await expect(page.getByRole('table')).toHaveCount(0);
     await expect(
-      page.getByRole('heading', { name: 'Register a Population Source binding' }),
+      page.getByRole('heading', { name: 'Add a population source' }),
     ).toHaveCount(0);
     await expect(page.getByText(versionedName)).toHaveCount(0);
     await expect(page.getByText('s3://')).toHaveCount(0);

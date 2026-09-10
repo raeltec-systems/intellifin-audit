@@ -11,7 +11,7 @@ import { requireServerAction } from '../../../../src/server-session';
 import { changeRegistrationAction } from '../actions';
 
 export const metadata: Metadata = {
-  title: 'Target System registration · IntelliFin Audit',
+  title: 'Target system · IntelliFin Audit',
 };
 
 /** The role is read per request; this surface can never be cached (AD-7). */
@@ -38,7 +38,7 @@ export default async function RegistrationPage({
   if (!decision.allowed) {
     return (
       <div className="ls-stack">
-        <h1>Target System registration</h1>
+        <h1>Target system</h1>
         <Banner tone="danger" title={decision.reason} />
       </div>
     );
@@ -58,10 +58,10 @@ export default async function RegistrationPage({
       <header className="ls-page-header">
         <h1>{registration.displayName}</h1>
         <p>
-          Changing the origin, application identity, credential reference, permitted
-          actions, label patterns or secondary key recomputes the registration digest and
-          is recorded in the audit chain. Changing the name, the note or the status is
-          recorded too, under an event that affects no Procedure.
+          Changing what the agent may reach or do here gives this system a new
+          fingerprint, and every procedure that uses it needs approving again. Changing
+          only its name, note or status changes no procedure. Either way, the change is
+          recorded against your name.
         </p>
       </header>
       <RegistrationEditor

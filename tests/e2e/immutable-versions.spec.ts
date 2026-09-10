@@ -6,7 +6,20 @@ import { deriveExecutablePlan, registrationDigest, snapshotFromRegistration } fr
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { READ_ONLY_CREDENTIAL } from './credentials';
 import { AUTH_STATE, ACCOUNTS, assertThrowawayDatabase } from './accounts';
+import { keepBuilderStepsOpen } from './builder';
 test.use({ storageState: AUTH_STATE.auditor });
+
+/**
+ * Keep the Builder's steps open for this file.
+ *
+ * The Builder is a list of questions whose answered steps start closed. This file's
+ * subject is what is INSIDE those steps, so it opens them all rather than clicking a
+ * disclosure before every assertion; the disclosure itself is proved by "the Builder
+ * opens as a short list of questions" in `procedures.spec.ts`, which runs without this.
+ */
+test.beforeEach(async ({ page }) => {
+  await keepBuilderStepsOpen(page);
+});
 
 test('all Procedure Detail states remain visible and New version is keyboard accessible',async({page,browser,baseURL})=>{
   test.setTimeout(180000);

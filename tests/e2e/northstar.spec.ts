@@ -80,9 +80,9 @@ test.afterAll(async () => {
 async function registerSystem(page: Page, name: string, origin: string): Promise<void> {
   await page.goto('/administration/registrations');
   await page.getByLabel('Display name').fill(name);
-  await page.getByLabel('System kind').selectOption('web');
-  await page.getByLabel('Allowed origins').fill(origin);
-  await page.getByLabel('Credential reference').fill(READ_ONLY_CREDENTIAL);
+  await page.getByLabel('What kind of system is it').selectOption('web');
+  await page.getByLabel('Web addresses the agent may open').fill(origin);
+  await page.getByLabel('Which stored credential to use').fill(READ_ONLY_CREDENTIAL);
   await page.getByRole('checkbox', { name: 'Navigate' }).check();
   await page.getByRole('checkbox', { name: 'Read an attribute' }).check();
   await page.getByRole('button', { name: 'Register system' }).click();

@@ -1,21 +1,35 @@
+import { isDraftSectionHeading, type DraftSectionHeading } from '@intellifin/domain';
+import type { ProcedureVersionView } from '@intellifin/application';
+
 import {
   BUILDER_CONTROL_NAME_EDITABLE_SENTENCE,
   BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE,
 } from '../design/copy';
+import { SECTION_WORDS, isTemplateOnly } from '../design/plain-words';
+import { BuilderStep } from './BuilderStep';
+import { builderProgress, sectionSummary } from './section-summary';
 
 /**
- * The Builder's sections, in EXPERIENCE.md's order (UX-DR8).
+ * The Builder, as a short list of questions instead of nine open forms.
  *
- * Seven sections carry an editor. The two that do not — Control and Objective — render
- * their pre-filled content read-only under the pinned sentence saying so, and the
- * Control section additionally names where its editable half lives. The headings are
- * the domain's `DRAFT_SECTION_HEADINGS`, so the Builder cannot show a section the
- * payload does not carry, nor hide one it does.
+ * It used to render every section expanded at once, each headed by the name the domain
+ * uses for what it freezes — "Population Source binding", "Compliance Rule conditions" —
+ * and each repeating the read-only sentence. An auditor arriving to set up one control
+ * met nine simultaneous forms in a vocabulary they had no reason to know. The owner's
+ * words for it were exact: "i cant understand a single word of whats happening here and
+ * what im expected to do".
  *
- * This is a server component on purpose: there is nothing to interact with here, and
- * both sentences are contract sentences imported from `copy.ts`, not retyped.
+ * So the two sections the Template writes are read ONCE at the top, as reference, and
+ * everything else becomes a numbered step that states what is currently set and opens
+ * only if it still needs an answer. The headings are still the domain's — they are the
+ * stored payload's own key set, validated on read — and {@link SECTION_WORDS} is the one
+ * place they become the question they answer.
+ *
+ * A step is a native `<details>`: it opens before hydration and with a keyboard, and a
+ * closed step still says what is inside it, so closing is never hiding.
  */
 export function BuilderSections({
+  draft,
   sections,
   periodScope,
   populationSource,
@@ -25,6 +39,7 @@ export function BuilderSections({
   evidenceRequirements,
   schedule,
 }: {
+  readonly draft: ProcedureVersionView;
   readonly sections: readonly { readonly heading: string; readonly content: string | null }[];
   readonly periodScope?: React.ReactNode;
   readonly populationSource?: React.ReactNode;
@@ -43,38 +58,101 @@ export function BuilderSections({
     'Evidence Requirements': evidenceRequirements,
     Schedule: schedule,
   };
+  const reference = sections.filter((section) => isTemplateOnly(section.heading));
+  const steps = sections.filter((section) => !isTemplateOnly(section.heading));
+  // `isDraftSectionHeading` is the guard, not a cast: the payload is validated on read,
+  // but a section whose heading this build does not know still has to render as itself
+  // rather than crash the page or borrow another section's words.
+  const known = steps.filter((section): section is { heading: DraftSectionHeading; content: string | null } =>
+    isDraftSectionHeading(section.heading),
+  );
+  const progress = builderProgress(
+    known.map((section) => section.heading),
+    draft,
+  );
   return (
     <div className="ls-stack">
-      {sections.map((section) => {
-        // `Object.hasOwn`, not a plain index: the heading is domain data, and a lookup
-        // keyed by it follows the standing guard rule.
-        const editor = Object.hasOwn(editors, section.heading) ? editors[section.heading] : undefined;
-        return (
-        <section key={section.heading} className="ls-card">
-          <h2 className="ls-card__title">{section.heading}</h2>
-          {editor ? editor : <>
-          {section.content === null ? (
-            // §C gives some Templates nothing for a section. An empty section says so in
-            // words — a blank panel reads as a rendering failure or as "fine".
-            <p className="ls-caption">The Template states nothing for this section.</p>
-          ) : (
-            <p className="ls-whitespace">{section.content}</p>
-          )}
-          {/*
-            Not `aria-hidden`. This sentence is the only thing that says the section is
-            read-only, so hiding it from assistive technology tells a screen-reader user
-            the opposite of what the page tells everyone else: they meet a section of
-            content with no indication that it cannot be edited. The repetition across
-            sections is the cost of saying it where it applies.
-          */}
-          <p className="ls-caption">{BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE}</p>
-          {section.heading === 'Control' ? (
-            <p className="ls-caption">{BUILDER_CONTROL_NAME_EDITABLE_SENTENCE}</p>
-          ) : null}
-          </>}
-        </section>
-        );
-      })}
+      <section className="ls-card ls-stack" aria-labelledby="builder-template">
+        <h2 className="ls-card__title" id="builder-template">
+          What this procedure tests
+        </h2>
+        {reference.map((section) => {
+          // `Object.hasOwn` is not needed — the list is filtered by `isTemplateOnly`,
+          // which is itself a membership test — but the words are read through a typed
+          // record, so a heading added to the Template-only pair without a word here
+          // fails to compile.
+          const words = isDraftSectionHeading(section.heading)
+            ? SECTION_WORDS[section.heading]
+            : { title: section.heading, question: '' };
+          return (
+            <div className="ls-template-fact" key={section.heading}>
+              <h3 className="ls-template-fact__title">{words.title}</h3>
+              {section.content === null ? (
+                // A Template that says nothing for a section says so in words. A blank
+                // panel reads as a rendering failure, or as "fine".
+                <p className="ls-caption">The Template does not state this.</p>
+              ) : (
+                <p className="ls-whitespace">{section.content}</p>
+              )}
+              {/*
+                Scoped to the Control section, and never `aria-hidden`: it is the only
+                sentence naming where the Control name is edited, and hiding it from
+                assistive technology would tell a screen-reader user the opposite of
+                what the page tells everyone else.
+              */}
+              {section.heading === 'Control' ? (
+                <p className="ls-caption">{BUILDER_CONTROL_NAME_EDITABLE_SENTENCE}</p>
+              ) : null}
+            </div>
+          );
+        })}
+        <p className="ls-caption">{BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE}</p>
+      </section>
+
+      <section className="ls-card ls-stack" aria-labelledby="builder-steps">
+        <h2 className="ls-card__title" id="builder-steps">
+          Set this up
+        </h2>
+        <p className="ls-caption" data-builder-progress>
+          {progress.done} of {progress.total} answered. Open a step to change it; a step
+          you have not answered is open already.
+        </p>
+        <ol className="ls-steps">
+          {known.map((section, index) => {
+            const summary = sectionSummary(section.heading, draft);
+            const words = SECTION_WORDS[section.heading];
+            const editor = Object.hasOwn(editors, section.heading)
+              ? editors[section.heading]
+              : undefined;
+            return (
+              <li key={section.heading}>
+                <BuilderStep
+                  number={index + 1}
+                  heading={section.heading}
+                  title={words.title}
+                  question={words.question}
+                  line={summary.line}
+                  state={summary.state}
+                  initiallyOpen={summary.state === 'todo'}
+                >
+                  {editor === undefined ? (
+                    section.content === null ? (
+                      <p className="ls-caption">The Template does not state this.</p>
+                    ) : (
+                      <>
+                        <p className="ls-whitespace">{section.content}</p>
+                        <p className="ls-caption">{BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE}</p>
+                      </>
+                    )
+                  ) : (
+                    editor
+                  )}
+                </BuilderStep>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
     </div>
   );
 }

@@ -41,7 +41,7 @@ describe('read-only executable plan preview', () => {
   });
   it('renders the stored execution meaning, provenance and timestamp without edit controls', () => {
     const html = render(view());
-    for (const label of ['Session Steps', 'Ordered Plan Steps', 'Observations to capture', 'Evidence and grounding', 'Conditions', 'Credential references', 'Execution limits', 'Rule-Classified', 'Re-derived', '2026-09-04T01:00:00Z', 'No model was used', 'vault://synthetic/prod', 'Compiled applicability']) expect(html).toContain(label);
+    for (const label of ['Session Steps', 'Ordered Plan Steps', 'Observations to capture', 'Evidence and grounding', 'Conditions', 'Sign-in credentials', 'Execution limits', 'Rule-Classified', 'Re-derived', '2026-09-04T01:00:00Z', 'No model was used', 'vault://synthetic/prod', 'Compiled applicability']) expect(html).toContain(label);
     expect(html).not.toMatch(/<(?:input|textarea|select|button|form)\b/);
   });
   it('hides stale plan details while re-deriving and states a failed attempt reason', () => {

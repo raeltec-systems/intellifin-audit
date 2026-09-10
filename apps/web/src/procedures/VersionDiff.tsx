@@ -1,16 +1,13 @@
 import { ExecutablePlanSchema } from '@intellifin/domain';
 import { ACTION_LABELS } from './plan-step-labels';
+import { frozenFieldWord } from '../design/plain-words';
 import type { JsonValue, VersionSectionDiff } from '@intellifin/domain';
-function label(value: string): string {
-  const special: Record<string,string> = { sourceSnapshot: 'Population Source', credential_ref: 'Credential reference', allowed_origins: 'Allowed origins or application identity', permitted_actions: 'Permitted read actions', applicabilityAst: 'Compiled applicability', rule: 'Compiled condition', status: 'Evaluation origin', policy: 'Role-privilege policy', rolesField: 'Roles field', privileged: 'Privileged roles', nonPrivileged: 'Known non-privileged roles', groundedBy: 'Grounding Evidence', modelRead: 'Read by the model', platformCaptured: 'Captured by the platform', zeroRecordPass: 'Permit a zero-record Pass', allowVersionedDuplicates: 'Permit versioned duplicate primary keys', from: 'Start date', to: 'End date' };
-  return special[value] ?? value.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_',' ').replace(/^./, c => c.toUpperCase());
-}
 function Value({ value }: { value: JsonValue }): React.JSX.Element {
   if (value === null) return <span>Not set</span>;
   if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>;
   if (typeof value !== 'object') return <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{value === 'RULE' ? 'Rule-Classified' : value === 'AGENT_JUDGED' ? 'Agent-Judged' : String(value)}</span>;
   if (Array.isArray(value)) return value.length ? <ul className="ls-stack">{value.map((entry,index) => <li key={index}><Value value={entry} /></li>)}</ul> : <span>None</span>;
-  return <dl className="ls-stack">{Object.entries(value).map(([key,entry]) => <div key={key}><dt><strong>{label(key)}</strong></dt><dd><Value value={entry} /></dd></div>)}</dl>;
+  return <dl className="ls-stack">{Object.entries(value).map(([key,entry]) => <div key={key}><dt><strong>{frozenFieldWord(key)}</strong></dt><dd><Value value={entry} /></dd></div>)}</dl>;
 }
 function PlanSteps({ value }: { value: JsonValue }): React.JSX.Element {
   if (value === null) return <p>No previous executable plan.</p>;

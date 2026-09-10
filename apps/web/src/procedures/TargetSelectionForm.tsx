@@ -245,27 +245,27 @@ export function TargetSelectionForm({
                 </p>
                 <dl className="ls-definition">
                   <div>
-                    <dt>Credential reference</dt>
+                    <dt>Sign-in credential</dt>
                     <dd className="ls-mono">{target.credentialRef}</dd>
                   </div>
                   <div>
-                    <dt>{target.kind === 'desktop' ? 'Application identity' : 'Allowed origins'}</dt>
+                    <dt>{target.kind === 'desktop' ? 'Application identity' : 'Web addresses the agent may open'}</dt>
                     <dd>{target.kind === 'desktop' ? (target.applicationIdentity || 'None declared') : (target.allowedOrigins.length === 0 ? 'None declared' : target.allowedOrigins.join(', '))}</dd>
                   </div>
                   <div>
-                    <dt>Permitted read actions</dt>
+                    <dt>What the agent may do here</dt>
                     <dd>{target.permittedActions.length === 0 ? 'None declared' : target.permittedActions.join(', ')}</dd>
                   </div>
                   <div>
-                    <dt>Expected field labels</dt>
+                    <dt>Field labels to look for</dt>
                     <dd>{target.labels.length === 0 ? 'None declared' : target.labels.join(', ')}</dd>
                   </div>
                   <div>
-                    <dt>Secondary key</dt>
+                    <dt>Second way to identify a record</dt>
                     <dd>{target.secondaryKey || 'None declared'}</dd>
                   </div>
                   <div>
-                    <dt>Registration digest</dt>
+                    <dt>Fingerprint</dt>
                     <Digest value={target.digest} label="Registration" as="dd" />
                   </div>
                 </dl>
@@ -287,7 +287,7 @@ export function TargetSelectionForm({
       <UnavailableActions
         headingLevel={3}
         actions={[
-          ...(pick === '' ? [{ id: `${id}-unavailable-add`, label: 'Add Target System', reason: 'Choose a Target System to add.' }] : []),
+          ...(pick === '' ? [{ id: `${id}-unavailable-add`, label: 'Add Target System', reason: 'Choose a system in the list above first.' }] : []),
           ...(selected.length === 0 && draft.targets.length === 0
             ? [{ id: `${id}-unavailable-save`, label: 'Save Target Systems', reason: TARGET_SELECTION_MISSING }]
             : []),
@@ -308,9 +308,9 @@ export function TargetSelectionForm({
         }}
       >
         <div className="ls-dialog__field">
-          <label htmlFor={`${id}-add`}>Add a Target System</label>
+          <label htmlFor={`${id}-add`}>Add a system</label>
           <select className="ls-input" id={`${id}-add`} value={pick} onChange={(event) => setPick(event.target.value)}>
-            <option value="">Choose a registered Target System</option>
+            <option value="">Choose a system</option>
             {available.map((registration) => (
               <option key={registration.registrationId} value={registration.registrationId}>
                 {registration.displayName} ({kindLabel(registration.kind)})
@@ -321,12 +321,12 @@ export function TargetSelectionForm({
           </select>
         </div>
         {available.length === 0 && registrations.length === 0 ? (
-          <p>No active Target Systems are registered. Ask a PoC Administrator to register one.</p>
+          <p>No systems are set up yet. Ask a PoC Administrator to add one under Administration.</p>
         ) : null}
         <div className="ls-admin__actions">
           <Button
             type="button"
-            disabledReason={pick === '' ? 'Choose a Target System to add.' : undefined}
+            disabledReason={pick === '' ? 'Choose a system in the list above first.' : undefined}
             disabledReasonId={pick === '' ? `${id}-unavailable-add` : undefined}
             onClick={add}
           >

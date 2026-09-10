@@ -12,7 +12,7 @@ import { requireServerAction } from '../../../src/server-session';
 import { createRegistrationAction } from './actions';
 
 export const metadata: Metadata = {
-  title: 'Target System registrations · IntelliFin Audit',
+  title: 'Target systems · IntelliFin Audit',
 };
 
 /** The role is read per request; this surface can never be cached (AD-7). */
@@ -39,7 +39,7 @@ export default async function RegistrationsPage(): Promise<React.JSX.Element> {
   if (!decision.allowed) {
     return (
       <div className="ls-stack">
-        <h1>Target System registrations</h1>
+        <h1>Target systems</h1>
         <Banner tone="danger" title={decision.reason} />
       </div>
     );
@@ -54,11 +54,11 @@ export default async function RegistrationsPage(): Promise<React.JSX.Element> {
   return (
     <div className="ls-stack">
       <header className="ls-page-header">
-        <h1>Target System registrations</h1>
+        <h1>Target systems</h1>
         <p>
-          Every system the agent may read, the read actions it is permitted, and the
-          digest a Procedure Version freezes. Credentials must be read-only, and their
-          secrets never enter this application.
+          The systems the agent is allowed to look in, and what it may do in each one.
+          Every credential must be read-only, and no password or token is ever stored
+          here.
         </p>
       </header>
       <RegistrationsPanel
