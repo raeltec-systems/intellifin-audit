@@ -29,30 +29,40 @@ export async function openStep(page: Page | Locator, heading: string): Promise<v
 }
 
 /**
- * Keep every disclosure on the page open, for a spec whose subject is what is INSIDE them.
+ * Keep the BUILDER's disclosures open, for a spec whose subject is what is inside them.
  *
  * A hundred assertions in this suite are about the editors — a stale-tab conflict, a
  * lost save response, a compiled condition's badge — and were written when the Builder
  * rendered all nine sections at once. Making each of them click a disclosure open first
  * would test the disclosure a hundred times and the editors no better.
  *
- * So the disclosure gets its own test instead (`procedures.spec.ts`, "the Builder opens
- * as a short list of questions"), which runs WITHOUT this and asserts the real thing: an
- * answered step starts closed, still says what is set in it, and opens on a click.
+ * So the disclosure gets its own test instead (`builder-steps.spec.ts`), which runs
+ * WITHOUT this and asserts the real thing: an answered step starts closed, still says
+ * what is set in it, and opens on a click or on Enter.
+ *
+ * The selector names exactly the three disclosures the Builder owns and NOTHING else.
+ * It began as a bare `details`, which also forced open the version-diff disclosures on
+ * the review page — so `version-review.spec.ts`'s "every section is expanded on a first
+ * version" passed whatever `VersionDiff`'s own `open` logic did. A helper that makes an
+ * unrelated assertion unfailable is the defect this repository keeps finding, one layer
+ * out from the product.
  *
  * This is a script in the TEST browser and changes nothing in the product. It runs on
  * every navigation and every reload, which is what makes it a single line per spec file
  * rather than a call beside every `goto`.
  */
+const BUILDER_DISCLOSURES = [
+  'details.ls-step', // a step
+  '.ls-step details', // a "More options" or Template-default fold inside one
+  'details[data-plan-detail]', // the Builder's own compiled-plan fold
+].join(', ');
+
 export async function keepBuilderStepsOpen(page: Page): Promise<void> {
   // On the CONTEXT, not the page: version-review races a Draft against itself in a
   // second tab opened from this context, and a page-level script would not reach it.
-  await page.context().addInitScript(() => {
+  await page.context().addInitScript((selector: string) => {
     const open = (): void => {
-      // Every `<details>`, not only `details.ls-step`: a step's "More options" fold is
-      // itself a disclosure, and a spec that opens the step but not the fold reaches a
-      // control it can see the label of and cannot click.
-      for (const step of document.querySelectorAll<HTMLDetailsElement>('details')) {
+      for (const step of document.querySelectorAll<HTMLDetailsElement>(selector)) {
         if (!step.open) step.open = true;
       }
     };
@@ -68,7 +78,7 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
     } else {
       start();
     }
-  });
+  }, BUILDER_DISCLOSURES);
 }
 
 /**
