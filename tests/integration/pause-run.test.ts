@@ -489,6 +489,19 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
       // CompleteRun owns the terminal Result and the seal on this path as on every other.
       const [result] = await sql`SELECT outcome, run_state FROM run_result WHERE run_id=${runId}`;
       expect(result).toMatchObject({ run_state: 'INCONCLUSIVE' });
+
+      // The chain says a PAUSE timed out, by the pause waker, from the state the Run was
+      // really in. The wake handler wrote `execution.escalation-timeout` by an actor called
+      // `escalation-wake` with `priorState: 'AWAITING_AUDITOR'` for both kinds, so every
+      // timed-out pause left a permanent row describing an Escalation and naming a state
+      // that Run never held. Nothing asserted this event, which is how it was wrong.
+      const [timedOut] = await sql`
+        SELECT event_type, actor_id, payload
+        FROM audit_events
+        WHERE aggregate_id=${runId} AND payload->>'waitId'=${waitId} AND payload->>'closureKind'='timeout'
+      `;
+      expect(timedOut).toMatchObject({ event_type: 'execution.pause-timeout', actor_id: 'pause-wake' });
+      expect(timedOut!.payload).toMatchObject({ kind: 'pause', priorState: 'PAUSED', state: 'INCONCLUSIVE' });
     });
 
     it('is thirty minutes and not the Escalation window, on the durable row', async () => {

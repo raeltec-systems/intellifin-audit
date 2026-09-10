@@ -314,6 +314,17 @@ describe.skipIf(!url)('durable Escalation waits', () => {
       waitId: raised.wait.waitId,
     });
     expect(wake).toMatchObject({ ok: true, status: 'timed-out', wait: { closureKind: 'timeout', actor: 'wait-wake' } });
+    // The OTHER direction of the kind-derived timeout event: an Escalation keeps its own
+    // event type, actor and prior state. Asserted here as well as on the pause case,
+    // because a build that wrote `pause-timeout` for every kind would satisfy that one
+    // alone (`pause-run.test.ts` → "is found by the recovery read").
+    const [timedOut] = await sql`
+      SELECT event_type, actor_id, payload
+      FROM audit_events
+      WHERE aggregate_id=${runId} AND payload->>'waitId'=${raised.wait.waitId} AND payload->>'closureKind'='timeout'
+    `;
+    expect(timedOut).toMatchObject({ event_type: 'execution.escalation-timeout', actor_id: 'escalation-wake' });
+    expect(timedOut!.payload).toMatchObject({ kind: 'retry-or-skip', priorState: 'AWAITING_AUDITOR' });
     expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'INCONCLUSIVE', revision: 3 }]);
     expect(await sql`SELECT outcome,run_state FROM run_result WHERE run_id=${runId}`).toMatchObject([{ outcome: 'INCONCLUSIVE', run_state: 'INCONCLUSIVE' }]);
     expect(await sql`SELECT state,run_state FROM run_evidence_package WHERE run_id=${runId}`).toMatchObject([{ state: 'SEALED', run_state: 'INCONCLUSIVE' }]);

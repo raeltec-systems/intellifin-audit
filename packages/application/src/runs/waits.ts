@@ -3,6 +3,7 @@ import {
   ESCALATION_KINDS,
   ESCALATION_OPTION_IDS,
   isEscalationKind,
+  waitRunState,
   waitTimeoutMs,
   type EscalationKind,
   type EscalationOption,
@@ -491,9 +492,23 @@ export async function wakeEscalation(
     const run = context.run;
     if (!run) return { ok: false, reason: 'That Run does not exist.' };
     const at = dependencies.clock.now().toISOString();
+    // The event says which wait timed out, and every field of it is DERIVED from the
+    // wait's own kind (Story 5.4 review). Written as an Escalation for both kinds, a
+    // timed-out pause recorded `execution.escalation-timeout` by an actor called
+    // `escalation-wake`, leaving `priorState: 'AWAITING_AUDITOR'` — a state that Run was
+    // never in, in a row that can never be corrected. `waitRunState` is the SAME function
+    // the command, the insert, the closure and the recovery read already call, so there is
+    // no second spelling of "a pause means PAUSED" to drift.
+    //
+    // The family is closed and the suffix is not (`EVENT_TYPE_PATTERN`), so
+    // `execution.pause-timeout` needs no vocabulary change and no migration. It also
+    // keeps the bell correct by construction: `BellLive` re-reads on
+    // `execution.escalation-` and a pause is not in the inbox, so a pause timing out must
+    // not make it re-read.
+    const paused = operation.wait.kind === 'pause';
     const event = await context.auditEvents.append({
-      actor: { type: 'system', id: 'escalation-wake' },
-      eventType: 'execution.escalation-timeout',
+      actor: { type: 'system', id: paused ? 'pause-wake' : 'escalation-wake' },
+      eventType: paused ? 'execution.pause-timeout' : 'execution.escalation-timeout',
       source: 'worker',
       outcome: 'failure',
       aggregateId: run.runId,
@@ -503,7 +518,7 @@ export async function wakeEscalation(
         waitId: operation.wait.waitId,
         kind: operation.wait.kind,
         closureKind: 'timeout',
-        priorState: 'AWAITING_AUDITOR',
+        priorState: waitRunState(operation.wait.kind),
         state: 'INCONCLUSIVE',
         occurredAt: at,
       },
