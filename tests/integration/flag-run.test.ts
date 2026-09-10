@@ -82,6 +82,11 @@ describe.skipIf(!url)('flagging a Run to the Audit Managers', () => {
       for (const runId of runIds) {
         await sql`DELETE FROM pgboss.job WHERE name='runs' AND data->>'runId'=${runId}`;
         await sql`DELETE FROM notification WHERE run_id=${runId}`;
+        // The inbox-limit case opens an Escalation wait directly, and `run_wait` carries a
+        // real foreign key to `audit_run`. A teardown that does not know about a table
+        // takes the REST of the file's cleanup with it, and an unrelated suite then fails
+        // on the rows this one left.
+        await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
         // `run_flag` cascades from `audit_run`, but the notification rows point AT it, so
         // they have to go first whatever the cascade says.
         await sql`DELETE FROM run_flag WHERE run_id=${runId}`;
@@ -324,6 +329,34 @@ describe.skipIf(!url)('flagging a Run to the Audit Managers', () => {
     await sql`UPDATE audit_run SET state='INCONCLUSIVE' WHERE run_id=${runId}`;
     expect((await repository.openFor(session)).filter((row) => row.runId === runId)).toEqual([]);
     expect(await repository.countOpenFor(session)).toBe(before - 1);
+  });
+
+  it('honours the caller’s limit across BOTH kinds, not once per kind', async () => {
+    // `bounded` was applied to the wait query and to the flag query and the two result
+    // sets were then concatenated, so a limit of 1 could return 2 and a limit of 100
+    // could return 200 — the caller's bound honoured by neither. One flag and one open
+    // Escalation is the smallest state that shows it.
+    const flagged = await startRun();
+    await flagRun(deps(), { session, request: { runId: flagged, note: null } });
+
+    // Raw, because this file has no Escalation command wired: the inbox predicate needs an
+    // open wait on a Run that is AWAITING_AUDITOR. Generation 45 refuses an Escalation that
+    // names an opener, so `opened_by` stays NULL — a pause names somebody, an Escalation
+    // does not.
+    const escalated = await startRun();
+    await sql`
+      INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline)
+      VALUES (${crypto.randomUUID()},${escalated},'retry-or-skip',
+              '[{"id":"retry","label":"Retry"}]'::jsonb, now(), NULL, now() + interval '4 hours')
+    `;
+    await sql`UPDATE audit_run SET state='AWAITING_AUDITOR' WHERE run_id=${escalated}`;
+
+    const repository = new DrizzleNotificationRepository(db);
+    const mine = (rows: readonly { runId: string }[]): readonly { runId: string }[] =>
+      rows.filter((row) => row.runId === flagged || row.runId === escalated);
+    // Both are really there, or the bound below would pass for the wrong reason.
+    expect(mine(await repository.openFor(session))).toHaveLength(2);
+    expect(await repository.openFor(session, 1)).toHaveLength(1);
   });
 
   it("keeps an open flag out of another auditor's inbox", async () => {

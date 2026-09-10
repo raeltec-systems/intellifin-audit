@@ -275,7 +275,7 @@ export class DrizzleNotificationRepository implements NotificationRepository, Op
         flaggedAt,
       }];
     });
-    return [...flags, ...resultRows.flatMap((row): OpenNotification[] => {
+    const escalations = resultRows.flatMap((row): OpenNotification[] => {
       const runId = typeof row.run_id === 'string' ? row.run_id.toLowerCase() : null;
       const waitId = typeof row.wait_id === 'string' ? row.wait_id.toLowerCase() : null;
       const procedureId = typeof row.procedure_id === 'string' ? row.procedure_id.toLowerCase() : null;
@@ -301,7 +301,22 @@ export class DrizzleNotificationRepository implements NotificationRepository, Op
         escalationKind,
         deadline,
       }];
-    })];
+    });
+    /**
+     * ONE limit over the merged inbox (PR 29 review).
+     *
+     * `bounded` was applied to each query and the two result sets were then concatenated,
+     * so `openFor(session, 100)` could return two hundred items and `openFor(session, 1)`
+     * two — the caller's bound honoured by neither. Each source is ordered inside itself
+     * (waits by deadline, flags by the moment they were raised), so the concatenation is
+     * deterministic and the trim takes the same rows every time.
+     *
+     * Escalations come first because a wait is the only kind that can EXPIRE: it carries a
+     * deadline and ends its Run Inconclusive if nobody answers, where a flag waits as long
+     * as its Run is active. A trim that dropped an expiring question to keep a flag would
+     * drop the item the bound most needs to keep.
+     */
+    return [...escalations, ...flags].slice(0, bounded);
   }
 
   async pending(limit: number): Promise<readonly InAppNotification[]> {
