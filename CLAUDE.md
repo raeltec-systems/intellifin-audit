@@ -1,3 +1,67 @@
+## 2026-09-10 — Two accounts cannot walk the journey, and a suggestion is not a requirement
+
+The owner could not test the product: *"there are procedures that refuse to be created… for
+example the SOD procedure… i want to be able to test end to end… create the procedure, have
+it approved, run it and what its output"*. Nothing refused creation. Two other things were
+true, and the second is why the first read the way it did.
+
+- **`procedure.version.approve` is an Audit Manager's alone AND is denied to the version's
+  own author, and the deployment held neither a second auditor nor a manager.** So the
+  auditor wrote it and was refused as its author, the administrator was refused by role,
+  and the journey stopped one step in at a disabled Approve button whose reason was correct
+  and whose remedy did not exist. `seed-demo-accounts.yml` seeds three accounts now.
+  **A deployment that is already seeded needs no re-run**: a PoC Administrator can add an
+  Audit Manager from Administration → Users, which is the same audited command.
+- **No test could notice, and that is the lesson.** Every suite that approves a version
+  mints its own `audit-manager` by raw SQL first — `version-review.spec.ts`,
+  `immutable-versions.spec.ts`, `runs.spec.ts`, `version-decisions.test.ts` — and the
+  browser suite's `ACCOUNTS` fixture holds exactly the two roles it signs in as. A green
+  suite says nothing about what a deployed environment CONTAINS.
+- **`tests/e2e/owner-walkthrough.spec.ts` is the journey nobody had joined up.**
+  `hero-workflow` authors to Submit and stops (no worker); `version-review` drives submit →
+  reject → edit → approve; `clean-source` runs a P-2 Procedure from a version it INSERTS.
+  Each half was proven and the seam was not. It walks P-2 through the interface end to end
+  — create, author four sections, wait for derivation, submit, approve as a manager,
+  initiate, read the sealed Result — in about 20 seconds, and it reaches the golden
+  Inconclusive on `duplicate-primary-keys`.
+- **P-2 was the right Template to walk and P-1 was not**: AccessGate is an API, so the Run
+  is the Adapter path and needs no browser, no Solari key and no model at execution time.
+- **The Builder named systems the deployment does not have, and said nothing about it.**
+  A Template offers its defaults BY NAME and a registration is never minted from one — that
+  is correct, scope is the auditor's to declare — but P-1 suggests LedgerDesk, no deployment
+  registers a desktop system because this release cannot execute one, and the caption listed
+  it beside systems that ARE registered with nothing telling the two apart. `suggestedTargets`
+  matches each suggestion against the real registrations and `suggestedTargetNote` says which
+  of three things is true. The match is by display name and kind, which is a HEURISTIC, so
+  the wording is "no system with this name is set up here" and never "this system does not
+  exist".
+- **`procedures.spec.ts`'s `getByText('LoanCore (web)')` was ambiguous the moment a
+  deployment registers a system called LoanCore** — it also matches the picker's own
+  `<option>` — and every seeded environment does. It failed identically with this change
+  stashed, which is how it was established as pre-existing rather than a regression. It is
+  scoped to the suggestion list now, which is what its own comment says it asserts.
+
+Four mechanical notes:
+
+- **A Draft's first save can be refused for a reason the auditor did not cause.** Creating
+  a Procedure queues a derivation whose attempt record lands on the row a second or two
+  later, so a save made before the Builder's own poll (first refresh at 1500ms) catches up
+  is refused with "That procedure changed since this page was loaded". A person filling
+  three fields rarely meets it; a browser filling them in 300ms meets it every time. The
+  spec does what the sentence says — reload, redo, save — rather than the product growing a
+  special case.
+- **The model identity a version freezes comes from the WEB, not the worker.**
+  `playwright.config.ts` gives its web server `anthropic` / `synthetic-http-fixture`, so a
+  spec that spawns its own worker must hold the SAME identity and the fixture that answers
+  for it. A hand-started `next dev` without those variables freezes no model, derivation
+  goes deterministic, and `version-review.spec.ts` then fails on a line about the model
+  fixture — which reads as a product defect and is a missing environment variable.
+- **P-2 names no Schedule, so both of its fields start empty** and the save refuses until
+  the start time is filled. P-1 arrives with 00:00 because its Template pins one. That is
+  the one step on this Template a person has to discover from an error message.
+- **`pkill -f` matched this shell for the third time** (exit 144), and everything after it
+  in that command line never ran. Kill by PID.
+
 ## 2026-09-10 — Generation 47: a Run that ends withdraws the question it was holding
 
 The first of the two findings the PR 29 round named and did not fix. It is fixed now, and the
