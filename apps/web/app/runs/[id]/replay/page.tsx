@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { isActiveRunState } from '@intellifin/domain';
-import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository } from '@intellifin/infrastructure';
+import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_PAGE_SIZE } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
@@ -88,12 +88,16 @@ export default async function RunReplayPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
+  // Sized for REPLAY, not for a Run Detail page. Every one of these is joined against the
+  // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
+  // default silently dropped later Tool Actions, jump targets and Observation deltas from
+  // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
   const [timeline, frames, waits, deltas, exceptions, plan] = await Promise.all([
-    detail.readTimeline(run.runId),
+    detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
-    detail.readWaits(run.runId),
-    detail.readObservationDeltas(run.runId),
-    detail.readExceptions(run.runId),
+    detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
+    detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
+    detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
   ]);
 

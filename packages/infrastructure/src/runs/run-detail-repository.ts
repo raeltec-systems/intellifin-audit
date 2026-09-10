@@ -71,6 +71,26 @@ export const RUN_DETAIL_PAGE_SIZE = 50;
  */
 export const REPLAY_FRAME_LIMIT = 500;
 
+/**
+ * The ceiling for the reads REPLAY joins against its frames (PR 29 review).
+ *
+ * The reads below cap at `RUN_DETAIL_PAGE_SIZE`, which is right for a Run Detail tab and
+ * wrong for Replay: the surface renders up to `REPLAY_FRAME_LIMIT` frames and then looks
+ * each one up in the Tool Actions, the Step Executions, the waits, the Exceptions and the
+ * Observation deltas. Capped at fifty, a Run with more than fifty actions showed later
+ * frames with "No Tool Action" and fallback narration, dropped later jump targets from the
+ * list with nothing saying so, and froze the Observation count at the fiftieth delta —
+ * durable facts present in the database and absent from the screen.
+ *
+ * It equals the frame limit because that is the cardinality it has to cover: one lookup
+ * per rendered frame. The DEFAULTS stay `RUN_DETAIL_PAGE_SIZE`, so every Run Detail read
+ * is unchanged and only a caller that asks for more gets more.
+ *
+ * A limit belongs to the cardinality of the READ, not to the table it starts from — the
+ * rule this file already learned once, in the PR 23 second pass.
+ */
+export const REPLAY_PAGE_SIZE = REPLAY_FRAME_LIMIT;
+
 export interface RunResultRow {
   readonly version: number;
   readonly outcome: SystemOutcome;
@@ -501,7 +521,7 @@ export class DrizzleRunDetailRepository {
       .from(runWait)
       .where(eq(runWait.runId, runId))
       .orderBy(asc(runWait.openedAt), asc(runWait.waitId))
-      .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
     return rows.map((row) => ({
       waitId: row.waitId,
       kind: row.kind,
@@ -526,7 +546,7 @@ export class DrizzleRunDetailRepository {
       .from(auditEvents)
       .where(and(eq(auditEvents.aggregateId, runId), eq(auditEvents.eventType, 'execution.observations-registered')))
       .orderBy(asc(auditEvents.sequence))
-      .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
     return rows.map((row) => {
       const payload = (row.payload ?? {}) as Record<string, unknown>;
       return {
@@ -777,7 +797,7 @@ export class DrizzleRunDetailRepository {
       .from(runException)
       .where(eq(runException.runId, runId))
       .orderBy(asc(runException.exceptionId))
-      .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
     const observationIds = rows.map((row) => row.observationId);
     const effectiveRows = observationIds.length === 0 ? [] : await this.db
       .select({
@@ -867,7 +887,7 @@ export class DrizzleRunDetailRepository {
    * neither returns the timestamps a Timeline row needs. This returns the three levels
    * with their clocks and nothing else.
    */
-  async readTimeline(runId: string): Promise<RunTimelineRead> {
+  async readTimeline(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<RunTimelineRead> {
     const empty: RunTimelineRead = { workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 }, toolActions: { rows: [], total: 0 } };
     if (!isUuidText(runId)) return empty;
     const [workspace] = await this.db.select().from(runWorkspace).where(eq(runWorkspace.runId, runId));
@@ -883,7 +903,7 @@ export class DrizzleRunDetailRepository {
       .from(runWorkItem)
       .where(eq(runWorkItem.runId, runId))
       .orderBy(asc(runWorkItem.ordinal));
-    const stepExecutions = await this.readStepExecutions(runId);
+    const stepExecutions = await this.readStepExecutions(runId, limit);
     return {
       workspace: workspace
         ? {
@@ -941,7 +961,7 @@ export class DrizzleRunDetailRepository {
         observations: row.observations,
       })),
       stepExecutions,
-      toolActions: await this.readToolActions(runId),
+      toolActions: await this.readToolActions(runId, limit),
     };
   }
 
@@ -1005,7 +1025,7 @@ export class DrizzleRunDetailRepository {
       .from(runStepExecution)
       .where(eq(runStepExecution.runId, runId))
       .orderBy(asc(runStepExecution.startedAt), asc(runStepExecution.stepExecutionId))
-      .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+      .limit(Math.min(limit, REPLAY_PAGE_SIZE));
     return {
       total,
       rows: rows.map((row): RunStepExecutionRow => ({

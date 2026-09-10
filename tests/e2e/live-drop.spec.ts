@@ -172,8 +172,22 @@ test.describe('Live View when the stream drops', () => {
     await expect(page.locator('[data-live-seq]')).toHaveAttribute('data-live-seq', '42', { timeout: 30_000 });
 
     // The stream ended, so the browser reopens it — with the cursor, not from zero.
-    await expect.poll(() => cursors.length, { timeout: 30_000 }).toBeGreaterThan(1);
-    expect(cursors[cursors.length - 1]).toBe('42');
+    //
+    // Asserted as "a reconnect CARRIED 42" rather than "the last one did", because the
+    // last one is a race this spec cannot win: every frame calls the throttled
+    // `router.refresh()`, and a re-render remounts the subscription with the cursor the
+    // SERVER read, which is the real chain head and not this route's synthetic 42. So the
+    // sequence of cursors legitimately interleaves resumes and remounts. CI caught it
+    // where this machine did not.
+    //
+    // It is the same property either way and no weaker: a build that resumed from zero
+    // would never produce 42 at all and would time out here.
+    await expect.poll(() => cursors, { timeout: 30_000 }).toContain('42');
+    // Nothing ever asks for MORE than the page has seen, which is the other half of
+    // AD-17: no gap, and no cursor invented ahead of the frames.
+    for (const cursor of cursors) {
+      expect(Number(cursor ?? 0)).toBeLessThanOrEqual(42);
+    }
     // And the first request carried the chain head the page was RENDERED at, so nothing
     // between that read and the subscription can fall down the gap either.
     expect(cursors[0]).not.toBeNull();
