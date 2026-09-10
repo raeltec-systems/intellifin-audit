@@ -50,7 +50,7 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
   let db: Database;
   const ids = new CryptoUuidV7Generator();
   const author = ids.next();
-  // A SECOND auditor, never an audit-manager. `escalationNotificationRecipients` reads
+  // A SECOND auditor, never an audit-manager. `runNotificationRecipients` reads
   // every audit-manager in the database, so a file that adds one changes what a
   // concurrently-running file sees — which is exactly the failure this avoids.
   const other = ids.next();

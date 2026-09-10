@@ -26,6 +26,7 @@ import {
   runEvidence,
   runEvidenceCapture,
   runException,
+  runFlag,
   runGateCheck,
   runObservation,
   runObservationAbsence,
@@ -327,8 +328,44 @@ export interface RunAgentWorkPosition {
   readonly waitId: string | null;
 }
 
+/** One flag as a Run surface shows it (Story 5.5). */
+export interface RunFlagRow {
+  readonly flagId: string;
+  readonly flaggedBy: string;
+  readonly flaggedAt: string;
+  readonly note: string | null;
+}
+
 export class DrizzleRunDetailRepository {
   constructor(private readonly db: Database | Transaction) {}
+
+  /**
+   * The flags raised on a Run, newest first (Story 5.5).
+   *
+   * Bounded, because it is a surface read: a Run flagged a hundred times shows the recent
+   * ones rather than making the page unrenderable. Nothing downstream counts these — the
+   * bell counts its own — so a bound here cannot make a number wrong.
+   */
+  async readFlags(runId: string, limit = 20): Promise<readonly RunFlagRow[]> {
+    if (!isUuidText(runId)) return [];
+    const rows = await this.db
+      .select({
+        flagId: runFlag.flagId,
+        flaggedBy: runFlag.flaggedBy,
+        flaggedAt: runFlag.flaggedAt,
+        note: runFlag.note,
+      })
+      .from(runFlag)
+      .where(eq(runFlag.runId, runId))
+      .orderBy(desc(runFlag.flaggedAt), desc(runFlag.flagId))
+      .limit(Math.max(1, Math.min(100, limit)));
+    return rows.map((row) => ({
+      flagId: row.flagId,
+      flaggedBy: row.flaggedBy,
+      flaggedAt: row.flaggedAt.toISOString(),
+      note: row.note,
+    }));
+  }
 
   /**
    * The newest frame of a Run, or `null` when nothing has been captured yet.

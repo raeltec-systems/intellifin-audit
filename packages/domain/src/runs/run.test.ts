@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVE_RUN_STATES, RUN_CANCEL_TRANSITIONS, RUN_STATES, isActiveRunState, periodOwner, runCancelTransition } from './run.js';
+import { ACTIVE_RUN_STATES, RUN_CANCEL_TRANSITIONS, RUN_FLAG_NOTE_MAX_LENGTH, RUN_FLAG_STATES, RUN_STATES, isActiveRunState, isFlaggableRunState, periodOwner, runCancelTransition } from './run.js';
 const period = (from: string) => ({ from, to: from });
 const versions = ['old', 'new', 'last'].map(versionId => ({ versionId, state: 'ACTIVE' }));
 const edge = (predecessorId: string, successorId: string, handoverAt: string | null, activatedAt: string | null = '2026-01-01T12:00:00.000Z') => ({ predecessorId, successorId, handoverAt, activatedAt });
@@ -55,5 +55,31 @@ describe('the permitted cancellation transitions', () => {
       expect(isActiveRunState(value)).toBe(false);
       expect(runCancelTransition(value)).toBeNull();
     }
+  });
+});
+
+describe('which states may be flagged (Story 5.5)', () => {
+  it('names the three the acceptance criterion names, and no fourth', () => {
+    expect([...RUN_FLAG_STATES]).toEqual(['RUNNING', 'PAUSED', 'AWAITING_AUDITOR']);
+    // Walked state by state, so a row added or removed fails rather than a count. QUEUED is
+    // ACTIVE and still not flaggable: the control lives in the session viewer.
+    for (const state of RUN_STATES) {
+      expect(isFlaggableRunState(state)).toBe(state === 'RUNNING' || state === 'PAUSED' || state === 'AWAITING_AUDITOR');
+    }
+    expect(isFlaggableRunState('QUEUED')).toBe(false);
+  });
+  it('is a membership test and not a transition: no flaggable state changes', () => {
+    // A flag never moves a Run, so unlike RUN_CANCEL_TRANSITIONS and RUN_PAUSE_TRANSITIONS
+    // there is no `to` here at all. This asserts the shape rather than a behaviour, so a
+    // later story that gives a flag a transition has to change this test deliberately.
+    expect(RUN_FLAG_STATES.every(state => typeof state === 'string')).toBe(true);
+  });
+  it('refuses an inherited property name, an object and a missing state', () => {
+    for (const value of ['constructor', 'toString', '', 'running', undefined, null, {}, ['RUNNING']]) {
+      expect(isFlaggableRunState(value)).toBe(false);
+    }
+  });
+  it('bounds a note at 500 characters, the same bound the database enforces', () => {
+    expect(RUN_FLAG_NOTE_MAX_LENGTH).toBe(500);
   });
 });

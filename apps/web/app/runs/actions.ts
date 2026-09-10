@@ -2,9 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { ANSWER_ESCALATION_REFUSALS, answerEscalation, cancelRun, initiateRun, pauseRun, rerunRun, resumeRun, type AnswerEscalationResult } from '@intellifin/application';
+import { ANSWER_ESCALATION_REFUSALS, answerEscalation, cancelRun, FLAG_REQUEST_MALFORMED, flagRun, initiateRun, pauseRun, rerunRun, resumeRun, type AnswerEscalationResult } from '@intellifin/application';
 import { isExplicitPeriod } from '@intellifin/domain';
-import { CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunsUnitOfWork, PostgresWaitRepository, SystemClock } from '@intellifin/infrastructure';
+import { CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunCancellationRepository, PostgresRunFlagRepository, PostgresRunsUnitOfWork, PostgresWaitRepository, SystemClock } from '@intellifin/infrastructure';
 import { getRuntime } from '../../src/bootstrap';
 import { ESCALATION_PANEL_COPY } from '../../src/design/copy';
 import { currentCorrelationId, requireServerAction } from '../../src/server-session';
@@ -134,6 +134,68 @@ export async function pauseRunAction(request: unknown): Promise<PauseRunActionRe
     } catch { /* Runtime boot failures are reported by instrumentation. */ }
     return { ok: false, reason: PAUSE_UNKNOWN, unknownOutcome: true };
   }
+}
+
+export interface FlagRunActionResult {
+  readonly ok: boolean;
+  readonly reason?: string;
+  readonly unknownOutcome?: boolean;
+}
+
+const FLAG_UNKNOWN = 'The flag could not be confirmed. Reload the Run to see whether it was recorded.';
+
+/**
+ * Flag a Run to the Audit Managers (Story 5.5).
+ *
+ * A Server Action is its own POST endpoint addressed by an id in the client bundle, so it
+ * authorizes for itself FIRST, before reading any input, and the argument is untrusted
+ * whatever its TypeScript type says.
+ *
+ * It never says the Run changed: a flag has no execution effect, and the message the
+ * surface then shows says so.
+ */
+export async function flagRunAction(request: unknown): Promise<FlagRunActionResult> {
+  try {
+    const decision = await requireServerAction('run.flag');
+    if (!decision.allowed) return { ok: false, reason: decision.reason };
+    if (typeof request !== 'object' || request === null || Array.isArray(request)) return { ok: false, reason: FLAG_REQUEST_MALFORMED };
+    const fields = request as Record<string, unknown>;
+    if (Object.keys(fields).length !== 2 || !Object.hasOwn(fields, 'runId') || !Object.hasOwn(fields, 'note') ||
+      typeof fields.runId !== 'string' || !RUN_UUID.test(fields.runId) ||
+      (fields.note !== null && typeof fields.note !== 'string')) return { ok: false, reason: FLAG_REQUEST_MALFORMED };
+    const runtime = await getRuntime();
+    const outcome = await flagRun(
+      { roles: new DrizzleRoleRepository(runtime.db), unitOfWork: new PostgresRunsUnitOfWork(runtime.db), repository: new PostgresRunFlagRepository(runtime.db), ids: new CryptoUuidV7Generator(), clock: new SystemClock() },
+      { session: decision.session, request: { runId: fields.runId, note: fields.note } },
+    );
+    return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
+  } catch (error) {
+    try {
+      const runtime = await getRuntime();
+      runtime.telemetry.captureError('Flag Run failed', error, { correlationId: await currentCorrelationId(), outcome: 'failure' });
+    } catch { /* Runtime boot failures are reported by instrumentation. */ }
+    return { ok: false, reason: FLAG_UNKNOWN, unknownOutcome: true };
+  }
+}
+
+/**
+ * The same flag, submitted by a real `<form>`.
+ *
+ * `useActionState` needs a `(previous, formData)` action, and that shape is also what makes
+ * the form work with no JavaScript at all: the browser POSTs to this endpoint and Next
+ * re-renders the page with the returned state. Both paths reach `flagRunAction`, so there
+ * is one authorization check, one validation and one command.
+ */
+export async function flagRunFormAction(_previous: FlagRunActionResult | null, form: FormData): Promise<FlagRunActionResult> {
+  const runId = form.get('runId');
+  const note = form.get('note');
+  // `FormData.get` returns a `File` for a file input, and `null` for an absent field. Both
+  // are refused here rather than coerced, so a hand-made multipart POST is refused by the
+  // same sentence a malformed object argument gets.
+  return flagRunAction({
+    runId: typeof runId === 'string' ? runId : '',
+    note: typeof note === 'string' && note.trim().length > 0 ? note : null,
+  });
 }
 
 /**

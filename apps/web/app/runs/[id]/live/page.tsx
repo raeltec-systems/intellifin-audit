@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { isActiveRunState, runPauseTransition } from '@intellifin/domain';
+import { isActiveRunState, isFlaggableRunState, runPauseTransition } from '@intellifin/domain';
 import {
+  DrizzleActorNameReader,
   DrizzleFrozenExecutionReader,
   DrizzleRunDetailRepository,
   readTimelineHead,
@@ -12,6 +13,8 @@ import { getRuntime } from '../../../../src/bootstrap';
 import { LIVE_VIEW_QUEUED_SENTENCE } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { LiveBanner } from '../../../../src/runs/LiveBanner';
+import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
+import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
 import { PauseBanners } from '../../../../src/runs/detail';
@@ -45,9 +48,10 @@ export const dynamic = 'force-dynamic';
  * a REGISTERED artifact whose digest was verified when the platform froze it, never a
  * value that travelled over a stream.
  *
- * Story 5.3 is READ-ONLY supervision. Pause, Resume and Flag are Stories 5.4 and 5.5;
- * Cancel already exists on Run Detail and this surface links there. A disabled control
- * whose action does not exist yet is worse than a control that is not there.
+ * Story 5.3 shipped it READ-ONLY; 5.4 added Pause and Resume and 5.5 adds Cancel and Flag
+ * to Audit Manager, which is EXPERIENCE.md's full session-viewer control set. Each is the
+ * same component Run Detail mounts, so the two surfaces cannot disagree about a stale
+ * revision, a blocked retry or a pending request.
  */
 export default async function RunLivePage({
   params,
@@ -61,14 +65,19 @@ export default async function RunLivePage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [timeline, frame, agentWork, evidence, plan, liveCursor] = await Promise.all([
+  const [timeline, frame, agentWork, evidence, plan, liveCursor, flagRows] = await Promise.all([
     detail.readTimeline(run.runId),
     detail.readLatestFrame(run.runId),
     detail.readAgentWorkPosition(run.runId),
     detail.readEvidenceItems(run.runId),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     isActiveRunState(run.state) ? readTimelineHead(runtime.db, run.runId) : Promise.resolve(null),
+    detail.readFlags(run.runId),
   ]);
+  // Names, not ids. A Run records its actors as user IDs because an address cannot enter
+  // the audit chain; printing one at a reader is the platform speaking its own language.
+  const actorNames = await new DrizzleActorNameReader(runtime.db)
+    .namesFor(flagRows.map((row) => row.flaggedBy));
 
   const targetName = (registrationId: string | null): string | null =>
     registrationId === null
@@ -124,7 +133,7 @@ export default async function RunLivePage({
         <h1>Live View · {run.procedureName}</h1>
         <p>
           <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> for the Result, the
-          Evidence Quality Gate, the Execution Timeline and the Cancel control.
+          Evidence Quality Gate and the Execution Timeline.
         </p>
         {lifecycle === null ? (
           <p>Run lifecycle: {run.state}</p>
@@ -146,10 +155,8 @@ export default async function RunLivePage({
         />
       )}
 
-      {/* EXPERIENCE.md → Live View: Pause on LIVE, Resume replacing it on PAUSED, and the
-          countdown banner naming who paused it. The SAME control Run Detail carries, so
-          neither surface can disagree with the other about a stale revision. Cancel and
-          Flag join it in Story 5.5. */}
+      {/* EXPERIENCE.md → session viewer: "Live controls: Pause / Resume, Cancel, Flag to
+          Audit Manager". Each is the SAME component Run Detail mounts. */}
       <PauseBanners run={run} pause={waits?.pause ?? null} />
       <RunPauseControls
         runId={run.runId}
@@ -159,6 +166,12 @@ export default async function RunLivePage({
         awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
         pausable={runPauseTransition(run.state) !== null}
         runRevision={waits?.runRevision ?? null}
+      />
+      <RunCancelControl
+        runId={run.runId}
+        procedureName={run.procedureName}
+        active={isActiveRunState(run.state)}
+        cancelPending={run.cancellation !== null}
       />
 
       <LiveViewer
@@ -232,6 +245,18 @@ export default async function RunLivePage({
             attempts: step.attempts,
             digest: null,
           }))}
+      />
+      {/* Flag sits AFTER the viewer: it is the one control here that is not about stopping
+          or holding the Run, and it carries the record of the flags already raised. */}
+      <RunFlagControl
+        runId={run.runId}
+        flaggable={isFlaggableRunState(run.state)}
+        flags={flagRows.map((row) => ({
+          flagId: row.flagId,
+          flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
+          flaggedAt: row.flaggedAt,
+          note: row.note,
+        }))}
       />
       <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
     </div>

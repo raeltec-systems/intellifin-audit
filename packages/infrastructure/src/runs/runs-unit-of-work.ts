@@ -1,12 +1,13 @@
 import { eq, sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
-import type { AuditUnitOfWork, RunCancellationContext, RunCancellationRepository, RunsUnitOfWorkContext } from '@intellifin/application';
+import type { AuditUnitOfWork, RunCancellationContext, RunCancellationRepository, RunFlagContext, RunFlagRepository, RunsUnitOfWorkContext } from '@intellifin/application';
 import { EVIDENCE_READ_GRANT_QUEUE } from '@intellifin/application';
 import { CryptoUuidV7Generator, SystemClock, createAuditEventWriter, type PostgresAuditDependencies } from '../db/audit-events.js';
 import type { Database } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
-import { auditRun } from '../db/schema.js';
-import { DrizzleRoleRepository } from '../identity/role-repository.js';
+import { auditRun, runFlag } from '../db/schema.js';
+import { DrizzleNotificationRecipientReader, DrizzleRoleRepository } from '../identity/role-repository.js';
+import { DrizzleNotificationWriter } from '../notifications/notification-repository.js';
 import { DrizzleFrozenExecutionReader, DrizzleProcedurePeriodOwnerReader } from '../procedures/procedure-repository.js';
 import { queueDatabase } from '../procedures/derivation-queue.js';
 import { evidencePackageContext } from './evidence-package-repository.js';
@@ -76,6 +77,48 @@ export class PostgresRunCancellationRepository implements RunCancellationReposit
     });
   }
 }
+/**
+ * The transaction ONE flag is written inside (Story 5.5).
+ *
+ * It takes the Run's own row lock like the cancellation repository, so a flag raised while
+ * a worker is mid-claim reads the state the worker committed rather than a stale one. It
+ * composes NO Run state writer, NO seal and NO Result: "a flag has no execution effect" is
+ * a property of what this context can reach.
+ *
+ * The Audit Manager list is read on THIS transaction's connection, so a role granted a
+ * moment ago is included and one revoked a moment ago is not — the AD-7 rule the identity
+ * commands already follow, one table along.
+ */
+export class PostgresRunFlagRepository implements RunFlagRepository {
+  constructor(private readonly db: Database, private readonly dependencies: PostgresAuditDependencies = {}) {}
+  transaction<T>(runId: string, work: (context: RunFlagContext) => Promise<T>): Promise<T> {
+    return this.db.transaction(async transaction => {
+      if (!isUuidText(runId)) throw new Error('Invalid Run identity');
+      await transaction.select({ id: auditRun.runId }).from(auditRun).where(eq(auditRun.runId, runId)).for('update');
+      const run = await new DrizzleRunRepository(transaction).findRun(runId);
+      const notifications = new DrizzleNotificationWriter(transaction);
+      return work({
+        run,
+        authorizationRoles: new DrizzleRoleRepository(transaction),
+        auditEvents: createAuditEventWriter(transaction, this.dependencies.clock ?? new SystemClock(), this.dependencies.ids ?? new CryptoUuidV7Generator()),
+        auditManagerIds: () => new DrizzleNotificationRecipientReader(transaction).auditManagerIds(),
+        async insertFlag(flag) {
+          await transaction.insert(runFlag).values({
+            flagId: flag.flagId,
+            runId: flag.runId,
+            flaggedBy: flag.flaggedBy,
+            sessionId: flag.sessionId,
+            flaggedAt: new Date(flag.flaggedAt),
+            note: flag.note,
+          });
+        },
+        enqueueNotification: notification => notifications.enqueue(notification),
+        async notifyTimeline(sequence) { await transaction.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence })})`); },
+      });
+    });
+  }
+}
+
 /** Release-only provisioning. Story 3.2 supplies the consumer. */
 export async function migrateRunsQueue(db: Database): Promise<void> {
   const queue = new PgBoss({ db: queueDatabase(db), migrate: false, createSchema: false, schedule: false, supervise: false });

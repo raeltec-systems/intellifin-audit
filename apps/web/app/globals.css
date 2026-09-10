@@ -1044,6 +1044,19 @@ a {
   resize: vertical;
 }
 
+/*
+ * A note somebody typed, shown back to them. Indented and set off so a reader can tell the
+ * person's words from the platform's, which is the same reason retrieved content gets its
+ * own treatment — here the author is trusted, but the distinction still matters.
+ */
+.ls-quote {
+  margin: 0;
+  padding-left: var(--spacing-3);
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
+
 .ls-field-error {
   color: var(--color-danger-text);
   font-size: var(--type-caption-font-size);

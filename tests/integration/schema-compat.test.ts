@@ -111,6 +111,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // deleted while its Observation stands.
       'run_exception',
       'run_execution',
+      // Story 5.5. One row per flag an Auditor raised on a Run: who, when, and the note.
+      // It changes nothing about the Run, is never updated, and cascades with it.
+      'run_flag',
       // Story 3.8. The Run-level Evidence Quality Gate: one row per addendum §H check,
       // written once when the last Work Item completes and never updated.
       'run_gate_check',

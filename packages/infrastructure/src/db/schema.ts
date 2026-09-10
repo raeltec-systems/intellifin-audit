@@ -735,6 +735,7 @@ export const notification = pgTable('notification', {
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   runId: uuid('run_id').references(() => auditRun.runId),
   waitId: uuid('wait_id').references(() => runWait.waitId),
+  flagId: uuid('flag_id').references(() => runFlag.flagId),
   escalationKind: text('escalation_kind'),
   deadline: timestamp('deadline', { withTimezone: true }),
   inAppOutcome: text('in_app_outcome'),
@@ -744,10 +745,16 @@ export const notification = pgTable('notification', {
   index('notification_recipient_delivery_idx').on(table.recipientId, table.deliveredAt.desc(), table.sendKey),
   index('notification_pending_delivery_idx').on(table.createdAt, table.sendKey).where(sql`${table.deliveredAt} IS NULL`),
   check('notification_version_number', sql`${table.versionNumber} > 0`),
-  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected','escalation')`),
-  check('notification_escalation_context', sql`coalesce(
-    (${table.kind} = 'escalation' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NOT NULL AND ${table.escalationKind} IN ('choose-candidate','unnamed-value','retry-or-skip') AND ${table.deadline} IS NOT NULL)
-    OR (${table.kind} <> 'escalation' AND ${table.runId} IS NULL AND ${table.waitId} IS NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL AND ${table.inAppOutcome} IS NULL AND ${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL), false)`),
+  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected','escalation','flag')`),
+  // Three arms, one per kind of notification this table holds. A flag has a Run and a
+  // flag id and NO wait, escalation kind or deadline — nothing asked it a question and
+  // nothing times it out — while an Escalation has the opposite set; a Procedure Version
+  // review has neither, and no delivery outcomes either. `coalesce(..., false)` keeps a
+  // NULL comparison from passing, which is what a CHECK that evaluates to NULL does.
+  check('notification_context', sql`coalesce(
+    (${table.kind} = 'escalation' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NOT NULL AND ${table.flagId} IS NULL AND ${table.escalationKind} IN ('choose-candidate','unnamed-value','retry-or-skip') AND ${table.deadline} IS NOT NULL)
+    OR (${table.kind} = 'flag' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NULL AND ${table.flagId} IS NOT NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL)
+    OR (${table.kind} NOT IN ('escalation','flag') AND ${table.runId} IS NULL AND ${table.waitId} IS NULL AND ${table.flagId} IS NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL AND ${table.inAppOutcome} IS NULL AND ${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL), false)`),
   check('notification_in_app_outcome', sql`${table.inAppOutcome} IS NULL OR ${table.inAppOutcome} IN ('delivered','unconfigured','failed','superseded')`),
   check('notification_email_outcome', sql`(${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL) OR (${table.emailOutcome} IS NOT NULL AND ${table.emailOutcome} IN ('delivered','unconfigured','failed','superseded') AND ${table.emailOutcomeAt} IS NOT NULL)`),
 ]);
@@ -1912,9 +1919,6 @@ export const runWait = pgTable('run_wait', {
   // Four arms, and the two middle ones pin the closure to the KIND: an Escalation closes
   // by `answer` and a pause by `resume`, so "a pause can never be answered" is a database
   // fact rather than a rule two commands remember. A timeout closes either.
-  // Four arms, and the two middle ones pin the closure to the KIND: an Escalation closes
-  // by `answer` and a pause by `resume`, so "a pause can never be answered" is a database
-  // fact rather than a rule two commands remember. A timeout closes either.
   //
   // EVERY comparison is `IS [NOT] DISTINCT FROM`, never `=`. A plain `closure_kind='answer'`
   // is NULL when the column is NULL, so a half-closed row made all four arms NULL — and a
@@ -1922,6 +1926,34 @@ export const runWait = pgTable('run_wait', {
   // explicit `IS NOT NULL` beside each `=`; this is the same rule said once per comparison.
   // `run-waits.test.ts`'s partial-closure case is what caught it.
   check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'answer' AND ${t.kind} IS DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'resume' AND ${t.kind} IS NOT DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT DISTINCT FROM 'resume' AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NOT DISTINCT FROM 'wait-wake')`),
+]);
+
+/**
+ * One flag: an Auditor asked the Audit Managers to look at a Run (generation 46, Story 5.5).
+ *
+ * NOT a `run_wait`. Every mechanism that table gives a wait — the one-open unique index,
+ * the delayed wake, the revision compare-and-set, the recovery sweep — exists to end a Run
+ * that is being HELD, and a flag holds nothing; `run_wait_one_open` would also make
+ * flagging a Run mutually exclusive with pausing it, which nothing asks for.
+ *
+ * `flagged_by` is `text` with NO foreign key, exactly as `audit_run.initiator_id` is: a key
+ * there would make deleting a user fail on a Run's own history.
+ *
+ * It cascades from `audit_run` — removing a whole Run is a different act from rewriting one
+ * record of it, the reading that already makes `run_workspace` and `run_exception` cascade.
+ */
+export const runFlag = pgTable('run_flag', {
+  flagId: uuid('flag_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  flaggedBy: text('flagged_by').notNull(),
+  sessionId: text('session_id').notNull(),
+  flaggedAt: timestamp('flagged_at', { withTimezone: true }).notNull(),
+  note: text('note'),
+}, t => [
+  index('run_flag_run_idx').on(t.runId, t.flaggedAt, t.flagId),
+  // A note is absent or it says something. An empty string would read as a note somebody
+  // left blank rather than as one they chose not to write.
+  check('run_flag_note', sql`${t.note} IS NULL OR (btrim(${t.note}) <> '' AND length(${t.note}) <= 500)`),
 ]);
 
 export type RunObservationEvaluationRow = typeof runObservationEvaluation.$inferSelect;

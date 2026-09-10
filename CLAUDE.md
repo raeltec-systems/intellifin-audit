@@ -190,6 +190,92 @@ Four mechanical lessons, three of them about tests:
   to be rebuilt afterwards, not patched. CLAUDE.md's "never let a PUSHED migration's `when`
   move" is unchanged and is the case this is not.
 
+## 2026-09-10 — A flag is not a wait, and a notification row is identity only
+
+Story 5.5 puts EXPERIENCE.md's full session-viewer control set on Live View — Pause /
+Resume, Cancel, Flag to Audit Manager — and adds the flag. Whole rule:
+`docs/contracts/run-flag-v1.md`. Generation 46.
+
+- **`run_flag` is its OWN table, not a `run_wait` of kind `flag`.** Every mechanism
+  `run_wait` gives a wait — the one-open unique index, the delayed wake, the revision
+  compare-and-set, the recovery sweep — exists to END a Run that is being HELD. A flag
+  holds nothing: no state, no deadline, no answer. All four would be machinery with no
+  meaning, and `run_wait_one_open` would additionally make flagging a Run mutually
+  exclusive with pausing it, which nothing asks for.
+- **"A flag has no execution effect" is a property of the CONTEXT, not a rule to
+  remember.** `RunFlagContext` deliberately does NOT extend `RunResultContext` the way
+  `RunCancellationContext` does, so there is no Run-state writer, no seal and no Result
+  seam a later branch could reach. The integration test asserts the WHOLE `audit_run` row
+  is unchanged — revision included, because a flag that moved the revision would refuse the
+  next resume against a state nobody changed.
+- **The note is stored on the Run; only its LENGTH and DIGEST enter the chain.** The chain
+  is immutable, so anything that reaches it can never be taken out, and a note is free text
+  a person types — the same reason Story 2.3's payloads identify Audit Instructions by
+  digest and length. An auditor who pastes a credential into a note has put it in a row
+  that can be deleted with its Run. Proven by mutation: putting the note in `noteDigest`
+  fails the unit case that scans the serialized payload.
+- **A notification row names WHICH flag and nothing else.** No note, and no `flaggedBy` or
+  `flaggedAt` either: those are columns on `run_flag`, and copying them onto the
+  notification would be two places one fact lives with no way to tell a stale copy from the
+  truth. `EscalationNotification` already said it in as many words about the question.
+- **`escalationNotificationRecipients` became `runNotificationRecipients`, and the rename
+  IS the change.** FR-28 gives ONE recipient rule for both of its triggers — the initiator,
+  or the Procedure's author for a scheduled Run, and every Audit Manager — and a shared
+  rule whose name claims one of its two callers is one a later reader duplicates rather
+  than reuses. The delivery path is shared for the same reason: `recordNotificationDelivery`
+  now takes `RunNotification` and uses the row's OWN kind in its `UPDATE` predicate. The
+  literal `'escalation'` that was there is the mutation that proves it — restored, the flag
+  delivery test fails.
+- **A flag needs attention while its Run is ACTIVE, and there is no acknowledge control.**
+  A flag has no deadline and no closure of its own, so what stops it needing attention is
+  the Run ending; `isActiveRunState` is that predicate. EXPERIENCE.md's Notification row
+  names no acknowledge action, and inventing one would be a product decision taken sideways
+  inside a story about a button. The consequence is that the inbox shows a flag with NO
+  countdown while an Escalation shows one — which is why `OpenNotification` became a UNION
+  with `deadline` only on the arm that has one, rather than a nullable field every reader
+  has to remember not to render.
+- **The bell counts waits and flags as two counts ADDED, never a join.** A Run can carry an
+  open wait and a flag at once, and a join would report their product.
+- **`notification_escalation_context` became `notification_context`, with three arms.** One
+  per kind the table now holds, so a flag cannot be dressed as an Escalation or the other
+  way round. Generation 35's trigger reaches an Escalation-carrying-a-flag-id row FIRST, so
+  the integration test asserts THAT message rather than the CHECK behind it — and then
+  asserts the row does not exist, which is what the rule actually promises.
+- **Flag is the ONE control on these surfaces with no confirmation dialog, so it is the one
+  that can work without JavaScript.** EXPERIENCE.md's confirmation table enumerates the
+  actions that get a dialog and flagging is not among them; pause and cancel are exempt
+  from the "JavaScript may enhance a control, never be its only path" rule only because the
+  dialog they must have cannot exist without script. The form's action IS the Server
+  Action and `useActionState` renders the result on both paths. `flag-run.spec.ts` proves
+  it with `javaScriptEnabled: false`.
+- **`RunCancelControl` was extracted for the reason `RunPauseControls` was.** Both surfaces
+  carry Cancel now, and two copies would agree on every case anybody tried and diverge on
+  the first one nobody did. Rerun stays on Run Detail: a terminal Run's Live View is a
+  Replay and has nothing to rerun from.
+- **`ActorNameReader` is the one place a user id becomes a person's name.** A Run records
+  its initiator, the auditor who paused it and the auditor who flagged it as IDs, because
+  an address cannot enter the chain; printing one at a reader is the platform speaking its
+  own language — the defect the plain-words pass removed from the authoring screens, met
+  again on the Run surfaces. It returns names only, never addresses, and an id with no row
+  comes back absent so the caller shows the id, which is honest about what it knows.
+
+Three mechanical notes:
+
+- **A React Server Action form cannot be asserted to POST in an SSR unit test.** With the
+  action mocked, React renders `action="javascript:throw new Error('React form
+  unexpectedly submitted.')"` instead of the endpoint Next's compiler emits, and it warns
+  that it overrides `method` and `encType`. Keep `method="POST"` anyway — `form-method.test.ts`
+  requires it of every form and React sets the same value — and prove the no-JavaScript
+  path in the browser, which is the only place it is real.
+- **`?? ` swallows an explicit `null` in a test harness.** A fake whose role came from
+  `options.lockedRole ?? options.role ?? 'auditor'` could not express the one case it
+  existed for — a role revoked between the outer check and the row lock — and the test
+  passed against a build with no recheck at all. `Object.hasOwn` is the test.
+- **A browser assertion that filters on a STATE counts other tests' rows.** The inbox
+  locator matched "flagged for an Audit Manager" and found three, because two earlier cases
+  in the same file had flagged Runs that are still active. Scope such a locator to the
+  subject the test itself created, never to the state it is in.
+
 ## 2026-09-09 — Queue maintenance needs a connection of its own
 
 `Plan derivation queue failed` every 60 seconds in production, since the Epic 2 era. The

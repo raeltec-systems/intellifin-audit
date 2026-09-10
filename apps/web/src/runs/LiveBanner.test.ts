@@ -29,12 +29,20 @@ describe('LiveBanner', () => {
   });
 });
 
-describe('the bell refreshes only on what changes an open wait', () => {
-  it('names the escalation events and nothing else', () => {
-    for (const type of ['execution.escalation-raised', 'execution.escalation-answered', 'execution.escalation-timeout']) {
+describe('the bell refreshes only on what changes an open item', () => {
+  it('names the escalation events, the flag and the two ways a Run ends, and nothing else', () => {
+    for (const type of [
+      'execution.escalation-raised', 'execution.escalation-answered', 'execution.escalation-timeout',
+      // Story 5.5: a flag becomes an open item, and a Run ending closes one.
+      'lifecycle.run-flagged', 'lifecycle.run-canceled', 'lifecycle.result-sealed',
+    ]) {
       expect(changesOpenWaits(type)).toBe(true);
     }
-    for (const type of ['execution.observations-registered', 'lifecycle.run-queued', 'security.action-denied']) {
+    for (const type of [
+      'execution.observations-registered', 'lifecycle.run-queued', 'security.action-denied',
+      // A pause holds a Run in PAUSED, which is ACTIVE, so neither count moves.
+      'lifecycle.run-paused', 'lifecycle.run-resumed', 'lifecycle.run-pause-requested',
+    ]) {
       expect(changesOpenWaits(type)).toBe(false);
     }
   });

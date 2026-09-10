@@ -165,6 +165,49 @@ export const RUN_RESUME_REFUSALS = {
 } as const;
 
 /**
+ * Which states an Auditor may flag to the Audit Managers (Story 5.5, FR-27).
+ *
+ * The three the acceptance criterion names, and no fourth. `QUEUED` is deliberately
+ * excluded: the control lives in the session viewer, which watches a session that has
+ * started, and adding a state the contract does not name would be scope taken sideways.
+ *
+ * A flag is not a transition — it changes no state, holds nothing and is answered by
+ * nobody — so this is a membership test rather than a transition table. `includes` over a
+ * frozen list, never an object index: the state reaches here from a request.
+ */
+export const RUN_FLAG_STATES = ['RUNNING', 'PAUSED', 'AWAITING_AUDITOR'] as const;
+export type FlaggableRunState = (typeof RUN_FLAG_STATES)[number];
+
+export function isFlaggableRunState(state: unknown): state is FlaggableRunState {
+  return typeof state === 'string' && (RUN_FLAG_STATES as readonly string[]).includes(state);
+}
+
+/**
+ * One flag: who asked the Audit Managers to look, when, and the note they attached.
+ *
+ * `note` is OPTIONAL and `null` is its absence — never an empty string, which would read
+ * as a note somebody left blank. The text is stored on the Run; only its length and digest
+ * enter the immutable chain, because a note is free text a person types and the chain
+ * cannot be edited afterwards.
+ */
+export interface RunFlag {
+  readonly flagId: string;
+  readonly runId: string;
+  readonly flaggedBy: string;
+  readonly sessionId: string;
+  readonly flaggedAt: string;
+  readonly note: string | null;
+}
+
+/** The longest note a flag stores. The database refuses a longer one as well. */
+export const RUN_FLAG_NOTE_MAX_LENGTH = 500;
+
+export const RUN_FLAG_REFUSALS = {
+  UNKNOWN: 'That Run does not exist.',
+  NOT_FLAGGABLE: 'Only a Running, Paused or Awaiting Auditor Run can be flagged.',
+} as const;
+
+/**
  * The reason recorded when the person cancelling gave no note.
  *
  * EXPERIENCE.md makes cancel a ROUTINE confirmation — it restates the consequence and has

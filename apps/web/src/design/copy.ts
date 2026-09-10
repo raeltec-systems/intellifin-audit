@@ -459,6 +459,31 @@ export const PAUSE_COPY = {
 } as const;
 
 /**
+ * Flagging a Run to the Audit Managers (Story 5.5, FR-27, FR-28).
+ *
+ * There is no confirmation title here, and that is the contract rather than an omission:
+ * EXPERIENCE.md's confirmation table enumerates the actions that open a dialog and
+ * flagging is not among them. The control is a plain form with an optional note.
+ *
+ * `raised` never says the Run changed, because it did not: a flag has no execution effect,
+ * and a message implying otherwise would be a control reporting an outcome it did not
+ * produce.
+ */
+export const FLAG_COPY = {
+  heading: 'Ask an Audit Manager to look',
+  explanation:
+    'This tells every Audit Manager to look at this Run. It does not pause, stop or change the Run in any way.',
+  noteLabel: 'Note for the Audit Managers (optional)',
+  noteHelp: 'Up to 500 characters. It is stored with the Run and is not sent to the agent.',
+  submit: 'Flag to Audit Manager',
+  raised: 'Audit Managers notified.',
+  raisedBody: 'The Run carries on exactly as it was. Your note is recorded against your name.',
+  unknown: 'The flag could not be confirmed. Reload the Run to see whether it was recorded.',
+  none: 'This Run has not been flagged.',
+  by: 'Flagged by {actor} at {time}.',
+} as const;
+
+/**
  * The Run Detail Escalation panel's contract copy.
  *
  * The first three strings are quoted from EXPERIENCE.md's Awaiting Auditor and

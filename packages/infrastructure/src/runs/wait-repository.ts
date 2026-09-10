@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import {
   createEscalationNotification,
-  escalationNotificationRecipients,
+  runNotificationRecipients,
   isEscalationKind,
   isWaitKind,
   waitClosureKindFor,
@@ -357,7 +357,7 @@ export class PostgresWaitRepository implements WaitRepository {
             const escalationKind = isEscalationKind(wait.kind) ? wait.kind : null;
             const recipients = escalationKind === null
               ? []
-              : escalationNotificationRecipients(
+              : runNotificationRecipients(
                   current.initiatorId,
                   await new DrizzleNotificationRecipientReader(tx).auditManagerIds(),
                 );

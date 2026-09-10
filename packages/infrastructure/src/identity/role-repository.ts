@@ -1,6 +1,7 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 
 import type {
+  ActorNameReader,
   NotificationRecipientReader,
   ManagedUser,
   RoleAssignment,
@@ -155,6 +156,23 @@ export const USER_LIST_LIMIT = 200;
  * The role is joined from `user_role`, read at the moment of the query like every other
  * role read (AD-7). `null` means the account holds no role.
  */
+/** {@link ActorNameReader}: ids in, names out, in one bounded statement. */
+export class DrizzleActorNameReader implements ActorNameReader {
+  constructor(private readonly db: Database) {}
+
+  async namesFor(userIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    const unique = [...new Set(userIds.filter((id) => typeof id === 'string' && id.length > 0))].slice(0, 200);
+    if (unique.length === 0) return new Map();
+    const rows = await this.db
+      .select({ userId: authUser.id, name: authUser.name })
+      .from(authUser)
+      .where(inArray(authUser.id, unique));
+    return new Map(rows
+      .filter((row): row is { userId: string; name: string } => typeof row.name === 'string' && row.name.trim().length > 0)
+      .map((row) => [row.userId, row.name]));
+  }
+}
+
 export class DrizzleUserDirectory implements UserDirectory {
   constructor(
     private readonly db: Database,
