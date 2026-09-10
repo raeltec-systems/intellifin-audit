@@ -68,13 +68,15 @@ describe.skipIf(!url)('durable escalation notification delivery', () => {
         'STANDARD', ${author}, ${sessionId}, 'auditor', now()
       )
     `;
+    // Generation 45: when the wait opened, and who caused it to. An Escalation names
+    // nobody, because the platform raised it; run_wait_opened_by refuses one that does.
+    // The comment lives OUT here: a backtick inside a tagged template ends the template,
+    // and this file then parsed as nothing and reported zero tests rather than failing.
     await sql`
       INSERT INTO run_wait(
         wait_id, run_id, kind, options, opened_at, opened_by, deadline, closed_at, closure_kind, answer_option_id, actor
       ) VALUES (
         ${waitId}, ${runId}, 'choose-candidate', ${JSON.stringify([{ id: 'mark-ambiguous', label: 'Mark ambiguous' }])}::jsonb,
-        -- Generation 45: when the wait opened, and who caused it to. An Escalation names
-        -- nobody, because the platform raised it; `run_wait_opened_by` refuses one that does.
         now(), NULL,
         ${notification.deadline}::timestamptz, NULL, NULL, NULL, NULL
       )

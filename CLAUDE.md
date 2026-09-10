@@ -1382,6 +1382,32 @@ to be held to the rule the work is.
   other's database would have migrated nothing and tested the wrong shape while looking fine.
   A worktree gating a different branch needs its OWN database, not just its own checkout.
 
+- **Two database-backed suites must NEVER run at the same time against one database, and a
+  green one that did proves nothing either.** Started concurrently on 2026-09-10, the
+  integration suite reported ten failures and the browser suite one, and every single one
+  was the other suite: the browser specs start real worker processes whose recovery sweeps
+  claim any abandoned `RUNNING` Run in the database — sealing packages the integration
+  fixtures were about to write Evidence into, and leaving `run_gate_check` empty — while
+  the integration files insert `audit-manager` rows that `escalations.spec.ts`'s live
+  recipient query then counts and waits forever to see delivered. The failures name the
+  Gate, the absence judge and the notification path, so they read as product defects for
+  as long as it takes to notice both runs share a `DATABASE_URL`. Run them one after the
+  other; a suite that writes Runs also needs the OTHER suite's leftovers gone, because
+  `run-surfaces.test.ts`'s keyset page and `run-waits.test.ts`'s recipient count are both
+  bounded reads over the whole table.
+- **A backtick inside a `sql` template ends the template, and the file then has NO tests.**
+  A generation-45 comment carrying `` `run_wait_opened_by` `` was pasted inside
+  ``sql`INSERT INTO run_wait ...` `` in `notification-delivery.test.ts`; the file stopped
+  parsing and Vitest reported it as ` ❯ tests/integration/notification-delivery.test.ts
+  (0 test)` — a line that reads as a collection hiccup in a 43-file list rather than as a
+  suite whose coverage has silently gone to zero, and it survived two full runs unnoticed.
+  Keep prose comments OUTSIDE tagged templates, as `//` lines above the call, and treat
+  "(0 test)" as a failure with the same weight as a red assertion.
+- **A Turbopack internal panic aborts the dev server mid-run.** ` thread 'tokio-rt-worker'
+  panicked at turbopack/.../aggregation_update.rs` is followed by `Aborting.`, and every
+  spec after it fails `net::ERR_CONNECTION_REFUSED` in about a second. Sixteen red tests,
+  one cause, none of them the product. Read the first failure — again.
+
 ### Credentials just in time, and capture suppressed while one is on the wire (added with Story 4.3)
 
 - **"Entry" is credential USE, which is wider than typing and INCLUDES it.** `[REVISED 2026-09-06]` It first read "not typing", because LoanCore then authenticated a GET with an `Authorization` header and had no form. It has one now, so both cases are live and both are covered: the value is TYPED into a field and submitted in a body by the agent sign-in, and PRESENTED in a header by an adapter extraction. What must have nowhere to land is the form field, the request body, the request header and every artifact that could carry any of them: a network artifact, a Structural Snapshot, a screenshot, a frame. The byte-level scanner is unchanged and still covers everything it did. Settled in `epic-4-loancore-authentication-decision.md`. The whole rule is `docs/contracts/credential-containment-v1.md`.
