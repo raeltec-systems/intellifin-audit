@@ -120,7 +120,7 @@ test.describe('as a PoC Administrator', () => {
   test('registers a versioned file through the dialog and sees its digest', async ({ page }) => {
     await page.goto('/administration/sources');
     await expect(
-      page.getByRole('heading', { name: 'Population Source bindings', level: 1 }),
+      page.getByRole('heading', { name: 'Population sources', level: 1 }),
     ).toBeVisible();
 
     // A submission that beats hydration must not put every field in the URL. With no

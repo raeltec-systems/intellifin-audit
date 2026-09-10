@@ -86,7 +86,7 @@ test.describe('as a PoC Administrator', () => {
   }) => {
     await page.goto('/administration/registrations');
     await expect(
-      page.getByRole('heading', { name: 'Target System registrations', level: 1 }),
+      page.getByRole('heading', { name: 'Target systems', level: 1 }),
     ).toBeVisible();
 
     // A submission that beats hydration must not put every field in the URL. With no

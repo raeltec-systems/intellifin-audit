@@ -60,7 +60,7 @@ export function ExecutablePlanPreview({ draft, modelConfiguration }: { readonly 
         <p className="ls-whitespace">{condition.text}</p><p>Applies when: {condition.applicability}</p>
         <p>Compiled applicability: {predicateText(condition.applicabilityAst)}.</p>
         {condition.rule === null ? <p>The agent must be at least {plan.inputs.agentJudgedThreshold} certain. Below that, the record is left for a person to decide.</p> : <p>Compiled rule: {ruleText(condition.rule)}</p>}
-        {condition.policy === undefined ? null : <p>Frozen role-privilege policy: {policyText(condition.policy)}</p>}
+        {condition.policy === undefined ? null : <p>Which roles count as privileged, frozen with this version: {policyText(condition.policy)}</p>}
       </div>)}
       <h3>Sign-in credentials</h3>
       <ul>{plan.credentialReferences.map((reference) => <li key={reference.targetSystemId}>{plan.inputs.targets.find((target) => target.registrationId === reference.targetSystemId)?.displayName}: <code>{reference.credentialRef}</code></li>)}</ul>

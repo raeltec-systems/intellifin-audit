@@ -29,7 +29,7 @@ export async function openStep(page: Page | Locator, heading: string): Promise<v
 }
 
 /**
- * Keep every Builder step open, for a spec whose subject is what is INSIDE the steps.
+ * Keep every disclosure on the page open, for a spec whose subject is what is INSIDE them.
  *
  * A hundred assertions in this suite are about the editors — a stale-tab conflict, a
  * lost save response, a compiled condition's badge — and were written when the Builder
@@ -45,9 +45,14 @@ export async function openStep(page: Page | Locator, heading: string): Promise<v
  * rather than a call beside every `goto`.
  */
 export async function keepBuilderStepsOpen(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  // On the CONTEXT, not the page: version-review races a Draft against itself in a
+  // second tab opened from this context, and a page-level script would not reach it.
+  await page.context().addInitScript(() => {
     const open = (): void => {
-      for (const step of document.querySelectorAll<HTMLDetailsElement>('details.ls-step')) {
+      // Every `<details>`, not only `details.ls-step`: a step's "More options" fold is
+      // itself a disclosure, and a spec that opens the step but not the fold reaches a
+      // control it can see the label of and cannot click.
+      for (const step of document.querySelectorAll<HTMLDetailsElement>('details')) {
         if (!step.open) step.open = true;
       }
     };

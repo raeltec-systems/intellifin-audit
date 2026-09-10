@@ -633,7 +633,7 @@ test.describe('as an Auditor', () => {
     // rule — this Procedure Version records it and never runs it.
     await page.getByLabel('Frequency').selectOption('daily');
     await page.getByLabel('Start time (UTC)').fill('06:00');
-    await expect(page.getByText('Period covered: Previous calendar day, in UTC.')).toBeVisible();
+    await expect(page.getByText('Each run covers: Previous calendar day, in UTC.')).toBeVisible();
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toBeVisible();
     await page.getByLabel('Frequency').selectOption('');
@@ -723,7 +723,7 @@ test.describe('as an Auditor', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     const first = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 1$/ }) });
     await first.getByLabel('A saved copy of the page it was read from').uncheck();
-    await first.getByLabel('Screenshot', { exact: true }).uncheck();
+    await first.getByLabel('Screenshot of the page').uncheck();
     await first.getByLabel('Accept a reading with no saved proof behind it').check();
     await first.getByLabel('What to record').fill('retained_name');
     await page.getByLabel('Add a system').selectOption(webId);
@@ -756,18 +756,18 @@ test.describe('as an Auditor', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await expect(first.getByLabel('A saved copy of the page it was read from')).toBeEnabled();
     await expect(first.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
-    await expect(first.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
-    await expect(first.getByLabel('Screenshot', { exact: true })).toBeEnabled();
+    await expect(first.getByLabel('Screenshot of the page')).not.toBeChecked();
+    await expect(first.getByLabel('Screenshot of the page')).toBeEnabled();
     await expect(first.getByLabel('What to record')).toHaveValue('retained_name');
     await page.reload();
     await expect(first.getByLabel('Accept a reading with no saved proof behind it')).toBeChecked();
     await expect(first.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
-    await expect(first.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
+    await expect(first.getByLabel('Screenshot of the page')).not.toBeChecked();
     await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
-    await expect(addedCapture.getByLabel('Screenshot', { exact: true })).not.toBeChecked();
+    await expect(addedCapture.getByLabel('Screenshot of the page')).not.toBeChecked();
     const authored = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 2$/ }) });
     await expect(authored.getByLabel('A saved copy of the page it was read from')).toBeChecked();
-    await expect(authored.getByLabel('Screenshot', { exact: true })).toBeChecked();
+    await expect(authored.getByLabel('Screenshot of the page')).toBeChecked();
     await addedCapture.getByLabel('The lines of the source file it came from').check();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
@@ -844,9 +844,9 @@ test.describe('as an Auditor', () => {
 
     // Reload from the server; the frozen selection and the instruction editors survive.
     await page.reload();
-    const instruction = page.getByLabel(`Audit Instructions for E2E LoanCore ${stamp}`);
+    const instruction = page.getByLabel(`What the agent should do in E2E LoanCore ${stamp}`);
     await expect(instruction).toBeVisible();
-    await expect(page.getByLabel(`Audit Instructions for E2E LedgerDesk ${stamp}`)).toBeVisible();
+    await expect(page.getByLabel(`What the agent should do in E2E LedgerDesk ${stamp}`)).toBeVisible();
 
     // A refresh caused by a different section must not discard prose that has not been
     // saved yet. Renaming is a separate guarded Draft edit and forces that refresh.
@@ -888,7 +888,7 @@ test.describe('as an Auditor', () => {
     await expect(page.getByText('The Audit Instructions are recorded in the audit chain.')).toBeVisible();
 
     await page.reload();
-    await expect(page.getByLabel(`Audit Instructions for E2E LoanCore ${stamp}`)).toHaveValue(
+    await expect(page.getByLabel(`What the agent should do in E2E LoanCore ${stamp}`)).toHaveValue(
       'Open the account record and note its status, username, and roles.',
     );
     await scan(page);
@@ -914,11 +914,12 @@ test.describe('as an Auditor', () => {
       await card.getByRole('link').click();
       // The sections are on the Builder; the detail surface lists versions.
       await page.getByRole('link', { name: 'Open Builder' }).click();
-      await expect(page.getByRole('heading', { level: 2, name: 'Objective' })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 3, name: 'Objective' })).toBeVisible();
+      // The Objective's own block: Control and Objective share one panel now, so the
+      // first paragraph of the card is the Control statement, not this.
       const objective = await page
-        .locator('.ls-card')
-        .filter({ hasText: 'Objective' })
-        .first()
+        .locator('.ls-template-fact')
+        .filter({ has: page.getByRole('heading', { level: 3, name: 'Objective' }) })
         .locator('p')
         .first()
         .innerText();
@@ -1005,7 +1006,7 @@ test.describe('as an Auditor', () => {
       .first();
     await card.getByRole('link').click();
     await page.getByRole('link', { name: 'Open Builder' }).click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Objective' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Objective' })).toBeVisible();
     await scan(page);
   });
 

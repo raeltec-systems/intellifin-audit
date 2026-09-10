@@ -354,7 +354,7 @@ async function assertBothInstantsAcquired(runId: string, kase: WindowCase): Prom
 
   // The disablement side: captured from the account page by its registered label, kept
   // in its source spelling, normalized to UTC, and grounded at a locator in a REGISTERED
-  // A saved copy of the page it was read from whose bytes hold that very cell, in the same record group as the
+  // A Structural Snapshot whose bytes hold that very cell, in the same record group as the
   // employee identity. A wrong employee's page would never reach this point (see the
   // application-level correlation test); this proves the grounding on real bytes.
   const observations = await sql`SELECT population_record_key,found,target_system,match_origin,coverage,attributes FROM run_observation WHERE run_id=${runId}`;
@@ -459,7 +459,7 @@ async function inspectDisabledTime(page: Page, runId: string, disabled: StoredAt
     const link = page.locator(`a[href="${path}"]`);
     await expect(link).toBeVisible();
     await link.click();
-    await expect(page.getByRole('heading', { name: 'Stored A saved copy of the page it was read from', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Stored Structural Snapshot', exact: true })).toBeVisible();
     const value = page.locator('.ls-untrusted').filter({ hasText: 'as read at the stored snapshot locator' }).locator('pre');
     await expect(value).toHaveText(JSON.stringify(DISABLED_AT_SOURCE));
     await scan(page);

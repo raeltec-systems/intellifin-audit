@@ -48,9 +48,9 @@ export function AgentSummary({
       </h2>
       {plan === null ? (
         <p data-agent-summary-empty>
-          There is no derived plan yet, so there is nothing to summarise. The executable
-          plan preview below says whether the plan is being derived or could not be
-          derived, and why.
+          No plan has been worked out yet, so there is nothing to summarise. The
+          step-by-step plan below says whether it is still being worked out, or could not
+          be, and why.
         </p>
       ) : (
         <>

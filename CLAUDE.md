@@ -79,6 +79,20 @@ Three mechanical notes:
   textarea whether the step is open or not, so a visibility assertion on it passes for the
   wrong reason; the step's own Save control is unambiguous.
 
+- **`page.addInitScript` is per PAGE; the helper belongs on the CONTEXT.**
+  `version-review.spec.ts` races a Draft against itself in a second tab opened with
+  `page.context().newPage()`, and a page-level script never reached it — so that tab met a
+  control whose label it could see and could not click.
+- **A blanket rename hits surfaces the change was not about.** "Structural Snapshot" became
+  plain words on the Builder's grounding CHECKBOX, where somebody chooses it; the Run
+  surfaces still call the artifact a Structural Snapshot, which is its name in the Evidence
+  contract. A `sed` over the specs rewrote a Run-page heading assertion too, and only
+  `disablement-window-journey.spec.ts` could see it.
+- **Read the FIRST failure, again.** Two of the four browser runs it took to get here ended
+  with six or seven red tests of which ONE was real: a failing test restarts the Playwright
+  worker, `afterAll` deletes the Procedures the file created, and every later test then
+  fails on an empty list for a reason that is not its own.
+
 **The Administration screens got the same pass**, because that is where a source and a
 system are set up before anybody can build a procedure with them. `BindingForm` and
 `RegistrationForm` are now one column somebody works down — name it, say how the records

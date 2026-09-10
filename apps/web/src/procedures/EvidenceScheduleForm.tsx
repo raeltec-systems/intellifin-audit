@@ -183,13 +183,14 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
         />
       )}
       <p id={`${id}-grounding-help`}>
-        Every attribute value must be grounded in a Structural Snapshot or a source file excerpt, or declared
-        model-read. A screenshot or a recording segment alone never grounds an attribute value.
+        Every value needs proof behind it: a saved copy of the page it was read from, or the lines of the
+        source file it came from. A screenshot or a recording clip is worth keeping, but neither on its own
+        shows where a value came from.
       </p>
       {platformCaptured ? (
         <p className="ls-caption">
-          At least one selected Target System is agent-driven, so Structural Snapshot and screenshot are
-          platform-captured for every attribute here and cannot be unset.
+          One of the systems you chose is driven by the agent, so a saved copy of the page and a screenshot
+          are kept for every value here. You cannot turn those two off.
         </p>
       ) : null}
       <form
@@ -230,28 +231,6 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                 />
                 <p className="ls-caption">The value you need proof of, spelled the way the system shows it — for example <code>account_status</code>.</p>
               </div>
-              <details className="ls-disclosure">
-                <summary>More options for evidence item {index + 1}</summary>
-                <div className="ls-disclosure__body">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={requirement.modelRead}
-                      onChange={(event) => change(index, { modelRead: event.target.checked })}
-                    />{' '}
-                    Accept the agent&rsquo;s reading without matching it to saved proof
-                  </label>
-                  <p className="ls-caption">Leave this off unless there is no way to keep proof for this value. With it off, a value the platform cannot match to the saved proof is left for a person to decide instead of being trusted.</p>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={requirement.recordingSegment}
-                      onChange={(event) => change(index, { recordingSegment: event.target.checked })}
-                    />{' '}
-                    Also keep a clip of the session recording
-                  </label>
-                </div>
-              </details>
               <fieldset aria-invalid={(error !== null && !nameError) || undefined} aria-describedby={`${fieldId}-error`}>
                 <legend>Proof kept for this value</legend>
                 {GROUNDING_EVIDENCE_TYPES.map((kind) => (
@@ -275,6 +254,28 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                 />{' '}
                 Screenshot of the page {forced ? '(always kept for a system the agent drives)' : ''}
               </label>
+              <details className="ls-disclosure">
+                <summary>More options for evidence item {index + 1}</summary>
+                <div className="ls-disclosure__body">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={requirement.modelRead}
+                      onChange={(event) => change(index, { modelRead: event.target.checked })}
+                    />{' '}
+                    Accept a reading with no saved proof behind it
+                  </label>
+                  <p className="ls-caption">Leave this off unless there is no way to keep proof for this value. With it off, a value the platform cannot match to the saved proof is left for a person to decide instead of being trusted.</p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={requirement.recordingSegment}
+                      onChange={(event) => change(index, { recordingSegment: event.target.checked })}
+                    />{' '}
+                    Also keep a clip of the session recording
+                  </label>
+                </div>
+              </details>
               <div id={`${fieldId}-error`} aria-live="polite">
                 {error === null ? null : <Banner tone="warning" title={error} />}
               </div>

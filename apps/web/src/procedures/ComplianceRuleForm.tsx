@@ -304,7 +304,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
               <p>Names are compared exactly, capital letters included. Type each one as the Target System displays it.</p>
             </div>
             {condition.policy === undefined
-              ? <Button type="button" aria-describedby={`${fieldId}-policy-help`} onClick={() => changeCondition(condition.conditionId, { policy: EMPTY_POLICY })}>Add role-privilege policy {condition.conditionId}</Button>
+              ? <Button type="button" aria-describedby={`${fieldId}-policy-help`} onClick={() => changeCondition(condition.conditionId, { policy: EMPTY_POLICY })}>Add the list of privileged roles {condition.conditionId}</Button>
               : <>
                 <LineListField id={`${fieldId}-privileged`} label={`Privileged roles ${condition.conditionId}`} help="One role name per line, exactly as the Target System displays it." values={condition.policy.privileged}
                   invalid={policyProblem !== null} onChange={(privileged) => changeCondition(condition.conditionId, { policy: { ...condition.policy!, privileged } })} />
@@ -319,7 +319,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
                   being typed, is the difference between a refusal and something to do.
                 */}
                 <div aria-live="polite">{policyProblem === null ? null : <Banner tone="warning" title={policyProblem} />}</div>
-                <Button type="button" onClick={() => removePolicy(condition.conditionId)}>Remove role-privilege policy {condition.conditionId}</Button>
+                <Button type="button" onClick={() => removePolicy(condition.conditionId)}>Remove the list of privileged roles {condition.conditionId}</Button>
               </>}
           </fieldset> : null}
           <div id={`${fieldId}-error`} aria-live="polite">{error === null ? null : <Banner tone="warning" title={error} />}</div>
