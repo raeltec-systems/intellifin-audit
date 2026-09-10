@@ -6,23 +6,32 @@ import type { TargetSystemRegistration } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
 import { Digest } from '../design/Digest';
-import { RegistrationForm } from './RegistrationForm';
-import { NEVER_PROBED_SENTENCE, connectivityLabel, kindLabel } from './registrations';
+import { FINGERPRINT_EXPLANATION, FINGERPRINT_WORD } from '../design/plain-words';
+import {
+  RegistrationForm,
+  changedStamp,
+  targetKindWord,
+} from './RegistrationForm';
+import { NEVER_PROBED_SENTENCE, connectivityLabel, statusLabel } from './registrations';
 import type {
   ChangeRegistrationFormFields,
   RegistrationActionResult,
 } from '../../app/administration/registrations/actions';
 
 /**
- * One registration, and the form that changes it (FR-8, AD-2).
+ * One target system, and the form that changes it (FR-8, AD-2).
  *
- * The digest is shown in full above the form because it is the value under discussion:
- * a change to any of the six fields moves it, and a change to the name or the note does
- * not. Showing it here makes that observable rather than asserted.
+ * The panel above the form is what this system IS, in five lines a person can read
+ * without scrolling into the controls: what kind of thing it is, where the agent signs
+ * in, whether it is still in use, its fingerprint and when it last moved. The fingerprint
+ * is there because it is the value under discussion — changing where the agent may go,
+ * what it may do, which credential it uses, the field labels or the confirming field
+ * moves it, and changing the name or the note does not. Showing it here makes that
+ * observable rather than asserted.
  *
- * The form is rendered with the digest the server produced for THIS page load, and the
- * Server Action sends it back as `expectedDigest`. A tab left open while somebody else
- * changed the system is refused rather than allowed to blind-overwrite, so the audit
+ * The form is rendered with the row version the server produced for THIS page load, and
+ * the Server Action sends it back as `expectedRowVersion`. A tab left open while somebody
+ * else changed the system is refused rather than allowed to blind-overwrite, so the audit
  * event never records a prior value the administrator did not see.
  */
 
@@ -57,21 +66,34 @@ export function RegistrationEditor({
 
       <dl className="ls-definition">
         <div>
-          <dt>Kind</dt>
-          <dd>{kindLabel(registration.kind)}</dd>
+          <dt>What it is</dt>
+          <dd>{targetKindWord(registration.kind)}</dd>
         </div>
         {registration.kind === 'web' ? (
           <div>
-            <dt>Authentication destination</dt>
-            <dd className="ls-mono">{registration.authenticationDestination ?? 'Not configured'}</dd>
+            <dt>Sign-in form address</dt>
+            <dd>
+              {registration.authenticationDestination === undefined ||
+              registration.authenticationDestination === '' ? (
+                // Said in words rather than left blank: the agent refuses to enter a
+                // credential without this, and an empty cell reads as "fine".
+                <span>None set, so the agent never signs in here</span>
+              ) : (
+                <span className="ls-mono">{registration.authenticationDestination}</span>
+              )}
+            </dd>
           </div>
         ) : null}
         <div>
-          <dt>Registration digest</dt>
-          <Digest as="dd" value={registration.digest} label="Registration" />
+          <dt>Status</dt>
+          <dd>{statusLabel(registration.status)}</dd>
         </div>
         <div>
-          <dt>Connectivity</dt>
+          <dt>{FINGERPRINT_WORD}</dt>
+          <Digest as="dd" value={registration.digest} label="System" />
+        </div>
+        <div>
+          <dt>Last checked</dt>
           <dd>
             {connectivityLabel(registration.connectivity.state)}
             {registration.connectivity.state === 'never-probed' ? (
@@ -80,14 +102,16 @@ export function RegistrationEditor({
           </dd>
         </div>
         <div>
-          <dt>Last changed (UTC)</dt>
+          <dt>Last changed</dt>
           <dd>
             <time dateTime={registration.updatedAt}>
-              {registration.updatedAt.replace('T', ' ').slice(0, 19)}
+              {changedStamp(registration.updatedAt)}
             </time>
           </dd>
         </div>
       </dl>
+
+      <p className="ls-caption">{FINGERPRINT_EXPLANATION}</p>
 
       <RegistrationForm
         registration={registration}

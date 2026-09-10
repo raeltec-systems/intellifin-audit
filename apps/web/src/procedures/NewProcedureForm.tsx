@@ -139,10 +139,10 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
         URL. See `apps/web/src/form-method.test.ts`.
       */}
       <form method="post" onSubmit={onRequestSubmit} className="ls-admin__form">
-        <h2>Create a Procedure from a Template</h2>
+        <h2>Start a new procedure</h2>
         <p className="ls-caption">
-          A Template pre-fills every section of the Builder from the addendum. The choice
-          is yours to make: nothing here selects one for you.
+          Pick the kind of control you are testing. It fills in a starting point you can
+          change on the next screen. Nothing is chosen for you.
         </p>
         <div className="ls-admin__fields">
           <div className="ls-dialog__field">
@@ -164,7 +164,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
               {/* Not an option with a value: an unchosen Template must reach the action
                   as something the vocabulary check refuses, never as P-1. */}
               <option value="" disabled>
-                Choose a Template…
+                Choose what you are testing…
               </option>
               {TEMPLATE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -191,8 +191,8 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
               onChange={(event) => setControlName(event.target.value)}
             />
             <p className="ls-caption">
-              What this control is called everywhere it is listed — on the card, on the
-              Detail, in the audit chain. Up to 200 characters.
+              What you call this control. It appears everywhere this procedure is listed,
+              and in the audit record. Up to 200 characters.
             </p>
           </div>
         </div>

@@ -1,3 +1,120 @@
+## 2026-09-10 — The Builder speaks the auditor's language, and asks one question at a time
+
+The owner opened the deployed authoring screens and could not use them: *"im reading this as
+an auditor and its giberish...i have no idea what this is, i cant understand a single word of
+whats happening here and what im expected to do... so many whistles and bells..should be a few
+clicks"*. Two separate defects, both ours and neither in the domain.
+
+**One: the surface printed the platform at the reader.** Every label was the right name for
+what the domain freezes and the wrong name for the question in an auditor's head — "Population
+Source binding", "Declared-count mechanism", "Comparison type", "Applicability", "Declare
+model-read (exempt from deterministic grounding)". The domain keeps its names; the surface
+translates, in ONE place.
+
+- **`apps/web/src/design/plain-words.ts` is that place**, and it is a PRESENTATION mapping
+  only. `SECTION_WORDS` gives each `DRAFT_SECTION_HEADINGS` entry a title and the question it
+  answers; `SOURCE_KIND_WORDS`, `COUNT_MECHANISM_WORDS` and `TARGET_KIND_WORDS` do the same for
+  the three closed domain vocabularies; `FROZEN_FIELD_WORDS` covers the frozen contract keys
+  the approval diff, the plan preview and the Target System card all print. Every map is typed
+  against the domain's own union, so a value added there fails to COMPILE rather than rendering
+  its identifier at a person, and `plain-words.test.ts` walks each vocabulary as well.
+- **`DRAFT_SECTION_HEADINGS` cannot move and was not moved.** It is the stored `jsonb`
+  payload's own key set, validated on read. What a reader sees above one can change; the key
+  cannot.
+- **The banned words have a test.** `plain-words.test.ts` scans every `.tsx` under
+  `apps/web/src/procedures` and `apps/web/src/admin` for twenty phrases and fails on any that
+  appears as rendered TEXT. It is deliberately not a scan for identifiers:
+  `declaredCountMechanism` is a field name and must keep working; "Declared-count mechanism" on
+  a `<label>` is the defect. A phrase flanked by identifier characters is part of a name and is
+  left alone.
+- **`FILTER_COMPARISONS` is one dropdown where there were two controls.** The domain splits an
+  inclusion predicate across `kind` and, for decimals, `operator`, so the Builder asked for a
+  "Comparison type" and then a "Decimal operator" — two controls for one thought. The list is
+  every reachable combination, and `DECIMAL_OPERATORS` is now a runtime constant in
+  `population-draft.ts` with the type derived from it, because the validator and the dropdown
+  both have to enumerate them and a second spelling diverges on the first operator nobody tries.
+
+**Two: nine forms open at once is nine questions asked simultaneously.** The Builder rendered
+every section expanded, each read-only one repeating the same sentence.
+
+- **A step is a native `<details>` and states what is set in it while closed.** `BuilderStep`
+  plus `section-summary.ts`: "Records to test — LoanCore leavers export, testing records
+  matching 1 filter". A collapsed step that said nothing would be hiding rather than
+  simplifying, so the summary line is tested as hard as the toggle.
+- **Whether a step starts open is decided ONCE, and after that the element belongs to the
+  reader.** `useRef(initiallyOpen).current`, never state: a controlled `open` slams a section
+  shut under somebody reading the banner of the save that just answered it, and — worse —
+  closes a step opened before hydration the moment anything else re-renders. Native `<details>`
+  also means the disclosure works before React arrives, which is the standing rule.
+- **`sectionSummary` marks a step `todo`, `done`, `attention` or `reference`.** `reference` is
+  Control and Objective, which nobody has to do; `attention` is set-but-advisory (a source
+  whose record count nothing confirms), which is `procedureReadiness`'s distinction and never a
+  refusal. Audit Instructions is optional, so an empty one is `done` — marking it `todo` would
+  put a permanent red mark on a finished Draft.
+- **Readiness came OUT of the fold and the compiled plan went into one.** "Before you run this"
+  is what an auditor must meet before spending a Run; `AgentSummary` and
+  `ExecutablePlanPreview` are the platform proving what it will execute, which is worth reading
+  and is the wrong thing to meet first. `AgentSummary` gained `readiness={false}` for the
+  Builder and keeps it on the version review page, which has nowhere else to put it.
+- **The two Template sections are read once, together, under the pinned sentence** rather than
+  as two cards each repeating it. `BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE` is a contract
+  sentence and is unchanged; only how often it is said changed.
+- **`RenameDraftForm` stays at the end of the Builder**, because
+  `BUILDER_CONTROL_NAME_EDITABLE_SENTENCE` says it is there and that sentence is pinned against
+  EXPERIENCE.md on disk. The contract decided the placement, not taste.
+
+Three mechanical notes:
+
+- **Vitest includes `*.test.ts` and NOT `*.test.tsx`.** An SSR component test written as `.tsx`
+  is collected by nothing and passes silently — the "a glob that cannot match is a promise of
+  coverage that does not exist" trap, from the other side. `BuilderSections.render.test.ts`
+  uses `React.createElement` for exactly this reason.
+- **The browser specs open the steps rather than asserting through them.** `tests/e2e/builder.ts`
+  exports `openStep` for a journey and `keepBuilderStepsOpen` for the five specs whose subject
+  is what is INSIDE a step; the disclosure itself is proved by `builder-steps.spec.ts`, which
+  runs without the helper and asserts the closed state, the summary line, the click and the
+  keyboard. A hundred assertions clicking a disclosure open would test the disclosure a hundred
+  times and the editors no better.
+- **`Rule text C1` is a bad probe for "is this step open".** The simple editor hides that
+  textarea whether the step is open or not, so a visibility assertion on it passes for the
+  wrong reason; the step's own Save control is unambiguous.
+
+- **`page.addInitScript` is per PAGE; the helper belongs on the CONTEXT.**
+  `version-review.spec.ts` races a Draft against itself in a second tab opened with
+  `page.context().newPage()`, and a page-level script never reached it — so that tab met a
+  control whose label it could see and could not click.
+- **A blanket rename hits surfaces the change was not about.** "Structural Snapshot" became
+  plain words on the Builder's grounding CHECKBOX, where somebody chooses it; the Run
+  surfaces still call the artifact a Structural Snapshot, which is its name in the Evidence
+  contract. A `sed` over the specs rewrote a Run-page heading assertion too, and only
+  `disablement-window-journey.spec.ts` could see it.
+- **Read the FIRST failure, again.** Two of the four browser runs it took to get here ended
+  with six or seven red tests of which ONE was real: a failing test restarts the Playwright
+  worker, `afterAll` deletes the Procedures the file created, and every later test then
+  fails on an empty list for a reason that is not its own.
+
+**The Administration screens got the same pass**, because that is where a source and a
+system are set up before anybody can build a procedure with them. `BindingForm` and
+`RegistrationForm` are now one column somebody works down — name it, say how the records
+arrive or what kind of system it is, give the address, list the fields, save — with one
+short help line per field taken from the option's own `detail`, the rarely-needed fields
+under **More options**, and the paragraph that used to sit above the form under a **Why
+this matters** disclosure. The list panels read as tables an auditor can scan. Three
+consequences worth knowing:
+
+- **"More options" opens when CHANGING and stays closed when ADDING.** Adding is a path to
+  follow; changing is a review, and hiding half the configuration from somebody who came to
+  check it makes them check less.
+- **A digest is a "fingerprint" on every surface that shows one**, with the sentence saying
+  what it does beside it (`FINGERPRINT_WORD`, `FINGERPRINT_EXPLANATION`). The save messages
+  say it too, and now say the consequence — "Every procedure that uses this needs approving
+  again" — rather than printing a hex string and leaving the reader to work out why it
+  matters. The SPOKEN form still says "digest", because `digest-text.ts` builds it and that
+  module is shared with the Run surfaces.
+- **`.ls-disclosure` is the one disclosure treatment.** Two arrived in the same change —
+  `.ls-more` in the Builder and `.ls-disclosure` in Administration — which is how a design
+  system ends up with two of everything. `.ls-more` was removed the same day it appeared.
+
 ## 2026-09-09 — Queue maintenance needs a connection of its own
 
 `Plan derivation queue failed` every 60 seconds in production, since the Epic 2 era. The

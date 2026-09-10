@@ -26,7 +26,7 @@ describe('which routes get a trail', () => {
     // down there. Administration still gets the shell's trail.
     expect(crumbsFor('/administration/registrations/REG-1')).toEqual([
       { href: '/administration', label: 'Administration', mono: false },
-      { href: '/administration/registrations', label: 'Target System registrations', mono: false },
+      { href: '/administration/registrations', label: 'Target systems', mono: false },
       { href: '/administration/registrations/REG-1', label: 'REG-1', mono: true },
     ]);
   });
@@ -70,16 +70,16 @@ describe('a named sub-route', () => {
   it('reads as its name, not as an identifier', () => {
     expect(crumbsFor('/administration/registrations')).toEqual([
       { href: '/administration', label: 'Administration', mono: false },
-      { href: '/administration/registrations', label: 'Target System registrations', mono: false },
+      { href: '/administration/registrations', label: 'Target systems', mono: false },
     ]);
   });
 
-  it('names the Population Source bindings surface, and the id below it stays raw', () => {
+  it('names the population sources surface, and the id below it stays raw', () => {
     // Every label in SECTION_LABELS needs a case: deleting this one left the suite
     // green, which makes the table a list nothing checks.
     expect(crumbsFor('/administration/sources')).toEqual([
       { href: '/administration', label: 'Administration', mono: false },
-      { href: '/administration/sources', label: 'Population Source bindings', mono: false },
+      { href: '/administration/sources', label: 'Population sources', mono: false },
     ]);
   });
 

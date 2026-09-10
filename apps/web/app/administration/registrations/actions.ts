@@ -265,9 +265,9 @@ export async function changeRegistrationAction(
       ok: true,
       registrationId: outcome.registrationId,
       message: outcome.published
-        ? `Saved. The digest is now ${outcome.digest}, and the change is recorded in the audit chain.`
+        ? `Saved. The fingerprint is now ${outcome.digest}. Every procedure that uses this needs approving again. The change is recorded in the audit chain.`
         : outcome.annotated
-          ? 'Saved. The digest did not change, so no Procedure is affected. The change is recorded in the audit chain.'
+          ? 'Saved. The fingerprint did not change, so no procedure is affected. The change is recorded in the audit chain.'
           : 'Saved. Nothing changed.',
     };
   } catch (error) {

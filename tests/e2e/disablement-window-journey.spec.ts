@@ -39,6 +39,7 @@ import {
   EXCEPTION_FINGERPRINT_KEY_ID,
   LOANCORE_CREDENTIAL,
 } from './credentials';
+import { keepBuilderStepsOpen } from './builder';
 
 // The 24-hour disablement window (owner decision 2, 2026-09-08) through the ACTUAL
 // compiled worker: the termination instant is acquired from the declared population
@@ -353,7 +354,7 @@ async function assertBothInstantsAcquired(runId: string, kase: WindowCase): Prom
 
   // The disablement side: captured from the account page by its registered label, kept
   // in its source spelling, normalized to UTC, and grounded at a locator in a REGISTERED
-  // Structural Snapshot whose bytes hold that very cell, in the same record group as the
+  // A Structural Snapshot whose bytes hold that very cell, in the same record group as the
   // employee identity. A wrong employee's page would never reach this point (see the
   // application-level correlation test); this proves the grounding on real bytes.
   const observations = await sql`SELECT population_record_key,found,target_system,match_origin,coverage,attributes FROM run_observation WHERE run_id=${runId}`;
@@ -542,6 +543,17 @@ async function deleteRuns(procedureId: string): Promise<void> {
   await sql`DELETE FROM run_initiation_request WHERE run_id = ANY(${runIds}::uuid[]) OR refused_run_id = ANY(${runIds}::uuid[])`;
   await sql`DELETE FROM audit_run WHERE run_id = ANY(${runIds}::uuid[])`;
 }
+
+/**
+ * Keep the Builder's steps open for this file.
+ *
+ * The Builder is a list of questions whose answered steps start closed. This journey's
+ * subject is the 24-hour window and its Evidence, not the disclosure, which has its own
+ * test in `procedures.spec.ts`.
+ */
+test.beforeEach(async ({ page }) => {
+  await keepBuilderStepsOpen(page);
+});
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);

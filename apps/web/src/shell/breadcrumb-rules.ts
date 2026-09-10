@@ -22,8 +22,8 @@ export const SECTION_LABELS: Readonly<Record<string, string>> = {
  * cannot be forced to share a label.
  */
 export const SUBSECTION_LABELS: Readonly<Record<string, string>> = {
-  '/administration/registrations': 'Target System registrations',
-  '/administration/sources': 'Population Source bindings',
+  '/administration/registrations': 'Target systems',
+  '/administration/sources': 'Population sources',
 };
 
 /**

@@ -7,29 +7,34 @@ import type { PopulationSourceBinding } from '@intellifin/application';
 import { Banner } from '../design/Banner';
 import { DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { Digest } from '../design/Digest';
-import { BindingForm } from './BindingForm';
+import { FINGERPRINT_EXPLANATION, FINGERPRINT_WORD } from '../design/plain-words';
 import {
-  bindingKindLabel,
-  bindingStatusLabel,
-  declaresNoCount,
-  mechanismLabel,
-} from './bindings';
+  BindingForm,
+  changedStamp,
+  countMechanismWords,
+  sourceKindWords,
+} from './BindingForm';
+import { bindingStatusLabel, declaresNoCount } from './bindings';
 import type {
   BindingActionResult,
   ChangeBindingFormFields,
 } from '../../app/administration/sources/actions';
 
 /**
- * One Population Source binding, and the form that changes it (FR-6, FR-41).
+ * One population source, and the form that changes it (FR-6, FR-41).
  *
- * The digest is shown in full above the form because it is the value under discussion: a
- * change to any of the five fields moves it, and a change to the name, the note or the
- * status does not. Showing it here makes that observable rather than asserted.
+ * The panel above the form is what this source IS, in five lines a person can read
+ * without scrolling into the controls: how its records arrive, whether its count can be
+ * checked, whether it is still in use, its fingerprint and when it last moved. The
+ * fingerprint is there because it is the value under discussion — changing how the
+ * records arrive, where they are, the fields, the count check or the hidden fields moves
+ * it, and changing the name, the note or the status does not. Showing it here makes that
+ * observable rather than asserted.
  *
  * The form is rendered with the row version the server produced for THIS page load, and
  * the Server Action sends it back as `expectedRowVersion`. A tab left open while somebody
- * else changed the binding is refused rather than allowed to blind-overwrite, so the
- * audit event never records a prior digest the administrator did not see — and a
+ * else changed the source is refused rather than allowed to blind-overwrite, so the audit
+ * event never records a prior fingerprint the administrator did not see — and a
  * retirement is never silently reverted.
  */
 
@@ -62,18 +67,18 @@ export function BindingEditor({
 
       <dl className="ls-definition">
         <div>
-          <dt>Kind</dt>
+          <dt>How the records arrive</dt>
           <dd>
-            {bindingKindLabel(binding.kind)}
+            {sourceKindWords(binding.kind).label}
             {binding.kind === 'manual-upload' ? (
               <p className="ls-caption">{MANUAL_UPLOAD_SENTENCE}</p>
             ) : null}
           </dd>
         </div>
         <div>
-          <dt>Declared count</dt>
+          <dt>Record count confirmed by</dt>
           <dd>
-            {mechanismLabel(binding.declaredCountMechanism)}
+            {countMechanismWords(binding.declaredCountMechanism).label}
             {declaresNoCount(binding.declaredCountMechanism) ? (
               <p className="ls-caption">{DECLARED_COUNT_MISSING_SENTENCE}</p>
             ) : null}
@@ -84,18 +89,18 @@ export function BindingEditor({
           <dd>{bindingStatusLabel(binding.status)}</dd>
         </div>
         <div>
-          <dt>Binding digest</dt>
-          <Digest as="dd" value={binding.digest} label="Binding" />
+          <dt>{FINGERPRINT_WORD}</dt>
+          <Digest as="dd" value={binding.digest} label="Source" />
         </div>
         <div>
-          <dt>Last changed (UTC)</dt>
+          <dt>Last changed</dt>
           <dd>
-            <time dateTime={binding.updatedAt}>
-              {binding.updatedAt.replace('T', ' ').slice(0, 19)}
-            </time>
+            <time dateTime={binding.updatedAt}>{changedStamp(binding.updatedAt)}</time>
           </dd>
         </div>
       </dl>
+
+      <p className="ls-caption">{FINGERPRINT_EXPLANATION}</p>
 
       <BindingForm
         binding={binding}

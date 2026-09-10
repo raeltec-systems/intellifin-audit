@@ -162,10 +162,10 @@ export function AuditInstructionsForm({
               : `${templateInstructionsId} ${scopeId}`;
             return (
               <div key={target.registrationId} className="ls-dialog__field">
-                <label htmlFor={fieldId}>Audit Instructions for {target.displayName}</label>
+                <label htmlFor={fieldId}>What the agent should do in {target.displayName}</label>
                 {templateInstructions === null ? null : (
                   <Button type="button" onClick={() => setText(target.registrationId, templateInstructions)}>
-                    Use Template instructions for {target.displayName}
+                    Copy the Template&rsquo;s wording for {target.displayName}
                   </Button>
                 )}
                 <textarea

@@ -9,7 +9,7 @@ import { requireServerAction } from '../../../src/server-session';
 import { createBindingAction } from './actions';
 
 export const metadata: Metadata = {
-  title: 'Population Source bindings · IntelliFin Audit',
+  title: 'Population sources · IntelliFin Audit',
 };
 
 /** The role is read per request; this surface can never be cached (AD-7). */
@@ -36,7 +36,7 @@ export default async function SourcesPage(): Promise<React.JSX.Element> {
   if (!decision.allowed) {
     return (
       <div className="ls-stack">
-        <h1>Population Source bindings</h1>
+        <h1>Population sources</h1>
         <Banner tone="danger" title={decision.reason} />
       </div>
     );
@@ -51,11 +51,10 @@ export default async function SourcesPage(): Promise<React.JSX.Element> {
   return (
     <div className="ls-stack">
       <header className="ls-page-header">
-        <h1>Population Source bindings</h1>
+        <h1>Population sources</h1>
         <p>
-          Where each population comes from, the schema it declares, how its expected record
-          count is declared independently of us, and which of its fields are masked. A
-          Procedure Version freezes all five, as the binding digest.
+          Where the records a procedure tests come from. Set one up here, then an auditor
+          picks it when they build a procedure.
         </p>
       </header>
       <BindingsPanel

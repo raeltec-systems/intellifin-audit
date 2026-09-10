@@ -156,15 +156,11 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
     <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Compliance Rule" reset={() => section.reset()} />
       <UnknownSaveOutcome visible={unknownOutcome} />
     {templateText === null ? null : <details>
-      <summary>Template default Compliance Rule (read-only)</summary>
+      <summary>What the Template suggested (read-only)</summary>
       <p className="ls-whitespace">{templateText}</p>
     </details>}
-    <p id={`${id}-origin-help`}>Rule-Classified uses a compiled rule. Agent-Judged retains your text for later evaluation; pending does not mean the condition has been evaluated.</p>
-    <details>
-      <summary>Supported condition expressions</summary>
-      <p>Use declared Observation fields with comparisons, <code>and</code>, <code>or</code>, <code>not</code>, and parentheses. For example: <code>amount &gt;= 100000</code> or <code>found = true</code>.</p>
-      <p><code>account_status in [disabled] else [active]</code> names the Compliant values first and the Exception values second. An unnamed value is Unevaluated. Other prose stays Agent-Judged.</p>
-    </details>
+    <p className="ls-caption">A record is a finding when it breaks one of the rules below. Write each rule the way you would explain it to a colleague.</p>
+    <p className="ls-caption" id={`${id}-origin-help`}>Each rule is marked <strong>Rule-Classified</strong> when the platform can check it on its own, or <strong>Agent-Judged</strong> when the agent has to read and decide. Agent-Judged rules are shown as pending until a person confirms them.</p>
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok
       ? result.changed ? 'Saved. The Compliance Rule is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.'
       : result.reason} />}
@@ -215,20 +211,20 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
             ? 'Name at least one role in one of the two lists, or remove the policy. An empty policy classifies nothing and stops the Run on every role it meets.'
             : null;
         return <fieldset className="ls-stack" key={condition.conditionId} data-condition-id={condition.conditionId} onBlur={() => touch(condition.conditionId)}>
-          <legend>Condition {condition.conditionId}</legend>
+          <legend>Rule {condition.conditionId}</legend>
           <div aria-live="polite" aria-describedby={`${id}-origin-help`}>
             {compiled === undefined ? <p>Check this condition before saving.</p> : <StatusBadge family="evaluation-origin" state={compiled.status === 'RULE' ? 'Rule-Classified' : 'Agent-Judged (pending)'} />}
           </div>
           {simple === null
             ? <p className="ls-caption" data-simple-unavailable={condition.conditionId}>{SIMPLE_UNAVAILABLE}</p>
             : <fieldset className="ls-stack" data-condition-mode={condition.conditionId}>
-                <legend>How you write condition {condition.conditionId}</legend>
+                <legend>How you write rule {condition.conditionId}</legend>
                 {(['simple', 'advanced'] as const).map((option) => <label key={option} htmlFor={`${fieldId}-mode-${option}`}>
                   <input type="radio" id={`${fieldId}-mode-${option}`} name={`${fieldId}-mode`} value={option}
                     checked={mode === option} onChange={() => setMode(option)} />
-                  {option === 'simple' ? ' Simple — choose the values' : ' Advanced — write the expression'}
+                  {option === 'simple' ? ' Pick the values from a list' : ' Write it out myself'}
                 </label>)}
-                <p className="ls-caption">Both edit the same saved rule. Switching between them changes nothing on its own.</p>
+                <p className="ls-caption">Both change the same rule. Switching between them on its own changes nothing.</p>
               </fieldset>}
 
           {mode === 'simple' && simple?.kind === 'status-set' ? <fieldset className="ls-stack" data-simple-for={condition.conditionId}>
@@ -259,7 +255,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
           </fieldset> : null}
 
           <div className="ls-dialog__field" hidden={mode === 'simple'}>
-            <label htmlFor={`${fieldId}-text`}>Condition text {condition.conditionId}</label>
+            <label htmlFor={`${fieldId}-text`}>Rule text {condition.conditionId}</label>
             <textarea className="ls-input" id={`${fieldId}-text`} rows={6} value={condition.text} maxLength={COMPLIANCE_LIMITS.text}
               aria-describedby={`${fieldId}-error`} aria-invalid={error?.includes(COMPLIANCE_MESSAGES.INPUT) || undefined}
               onChange={(event) => {
@@ -272,32 +268,32 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
               }} />
           </div>
           <div className="ls-dialog__field">
-            <label htmlFor={`${fieldId}-applicability`}>Applicability {condition.conditionId}</label>
+            <label htmlFor={`${fieldId}-applicability`}>Applies to {condition.conditionId}</label>
             <input className="ls-input" id={`${fieldId}-applicability`} value={condition.applicability} maxLength={COMPLIANCE_LIMITS.expression}
               aria-describedby={`${fieldId}-applicability-help ${fieldId}-error`} aria-invalid={error?.includes(COMPLIANCE_MESSAGES.APPLICABILITY) || undefined}
               onChange={(event) => changeCondition(condition.conditionId, { applicability: event.target.value })} />
-            <p className="ls-caption" id={`${fieldId}-applicability-help`}>Use a supported expression or <code>all records</code>. Empty applicability defaults to <code>found = true</code>.</p>
+            <p className="ls-caption" id={`${fieldId}-applicability-help`}>Which records this rule is checked against. Type <code>all records</code> to check every record. Leave this as it is unless you need to narrow it.</p>
           </div>
           {availableComparison === null ? null : <div className="ls-stack">
             {condition.comparison === null ? null : <>
-              <label htmlFor={`${fieldId}-boundary`}>Comparison boundary {condition.conditionId}</label>
+              <label htmlFor={`${fieldId}-boundary`}>A record exactly at the limit {condition.conditionId}</label>
               <select className="ls-input" id={`${fieldId}-boundary`} value={condition.comparison.boundary} onChange={(event) => changeCondition(condition.conditionId, { comparison: { ...condition.comparison!, boundary: event.target.value as 'inclusive' | 'exclusive' } })}>
-                <option value="inclusive">Inclusive — includes the boundary</option>
-                <option value="exclusive">Exclusive — excludes the boundary</option>
+                <option value="inclusive">Counts as inside the limit</option>
+                <option value="exclusive">Counts as outside the limit</option>
               </select>
-              <label htmlFor={`${fieldId}-threshold`}>Comparison threshold {condition.conditionId}</label>
+              <label htmlFor={`${fieldId}-threshold`}>Limit {condition.conditionId}</label>
               <input className="ls-input" id={`${fieldId}-threshold`} type="text" inputMode="decimal" value={condition.comparison.threshold}
                 aria-describedby={`${fieldId}-comparison-help ${fieldId}-error`} aria-invalid={error?.includes(COMPLIANCE_MESSAGES.NUMBER) || undefined}
                 onChange={(event) => changeCondition(condition.conditionId, { comparison: { ...condition.comparison!, threshold: event.target.value } })} />
-              <label htmlFor={`${fieldId}-tolerance`}>Numeric tolerance {condition.conditionId}</label>
+              <label htmlFor={`${fieldId}-tolerance`}>Allowed difference {condition.conditionId}</label>
               <input className="ls-input" id={`${fieldId}-tolerance`} type="text" inputMode="decimal" value={condition.comparison.tolerance}
                 aria-describedby={`${fieldId}-comparison-help ${fieldId}-error`} aria-invalid={error?.includes(COMPLIANCE_MESSAGES.NUMBER) || undefined}
                 onChange={(event) => changeCondition(condition.conditionId, { comparison: { ...condition.comparison!, tolerance: event.target.value } })} />
-              <p className="ls-caption" id={`${fieldId}-comparison-help`}>Enter exact decimals. Tolerance must be zero or positive. {isWindow ? 'The threshold and tolerance are in hours.' : draft.templateId === 'P-3' && compiled?.rule?.kind === 'approval' ? 'The threshold and tolerance are in USD; tolerance also allows that difference in the approver limit.' : 'The threshold and tolerance use the Observation field’s units.'} These settings change the comparison in this condition.</p>
+              <p className="ls-caption" id={`${fieldId}-comparison-help`}>Type exact numbers. The allowed difference is a margin around the limit: a value inside it still counts as meeting this test, whichever side of the limit it falls. Use 0 for an exact limit. {isWindow ? 'The threshold and tolerance are in hours.' : draft.templateId === 'P-3' && compiled?.rule?.kind === 'approval' ? 'The threshold and tolerance are in USD; tolerance also allows that difference in the approver limit.' : 'The threshold and tolerance use the Observation field’s units.'} Changing these changes what this rule counts as a finding.</p>
             </>}
           </div>}
           {condition.policy !== undefined || (compiled?.status === 'AGENT_JUDGED' && COMPLIANCE_OBSERVATION_FIELDS[draft.templateId]['roles'] === 'roles') ? <fieldset className="ls-stack" data-policy-for={condition.conditionId}>
-            <legend>Role-privilege policy {condition.conditionId}</legend>
+            <legend>Which roles count as privileged {condition.conditionId}</legend>
             <div className="ls-caption" id={`${fieldId}-policy-help`}>
               <p>An explicit list of role names, frozen with this version and applied exactly. The agent never decides from a role&rsquo;s name what it can do.</p>
               <ul>
@@ -308,7 +304,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
               <p>Names are compared exactly, capital letters included. Type each one as the Target System displays it.</p>
             </div>
             {condition.policy === undefined
-              ? <Button type="button" aria-describedby={`${fieldId}-policy-help`} onClick={() => changeCondition(condition.conditionId, { policy: EMPTY_POLICY })}>Add role-privilege policy {condition.conditionId}</Button>
+              ? <Button type="button" aria-describedby={`${fieldId}-policy-help`} onClick={() => changeCondition(condition.conditionId, { policy: EMPTY_POLICY })}>Add the list of privileged roles {condition.conditionId}</Button>
               : <>
                 <LineListField id={`${fieldId}-privileged`} label={`Privileged roles ${condition.conditionId}`} help="One role name per line, exactly as the Target System displays it." values={condition.policy.privileged}
                   invalid={policyProblem !== null} onChange={(privileged) => changeCondition(condition.conditionId, { policy: { ...condition.policy!, privileged } })} />
@@ -323,11 +319,11 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
                   being typed, is the difference between a refusal and something to do.
                 */}
                 <div aria-live="polite">{policyProblem === null ? null : <Banner tone="warning" title={policyProblem} />}</div>
-                <Button type="button" onClick={() => removePolicy(condition.conditionId)}>Remove role-privilege policy {condition.conditionId}</Button>
+                <Button type="button" onClick={() => removePolicy(condition.conditionId)}>Remove the list of privileged roles {condition.conditionId}</Button>
               </>}
           </fieldset> : null}
           <div id={`${fieldId}-error`} aria-live="polite">{error === null ? null : <Banner tone="warning" title={error} />}</div>
-          <Button type="button" onClick={() => change({ ...inputRef.current, conditions: inputRef.current.conditions.filter((current) => current.conditionId !== condition.conditionId) })}>Remove condition {condition.conditionId}</Button>
+          <Button type="button" onClick={() => change({ ...inputRef.current, conditions: inputRef.current.conditions.filter((current) => current.conditionId !== condition.conditionId) })}>Remove rule {condition.conditionId}</Button>
         </fieldset>;
       })}
       {draft.templateId !== 'P-1' ? null : (() => {
@@ -338,7 +334,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
         const window = input.conditions.find((candidate) => isDisablementWindow(candidate));
         return <fieldset className="ls-stack" data-timing-choice>
           <legend>Timing</legend>
-          <p className="ls-caption">The conditions above ask whether the account is still open. This optional one asks whether it was closed in time, and stands beside them.</p>
+          <p className="ls-caption">The rules above ask whether the account is still open. This optional one asks whether it was closed in time. It is added beside them, not instead of them.</p>
           {window === undefined
             ? <Button type="button" data-add-window
                 disabledReason={limitReached ? `A Compliance Rule supports at most ${COMPLIANCE_LIMITS.conditions} conditions.` : undefined}
@@ -353,25 +349,34 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
                   requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-condition-id="${conditionId}"]`)?.scrollIntoView({ block: 'center' }));
                 }}>Add the 24-hour disablement window</Button>
             : <>
-                <p className="ls-caption" data-window-condition={window.conditionId}>Condition {window.conditionId} requires the account to be disabled within the window set under its own Comparison controls.</p>
+                <p className="ls-caption" data-window-condition={window.conditionId}>Rule {window.conditionId} requires the account to be closed inside the window set by its own Limit field.</p>
                 <Button type="button" data-remove-window onClick={() => change({ ...inputRef.current, conditions: inputRef.current.conditions.filter((candidate) => !isDisablementWindow(candidate)) })}>Remove the 24-hour disablement window</Button>
               </>}
         </fieldset>;
       })()}
-      {limitReached ? <p id={`${id}-limit`}>A Compliance Rule supports at most {COMPLIANCE_LIMITS.conditions} conditions.</p> : null}
+      {limitReached ? <p id={`${id}-limit`}>You can add up to {COMPLIANCE_LIMITS.conditions} rules.</p> : null}
       <Button type="button" disabledReason={limitReached ? `A Compliance Rule supports at most ${COMPLIANCE_LIMITS.conditions} conditions.` : undefined} disabledReasonId={`${id}-limit`} onClick={() => {
         const conditionId = `C-${crypto.randomUUID()}`;
         change({ ...inputRef.current, conditions: [...inputRef.current.conditions, { conditionId, text: '', applicability: 'found = true', comparison: null }] });
         requestAnimationFrame(() => document.getElementById(`${id}-${conditionId}-text`)?.focus());
-      }}>Add condition</Button>
-      <div className="ls-dialog__field">
-        <label htmlFor={`${id}-confidence`}>Agent-Judged confidence threshold</label>
-        <input className="ls-input" id={`${id}-confidence`} type="text" inputMode="decimal" value={input.confidenceThreshold} maxLength={100}
-          aria-describedby={`${id}-confidence-help ${id}-confidence-error`} aria-invalid={thresholdTouched && confidenceError !== null || undefined}
-          onChange={(event) => change({ ...inputRef.current, confidenceThreshold: event.target.value })} onBlur={() => setThresholdTouched(true)} />
-        <p className="ls-caption" id={`${id}-confidence-help`}>One threshold applies to all Agent-Judged conditions in this Procedure Version. Use an exact decimal from 0 to 1; the default is 0.80.</p>
-        <div id={`${id}-confidence-error`} aria-live="polite">{thresholdTouched && confidenceError !== null ? <Banner tone="warning" title={confidenceError} /> : null}</div>
-      </div>
+      }}>Add a rule</Button>
+      <details className="ls-disclosure">
+        <summary>More options</summary>
+        <div className="ls-disclosure__body">
+          <div className="ls-dialog__field">
+            <label htmlFor={`${id}-confidence`}>How certain the agent must be</label>
+            <input className="ls-input" id={`${id}-confidence`} type="text" inputMode="decimal" value={input.confidenceThreshold} maxLength={100}
+              aria-describedby={`${id}-confidence-help ${id}-confidence-error`} aria-invalid={thresholdTouched && confidenceError !== null || undefined}
+              onChange={(event) => change({ ...inputRef.current, confidenceThreshold: event.target.value })} onBlur={() => setThresholdTouched(true)} />
+            <p className="ls-caption" id={`${id}-confidence-help`}>A number from 0 to 1, used for every rule the agent judges. Below it, the agent asks a person instead of deciding. The default is 0.80.</p>
+            <div id={`${id}-confidence-error`} aria-live="polite">{thresholdTouched && confidenceError !== null ? <Banner tone="warning" title={confidenceError} /> : null}</div>
+          </div>
+          <div>
+            <p className="ls-caption">If you write a rule out yourself, you can use the fields this source and these systems provide, with <code>and</code>, <code>or</code>, <code>not</code> and brackets. For example <code>amount &gt;= 100000</code>, or <code>found = true</code>.</p>
+            <p className="ls-caption"><code>account_status in [disabled] else [active]</code> names the acceptable values first and the finding values second. A value in neither list is left for a person to decide.</p>
+          </div>
+        </div>
+      </details>
       {submitted && !validation.ok ? <div tabIndex={-1} data-compliance-error><Banner tone="warning" title={`The Compliance Rule was not saved. ${validation.reason}`} /></div> : null}
       <Button type="submit" disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary" busy={busy}>{busy ? 'Saving…' : 'Save Compliance Rule'}</Button>
     </form>

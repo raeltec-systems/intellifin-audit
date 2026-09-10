@@ -1,5 +1,9 @@
 'use client';
-import { registrationDigest } from '@intellifin/domain';
+import {
+  registrationDigest,
+  type PermittedReadAction,
+  type TargetSystemKind,
+} from '@intellifin/domain';
 
 import { useId, useRef, useState, type FormEvent } from 'react';
 
@@ -8,10 +12,12 @@ import type { TargetSystemRegistration } from '@intellifin/application';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { registrationChangeWarning } from '../design/copy';
+import { FINGERPRINT_WORD, TARGET_KIND_WORDS } from '../design/plain-words';
 import {
   ACTION_OPTIONS,
   KIND_OPTIONS,
   STATUS_OPTIONS,
+  UNKNOWN_LABEL,
   linesToList,
   listToLines,
 } from './registrations';
@@ -22,7 +28,15 @@ import type {
 } from '../../app/administration/registrations/actions';
 
 /**
- * The Target System registration form, used to register and to change (FR-8).
+ * The target system form, used to add a system and to change one (FR-8).
+ *
+ * **It is written for somebody who has never read this codebase.** The domain calls this
+ * a Target System registration with allowed origins, permitted actions, attribute label
+ * patterns and a registration digest; a person setting one up is answering four questions
+ * — what is this system, where does the agent go, what may it do there, and which
+ * credential does it use. The words come from `../design/plain-words`, and the long
+ * explanation lives in a disclosure rather than above the controls where it has to be
+ * read past.
  *
  * Two things it deliberately does not do.
  *
@@ -36,15 +50,48 @@ import type {
  * checkboxes offer only read actions, but neither is the control: the Server Action
  * authorizes, re-validates the vocabulary and refuses a write-capable credential on the
  * server, whatever this form sends.
- *
- * The confirmation names the consequence that matters, and — once Procedures exist —
- * how many of them a change would mint a platform-authored draft for. That count comes
- * from a port and is 0 in this release, so the sentence does not render: "a draft for 0
- * Procedures" is a sentence that cannot be true.
  */
 
+/**
+ * The plain words for a stored kind.
+ *
+ * Typed against the DOMAIN vocabulary, so a kind added there fails to compile here rather
+ * than reaching a reader as its own identifier. The lookup is `Object.hasOwn`-guarded
+ * because the value arrives from a `<select>` or from a row somebody else wrote, and a
+ * plain index would return `Object.prototype.toString` for the key `toString`.
+ */
+export function targetKindWord(kind: string): string {
+  return Object.hasOwn(TARGET_KIND_WORDS, kind)
+    ? TARGET_KIND_WORDS[kind as TargetSystemKind]
+    : UNKNOWN_LABEL;
+}
+
+/**
+ * `2026-09-10T09:15:04.123Z` → `2026-09-10 09:15 UTC`.
+ *
+ * String slicing rather than `Date` arithmetic: the value is the ISO 8601 UTC string the
+ * database produced, and a value that is not that shape degrades to a short prefix rather
+ * than throwing on a page that is already rendering. Minutes are enough for "when did
+ * somebody last touch this"; the `<time dateTime>` around it keeps the exact value.
+ */
+export function changedStamp(value: string): string {
+  return `${value.replace('T', ' ').slice(0, 16)} UTC`;
+}
+
+/** How the agent reaches a system, and where the agent may go. Two labels, one for each kind. */
+export const WEB_ADDRESSES_LABEL = 'Web addresses the agent may open';
+export const APPLICATION_IDENTITY_LABEL = 'Application identity';
+
+/** What retiring a system does, said plainly. Nothing is ever deleted. */
+export const RETIRE_SYSTEM_SENTENCE =
+  'Retiring stops new procedures using this system. Nothing is deleted, and past Runs stay readable.';
+
+/** Why the credential field is safe to fill in. Stated wherever the field appears. */
+export const CREDENTIAL_REFERENCE_SENTENCE =
+  'The name of a credential kept outside this application, never the password itself.';
+
 export interface RegistrationFormProps {
-  /** `null` registers a new system; a registration edits that one. */
+  /** `null` adds a new system; a registration edits that one. */
   readonly registration: TargetSystemRegistration | null;
   /**
    * The version of the row this form is editing, computed on the SERVER by
@@ -55,7 +102,7 @@ export interface RegistrationFormProps {
    * command compares against the same function.
    */
   readonly rowVersion: string;
-  /** How many Procedure Versions reference it. 0 until Epic 2 exists. */
+  /** How many Procedure Versions reference it. */
   readonly referencingProcedures: number;
   readonly onCreate?: (fields: RegistrationFormFields) => Promise<RegistrationActionResult>;
   readonly onChange?: (
@@ -108,6 +155,16 @@ export function RegistrationForm({
   const [secondaryKey, setSecondaryKey] = useState(registration?.secondaryKey ?? '');
   const [note, setNote] = useState(registration?.note ?? '');
   const [status, setStatus] = useState<string>(registration?.status ?? 'active');
+
+  /**
+   * The rare fields start OPEN when changing an existing system and CLOSED when adding
+   * one.
+   *
+   * Adding is a path to follow, so the short path is the whole form. Changing is a
+   * review of what is already set up, and hiding half of it behind a control makes a
+   * person check less than they came to check.
+   */
+  const [moreOpen, setMoreOpen] = useState(editing);
 
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -190,26 +247,26 @@ export function RegistrationForm({
     }
   }
 
-  // The dialog names the system it is about. A confirmation that says only "this
-  // registration" is one a person cannot check against what they meant to change,
-  // which is most of what a confirmation is for.
-  const subject = displayName.trim() === '' ? 'this Target System' : displayName.trim();
+  // The dialog names the system it is about. A confirmation that says only "this system"
+  // is one a person cannot check against what they meant to change, which is most of what
+  // a confirmation is for.
+  const subject = displayName.trim() === '' ? 'This system' : displayName.trim();
   const consequence = editing
-    ? `${subject} keeps its registration, changed. The agent may then read only what this registration allows. A change to the origin, application identity, credential reference, permitted actions, label patterns or secondary key recomputes the digest and is recorded in the audit chain against your name.`
-    : `${subject} becomes a Target System the agent may reach. The agent may read only what this registration allows, using a credential that must be read-only. Registering it is recorded in the audit chain against your name.`;
+    ? `${subject} is changed. Changing where the agent may go, what it may do, which credential it uses, the field labels or the confirming field gives it a new ${FINGERPRINT_WORD.toLowerCase()}. The change is recorded against your name.`
+    : `${subject} becomes a system the agent may read. The agent may only do what you ticked, and only at the addresses you listed, using a credential that must be read-only. Adding it is recorded against your name.`;
 
   /**
-   * Rendered only above zero. No Procedure exists in this release, so it does not
-   * appear; the moment one does, this sentence is already here.
+   * Rendered only above zero: "a draft for 0 Procedures" is a sentence that cannot be
+   * true.
    */
   let changesConfiguration = false;
   try {
     changesConfiguration = registration !== null && registrationDigest({
-      kind: kind as import('@intellifin/domain').TargetSystemKind,
+      kind: kind as TargetSystemKind,
       allowedOrigins: linesToList(origins),
       applicationIdentity,
       credentialRef,
-      permittedActions: actions as import('@intellifin/domain').PermittedReadAction[],
+      permittedActions: actions as PermittedReadAction[],
       attributeLabelPatterns: linesToList(patterns),
       secondaryKey,
       ...(kind === 'web' && authenticationDestination.trim() !== ''
@@ -229,8 +286,13 @@ export function RegistrationForm({
         every access log between here and the server. See `apps/web/src/form-method.test.ts`.
       */}
       <form className="ls-admin__form" method="post" onSubmit={onRequestSubmit}>
-        <h2>{editing ? 'Change this registration' : 'Register a Target System'}</h2>
-        <div className="ls-admin__fields">
+        <h2>{editing ? 'Change this system' : 'Add a target system'}</h2>
+        <p className="ls-caption">
+          A target system is somewhere the agent looks for evidence. It may only read, and
+          only what you allow here.
+        </p>
+
+        <div className="ls-field-column">
           <div className="ls-dialog__field">
             <label htmlFor={nameId}>Display name</label>
             <input
@@ -240,31 +302,39 @@ export function RegistrationForm({
               type="text"
               autoComplete="off"
               required
+              aria-describedby={`${nameId}-hint`}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
+            <p className="ls-caption" id={`${nameId}-hint`}>
+              What you will call this system when you pick it in a procedure.
+            </p>
           </div>
 
           <div className="ls-dialog__field">
-            <label htmlFor={kindId}>System kind</label>
+            <label htmlFor={kindId}>What kind of system is it</label>
             <select
               className="ls-select"
               id={kindId}
               name="kind"
               value={kind}
               onChange={(event) => setKind(event.target.value)}
+              aria-describedby={`${kindId}-hint`}
             >
               {KIND_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {targetKindWord(option.value)}
                 </option>
               ))}
             </select>
+            <p className="ls-caption" id={`${kindId}-hint`}>
+              How the agent reaches it. This decides what you have to give below.
+            </p>
           </div>
 
           {kind === 'desktop' ? (
             <div className="ls-dialog__field">
-              <label htmlFor={identityId}>Application identity</label>
+              <label htmlFor={identityId}>{APPLICATION_IDENTITY_LABEL}</label>
               <input
                 className="ls-input"
                 id={identityId}
@@ -277,13 +347,13 @@ export function RegistrationForm({
                 onChange={(event) => setApplicationIdentity(event.target.value)}
               />
               <p className="ls-caption" id={`${identityId}-hint`}>
-                The application the agent may drive, for example
+                The one application the agent may drive, for example
                 <span className="ls-mono"> com.example.ledger</span>.
               </p>
             </div>
           ) : (
             <div className="ls-dialog__field">
-              <label htmlFor={originsId}>Allowed origins</label>
+              <label htmlFor={originsId}>{WEB_ADDRESSES_LABEL}</label>
               <textarea
                 className="ls-textarea"
                 id={originsId}
@@ -295,7 +365,7 @@ export function RegistrationForm({
                 onChange={(event) => setOrigins(event.target.value)}
               />
               <p className="ls-caption" id={`${originsId}-hint`}>
-                One per line. The agent may reach nothing outside this list.
+                One per line. The agent cannot open anything that is not on this list.
               </p>
             </div>
           )}
@@ -303,7 +373,7 @@ export function RegistrationForm({
           {kind === 'web' ? (
             <div className="ls-dialog__field">
               <label htmlFor={authenticationDestinationId}>
-                Authentication destination (optional)
+                Exact address of the sign-in form (optional)
               </label>
               <input
                 className="ls-input"
@@ -316,14 +386,15 @@ export function RegistrationForm({
                 onChange={(event) => setAuthenticationDestination(event.target.value)}
               />
               <p className="ls-caption" id={`${authenticationDestinationId}-hint`}>
-                Exact query-free HTTPS or HTTP form action inside an allowed origin. An
-                empty value keeps legacy compatibility; credential use then fails closed.
+                The exact address the sign-in form sends to. It must be inside the list
+                above and carry no query string. Leave it empty if the agent never signs in
+                here: it then refuses to enter a credential at all.
               </p>
             </div>
           ) : null}
 
           <div className="ls-dialog__field">
-            <label htmlFor={credentialId}>Credential reference</label>
+            <label htmlFor={credentialId}>Which stored credential to use</label>
             <input
               className="ls-input"
               id={credentialId}
@@ -336,40 +407,32 @@ export function RegistrationForm({
               onChange={(event) => setCredentialRef(event.target.value)}
             />
             <p className="ls-caption" id={`${credentialId}-hint`}>
-              A reference, never a secret. The secret stays outside this application and
-              is never entered here. A reference whose capability check does not prove it
-              read-only is refused.
+              {CREDENTIAL_REFERENCE_SENTENCE} Never type a password here. A credential that
+              cannot be shown to be read-only is refused.
             </p>
           </div>
 
-          <div className="ls-dialog__field">
-            <label htmlFor={secondaryId}>Secondary key (optional)</label>
-            <input
-              className="ls-input"
-              id={secondaryId}
-              name="secondaryKey"
-              type="text"
-              autoComplete="off"
-              value={secondaryKey}
-              onChange={(event) => setSecondaryKey(event.target.value)}
-            />
-          </div>
-
-          <div className="ls-dialog__field">
-            <label htmlFor={patternsId}>Expected attribute labels or locator patterns</label>
-            <textarea
-              className="ls-textarea"
-              id={patternsId}
-              name="attributeLabelPatterns"
-              rows={3}
-              aria-describedby={`${patternsId}-hint`}
-              value={patterns}
-              onChange={(event) => setPatterns(event.target.value)}
-            />
-            <p className="ls-caption" id={`${patternsId}-hint`}>
-              One per line. Leave empty if none are expected.
+          <fieldset className="ls-admin__fieldset">
+            <legend id={actionsId}>What the agent may do here</legend>
+            <p className="ls-caption">
+              Tick everything the agent needs. Every choice here only reads: there is no
+              option that changes anything in that system.
             </p>
-          </div>
+            <div className="ls-checkbox-grid" role="group" aria-labelledby={actionsId}>
+              {ACTION_OPTIONS.map((option) => (
+                <label className="ls-checkbox" key={option.value}>
+                  <input
+                    type="checkbox"
+                    name="permittedActions"
+                    value={option.value}
+                    checked={actions.includes(option.value)}
+                    onChange={(event) => toggleAction(option.value, event.target.checked)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           {editing ? (
             <div className="ls-dialog__field">
@@ -389,50 +452,94 @@ export function RegistrationForm({
                 ))}
               </select>
               <p className="ls-caption" id={`${statusId}-hint`}>
-                Retiring keeps the registration and its digest resolvable. There is no
-                deletion: a Run that froze this digest must still be able to read it.
+                {RETIRE_SYSTEM_SENTENCE}
               </p>
             </div>
           ) : null}
         </div>
 
-        <fieldset className="ls-admin__fieldset">
-          <legend id={actionsId}>Permitted read actions</legend>
-          <p className="ls-caption">
-            Only read actions exist. There is no write action to choose, for any kind of
-            system.
-          </p>
-          <div className="ls-checkbox-grid" role="group" aria-labelledby={actionsId}>
-            {ACTION_OPTIONS.map((option) => (
-              <label className="ls-checkbox" key={option.value}>
-                <input
-                  type="checkbox"
-                  name="permittedActions"
-                  value={option.value}
-                  checked={actions.includes(option.value)}
-                  onChange={(event) => toggleAction(option.value, event.target.checked)}
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <details
+          className="ls-disclosure"
+          open={moreOpen}
+          onToggle={(event) => setMoreOpen(event.currentTarget.open)}
+        >
+          <summary>More options</summary>
+          <div className="ls-disclosure__body">
+            <div className="ls-dialog__field">
+              <label htmlFor={secondaryId}>A second field that confirms the record</label>
+              <input
+                className="ls-input"
+                id={secondaryId}
+                name="secondaryKey"
+                type="text"
+                autoComplete="off"
+                aria-describedby={`${secondaryId}-hint`}
+                value={secondaryKey}
+                onChange={(event) => setSecondaryKey(event.target.value)}
+              />
+              <p className="ls-caption" id={`${secondaryId}-hint`}>
+                The agent checks this beside the main identifier, to be sure it opened the
+                right record. A full name beside an employee number, for example. It never
+                replaces the main identifier.
+              </p>
+            </div>
 
-        <div className="ls-dialog__field">
-          <label htmlFor={noteId}>Operator note (optional)</label>
-          <textarea
-            className="ls-textarea"
-            id={noteId}
-            name="note"
-            rows={2}
-            aria-describedby={`${noteId}-hint`}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-          />
-          <p className="ls-caption" id={`${noteId}-hint`}>
-            Not part of the digest. Changing it alone affects no Procedure.
-          </p>
-        </div>
+            <div className="ls-dialog__field">
+              <label htmlFor={patternsId}>Field labels the agent should look for</label>
+              <textarea
+                className="ls-textarea"
+                id={patternsId}
+                name="attributeLabelPatterns"
+                rows={3}
+                aria-describedby={`${patternsId}-hint`}
+                value={patterns}
+                onChange={(event) => setPatterns(event.target.value)}
+              />
+              <p className="ls-caption" id={`${patternsId}-hint`}>
+                One per line, spelled as they appear on the screen. Leave it empty if you do
+                not know them.
+              </p>
+            </div>
+
+            <div className="ls-dialog__field">
+              <label htmlFor={noteId}>Note for other operators</label>
+              <textarea
+                className="ls-textarea"
+                id={noteId}
+                name="note"
+                rows={2}
+                aria-describedby={`${noteId}-hint`}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+              <p className="ls-caption" id={`${noteId}-hint`}>
+                A reminder for whoever looks at this next. Changing it alone affects no
+                procedure.
+              </p>
+            </div>
+          </div>
+        </details>
+
+        <details className="ls-disclosure">
+          <summary>Why this matters</summary>
+          <div className="ls-disclosure__body">
+            <p className="ls-caption">
+              A procedure that uses this system keeps a copy of the settings above, so
+              every Run can prove which setup it tested against. Change any of them and
+              this system gets a new {FINGERPRINT_WORD.toLowerCase()}, which is how that
+              copy can be told apart from the setup as it is today.
+            </p>
+            <p className="ls-caption">
+              The addresses and the ticked actions are a wall, not a suggestion. During a
+              Run the agent is refused anything outside them, and the refusal is recorded.
+            </p>
+            <p className="ls-caption">
+              The credential is a name, not a secret. The secret itself is kept outside this
+              application and is never shown here, never stored here, and never written into
+              the audit trail. {RETIRE_SYSTEM_SENTENCE}
+            </p>
+          </div>
+        </details>
 
         <div className="ls-admin__actions">
           <Button type="submit" variant="primary" size="md" busy={busy}>
@@ -448,7 +555,7 @@ export function RegistrationForm({
       <ConfirmDialog
         open={confirming}
         weight="routine"
-        title={editing ? 'Save this registration?' : 'Register this Target System?'}
+        title={editing ? 'Save this system?' : 'Add this system?'}
         consequence={`${consequence}${referencesWarning}`}
         confirmLabel={editing ? 'Save changes' : 'Register system'}
         onConfirm={() => {

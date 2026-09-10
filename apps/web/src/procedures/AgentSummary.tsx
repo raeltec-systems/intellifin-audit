@@ -19,9 +19,19 @@ import { ACTION_LABELS } from './plan-step-labels';
 export function AgentSummary({
   draft,
   headingId,
+  readiness: withReadiness = true,
 }: {
   readonly draft: ProcedureVersionView;
   readonly headingId: string;
+  /**
+   * Whether this summary carries the readiness list inside it.
+   *
+   * The version review page has nowhere else to put it, so it keeps it. The Builder
+   * raises readiness to the top level instead — "what would make this Run produce
+   * nothing useful" is the one thing an auditor should meet before they decide to
+   * spend a Run, and it must not be behind the same fold as the compiled plan.
+   */
+  readonly readiness?: boolean;
 }): React.JSX.Element {
   const plan = draft.planStatus === 'succeeded' ? draft.compiledPlan : null;
   const readiness = {
@@ -38,9 +48,9 @@ export function AgentSummary({
       </h2>
       {plan === null ? (
         <p data-agent-summary-empty>
-          There is no derived plan yet, so there is nothing to summarise. The executable
-          plan preview below says whether the plan is being derived or could not be
-          derived, and why.
+          No plan has been worked out yet, so there is nothing to summarise. The
+          step-by-step plan below says whether it is still being worked out, or could not
+          be, and why.
         </p>
       ) : (
         <>
@@ -81,7 +91,9 @@ export function AgentSummary({
           </p>
         </>
       )}
-      <ReadinessPanel inputs={readiness} headingId={`${headingId}-readiness`} headingLevel={3} />
+      {withReadiness ? (
+        <ReadinessPanel inputs={readiness} headingId={`${headingId}-readiness`} headingLevel={3} />
+      ) : null}
     </section>
   );
 }

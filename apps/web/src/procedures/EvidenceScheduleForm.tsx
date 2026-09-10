@@ -35,8 +35,8 @@ import { useSection, useSectionSubmissionStatus } from './use-section';
  */
 
 const GROUNDING_LABEL: Readonly<Record<GroundingEvidenceType, string>> = {
-  'structural-snapshot': 'Structural Snapshot',
-  'source-file-excerpt': 'Source file excerpt',
+  'structural-snapshot': 'A saved copy of the page it was read from',
+  'source-file-excerpt': 'The lines of the source file it came from',
 };
 
 const FREQUENCY_LABEL: Readonly<Record<Frequency, string>> = {
@@ -183,13 +183,14 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
         />
       )}
       <p id={`${id}-grounding-help`}>
-        Every attribute value must be grounded in a Structural Snapshot or a source file excerpt, or declared
-        model-read. A screenshot or a recording segment alone never grounds an attribute value.
+        Every value needs proof behind it: a saved copy of the page it was read from, or the lines of the
+        source file it came from. A screenshot or a recording clip is worth keeping, but neither on its own
+        shows where a value came from.
       </p>
       {platformCaptured ? (
         <p className="ls-caption">
-          At least one selected Target System is agent-driven, so Structural Snapshot and screenshot are
-          platform-captured for every attribute here and cannot be unset.
+          One of the systems you chose is driven by the agent, so a saved copy of the page and a screenshot
+          are kept for every value here. You cannot turn those two off.
         </p>
       ) : null}
       <form
@@ -207,7 +208,8 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           void save();
         }}
       >
-        {requirements.length === 0 ? <p>No Evidence Requirement is defined yet.</p> : null}
+        <p className="ls-caption">For every record it tests, the agent records these values and keeps proof of where each one came from. A value with no proof cannot support a conclusion.</p>
+        {requirements.length === 0 ? <p>Nothing is being recorded yet.</p> : null}
         {requirements.map((requirement, index) => {
           const fieldId = rowIds.current[index]!;
           const error = (submitted || touched.has(fieldId)) ? errorFor(requirement) : null;
@@ -215,9 +217,9 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
           const forced = platformCaptured;
           return (
             <fieldset className="ls-stack" key={fieldId} onBlur={() => setTouched((current) => new Set([...current, fieldId]))}>
-              <legend>Evidence Requirement {index + 1}</legend>
+              <legend>Evidence item {index + 1}</legend>
               <div className="ls-dialog__field">
-                <label htmlFor={`${fieldId}-name`}>Attribute name</label>
+                <label htmlFor={`${fieldId}-name`}>What to record</label>
                 <input
                   className="ls-input"
                   id={`${fieldId}-name`}
@@ -227,17 +229,10 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                   aria-invalid={(error !== null && nameError) || undefined}
                   onChange={(event) => change(index, { attributeName: event.target.value })}
                 />
+                <p className="ls-caption">The value you need proof of, spelled the way the system shows it — for example <code>account_status</code>.</p>
               </div>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={requirement.modelRead}
-                  onChange={(event) => change(index, { modelRead: event.target.checked })}
-                />{' '}
-                Declare model-read (exempt from deterministic grounding)
-              </label>
               <fieldset aria-invalid={(error !== null && !nameError) || undefined} aria-describedby={`${fieldId}-error`}>
-                <legend>Grounded by</legend>
+                <legend>Proof kept for this value</legend>
                 {GROUNDING_EVIDENCE_TYPES.map((kind) => (
                   <label key={kind}>
                     <input
@@ -257,16 +252,30 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                   disabled={forced}
                   onChange={(event) => change(index, { screenshot: event.target.checked })}
                 />{' '}
-                Screenshot {forced ? '(platform-captured)' : ''}
+                Screenshot of the page {forced ? '(always kept for a system the agent drives)' : ''}
               </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={requirement.recordingSegment}
-                  onChange={(event) => change(index, { recordingSegment: event.target.checked })}
-                />{' '}
-                Recording segment
-              </label>
+              <details className="ls-disclosure">
+                <summary>More options for evidence item {index + 1}</summary>
+                <div className="ls-disclosure__body">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={requirement.modelRead}
+                      onChange={(event) => change(index, { modelRead: event.target.checked })}
+                    />{' '}
+                    Accept a reading with no saved proof behind it
+                  </label>
+                  <p className="ls-caption">Leave this off unless there is no way to keep proof for this value. With it off, a value the platform cannot match to the saved proof is left for a person to decide instead of being trusted.</p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={requirement.recordingSegment}
+                      onChange={(event) => change(index, { recordingSegment: event.target.checked })}
+                    />{' '}
+                    Also keep a clip of the session recording
+                  </label>
+                </div>
+              </details>
               <div id={`${fieldId}-error`} aria-live="polite">
                 {error === null ? null : <Banner tone="warning" title={error} />}
               </div>
@@ -285,7 +294,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
                   });
                 }}
               >
-                Remove Evidence Requirement {index + 1}
+                Remove evidence item {index + 1}
               </Button>
             </fieldset>
           );
@@ -334,7 +343,7 @@ export function EvidenceRequirementsForm({ draft, rowVersion, onSave }: Evidence
             requestAnimationFrame(() => document.getElementById(`${rowId}-name`)?.focus());
           }}
         >
-          Add Evidence Requirement
+          Add an evidence item
         </Button></div>
         {(section.conflict || unknownOutcome) ? <p id={`${id}-save-blocker`}>Review the saved version before saving Evidence Requirements again.</p> : null}
         <Button type="submit" variant="primary" busy={busy} disabledReason={section.conflict || unknownOutcome ? 'Review the saved version before saving Evidence Requirements again.' : undefined} disabledReasonId={`${id}-save-blocker`}>
@@ -449,7 +458,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
           </select>
         </div>
         <div className="ls-dialog__field">
-          <label htmlFor={`${id}-start`}>Fixed UTC start time</label>
+          <label htmlFor={`${id}-start`}>Start time (UTC)</label>
           <input
             className="ls-input"
             id={`${id}-start`}
@@ -462,8 +471,8 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
         </div>
         <p id={`${id}-derivation`} className="ls-caption">
           {frequency === ''
-            ? 'Choose a frequency to see the Period each Run will cover.'
-            : `Period covered: ${PERIOD_LABEL[frequency]}`}
+            ? 'Choose how often it runs to see which dates each run will cover.'
+            : `Each run covers: ${PERIOD_LABEL[frequency]}`}
         </p>
         <div id={`${id}-error`} aria-live="polite">
           {touched && error !== null ? <Banner tone="warning" title={error} /> : null}

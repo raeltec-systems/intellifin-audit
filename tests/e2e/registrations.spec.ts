@@ -71,9 +71,9 @@ async function fillForm(
   options: { name: string; credential: string; origin: string },
 ): Promise<void> {
   await page.getByLabel('Display name').fill(options.name);
-  await page.getByLabel('System kind').selectOption('web');
-  await page.getByLabel('Allowed origins').fill(options.origin);
-  await page.getByLabel('Credential reference').fill(options.credential);
+  await page.getByLabel('What kind of system is it').selectOption('web');
+  await page.getByLabel('Web addresses the agent may open').fill(options.origin);
+  await page.getByLabel('Which stored credential to use').fill(options.credential);
   await page.getByRole('checkbox', { name: 'Navigate' }).check();
   await page.getByRole('checkbox', { name: 'Read an attribute' }).check();
 }
@@ -86,7 +86,7 @@ test.describe('as a PoC Administrator', () => {
   }) => {
     await page.goto('/administration/registrations');
     await expect(
-      page.getByRole('heading', { name: 'Target System registrations', level: 1 }),
+      page.getByRole('heading', { name: 'Target systems', level: 1 }),
     ).toBeVisible();
 
     // A submission that beats hydration must not put every field in the URL. With no
@@ -189,18 +189,20 @@ test.describe('as a PoC Administrator', () => {
     await page.getByLabel('Display name').fill(`${systemName} renamed`);
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByRole('status')).toContainText('The digest did not change');
+    await expect(page.getByRole('status')).toContainText('The fingerprint did not change');
     await page.reload();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).toHaveText(before);
 
-    // An origin is.
-    await page.getByLabel('Allowed origins').fill('https://moved.synthetic.invalid');
+    // An address is.
+    await page
+      .getByLabel('Web addresses the agent may open')
+      .fill('https://moved.synthetic.invalid');
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
     // The specific sentence, not a phrase both messages share: 'recorded in the audit
     // chain' now appears on the annotated path too, so this test would have passed
     // with the event never published.
-    await expect(page.getByRole('status')).toContainText('The digest is now ');
+    await expect(page.getByRole('status')).toContainText('The fingerprint is now ');
     await page.reload();
     await expect(page.locator('dd.ls-digest-cell .ls-digest')).not.toHaveText(before);
   });
@@ -237,7 +239,7 @@ test.describe('as an Auditor', () => {
     );
     // Not the list, not the form, not one origin, credential reference or digest.
     await expect(page.getByRole('table')).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Register a Target System' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Add a target system' })).toHaveCount(0);
     await expect(page.getByText(systemName)).toHaveCount(0);
     await expect(page.getByText('cred://')).toHaveCount(0);
     await expect(page.getByText('synthetic.invalid')).toHaveCount(0);

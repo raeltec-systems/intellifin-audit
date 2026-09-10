@@ -7,6 +7,8 @@ import type { PopulationDraftFields, RenameActionResult, RenameDraftFields, Targ
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
+import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
+import { ReadinessPanel } from './ReadinessPanel';
 import { BuilderSections } from './BuilderSections';
 import { RenameDraftForm } from './RenameDraftForm';
 import { TargetSelectionForm } from './TargetSelectionForm';
@@ -112,7 +114,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   }
   const periodEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('period-scope'); }} onBlur={() => setPeriodTouched(true)}>
     <SectionConflict dirty={periodSection.status().dirty} conflict={periodSection.conflict} name="Period and scope" reset={() => periodSection.reset()} />
-    <p id={`${id}-utc`}>Start and end dates are inclusive in UTC. This explicit Period does not derive a scheduled Run period.</p>
+    <p id={`${id}-utc`}>Both dates are included, and both are UTC. A run you start by hand tests these dates. A run that starts on a schedule works out its own dates from how often it runs — see &ldquo;How often it runs&rdquo; below.</p>
     <div className="ls-dialog__field"><label htmlFor={`${id}-from`}>Period start</label><input className="ls-input" id={`${id}-from`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
     <div className="ls-dialog__field"><label htmlFor={`${id}-to`}>Period end</label><input className="ls-input" id={`${id}-to`} type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
     <div className="ls-dialog__field"><label htmlFor={`${id}-scope`}>Scope statement</label><textarea className="ls-input" id={`${id}-scope`} value={scope} maxLength={POPULATION_DRAFT_LIMITS.scope} onChange={(e) => setScope(e.target.value)} aria-describedby={`${id}-period-error`} /></div>
@@ -121,44 +123,72 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   </form>;
   const populationEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('population-source'); }} onBlur={() => setRuleTouched(true)}>
     <SectionConflict dirty={populationSection.status().dirty} conflict={populationSection.conflict} name="Population Source" reset={() => populationSection.reset()} />
-    <div className="ls-dialog__field"><label htmlFor={`${id}-source`}>Population Source</label>
-      <select className="ls-input" id={`${id}-source`} value={selection} onChange={(e) => { setSelection(e.target.value); setRuleTouched(true); }} aria-describedby={`${id}-binding-error ${id}-count`}>
-        <option value="">Choose an active Population Source</option>
-        {sourceSnapshot === null ? null : <option value="retain">Retain saved snapshot: {sourceSnapshot.displayName}</option>}
+    <div className="ls-dialog__field"><label htmlFor={`${id}-source`}>Where the records come from</label>
+      <select className="ls-input" id={`${id}-source`} value={selection} onChange={(e) => { setSelection(e.target.value); setRuleTouched(true); }} aria-describedby={`${id}-source-help ${id}-binding-error ${id}-count`}>
+        <option value="">Choose a source</option>
+        {sourceSnapshot === null ? null : <option value="retain">Keep the one already saved: {sourceSnapshot.displayName}</option>}
         {sources.map((s) => <option key={s.bindingId} value={s.bindingId}>{s.displayName}</option>)}
       </select>
+      <p className="ls-caption" id={`${id}-source-help`}>The list of records this procedure tests. An administrator sets these up under Administration.</p>
     </div>
-    {sources.length === 0 ? <p>No active Population Sources are available. Ask a PoC Administrator to register one.</p> : null}
-    {contract === undefined ? null : <p>Declared columns: {contract.declared_schema.join(', ')}. Count declaration: {contract.declared_count_mechanism}.</p>}
-    {selection === 'retain' ? <p>The saved source contract is retained, including after its registration is retired.</p> : null}
+    {sources.length === 0 ? <p>No sources are available yet. Ask a PoC Administrator to add one under Administration.</p> : null}
+    {contract === undefined ? null : <div className="ls-stack ls-source-facts">
+      <p>This source provides: {contract.declared_schema.join(', ')}.</p>
+      <p className="ls-caption">{COUNT_MECHANISM_WORDS[contract.declared_count_mechanism].label} — {COUNT_MECHANISM_WORDS[contract.declared_count_mechanism].detail}</p>
+    </div>}
+    {selection === 'retain' ? <p className="ls-caption">The saved source is kept exactly as it was, even if it is later retired.</p> : null}
     <div id={`${id}-count`} aria-live="polite">{missingCount ? <Banner tone="warning" title={POPULATION_DRAFT_MESSAGES.COUNT_MISSING} /> : null}</div>
     {evidenceBlockersFor(contract === undefined ? null : { contract }, draft.schedule).includes('upload-frequency-mismatch') ? <Banner tone="warning" title={MANUAL_UPLOAD_SENTENCE} /> : null}
-    <fieldset className="ls-stack"><legend>Inclusion rule</legend>
-      <p>Include records that match all clauses. An empty rule includes all records. Changing a source keeps every clause for you to check.</p>
-      {predicates.map((predicate, index) => <fieldset key={index} className="ls-stack"><legend>Clause {index + 1}</legend>
-        <label htmlFor={`${id}-column-${index}`}>Declared column {index + 1}</label>
-        <select className="ls-input" id={`${id}-column-${index}`} value={predicate.column} onChange={(e) => changePredicate(index, { ...predicate, column: e.target.value })}>
-          <option value="">Choose a declared column</option>
-          {predicate.column !== '' && !contract?.declared_schema.includes(predicate.column) ? <option value={predicate.column}>{predicate.column} (not declared by the selected source)</option> : null}
-          {contract?.declared_schema.map((column) => <option key={column} value={column}>{column}</option>)}
-        </select>
-        <label htmlFor={`${id}-kind-${index}`}>Comparison type {index + 1}</label>
-        <select className="ls-input" id={`${id}-kind-${index}`} value={predicate.kind} onChange={(e) => changePredicate(index, e.target.value === 'within-period' ? { column: predicate.column, kind: 'within-period' } : { column: predicate.column, kind: e.target.value as 'text' | 'decimal', operator: 'eq', value: '' })}>
-          <option value="text">Text equality</option><option value="decimal">Decimal comparison</option><option value="within-period">Within explicit Period</option>
-        </select>
-        {predicate.kind === 'decimal' ? <><label htmlFor={`${id}-operator-${index}`}>Decimal operator {index + 1}</label><select className="ls-input" id={`${id}-operator-${index}`} value={predicate.operator} onChange={(e) => changePredicate(index, { ...predicate, operator: e.target.value as typeof predicate.operator })}>
-          <option value="eq">Equal to</option><option value="neq">Not equal to</option><option value="gt">Greater than (exclusive)</option><option value="gte">Greater than or equal to (inclusive)</option><option value="lt">Less than (exclusive)</option><option value="lte">Less than or equal to (inclusive)</option>
-        </select></> : null}
-        {predicate.kind === 'within-period' ? <p>Uses the saved Period, including both UTC boundary dates.</p> : <><label htmlFor={`${id}-value-${index}`}>Comparison value {index + 1}</label><input className="ls-input" id={`${id}-value-${index}`} type="text" value={predicate.value} maxLength={predicate.kind === 'decimal' ? POPULATION_DRAFT_LIMITS.decimal : POPULATION_DRAFT_LIMITS.text} onChange={(e) => changePredicate(index, { ...predicate, value: e.target.value })} /></>}
-        <Button type="button" onClick={() => setPredicates((current) => current.filter((_, i) => i !== index))}>Remove clause {index + 1}</Button>
+    <fieldset className="ls-stack"><legend>Which records to test</legend>
+      <p className="ls-caption">Every record is tested unless you add a filter. A record is tested only when it matches every filter you add. Changing the source keeps your filters so you can check them.</p>
+      {predicates.length === 0 ? <p data-no-filters>No filters. Every record in the source is tested.</p> : null}
+      {predicates.map((predicate, index) => <fieldset key={index} className="ls-stack ls-filter" data-filter={index}><legend>Filter {index + 1}</legend>
+        <div className="ls-filter__row">
+          <div className="ls-dialog__field">
+            <label htmlFor={`${id}-column-${index}`}>Field {index + 1}</label>
+            <select className="ls-input" id={`${id}-column-${index}`} value={predicate.column} onChange={(e) => changePredicate(index, { ...predicate, column: e.target.value })}>
+              <option value="">Choose a field</option>
+              {predicate.column !== '' && !contract?.declared_schema.includes(predicate.column) ? <option value={predicate.column}>{predicate.column} (this source does not provide it)</option> : null}
+              {contract?.declared_schema.map((column) => <option key={column} value={column}>{column}</option>)}
+            </select>
+          </div>
+          <div className="ls-dialog__field">
+            <label htmlFor={`${id}-kind-${index}`}>Test {index + 1}</label>
+            <select className="ls-input" id={`${id}-kind-${index}`} value={filterComparisonId(predicate)} onChange={(e) => {
+              const chosen = FILTER_COMPARISONS.find((option) => option.id === e.target.value);
+              if (chosen === undefined) return;
+              // The stored value survives a change of test, so switching "is at least"
+              // to "is more than" does not silently empty the box somebody just typed in.
+              const value = predicate.kind === 'within-period' ? '' : predicate.value;
+              changePredicate(index,
+                chosen.kind === 'within-period' ? { column: predicate.column, kind: 'within-period' }
+                : chosen.kind === 'text' ? { column: predicate.column, kind: 'text', operator: 'eq', value }
+                : { column: predicate.column, kind: 'decimal', operator: chosen.operator, value });
+            }}>
+              {FILTER_COMPARISONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
+          </div>
+          {predicate.kind === 'within-period' ? <p className="ls-caption">Uses the period you set above, both dates included.</p> : <div className="ls-dialog__field">
+            <label htmlFor={`${id}-value-${index}`}>Value {index + 1}</label>
+            <input className="ls-input" id={`${id}-value-${index}`} type="text" value={predicate.value} maxLength={predicate.kind === 'decimal' ? POPULATION_DRAFT_LIMITS.decimal : POPULATION_DRAFT_LIMITS.text} onChange={(e) => changePredicate(index, { ...predicate, value: e.target.value })} />
+          </div>}
+        </div>
+        <Button type="button" onClick={() => setPredicates((current) => current.filter((_, i) => i !== index))}>Remove filter {index + 1}</Button>
       </fieldset>)}
-      {predicates.length >= POPULATION_DRAFT_LIMITS.predicates ? <p id={`${id}-clause-limit`}>An inclusion rule supports at most 32 clauses.</p> : null}
-      <Button type="button" disabledReason={predicates.length >= POPULATION_DRAFT_LIMITS.predicates ? 'An inclusion rule supports at most 32 clauses.' : undefined} disabledReasonId={`${id}-clause-limit`} onClick={() => setPredicates((current) => [...current, { column: '', kind: 'text', operator: 'eq', value: '' }])}>Add clause</Button>
+      {predicates.length >= POPULATION_DRAFT_LIMITS.predicates ? <p id={`${id}-clause-limit`}>You can add up to {POPULATION_DRAFT_LIMITS.predicates} filters.</p> : null}
+      <Button type="button" disabledReason={predicates.length >= POPULATION_DRAFT_LIMITS.predicates ? `You can add up to ${POPULATION_DRAFT_LIMITS.predicates} filters.` : undefined} disabledReasonId={`${id}-clause-limit`} onClick={() => setPredicates((current) => [...current, { column: '', kind: 'text', operator: 'eq', value: '' }])}>Add a filter</Button>
     </fieldset>
-    <label><input type="checkbox" checked={zeroRecordPass} onChange={(e) => setZeroRecordPass(e.target.checked)} /> Permit a zero-record Pass</label>
-    <label><input type="checkbox" checked={duplicates} onChange={(e) => setDuplicates(e.target.checked)} /> Permit versioned duplicate primary keys</label>
+    <details className="ls-disclosure">
+      <summary>More options</summary>
+      <div className="ls-disclosure__body">
+        <label><input type="checkbox" checked={zeroRecordPass} onChange={(e) => setZeroRecordPass(e.target.checked)} /> Let this procedure pass when no records match</label>
+        <p className="ls-caption">Off by default. With it off, a run that finds nothing to test is reported as inconclusive rather than as a pass.</p>
+        <label><input type="checkbox" checked={duplicates} onChange={(e) => setDuplicates(e.target.checked)} /> Allow the same record to appear more than once</label>
+        <p className="ls-caption">Off by default. Turn it on only when the source legitimately lists one record several times.</p>
+      </div>
+    </details>
     <div id={`${id}-binding-error`} aria-live="polite">{(ruleTouched || contract?.kind === 'manual-upload') && bindingError !== null ? <Banner tone="warning" title={bindingError} /> : null}</div>
-    <Button type="submit" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary">Save Population Source binding</Button>
+    <Button type="submit" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary">Save records to test</Button>
   </form>;
   // Every target editor shares the Draft's row-version token: a save through one moves the
   // token every other editor guards against, exactly as the population and rename saves do.
@@ -184,9 +214,23 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   return <div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <BuilderSections sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
-    <AgentSummary draft={draft} headingId={`${id}-agent-summary`} />
-    <ExecutablePlanPreview draft={draft} />
+    <BuilderSections draft={draft} sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
+    <ReadinessPanel inputs={{ templateId: draft.templateId, targets: draft.targets, sourceSnapshot: draft.sourceSnapshot, complianceConditions: draft.complianceConditions, evidenceRequirements: draft.evidenceRequirements }} headingId={`${id}-readiness`} />
+    {/*
+      The plan and its preview are the platform proving what it will execute, which is
+      the right thing to be able to read and the wrong thing to meet first: an auditor
+      setting up a control does not start by reading a compiled step list. It folds away
+      rather than moving off the page, because the person who wants it wants it here.
+    */}
+    <div className="ls-card">
+      <details className="ls-disclosure" data-plan-detail>
+        <summary>What the agent will do, step by step</summary>
+        <div className="ls-disclosure__body">
+          <AgentSummary draft={draft} headingId={`${id}-agent-summary`} readiness={false} />
+          <ExecutablePlanPreview draft={draft} />
+        </div>
+      </details>
+    </div>
     <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
     <RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async (fields) => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} />
