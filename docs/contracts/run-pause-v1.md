@@ -73,6 +73,15 @@ So:
    every recovery sweep's read requires, so returning the Run to it IS the handover, and a
    second dispatch would race the sweep for one lease.
 
+**`PauseRun` deliberately takes no expected revision and `ResumeRun` does**, which is the
+contract and not an omission (examined in the PR 29 review round). A pause records a marker
+and performs no transition, so *at the next boundary, whenever that is* is its whole meaning
+and the revision the page was rendered at has no bearing on it; a resume performs
+`PAUSED → RUNNING` itself and must not run against a state nobody saw. The staleness that
+does matter is caught anyway, under the pause command's own row lock: `AWAITING_AUDITOR` is
+refused by name and anything that has left `RUNNING` by `runPauseTransition`. A Run still
+`RUNNING` at a later revision is exactly the Run the request means to pause.
+
 A cancellation **wins** at every boundary. Ending is stronger than holding, and
 `RUN_CANCEL_TRANSITIONS` gives a `PAUSED` Run to the COMMAND — so pausing over a cancelled
 Run would leave the request with no worker to honour it.

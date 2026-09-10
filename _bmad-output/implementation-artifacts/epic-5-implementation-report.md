@@ -107,19 +107,27 @@ row, and resumes.
 
 ### 3.3 The review round on this PR
 
-Codex reviewed the branch and left ten findings. **Every one reproduced.** Eight are fixed
-here and two are named on the PR with the patch each needs, because each is wider than the
-finding itself and neither belongs in a pull request that is otherwise ready:
+Codex reviewed the branch and left ten findings. **Nine reproduced and nine are fixed.** The
+tenth was examined and is not a defect:
 
-- A `PAUSED` Run that is **cancelled** leaves its pause wait `closed_at` NULL for ever, and
-  that row then sits in `recoverableWaits`' bounded page permanently. Generation 45 says a
-  pause closes by `resume` or `timeout`; a cancellation is neither, so the honest fix is a
-  new closure kind and therefore **generation 47**.
-- **Pause carries no expected revision** where Resume does, so a stale Live View can pause a
-  Run the worker has already advanced. `RunRecord` carries no `revision` to compare against,
-  so the fix touches every reader of that record.
+- **A `PAUSED` Run that is cancelled left its pause wait open for ever.**
+  `RUN_CANCEL_TRANSITIONS` gives such a Run to the command, so cancelling one ended the Run
+  while its wait was still open — a row asserting an open question about a Run that is over,
+  and one that then occupied `recoverableWaits`' bounded page permanently. Fixed as
+  **generation 47**: a `withdrawn` closure kind, a deferred constraint trigger that refuses a
+  terminal Run holding an open wait, and an `execution.wait-withdrawn` event. Its backfill
+  was proven against a generation-46 database seeded with the real defect.
+- **Pause takes no expected revision where Resume does — and that is the contract.** A pause
+  records a marker and performs no transition: AD-16 makes it take effect *at the next Tool
+  Action boundary, whenever that is*, so the revision the page was rendered at has no bearing
+  on it, and refusing on one would refuse a pause for a reason the person could not act on. A
+  resume performs `PAUSED → RUNNING` itself and must not run against a state nobody saw,
+  which is what its revision is for. The staleness that does matter is caught already, under
+  the pause command's own row lock. **This was accepted too readily in the first round and is
+  corrected here**; the reasoning is now recorded at `parsePauseRequest` and in
+  `run-pause-v1.md`, so it is met rather than re-filed.
 
-Three of the eight were one rule with three holes — Story 5.7's gate withdrew only the
+Three of the nine were one rule with three holes — Story 5.7's gate withdrew only the
 controls that ASKED it — so the gate moved DOWN into `ConfirmDialog`, which every
 confirmation in the product already goes through. Four more were one limit in four places:
 Replay renders up to 500 frames and then joined each against reads capped at 50.
@@ -165,7 +173,8 @@ workspace port and no outbound fetch anywhere on the path.
 Three of these are decisions only you can take. Two are one-line answers.
 
 1. **Merge [PR 29](https://github.com/raeltec-systems/intellifin-audit/pull/29)** once its
-   five checks are green. The PR is open with this report linked; opening it is what started
+   five checks are green. Every review finding is closed — nine fixed, one examined and
+   refuted with the reasoning recorded (§3.3). The PR is open with this report linked; opening it is what started
    the first CI this branch has had, so §3 above is local verification and CI is the remote
    one. The merge decision is yours — nothing here merges itself.
 2. **Rotate the Solari API key** that was pasted into chat earlier in this engagement. It must

@@ -188,7 +188,26 @@ class Revoked extends Error {
   }
 }
 
-/** Untrusted whatever its TypeScript type says: an exact key set and a real Run id. */
+/**
+ * Untrusted whatever its TypeScript type says: an exact key set and a real Run id.
+ *
+ * **It takes NO expected revision, and that asymmetry with `parseResumeRequest` is the
+ * contract rather than an omission.** Raised as a PR 29 review finding and examined here:
+ *
+ * * A pause RECORDS A MARKER and performs no transition. AD-16 makes it take effect at the
+ *   next Tool Action boundary, *whenever that is*, so how far the Run has advanced since
+ *   the page rendered is not something the request is about. Refusing it on a revision
+ *   would refuse a pause for a reason the person asking could not act on.
+ * * A resume PERFORMS `PAUSED → RUNNING` itself, so it must not run against a state nobody
+ *   saw. That is what the revision compare-and-set is for, and it is load-bearing there.
+ * * The staleness that DOES matter is already caught, under this command's own row lock and
+ *   after it: a Run the worker has moved to `AWAITING_AUDITOR` is refused by name, and one
+ *   that has left `RUNNING` at all is refused by `runPauseTransition`. A Run still
+ *   `RUNNING` at a later revision is precisely the Run this request means to pause.
+ *
+ * Writing the marker bumps the revision through generation 34's trigger, under that same
+ * lock, so a worker's own compare-and-set serialises behind it rather than racing it.
+ */
 function parsePauseRequest(value: unknown): { runId: string } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;

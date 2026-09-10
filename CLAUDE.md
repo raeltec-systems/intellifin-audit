@@ -37,6 +37,20 @@ the sweep whose whole job is finding waits whose wake was lost.
   `execution.` rather than `lifecycle.` because it happened to the WAIT, and
   `EVENT_TYPE_PATTERN` closes the family and not the suffix, so the name needs no migration.
 
+**The round's other named finding was examined and is NOT a defect.** `parsePauseRequest`
+takes no expected revision where `parseResumeRequest` does, and the asymmetry is the contract:
+a pause RECORDS A MARKER and performs no transition, so AD-16's "at the next Tool Action
+boundary, whenever that is" is its whole meaning and the revision the page was rendered at has
+no bearing on it — refusing there would refuse a pause for a reason the person asking could not
+act on. A resume PERFORMS `PAUSED → RUNNING` and must not run against a state nobody saw, which
+is what its revision is for. The staleness that does matter is caught anyway under the pause
+command's own row lock (`AWAITING_AUDITOR` by name, anything else by `runPauseTransition`), and
+writing the marker bumps the revision through generation 34's trigger under that same lock, so
+a worker's compare-and-set serialises rather than races. **It was accepted too readily in the
+first round**; the reasoning now sits at the parser and in the contract so the next reader meets
+it instead of re-filing it. A finding that reproduces is not the same as a finding that is
+right — check what the contract already says before building the change it asks for.
+
 **The backfill is structural and was proven against a database that really had the defect.** A
 scratch database was migrated to generation 46 ONLY (a copy of `drizzle/` with 0047 and its
 journal entry removed), seeded through the repo's own `activeRunVersion` fixture with a
