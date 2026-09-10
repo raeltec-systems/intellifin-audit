@@ -4,6 +4,7 @@ import {
   PAUSED_TIMEOUT_MS,
   ESCALATION_OPTION_IDS,
   answerEscalation,
+  cancelRun,
   initiateRun,
   pauseRun,
   pauseWaitFor,
@@ -20,6 +21,7 @@ import {
   DrizzleNotificationRepository,
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
+  PostgresRunCancellationRepository,
   PostgresRunsUnitOfWork,
   SystemClock,
   type Database,
@@ -155,6 +157,95 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
       return wait.waitId;
     });
   }
+
+  /**
+   * Generation 47, from the PR 29 review: a Run that ends withdraws the question.
+   *
+   * `RUN_CANCEL_TRANSITIONS` gives a `PAUSED` Run to the COMMAND — no worker is holding it
+   * — so cancelling one performed the terminal transition here and now and left the pause
+   * wait `closed_at` NULL for ever. Two surfaces looked right throughout, because the inbox
+   * and the bell both exclude by the Run's STATE; what paid for it is `recoverableWaits`,
+   * whose bounded page such a row occupies permanently.
+   */
+  describe('generation 47: a Run that ends withdraws the wait it was holding', () => {
+    it('closes a paused Run\u2019s wait when the Run is cancelled, and says so in the chain', async () => {
+      const runId = await startRun();
+      expect(await pauseRun(deps(), { session, request: { runId } })).toMatchObject({ ok: true });
+      const waitId = await honourPause(runId);
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'PAUSED' }]);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${waitId}`).toMatchObject([{ closed_at: null }]);
+
+      const cancelled = await cancelRun(
+        {
+          roles: new DrizzleRoleRepository(db),
+          unitOfWork: new PostgresRunsUnitOfWork(db),
+          repository: new PostgresRunCancellationRepository(db),
+          ids,
+          clock: new SystemClock(),
+        },
+        { session, request: { runId, reason: null } },
+      );
+      // A PAUSED Run belongs to the command, so the transition really happens here.
+      expect(cancelled).toMatchObject({ ok: true, state: 'CANCELED', pending: false });
+
+      // The wait is closed, by the SYSTEM and as a withdrawal — never as an answer, and
+      // never in the canceller\u2019s name. Generation 47 pins both.
+      const [wait] = await sql`SELECT closed_at,closure_kind,answer_option_id,actor FROM run_wait WHERE wait_id=${waitId}`;
+      expect(wait).toMatchObject({ closure_kind: 'withdrawn', answer_option_id: null, actor: 'run-terminal' });
+      expect(wait!.closed_at).not.toBeNull();
+
+      // And it is in the chain, so a question that vanished from somebody\u2019s inbox has a
+      // durable reason. The kind is there; the question is not.
+      const [event] = await sql`
+        SELECT actor_id,outcome,payload FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='execution.wait-withdrawn'`;
+      expect(event).toMatchObject({ actor_id: 'run-terminal', outcome: 'failure' });
+      expect(event!.payload).toMatchObject({ waitId, kind: 'pause', closureKind: 'withdrawn', state: 'CANCELED' });
+
+      // Nothing is left for the recovery sweep to keep finding.
+      expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${runId} AND closed_at IS NULL`).toHaveLength(0);
+    });
+
+    it('refuses a withdrawal that names a person, or that carries an answer', async () => {
+      const runId = await startRun();
+      const waitId = ids.next();
+      await sql`
+        INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline)
+        VALUES (${waitId},${runId},'pause','[{"id":"resume","label":"Resume"}]'::jsonb, now(), ${author}, now() + interval '30 minutes')
+      `;
+      // A person cannot be the actor on a withdrawal: nobody answered.
+      await expect(sql`
+        UPDATE run_wait SET closed_at=now(), closure_kind='withdrawn', answer_option_id=NULL, actor=${author} WHERE wait_id=${waitId}
+      `).rejects.toMatchObject({ code: '23514' });
+      // And a withdrawal cannot be dressed as a decision.
+      await expect(sql`
+        UPDATE run_wait SET closed_at=now(), closure_kind='withdrawn', answer_option_id='resume', actor='run-terminal' WHERE wait_id=${waitId}
+      `).rejects.toMatchObject({ code: '23514' });
+      // The row is untouched by either attempt.
+      expect(await sql`SELECT closed_at,closure_kind FROM run_wait WHERE wait_id=${waitId}`)
+        .toMatchObject([{ closed_at: null, closure_kind: null }]);
+    });
+
+    /**
+     * The forcing function. A path that ends a Run and forgets the wait does not ship a row
+     * claiming an open question — it fails to commit, which is what generations 21 and 25
+     * already do for the Evidence package and the Result.
+     */
+    it('refuses a terminal Run that is still holding one, at commit', async () => {
+      const runId = await startRun();
+      const waitId = ids.next();
+      await sql`
+        INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline)
+        VALUES (${waitId},${runId},'pause','[{"id":"resume","label":"Resume"}]'::jsonb, now(), ${author}, now() + interval '30 minutes')
+      `;
+      await expect(
+        sql`UPDATE audit_run SET state='CANCELED' WHERE run_id=${runId}`,
+      ).rejects.toMatchObject({ code: '23514' });
+      // `startRun` leaves the Run RUNNING, which is where a worker would be holding it.
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toMatchObject([{ state: 'RUNNING' }]);
+      await sql`UPDATE run_wait SET closed_at=now(), closure_kind='withdrawn', actor='run-terminal' WHERE wait_id=${waitId}`;
+    });
+  });
 
   describe('generation 45 refuses what no command should be able to write', () => {
     it('refuses a pause wait that names nobody, and an Escalation that names somebody', async () => {

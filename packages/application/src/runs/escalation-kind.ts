@@ -90,9 +90,31 @@ export interface EscalationOption {
  * an `answer` whose option happens to be `resume`, because generation 45's CHECK can then
  * hold the pairing as a database fact: a pause closes by resume or timeout and never by an
  * answer, and an Escalation the other way round.
+ *
+ * `withdrawn` joined them with generation 47, from the PR 29 review. A Run that reaches a
+ * terminal state while a wait is OPEN — today only a cancellation, which
+ * `RUN_CANCEL_TRANSITIONS` gives to the command for both `PAUSED` and `AWAITING_AUDITOR` —
+ * left that wait `closed_at` NULL for ever: a row asserting that a question is open about a
+ * Run that is over, and one that then sat in `recoverableWaits`' BOUNDED page permanently,
+ * so enough of them starve the sweep that finds waits whose wake was lost.
+ *
+ * It is its own kind rather than a `timeout`, which would say a deadline passed, or an
+ * `answer`, which would say somebody decided. Nobody did either: the question was
+ * WITHDRAWN because the Run it was about ended.
  */
-export const WAIT_CLOSURE_KINDS = ['answer', 'resume', 'timeout'] as const;
+export const WAIT_CLOSURE_KINDS = ['answer', 'resume', 'timeout', 'withdrawn'] as const;
 export type WaitClosureKind = (typeof WAIT_CLOSURE_KINDS)[number];
+
+/**
+ * The actor on a withdrawn wait, pinned by generation 47's CHECK exactly as `wait-wake` is
+ * pinned on a timeout.
+ *
+ * The SYSTEM, never the person who cancelled the Run — the same reading
+ * `lifecycle.cancellation-superseded` takes. They asked for the Run to stop; withdrawing
+ * the question is what the platform did in consequence, and naming them as its actor would
+ * say they answered a question they never saw.
+ */
+export const WAIT_WITHDRAWN_ACTOR = 'run-terminal';
 
 /** Fixed answer ids. Candidate choices use the candidate's opaque id. */
 export const ESCALATION_OPTION_IDS = {

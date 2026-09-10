@@ -35,6 +35,20 @@ It is **not** an Escalation, and every reader says which it means:
   `kind<>'pause' AND closure_kind='resume'` outright. Three statements of one rule, in the
   order this codebase always uses: the producer cannot ask, the command would not honour
   it, the database refuses to hold it.
+* **A Run that ENDS while it is holding a wait withdraws the question** (generation 47).
+  `RUN_CANCEL_TRANSITIONS` gives a `PAUSED` and an `AWAITING_AUDITOR` Run to the COMMAND —
+  no worker is holding either — so cancelling one performs the terminal transition there
+  and then, and before this it left the wait `closed_at` NULL for ever: a row asserting an
+  open question about a Run that is over, which then sat in `recoverableWaits`' BOUNDED page
+  permanently. `completeRun` withdraws it inside the terminal transaction, and the same
+  three statements hold: `withdrawOpenWait` writes the kind and the actor itself so no
+  caller can name a person or dress a withdrawal as an answer; generation 47's fifth
+  `run_wait_closure` arm pins `closure_kind='withdrawn'` to `actor='run-terminal'` with no
+  answer; and `audit_run_no_open_wait`, a DEFERRED constraint trigger beside generations 21
+  and 25, refuses a terminal Run that still holds one, so a path that forgets fails to
+  commit rather than shipping the row. `execution.wait-withdrawn` records which question
+  went — by kind and identity, never its text — because a question vanishing from somebody's
+  inbox with nothing in the chain is the shape this codebase keeps finding.
 
 ## Who performs the transition
 
@@ -134,6 +148,7 @@ answers, and the wake's singleton window is the wait's own timeout rather than a
 | `audit_run` | `pause_requested_at`, `pause_requested_by`, `pause_requested_session` + `audit_run_pause_request` | The request marker, written whole or not at all. |
 | `run_step_execution` | `SUPERSEDED` state, `superseded_by` + `run_step_execution_superseded` | An interrupted attempt, and why. Either half alone permits a row that reads as the other. |
 | `run_wait` | `pause` kind, `opened_at` (NOT NULL), `opened_by`, `run_wait_opened_by`, kind-aware `run_wait_closure` | The pause itself, who asked for it, and the closure pairing as a database fact. |
+| `run_wait` (generation 47) | `withdrawn` closure arm; `audit_run_no_open_wait` deferred constraint trigger | A Run that ends withdraws the question, and cannot commit if it does not. |
 
 `opened_at` is added nullable, backfilled and only then made NOT NULL, because
 `ADD COLUMN ... NOT NULL` fails on a populated table. The backfill is EXACT rather than a

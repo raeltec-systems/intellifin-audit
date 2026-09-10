@@ -47,7 +47,7 @@ import type { AuditEventWriter } from '../audit/ports.js';
 import type { AgentPageDeclarationFacts } from './agent-page-declaration.js';
 // The dependency-free wait vocabulary leaf. `waits.ts` imports THIS module, so a pause
 // wait's type has to come from the leaf or the two files would import each other.
-import type { RunWait } from './escalation-kind.js';
+import type { RunWait, WaitKind } from './escalation-kind.js';
 
 // Re-export the page declaration seam through the existing execution-ports barrel. The
 // infrastructure adapter already depends on this public application entrypoint, while the
@@ -975,6 +975,35 @@ export interface RunResultContext extends EvidencePackageContext {
     readonly exceptions: RunResultFindings;
     readonly unevaluated: RunResultFindings;
   }>;
+  /**
+   * Withdraw the wait this Run is still holding, if it is holding one (generation 47).
+   *
+   * Returns the wait it closed, so the caller can record WHICH question was withdrawn, and
+   * `null` when there was none — which is every ordinary terminal transition: a wake closes
+   * its own wait before completing the Run, and a Run that never waited has nothing to
+   * withdraw. So this is a read that usually finds nothing, and the case it exists for is
+   * the one the PR 29 review found: `RUN_CANCEL_TRANSITIONS` gives a `PAUSED` and an
+   * `AWAITING_AUDITOR` Run to the COMMAND, so cancelling one ends the Run while its wait is
+   * open.
+   *
+   * The actor and the closure kind are NOT parameters. Generation 47 pins both — the same
+   * discipline `waitClosureKindFor` applies one layer up, so no caller can withdraw a wait
+   * in a person's name or dress a withdrawal as an answer.
+   */
+  withdrawOpenWait(at: string): Promise<WithdrawnWait | null>;
+}
+
+/**
+ * The wait a terminal transition withdrew, as it was BEFORE it was closed.
+ *
+ * Identity and kind only. The question, its candidates and any retrieved text stay on the
+ * row: this is what an audit event records, and the chain is immutable, so a question a
+ * Target System's page could influence must never enter it.
+ */
+export interface WithdrawnWait {
+  readonly waitId: string;
+  readonly kind: WaitKind;
+  readonly openedAt: string;
 }
 
 /**

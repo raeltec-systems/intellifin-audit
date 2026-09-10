@@ -97,6 +97,8 @@ class FakeGate implements RunGateContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.rows;
   readCancellation = async (): Promise<null> => null;
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
   pauseRequest: RunPauseRequest | null = null;
   saveGateChecks = async (rows: readonly GateCheckRow[]): Promise<void> => {
     this.rows = [...rows];

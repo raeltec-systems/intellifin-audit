@@ -308,6 +308,8 @@ class FakeContext implements AgentExecutionContext {
    * `context.run?.pauseRequest`, and this read is `CompleteRun`'s superseded check.
    */
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.run?.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
   /** Real behaviour, not a stub: the pause tests assert the row and the cleared marker. */
   openPauseWait = async (wait: RunWait): Promise<void> => { this.state.pauseWaits.push(wait); };
   clearPauseRequest = async (): Promise<void> => {

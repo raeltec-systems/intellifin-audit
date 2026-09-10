@@ -144,6 +144,8 @@ class FakeContext implements EvaluationReviewContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => null;
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
   pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (_state: RunRecord['state']): Promise<void> => undefined;
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;

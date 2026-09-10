@@ -30,6 +30,7 @@ import type {
   PackageSeal,
   RunGatePopulationFacts,
   StoredRunResult,
+  WithdrawnWait,
 } from './execution-ports.js';
 
 const RUN_ID = '01a06fd8-0000-7000-8000-0000000000a1';
@@ -94,6 +95,16 @@ class FakeWaitContext implements WaitContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => null;
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47: what a terminal transition withdraws, set by a test that opens one. */
+  openWait: WithdrawnWait | null = null;
+  withdrawnAt: string | null = null;
+  withdrawOpenWait = async (at: string): Promise<WithdrawnWait | null> => {
+    const wait = this.openWait;
+    if (wait === null) return null;
+    this.openWait = null;
+    this.withdrawnAt = at;
+    return wait;
+  };
   requestPause = async (request: RunPauseRequest): Promise<void> => { this.pauseRequest = request; };
   pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {

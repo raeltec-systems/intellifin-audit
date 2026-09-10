@@ -1925,7 +1925,13 @@ export const runWait = pgTable('run_wait', {
   // CHECK that evaluates to NULL PASSES. The generation-34 wording avoided that with an
   // explicit `IS NOT NULL` beside each `=`; this is the same rule said once per comparison.
   // `run-waits.test.ts`'s partial-closure case is what caught it.
-  check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'answer' AND ${t.kind} IS DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'resume' AND ${t.kind} IS NOT DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT DISTINCT FROM 'resume' AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NOT DISTINCT FROM 'wait-wake')`),
+  //
+  // Generation 47 adds the fifth arm, `withdrawn`: a Run that reaches a terminal state
+  // while a wait is open withdraws the question rather than leaving a row that says one is
+  // open about a Run that is over. Its actor is PINNED to the system id, exactly as the
+  // timeout arm pins `wait-wake`, so no command can withdraw a wait in a person's name.
+  // Any KIND may be withdrawn — a cancellation reaches a pause and an Escalation alike.
+  check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'answer' AND ${t.kind} IS DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'resume' AND ${t.kind} IS NOT DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT DISTINCT FROM 'resume' AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NOT DISTINCT FROM 'wait-wake') OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'withdrawn' AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NOT DISTINCT FROM 'run-terminal')`),
 ]);
 
 /**

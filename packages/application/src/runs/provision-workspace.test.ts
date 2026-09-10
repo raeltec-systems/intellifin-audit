@@ -148,6 +148,8 @@ class FakeContext implements WorkspaceExecutionContext {
 
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
   pauseRequest: RunPauseRequest | null = null;
 
   constructor(private readonly store: Store) {

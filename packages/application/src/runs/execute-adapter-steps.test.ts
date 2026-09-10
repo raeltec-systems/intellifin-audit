@@ -403,6 +403,8 @@ class FakeRepository implements AdapterExecutionRepository {
       // committed AFTER the claim is visible here and not on the claim-time `RunRecord`.
       readCancellation: async () => repository.run.cancellation,
       readPauseRequest: async () => repository.run.pauseRequest,
+      /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+      withdrawOpenWait: async (): Promise<null> => null,
       openPauseWait: async (wait: RunWait) => { repository.pauseWaits.push(wait); },
       clearPauseRequest: async () => { repository.run = { ...repository.run, pauseRequest: null }; },
       saveGateChecks: async (rows) => {

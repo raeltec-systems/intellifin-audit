@@ -1,10 +1,12 @@
 import { evaluationReviewJoin, effectiveEvaluationValue, effectiveEvaluationOrigin, effectiveEvaluationConfirmation } from './effective-evaluation.js';
-import { and, asc, eq, sql } from 'drizzle-orm';
-import type {
-  GateCheckRow,
-  RunGatePopulationFacts,
-  RunResultContext,
-  StoredRunResult,
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import {
+  WAIT_WITHDRAWN_ACTOR,
+  type GateCheckRow,
+  type RunGatePopulationFacts,
+  type RunResultContext,
+  type StoredRunResult,
+  type WithdrawnWait,
 } from '@intellifin/application';
 import {
   GATE_AFFECTED_LIMIT,
@@ -41,6 +43,7 @@ import {
   runEvidenceCapture,
   runEvaluationReview,
   runResult,
+  runWait,
 } from '../db/schema.js';
 
 /**
@@ -158,6 +161,47 @@ export function runResultContext(
         requestedBy: row.requestedBy,
         sessionId: row.sessionId,
         requestedAt: row.requestedAt.toISOString(),
+      };
+    },
+
+    /**
+     * Withdraw the wait this Run is still holding, if it is holding one (generation 47).
+     *
+     * `FOR UPDATE` and then a guarded `UPDATE`: two callers reaching a terminal transition
+     * for one Run must not both believe they withdrew it, and the row lock is what
+     * serialises them — the `DrizzleRunRepository.requestCancellation` discipline, one
+     * table along.
+     *
+     * `run_wait_one_open` means there is at most ONE, so this is `LIMIT 1` over a unique
+     * index rather than a page. The closure kind and the actor are written HERE and are not
+     * parameters: generation 47's CHECK pins the pair, so a caller cannot withdraw a wait
+     * in a person's name, and a withdrawal cannot be dressed as an answer.
+     *
+     * The row read back is the wait as it was BEFORE the close — identity, kind and when it
+     * opened. The question itself never leaves this function.
+     */
+    async withdrawOpenWait(at: string): Promise<WithdrawnWait | null> {
+      const open = (
+        await tx
+          .select({ waitId: runWait.waitId, kind: runWait.kind, openedAt: runWait.openedAt })
+          .from(runWait)
+          .where(and(eq(runWait.runId, runId), isNull(runWait.closedAt)))
+          .limit(1)
+          .for('update')
+      )[0];
+      if (!open) return null;
+      const closed = await tx
+        .update(runWait)
+        .set({ closedAt: new Date(at), closureKind: 'withdrawn', actor: WAIT_WITHDRAWN_ACTOR })
+        // Re-stated, so a concurrent withdrawal that committed between the lock being
+        // granted and this statement writes once rather than twice.
+        .where(and(eq(runWait.waitId, open.waitId), isNull(runWait.closedAt)))
+        .returning({ waitId: runWait.waitId });
+      if (closed.length === 0) return null;
+      return {
+        waitId: open.waitId,
+        kind: open.kind as WithdrawnWait['kind'],
+        openedAt: open.openedAt.toISOString(),
       };
     },
 

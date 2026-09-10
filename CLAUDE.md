@@ -1,3 +1,69 @@
+## 2026-09-10 — Generation 47: a Run that ends withdraws the question it was holding
+
+The first of the two findings the PR 29 round named and did not fix. It is fixed now, and the
+reason it was worth a migration is that the row it left behind was BOTH permanently false and
+quietly expensive.
+
+**`RUN_CANCEL_TRANSITIONS` gives a `PAUSED` and an `AWAITING_AUDITOR` Run to the COMMAND**, so
+cancelling one performed the terminal transition there and then — and left its wait `closed_at`
+NULL for ever. Two consequences, and the second is the one that grows: a row asserting that a
+question is open about a Run that is over, which nobody can answer and no later write can
+correct; and `recoverableWaits` reads open waits in a BOUNDED page, so enough of them starve
+the sweep whose whole job is finding waits whose wake was lost.
+
+- **The inbox and the bell were never wrong, which is exactly why this could hide.** Their one
+  visibility predicate requires `AWAITING_AUDITOR`, and a cancelled Run is `CANCELED`, so the
+  STATE excluded it. Two surfaces looked right while the row underneath them lied.
+- **`withdrawn` is its own closure kind, not a `timeout` and not an `answer`.** A timeout says
+  a deadline passed and an answer says somebody decided; nobody did either. The question was
+  WITHDRAWN because the Run it was about ended.
+- **The actor is the SYSTEM (`run-terminal`), never whoever cancelled the Run** — the reading
+  `lifecycle.cancellation-superseded` already takes. They asked for the Run to stop;
+  withdrawing the question is what the platform did in consequence, and naming them would say
+  they answered a question they never saw. Generation 47's CHECK pins the pair, exactly as the
+  timeout arm pins `wait-wake`, so `withdrawOpenWait` writes both itself and takes neither as
+  a parameter.
+- **`audit_run_no_open_wait` is a DEFERRED constraint trigger beside generations 21 and 25**,
+  so a path that ends a Run and forgets the wait fails to COMMIT rather than shipping the row.
+  Three statements of one rule again: the producer cannot ask, the domain would not honour it,
+  the database refuses to hold it.
+- **It withdraws at every terminal transition, not on the cancellation path.** `completeRun` is
+  where every one already goes, so one check covers both worker stages, the web command and
+  whatever a later epic adds. On the ordinary path it finds nothing — a wake closes its own
+  wait first — so this is a read that usually returns `null`.
+- **`execution.wait-withdrawn` records WHICH question went**, by kind and identity and never
+  its text. A wait disappearing silently is the defect shape this codebase keeps finding; the
+  Run's cancellation event says the Run stopped, and this says the question stopped with it.
+  `execution.` rather than `lifecycle.` because it happened to the WAIT, and
+  `EVENT_TYPE_PATTERN` closes the family and not the suffix, so the name needs no migration.
+
+**The backfill is structural and was proven against a database that really had the defect.** A
+scratch database was migrated to generation 46 ONLY (a copy of `drizzle/` with 0047 and its
+journal entry removed), seeded through the repo's own `activeRunVersion` fixture with a
+`CANCELED` Run holding an open pause wait — which 46 permits, because that IS the defect — and
+then upgraded with the real migrator. The wait came out `withdrawn`/`run-terminal` at the
+Result's own `sealed_at`, and three waits on QUEUED Runs left by earlier failed seed attempts
+were untouched, which is the negative control the test did not have to invent. Fresh install,
+that upgrade and the working database all end at 539 columns, 769 constraints and 28 triggers.
+
+Three mechanical notes:
+
+- **Making the port REQUIRED is what found every caller.** Ten fake contexts failed to compile,
+  each in a file whose Run never opens a wait; an optional seam would have left them silently
+  answering `null` for ever. Nine say so in one line, and the four that drive a wait implement
+  it.
+- **A bounded read over the WHOLE table plus a post-filter is a test that other files can
+  break.** `run-surfaces.test.ts`'s `mine()` took one `RUN_LIST_PAGE_SIZE` page of every Run in
+  the database and then filtered to its own Procedure, so it passed at 24 rows and failed the
+  moment this change added three — and the row it lost was the OLDEST, which reads as a broken
+  ORDERING rather than as a full page. It walks the keyset now, which is what a real caller
+  does, so the assertion is unchanged and no longer hostage to the other 43 files.
+- **Read the FIRST failure, and clean the database before trusting the second run.** Both
+  failures in that run were the one cause, and 24 leftover Runs from earlier failed runs in the
+  same session were most of the page. `TRUNCATE TABLE audit_run CASCADE` is the way to clear
+  the Run tree in a test database: row triggers do not fire, so the immutability guards that
+  correctly refuse a piecemeal `DELETE` are not in the way.
+
 ## 2026-09-10 — PR 29 review findings: one rule with three holes, and one limit in four places
 
 Codex reviewed the Epic 5 branch and left ten findings. Every one reproduced. Eight are

@@ -158,9 +158,32 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
 
   const list = (): DrizzleRunListRepository => new DrizzleRunListRepository(db);
   const detail = (): DrizzleRunDetailRepository => new DrizzleRunDetailRepository(db);
+  /**
+   * This file's own Runs, in the list's own order.
+   *
+   * It WALKS the keyset rather than filtering one page, because `listRuns` is a read over
+   * every Run in the database and this file holds four of them. Filtering a single page
+   * after the fact makes the assertion depend on how many Runs the other 43 integration
+   * files happen to be holding at that instant: at `RUN_LIST_PAGE_SIZE` (25) it passed with
+   * 24 rows present and failed the moment another file added three, and the row it lost was
+   * the OLDEST — which reads as a broken ordering rather than as a full page.
+   *
+   * Walking with the returned cursor is what a real caller does, so the keyset is still
+   * exercised; `after`/`limit` stay available for the cases whose subject IS one page. The
+   * walk is bounded so a cursor defect cannot spin here instead of failing.
+   */
   const mine = async (after?: string | null, limit = RUN_LIST_PAGE_SIZE) => {
-    const page = await list().listRuns(after, limit);
-    return { ...page, rows: page.rows.filter((row) => row.procedureId === procedureId) };
+    const rows: Awaited<ReturnType<DrizzleRunListRepository['listRuns']>>['rows'][number][] = [];
+    let cursor = after ?? null;
+    let next: string | null = null;
+    for (let page = 0; page < 20; page += 1) {
+      const read = await list().listRuns(cursor, limit);
+      rows.push(...read.rows.filter((row) => row.procedureId === procedureId));
+      next = read.next;
+      if (read.next === null || read.rows.length < limit) break;
+      cursor = read.next;
+    }
+    return { next, rows };
   };
 
   it('orders by initiation descending and pages by a keyset with a total order', async () => {

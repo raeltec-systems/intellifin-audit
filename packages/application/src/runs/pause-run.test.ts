@@ -25,7 +25,7 @@ import {
   type WaitRepository,
 } from './waits.js';
 import { pauseRun, pauseWaitFor, performPause, resumeRun } from './pause-run.js';
-import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult } from './execution-ports.js';
+import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult, WithdrawnWait } from './execution-ports.js';
 
 /**
  * `PauseRun` and `ResumeRun` (Story 5.4).
@@ -98,6 +98,16 @@ class FakeWaitContext implements WaitContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.run?.cancellation ?? null;
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest;
+  /** Generation 47: what a terminal transition withdraws, set by a test that opens one. */
+  openWait: WithdrawnWait | null = null;
+  withdrawnAt: string | null = null;
+  withdrawOpenWait = async (at: string): Promise<WithdrawnWait | null> => {
+    const wait = this.openWait;
+    if (wait === null) return null;
+    this.openWait = null;
+    this.withdrawnAt = at;
+    return wait;
+  };
   requestPause = async (request: RunPauseRequest): Promise<void> => {
     if (this.pauseRequest !== null) return; // The FIRST request wins, as in the repository.
     this.pauseRequest = request;

@@ -97,6 +97,8 @@ class FakePopulation implements PopulationExecutionContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.run?.cancellation ?? null;
   readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
   pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
