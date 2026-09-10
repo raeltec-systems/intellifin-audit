@@ -80,6 +80,31 @@ re-reads both sides together, and the row now asserts the plain-words question i
 AND that the identifier is not. Story 5.5's row above is unchanged: its own subject was
 proven, and this is a test that was not re-run rather than a product defect.
 
+## The PR 29 review round
+
+Codex reviewed the branch and left ten findings. **Nine reproduced and nine are fixed. The
+tenth was examined and is not a defect.** Full account in
+`epic-5-implementation-report.md` §3.3 and, with the traps, in the two `2026-09-10` entries
+at the top of `CLAUDE.md`.
+
+| Finding | Verification level |
+|---|---|
+| A timed-out pause recorded an **Escalation** — wrong event type, wrong actor, wrong prior state, in a row that can never be corrected | Unit + integration; all three now derived from the wait's own kind |
+| Story 5.7's gate withdrew only the controls that ASKED it (three holes: the Escalation panel, an open `ConfirmDialog`, the sub-1024px rule) | Gate moved into `ConfirmDialog`; unit + browser, mutation-killed |
+| Replay joined 500 frames against reads capped at 50 (four places) | `REPLAY_PAGE_SIZE`; integration test reads past a Run Detail page |
+| The inbox applied its limit twice and added the results | Unit + integration |
+| **`[FIXED, generation 47]`** A cancelled `PAUSED` Run left its wait open for ever, occupying `recoverableWaits`' bounded page permanently | Unit + integration + SQL boundary + the deferred trigger; backfill proven on a generation-46 database seeded with the real defect; 2 mutations killed |
+| **`[NOT A DEFECT]`** Pause takes no expected revision where Resume does | Examined: a pause records a marker and performs no transition, so AD-16's "at the next boundary, whenever that is" is its whole meaning; the staleness that matters is caught under the command's own row lock. Reasoning recorded at `parsePauseRequest` and in `run-pause-v1.md` |
+
+Two verification lessons from the round, both now in `CLAUDE.md`:
+
+- **A test whose fixture the server never sees cannot assert what the server does.**
+  `live-drop.spec.ts` asserted a resume at SYNTHETIC sequences the chain never held; it
+  passed here every time and failed in CI twice. Renamed to what it proves.
+- **A test's NAME is a claim** — twice in one round. "Renders read-only below 1024px"
+  asserted a sentence and nothing else, which is exactly why the viewport hole could sit
+  under a green test named for the rule it was not checking.
+
 Order of implementation and why: `epic-5-context.md`. The order was revised after 5.3:
 5.7 moves to after 5.4 and 5.5, because its central criterion disables controls that do not
 exist until those stories build them. Two of its three criteria are already met by 5.1 and
