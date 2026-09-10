@@ -26,6 +26,7 @@ import {
   type RunResultFindings,
   type RunResultPublication,
   type SystemOutcome,
+  type RunPauseRequest,
 } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import {
@@ -130,6 +131,33 @@ export function runResultContext(
         sessionId: row.sessionId,
         requestedAt: row.requestedAt.toISOString(),
         reason: row.reason,
+      };
+    },
+
+    /**
+     * The OUTSTANDING pause request, on this transaction's connection (Story 5.4).
+     *
+     * Same reading as the cancellation above it. The difference is what a value MEANS: the
+     * boundary that honours a pause clears this marker, so one still here at a terminal
+     * transition is a request no Tool Action boundary ever reached — which is exactly what
+     * `lifecycle.pause-superseded` records, with no state comparison needed.
+     */
+    async readPauseRequest(): Promise<RunPauseRequest | null> {
+      const row = (
+        await tx
+          .select({
+            requestedAt: auditRun.pauseRequestedAt,
+            requestedBy: auditRun.pauseRequestedBy,
+            sessionId: auditRun.pauseRequestedSession,
+          })
+          .from(auditRun)
+          .where(eq(auditRun.runId, runId))
+      )[0];
+      if (!row || row.requestedAt === null || row.requestedBy === null || row.sessionId === null) return null;
+      return {
+        requestedBy: row.requestedBy,
+        sessionId: row.sessionId,
+        requestedAt: row.requestedAt.toISOString(),
       };
     },
 

@@ -9,8 +9,7 @@ import {
   type RunRecord,
   type RunResultConditionCount,
   type RunResultExclusion,
-  type RunResultFindings,
-} from '@intellifin/domain';
+  type RunResultFindings, type RunPauseRequest } from '@intellifin/domain';
 import { cancelRun, CANCEL_REQUEST_MALFORMED, type CancelRunDependencies } from './cancel-run.js';
 import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult } from './execution-ports.js';
 import type { RunCancellationContext } from './ports.js';
@@ -41,7 +40,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000c5',
 };
 
@@ -91,6 +90,8 @@ class FakeContext implements RunCancellationContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   // What the terminal transaction sees, which `requestCancellation` has already written.
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.marker;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
   };

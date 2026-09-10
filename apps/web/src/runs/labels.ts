@@ -189,6 +189,9 @@ const STEP_EXECUTION_WORDS: Readonly<Record<string, string>> = {
   RUNNING: 'Running',
   SUCCEEDED: 'Succeeded',
   FAILED: 'Failed',
+  // Story 5.4: a pause interrupted this attempt. Not a failure — nothing went wrong — and
+  // not still running, which is what an unmarked interrupted attempt would look like.
+  SUPERSEDED: 'Superseded',
 };
 
 const EVIDENCE_STATE_WORDS: Readonly<Record<string, string>> = {

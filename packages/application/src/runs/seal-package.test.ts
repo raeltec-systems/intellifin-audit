@@ -35,7 +35,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-000000000005',
 };
 

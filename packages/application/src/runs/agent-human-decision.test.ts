@@ -23,7 +23,7 @@ function fixture(document: readonly unknown[] = nodes): AgentHumanDecisionInput 
     workItem: { workItemId: '01990000-0000-7000-8000-000000000002', subjectKey: 'E-1', stepId: 'inspect', ordinal: 1, registrationId: 'target', displayName: 'LoanCore', state: 'AWAITING', attempts: 1, cycles: 0, diagnostic: null, evidenceId: snapshot.evidenceId, observations: 0 }, stepExecutionId: '01990000-0000-7000-8000-000000000003',
     snapshotEvidence: { evidenceId: snapshot.evidenceId, state: 'REGISTERED', registrationId: 'target', kind: 'structural-snapshot', digest: sha256HexOfBytes(snapshot.bytes) },
     raised: { runId: 'run', waitId: 'wait', stepId: 'inspect', supportingEvidenceIds: [snapshot.evidenceId] },
-    wait: { runId: 'run', waitId: 'wait', kind: 'choose-candidate', options, deadline: '2026-09-07T13:00:00.000Z', closedAt: '2026-09-07T10:00:00.000Z', closureKind: 'answer', actor: 'auditor', answerOptionId: candidates[1]?.id ?? candidates[0]?.id ?? 'mark-ambiguous' },
+    wait: { runId: 'run', waitId: 'wait', kind: 'choose-candidate', options, openedAt: '2026-09-07T09:00:00.000Z', openedBy: null, deadline: '2026-09-07T13:00:00.000Z', closedAt: '2026-09-07T10:00:00.000Z', closureKind: 'answer', actor: 'auditor', answerOptionId: candidates[1]?.id ?? candidates[0]?.id ?? 'mark-ambiguous' },
     checkpoint: { revision: 2, status: 'WAITING', runStartedAt: '2026-09-07T09:00:00.000Z', leaseUntil: '2026-09-07T10:00:00.000Z', attemptId: 'attempt', workItemId: '01990000-0000-7000-8000-000000000002', waitId: 'wait', pendingWait: { kind: 'choose-candidate', options }, nextTurn: 2, tokens: 10, reservedTokens: 0, model: null, diagnostic: null },
   };
 }

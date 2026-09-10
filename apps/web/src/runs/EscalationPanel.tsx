@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { FIXED_ESCALATION_OPTIONS, type EscalationDetails, type EscalationKind, type EscalationOption, type RunWait } from '@intellifin/application';
+import { FIXED_ESCALATION_OPTIONS, type EscalationDetails, type EscalationKind, type EscalationOption, type EscalationWait } from '@intellifin/application';
 
 import {
   answerEscalationAction,
@@ -22,7 +22,12 @@ const KIND_LABELS: Readonly<Record<EscalationKind, string>> = {
 };
 
 /** Keep the closed answer set's FR-27 order even if a legacy row was stored out of order. */
-export function orderedEscalationOptions(wait: RunWait): readonly EscalationOption[] {
+/**
+ * An `EscalationWait`, not a `RunWait`: a pause is a wait and is NOT an Escalation, so it
+ * cannot reach this surface at all — the compiler refuses it rather than a runtime branch
+ * having to remember. Story 5.4's Paused banner is the surface a pause does reach.
+ */
+export function orderedEscalationOptions(wait: EscalationWait): readonly EscalationOption[] {
   if (wait.kind === 'choose-candidate') {
     const ambiguous = wait.options.find((option) => option.id === 'mark-ambiguous');
     return [
@@ -62,7 +67,7 @@ function remainingMilliseconds(deadline: string, at: string): number {
 
 export interface EscalationPanelProps {
   readonly runId: string;
-  readonly wait: RunWait;
+  readonly wait: EscalationWait;
   /** Metadata read under the same Run transaction as the wait and revision. */
   readonly details: EscalationDetails | null;
   /** The revision read in the same transaction as `wait`; never supplied by the client. */

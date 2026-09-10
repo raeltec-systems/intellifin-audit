@@ -76,6 +76,14 @@ const RESULT_EVENT = 'lifecycle.result-sealed';
  * command, and every path Epic 4 adds, and cannot be forgotten by a branch written later.
  */
 const CANCELLATION_SUPERSEDED_EVENT = 'lifecycle.cancellation-superseded';
+/**
+ * The same reading for a pause nothing reached (Story 5.4, AD-16).
+ *
+ * Defined here rather than imported from `PauseRun` for the reason its sibling above is:
+ * an event name lives where the event is appended, and `PauseRun` reaching back into this
+ * module would make the two import each other.
+ */
+const PAUSE_SUPERSEDED_EVENT = 'lifecycle.pause-superseded';
 
 export interface CompleteRunInput {
   readonly run: RunRecord;
@@ -371,6 +379,35 @@ async function publishResult(
           requestedAt: request.requestedAt,
           reason: request.reason,
           // What happened instead, so the chain says why the request was outrun.
+          state: decision.runState,
+          outcome: decision.outcome,
+          occurredAt: input.at,
+        },
+      });
+      await context.notifyTimeline(superseded.sequence);
+    }
+  }
+
+  // AD-16: "a pause requested when no further Tool Action boundary occurs is recorded as
+  // superseded on the Timeline and the Run proceeds to its terminal state". The marker is
+  // cleared by the boundary that honours a pause, so one still outstanding here is one no
+  // boundary ever reached — no state comparison is needed to tell the two apart.
+  if (previous === null) {
+    const pause = await context.readPauseRequest();
+    if (pause !== null) {
+      const superseded = await context.auditEvents.append({
+        // The system, not the requester: they asked, and the platform did not do it.
+        actor: { type: 'system', id: 'result-sealer' },
+        eventType: PAUSE_SUPERSEDED_EVENT,
+        source: 'worker',
+        // Not a success: a person asked for something and did not get it.
+        outcome: 'failure',
+        aggregateId: input.run.runId,
+        correlationId: input.run.correlationId,
+        sessionId: input.run.sessionId,
+        payload: {
+          requestedBy: pause.requestedBy,
+          requestedAt: pause.requestedAt,
           state: decision.runState,
           outcome: decision.outcome,
           occurredAt: input.at,

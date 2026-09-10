@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { RunWait } from './waits.js';
 import {
   bindingDigest,
   utf8Bytes,
@@ -22,8 +23,7 @@ import {
   type RunResultFindings,
   type SanitizedToolAction,
   type RunCancellationRequest,
-  WEB_TREE_MEDIA_TYPE,
-} from '@intellifin/domain';
+  WEB_TREE_MEDIA_TYPE, type RunPauseRequest } from '@intellifin/domain';
 
 import { canExecuteWithoutAuditCredentials, executeAgentSteps, performToolAction } from './execute-agent-steps.js';
 import { NO_CREDENTIALS, guardedCredentials } from './credential-guard.js';
@@ -77,7 +77,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000001f5',
 };
 
@@ -274,6 +274,8 @@ interface Store {
   states: RunRecord['state'][];
   seal: PackageSeal | null;
   result: StoredRunResult | null;
+  /** Every pause wait the stage opened, so a test can assert exactly one (Story 5.4). */
+  pauseWaits: RunWait[];
 }
 
 function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Store {
@@ -290,6 +292,7 @@ function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Sto
     states: [],
     seal: null,
     result: null,
+    pauseWaits: [],
     ...overrides,
   };
 }
@@ -300,6 +303,17 @@ class FakeContext implements AgentExecutionContext {
    * (Epic 3). `null` is "nobody asked", which is every agent-execution test here. */
   cancellation: RunCancellationRequest | null = null;
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
+  /**
+   * The pause marker lives on the RUN, like the cancellation marker: the boundary reads
+   * `context.run?.pauseRequest`, and this read is `CompleteRun`'s superseded check.
+   */
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.run?.pauseRequest ?? null;
+  /** Real behaviour, not a stub: the pause tests assert the row and the cleared marker. */
+  openPauseWait = async (wait: RunWait): Promise<void> => { this.state.pauseWaits.push(wait); };
+  clearPauseRequest = async (): Promise<void> => {
+    if (this.run) this.run = { ...this.run, pauseRequest: null };
+    if (this.state.run) this.state.run = { ...this.state.run, pauseRequest: null };
+  };
   checkpoint: AgentExecutionCheckpoint | null;
   populationStartedAt: string | null;
   populationReady: boolean;
@@ -912,6 +926,44 @@ describe('a person cancelled the Run', () => {
     expect(browser.performed).toEqual([]);
     expect(state.run?.state).toBe('CANCELED');
     expect(state.checkpoint).toBeNull();
+  });
+});
+
+describe('a person paused the Run (Story 5.4)', () => {
+  it('holds it at the phase boundary, opens ONE pause wait and clears the marker', async () => {
+    const state = store(planFor('web'), {
+      run: {
+        ...RUN,
+        pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-06T00:04:00.000Z' },
+      },
+    });
+    const browser = new FakeBrowser();
+    await executeAgentSteps(DEPS(state, browser), JOB);
+
+    // Nothing was performed, and the Run is held rather than ended.
+    expect(browser.performed).toEqual([]);
+    expect(state.run?.state).toBe('PAUSED');
+    expect(state.pauseWaits).toHaveLength(1);
+    expect(state.pauseWaits[0]).toMatchObject({ kind: 'pause', openedBy: 'auditor' });
+    // The marker means "requested and NOT yet honoured", so the boundary that honours it
+    // clears it — which is what makes a marker at a terminal transition mean superseded.
+    expect(state.run?.pauseRequest).toBeNull();
+  });
+
+  it('lets a CANCELLATION win: ending is stronger than holding', async () => {
+    const state = store(planFor('web'), {
+      run: {
+        ...RUN,
+        cancellation: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-06T00:04:00.000Z', reason: 'No longer needed.' },
+        pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-06T00:04:30.000Z' },
+      },
+    });
+    await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
+
+    // A `PAUSED` Run's cancellation belongs to the COMMAND, so pausing over one would
+    // leave the request with no worker to honour it.
+    expect(state.run?.state).toBe('CANCELED');
+    expect(state.pauseWaits).toHaveLength(0);
   });
 });
 

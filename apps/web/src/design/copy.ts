@@ -437,6 +437,28 @@ export const MASKED_BY_BINDING = 'Masked by the Population Source binding';
 export const UNREADABLE_PUBLICATION = 'The published Result document could not be read.';
 
 /**
+ * The Paused Run's own copy (Story 5.4, EXPERIENCE.md "Run Detail — Paused").
+ *
+ * `banner` is that row's sentence character for character, with the two instants the row
+ * names as `{actor}`, `{time}` and `{ends}`; `copy.test.ts` reads it off disk and pins the
+ * template. The disabled Pause reason lives in `ESCALATION_PANEL_COPY.pauseUnavailable`,
+ * which is EXPERIENCE.md's Awaiting-Auditor row and was already pinned there.
+ */
+export const PAUSE_COPY = {
+  banner: 'Paused by {actor} at {time}. Resumes on your action; ends Inconclusive at {ends}.',
+  requested: 'Pause requested.',
+  requestedBody:
+    'The Run pauses at its next Tool Action, before any further Target System work. Evidence already collected is preserved.',
+  resumed: 'Run resumed.',
+  resumedBody: 'The agent restarts the current Step from its first Tool Action. Nothing already recorded is removed.',
+  confirmTitle: 'Pause this Run?',
+  confirmConsequence:
+    'This holds the Run for {procedure} at its next Tool Action. It resumes only when you say so, and ends Inconclusive if it is still paused after 30 minutes. The pause is recorded against your name.',
+  unknown: 'The pause could not be confirmed. Reload the Run to see whether it was paused.',
+  resumeUnknown: 'The resume could not be confirmed. Reload the Run to see whether it restarted.',
+} as const;
+
+/**
  * The Run Detail Escalation panel's contract copy.
  *
  * The first three strings are quoted from EXPERIENCE.md's Awaiting Auditor and

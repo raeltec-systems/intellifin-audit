@@ -32,6 +32,8 @@ export const TELEMETRY_MESSAGES = [
   'Retry Plan Derivation failed',
   'Initiate Run failed',
   'Cancel Run failed',
+  'Pause Run failed',
+  'Resume Run failed',
   'Rerun failed',
   'Notification delivery failed',
   'Notification count could not be read',

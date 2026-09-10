@@ -1,16 +1,20 @@
 import { sql } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import {
-  AWAITING_AUDITOR_TIMEOUT_MS,
   createEscalationNotification,
   escalationNotificationRecipients,
+  isEscalationKind,
+  isWaitKind,
+  waitClosureKindFor,
+  waitRunState,
+  WAIT_CLOSURE_KINDS,
+  WAIT_HELD_STATES,
 } from '@intellifin/application';
 import type {
   EscalationOption,
   EscalationDetails,
   RunWait,
   WaitContext,
-  WaitJob,
   WaitOperation,
   WaitRepository,
   CloseWaitInput,
@@ -23,24 +27,39 @@ import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { DrizzleNotificationWriter } from '../notifications/notification-repository.js';
 import { queueDatabase } from '../procedures/derivation-queue.js';
+import {
+  WAIT_COLUMNS,
+  WAKE_EXPIRE_SECONDS,
+  WAKE_RETRY_DELAY_SECONDS,
+  WAKE_RETRY_LIMIT,
+  WAIT_QUEUE as WAIT_QUEUE_NAME,
+  insertWaitRow,
+  sendWaitWake,
+} from './wait-rows.js';
 import { withRunExecutionContext } from './adapter-execution-repository.js';
 
 /** Queue name for delayed wake jobs. The queue is created by the release migrator. */
-export const WAIT_QUEUE = 'waits';
+export const WAIT_QUEUE = WAIT_QUEUE_NAME;
 export const RUN_WAITS_QUEUE = WAIT_QUEUE;
 
-const WAKE_RETRY_LIMIT = 3;
-const WAKE_RETRY_DELAY_SECONDS = 5;
-const WAKE_EXPIRE_SECONDS = 180;
-// pg-boss only applies a singleton key when a singleton slot is supplied. The
-// application-owned open-wait unique index remains the authoritative guard; this slot is
-// defence in depth for a duplicate send during the four-hour wait window.
-const WAKE_SINGLETON_SECONDS = AWAITING_AUDITOR_TIMEOUT_MS / 1000;
 const DETAIL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
 const DETAIL_TEXT_LIMIT = 8192;
 const DETAIL_EVIDENCE_LIMIT = 100;
 
 type RawRow = Record<string, unknown>;
+
+/**
+ * The Run states a wait holds a Run in, as a bound `text[]` for the recovery read.
+ *
+ * From the domain vocabulary rather than typed out: a sweep that knew only about
+ * `AWAITING_AUDITOR` would leave every overdue PAUSE unrecoverable — a paused Run nothing
+ * would ever end — which is exactly the class of defect a second copy of a state list
+ * produces. Asserted at module load because it is interpolated as an array literal.
+ */
+const HELD_STATES = (() => {
+  for (const state of WAIT_HELD_STATES) if (!/^[A-Z_]+$/.test(state)) throw new Error('Unsafe wait state');
+  return sql.raw(`ARRAY['${WAIT_HELD_STATES.join("','")}']::text[]`);
+})();
 
 function rows(result: unknown): readonly RawRow[] {
   if (Array.isArray(result)) return result as RawRow[];
@@ -89,11 +108,16 @@ function parseWait(row: RawRow): RunWait | null {
   const runId = typeof row.run_id === 'string' ? row.run_id.toLowerCase() : null;
   const kind = row.kind;
   const deadline = dateValue(row.deadline);
+  const openedAt = dateValue(row.opened_at);
+  // A stored value is request-shaped input: a kind or a closure this build does not know
+  // reads as NOTHING rather than as itself, which is the fail-closed direction for a row
+  // an older or newer build may have written.
   if (!waitId || !runId || !isUuidText(waitId) || !isUuidText(runId) ||
-      (kind !== 'choose-candidate' && kind !== 'unnamed-value' && kind !== 'retry-or-skip') ||
-      deadline === null) return null;
+      !isWaitKind(kind) || deadline === null || openedAt === null) return null;
   const closedAt = dateValue(row.closed_at);
-  const closureKind = row.closure_kind === 'answer' || row.closure_kind === 'timeout' ? row.closure_kind : null;
+  const closureKind = (WAIT_CLOSURE_KINDS as readonly unknown[]).includes(row.closure_kind)
+    ? (row.closure_kind as RunWait['closureKind'])
+    : null;
   const answerOptionId = typeof row.answer_option_id === 'string' ? row.answer_option_id : null;
   const actor = typeof row.actor === 'string' ? row.actor : null;
   return {
@@ -101,6 +125,8 @@ function parseWait(row: RawRow): RunWait | null {
     runId,
     kind,
     options: parseOptions(row.options),
+    openedAt,
+    openedBy: typeof row.opened_by === 'string' ? row.opened_by : null,
     deadline,
     closedAt,
     closureKind,
@@ -163,8 +189,8 @@ function agentQuestion(value: unknown): string | null {
 async function readWait(tx: Transaction, runId: string, waitId?: string): Promise<RunWait | null> {
   const result = await tx.execute(
     waitId === undefined
-      ? sql`SELECT wait_id::text AS wait_id, run_id::text AS run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor FROM run_wait WHERE run_id = ${runId} AND closed_at IS NULL ORDER BY deadline, wait_id LIMIT 1`
-      : sql`SELECT wait_id::text AS wait_id, run_id::text AS run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor FROM run_wait WHERE run_id = ${runId} AND wait_id = ${waitId} FOR UPDATE`,
+      ? sql`SELECT ${WAIT_COLUMNS} FROM run_wait WHERE run_id = ${runId} AND closed_at IS NULL ORDER BY deadline, wait_id LIMIT 1`
+      : sql`SELECT ${WAIT_COLUMNS} FROM run_wait WHERE run_id = ${runId} AND wait_id = ${waitId} FOR UPDATE`,
   );
   const row = rows(result)[0];
   return row === undefined ? null : parseWait(row);
@@ -183,28 +209,6 @@ function resultRows(result: unknown): readonly RawRow[] {
   return rows(result);
 }
 
-function waitJob(wait: RunWait): WaitJob {
-  return { schemaVersion: 1, runId: wait.runId, waitId: wait.waitId };
-}
-
-async function sendWake(
-  queue: PgBoss,
-  db: ReturnType<typeof queueDatabase>,
-  wait: RunWait,
-  startAfter: string,
-): Promise<void> {
-  const id = await queue.send(WAIT_QUEUE, waitJob(wait), {
-    db,
-    startAfter: new Date(startAfter),
-    singletonKey: `wait:${wait.waitId}`,
-    singletonSeconds: WAKE_SINGLETON_SECONDS,
-    retryLimit: WAKE_RETRY_LIMIT,
-    retryDelay: WAKE_RETRY_DELAY_SECONDS,
-    expireInSeconds: WAKE_EXPIRE_SECONDS,
-  });
-  if (id === null) throw new Error('Escalation wake job was not enqueued');
-}
-
 /** Shared persistence for all wait producers and the answer/timeout commands. */
 export class PostgresWaitRepository implements WaitRepository {
   constructor(private readonly db: Database) {}
@@ -217,8 +221,6 @@ export class PostgresWaitRepository implements WaitRepository {
         const loadedRun = base.run === null || revision === null ? null : ({ ...base.run, revision } as VersionedRun);
         let currentRun = loadedRun;
         let currentWait = await readWait(tx, runId);
-        const db = queueDatabase(tx);
-        const queue = new PgBoss({ db, migrate: false, createSchema: false, schedule: false, supervise: false });
         const context: WaitContext = {
           ...base,
           get run() { return currentRun; },
@@ -293,6 +295,18 @@ export class PostgresWaitRepository implements WaitRepository {
             const nextRevision = revisionValue(resultRows(result)[0]?.revision) ?? current.revision;
             currentRun = { ...current, state, revision: nextRevision };
           },
+          /**
+           * The pause marker, guarded on its still being absent so the FIRST request wins.
+           *
+           * The same rule `requestCancellation` below it follows, and for the same reason:
+           * a later person must not overwrite the requester or the time the Paused banner
+           * then reports.
+           */
+          async requestPause(request) {
+            await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId} WHERE run_id = ${runId} AND pause_requested_at IS NULL`);
+            const current = currentRun;
+            if (current) currentRun = { ...current, pauseRequest: request };
+          },
           async requestCancellation(request) {
             await tx.execute(sql`UPDATE audit_run SET cancel_requested_at = ${request.requestedAt}::timestamptz, cancel_requested_by = ${request.requestedBy}, cancel_requested_session = ${request.sessionId}, cancel_reason = ${request.reason} WHERE run_id = ${runId} AND cancel_requested_at IS NULL`);
             const current = currentRun;
@@ -304,13 +318,8 @@ export class PostgresWaitRepository implements WaitRepository {
             if (current.state !== 'RUNNING') return { outcome: 'not-running', wait: currentWait, run: current };
             if (currentWait !== null && currentWait.closedAt === null) return { outcome: 'already-open', wait: currentWait, run: current };
             if (wait.runId !== runId) return { outcome: 'missing', wait: null, run: current };
-            const inserted = await tx.execute(sql`
-              INSERT INTO run_wait (wait_id, run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor)
-              VALUES (${wait.waitId}, ${wait.runId}, ${wait.kind}, ${JSON.stringify(wait.options)}::jsonb, ${wait.deadline}::timestamptz, NULL, NULL, NULL, NULL)
-              ON CONFLICT (wait_id) DO NOTHING
-              RETURNING wait_id::text AS wait_id
-            `);
-            if (resultRows(inserted).length === 0) {
+            const inserted = await insertWaitRow(tx, wait);
+            if (!inserted) {
               const existing = await readWait(tx, runId, wait.waitId);
               return existing === null
                 ? { outcome: 'missing', wait: null, run: current }
@@ -333,17 +342,25 @@ export class PostgresWaitRepository implements WaitRepository {
               `);
               if (resultRows(bound).length !== 1) throw new Error('Escalation does not match the durable agent intent');
             }
-            const changed = await tx.execute(sql`UPDATE audit_run SET state = 'AWAITING_AUDITOR', revision = revision + 1 WHERE run_id = ${runId} AND state = 'RUNNING' RETURNING revision`);
+            // The state this KIND holds a Run in, from the one function that answers it.
+            const held = waitRunState(wait.kind);
+            const changed = await tx.execute(sql`UPDATE audit_run SET state = ${held}, revision = revision + 1 WHERE run_id = ${runId} AND state = 'RUNNING' RETURNING revision`);
             const nextRevision = revisionValue(resultRows(changed)[0]?.revision);
             if (nextRevision === null) throw new Error('Run was not running while opening an Escalation');
             // Notification rows belong to the same transaction as the wait insert and the
             // RUNNING -> AWAITING_AUDITOR transition. The initiator covers a scheduled Run's
             // Procedure author, while Identity supplies every current Audit Manager from this
             // connection; the application helper deduplicates a Manager who initiated it.
-            const recipients = escalationNotificationRecipients(
-              current.initiatorId,
-              await new DrizzleNotificationRecipientReader(tx).auditManagerIds(),
-            );
+            // ONLY an Escalation notifies. A pause is the auditor's own action, so telling
+            // every Audit Manager about it would be noise; Story 5.5's Flag is the control
+            // that deliberately reaches them.
+            const escalationKind = isEscalationKind(wait.kind) ? wait.kind : null;
+            const recipients = escalationKind === null
+              ? []
+              : escalationNotificationRecipients(
+                  current.initiatorId,
+                  await new DrizzleNotificationRecipientReader(tx).auditManagerIds(),
+                );
             const notifications = new DrizzleNotificationWriter(tx);
             for (const recipientId of recipients) {
               await notifications.enqueue(createEscalationNotification({
@@ -354,12 +371,12 @@ export class PostgresWaitRepository implements WaitRepository {
                 versionId: current.versionId,
                 procedureName: current.procedureName,
                 versionNumber: current.versionNumber,
-                escalationKind: wait.kind,
+                escalationKind: escalationKind!,
                 deadline: wait.deadline,
               }));
             }
-            await sendWake(queue, db, wait, wait.deadline);
-            currentRun = { ...current, state: 'AWAITING_AUDITOR', revision: nextRevision };
+            await sendWaitWake(tx, wait);
+            currentRun = { ...current, state: held, revision: nextRevision };
             currentWait = wait;
             return { outcome: 'created', wait, run: currentRun };
           },
@@ -374,16 +391,24 @@ export class PostgresWaitRepository implements WaitRepository {
             if (!lockedWait) return { outcome: 'missing', wait: null, run: current };
             currentWait = lockedWait;
             if (lockedWait.closedAt !== null) return { outcome: 'superseded', wait: lockedWait, run: current };
-            if (current.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: lockedWait, run: current };
+            // The state THIS wait's kind holds a Run in — `AWAITING_AUDITOR` for an
+            // Escalation, `PAUSED` for a pause — so one closure path serves both without
+            // either command restating which state its own kind means.
+            const held = waitRunState(lockedWait.kind);
+            if (current.state !== held) return { outcome: 'not-awaiting', wait: lockedWait, run: current };
             if (current.revision !== input.expectedRunRevision) return { outcome: 'stale-revision', wait: lockedWait, run: current };
             const now = Date.parse(input.now);
             if (!Number.isFinite(now)) throw new Error('Invalid wait closure time');
             if (now >= Date.parse(lockedWait.deadline)) return { outcome: 'expired', wait: lockedWait, run: current };
             if (!lockedWait.options.some((option) => option.id === input.answerOptionId)) return { outcome: 'expired', wait: lockedWait, run: current };
-            const changedRun = await tx.execute(sql`UPDATE audit_run SET state = ${input.stateAfterClose}, revision = revision + 1 WHERE run_id = ${runId} AND state = 'AWAITING_AUDITOR' AND revision = ${input.expectedRunRevision} RETURNING revision`);
+            const changedRun = await tx.execute(sql`UPDATE audit_run SET state = ${input.stateAfterClose}, revision = revision + 1 WHERE run_id = ${runId} AND state = ${held} AND revision = ${input.expectedRunRevision} RETURNING revision`);
             const nextRevision = revisionValue(resultRows(changedRun)[0]?.revision);
             if (nextRevision === null) return { outcome: 'stale-revision', wait: lockedWait, run: current };
-            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = 'answer', answer_option_id = ${input.answerOptionId}, actor = ${input.actor} WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING wait_id::text AS wait_id, run_id::text AS run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor`);
+            // DERIVED from the row's own kind, never taken from the caller: an Escalation
+            // closes by `answer` and a pause by `resume`, and generation 45's CHECK refuses
+            // the other pairing outright.
+            const closureKind = waitClosureKindFor(lockedWait.kind);
+            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = ${closureKind}, answer_option_id = ${input.answerOptionId}, actor = ${input.actor} WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING ${WAIT_COLUMNS}`);
             const closedWait = parseWait(resultRows(closed)[0] ?? {});
             if (closedWait === null) throw new Error('Escalation wait closed concurrently');
             // Keep the original deadline job. It is the one durable wake for this wait;
@@ -402,14 +427,15 @@ export class PostgresWaitRepository implements WaitRepository {
             if (!lockedWait) return { outcome: 'missing', wait: null, run: current };
             currentWait = lockedWait;
             if (lockedWait.closedAt !== null) return { outcome: 'superseded', wait: lockedWait, run: current };
-            if (current.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: lockedWait, run: current };
+            const held = waitRunState(lockedWait.kind);
+            if (current.state !== held) return { outcome: 'not-awaiting', wait: lockedWait, run: current };
             const now = Date.parse(input.now);
             if (!Number.isFinite(now)) throw new Error('Invalid wait timeout time');
             if (now < Date.parse(lockedWait.deadline)) return { outcome: 'early', wait: lockedWait, run: current };
-            const changedRun = await tx.execute(sql`UPDATE audit_run SET state = 'INCONCLUSIVE', revision = revision + 1 WHERE run_id = ${runId} AND state = 'AWAITING_AUDITOR' RETURNING revision`);
+            const changedRun = await tx.execute(sql`UPDATE audit_run SET state = 'INCONCLUSIVE', revision = revision + 1 WHERE run_id = ${runId} AND state = ${held} RETURNING revision`);
             const nextRevision = revisionValue(resultRows(changedRun)[0]?.revision);
             if (nextRevision === null) return { outcome: 'not-awaiting', wait: lockedWait, run: current };
-            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = 'timeout', answer_option_id = NULL, actor = 'wait-wake' WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING wait_id::text AS wait_id, run_id::text AS run_id, kind, options, deadline, closed_at, closure_kind, answer_option_id, actor`);
+            const closed = await tx.execute(sql`UPDATE run_wait SET closed_at = ${input.now}::timestamptz, closure_kind = 'timeout', answer_option_id = NULL, actor = 'wait-wake' WHERE wait_id = ${input.waitId} AND run_id = ${runId} AND closed_at IS NULL RETURNING ${WAIT_COLUMNS}`);
             const closedWait = parseWait(resultRows(closed)[0] ?? {});
             if (closedWait === null) throw new Error('Escalation wait timed out concurrently');
             currentRun = { ...current, state: 'INCONCLUSIVE', revision: nextRevision };
@@ -428,7 +454,7 @@ export class PostgresWaitRepository implements WaitRepository {
       SELECT w.wait_id::text AS wait_id, w.run_id::text AS run_id
       FROM run_wait w
       INNER JOIN audit_run r ON r.run_id = w.run_id
-      WHERE w.closed_at IS NULL AND w.deadline <= now() AND r.state = 'AWAITING_AUDITOR'
+      WHERE w.closed_at IS NULL AND w.deadline <= now() AND r.state = ANY(${HELD_STATES})
       ORDER BY w.deadline, w.wait_id
       LIMIT ${bounded}
     `);

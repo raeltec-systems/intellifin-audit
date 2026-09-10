@@ -7,8 +7,7 @@ import type {
   RunResultConditionCount,
   RunResultExclusion,
   RunResultFindings,
-  RunResultPublication,
-} from '@intellifin/domain';
+  RunResultPublication, RunPauseRequest } from '@intellifin/domain';
 import {
   EVALUATION_REVIEW_REFUSALS,
   confirmEvaluation,
@@ -50,7 +49,7 @@ const RUN: RunRecord = {
   requestToken: '01a06fd8-0000-7000-8000-0000000000a7',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
 };
 
 function pendingResult(): StoredRunResult {
@@ -144,6 +143,8 @@ class FakeContext implements EvaluationReviewContext {
   notifyTimeline = async (sequence: number): Promise<void> => { this.timeline.push(sequence); };
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => null;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (_state: RunRecord['state']): Promise<void> => undefined;
   readPopulationFacts = async (): Promise<RunGatePopulationFacts | null> => null;
   /** Story 5.2: no Tool Action left a frame gap unless a case says otherwise. */

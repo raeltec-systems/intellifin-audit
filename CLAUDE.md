@@ -115,6 +115,74 @@ consequences worth knowing:
   `.ls-more` in the Builder and `.ls-disclosure` in Administration — which is how a design
   system ends up with two of everything. `.ls-more` was removed the same day it appeared.
 
+## 2026-09-10 — A pause is a wait, and the worker is what performs it
+
+Story 5.4. `run_wait` gains `kind = 'pause'` (generation 45), which is what buys four
+mechanisms rather than copies of them: `run_wait_one_open` IS the reason "a Run waiting on
+an answer cannot be paused" and a paused Run cannot raise an Escalation; the delayed wake
+at `deadline` is what ends an abandoned pause `INCONCLUSIVE`; `audit_run.revision` is what
+refuses a resume against a state nobody saw; and `recoverableWaits` is what finds a pause
+whose wake was lost. Whole rule: `docs/contracts/run-pause-v1.md`.
+
+- **A pause is a wait and is NOT an Escalation, and every reader says which.** No question,
+  no Audit Manager notified. The inbox and the bell exclude it with NO kind filter, because
+  their one visibility predicate requires `AWAITING_AUDITOR` and a pause holds the Run in
+  `PAUSED` — the state IS the exclusion, which is stronger than a filter to remember.
+  `EscalationWait` is a TYPE: the Escalation panel and `answerEscalation` take one, so a
+  pause cannot reach either, and `readOpenEscalation` narrows at the READ. `resumeRun`
+  refuses an Escalation and `answerEscalation` refuses a pause, and generation 45's
+  kind-aware `run_wait_closure` refuses the contradictory row underneath both.
+- **`RUN_PAUSE_TRANSITIONS` has ONE row and it says `worker`.** AD-16 makes a pause take
+  effect at the next Tool Action boundary, which only a Run a worker is executing has. A
+  `PAUSED` written from under a working stage would make its next guarded commit fail,
+  silently discarding that unit's Evidence, Observations and Step Execution — so the
+  command records a marker and the stage honours it where it already commits, exactly as
+  `CancelRun` does for a `RUNNING` Run. **A cancellation wins at every boundary**: ending
+  is stronger than holding, and a `PAUSED` Run's cancellation belongs to the COMMAND.
+- **The marker means "requested and NOT yet honoured", so it is cleared by the boundary
+  that honours it** — not by the resume. That gives it one meaning and two consequences
+  free: `CompleteRun` appends `lifecycle.pause-superseded` by simply FINDING one at a
+  terminal transition, with no state comparison; and a resume cannot leave a stale marker
+  that re-pauses the Run at the very next boundary. Who paused a Run and when is on the
+  WAIT row (`opened_by`, `opened_at`), which is what the Paused banner reads.
+- **The interrupted attempt is `SUPERSEDED`, and the attempt is GIVEN BACK.** `FAILED`
+  would be a lie and `RUNNING` would make it indistinguishable from a live attempt, so the
+  state is its own and `superseded_by` is its own column with `diagnostic` left NULL. A
+  person pausing is not the agent failing, so it must not spend one of the Work Item's
+  bounded retry cycles — eight pauses would otherwise fail the item with a diagnostic
+  naming nothing that went wrong. The Run-level `runStepExecutions` limit still counts the
+  row, because a Step Execution really did start.
+- **This follows epics.md over EXPERIENCE.md, deliberately.** EXPERIENCE.md line 292 says
+  "on resume the agent continues from the next Tool Action"; Story 5.4 says the current
+  Step Execution restarts from its FIRST Tool Action as a new attempt. The story spec is
+  the acceptance criteria and is the safer of the two — a page held for thirty minutes is
+  not the page the agent left. **Reported to the owner rather than edited away.**
+- **`openPauseWait` is EXTENDED onto the three stage contexts, never injected**, so no
+  composition root can move a Run to `PAUSED` and forget the deadline that ends it.
+  Population acquisition deliberately has none: a single bounded fetch has no boundary
+  inside it, and the request takes effect at the stage after it.
+
+Four mechanical lessons, three of them about tests:
+
+- **A CHECK arm built with `=` is NULL when its column is NULL, and a CHECK that evaluates
+  to NULL PASSES.** The new `run_wait_closure` was written with `closure_kind='answer'`
+  where generation 34 had `closure_kind IS NOT NULL AND closure_kind='answer'` — so a
+  half-closed row made all four arms NULL and was ACCEPTED. `run-waits.test.ts`'s
+  partial-closure case caught it. Every comparison in it is `IS [NOT] DISTINCT FROM` now,
+  which is never NULL. Fourth appearance of this trap after `array_length`,
+  `array_position` and `<@`.
+- **An integration file that adds an `audit-manager` changes what a concurrently running
+  file sees.** `escalationNotificationRecipients` reads every audit-manager in the
+  database, so `run-waits.test.ts` counted three recipients where it expects two. A test
+  file that needs a second person uses a second AUDITOR, and an inbox read uses the Run's
+  own initiator, who needs no globally visible role.
+- **A wait's `deadline` is immutable (generation 34), so an overdue wait is made by opening
+  one in the PAST.** Backdating the row raises "Wait identity and question are immutable" —
+  which is the guard working, and is also the honest shape: that is a pause somebody left
+  an hour ago.
+- **`Date` is not a bindable parameter on a client `createDb` has wrapped.** Same family as
+  the `sql.json` note: ISO text with an explicit `::timestamptz` is right on both.
+
 ## 2026-09-09 — Queue maintenance needs a connection of its own
 
 `Plan derivation queue failed` every 60 seconds in production, since the Epic 2 era. The

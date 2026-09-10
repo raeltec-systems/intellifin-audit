@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AuditEventDraft } from '@intellifin/domain';
 
@@ -65,6 +65,16 @@ const signInRequest = (email: string) =>
   });
 
 const load = () => import('./sign-in-route');
+/**
+ * Warm the module graph once, inside a hook.
+ *
+ * The `vi.mock` factory calls `importOriginal` on the `@intellifin/infrastructure` BARREL,
+ * so the first test that reaches the subject pays for evaluating postgres.js, pg-boss and
+ * the storage client — seconds, against Vitest's 5-second per-test default, which under a
+ * loaded full-suite run is a timeout that reads as a hang in the code under test rather
+ * than as what it is. A hook gets the 10-second hook budget and pays it exactly once.
+ */
+beforeAll(async () => { await load(); });
 
 describe('subjectHashOf', () => {
   it('is the SHA-256 of the lower-cased, trimmed address', async () => {

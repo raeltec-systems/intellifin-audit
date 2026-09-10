@@ -116,7 +116,7 @@ const RUN: RunRecord = {
   requestToken: '01920000-0000-7000-8000-000000000105',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
 };
 
 const SNAPSHOT_NODES = [
@@ -160,6 +160,7 @@ class FakeRepository implements AgentWorkRepository {
   evidence: AdapterEvidenceRecord[] = [];
   actions: AgentWorkContext['toolActions'][number][] = [];
   captures: AgentWorkContext['captures'][number][] = [];
+  pauseWaits: RunWait[] = [];
   turns: AgentTurnRecord[] = [];
   executions: StepExecutionRecord[] = [];
   eventOrder: string[] = [];
@@ -246,6 +247,11 @@ class FakeRepository implements AgentWorkRepository {
         },
       },
       notifyTimeline: async () => undefined,
+      // Story 5.4. Real behaviour, not stubs: the pause case asserts the one wait row, the
+      // superseded attempt and the marker the boundary clears.
+      openPauseWait: async (wait: RunWait) => { this.pauseWaits.push(wait); },
+      clearPauseRequest: async () => { this.run = { ...this.run, pauseRequest: null }; },
+      readPauseRequest: async () => this.run.pauseRequest,
       saveTurn: async (turn: AgentTurnRecord) => {
         const index = this.turns.findIndex((current) => current.sequence === turn.sequence);
         if (index < 0) this.turns.push({ ...turn });
@@ -540,6 +546,77 @@ describe('executeAgentWorkItem', () => {
     expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
   });
 
+  /**
+   * A pause at a Tool Action boundary (Story 5.4, AD-16).
+   *
+   * The boundary sits BETWEEN Tool Actions, so what the action that just finished wrote is
+   * already committed. What the pause does to the attempt in flight is supersede it, so the
+   * resume restarts the Work Item from its first Tool Action rather than continuing into a
+   * page nobody has re-read.
+   */
+  it('holds BEFORE a Work Item starts, with no attempt to supersede', async () => {
+    const repository = new FakeRepository();
+    repository.run = {
+      ...repository.run,
+      pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' },
+    };
+    const gateway: AgentModelGateway = { identity: identity(), propose: vi.fn(async () => response(null)) };
+    await executeAgentWorkItem(deps(repository, browserFor(repository), gateway,
+      { raiseEscalation: vi.fn(async () => ({ ok: false as const, reason: 'test' })) }), {
+      schemaVersion: 1, runId: RUN_ID, correlationId: CORRELATION_ID,
+    });
+
+    expect(repository.run.state).toBe('PAUSED');
+    expect(repository.pauseWaits).toHaveLength(1);
+    expect(repository.pauseWaits[0]).toMatchObject({ kind: 'pause', openedBy: 'auditor' });
+    // Cleared by the boundary that honours it, which is what makes a marker still present
+    // at a terminal transition mean exactly `lifecycle.pause-superseded`.
+    expect(repository.run.pauseRequest).toBeNull();
+    // `RETRY`, not `WAITING`: the escalation slots carry a human DECISION and a pause
+    // carries none, so the claim would refuse a pending wait with no answer.
+    expect(repository.checkpoint?.status).toBe('RETRY');
+    expect(repository.checkpoint?.pendingWait).toBeNull();
+    // Nothing was in flight, so nothing is superseded and the model was never called.
+    expect(repository.executions).toEqual([]);
+    expect(gateway.propose).not.toHaveBeenCalled();
+    expect(repository.workItems[0]?.attempts).toBe(0);
+  });
+
+  it('holds MID-ITEM: supersedes the attempt in flight and gives the attempt back', async () => {
+    const repository = new FakeRepository();
+    // Asked for while the model turn is in flight — the case the boundary exists for, and
+    // the one a marker read at the claim would find nothing for.
+    const gateway: AgentModelGateway = {
+      identity: identity(),
+      propose: vi.fn(async () => {
+        repository.run = {
+          ...repository.run,
+          pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' },
+        };
+        return response(null);
+      }),
+    };
+    await executeAgentWorkItem(deps(repository, browserFor(repository), gateway,
+      { raiseEscalation: vi.fn(async () => ({ ok: false as const, reason: 'test' })) }), {
+      schemaVersion: 1, runId: RUN_ID, correlationId: CORRELATION_ID,
+    });
+
+    expect(repository.run.state).toBe('PAUSED');
+    expect(repository.pauseWaits).toHaveLength(1);
+    expect(repository.checkpoint?.status).toBe('RETRY');
+
+    const superseded = repository.executions.filter((row) => row.state === 'SUPERSEDED');
+    expect(superseded).toHaveLength(1);
+    // Nothing went wrong, so the diagnostic stays empty and the reason is its own column.
+    expect(superseded[0]).toMatchObject({ supersededBy: 'resume', diagnostic: null });
+    // Its Tool Actions stay on the Timeline; the resume starts a NEW attempt.
+    expect(repository.actions.length).toBeGreaterThan(0);
+    // The attempt is GIVEN BACK: a person pausing is not the agent failing, so it must not
+    // spend one of the Work Item's bounded retry cycles.
+    expect(repository.workItems[0]?.attempts).toBe(0);
+    expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
+  });
+
   it('follows a model-selected landing link before offering the search control', async () => {
     const repository = new FakeRepository();
     const landing = [{
@@ -685,6 +762,7 @@ function durableWaitPort(repository: FakeRepository): AgentWorkDependencies['wai
     const waitId = `01920000-0000-7000-8000-${String(900 + repository.waits.length).padStart(12, '0')}`;
     const wait: RunWait = { runId: input.runId, waitId, kind: input.kind,
       options: (input.options ?? []).map(option => typeof option === 'string' ? { id: option, label: option } : option),
+      openedAt: '2026-09-07T00:00:01.000Z', openedBy: null,
       deadline: '2026-09-07T04:00:01.000Z', closedAt: null, closureKind: null, answerOptionId: null, actor: null };
     repository.waits.push(wait); repository.waitRaises.push({ runId: input.runId, waitId, stepId: input.stepId!, supportingEvidenceIds: input.supportingEvidenceIds ?? [] });
     repository.run = { ...repository.run, state: 'AWAITING_AUDITOR' };

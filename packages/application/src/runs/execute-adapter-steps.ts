@@ -66,6 +66,7 @@ import {
 import { guardedCredentials, type CredentialGuard } from './credential-guard.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
+import { performPause } from './pause-run.js';
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 
 /**
@@ -692,15 +693,36 @@ export async function executeAdapterSteps(
    * guarded transaction that writes, so a cancellation committing at this instant is
    * either fully visible here or lands before the next boundary.
    */
+  /**
+   * Honour a cancellation or a pause at a unit boundary (Stories 3.10 and 5.4).
+   *
+   * Both markers are read inside the guarded transaction that writes, never from the
+   * `RunRecord` this claim carries: the case they exist for is somebody acting DURING the
+   * unit that claim started. A cancellation wins — ending is stronger than holding, and a
+   * `PAUSED` Run's cancellation belongs to the COMMAND, so pausing over one would leave the
+   * request with no worker to honour it.
+   *
+   * Nothing is in flight at this boundary — it sits BETWEEN units — so no Step Execution is
+   * superseded here. The checkpoint goes to `RETRY`, which is what the extraction recovery
+   * sweep re-claims once the resume puts the Run back to `RUNNING`.
+   */
   const canceledAtBoundary = async (): Promise<boolean> => {
-    let canceled = false;
+    let stopped = false;
     await guarded(async (context) => {
       const request = context.run?.cancellation ?? null;
-      if (request === null) return;
-      canceled = true;
-      await cancelHere(context, checkpoint, run, request, plan, deps.clock.now().toISOString());
+      if (request !== null) {
+        stopped = true;
+        await cancelHere(context, checkpoint, run, request, plan, deps.clock.now().toISOString());
+        return;
+      }
+      const pause = context.run?.pauseRequest ?? null;
+      if (pause === null) return;
+      stopped = true;
+      const at = deps.clock.now().toISOString();
+      await context.saveCheckpoint({ ...checkpoint, status: 'RETRY', leaseUntil: at, diagnostic: null }, 'PAUSED');
+      await performPause(context, { run, request: pause, waitId: deps.ids.next(), at });
     });
-    return canceled;
+    return stopped;
   };
 
   /**

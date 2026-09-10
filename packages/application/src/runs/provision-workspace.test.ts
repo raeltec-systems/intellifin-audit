@@ -16,8 +16,7 @@ import {
   type RunResultConditionCount,
   type RunResultExclusion,
   type RunResultFindings,
-  type ReplayRecording,
-} from '@intellifin/domain';
+  type ReplayRecording, type RunPauseRequest } from '@intellifin/domain';
 
 import { provisionWorkspace, releaseWorkspace } from './provision-workspace.js';
 import {
@@ -62,7 +61,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000f5',
 };
 
@@ -148,6 +147,8 @@ class FakeContext implements WorkspaceExecutionContext {
   private sequence = 0;
 
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  pauseRequest: RunPauseRequest | null = null;
 
   constructor(private readonly store: Store) {
     this.run = store.run;

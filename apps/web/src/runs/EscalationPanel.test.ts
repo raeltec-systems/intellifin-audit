@@ -21,7 +21,7 @@ vi.mock('@intellifin/infrastructure', () => ({
   PostgresWaitRepository: class {},
 }));
 
-import type { EscalationDetails, RunWait, WaitRepository } from '@intellifin/application';
+import type { EscalationDetails, EscalationWait, WaitRepository } from '@intellifin/application';
 
 import { ESCALATION_PANEL_COPY } from '../design/copy';
 import { EscalationPanel, countdownText, orderedEscalationOptions } from './EscalationPanel';
@@ -37,11 +37,13 @@ const DETAILS_NONE: EscalationDetails = {
   agentQuestion: null,
 };
 
-function wait(overrides: Partial<RunWait> = {}): RunWait {
+function wait(overrides: Partial<EscalationWait> = {}): EscalationWait {
   return {
     waitId: WAIT_ID,
     runId: RUN_ID,
     kind: 'choose-candidate',
+    openedAt: '2026-09-06T08:00:00.000Z',
+    openedBy: null,
     options: [
       { id: 'candidate-a', label: 'Alice A' },
       { id: 'candidate-b', label: 'Bob B' },
@@ -165,6 +167,7 @@ describe('Run-detail Escalation read seam', () => {
     const result = await readOpenEscalation(RUN_ID);
     expect(result).toEqual({
       wait: null,
+      pause: null,
       runRevision: null,
       details: null,
     });
@@ -181,10 +184,31 @@ describe('Run-detail Escalation read seam', () => {
 
     await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({
       wait: opened,
+      pause: null,
       runRevision: 19,
       details: DETAILS_NONE,
     });
     expect(transaction).toHaveBeenCalledWith(RUN_ID, expect.any(Function));
+  });
+
+  /**
+   * A pause is a wait and is NOT an Escalation, so it reads as no open Escalation at all.
+   * The panel that asks a question takes an `EscalationWait`, so a pause cannot reach it
+   * even if a later caller forgets — this pins the read that makes that true.
+   */
+  it('reads an open pause as the pause, never as an Escalation', async () => {
+    const paused = { ...wait(), kind: 'pause' as const, openedBy: 'auditor', options: [{ id: 'resume', label: 'Resume' }] };
+    const repository = {
+      transaction: async (_runId: string, work: (context: unknown) => Promise<unknown>) =>
+        work({ wait: paused, run: { revision: 4 }, readEscalationDetails: async () => DETAILS_NONE }),
+    } as unknown as Pick<WaitRepository, 'transaction'>;
+
+    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({
+      wait: null,
+      pause: paused,
+      runRevision: 4,
+      details: null,
+    });
   });
 
   it('does not manufacture a revision when the repository has no current Run', async () => {
@@ -192,6 +216,6 @@ describe('Run-detail Escalation read seam', () => {
       transaction: async (_runId: string, work: (context: unknown) => Promise<unknown>) =>
         work({ wait: null, run: null, readEscalationDetails: async () => null }),
     } as unknown as Pick<WaitRepository, 'transaction'>;
-    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, runRevision: null, details: null });
+    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null });
   });
 });

@@ -65,14 +65,15 @@ const cases = [
   {
     id: 'closed-wait-repeat-closure-guard',
     file: 'packages/infrastructure/src/runs/wait-repository.ts',
+    // Repointed by Story 5.4: `closeWait` now takes the held state from the wait's own
+    // KIND (`AWAITING_AUDITOR` for an Escalation, `PAUSED` for a pause) instead of the
+    // literal. The mutation and its killing test are unchanged — only the anchor moved.
     before: `currentWait = lockedWait;
             if (lockedWait.closedAt !== null) return { outcome: 'superseded', wait: lockedWait, run: current };
-            if (current.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: lockedWait, run: current };
-            if (current.revision !== input.expectedRunRevision)`,
+            // The state THIS wait's kind holds a Run in`,
     after: `currentWait = lockedWait;
             // Mutant: permit a closed wait to enter the closure path again.
-            if (current.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: lockedWait, run: current };
-            if (current.revision !== input.expectedRunRevision)`,
+            // The state THIS wait's kind holds a Run in`,
     test: 'tests/integration/run-waits.test.ts',
     name: 'closes once with the expected revision and leaves the original wake as the sole job',
     config: 'tests/integration/vitest.config.ts',

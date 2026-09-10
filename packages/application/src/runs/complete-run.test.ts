@@ -11,8 +11,7 @@ import {
   type RunResultConditionCount,
   type RunResultExclusion,
   type RunResultFinding,
-  type RunResultFindings,
-} from '@intellifin/domain';
+  type RunResultFindings, type RunPauseRequest } from '@intellifin/domain';
 import { completeRun, sealResult } from './complete-run.js';
 import type {
   GateCheckRow,
@@ -49,7 +48,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000e5',
 };
 
@@ -176,6 +175,8 @@ class FakeContext implements RunResultContext {
 
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.gate;
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
   };

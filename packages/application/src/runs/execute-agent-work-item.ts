@@ -66,10 +66,12 @@ import {
   type RaiseEscalationInput,
   type RaiseEscalationResult,
   type RunWait,
+  isEscalationKind,
 } from './waits.js';
 import { runRunLevelGate, SECURITY_DENIED_EVENT } from './run-gate.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
+import { performPause } from './pause-run.js';
 
 /** The bounded worker input. It is deliberately the same shape as the population job. */
 export type AgentWorkItemJob = PopulationJob;
@@ -608,7 +610,11 @@ export async function executeAgentWorkItem(
     const closedWait = context.wait && context.wait.closedAt !== null && context.wait.answerOptionId !== null ? context.wait : null;
     let decision: AgentClaim['decision'] = null;
     if (current.pendingWait !== null || current.waitId !== null) {
+      // `isEscalationKind` is not redundant beside `closureKind !== 'answer'`: generation 45
+      // makes a pause close by `resume`, so the two agree today, and the kind check is the
+      // one that stays true if a later kind ever closes by answer.
       if (closedWait === null || context.waitRaise === null || closedWait.waitId !== current.waitId ||
+          !isEscalationKind(closedWait.kind) ||
           closedWait.closureKind !== 'answer' || closedWait.actor === null || closedWait.answerOptionId === ESCALATION_OPTION_IDS.abort) return null;
       const item = workItems.find(candidate => candidate.workItemId === current.workItemId);
       if (item === undefined) return null;
@@ -619,9 +625,12 @@ export async function executeAgentWorkItem(
         item.cycles = Math.min(2, item.cycles + 1);
         const retained = context.retainedDecisions ?? [];
         const resume = retained.find(entry => entry.wait.kind === 'unnamed-value') ?? retained.find(entry => entry.wait.kind === 'choose-candidate');
-        if (resume) {
+        // `pendingWait.kind` is an `EscalationKind`, so a pause cannot occupy the decision
+        // slot even in principle — the narrowing here is that rule stated to the compiler.
+        const resumeKind = resume?.wait.kind;
+        if (resume && isEscalationKind(resumeKind)) {
           const others = retained.filter(entry => entry.wait.waitId !== resume.wait.waitId);
-          current = { ...current, waitId: resume.wait.waitId, pendingWait: { kind: resume.wait.kind, options: resume.wait.options, retainedDecisionWaitIds: others.map(entry => entry.wait.waitId) } };
+          current = { ...current, waitId: resume.wait.waitId, pendingWait: { kind: resumeKind, options: resume.wait.options, retainedDecisionWaitIds: others.map(entry => entry.wait.waitId) } };
           decision = { wait: resume.wait, raised: resume.raised, checkpoint: { ...current, status: 'WAITING' }, retained: others };
         } else current = { ...current, waitId: null, pendingWait: null };
       } else {
@@ -676,23 +685,84 @@ export async function executeAgentWorkItem(
       return true;
     });
 
-  /** Check cancellation at every Tool Action boundary without crossing a lost claim. */
-  const cancellationBoundary = async (): Promise<'continue' | 'canceled' | 'lost'> => {
-    let canceled = false;
+  /**
+   * Honour a cancellation or a pause at a Tool Action boundary (Stories 3.10 and 5.4).
+   *
+   * Both are durable markers a person wrote while this stage held the Run, and both are
+   * read HERE — inside the guarded transaction that writes — rather than from the
+   * `RunRecord` this claim carries, because the whole case they exist for is somebody
+   * acting DURING the unit that claim started.
+   *
+   * **A cancellation wins.** Ending is stronger than holding, and `RUN_CANCEL_TRANSITIONS`
+   * gives a `PAUSED` Run to the COMMAND — so pausing a Run somebody has already cancelled
+   * would leave the request with no worker to honour it.
+   *
+   * The unit in flight is never interrupted mid-commit: this runs BETWEEN Tool Actions, so
+   * the Evidence, Observations and Step Execution of the action that just finished are
+   * already committed. What a pause does to the attempt in progress is supersede it, so the
+   * resume restarts the Work Item from its first Tool Action.
+   */
+  const lifecycleBoundary = async (
+    inFlight?: { readonly item: WorkItemRecord; readonly execution: StepExecutionRecord },
+  ): Promise<'continue' | 'stopped' | 'lost'> => {
+    let stopped = false;
     const committed = await guarded(async (context) => {
-      const request = context.run?.cancellation ?? null;
-      if (request === null) return;
-      canceled = true;
-      await performCancellation(context, {
+      const cancellation = context.run?.cancellation ?? null;
+      if (cancellation !== null) {
+        stopped = true;
+        await performCancellation(context, {
+          run,
+          request: cancellation,
+          at: nowIso(dependencies.clock),
+          plan,
+          source: 'worker',
+        });
+        return;
+      }
+      const pause = context.run?.pauseRequest ?? null;
+      if (pause === null) return;
+      stopped = true;
+      const at = nowIso(dependencies.clock);
+      if (inFlight !== undefined) {
+        // The attempt is GIVEN BACK. A person pausing is not the agent failing, so it must
+        // not spend one of the Work Item's bounded retry cycles — eight pauses would
+        // otherwise fail the item with a diagnostic naming nothing that went wrong. The
+        // Run-level `runStepExecutions` limit still counts the row, because a Step
+        // Execution really did start and that count is `count(*)` over what happened.
+        inFlight.item.attempts = Math.max(0, inFlight.item.attempts - 1);
+        await context.saveWorkItem({ ...inFlight.item, state: 'IN_PROGRESS', diagnostic: null });
+        await context.saveStepExecution({
+          ...inFlight.execution,
+          state: 'SUPERSEDED',
+          supersededBy: 'resume',
+          completedAt: at,
+          diagnostic: null,
+        });
+      }
+      // `RETRY` and not `WAITING`: the escalation slots carry a human DECISION into
+      // Observation registration, and a pause carries none. The claim would refuse a
+      // pending wait with no answer, and `RETRY` is what the recovery sweep re-claims
+      // once the resume puts the Run back to `RUNNING`.
+      checkpoint = {
+        ...checkpoint,
+        revision: checkpoint.revision + 1,
+        status: 'RETRY',
+        leaseUntil: at,
+        workItemId: inFlight?.item.workItemId ?? checkpoint.workItemId,
+        diagnostic: null,
+      };
+      await context.saveCheckpoint(checkpoint, 'PAUSED');
+      await performPause(context, {
         run,
-        request,
-        at: nowIso(dependencies.clock),
-        plan,
-        source: 'worker',
+        request: pause,
+        waitId: dependencies.ids.next(),
+        at,
+        stepExecutionId: inFlight?.execution.stepExecutionId ?? null,
+        workItemId: inFlight?.item.workItemId ?? null,
       });
     });
     if (!committed) return 'lost';
-    return canceled ? 'canceled' : 'continue';
+    return stopped ? 'stopped' : 'continue';
   };
 
   const stopWithin = async (context: AgentWorkContext, diagnostic: AgentWorkDiagnostic, cause: RunLimitCause | 'action-denied' | 'scope-violation' | 'session-step-failed'): Promise<void> => {
@@ -992,7 +1062,7 @@ export async function executeAgentWorkItem(
         const [checked] = await agentEvaluation.evaluateWithAgentProposals([judgedSubject], agentProposals);
         if (checked?.evaluations.some(row => row.diagnostic?.includes(POLICY_CONTRADICTED))) return refused('model-policy-contradiction');
       }
-      if (await cancellationBoundary() !== 'continue') return 'lost';
+      if (await lifecycleBoundary() !== 'continue') return 'lost';
     }
     item.state = state;
     item.observations += 1;
@@ -1083,7 +1153,7 @@ export async function executeAgentWorkItem(
     await resolveFrozenCredentials();
     for (const item of items.sort((left, right) => left.ordinal - right.ordinal)) {
       if (isTerminalWorkItem(item)) continue;
-      const itemBoundary = await cancellationBoundary();
+      const itemBoundary = await lifecycleBoundary();
       if (itemBoundary !== 'continue') return { retry: false };
       const entry = targetForItem(item);
       const record = recordForItem(item);
@@ -1160,8 +1230,10 @@ export async function executeAgentWorkItem(
         }
         const chosenWait = selectedDecision?.wait ?? humanDecision.wait;
         const chosenRaise = selectedDecision?.raised ?? humanDecision.raised;
+        const chosenKind = chosenWait.kind;
+        if (!isEscalationKind(chosenKind)) { await stopRun('human-decision-refused', 'session-step-failed'); return { retry: false }; }
         const chosenCheckpoint = selectedDecision === undefined ? humanDecision.checkpoint : {
-          ...humanDecision.checkpoint, waitId: chosenWait.waitId, pendingWait: { kind: chosenWait.kind, options: chosenWait.options },
+          ...humanDecision.checkpoint, waitId: chosenWait.waitId, pendingWait: { kind: chosenKind, options: chosenWait.options },
         };
         const applied = applyAgentHumanDecision({ runId: run.runId, wait: chosenWait,
           checkpoint: chosenCheckpoint, raised: chosenRaise, plan, target: entry.target,
@@ -1189,7 +1261,7 @@ export async function executeAgentWorkItem(
       let current: SnapshotState | null = null;
       let searches: AgentSearchEvidence[] = [];
       if (current === null) {
-        const bootstrapBoundary = await cancellationBoundary();
+        const bootstrapBoundary = await lifecycleBoundary({ item, execution });
         if (bootstrapBoundary !== 'continue') return { retry: false };
         const destination = safeOrigin(entry.target);
         if (destination === null) {
@@ -1412,7 +1484,7 @@ export async function executeAgentWorkItem(
 
       let actionsConsumed = 0;
       while (actionsConsumed < MAX_ACTIONS_PER_TURN) {
-        const modelBoundary = await cancellationBoundary();
+        const modelBoundary = await lifecycleBoundary({ item, execution });
         if (modelBoundary !== 'continue') return { retry: false };
         const searchPage = readStructuralSnapshot(current.snapshot);
         if (searches.length > 0 && searchPage.ok && searchPage.substrate === 'web_tree' && searchPage.document.completion?.complete === false) {
@@ -1522,7 +1594,7 @@ export async function executeAgentWorkItem(
           await stopRun(spentLimit === 'run-time-limit' ? 'run-time-limit' : spentLimit === 'run-step-execution-limit' ? 'run-step-execution-limit' : 'run-token-limit', spentLimit);
           return { retry: false };
         }
-        const responseBoundary = await cancellationBoundary();
+        const responseBoundary = await lifecycleBoundary({ item, execution });
         if (responseBoundary !== 'continue') return { retry: false };
         const response: AgentModelResponse = turn.response;
         if (response.uncertainty.kind !== 'none') {
@@ -1574,7 +1646,7 @@ export async function executeAgentWorkItem(
           await stopRun('model-invalid-action', 'action-denied');
           return { retry: false };
         }
-        const actionBoundary = await cancellationBoundary();
+        const actionBoundary = await lifecycleBoundary({ item, execution });
         if (actionBoundary !== 'continue') return { retry: false };
         const actionId = dependencies.ids.next();
         const performed = await performToolAction(dependencies.browser, {

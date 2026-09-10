@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { isActiveRunState } from '@intellifin/domain';
+import { isActiveRunState, runPauseTransition } from '@intellifin/domain';
 import {
   DrizzleFrozenExecutionReader,
   DrizzleRunDetailRepository,
@@ -12,6 +12,9 @@ import { getRuntime } from '../../../../src/bootstrap';
 import { LIVE_VIEW_QUEUED_SENTENCE } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { LiveBanner } from '../../../../src/runs/LiveBanner';
+import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
+import { readOpenEscalation } from '../../../../src/runs/escalation-read';
+import { PauseBanners } from '../../../../src/runs/detail';
 import { EndedBanner, LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
@@ -91,6 +94,10 @@ export default async function RunLivePage({
   const chrome = liveViewChrome(run.state);
   const lifecycle = runLifecycleWord(run.state);
   const here = `/runs/${run.runId}/live`;
+  // The open wait, for a Run holding on one: a pause supplies the banner's actor, its two
+  // instants and the revision Resume compare-and-sets against. Read only in the state that
+  // can have one, so an ordinary LIVE render costs no extra transaction.
+  const waits = run.state === 'PAUSED' ? await readOpenEscalation(run.runId) : null;
 
   // Why there is no frame, in words. An empty stage that says nothing reads as "fine",
   // which is the one thing a supervision surface must never do.
@@ -138,6 +145,21 @@ export default async function RunLivePage({
           href={here}
         />
       )}
+
+      {/* EXPERIENCE.md → Live View: Pause on LIVE, Resume replacing it on PAUSED, and the
+          countdown banner naming who paused it. The SAME control Run Detail carries, so
+          neither surface can disagree with the other about a stale revision. Cancel and
+          Flag join it in Story 5.5. */}
+      <PauseBanners run={run} pause={waits?.pause ?? null} />
+      <RunPauseControls
+        runId={run.runId}
+        procedureName={run.procedureName}
+        paused={run.state === 'PAUSED'}
+        pausePending={run.pauseRequest !== null}
+        awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+        pausable={runPauseTransition(run.state) !== null}
+        runRevision={waits?.runRevision ?? null}
+      />
 
       <LiveViewer
         runId={run.runId}
