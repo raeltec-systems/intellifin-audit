@@ -55,7 +55,7 @@ scrubber and a jump list, and re-executes nothing.
 | New surfaces | `/runs/<id>/replay`. Live View gained Pause/Resume, Cancel, Flag and the Escalation panel. Run Detail's rail now offers **Replay** on a terminal Run. |
 | New contracts | `docs/contracts/run-pause-v1.md`, `run-flag-v1.md`, `replay-v1.md`; `live-view-v1.md` gained the control-gate and Escalation sections. |
 | New browser journeys | `pause-resume`, `flag-run`, `live-drop`, `live-escalation` (Flow 3), `replay`. |
-| Commits | 7, from `584582e` (Story 5.4) to `0fc8a7c` (Story 5.8). |
+| Commits | 17: seven story commits from `584582e` (Story 5.4) to `0fc8a7c` (Story 5.8), then the close-out and the **eight review-repair commits** §3.3 describes. |
 
 ## 3. How it was verified
 
@@ -66,10 +66,10 @@ a real Chromium, and — where a story needed one — the compiled worker proces
 | Gate | Result |
 |---|---|
 | `pnpm -r typecheck` + root tests typecheck | clean |
-| `pnpm test` (unit) | **3,955 passed**, 195 files |
-| `pnpm test:integration` | **531 passed**, 44 files |
+| `pnpm test` (unit) | **3,956 passed**, 195 files |
+| `pnpm test:integration` | **533 passed**, 44 files |
 | `pnpm boundaries` (AD-1) | clean, 568 modules cruised |
-| Playwright + axe | **full suite green** — see §3.1 |
+| Playwright + axe | **191 passed**, full suite green — see §3.1 |
 | Migration paths | fresh install and 32 → 46 upgrade compared column, constraint and trigger counts; identical shape |
 | Mutation testing | 3 guards for Story 5.5, each restored byte-for-byte and confirmed with `diff -q` |
 
@@ -104,6 +104,33 @@ row, and resumes.
   racing it to one; which marker a boundary reads, what it supersedes and that the attempt is
   given back are proven in the application and integration suites, and one of those is killed
   by mutation.
+
+### 3.3 The review round on this PR
+
+Codex reviewed the branch and left ten findings. **Every one reproduced.** Eight are fixed
+here and two are named on the PR with the patch each needs, because each is wider than the
+finding itself and neither belongs in a pull request that is otherwise ready:
+
+- A `PAUSED` Run that is **cancelled** leaves its pause wait `closed_at` NULL for ever, and
+  that row then sits in `recoverableWaits`' bounded page permanently. Generation 45 says a
+  pause closes by `resume` or `timeout`; a cancellation is neither, so the honest fix is a
+  new closure kind and therefore **generation 47**.
+- **Pause carries no expected revision** where Resume does, so a stale Live View can pause a
+  Run the worker has already advanced. `RunRecord` carries no `revision` to compare against,
+  so the fix touches every reader of that record.
+
+Three of the eight were one rule with three holes — Story 5.7's gate withdrew only the
+controls that ASKED it — so the gate moved DOWN into `ConfirmDialog`, which every
+confirmation in the product already goes through. Four more were one limit in four places:
+Replay renders up to 500 frames and then joined each against reads capped at 50.
+
+The most serious was none of those. **A timed-out pause recorded an Escalation**:
+`wakeEscalation` hard-coded the event type, the actor and `priorState: 'AWAITING_AUDITOR'`,
+so every pause that ran out its thirty minutes wrote, into a row that can never be
+corrected, that an Escalation timed out from a state the Run was never in. All three are
+derived from the wait's own kind now.
+
+The full round, and the traps inside it, is the top entry in `CLAUDE.md`.
 
 ## 4. Decisions worth knowing
 

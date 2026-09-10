@@ -62,7 +62,23 @@ Three mechanical lessons, and the first is the one that cost the most:
 - **A test's NAME is a claim, and a name that promises more than the test can establish is
   the same defect as a label stating something untrue.** Renamed to what it proves; the
   resume rule itself stays proven deterministically in `live-status.test.ts`, which is why
-  AD-17's comparison was put there rather than in a browser.
+  AD-17's comparison was put there rather than in a browser. **Second appearance, in the same
+  round**: `live-view.spec.ts`'s "renders read-only below 1024px" asserted a SENTENCE and
+  nothing else, which is exactly why the finding above it — that the narrow viewport
+  withdrew nothing — could exist under a green test named for the rule it was not checking.
+  It now asserts all three controls `aria-disabled` below the floor and live above it, and
+  a `setDesktop(true)` mutation kills it.
+- **A gate reason that reuses a contract sentence makes a text locator ambiguous, and
+  hydration decides whether the test sees it.** `LIVE_GATE_REASONS.viewport` IS
+  `LIVE_VIEW_DESKTOP_ONLY_SENTENCE` — deliberately, so a reader on a phone meets one
+  sentence and it is EXPERIENCE.md's own — so below the floor it is the stage's `<p>` AND
+  each withdrawn control's reason: four nodes, and `getByText` refuses that in strict mode.
+  The reasons are attached only after hydration measures the viewport, so a machine that
+  asserts before hydration sees ONE node and passes. That is the whole of "passes locally,
+  fails in CI" here, and it is the same fixture-versus-server shape as `live-drop`, one
+  layer along. Locate such an element by what the STYLESHEET acts on and pin its wording
+  with `toHaveText`; `live-drop.spec.ts` had already reached for `.first()` on its own
+  reasons for the same reason.
 - **Copy the working sibling, third time in one session.** Three rounds went on
   `run_step_execution.action`, `run_tool_action`'s real column set and a teardown that
   deletes Tool Actions before the Step Executions they name — each already written correctly
