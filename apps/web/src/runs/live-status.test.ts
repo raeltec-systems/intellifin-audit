@@ -96,6 +96,20 @@ describe('the live control gate (Story 5.7, UX-DR25)', () => {
       expect(liveGateReason(status, true)).toBe('runEnded');
     }
   });
+  it('closes on a narrow viewport, above every other reason', () => {
+    // EXPERIENCE.md makes Live View read-only below 1024px. The stylesheet only revealed
+    // the desktop-only sentence, so Pause, Cancel, Flag and the Escalation answer stayed
+    // usable on a phone; this is the rule that withdraws them.
+    //
+    // It outranks the stream reasons because it is the one a reader can act on: told the
+    // connection is lost they can only wait, told to open a desktop browser they can.
+    for (const status of LIVE_STATUSES) {
+      expect(liveGateReason(status, false, false)).toBe('viewport');
+      expect(liveGateReason(status, true, false)).toBe('viewport');
+    }
+    // And a desktop is unaffected, which is the half a one-sided test would miss.
+    expect(liveGateReason('live', false, true)).toBeNull();
+  });
   it('gives every reason a sentence that says what is unavailable and why', () => {
     for (const [reason, sentence] of Object.entries(LIVE_GATE_REASONS)) {
       expect(sentence.length).toBeGreaterThan(20);

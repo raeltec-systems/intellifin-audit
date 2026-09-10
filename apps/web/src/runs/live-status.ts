@@ -1,3 +1,5 @@
+import { LIVE_VIEW_DESKTOP_ONLY_SENTENCE } from '../design/copy';
+
 /**
  * The live channel as a page experiences it (Story 5.1, UX-DR25, NFR7).
  *
@@ -84,6 +86,17 @@ export function isRunEndingEvent(eventType: string): boolean {
  * about a second, in which every control was live on a Run that had already finished.
  */
 export const LIVE_GATE_REASONS = {
+  /**
+   * The narrow-viewport reason (PR 29 review). EXPERIENCE.md's responsive rules make Live
+   * View READ-ONLY below 1024px, and the stylesheet only revealed the desktop-only
+   * sentence while leaving Pause, Cancel, Flag and the Escalation answer fully usable —
+   * so a Run could be mutated from a viewport the contract defines as read-only.
+   *
+   * It is a gate reason rather than a `display: none`, so the Escalation's question, its
+   * candidates and the Paused banner all stay readable on a phone and only the ACTING
+   * stops — and each withdrawn control says why, which a hidden control cannot.
+   */
+  viewport: LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
   runEnded: 'This Run has ended, so its live controls are no longer available.',
   lost: 'Controls are unavailable while the connection to this Run is lost.',
   ended: 'Controls are unavailable because this page is no longer updating on its own. Refresh to continue.',
@@ -91,7 +104,17 @@ export const LIVE_GATE_REASONS = {
 
 export type LiveGateReason = keyof typeof LIVE_GATE_REASONS;
 
-export function liveGateReason(status: LiveStatus, runEnded: boolean): LiveGateReason | null {
+/**
+ * `desktop` is what the page has OBSERVED about its own viewport, and it OUTRANKS the
+ * stream reasons: "open this on a desktop" is the sentence a reader on a phone can act
+ * on, where "the connection is lost" is not.
+ *
+ * It defaults to true for callers that cannot observe one, which is the server. See
+ * `useDesktopViewport` for why the withdrawn default would have broken Flag's
+ * no-JavaScript path.
+ */
+export function liveGateReason(status: LiveStatus, runEnded: boolean, desktop = true): LiveGateReason | null {
+  if (!desktop) return 'viewport';
   if (runEnded) return 'runEnded';
   if (status === 'lost') return 'lost';
   if (status === 'ended') return 'ended';

@@ -12,6 +12,7 @@ import {
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { useActionGate } from '../design/action-gate';
 import { ESCALATION_PANEL_COPY } from '../design/copy';
 import { UntrustedText } from './UntrustedText';
 
@@ -128,6 +129,15 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
   const [note, setNote] = useState('');
   const [pendingOption, setPendingOption] = useState<EscalationOption | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * The surface's gate (PR 29 review). Story 5.6 mounted this panel INSIDE Live View's
+   * `LiveGate`, and Story 5.7 withdraws every control there when the stream is lost for
+   * sixty seconds or the Run ends — but this panel read no gate, so its answer buttons
+   * stayed live and an answer could commit from a page that no longer knew the Run's
+   * state. On Run Detail there is no provider and the gate is open, so that surface is
+   * unchanged.
+   */
+  const gate = useActionGate();
   const [unknown, setUnknown] = useState(false);
   const [message, setMessage] = useState<PanelMessage | null>(null);
 
@@ -273,6 +283,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
                   variant="secondary"
                   busy={busy}
                   onClick={() => setPendingOption(option)}
+                  {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}
                 >
                   {wait.kind === 'choose-candidate'
                     ? option.id === 'mark-ambiguous'
@@ -293,7 +304,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
             value={note}
             maxLength={500}
             onChange={(event) => setNote(event.target.value)}
-            disabled={busy || unknown}
+            disabled={busy || unknown || gate.disabledReason !== null}
           />
         </div>
       </section>
