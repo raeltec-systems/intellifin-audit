@@ -17,7 +17,7 @@ import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
-import { PauseBanners } from '../../../../src/runs/detail';
+import { OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
@@ -103,10 +103,14 @@ export default async function RunLivePage({
   const chrome = liveViewChrome(run.state);
   const lifecycle = runLifecycleWord(run.state);
   const here = `/runs/${run.runId}/live`;
-  // The open wait, for a Run holding on one: a pause supplies the banner's actor, its two
-  // instants and the revision Resume compare-and-sets against. Read only in the state that
-  // can have one, so an ordinary LIVE render costs no extra transaction.
-  const waits = run.state === 'PAUSED' ? await readOpenEscalation(run.runId) : null;
+  // The open wait, for a Run holding on one, and ONE read for both kinds: an Escalation
+  // holds the Run in `AWAITING_AUDITOR` and a pause holds it in `PAUSED`, and the same read
+  // answers which — supplying the panel's wait and, for a pause, the revision Resume
+  // compare-and-sets against. Read only in the two states that can have one, so an ordinary
+  // LIVE render costs no extra transaction. Exactly what `RunDetailFrame` does.
+  const waits = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
+    ? await readOpenEscalation(run.runId)
+    : null;
 
   // Why there is no frame, in words. An empty stage that says nothing reads as "fine",
   // which is the one thing a supervision surface must never do.
@@ -158,6 +162,14 @@ export default async function RunLivePage({
         readAt={readAt.toISOString()}
         href={here}
       >
+        {/* AT THE TOP, and the workspace screen stays below it rather than behind it
+            (EXPERIENCE.md → Live View / Awaiting Auditor: "Escalation panel focused;
+            workspace screen still visible"). It is not a dialog: a modal over the session
+            viewer would answer the question by hiding the thing the question is about.
+            Focus is NOT moved here — the skip link moves it and the panel announces itself
+            politely, which is what UX-DR27 asks for; taking focus from somebody mid-word
+            is a context change nobody asked for. */}
+        <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
         <PauseBanners run={run} pause={waits?.pause ?? null} />
         <RunPauseControls
           runId={run.runId}

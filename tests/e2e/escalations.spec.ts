@@ -17,6 +17,7 @@ import {
 } from '@intellifin/infrastructure';
 import { ESCALATION_PANEL_COPY } from '../../apps/web/src/design/copy';
 import { activeRunVersion } from '../fixtures/active-run-version';
+import { executablePlanInputs } from '../fixtures/executable-plan';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 
@@ -340,10 +341,13 @@ test.beforeAll(async () => {
     await sql`INSERT INTO user_role(user_id,role) VALUES (${managerId},'audit-manager')`;
   }
 
-  const version = activeRunVersion(procedureId, versionId, auditorId);
+  // The name goes through the fixture's INPUTS, never spread over the row it returns:
+  // `controlName` is a plan authoring input, so overriding it afterwards leaves the row
+  // disagreeing with its own frozen review and `findPeriodOwner` refuses the version.
+  const version = activeRunVersion(procedureId, versionId, auditorId, { ...executablePlanInputs(), controlName });
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
-    await context.procedures.insertProcedure({ ...version, controlName });
-    await context.procedures.insertVersion({ ...version, controlName });
+    await context.procedures.insertProcedure(version);
+    await context.procedures.insertVersion(version);
   });
 
   await seedRun(runs.answered, periods.answered);

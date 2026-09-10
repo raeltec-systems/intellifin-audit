@@ -450,6 +450,16 @@ describe('the Escalation panel copy', () => {
     expect(experience).toContain(ESCALATION_PANEL_COPY.timeoutTemplate);
   });
 
+  it('names the skip link the Accessibility rules name (Story 5.6)', () => {
+    // `Escalation panels are reachable by a skip link ("Go to open Escalation") when
+    // present.` It read `Skip to open Escalation` for two epics, because it was typed
+    // inline in the component and pinned against nothing.
+    expect(experience).toContain(`("${ESCALATION_PANEL_COPY.skipLink}")`);
+    const panel = readFileSync(fileURLToPath(new URL('../runs/EscalationPanel.tsx', import.meta.url)), 'utf8');
+    expect(panel).toContain('ESCALATION_PANEL_COPY.skipLink');
+    expect(panel).not.toContain('Skip to open Escalation');
+  });
+
   it('renders the paused action reason from the shared copy module', () => {
     // The control moved to `RunPauseControls` in Story 5.4, because Live View carries the
     // same two buttons. Both files are scanned, so re-inlining the sentence in either — the

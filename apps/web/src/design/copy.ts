@@ -496,6 +496,13 @@ export const ESCALATION_PANEL_COPY = {
   answerNoteLabel: 'Recorded, not sent to the agent',
   pauseUnavailable: 'A Run waiting on an answer cannot be paused.',
   timeoutTemplate: 'This Escalation timed out at {time}; the Run is Inconclusive.',
+  /**
+   * EXPERIENCE.md's Accessibility rules: `Escalation panels are reachable by a skip link
+   * ("Go to open Escalation") when present.` It read `Skip to open Escalation` from Story
+   * 4.8 until Story 5.6 pinned it — a sentence typed inline in a component is pinned
+   * against nothing.
+   */
+  skipLink: 'Go to open Escalation',
   unknown: 'The Escalation answer could not be confirmed. Reload the Run to see whether it was recorded.',
   noAgentQuestion: 'No agent-generated question was recorded for this Escalation.',
   noStep: 'Step was not recorded for this Escalation.',
@@ -505,6 +512,24 @@ export const ESCALATION_PANEL_COPY = {
     'choose-candidate': 'Choose one of the grounded candidates, or mark the record ambiguous.',
     'unnamed-value': 'Choose how the platform should handle this unnamed value.',
     'retry-or-skip': 'Choose whether the platform should retry this Work Item or skip it.',
+  },
+  /**
+   * What the one polite live region says, and the ONLY things it says (Story 5.6).
+   *
+   * EXPERIENCE.md's Accessibility rules: `aria-live="polite"` announces Run state changes,
+   * new Escalations, and countdown milestones (10 minutes, 1 minute)`. A clock in a live
+   * region announces itself every second, which is the opposite of a milestone — so the
+   * visible countdown is a `role="timer"` with no live region, and this ladder is what a
+   * screen reader hears. It only ever moves forward, so each rung is announced once.
+   *
+   * These four are platform vocabulary rather than contract quotations: EXPERIENCE.md fixes
+   * WHICH milestones are announced and does not write the sentences.
+   */
+  milestones: {
+    open: 'An Escalation is open on this Run. It is waiting for your answer.',
+    'ten-minutes': '10 minutes remain to answer this Escalation.',
+    'one-minute': '1 minute remains to answer this Escalation.',
+    expired: 'The Escalation deadline has been reached.',
   },
 } as const;
 

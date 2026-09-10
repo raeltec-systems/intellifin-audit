@@ -23,7 +23,7 @@ import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
 import { EscalationPanel } from './EscalationPanel';
 import { EvaluationReview } from './EvaluationReview';
-import { readOpenEscalation } from './escalation-read';
+import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { runLifecycleWord, utcStamp } from './labels';
@@ -243,11 +243,7 @@ export async function RunDetailFrame({
         requestToken={new CryptoUuidV7Generator().next()}
         procedureName={run.procedureName}
       />
-      {run.state === 'AWAITING_AUDITOR' && escalation !== null
-        ? escalation.wait !== null && escalation.runRevision !== null
-          ? <EscalationPanel runId={run.runId} wait={escalation.wait} details={escalation.details} runRevision={escalation.runRevision} readAt={readAt.toISOString()} />
-          : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />
-        : null}
+      <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />
       {evaluationReview !== null ? (
         <EvaluationReview
           runId={run.runId}
@@ -311,6 +307,36 @@ export async function RerunLinks({ runId }: { readonly runId: string }): Promise
  * Timeline, the Run's own outcome stands, and a banner saying a request was not honoured
  * would compete with the outcome for the reader's attention on every terminal tab.
  */
+/**
+ * The open Escalation, on Run Detail AND on Live View (Story 5.6).
+ *
+ * ONE mount, for the reason `RunPauseControls` and `RunCancelControl` are one component
+ * each: both surfaces carry the same panel, and two copies would agree on every case
+ * anybody tried and diverge on the first one nobody did — here that would be one surface
+ * showing the panel and the other silently showing nothing when the wait cannot be read.
+ *
+ * A wait that is open but unreadable is a BANNER and never an absence. `AWAITING_AUDITOR`
+ * means the Run is holding on a question; rendering nothing there would tell a reader the
+ * Run is simply busy, which is the "an empty stage that says nothing reads as fine" defect
+ * in the one place it costs an audit its answer.
+ */
+export function OpenEscalationSection({ run, escalation, readAt }: {
+  readonly run: RunRecord;
+  readonly escalation: OpenEscalationRead | null;
+  readonly readAt: Date;
+}): React.JSX.Element | null {
+  if (run.state !== 'AWAITING_AUDITOR' || escalation === null) return null;
+  return escalation.wait !== null && escalation.runRevision !== null
+    ? <EscalationPanel
+        runId={run.runId}
+        wait={escalation.wait}
+        details={escalation.details}
+        runRevision={escalation.runRevision}
+        readAt={readAt.toISOString()}
+      />
+    : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />;
+}
+
 export function PauseBanners({ run, pause }: {
   readonly run: RunRecord;
   readonly pause: RunWait | null;

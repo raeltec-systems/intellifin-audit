@@ -1,3 +1,56 @@
+## 2026-09-10 — A clock is not a milestone, and an unreadable wait is not an absence
+
+Story 5.6. The Escalation panel is answered on Live View without leaving it, which is the
+last of the four session-viewer controls. Whole rule: `docs/contracts/live-view-v1.md`,
+section "The Escalation, answered in place". No migration.
+
+- **`OpenEscalationSection` is ONE mount and both surfaces use it**, the
+  `RunPauseControls` / `RunCancelControl` discipline. Its branch table is the rule: the
+  panel when the wait and revision read, a BANNER when either does not, nothing in a state
+  that holds no question. **An open wait that cannot be read is never rendered as an
+  absence** — `AWAITING_AUDITOR` means the Run is holding on a question, and showing
+  nothing tells a reader it is simply busy. A pause reaches neither arm, because
+  `readOpenEscalation` narrows at the READ.
+- **The panel sits ABOVE the session viewer and is not a dialog.** EXPERIENCE.md's Live
+  View / Awaiting Auditor row keeps the workspace screen visible; a modal over the viewer
+  would answer a question about the screen by hiding the screen. Focus is NOT moved: the
+  normative mechanism in UX-DR27 is a skip link plus a polite announcement, and "panel
+  focused" in that row is the surface's emphasis. The panel appears while somebody is
+  watching a Run rather than in response to anything they did, so taking focus would be an
+  unrequested context change.
+- **A clock in a live region announces itself every second, which is the opposite of a
+  milestone.** The countdown carried `role="timer" aria-live="polite" aria-atomic="true"`
+  from Story 4.8 — so a screen-reader user heard the time read out once a second for the
+  whole wait. It is now `role="timer"` alone (implicit `aria-live="off"`), and one polite
+  region beside it climbs `escalationMilestone`'s LADDER: `open` → `ten-minutes` →
+  `one-minute` → `expired`. It never climbs back down, so each rung is announced once and
+  an expired wait does not go back to saying an Escalation is open. An unreadable deadline
+  is `open`, which is what is known — the visible clock says `Unknown` beside it.
+- **A live region has to EXIST before it has text.** One that arrives with its text already
+  in it is ordinary content as far as a screen reader is concerned and is announced by
+  nothing. It renders empty on the server and is filled one tick after mount, which is also
+  the moment the panel really did appear. Derived from state, never set from an effect: two
+  effects racing to fill one region re-announce whichever wins.
+- **The skip link said the wrong thing for two epics.** EXPERIENCE.md's Accessibility rules
+  name it `("Go to open Escalation")`; the component said `Skip to open Escalation`, typed
+  inline, pinned against nothing. It is in `copy.ts` now and `copy.test.ts` reads the
+  artifact off disk — the standing rule, applied where it had not been.
+
+Two mechanical notes, and the first cost a debugging round:
+
+- **`{ ...activeRunVersion(...), controlName }` produces a version that can never own a
+  period.** `controlName` is a plan AUTHORING input, so overriding it after the fixture has
+  built `frozenReview` leaves the row disagreeing with its own frozen review;
+  `findPeriodOwner` refuses such a version, and the surface says **"No executable Active
+  version owns that period"** — a sentence about periods, for a defect that has nothing to
+  do with periods. Three specs did it and all three passed, because each seeds `audit_run`
+  directly and never initiates through the surface; only a journey that clicks Initiate Run
+  can see it. All three now pass the name through `executablePlanInputs()`.
+- **A journey that initiates a Run must delete its dispatch job before pretending a worker
+  holds it.** Nothing here can execute a Run, so a concurrently running worker claims it and
+  ends it `RUN_FAILED` for an unconfigured Evidence store — correct behaviour, which would
+  destroy the subject under test.
+
 ## 2026-09-10 — A control is live only while the page is being told what the Run is doing
 
 Story 5.7. Live View gains ONE gate over the four controls 5.4 and 5.5 put on it, and the

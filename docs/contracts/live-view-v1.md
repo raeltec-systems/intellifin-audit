@@ -208,10 +208,81 @@ The cursor travels as `Last-Event-ID`, which `EventSource` sends by itself, with
 as the fallback the first request uses; `parseLiveCursor` prefers the header because a
 reconnect carries both and only the header is current.
 
+## The Escalation, answered in place (Story 5.6)
+
+`OpenEscalationSection` is ONE component, and Run Detail and Live View both mount it — the
+`RunPauseControls` and `RunCancelControl` discipline, for the same reason: two copies would
+agree on every case anybody tried and diverge on the first one nobody did.
+
+Its branch table is the whole rule:
+
+| The Run's state, and what the read returned | What is rendered |
+| --- | --- |
+| `AWAITING_AUDITOR`, wait and revision both read | The panel |
+| `AWAITING_AUDITOR`, either missing | `The open Escalation could not be read. Reload this Run before answering.` |
+| Any other state, a `PAUSED` Run's own wait included | Nothing |
+
+**An open wait that cannot be READ is a Banner and never an absence.** `AWAITING_AUDITOR`
+means the Run is holding on a question; rendering nothing there tells a reader the Run is
+simply busy, which is the "an empty stage that says nothing reads as fine" defect in the one
+place it costs an audit its answer. A pause reaches neither arm: `readOpenEscalation`
+narrows at the READ, so it cannot be dressed as an Escalation even by a caller that forgets.
+
+**One read for both wait kinds.** An Escalation holds the Run in `AWAITING_AUDITOR` and a
+pause holds it in `PAUSED`, so the same read answers which — and, for a pause, supplies the
+revision Resume compare-and-sets against. Live View makes it in exactly those two states, so
+an ordinary `LIVE` render costs no extra transaction.
+
+**The panel sits ABOVE the session viewer and is not a dialog.** EXPERIENCE.md's Live View /
+Awaiting Auditor row: "Escalation panel focused; workspace screen still visible (FR-24)", and
+its Run Detail row puts the panel "at the top of every tab". A modal over the viewer would
+answer a question about the workspace screen by hiding the workspace screen.
+
+**Focus is not moved.** "Focused" in that row is the surface's emphasis, not a scripted focus
+call; the normative mechanism is UX-DR27's, which the acceptance criteria state in full — a
+skip link moves focus, and the panel's appearance is announced politely. Taking focus from
+somebody mid-word is an unrequested context change, and the panel appears while a person is
+watching a Run rather than in response to anything they did.
+
+### What a screen reader is told, and what it is not
+
+EXPERIENCE.md's Accessibility rules: `aria-live="polite"` announces Run state changes, new
+Escalations, and countdown milestones (10 minutes, 1 minute). So the panel has exactly ONE
+polite region, and the visible clock is not it — `role="timer"` with no `aria-live`, whose
+implicit value is `off`. A clock inside a live region announces itself every second, which is
+the opposite of a milestone.
+
+`escalationMilestone(remainingMilliseconds)` is a LADDER and never climbs back down:
+
+| Remaining | Rung |
+| --- | --- |
+| more than 10 minutes, or unreadable | `open` |
+| 10 minutes or less, more than 1 minute | `ten-minutes` |
+| 1 minute or less, more than 0 | `one-minute` |
+| 0 or less | `expired` |
+
+Each rung is therefore announced exactly once, and an expired wait does not fall back to "an
+Escalation is open" and say it again. An unreadable deadline is `open`, which is what is
+actually known — the visible countdown says `Unknown` beside it.
+
+The region renders EMPTY on the server and is filled one tick after mount. A live region that
+arrives with its text already in it is ordinary content as far as a screen reader is
+concerned, and is not announced; the tick is also the moment the panel really did appear.
+
+The skip link is EXPERIENCE.md's own `Go to open Escalation`, in `copy.ts` and pinned against
+the artifact on disk. It read `Skip to open Escalation` for two epics because it was typed
+inline in the component, where it was pinned against nothing.
+
+### Pause, while a Run is waiting on an answer
+
+`RunPauseControls` renders Pause `aria-disabled` with `A Run waiting on an answer cannot be
+paused.` and repeats the sentence visibly in the Unavailable actions panel. That is FR-25 and
+AD-16 and is unchanged by this story; what is new is that Live View is now a surface where a
+person can meet the panel and that control at once.
+
 ## What this contract does not cover
 
 - **Replay** (Story 5.8), including the Step scrubber. `session-viewer.scrubber-pill-height`
   stays deferred in `tokens.test.ts`: scrubbing is Replay's control, and Live View watches.
-- **Answering an Escalation without leaving this surface** (Story 5.6).
 - **Provider video.** DESIGN.md calls frames the platform's Replay asset set and provider
   video a supplementary link; nothing here reads one.

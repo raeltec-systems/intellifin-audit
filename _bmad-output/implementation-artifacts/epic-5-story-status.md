@@ -19,7 +19,7 @@ Deployed.
 | 5.3 Watch a Running Run in Live View | yes | yes: 42 unit, 5 integration on generation 42, 9 browser journeys with axe and the real worker signing grants, 2 mutations killed (`spec-5-3-…`, Verification status) | pending on PR 25 | no | no |
 | 5.4 Pause and resume a Running Run | yes | yes: 3,854 unit (16 on the commands, 4 on the three stage boundaries, 2 mutations killed), 17 integration on generation 45 against real PostgreSQL 18 including all five new CHECKs in both directions and the `opened_at` backfill read off the migration on disk, 2 browser journeys with axe (`pause-resume.spec.ts`); both migration paths reach 45 with identical shape (532/759/26). **Re-verified 2026-09-10 on a clean database run ALONE**: 43 integration files / 515 tests green, and 22 browser tests green across `escalations`, `live-view`, `pause-resume` and `runs` | pending | no | no |
 | 5.5 Cancel and flag from Live View | yes | yes: 3,901 unit (27 on the command, 8 on the notification ports and the control, 4 on the domain vocabulary, 3 mutations killed), 16 integration on generation 46 against real PostgreSQL 18 including the immutability trigger, the note CHECK in both directions and all three arms of `notification_context`, 8 browser tests with axe (`flag-run.spec.ts`) one of which runs with `javaScriptEnabled: false`; both migration paths reach 46 with identical shape (539/764/41) | pending | no | no |
-| 5.6 Answer an Escalation without leaving Live View | no | no | no | no | no |
+| 5.6 Answer an Escalation without leaving Live View | yes | yes: 3,925 unit (8 on the milestone ladder and the polite region, 3 on the shared mount's branch table, 1 pinning the skip link to EXPERIENCE.md on disk), 531 integration across 44 files, `pnpm boundaries` clean over 563 modules, 88 browser tests green with axe — one of them the Flow 3 journey `live-escalation.spec.ts`, which initiates the Run through the real surface, answers a choose-candidate Escalation in place and then pauses and resumes with the 30-minute deadline measured on the wait row | pending | no | no |
 | 5.7 Live View when the stream drops or the Run ends | yes | yes: 3,918 unit (19 on `live-status`, 4 SSR renders of the gate itself), 531 integration across 44 files, `pnpm boundaries` clean over 562 modules, 140 browser tests green with axe across every web surface — 4 of them the new `live-drop.spec.ts`, whose terminal case HOLDS the server re-read so the `runEnded` window is observable | pending | no | no |
 | 5.8 Replay any terminal Run | no | no | no | no | no |
 
@@ -45,6 +45,20 @@ Action as a new attempt marked superseded. The story spec was followed — it is
 acceptance criteria and is the safer of the two, because a browser page held for thirty
 minutes is not the page the agent left. The disagreement is reported rather than edited
 away; `docs/contracts/run-pause-v1.md` states which was chosen and why.
+
+**Story 5.6 repaired two defects it did not introduce.** The Escalation countdown carried
+`role="timer" aria-live="polite"` from Story 4.8, so a screen-reader user heard the clock read
+out once a second for the whole wait instead of EXPERIENCE.md's two milestones; and the skip
+link said `Skip to open Escalation` where the Accessibility rules say `Go to open Escalation`,
+because it was typed inline in the component rather than pinned in `copy.ts`. Both are fixed
+and both now have tests that read the artifact off disk.
+
+**And it found a fixture trap that three browser specs carried.**
+`{ ...activeRunVersion(...), controlName }` overrides a plan AUTHORING input after the fixture
+has frozen its review, so the version can never own a period — the surface then says "No
+executable Active version owns that period", which is a sentence about periods for a defect
+that has nothing to do with periods. All three specs passed, because each seeds `audit_run`
+directly; only a journey that clicks Initiate Run can see it. Repaired in all three.
 
 **Story 5.7's verification repaired Story 5.5's fallout in `escalations.spec.ts`.** Story
 5.5 renamed the inbox's open section and the plain-words pass replaced the printed

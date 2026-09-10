@@ -24,7 +24,7 @@ vi.mock('@intellifin/infrastructure', () => ({
 import type { EscalationDetails, EscalationWait, WaitRepository } from '@intellifin/application';
 
 import { ESCALATION_PANEL_COPY } from '../design/copy';
-import { EscalationPanel, countdownText, orderedEscalationOptions } from './EscalationPanel';
+import { EscalationPanel, countdownText, escalationMilestone, orderedEscalationOptions } from './EscalationPanel';
 import { readOpenEscalation, readOpenEscalationWith } from './escalation-read';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';
@@ -157,6 +157,49 @@ describe('Escalation panel', () => {
     expect(countdownText(-1)).toBe('00:00:00');
     expect(countdownText(Number.NaN)).toBe('Unknown');
     expect(renderPanel()).toContain('04:00:00');
+  });
+});
+
+describe('what a screen reader is told about the countdown (Story 5.6)', () => {
+  /**
+   * EXPERIENCE.md's Accessibility rules name exactly two milestones — 10 minutes and 1
+   * minute — so the ladder is walked at both sides of each rung. Reading a clock aloud
+   * every second is the defect this replaced.
+   */
+  it('climbs one rung at a time and never goes back up', () => {
+    expect(escalationMilestone(4 * 60 * 60_000)).toBe('open');
+    expect(escalationMilestone(600_001)).toBe('open');
+    expect(escalationMilestone(600_000)).toBe('ten-minutes');
+    expect(escalationMilestone(60_001)).toBe('ten-minutes');
+    expect(escalationMilestone(60_000)).toBe('one-minute');
+    expect(escalationMilestone(1)).toBe('one-minute');
+    expect(escalationMilestone(0)).toBe('expired');
+    expect(escalationMilestone(-90_000)).toBe('expired');
+  });
+
+  it('calls an unreadable deadline open, which is what is actually known', () => {
+    // The visible countdown says `Unknown` beside it. Calling it expired would announce a
+    // deadline nobody can read as one that has passed.
+    expect(escalationMilestone(Number.NaN)).toBe('open');
+    expect(escalationMilestone(Number.POSITIVE_INFINITY)).toBe('open');
+  });
+
+  it('renders the polite region EMPTY on the server and the clock with no live region', () => {
+    // Two facts in one render, and both matter. The region has to exist before it has
+    // text or its first message is never announced; and `role="timer"` must not also be a
+    // live region, or the clock announces itself every second.
+    const html = renderPanel();
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('role="timer"');
+    expect(html).not.toContain('role="timer" aria-live');
+    for (const sentence of Object.values(ESCALATION_PANEL_COPY.milestones)) {
+      expect(html).not.toContain(sentence);
+    }
+  });
+
+  it('reaches the panel by the skip link the contract names', () => {
+    expect(renderPanel()).toContain(ESCALATION_PANEL_COPY.skipLink);
+    expect(renderPanel()).not.toContain('Skip to open Escalation');
   });
 });
 

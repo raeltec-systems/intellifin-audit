@@ -58,6 +58,29 @@ export function countdownText(remainingMilliseconds: number): string {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
 }
 
+/**
+ * The rungs a screen reader hears, and the only ones (Story 5.6, UX-DR27, UX-DR37).
+ *
+ * EXPERIENCE.md announces "new Escalations, and countdown milestones (10 minutes, 1
+ * minute)". A clock inside a live region announces itself every second, which is the
+ * opposite of a milestone — so this is what the polite region reads and the visible
+ * countdown is a `role="timer"` with no live region at all.
+ *
+ * It is a LADDER and never goes back up: `open` → `ten-minutes` → `one-minute` →
+ * `expired`. Each rung is therefore announced exactly once, and an expired wait does not
+ * fall back to "an Escalation is open" and say it again. An unreadable deadline is `open`,
+ * which is what is actually known: the visible countdown says `Unknown` beside it.
+ */
+export type EscalationMilestone = 'open' | 'ten-minutes' | 'one-minute' | 'expired';
+
+export function escalationMilestone(remainingMilliseconds: number): EscalationMilestone {
+  if (!Number.isFinite(remainingMilliseconds)) return 'open';
+  if (remainingMilliseconds <= 0) return 'expired';
+  if (remainingMilliseconds <= 60_000) return 'one-minute';
+  if (remainingMilliseconds <= 600_000) return 'ten-minutes';
+  return 'open';
+}
+
 function remainingMilliseconds(deadline: string, at: string): number {
   const end = Date.parse(deadline);
   const start = Date.parse(at);
@@ -98,11 +121,17 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
   const noteId = useId();
   const countdownId = useId();
   const [remaining, setRemaining] = useState(() => remainingMilliseconds(wait.deadline, readAt));
+  // The live region has to EXIST before it has text, or a screen reader treats the text as
+  // ordinary content that arrived with the panel and says nothing. So it renders empty and
+  // is filled one tick later — which is also the moment the panel really did appear.
+  const [announcing, setAnnouncing] = useState(false);
   const [note, setNote] = useState('');
   const [pendingOption, setPendingOption] = useState<EscalationOption | null>(null);
   const [busy, setBusy] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const [message, setMessage] = useState<PanelMessage | null>(null);
+
+  useEffect(() => { setAnnouncing(true); }, []);
 
   useEffect(() => {
     const update = (): void => setRemaining(remainingMilliseconds(wait.deadline, new Date().toISOString()));
@@ -157,7 +186,12 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
   const question = platformQuestion(wait.kind);
   const kindLabel = KIND_LABELS[wait.kind];
   const countdown = countdownText(remaining);
-  const countdownExpired = Number.isFinite(remaining) && remaining <= 0;
+  const milestone = escalationMilestone(remaining);
+  // Derived, never set from an effect: `remaining` moves every second and `milestone` only
+  // at a rung, so the region's text is stable in between and React writes it once. Two
+  // effects racing to fill one region would re-announce whichever won.
+  const announcement = announcing ? ESCALATION_PANEL_COPY.milestones[milestone] : '';
+  const countdownExpired = milestone === 'expired';
   const options = orderedEscalationOptions(wait);
   const candidateOptions = wait.kind === 'choose-candidate'
     ? options.filter((option) => option.id !== 'mark-ambiguous')
@@ -165,9 +199,13 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
 
   return (
     <>
-      <a className="ls-skip-link" href="#open-escalation">Skip to open Escalation</a>
+      <a className="ls-skip-link" href="#open-escalation">{ESCALATION_PANEL_COPY.skipLink}</a>
       <section id="open-escalation" className="ls-card ls-stack" aria-labelledby={headingId}>
         <h2 id={headingId}>Open Escalation</h2>
+        {/* The panel's appearance and its two countdown milestones, in the ONE polite
+            region this surface has (EXPERIENCE.md → Accessibility). It is always in the
+            document while the panel is, and only its text changes. */}
+        <p className="ls-visually-hidden" aria-live="polite" aria-atomic="true">{announcement}</p>
         {message !== null ? <Banner tone={message.tone} title={message.title}>{message.body ? <p>{message.body}</p> : null}</Banner> : null}
         {unknown ? <p><a href={`/runs/${runId}`}>Reload this Run</a></p> : null}
 
@@ -212,7 +250,9 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
 
         <section className="ls-stack" aria-labelledby={countdownId}>
           <h3 id={countdownId}>Time remaining</h3>
-          <p role="timer" aria-live="polite" aria-atomic="true">
+          {/* `role="timer"` and NO live region. Its implicit `aria-live` is `off`, which is
+              what a clock should be: the milestones are announced beside it instead. */}
+          <p role="timer">
             <time dateTime={wait.deadline}>{countdown}</time>
             {countdownExpired ? ' — deadline reached; reload this Run for the recorded outcome.' : null}
           </p>
