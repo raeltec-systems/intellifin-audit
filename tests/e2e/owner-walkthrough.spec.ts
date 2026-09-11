@@ -349,6 +349,9 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   /* ------------------------------------------------------------ 1. create --- */
   await page.goto('/procedures/new');
   await page.getByLabel('Template').selectOption('P-2');
+  await expect(page.getByLabel('Control name', { exact: true })).toHaveValue('Segregation-of-Duties Conflicts');
+  await expect(page.getByRole('region', { name: 'Selected Template context', exact: true })).toContainText('Roles assigned in AccessGate must not grant prohibited permission pairs');
+  await attachAuthoringScreenshot(page, testInfo, 'owner-seeded-template-selection');
   await page.getByLabel('Control name').fill(CONTROL);
   await confirmed(page, 'Create Procedure');
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();

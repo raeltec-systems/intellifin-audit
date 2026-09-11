@@ -10,7 +10,7 @@ import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
 import { ReadinessPanel } from './ReadinessPanel';
 import { TemplateContextForm } from './TemplateContextForm';
-import { WritingAssistantProvider, WritingAssistantPanel, WritingTools, type WritingAssistantActions } from './WritingAssistant';
+import { WritingAssistantProvider, PreparationAssistant, WritingTools, type WritingAssistantActions } from './WritingAssistant';
 import { GuidedPreparation } from './GuidedPreparation';
 import { RenameDraftForm } from './RenameDraftForm';
 import { TargetSelectionForm } from './TargetSelectionForm';
@@ -220,7 +220,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={onWriting}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <GuidedPreparation help={<WritingAssistantPanel />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
+    <GuidedPreparation assistant={step => <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
       context: <><TemplateContextForm draft={draft} rowVersion={token} onSave={async fields => { const outcome = await onSaveContext(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /><RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async fields => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /></>,
       scope: periodEditor,
       evidence: <><h3>What evidence should be reviewed?</h3><p>Specify the attributes and retained evidence the test needs. Examples include reports, minutes, extracts, logs and system settings.</p>{evidenceRequirementsEditor}<h3>Where should it be obtained or inspected?</h3><p>The current runtime uses registered population sources and selected targets. A listed evidence type does not add file ingestion or a new connector.</p>{populationEditor}{targetSystemsEditor}</>,
@@ -232,14 +232,10 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
         {Object.entries({ Risk: draftContext(draft.sections).risk, Control: draftContext(draft.sections).control, Objective: draftContext(draft.sections).objective, 'Criterion reference': draftContext(draft.sections).criterionReference, 'Scope note': draft.scope }).map(([label, content]) => <div key={label}><dt>{label}</dt><dd className="ls-whitespace">{content || 'Not supplied'}</dd></div>)}
       </dl>
     <ReadinessPanel inputs={{ templateId: draft.templateId, targets: draft.targets, sourceSnapshot: draft.sourceSnapshot, complianceConditions: draft.complianceConditions, evidenceRequirements: draft.evidenceRequirements }} headingId={`${id}-readiness`} />
-    {/*
-      The plan and its preview are the platform proving what it will execute, which is
-      the right thing to be able to read and the wrong thing to meet first: an auditor
-      setting up a control does not start by reading a compiled step list. It folds away
-      rather than moving off the page, because the person who wants it wants it here.
-    */}
+    {/* Review comes after preparation. Show the compiler's actual work before the
+        auditor submits; an assistant's proposed prose is not a second plan. */}
     <div className="ls-card">
-      <details className="ls-disclosure" data-plan-detail>
+      <details className="ls-disclosure" data-plan-detail open>
         <summary>Show the full plan this will run</summary>
         <div className="ls-disclosure__body">
           <AgentSummary draft={draft} headingId={`${id}-agent-summary`} readiness={false} />

@@ -95,6 +95,7 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
     secondAuthor: ids.next(),
     manager: ids.next(),
     rateAuthor: ids.next(),
+    revisionAuthor: ids.next(),
   } as const;
   const allUsers = Object.values(users);
 
@@ -110,6 +111,7 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
       [users.secondAuthor, 'auditor'],
       [users.manager, 'audit-manager'],
       [users.rateAuthor, 'auditor'],
+      [users.revisionAuthor, 'auditor'],
     ] as const) {
       await sql`
         INSERT INTO auth_user(id, name, email)
@@ -563,7 +565,7 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
   });
 
   it('persists revision feedback and explanation, forwards the working draft, and parses legacy receipts', async () => {
-    const row = await seedDraft();
+    const row = await seedDraft(users.revisionAuthor);
     type Prompt = Parameters<ProcedureAuthoringModel['propose']>[0];
     const prompts: Prompt[] = [];
     const model: ProcedureAuthoringModel = {
@@ -583,20 +585,21 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
       },
     };
     const firstRequestId = ids.next();
-    const first = await generateAuthoringSuggestion(authoringDependencies(model), draftInput(row, users.author, {
+    const first = await generateAuthoringSuggestion(authoringDependencies(model), draftInput(row, users.revisionAuthor, {
       requestId: firstRequestId,
       changes: 'Start from the saved objective.',
     }));
     expect(first).toMatchObject({ ok: true, suggestion: { state: 'ready', proposedText: 'Initial database-backed proposal.' } });
     const workingDraft = `${'d'.repeat(8990)} USER EDITED TAIL`;
     const secondRequestId = ids.next();
-    const secondInput = draftInput(row, users.author, {
+    const secondInput = draftInput(row, users.revisionAuthor, {
       requestId: secondRequestId,
       mode: 'revise',
       changes: 'Keep the approved baseline and add the current evidence citation.',
       revision: { requestId: firstRequestId, draft: workingDraft },
     });
     const second = await generateAuthoringSuggestion(authoringDependencies(model), secondInput);
+    if (!second.ok) throw new Error(second.reason);
     expect(second).toMatchObject({
       ok: true,
       suggestion: {

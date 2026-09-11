@@ -42,9 +42,9 @@ export default async function NewProcedurePage(): Promise<React.JSX.Element> {
       <header className="ls-page-header">
         <h1>New procedure</h1>
         <p>
-          A Procedure starts as a Draft pre-filled from a Template. Every section is
-          shown in the Builder; this release makes the Control name editable and the
-          rest arrives in later releases.
+          Choose an established control from a Template. Its risk, control and objective
+          are filled in for you. Then choose the evidence and systems, and prepare the
+          test with the assistant before submitting it for independent approval.
         </p>
       </header>
       <NewProcedureForm onCreate={createProcedureAction} />

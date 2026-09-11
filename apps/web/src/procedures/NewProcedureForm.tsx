@@ -58,6 +58,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
 
   const [template, setTemplate] = useState(UNCHOSEN);
   const [controlName, setControlName] = useState('');
+  const selectedTemplate = PROCEDURE_TEMPLATES.find(candidate => candidate.id === template);
   const [result, setResult] = useState<NewProcedureActionResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -141,8 +142,9 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
       <form method="post" onSubmit={onRequestSubmit} className="ls-admin__form">
         <h2>Start a new procedure</h2>
         <p className="ls-caption">
-          Pick the kind of control you are testing. It fills in a starting point you can
-          change on the next screen. Nothing is chosen for you.
+          Choose the control you want to test. These Templates contain synthetic
+          Northstar examples for the demo. Review the populated context, choose your
+          evidence and systems, then design the test with assistance.
         </p>
         <div className="ls-admin__fields">
           <div className="ls-dialog__field">
@@ -153,6 +155,9 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
               name="templateId"
               value={template}
               onChange={(event) => {
+                const next = PROCEDURE_TEMPLATES.find(candidate => candidate.id === event.target.value);
+                // A name follows the explicit Template choice until the auditor adapts it.
+                if (!controlName.trim() || controlName === selectedTemplate?.name) setControlName(next?.name ?? '');
                 setTemplate(event.target.value);
                 if (result !== null && !result.ok && result.reason === PROCEDURE_REFUSALS.TEMPLATE_REQUIRED) {
                   setResult(null);
@@ -177,6 +182,16 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
             </p>
           </div>
 
+          {selectedTemplate ? <section className="ls-card ls-stack" aria-label="Selected Template context" data-template-preview>
+            <h3>{selectedTemplate.name}</h3>
+            <dl className="ls-stack">
+              <div><dt>Risk</dt><dd>{selectedTemplate.risk ?? 'Not supplied'}</dd></div>
+              <div><dt>Control in place</dt><dd>{selectedTemplate.controlStatement ?? 'Not supplied — clarify this control before preparing the test.'}</dd></div>
+              <div><dt>Audit objective</dt><dd>{selectedTemplate.objective}</dd></div>
+              <div><dt>Criterion reference</dt><dd>{selectedTemplate.criterionReference ?? 'Not supplied. No institutional policy is assumed.'}</dd></div>
+            </dl>
+            <p className="ls-caption">This context will be copied into your Draft. You can adapt it there without changing the Template.</p>
+          </section> : null}
           <div className="ls-dialog__field">
             <label htmlFor={controlNameId}>Control name</label>
             <input

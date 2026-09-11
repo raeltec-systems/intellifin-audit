@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { CONTEXT_TEXT_LIMIT, draftContext } from '@intellifin/domain';
+import { CONTEXT_TEXT_LIMIT, draftContext, isAgentDrivenKind, type PreparationSectionId } from '@intellifin/domain';
 import type { AuthoringDraftFields, AuthoringSection, AuthoringSuggestionView, ProcedureVersionView } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
@@ -39,13 +39,23 @@ export interface WritingSession {
   readonly basisRevision: number;
   readonly basisText: string;
   readonly suggestion: AuthoringSuggestionView | null;
+  /** The last four proposal/correction pairs stay local to the bounded session. */
+  readonly history: readonly WritingHistoryEntry[];
   readonly busy: 'generation' | 'acceptance' | 'rejection' | null;
   readonly generationUncertain: boolean;
   readonly stale: boolean;
   readonly notice: Notice | null;
 }
+export interface WritingHistoryEntry {
+  readonly requestId: string;
+  readonly feedback: string;
+  readonly proposal: string | null;
+  readonly explanation?: string;
+  readonly clarifications: readonly string[];
+}
 interface WritingSnapshot {
   readonly selected: string | null;
+  readonly lastInstructionTarget: string | null;
   readonly sessions: ReadonlyMap<string, WritingSession>;
   readonly accepting: boolean;
   readonly acceptanceUnknown: boolean;
@@ -61,11 +71,12 @@ export function isWritingResponse(value: unknown, request: AuthoringDraftFields)
   if (section === null || typeof section !== 'object' || Array.isArray(section)) return false;
   const selected = section as Record<string, unknown>;
   if (selected['kind'] !== request.section.kind || (request.section.kind === 'instructions' && selected['registrationId'] !== request.section.registrationId)) return false;
-  const text = candidate['proposedText'], questions = candidate['clarifications'];
+  const text = candidate['proposedText'], questions = candidate['clarifications'], explanation = candidate['explanation'];
   if (candidate['requestId'] !== request.requestId || typeof candidate['authoringRevision'] !== 'number'
     || !Number.isSafeInteger(candidate['authoringRevision']) || candidate['authoringRevision'] < 0
     || typeof candidate['currentText'] !== 'string' || typeof candidate['stale'] !== 'boolean'
     || (candidate['message'] !== null && typeof candidate['message'] !== 'string')
+    || (explanation !== undefined && (typeof explanation !== 'string' || explanation.trim() === '' || explanation.length > 2_000))
     || typeof candidate['state'] !== 'string' || !['pending', 'ready', 'failed', 'accepted', 'rejected'].includes(candidate['state'])
     || (text !== null && (typeof text !== 'string' || text.trim() === '' || text.length > writingProposalLimit(request.section)))
     || !Array.isArray(questions) || questions.length > 4 || !questions.every(question => typeof question === 'string' && question.trim() !== '' && question.length <= 1_000)) return false;
@@ -96,6 +107,14 @@ export function writingSuggestionIsStale(session: WritingSession, draft: Procedu
     || revision !== basis || savedWritingText(draft, session.section) !== basisText;
 }
 
+/** Build the only client-owned follow-up context. The server walks the referenced
+ * receipt and supplies its bounded prior history; the client supplies the full current
+ * working proposal and the latest human correction separately. */
+export function writingRevisionFor(session: WritingSession): AuthoringDraftFields['revision'] | undefined {
+  return session.mode === 'revise' && session.suggestion?.state === 'ready'
+    ? { requestId: session.suggestion.requestId, draft: session.proposal } : undefined;
+}
+
 /** One changed word range, with identical leading/trailing words retained verbatim.
  * This is a readable comparison, never a claim that prose has equivalent meaning. */
 export function writingDifference(current: string, proposed: string) {
@@ -112,7 +131,7 @@ export function writingDifference(current: string, proposed: string) {
 /** Request ownership is synchronous, so rapid clicks and late responses cannot move a
  * suggestion between sections. Only the explicit acceptance action writes content. */
 export function createWritingAssistantState() {
-  let snapshot: WritingSnapshot = { selected: null, sessions: new Map(), accepting: false, acceptanceUnknown: false };
+  let snapshot: WritingSnapshot = { selected: null, lastInstructionTarget: null, sessions: new Map(), accepting: false, acceptanceUnknown: false };
   const put = (key: string, session: WritingSession) => {
     snapshot = { ...snapshot, sessions: new Map(snapshot.sessions).set(key, session) };
   };
@@ -136,10 +155,11 @@ export function createWritingAssistantState() {
       const key = writingSectionKey(section), existing = snapshot.sessions.get(key);
       const lengthNotice: Notice | null = mode === 'improve' && text.length > WRITING_LIMITS.notes
         ? { tone: 'info', title: 'The first 8,000 characters are in your notes. The full saved section is still part of the context for writing help.' } : null;
-      snapshot = { ...snapshot, selected: key };
+      snapshot = { ...snapshot, selected: key, lastInstructionTarget: section.kind === 'instructions' ? section.registrationId : snapshot.lastInstructionTarget };
       if (!existing) put(key, {
         section, mode, notes: mode === 'improve' ? text.slice(0, WRITING_LIMITS.notes) : '', changes: '', proposal: '',
         editing: false, askingForChanges: false, request: null, basisRevision: 0, basisText: '', suggestion: null,
+        history: [],
         busy: null, generationUncertain: false, stale: false, notice: lengthNotice,
       });
       else if (mode === 'improve' && existing.busy === null && !existing.generationUncertain && existing.suggestion?.state !== 'pending') {
@@ -158,9 +178,11 @@ export function createWritingAssistantState() {
     askForChanges(key: string) {
       const session = snapshot.sessions.get(key);
       if (!session || session.busy || session.askingForChanges || snapshot.acceptanceUnknown) return;
-      const notes = session.proposal || session.notes;
-      update(key, { askingForChanges: true, mode: 'revise', notes: notes.slice(0, WRITING_LIMITS.notes), changes: '',
-        ...(notes.length > WRITING_LIMITS.notes ? { notice: { tone: 'info', title: 'The first 8,000 characters of the proposal are in your rough notes. Review them before asking for changes.' } as Notice } : {}) });
+      // Keep the original rough answer as notes. The complete proposal, including a
+      // human edit up to 10,000 characters, is sent in revision.draft when the next
+      // request is built. Truncating it into the 8,000-character notes field would
+      // silently remove the very passage the auditor is correcting.
+      update(key, { askingForChanges: true, mode: 'revise', changes: '' });
     },
     notice(key: string, notice: Notice) { update(key, { notice }); },
     reconcile(key: string) {
@@ -179,7 +201,17 @@ export function createWritingAssistantState() {
       // A retry must be the stored object, including its original token and notes.
       const retry = session.generationUncertain || session.suggestion?.state === 'pending';
       if (retry && session.request !== request) return false;
+      const history = !retry && session.suggestion !== null
+        ? [...session.history, {
+          requestId: session.suggestion.requestId,
+          feedback: session.changes,
+          proposal: session.proposal || session.suggestion.proposedText,
+          ...(session.suggestion.explanation === undefined ? {} : { explanation: session.suggestion.explanation }),
+          clarifications: session.suggestion.clarifications,
+        }].slice(-4)
+        : session.history;
       update(key, { request, busy: 'generation', generationUncertain: false, notice: null,
+        history,
         ...(retry ? {} : { basisRevision: draft.sectionPreparation?.revision ?? 0, basisText: savedWritingText(draft, request.section),
           suggestion: null, proposal: '', editing: false, askingForChanges: false, stale: false }) });
       return true;
@@ -191,7 +223,9 @@ export function createWritingAssistantState() {
         update(key, { busy: null, generationUncertain: true, notice: { tone: 'danger', title: 'The writing response could not be read for this section. Retry this request. Manual editing is still available.' } });
         return;
       }
-      const session = { ...snapshot.sessions.get(key)!, suggestion, proposal: suggestion.proposedText ?? '', busy: null, generationUncertain: false };
+      const prior = snapshot.sessions.get(key)!;
+      const history = prior.history;
+      const session = { ...prior, suggestion, proposal: suggestion.proposedText ?? '', busy: null, generationUncertain: false, history };
       put(key, { ...session, stale: writingSuggestionIsStale(session, draft), notice: suggestion.state === 'failed'
         ? { tone: 'warning', title: `${suggestion.message || 'Writing help is unavailable.'} You can still edit and save the procedure yourself.` }
         : suggestion.message ? { tone: 'info', title: suggestion.message } : null });
@@ -236,7 +270,7 @@ interface WritingContextValue {
   readonly draft: ProcedureVersionView;
   readonly snapshot: WritingSnapshot;
   readonly guardReason: string | null;
-  readonly open: (section: AuthoringSection, mode: 'draft' | 'improve') => void;
+  readonly open: (section: AuthoringSection, mode: 'draft' | 'improve', focus?: boolean) => void;
   readonly edit: (key: string, field: 'notes' | 'changes' | 'proposal', value: string) => void;
   readonly editProposal: (key: string) => void;
   readonly askForChanges: (key: string) => void;
@@ -275,19 +309,29 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
     status: () => ({ dirty: false, conflict: false, pending: machine.snapshot.accepting || machine.snapshot.acceptanceUnknown }),
   }, snapshot.accepting, snapshot.acceptanceUnknown);
 
-  function canAct(key: string): boolean {
-    const reason = latest.current.draft.state !== 'DRAFT' ? 'Only a Draft can use writing help.' : guard.check();
+  function canGenerate(key: string): boolean {
+    const reason = latest.current.draft.state !== 'DRAFT' ? 'Only a Draft can use writing help.' : undefined;
+    if (reason) { machine.notice(key, { tone: 'warning', title: reason }); publish(); return false; }
+    return true;
+  }
+
+  function canAccept(key: string): boolean {
+    const reason = latest.current.draft.state !== 'DRAFT' ? 'Only a Draft can use writing help.'
+      : machine.snapshot.acceptanceUnknown ? 'Reload to inspect the unknown save outcome before using writing help.'
+      : guard.check();
     if (reason) { machine.notice(key, { tone: 'warning', title: reason }); publish(); return false; }
     return true;
   }
 
   async function generate(key: string, retry = false): Promise<void> {
     const session = machine.snapshot.sessions.get(key);
-    if (!session || !canAct(key)) return;
+    if (!session || !canGenerate(key)) return;
     const current = latest.current;
+    const revision = writingRevisionFor(session);
     const request = retry ? session.request : {
       procedureId: current.draft.procedureId, versionId: current.draft.versionId, expectedRowVersion: current.rowVersion,
       requestId: crypto.randomUUID(), section: session.section, mode: session.mode, notes: session.notes, changes: session.changes,
+      ...(revision === undefined ? {} : { revision }),
     };
     if (request === null || request.notes.trim() === '' || request.notes.length > WRITING_LIMITS.notes || request.changes.length > WRITING_LIMITS.changes) return;
     if (!machine.begin(request, current.draft)) return;
@@ -303,11 +347,11 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
 
   async function accept(key: string): Promise<void> {
     const session = machine.snapshot.sessions.get(key);
-    if (!session || !canAct(key)) return;
+    if (!session || !canAccept(key)) return;
     if (writingSuggestionIsStale(session, latest.current.draft)) {
       machine.notice(key, { tone: 'warning', title: STALE_SUGGESTION }); publish(); return;
     }
-    if (!session.proposal.trim() || session.proposal.length > WRITING_LIMITS.proposal || !session.request || !machine.beginAccept(key)) return;
+    if (!session.proposal.trim() || session.proposal.length > writingProposalLimit(session.section) || !session.request || !machine.beginAccept(key)) return;
     publish();
     const current = latest.current;
     try {
@@ -333,13 +377,13 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
   }
 
   return <WritingContext.Provider value={{ draft, snapshot, guardReason: guard.reason, focusRequest,
-    open(section, mode) { machine.open(section, mode, savedWritingText(latest.current.draft, section)); publish(); setFocusRequest(count => count + 1); },
+    open(section, mode, focus = true) { machine.open(section, mode, savedWritingText(latest.current.draft, section)); publish(); if (focus) setFocusRequest(count => count + 1); },
     edit(key, field, value) { machine.edit(key, field, value); publish(); },
     editProposal(key) { machine.editProposal(key); publish(); },
     askForChanges(key) { machine.askForChanges(key); publish(); },
     reconcile(key) { machine.reconcile(key); publish(); },
     generate(key, retry) { void generate(key, retry); }, accept(key) { void accept(key); }, reject(key) { void reject(key); },
-  }}>{children}</WritingContext.Provider>;
+  }}><UnknownSaveOutcome visible={snapshot.acceptanceUnknown} />{children}</WritingContext.Provider>;
 }
 
 export function WritingTools({ section }: { readonly section: AuthoringSection }): React.JSX.Element | null {
@@ -353,64 +397,88 @@ export function WritingTools({ section }: { readonly section: AuthoringSection }
   </div>;
 }
 
-export function WritingAssistantPanel(): React.JSX.Element | null {
+export interface WritingAssistantPanelProps {
+  /** A central guided surface can pin the panel to its own section session. */
+  readonly section?: AuthoringSection;
+  /** Inline panels must never move focus when a session is opened automatically. */
+  readonly inline?: boolean;
+  /** The question is derived from the saved section and shown before the first answer. */
+  readonly guidedQuestion?: string;
+}
+
+export function WritingAssistantPanel({ section, inline = false, guidedQuestion }: WritingAssistantPanelProps = {}): React.JSX.Element | null {
   const assistant = useContext(WritingContext), id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const focusRequest = assistant?.focusRequest ?? 0;
   useEffect(() => {
-    if (focusRequest === 0 || !heading.current) return;
+    if (inline || focusRequest === 0 || !heading.current) return;
     // The existing section-help disclosure belongs to the reader until they ask for help.
     const disclosure = heading.current.closest('details');
     if (disclosure) disclosure.open = true;
     heading.current.focus();
-  }, [focusRequest]);
+  }, [focusRequest, inline]);
   if (!assistant) return null;
-  const { snapshot, draft } = assistant, key = snapshot.selected;
+  const { snapshot, draft } = assistant;
+  const key = section === undefined ? snapshot.selected : writingSectionKey(section);
   const session = key === null ? undefined : snapshot.sessions.get(key);
-  if (!session || key === null) return <div className="ls-writing ls-stack"><h3 className="ls-guided__help-title">Writing help</h3><p className="ls-caption">Choose Help Me Write beside an objective, scope note or audit step. Your notes stay separate until you choose Use this draft.</p></div>;
+  const className = `ls-writing ls-stack${inline ? ' ls-writing--inline' : ''}`;
+  const guided = guidedQuestion !== undefined;
+  if (!session || key === null) return <section className={className} aria-labelledby={`${id}-heading`} data-writing-section={key ?? undefined}>
+    <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>{guided ? 'Section assistant' : 'Writing help'}</h3>
+    {guidedQuestion ? <p className="ls-writing__question" data-writing-question>{guidedQuestion}</p> : null}
+    <p className="ls-caption">{guidedQuestion ? 'Give a rough answer. I’ll prepare a proposal for this section and ask you to check it before saving.' : 'Choose Help Me Write beside an objective, scope note or audit step. Your notes stay separate until you choose Use this draft.'}</p>
+  </section>;
 
   const suggestion = session.suggestion, stale = writingSuggestionIsStale(session, draft);
   const pending = session.busy === 'generation', retry = session.generationUncertain || suggestion?.state === 'pending';
   const terminal = suggestion?.state === 'accepted' || suggestion?.state === 'rejected';
   const fieldsLocked = session.busy !== null || retry || snapshot.acceptanceUnknown;
-  const commonReason = draft.state !== 'DRAFT' ? 'Only a Draft can use writing help.'
+  // Manual editor dirtiness must not prevent a request grounded in the last saved
+  // context. It still blocks acceptance below through the full submission guard.
+  const generationReason = draft.state !== 'DRAFT' ? 'Only a Draft can use writing help.'
+    : snapshot.acceptanceUnknown ? 'Reload to inspect the unknown save outcome before using writing help.'
+    : session.busy !== null ? 'Wait for this writing request to finish.' : undefined;
+  const acceptanceReason = draft.state !== 'DRAFT' ? 'Only a Draft can use writing help.'
     : snapshot.acceptanceUnknown ? 'Reload to inspect the unknown save outcome before using writing help.'
     : session.busy !== null ? 'Wait for this writing request to finish.' : assistant.guardReason ?? undefined;
-  const generateReason = commonReason ?? (session.notes.trim() === '' ? 'Add rough notes for this section first.'
-    : session.askingForChanges && session.changes.trim() === '' ? 'Describe the changes you want first.' : undefined);
-  const acceptReason = commonReason ?? (stale ? STALE_SUGGESTION : suggestion?.state !== 'ready' ? 'A prepared draft is needed before it can be used.'
+  const generateReason = generationReason ?? (session.askingForChanges ? (session.changes.trim() === '' ? 'Describe the changes you want first.' : undefined)
+    : session.notes.trim() === '' ? 'Add a rough answer for this section first.' : undefined);
+  const acceptReason = acceptanceReason ?? (stale ? STALE_SUGGESTION : suggestion?.state !== 'ready' ? 'A prepared draft is needed before it can be used.'
     : !session.proposal.trim() ? 'The proposed replacement cannot be empty.'
     : session.proposal.length > writingProposalLimit(session.section) ? `Shorten the proposal to ${writingProposalLimit(session.section).toLocaleString('en-US')} characters before using it.` : undefined);
   const comparisonCurrent = savedWritingText(draft, session.section);
   const difference = writingDifference(comparisonCurrent, session.proposal);
+  const notesLabel = `Rough notes for ${sectionLabel(draft, session.section)}`;
+  const notesReadOnly = fieldsLocked;
 
-  return <section className="ls-writing ls-stack" aria-labelledby={`${id}-heading`} data-writing-section={key}>
-    <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>Writing help: {sectionLabel(draft, session.section)}</h3>
-    <p className="ls-caption">{session.mode === 'improve' ? 'Improve the clarity of your saved wording. Check that the meaning and scope stay faithful.' : 'Describe the work in your own words. Writing help will use the saved procedure as context.'} Nothing is saved or marked reviewed when a suggestion is generated.</p>
-    <UnknownSaveOutcome visible={snapshot.acceptanceUnknown} />
+  return <section className={className} aria-labelledby={`${id}-heading`} data-writing-section={key}>
+    <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>{session.section.kind === 'instructions' ? 'Test design assistant' : `Writing help: ${sectionLabel(draft, session.section)}`}</h3>
+    {guidedQuestion ? <p className="ls-writing__question" data-writing-question>{guidedQuestion}</p> : null}
+    <p className="ls-caption">{session.mode === 'improve' ? 'Improve the clarity of your saved wording. Check that the meaning and scope stay faithful.' : guided ? 'I’ll use the saved control, scope, systems, evidence and criteria. Give me a rough answer, then check my proposal and tell me what to keep or change.' : 'Describe the work in your own words. Writing help will use the saved procedure as context.'} Nothing is saved or marked reviewed when a suggestion is generated.</p>
+    {assistant.guardReason && !stale && !terminal ? <Banner tone="info" title="Using the last saved procedure as context. Save or reset manual changes before accepting a proposal." /> : null}
     {session.notice ? <Banner tone={session.notice.tone} title={session.notice.title} /> : null}
     {stale && !terminal ? <Banner tone="warning" title={STALE_SUGGESTION} /> : null}
 
     <div className="ls-dialog__field">
-      <label htmlFor={`${id}-notes`}>Rough notes for {sectionLabel(draft, session.section)}</label>
+      <label htmlFor={`${id}-notes`}>{notesLabel}</label>
       <textarea className="ls-input ls-writing__notes" id={`${id}-notes`} value={session.notes} maxLength={WRITING_LIMITS.notes}
-        readOnly={fieldsLocked} aria-describedby={`${id}-notes-help`} onChange={event => assistant.edit(key, 'notes', event.target.value)} />
-      <p className="ls-caption" id={`${id}-notes-help`}>These notes do not change the procedure. Up to 8,000 characters.{retry ? ' Retry uses the original notes and saved context.' : ''}</p>
+        readOnly={notesReadOnly} aria-describedby={`${id}-notes-help`} onChange={event => assistant.edit(key, 'notes', event.target.value)} />
+      <p className="ls-caption" id={`${id}-notes-help`}>{guided ? 'A rough answer is enough. The saved assignment is already in context. Up to 8,000 characters.' : 'These notes do not change the procedure. Up to 8,000 characters.'}{retry ? ' Retry uses the original notes and saved context.' : ''}</p>
     </div>
 
     {session.askingForChanges ? <div className="ls-dialog__field">
       <label htmlFor={`${id}-changes`}>What should change?</label>
       <textarea className="ls-input" id={`${id}-changes`} value={session.changes} maxLength={WRITING_LIMITS.changes} readOnly={fieldsLocked}
         aria-describedby={`${id}-changes-help`} onChange={event => assistant.edit(key, 'changes', event.target.value)} />
-      <p className="ls-caption" id={`${id}-changes-help`}>Explain the wording to change or answer the open questions. Up to 2,000 characters.</p>
+      <p className="ls-caption" id={`${id}-changes-help`}>{guided ? 'Say exactly what to keep, drop, add or change direction. Up to 2,000 characters.' : 'Explain the wording to change or answer the open questions. Up to 2,000 characters.'}</p>
     </div> : null}
 
-    {commonReason ? <p className="ls-caption" id={`${id}-guard`}>{commonReason}</p> : null}
+    {generationReason ? <p className="ls-caption" id={`${id}-guard`}>{generationReason}</p> : null}
     <div className="ls-actions">
       <Button type="button" variant="primary" busy={pending} disabledReason={generateReason} onClick={() => assistant.generate(key, retry)}>
         {pending ? 'Preparing a draft…' : retry ? 'Retry this request' : session.askingForChanges ? 'Prepare revised draft' : 'Prepare draft'}
       </Button>
-      {stale && session.busy === null && !terminal ? <Button type="button" disabledReason={snapshot.acceptanceUnknown ? commonReason : undefined} onClick={() => assistant.reconcile(key)}>Start again with this suggestion</Button> : null}
+      {stale && session.busy === null && !terminal ? <Button type="button" disabledReason={snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reconcile(key)}>Start again with this suggestion</Button> : null}
     </div>
     {pending ? <Banner tone="info" title="Preparing this section. You can keep editing and saving the procedure while you wait." /> : null}
     {suggestion?.state === 'pending' && !pending ? <Banner tone="info" title="This request is still being prepared. Retry this request to check its result." /> : null}
@@ -418,10 +486,21 @@ export function WritingAssistantPanel(): React.JSX.Element | null {
     {suggestion && suggestion.clarifications.length > 0 && !terminal ? <div className="ls-writing__questions ls-stack">
       <h4 className="ls-guided__help-title">Questions to resolve</h4>
       <ul>{suggestion.clarifications.map((question, index) => <li key={index}>{question}</li>)}</ul>
-      <p className="ls-caption">Answer these in your notes or ask for changes. Review remains a separate decision.</p>
+      <p className="ls-caption">{guided ? 'Answer the question directly. The next response remains a proposal until you approve it.' : 'Answer these in your notes or ask for changes. Review remains a separate decision.'}</p>
     </div> : null}
 
+    {session.history.length > 0 ? <details className="ls-writing__history">
+      <summary>Previous proposals and corrections ({session.history.length})</summary>
+      <ol>{session.history.slice(-4).map(entry => <li key={entry.requestId} className="ls-stack">
+        {entry.feedback ? <p><strong>Correction:</strong> {entry.feedback}</p> : null}
+        {entry.proposal ? <p><strong>Previous proposal:</strong> {entry.proposal}</p> : null}
+        {entry.clarifications.length > 0 ? <p><strong>Open question:</strong> {entry.clarifications.join(' ')}</p> : null}
+      </li>)}</ol>
+    </details> : null}
+
     {suggestion?.proposedText !== null && suggestion?.proposedText !== undefined && !terminal ? <>
+      {guided ? <h4 className="ls-writing__proposal-question">Does this sound right?</h4> : null}
+      {suggestion.explanation ? <div className="ls-writing__explanation"><h4 className="ls-guided__help-title">Why this approach</h4><p>{suggestion.explanation}</p></div> : null}
       <p className="ls-caption">Compare the saved content with the proposed replacement. Check quantities, scope, timing and criteria before accepting it.</p>
       <div className="ls-writing__comparison">
         <div className="ls-writing__version ls-stack"><h4 className="ls-guided__help-title">Current saved content</h4>
@@ -438,15 +517,153 @@ export function WritingAssistantPanel(): React.JSX.Element | null {
       {acceptReason ? <p className="ls-caption" id={`${id}-accept-reason`}>{acceptReason}</p> : null}
       <div className="ls-actions">
         <Button type="button" variant="primary" busy={session.busy === 'acceptance'} disabledReason={acceptReason} disabledReasonId={`${id}-accept-reason`} onClick={() => assistant.accept(key)}>{session.busy === 'acceptance' ? 'Saving draft…' : 'Use this draft'}</Button>
-        <Button type="button" disabledReason={fieldsLocked ? commonReason ?? 'Retry this request before editing its result.' : undefined} onClick={() => assistant.editProposal(key)}>Edit</Button>
+        <Button type="button" disabledReason={fieldsLocked ? acceptanceReason ?? 'Retry this request before editing its result.' : undefined} onClick={() => assistant.editProposal(key)}>Edit</Button>
       </div>
     </> : null}
 
     {session.request && !terminal && !pending ? <div className="ls-actions">
-      {suggestion?.state === 'ready' ? <Button type="button" disabledReason={fieldsLocked ? commonReason ?? 'Retry this request first.' : undefined} onClick={() => assistant.askForChanges(key)}>Ask for changes</Button> : null}
-      <Button type="button" busy={session.busy === 'rejection'} disabledReason={session.busy !== null || snapshot.acceptanceUnknown ? commonReason : undefined} onClick={() => assistant.reject(key)}>Keep my wording</Button>
+      {suggestion?.state === 'ready' ? <Button type="button" disabledReason={fieldsLocked ? acceptanceReason ?? 'Retry this request first.' : undefined} onClick={() => assistant.askForChanges(key)}>Ask for changes</Button> : null}
+      <Button type="button" busy={session.busy === 'rejection'} disabledReason={session.busy !== null || snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reject(key)}>Keep my wording</Button>
     </div> : null}
     {suggestion?.state === 'accepted' && session.notice === null ? <Banner tone="success" title="This suggestion was already saved. Review the current section before marking it reviewed." /> : null}
     {suggestion?.state === 'rejected' && session.notice === null ? <Banner tone="info" title="This suggestion was dismissed. Your saved wording is unchanged." /> : null}
   </section>;
+}
+
+export type PreparationStep = PreparationSectionId | 'review';
+
+function preparationKindLabel(kind: string): string {
+  switch (kind) {
+    case 'web': return 'web system';
+    case 'desktop': return 'desktop system';
+    case 'api': return 'API';
+    case 'file': return 'file source';
+    default: return kind;
+  }
+}
+
+function preparationPeriodLabel(draft: ProcedureVersionView): string {
+  if (draft.period === null) return 'Not saved yet';
+  return `${draft.period.from} to ${draft.period.to}`;
+}
+
+function savedTemplateSection(draft: ProcedureVersionView, heading: 'Control' | 'Objective'): string {
+  return draft.sections.find(section => section.heading === heading)?.content?.trim() || 'Not supplied by the selected Template';
+}
+
+/** Readable saved facts are context for the question, never a second editor. */
+function PreparationContextSummary({ draft }: { readonly draft: ProcedureVersionView }): React.JSX.Element {
+  const source = draft.sourceSnapshot;
+  const targets = draft.targets.length === 0 ? 'None selected' : draft.targets.map(target => `${target.displayName} (${preparationKindLabel(target.contract.kind)})`).join(', ');
+  const evidence = draft.evidenceRequirements.length === 0 ? 'No specific requirements saved' : draft.evidenceRequirements.map(entry => entry.attributeName).join(', ');
+  const criteria = draft.complianceConditions.length === 0 ? 'No criteria saved' : `${draft.complianceConditions.length} saved ${draft.complianceConditions.length === 1 ? 'criterion' : 'criteria'}; agent-judged assessment uses the saved threshold.`;
+  return <div className="ls-writing__context" role="group" aria-label="Saved assignment context">
+    <dl>
+      <div><dt>Control name</dt><dd>{draft.controlName}</dd></div>
+      <div><dt>Control statement</dt><dd>{savedTemplateSection(draft, 'Control')}</dd></div>
+      <div><dt>Objective</dt><dd>{savedTemplateSection(draft, 'Objective')}</dd></div>
+      <div><dt>Period</dt><dd>{preparationPeriodLabel(draft)}</dd></div>
+      <div><dt>Population source</dt><dd>{source ? `${source.displayName} (${preparationKindLabel(source.contract.kind)})` : 'Not selected'}</dd></div>
+      <div><dt>Selected systems</dt><dd>{targets}</dd></div>
+      <div><dt>Evidence to retain</dt><dd>{evidence}</dd></div>
+      <div><dt>Assessment</dt><dd>{criteria}</dd></div>
+    </dl>
+  </div>;
+}
+
+function PreparationContextDisclosure({ draft }: { readonly draft: ProcedureVersionView }): React.JSX.Element {
+  return <details className="ls-writing__context-disclosure">
+    <summary>Saved assignment context</summary>
+    <PreparationContextSummary draft={draft} />
+  </details>;
+}
+
+function preparationQuestion(step: PreparationStep, draft: ProcedureVersionView, targetId: string | null): string {
+  if (step === 'scope') {
+    const source = draft.sourceSnapshot === null ? 'The population source still needs to be selected in the structured editor.' : `The structured editor already selects ${draft.sourceSnapshot.displayName}.`;
+    const period = draft.period === null ? 'The testing dates still belong in the structured editor.' : `The saved period is ${preparationPeriodLabel(draft)}.`;
+    return `Which records should be included, and are there any limits or exclusions to explain? ${source} ${period} Describe the scope in your own words. Choose dates below and source filters in Evidence to review.`;
+  }
+  if (step === 'instructions') {
+    const target = draft.targets.find(entry => entry.registrationId === targetId);
+    const name = target?.displayName ?? 'the selected system';
+    if (draft.templateId === 'P-1') return `How should I find each person from the leavers list in ${name} and check their access? Tell me where to look and what you want recorded for an active account or an unresolved match. I already have the selected population, period and criteria.`;
+    if (draft.templateId === 'P-4') return `How should I locate each production parameter in ${name} and compare it with the approved baseline? Tell me where to look and how to handle a value that is missing or cannot be read. I already have the saved scope and criteria.`;
+    return `For ${name}, what is the rough test approach? Describe where the agent should look, what it should inspect or compare, and how it should handle an exception or missing evidence. The saved systems, evidence and criteria are already in context.`;
+  }
+  return 'Read the saved assignment and plan. What, if anything, should be clarified before you mark the whole procedure reviewed?';
+}
+
+export interface PreparationAssistantProps {
+  readonly step: PreparationStep;
+}
+
+/**
+ * The central guided surface used above Scope and Audit Steps editors. It opens only a
+ * local session when its step becomes current; it never requests a model response on
+ * entry and never writes a form. Context, Evidence, Assessment and Frequency retain
+ * their manual paths, while Review is deliberately read-only.
+ */
+export function PreparationAssistant({ step }: PreparationAssistantProps): React.JSX.Element | null {
+  const assistant = useContext(WritingContext);
+  const draft = assistant?.draft;
+  const openRef = useRef(assistant?.open);
+  openRef.current = assistant?.open;
+  const initialTarget = assistant?.snapshot.lastInstructionTarget ?? null;
+  const [instructionTargetId, setInstructionTargetId] = useState<string | null>(initialTarget);
+  const agentTargets = draft?.targets.filter(target => isAgentDrivenKind(target.contract.kind)) ?? [];
+  const targetKey = agentTargets.map(target => target.registrationId).join('|');
+  const selectedInstructionSession = assistant?.snapshot.selected?.startsWith('instructions:')
+    ? assistant.snapshot.selected.slice('instructions:'.length) : null;
+  const selectedInstructionKey = selectedInstructionSession !== null && agentTargets.some(target => target.registrationId === selectedInstructionSession)
+    ? selectedInstructionSession : instructionTargetId;
+  const versionId = draft?.versionId ?? '';
+
+  useEffect(() => {
+    if (step === 'scope') {
+      if (assistant?.snapshot.selected !== 'scope') openRef.current?.({ kind: 'scope' }, 'draft', false);
+      return;
+    }
+    if (step !== 'instructions') return;
+    const fallback = agentTargets[0]?.registrationId ?? null;
+    const chosen = selectedInstructionKey !== null && agentTargets.some(target => target.registrationId === selectedInstructionKey)
+      ? selectedInstructionKey : fallback;
+    if (chosen !== instructionTargetId) setInstructionTargetId(chosen);
+    if (chosen !== null && assistant?.snapshot.selected !== `instructions:${chosen}`) openRef.current?.({ kind: 'instructions', registrationId: chosen }, 'draft', false);
+  }, [step, targetKey, versionId, instructionTargetId, selectedInstructionKey, assistant?.snapshot.selected]);
+
+  if (!assistant || !draft) return null;
+  if (step === 'context') return assistant.snapshot.selected === 'objective'
+    ? <WritingAssistantPanel section={{ kind: 'objective' }} inline /> : null;
+  if (step !== 'scope' && step !== 'instructions' && step !== 'review') return null;
+  if (step === 'review') return <section className="ls-writing ls-writing--preparation ls-writing--review ls-stack" aria-labelledby="preparation-review-assistant-heading">
+    <h3 className="ls-guided__help-title" id="preparation-review-assistant-heading">Review helper</h3>
+    <p className="ls-writing__question" data-writing-question>{preparationQuestion(step, draft, null)}</p>
+    <PreparationContextDisclosure draft={draft} />
+    <p className="ls-caption">Resolve questions in the saved editors, then review the full plan before marking the procedure reviewed.</p>
+  </section>;
+
+  if (step === 'instructions' && agentTargets.length === 0) return <section className="ls-writing ls-writing--preparation ls-stack" aria-labelledby="instructions-assistant-heading">
+    <h3 className="ls-guided__help-title" id="instructions-assistant-heading">Audit step assistant</h3>
+    <Banner tone="info" title={draft.targets.length === 0 ? 'Choose the systems to inspect in Evidence to review, then return here to prepare the steps.' : 'This Template uses fixed comparison steps. Review the full plan in Review and submission; use Scope and period or Assessment criteria to change the assignment.'} />
+    <PreparationContextDisclosure draft={draft} />
+  </section>;
+
+  const target = step === 'instructions' ? agentTargets.find(entry => entry.registrationId === selectedInstructionKey) ?? agentTargets[0] : undefined;
+  const selectedTargetId = target?.registrationId ?? null;
+  const guidedSection: AuthoringSection = step === 'scope' ? { kind: 'scope' } : { kind: 'instructions', registrationId: selectedTargetId! };
+  return <div className="ls-writing--preparation">
+    {step === 'instructions' ? <div className="ls-writing__target-switcher">
+      <label htmlFor="writing-assistant-target">Target system for these steps</label>
+      <select id="writing-assistant-target" value={selectedTargetId ?? ''} onChange={event => {
+        const next = event.target.value;
+        setInstructionTargetId(next);
+        openRef.current?.({ kind: 'instructions', registrationId: next }, 'draft', false);
+      }}>
+        {agentTargets.map(entry => <option key={entry.registrationId} value={entry.registrationId}>{entry.displayName}</option>)}
+      </select>
+    </div> : null}
+    <WritingAssistantPanel section={guidedSection} inline guidedQuestion={preparationQuestion(step, draft, selectedTargetId)} />
+    <PreparationContextDisclosure draft={draft} />
+  </div>;
 }

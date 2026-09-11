@@ -1,3 +1,7 @@
+## 2026-09-11 — Central preparation assistance
+
+Open local assistant sessions on entering Scope or Audit steps without a paid request. Keep all manual editor panels mounted and preserve per-target conversation state. Generation uses saved context even while a manual editor is dirty; acceptance still uses the full submission guard. Test follow-up conversations under separate synthetic identities so earlier cases do not exhaust the real per-user rate budget.
+
 ## 2026-09-11 — Intent-driven authoring revisions
 
 A follow-up carries the full human-edited proposal plus a same-author, same-section receipt reference. Resolve up to four prior turns inside the authorised transaction; stale/foreign/expired proposals cannot anchor a revision. Keep feedback out of immutable audit payloads. The bounded receipt may retain it; no credentials or source locations reach the provider. Parse legacy guided-prose-v1 receipts alongside guided-test-design-v2 without rewriting history. Test instructions refine registered read/inspection work; structured criteria and the compiler remain authoritative.

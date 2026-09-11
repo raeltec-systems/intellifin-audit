@@ -63,9 +63,8 @@ Broader dependency analysis, manager section comments and reference-document
 management remain subsequent work. Full policy-design assessment is not inferred
 from an operating-effectiveness test or from polished wording.
 
-Tested/pushed correction commits: none yet. Local, hosted CI and live-provider
-results will be recorded separately here before handoff. No new production Run or
-deployment has been made for this correction.
+Correction checkpoints and verification are recorded below. No new production Run
+or deployment has been made for this correction.
 
 ## Checkpoints
 
@@ -79,3 +78,31 @@ deployment has been made for this correction.
   infrastructure typecheck passes. These establish mechanical behavior, not live
   wording quality. Local PostgreSQL execution is blocked because the environment
   cannot change to an unprivileged service user; real PostgreSQL 18 runs in CI.
+
+- Revision checkpoint: local `41ef622bdeace035413eabdcbbafcbdd6f218143`, pushed
+  `8cb6150c0d9ac01dd403c37a7bfee9da9797a171`; identical tree
+  `7b5dee9464cdd2be56d3b833f75e8814d7aae05c`. Hosted CI 34642037236 passed types,
+  unit tests, browser/accessibility and container gates. Its PostgreSQL test exposed shared test-user rate
+  exhaustion in the new revision case; the case now uses a separate synthetic auditor.
+  No rate limit or test assertion was relaxed.
+- Central UI: pinned Node 24.20.0 / pnpm 11.25.0 root typecheck, boundaries and
+  4,113 unit tests pass locally. The final focused authoring/UI/adapter check passes
+  72 tests after the protected-configuration preflight correction. Browser validation
+  follows the pushed UI checkpoint. No claim of live-provider semantic quality is made.
+
+## Subsequent stories
+
+- 2.11: broader improvement proposals, their basis and added evidence, with explicit
+  wording-versus-meaning review and narrowing checks.
+- 2.12: cross-section dependency flagging when a material change affects other sections.
+- 2.13: consolidated manager review, section comments and approval/change-request flow.
+- 2.14: reference documents used to design a procedure, distinct from execution evidence.
+
+## Configuration and verification boundary
+
+Set `AUTHORING_OPENAI_API_KEY` on the web service through secure environment settings.
+The provider remains OpenAI, model `gpt-5.6-terra`; plan derivation and Run models are
+unchanged. The existing Railway key reference is configured, but this correction has
+not yet called the live provider. CI uses its isolated synthetic transport key only.
+The production browser endpoint is unavailable to this session under its browser
+security policy; no alternative access route was used to bypass that restriction.

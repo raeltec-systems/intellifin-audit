@@ -27,6 +27,7 @@ export interface GuidedPreparationProps {
   readonly editors: Readonly<Record<PreparationSectionId, ReactNode>>;
   readonly review: ReactNode;
   readonly help?: ReactNode;
+  readonly assistant?: (step: PreparationStep) => ReactNode;
 }
 
 const SECTION_WORDS: Readonly<Record<PreparationStep, {
@@ -36,7 +37,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
 }>> = {
   context: {
     title: 'Risk, control and objective',
-    question: 'Which control are we testing, and what do we need to establish?',
+    question: 'This context came from your Template. Does it describe the control you intend to test?',
     help: [
       'Start with the risk and control in the Template. State what this procedure must establish.',
       'Name the policy or standard clause separately. If the Template does not supply one, keep that uncertainty visible.',
@@ -45,7 +46,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   },
   scope: {
     title: 'Scope and period',
-    question: 'Which records, entities, systems and period are included?',
+    question: 'Which period and population should this test cover? Choose the dates, then describe any scope limits.',
     help: [
       'Set the testing period and describe the records included in the assignment.',
       'Check the source and any filters. A filter changes which records will be tested.',
@@ -54,7 +55,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   },
   evidence: {
     title: 'Evidence to review',
-    question: 'What evidence should the agent examine?',
+    question: 'Choose the evidence to retain, the source of the records, and the systems the agent should inspect.',
     help: [
       'Identify the reports, files, logs or system settings needed to answer the audit question.',
       'State the fields or content the agent must capture, and check where that evidence is available.',
@@ -63,7 +64,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   },
   instructions: {
     title: 'Audit steps',
-    question: 'What should the agent do with that evidence?',
+    question: 'Let’s design the test using the control, scope and evidence you selected.',
     help: [
       'Describe the work in order, including what to inspect and what to compare.',
       'Keep the steps within the saved scope and approved systems.',
@@ -72,7 +73,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   },
   assessment: {
     title: 'Assessment criteria',
-    question: 'What is compliance, an exception, or an unresolved item?',
+    question: 'Check the Template’s test criteria. What counts as compliance, an exception, or an unresolved item?',
     help: [
       'State the conditions and thresholds that distinguish compliance from a finding.',
       'Ground each criterion in the supplied control or policy. Do not invent a requirement to fill a gap.',
@@ -116,7 +117,7 @@ const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
  * stay mounted: removing one would discard useSection's unsaved state and unregister
  * its submission guard, making an unfinished section look safe to review or submit.
  */
-export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help }: GuidedPreparationProps): React.JSX.Element {
+export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant }: GuidedPreparationProps): React.JSX.Element {
   const id = useId();
   const [selected, setSelected] = useState<PreparationStep>('context');
   const [hydrated, setHydrated] = useState(false);
@@ -127,7 +128,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   const changing = useRef(false);
   const headings = useRef<Partial<Record<PreparationStep, HTMLHeadingElement | null>>>({});
   const firstRender = useRef(true);
-  const helpStartsOpen = useRef(true).current;
+  const helpStartsOpen = useRef(false).current;
   const guard = useSubmissionGuard();
 
   // A lost acknowledgement might already have recorded the decision. Keep submission
@@ -199,7 +200,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   return <div className="ls-guided ls-stack" data-guided-preparation data-guided-ready={hydrated}>
     <header className="ls-guided__intro ls-stack">
       <h2 className="ls-card__title">Prepare an audit procedure</h2>
-      <p>Work through the outline or choose any section. Your unsaved edits stay in place when you move.</p>
+      <p>Start with your selected control, choose the evidence and systems, then design the test with the assistant. You can move between sections at any time.</p>
       <p className="ls-caption" data-preparation-progress>{reviewed} of {PREPARATION_SECTIONS.length} sections reviewed by auditor. Section review does not authorise execution.</p>
     </header>
     <UnknownSaveOutcome visible={unknownOutcome} />
@@ -244,7 +245,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
             ? 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.' : undefined);
           return <section key={section} className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-${section}`} hidden={hydrated && selected !== section} aria-labelledby={`${id}-heading-${section}`} data-preparation-panel={section}>
             <header className="ls-guided__panel-heading ls-stack">
-              <p className="ls-caption">Section {index + 1} of {PREPARATION_SECTIONS.length}</p>
+              <p className="ls-caption">Step {index + 1} of {PREPARATION_SECTIONS.length + 1}</p>
               <h2 className="ls-card__title" id={`${id}-heading-${section}`} tabIndex={-1} ref={element => { headings.current[section] = element; }}>{SECTION_WORDS[section].title}</h2>
               <p>{SECTION_WORDS[section].question}</p>
               <span className={`ls-guided__status ls-guided__status--${status}`}>{STATUS_WORDS[status]}</span>
@@ -252,6 +253,9 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
 
             {status === 'needs-clarification' ? <Banner tone="warning" title="Resolve the open question before reviewing this section."><p>Save any changes, then choose Continue drafting when the question is resolved.</p></Banner> : null}
 
+            {selected === section ? assistant?.(section) : null}
+            {section === 'context' ? <p className="ls-caption">The risk and control are already filled in. You can review them as supplied, or adapt the fields below for this procedure.</p> : null}
+            {section === 'assessment' ? <p className="ls-caption">These saved settings decide how results are assessed. If the proposed test needs a different threshold or policy criterion, change it here explicitly and review the resulting plan.</p> : null}
             <div className="ls-guided__editor ls-stack">{editors[section]}</div>
 
             <footer className="ls-guided__acceptance ls-stack">

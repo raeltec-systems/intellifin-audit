@@ -10,6 +10,141 @@
   margin-top: var(--spacing-2);
 }
 
+/* The guided assistant sits above the editor and carries the saved assignment into
+ * the question. It is intentionally a quiet card so the manual editor remains the
+ * durable source of truth below it. */
+.ls-writing--preparation {
+  min-width: 0;
+  margin-top: var(--spacing-4);
+}
+
+.ls-writing--inline {
+  margin-top: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+}
+
+.ls-writing__question {
+  margin: 0;
+  padding: var(--spacing-3);
+  border-left: 3px solid var(--color-focus);
+  background: var(--color-surface-sunken);
+  font-size: var(--type-body-font-size);
+  line-height: var(--type-body-line-height);
+}
+
+.ls-writing__context {
+  min-width: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+}
+
+.ls-writing__context-disclosure {
+  margin-top: var(--spacing-3);
+}
+
+.ls-writing__context-disclosure summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-sm-font-size);
+  font-weight: 600;
+}
+
+.ls-writing__context-disclosure[open] summary {
+  margin-bottom: var(--spacing-2);
+}
+
+.ls-writing__context dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-3);
+  margin: 0;
+}
+
+.ls-writing__context dl > div {
+  min-width: 0;
+}
+
+.ls-writing__context dt {
+  color: var(--color-text-muted);
+  font-size: var(--type-caption-font-size);
+  font-weight: 600;
+}
+
+.ls-writing__context dd {
+  margin: var(--spacing-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ls-writing__target-switcher {
+  display: grid;
+  gap: var(--spacing-1);
+  max-width: 32rem;
+  margin-top: var(--spacing-3);
+}
+
+.ls-writing__target-switcher select {
+  min-height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+}
+
+.ls-writing__proposal-question {
+  margin: var(--spacing-3) 0 0;
+  font-size: var(--type-card-title-font-size);
+}
+
+.ls-writing__explanation {
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-sunken);
+}
+
+.ls-writing__explanation p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ls-writing__history {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-2) var(--spacing-3);
+}
+
+.ls-writing__history summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ls-writing__history ol {
+  display: grid;
+  gap: var(--spacing-3);
+  margin: var(--spacing-3) 0 0;
+  padding-left: var(--spacing-4);
+}
+
+.ls-writing__history p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ls-writing--review {
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+}
+
 /* Reconciliation actions can be longer than the contextual help column. */
 .ls-writing .ls-button {
   max-width: 100%;
