@@ -69,6 +69,18 @@ function renderPanel(input: Partial<React.ComponentProps<typeof EscalationPanel>
   }));
 }
 
+/**
+ * Every opening tag's attribute text, in render order.
+ *
+ * `renderToStaticMarkup` emits plain double-quoted attributes and no JSX braces, so this
+ * is exact rather than a heuristic — which is the whole point: an assertion against a
+ * substring of the attribute ORDER is satisfied by re-spelling the element.
+ */
+function openingTags(html: string): readonly string[] {
+  return [...html.matchAll(/<[a-z][a-z0-9-]*((?:\s+[a-zA-Z:-]+(?:="[^"]*")?)*)\s*\/?>/gu)]
+    .map((match) => match[1] ?? '');
+}
+
 describe('Escalation panel', () => {
   it('renders the bounded wait facts and names absent provenance instead of inventing it', () => {
     const html = renderPanel({
@@ -187,11 +199,25 @@ describe('what a screen reader is told about the countdown (Story 5.6)', () => {
   it('renders the polite region EMPTY on the server and the clock with no live region', () => {
     // Two facts in one render, and both matter. The region has to exist before it has
     // text or its first message is never announced; and `role="timer"` must not also be a
-    // live region, or the clock announces itself every second.
+    // live region, or the clock announces itself every second for the whole four-hour
+    // wait — the Story 4.8 defect this story was written to remove.
+    //
+    // Asserted on the ELEMENT, never on a substring of React's attribute order. This read
+    // `not.toContain('role="timer" aria-live')`, which the same clock respelled as
+    // `<p aria-live="polite" aria-atomic="true" role="timer">` satisfies — restoring the
+    // exact defect with the whole suite green. The companion `toContain('aria-live=
+    // "polite"')` was then satisfied by the clock itself, even with the real region gone.
     const html = renderPanel();
-    expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('role="timer"');
-    expect(html).not.toContain('role="timer" aria-live');
+
+    const timers = openingTags(html).filter((tag) => tag.includes('role="timer"'));
+    expect(timers).toHaveLength(1);
+    expect(timers[0]).not.toMatch(/\baria-live\b/u);
+    expect(timers[0]).not.toMatch(/\baria-atomic\b/u);
+
+    const regions = openingTags(html).filter((tag) => tag.includes('aria-live="polite"'));
+    expect(regions).toHaveLength(1);
+    expect(regions[0]).not.toMatch(/\brole="timer"/u);
+
     for (const sentence of Object.values(ESCALATION_PANEL_COPY.milestones)) {
       expect(html).not.toContain(sentence);
     }

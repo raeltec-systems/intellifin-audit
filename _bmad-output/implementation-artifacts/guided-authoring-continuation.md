@@ -1,6 +1,36 @@
 # Guided authoring continuation
 
-## Current state and baseline
+## Owner-authorised release follow-up — 2026-09-11
+
+After the independent-review handoff below, the owner explicitly authorised merging
+PR #30 into main and observing its Railway deployment for owner testing. This supersedes
+the initial handoff's instruction to leave this delivery unmerged and undeployed.
+
+PR #29 has now been squash-merged. Current main is
+`11736cb778923c61ae1f5a561d11d14fd56afca8`; its complete tree was verified identical
+to parent `82a762262ff46709aad7ee0af522d85e37715098`. The clean three-way combination
+of that parent with delivered head `28fa0efa35a65700ce8a554b61165515b88b1d9b` has
+code tree `199a954d558c51fe3ecad04e7681d7b2c52128ba`. This tree incorporates all final
+Epic 5 fixes while preserving the guided-authoring changes. The integration commit
+records both the delivered feature head and current main as parents; no parent branch
+is rewritten. PR #30 is being retargeted to main and all required hosted gates rerun.
+
+Local integration verification passed the complete pinned typecheck, 590-module boundary
+check and all 4,101 unit tests across 203 files. The full suite ran in an isolated checkout:
+the synchronized workspace's first attempt had two boundary-fixture failures involving a
+disappearing `.rsync-tmp` file; the isolated run passed without changing source or assertions.
+
+Railway already holds `OPENAI_API_KEY` on the worker. The web service's dedicated
+`AUTHORING_OPENAI_API_KEY` is now configured as a Railway reference to that existing
+variable, with immediate redeployment disabled so the release retains migrate-before-deploy
+ordering. No secret value was retrieved, copied into files or printed. The authoring model
+remains `gpt-5.6-terra`, independently configured from plan checking and Run execution.
+
+Final tested/pushed SHA, CI results, merge SHA and observed Railway deployment results
+will be pinned in PR #30 after completion. Configuration presence is not live-model evidence;
+the owner's real-response testing remains distinct from synthetic CI results.
+
+## Initial delivery and baseline
 
 Stories **2.15, 2.9 and 2.10 are implemented** on `codex/epic-2-guided-authoring`.
 Review [draft PR #30](https://github.com/raeltec-systems/intellifin-audit/pull/30),

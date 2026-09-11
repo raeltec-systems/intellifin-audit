@@ -790,6 +790,50 @@ describe('agent work consumes durable human decisions with original capture', ()
   // The Gate has its own repository integration. These unit cases use the REAL shared
   // Observation registration/corroboration/evaluation and focus on decision consumption.
   function gateBoundary() { vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never); }
+  it('holds AFTER the evaluation turn, supersedes that attempt, and asks for no redelivery', async () => {
+    gateBoundary();
+    const repository = new FakeRepository();
+    const base = evaluationModel();
+    // The one boundary inside `finishObservation`: the model has judged and the
+    // Observation has not been registered yet. It was the only mid-item boundary calling
+    // `lifecycleBoundary()` with no in-flight pair, although both were in scope — so a
+    // pause honoured here left the Step Execution `RUNNING` for ever (the state
+    // `run-pause-v1.md` says must never exist, because it makes an interrupted attempt
+    // indistinguishable from a live one), never gave the attempt back, never wrote
+    // `superseded_by`, and opened a pause wait naming no Step Execution to resume into.
+    const gateway: AgentModelGateway = {
+      identity: identity(),
+      propose: vi.fn(async (request) => {
+        const answer = await base.propose(request);
+        if (request.phase === 'evaluation') {
+          repository.run = { ...repository.run,
+            pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' } };
+        }
+        return answer;
+      }),
+    };
+    const outcome = await executeAgentWorkItem(
+      deps(repository, browserFor(repository, FOUND_CANDIDATES.slice(5)), gateway, durableWaitPort(repository)), JOB);
+
+    expect(repository.run.state).toBe('PAUSED');
+    expect(repository.pauseWaits).toHaveLength(1);
+    expect(repository.pauseWaits[0]).toMatchObject({ kind: 'pause', openedBy: 'auditor' });
+
+    const superseded = repository.executions.filter((row) => row.state === 'SUPERSEDED');
+    expect(superseded).toHaveLength(1);
+    expect(superseded[0]).toMatchObject({ supersededBy: 'resume', diagnostic: null });
+    expect(repository.executions.some((row) => row.state === 'RUNNING')).toBe(false);
+    // The attempt is GIVEN BACK: a person pausing is not the agent failing.
+    expect(repository.workItems[0]?.attempts).toBe(0);
+    expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
+    // Nothing was registered — the pause is honoured before the Observation commits.
+    expect(repository.observations).toEqual([]);
+    // And the queue is NOT asked to redeliver: the claim refuses a Run that is not
+    // RUNNING, so a redelivery provisions and releases a browser session for a Run
+    // nothing can claim. Every other boundary returns `retry: false` for this reason.
+    expect(outcome).toEqual({ retry: false });
+  });
+
   it('supplies the verified snapshot corroboration to evaluation without changing captured values', async () => {
     gateBoundary();
     const repository = new FakeRepository(), model = evaluationModel();

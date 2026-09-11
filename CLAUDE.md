@@ -181,6 +181,67 @@ Three mechanical notes:
   against one machine), which is the trap that keeps producing failures that are not
   product defects.
 
+## 2026-09-11 — Four review findings, and three tests that could not fail
+
+The Epic 5 code review (`_bmad-output/implementation-artifacts/review-epic-5-stories.md`)
+named four High findings. All four are fixed, each with a test proven by MUTATION — run
+against the code with the fix removed, and required to fail. Three of the four were tests
+that could not fail for the reason they existed, which is the shape this file keeps finding.
+
+- **The one mid-item boundary that passed no in-flight pair.**
+  `execute-agent-work-item.ts`'s `lifecycleBoundary()` inside `finishObservation` was called
+  bare, although `item` and `execution` were both in scope and its four siblings pass them.
+  `lifecycleBoundary` guards its whole supersede-and-give-back arm behind
+  `if (inFlight !== undefined)`, so a pause honoured there left the Step Execution `RUNNING`
+  for ever — the state `run-pause-v1.md` says must never exist, because it makes an
+  interrupted attempt indistinguishable from a live one — never gave the attempt back, never
+  wrote `superseded_by`, and opened a pause wait naming no Step Execution to resume into.
+  **An optional parameter that changes what a function DOES is a parameter a call site can
+  forget**; the four that remembered are why this one looked normal.
+- **A pause is not a lost commit, and `retry` is the difference.** `finishObservation`
+  returned `'lost'` for both, and every caller maps `'lost'` to
+  `{ retry: checkpoint.status === 'RETRY' }` — while the pause path writes `RETRY` for the
+  RECOVERY SWEEP, not for the queue. So a pause asked for a redelivery of a Run the claim
+  refuses (`run.state !== 'RUNNING'` → `null` → `{ retry: false }`), after `handle` had
+  already provisioned and released a browser session for it. `'stopped'` is its own return
+  value now, and the five call sites map it to `{ retry: false }` as the other four
+  boundaries already did.
+- **`RunFlagControl` never withdrew on a lost response**, unlike `RunCancelControl`
+  extracted in the same change, and a flag carries no request token — so a retry writes a
+  second `run_flag` and a second fan-out to every Audit Manager. `RUN_LOST_RESPONSE` moved
+  into `copy.ts`: two components already declared the identical sentence and the fix would
+  have made a third.
+- **A live region's TEXT is invisible to every SSR test, and that is not a gap in one test.**
+  `apps/web/src` renders with `renderToStaticMarkup` under `environment: 'node'`, so no
+  effect runs; the Escalation panel's polite region is therefore always `''` there, and the
+  one test naming the milestone sentences asserts their ABSENCE. Emptying the region
+  entirely, and freezing it at its first rung, each left 1073/1073 passing. It is asserted
+  in the BROWSER now, at two rungs — and the second rung needs a real deadline, so the
+  near-expiry Escalation is OPENED with the clock set back (a wait's deadline is immutable
+  since generation 34). Any state a component reaches only through an effect is a state the
+  unit suite cannot see; assert it where the DOM is real, or say what the hook answered.
+- **`not.toContain('role="timer" aria-live')` is an assertion about React's attribute
+  ORDER.** Re-spelling the clock `<p aria-live="polite" aria-atomic="true" role="timer">`
+  restored the exact Story 4.8 defect with the suite green — and the companion
+  `toContain('aria-live="polite"')` was then satisfied by the clock itself, even with the
+  real region deleted. The guard parses the opening tags and asserts on the ELEMENT.
+- **`useActionState` returns its INITIAL state under SSR**, so the one render a lost-response
+  withdrawal exists for is unreachable without saying what the hook answered. Mock that one
+  export with `{ ...actual, useActionState }`; the rest of react stays the real module, so
+  `react-dom/server` renders normally.
+
+**`[NAMED, NOT FIXED]` A lost Server Action response tells the auditor "Nothing was
+changed".** A flag form's action IS the Server Action — which is what makes it the one
+control here that works without JavaScript, and what stops the component catching a dropped
+RSC response. The error reaches the route boundary, which renders EXPERIENCE.md's own
+"Couldn't load this page. Nothing was changed." over a flag that committed and notified. The
+sentence is right for a surface that could not be built and wrong for an action whose
+acknowledgement was lost; `app/error.tsx` cannot tell them apart. Bounded rather than
+dangerous — the boundary takes the submit control with it, which is a stronger withdrawal
+than a disabled button — and `flag-run.spec.ts` asserts exactly one `run_flag` row and one
+notification after a dropped acknowledgement. The wording is a product decision, so it is
+reported rather than edited.
+
 ## 2026-09-10 — Two accounts cannot walk the journey, and a suggestion is not a requirement
 
 The owner could not test the product: *"there are procedures that refuse to be created… for

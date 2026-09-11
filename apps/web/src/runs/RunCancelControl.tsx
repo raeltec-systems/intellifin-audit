@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { cancelRunAction } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { RUN_LOST_RESPONSE } from '../design/copy';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useLiveGate } from './LiveGate';
 
@@ -28,7 +29,6 @@ import { useLiveGate } from './LiveGate';
  * test proves hydration instead of racing it.
  */
 
-const LOST_RESPONSE = 'The last response was lost. Reload this Run before trying again.';
 const ALREADY_REQUESTED = 'Cancellation is already requested. The Run stops at its next checkpoint.';
 
 export interface RunCancelControlProps {
@@ -84,7 +84,7 @@ export function RunCancelControl({ runId, procedureName, active, cancelPending }
     <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
       {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
         : cancelPending ? { disabledReason: ALREADY_REQUESTED }
-        : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Cancel Run</Button>
+        : unknown ? { disabledReason: RUN_LOST_RESPONSE } : {})}>Cancel Run</Button>
     <ConfirmDialog open={confirming} weight="routine"
       title="Cancel this Run?"
       consequence={`This stops the Run for ${procedureName}. Evidence already collected is preserved and no conclusion is issued. The cancellation is recorded against your name.`}

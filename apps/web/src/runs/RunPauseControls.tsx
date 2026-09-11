@@ -6,7 +6,7 @@ import { pauseRunAction, resumeRunAction } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
-import { ESCALATION_PANEL_COPY, PAUSE_COPY } from '../design/copy';
+import { ESCALATION_PANEL_COPY, PAUSE_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import { UnavailableActions } from '../design/UnavailableActions';
 import { useLiveGate } from './LiveGate';
 
@@ -33,7 +33,6 @@ import { useLiveGate } from './LiveGate';
  * racing it.
  */
 
-const LOST_RESPONSE = 'The last response was lost. Reload this Run before trying again.';
 const ALREADY_REQUESTED = 'A pause is already requested. The Run holds at its next Tool Action.';
 
 export interface RunPauseControlsProps {
@@ -123,11 +122,11 @@ export function RunPauseControls({
     >Pause</Button> : null}
     {paused ? <Button variant="primary" busy={busy} onClick={() => { void resume(); }}
         {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
-          : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Resume</Button> : null}
+          : unknown ? { disabledReason: RUN_LOST_RESPONSE } : {})}>Resume</Button> : null}
     {pausable && !paused && !awaitingAuditor ? <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
         {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
           : pausePending ? { disabledReason: ALREADY_REQUESTED }
-          : unknown ? { disabledReason: LOST_RESPONSE } : {})}>Pause</Button> : null}
+          : unknown ? { disabledReason: RUN_LOST_RESPONSE } : {})}>Pause</Button> : null}
     <UnavailableActions actions={awaitingAuditor
       ? [{ id: 'run-pause-unavailable', label: 'Pause', reason: ESCALATION_PANEL_COPY.pauseUnavailable }]
       : []} headingLevel={3} />

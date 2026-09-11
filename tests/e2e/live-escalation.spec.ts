@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { performPause, raiseEscalation } from '@intellifin/application';
+import { AWAITING_AUDITOR_TIMEOUT_MS, performPause, raiseEscalation } from '@intellifin/application';
 import {
   createDb,
   createSqlClient,
@@ -152,9 +152,15 @@ async function seedAgentContext(runId: string, waitId: string): Promise<void> {
       'COMPLETED', 1, ${JSON.stringify(response)}::jsonb, NULL)`;
 }
 
-async function raise(runId: string): Promise<string> {
+/**
+ * @param openedAt when the wait was opened. The deadline is `AWAITING_AUDITOR_TIMEOUT_MS`
+ *   after it, so opening one in the past is how a nearly-expired Escalation is made —
+ *   a wait's deadline is immutable (generation 34) and cannot be moved afterwards.
+ */
+async function raise(runId: string, openedAt?: Date): Promise<string> {
+  const clock = openedAt === undefined ? new SystemClock() : { now: () => openedAt };
   const result = await raiseEscalation(
-    { repository: new PostgresWaitRepository(createDb(sql)), ids, clock: new SystemClock() },
+    { repository: new PostgresWaitRepository(createDb(sql)), ids, clock },
     {
       runId,
       kind: 'choose-candidate',
@@ -239,6 +245,20 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
     });
     expect(order).toBe(true);
 
+    // The ONE polite region actually SAYS something, and only a real DOM can see that.
+    // It renders empty on the server — a live region that arrives with its text already
+    // in it is ordinary content to a screen reader and is announced by nothing — and is
+    // filled one tick after mount by an effect. The unit tests render with
+    // `renderToStaticMarkup`, where no effect runs, so deleting the announcement
+    // entirely leaves every one of them passing.
+    const announcement = page.locator('#open-escalation p[aria-live="polite"]');
+    await expect(announcement).toHaveText(ESCALATION_PANEL_COPY.milestones.open);
+    // The visible clock beside it is a `role="timer"` with NO live region, or a screen
+    // reader hears the time read out once a second for four hours.
+    const clock = page.locator('#open-escalation [role="timer"]');
+    await expect(clock).toHaveCount(1);
+    await expect(clock).not.toHaveAttribute('aria-live', /.*/u);
+
     // The panel's own contents, on this surface.
     await expect(page.getByRole('link', { name: ESCALATION_PANEL_COPY.skipLink })).toBeAttached();
     await expect(page.getByText('Choose candidate', { exact: true })).toBeVisible();
@@ -310,6 +330,19 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
     const [resumed] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
     expect(resumed).toMatchObject({ state: 'RUNNING' });
 
+    // ---- A second Escalation, nine minutes from its deadline. ------------------------
+    // The milestone ladder is READ and not fixed at its first rung. Freezing the
+    // announcement at `open` — so a screen-reader user is never told the ten-minute or
+    // one-minute warning EXPERIENCE.md names — leaves every unit test passing, for the
+    // same reason: no DOM, no effect, no announcement to compare. The deadline here is
+    // real rather than a fake timer; the wait is opened with the clock set back, which
+    // is exactly what an Escalation left for three hours and fifty-one minutes is.
+    const nearWaitId = await raise(runId, new Date(Date.now() - AWAITING_AUDITOR_TIMEOUT_MS + 9 * 60_000));
+    expect(nearWaitId).toMatch(/^[0-9a-f-]{36}$/u);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(announcement).toHaveText(ESCALATION_PANEL_COPY.milestones['ten-minutes']);
+
     const events = await sql`SELECT event_type FROM audit_events WHERE aggregate_id=${runId} ORDER BY sequence`;
     expect(events.map(row => row.event_type)).toEqual([
       'lifecycle.run-queued',
@@ -318,6 +351,7 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
       'lifecycle.run-pause-requested',
       'lifecycle.run-paused',
       'lifecycle.run-resumed',
+      'execution.escalation-raised',
     ]);
   });
 });
