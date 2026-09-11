@@ -1,3 +1,5 @@
+import { LIVE_VIEW_DESKTOP_ONLY_SENTENCE } from '../design/copy';
+
 /**
  * The live channel as a page experiences it (Story 5.1, UX-DR25, NFR7).
  *
@@ -49,6 +51,91 @@ export const LIVE_SENTENCES = {
 
 export function liveSentence(status: LiveStatus, seconds: number): string {
   return LIVE_SENTENCES[status].replace('{seconds}', String(seconds));
+}
+
+/**
+ * The Timeline events that mean this Run has ENDED (Story 5.7).
+ *
+ * `completeRun` is the one place a Run reaches a terminal state and it appends
+ * `lifecycle.result-sealed` on every path, so that one event covers Completed,
+ * Inconclusive and Run Failed together; `lifecycle.run-canceled` is appended beside it on
+ * the cancellation path. One home, because the bell composes the same list and two copies
+ * would diverge on the first terminal path a later story adds.
+ */
+export const RUN_ENDING_EVENTS = ['lifecycle.result-sealed', 'lifecycle.run-canceled'] as const;
+
+export function isRunEndingEvent(eventType: string): boolean {
+  return (RUN_ENDING_EVENTS as readonly string[]).includes(eventType);
+}
+
+/**
+ * Whether the live controls may be used, and why not when they may not (Story 5.7,
+ * UX-DR25).
+ *
+ * THREE reasons, and `stale` is deliberately not one of them. UX-DR25 disables the
+ * controls after sixty seconds of silence, not fifteen: a quiet Run goes stale routinely,
+ * and a surface that locked itself every fifteen seconds would be unusable exactly when
+ * somebody most wants to pause it.
+ *
+ * `ended` is included although the contract names only `lost`, because `ended` is the
+ * stronger case: a lost stream is reconnecting on its own and an ended one is not, so a
+ * page that gated the recoverable state and not the permanent one would have it backwards.
+ *
+ * `runEnded` outranks both. It is set the moment the terminal event ARRIVES, which is what
+ * closes the window between that event and the server re-read that removes the controls —
+ * about a second, in which every control was live on a Run that had already finished.
+ */
+export const LIVE_GATE_REASONS = {
+  /**
+   * The narrow-viewport reason (PR 29 review). EXPERIENCE.md's responsive rules make Live
+   * View READ-ONLY below 1024px, and the stylesheet only revealed the desktop-only
+   * sentence while leaving Pause, Cancel, Flag and the Escalation answer fully usable —
+   * so a Run could be mutated from a viewport the contract defines as read-only.
+   *
+   * It is a gate reason rather than a `display: none`, so the Escalation's question, its
+   * candidates and the Paused banner all stay readable on a phone and only the ACTING
+   * stops — and each withdrawn control says why, which a hidden control cannot.
+   */
+  viewport: LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
+  runEnded: 'This Run has ended, so its live controls are no longer available.',
+  lost: 'Controls are unavailable while the connection to this Run is lost.',
+  ended: 'Controls are unavailable because this page is no longer updating on its own. Refresh to continue.',
+} as const;
+
+export type LiveGateReason = keyof typeof LIVE_GATE_REASONS;
+
+/**
+ * `desktop` is what the page has OBSERVED about its own viewport, and it OUTRANKS the
+ * stream reasons: "open this on a desktop" is the sentence a reader on a phone can act
+ * on, where "the connection is lost" is not.
+ *
+ * It defaults to true for callers that cannot observe one, which is the server. See
+ * `useDesktopViewport` for why the withdrawn default would have broken Flag's
+ * no-JavaScript path.
+ */
+export function liveGateReason(status: LiveStatus, runEnded: boolean, desktop = true): LiveGateReason | null {
+  if (!desktop) return 'viewport';
+  if (runEnded) return 'runEnded';
+  if (status === 'lost') return 'lost';
+  if (status === 'ended') return 'ended';
+  return null;
+}
+
+/**
+ * Whether a per-Run subscription renders the frame it just received (Stories 5.1, 5.7).
+ *
+ * A reconnect resumes at the last sequence the page SAW, so the server replays from there
+ * and the first frames after a drop are ones the page may already hold — that is what
+ * makes the replay lossless, and it is also what would make it duplicate. Strictly
+ * greater is both halves of the rule: no gap, because the cursor is the last seen and the
+ * server replays everything after it; no duplicate, because anything at or below it is
+ * already rendered.
+ *
+ * The cursor therefore only ever grows, which is why a frame that arrives out of order
+ * after a slow reconnect cannot walk it backwards.
+ */
+export function acceptsLiveSeq(lastSeq: number, seq: number): boolean {
+  return Number.isSafeInteger(seq) && seq > lastSeq;
 }
 
 /**

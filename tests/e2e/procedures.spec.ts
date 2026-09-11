@@ -801,8 +801,13 @@ test.describe('as an Auditor', () => {
     await expect(page.getByLabel('Add a system')).toBeVisible();
 
     // Template guidance is visible, but no registration is selected or silently inferred.
-    await expect(page.getByText('LoanCore (web)')).toBeVisible();
-    await expect(page.getByText('LedgerDesk (desktop)')).toBeVisible();
+    // Scoped to the suggestion list: a bare `getByText('LoanCore (web)')` also matches the
+    // picker's own `<option>` the moment a deployment registers a system called LoanCore,
+    // which every seeded environment does — and strict mode then fails an assertion that
+    // is about the guidance and not about the picker at all.
+    const suggested = page.locator('[data-suggested-targets] li');
+    await expect(suggested.filter({ hasText: 'LoanCore (web)' })).toHaveCount(1);
+    await expect(suggested.filter({ hasText: 'LedgerDesk (desktop)' })).toHaveCount(1);
     await expect(page.getByText('Template default Audit Instructions (read-only)')).toBeVisible();
     const unavailableSave = page.getByRole('button', { name: 'Save Target Systems', exact: true });
     await expect(unavailableSave).toHaveAttribute('aria-disabled', 'true');

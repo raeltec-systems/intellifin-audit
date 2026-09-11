@@ -14,6 +14,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import { activeRunVersion } from '../fixtures/active-run-version';
+import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { EXCEPTION_FINGERPRINT_KEY, EXCEPTION_FINGERPRINT_KEY_ID } from './credentials';
 
@@ -214,10 +215,13 @@ test.beforeAll(async () => {
   const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Evaluation Review journey.');
   auditorId = String(auditor.id);
-  const version = activeRunVersion(procedureId, versionId, auditorId);
+  // The name goes through the fixture's INPUTS, never spread over the row it returns:
+  // `controlName` is a plan authoring input, so overriding it afterwards leaves the row
+  // disagreeing with its own frozen review and `findPeriodOwner` refuses the version.
+  const version = activeRunVersion(procedureId, versionId, auditorId, { ...executablePlanInputs(), controlName });
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
-    await context.procedures.insertProcedure({ ...version, controlName });
-    await context.procedures.insertVersion({ ...version, controlName });
+    await context.procedures.insertProcedure(version);
+    await context.procedures.insertVersion(version);
   });
   await seedRun(runs.confirmed, evidence.confirmed, workItems.confirmed, observations.confirmed, stepExecutions.confirmed);
   await seedRun(runs.rejected, evidence.rejected, workItems.rejected, observations.rejected, stepExecutions.rejected);

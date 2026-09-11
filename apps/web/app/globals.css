@@ -1044,6 +1044,19 @@ a {
   resize: vertical;
 }
 
+/*
+ * A note somebody typed, shown back to them. Indented and set off so a reader can tell the
+ * person's words from the platform's, which is the same reason retrieved content gets its
+ * own treatment — here the author is trusted, but the distinction still matters.
+ */
+.ls-quote {
+  margin: 0;
+  padding-left: var(--spacing-3);
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
+
 .ls-field-error {
   color: var(--color-danger-text);
   font-size: var(--type-caption-font-size);
@@ -1987,6 +2000,53 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Replay's own controls (Story 5.8, UX-DR24, UX-DR26). The viewer body takes focus so
+   the arrow keys have somewhere to be pressed, so it needs a visible focus state of its
+   own; the ring is `globals.css`'s one declaration, applied here by :focus-visible. */
+.ls-session__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+/* `{components.session-viewer.scrubber-pill-height}` is 8px: the pills are a position
+   indicator, not a hit target of their own size, so each one carries padding around a
+   short bar and the whole row scrolls rather than shrinking the bars to nothing. */
+.ls-session__scrubber {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--spacing-1);
+  overflow-x: auto;
+  padding: var(--spacing-2) 0;
+}
+
+.ls-scrubber-pill {
+  flex: 0 0 auto;
+  width: var(--spacing-4);
+  height: 8px;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-sunken);
+  cursor: pointer;
+}
+
+.ls-scrubber-pill--current {
+  background: var(--color-teal);
+  border-color: var(--color-teal);
+}
+
+.ls-session__jumps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .ls-session-desktop-only {
   display: none;
   padding: var(--spacing-2) var(--spacing-4);
@@ -2077,4 +2137,240 @@ a {
   font-family: var(--type-caption-font-family);
   font-size: var(--type-micro-font-size);
   line-height: var(--type-micro-line-height);
+}
+
+/* ---------------------------------------------------------------------------
+   The plan, read by a person.
+
+   "What the agent will do" and the read-only contract preview were a bare `<ol>` of
+   bold lines followed by paragraphs of compiled prose — every fact present, and none
+   of them findable. The treatment below is one system for both, so the summary and
+   the contract read as the same plan at two altitudes rather than two documents:
+
+     · a labelled group per question ("Once, at the start", "Session Steps"),
+     · a numbered step whose title carries the weight and whose canonical text sits
+       beneath it, quieter, so a reader chooses to descend into it,
+     · a panel for anything that repeats per system or per condition,
+     · a tag for a value out of a closed set, and a label/value grid for the rest.
+
+   Every value is a token. Nothing here changes what is shown — only how much work it
+   is to find it.
+   --------------------------------------------------------------------------- */
+
+.ls-plan-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.ls-plan-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+/* The number comes from a counter rather than a rendered node: the `<ol>` already
+   carries the order for assistive technology, and a second copy in the markup would be
+   one an edit could get out of step with. */
+.ls-plan-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: ls-plan-step;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.ls-plan-steps > li {
+  counter-increment: ls-plan-step;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--spacing-3);
+  row-gap: 0;
+  min-width: 0;
+}
+
+.ls-plan-steps > li::before {
+  content: counter(ls-plan-step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-5);
+  height: var(--spacing-5);
+  border-radius: var(--rounded-full);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  font-size: var(--type-micro-font-size);
+  font-weight: var(--type-micro-font-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+.ls-plan-step__title {
+  display: block;
+  font-size: var(--type-row-title-font-size);
+  line-height: var(--type-row-title-line-height);
+  font-weight: var(--type-row-title-font-weight);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* The compiled step text. It is the contract and it is long, so it is set at reading
+   size in the secondary colour: present in full, and never the first thing the eye
+   lands on. */
+.ls-plan-step__text {
+  /* Second row of the step's own column, so the marker column stays the width of the
+     marker. Left in flow when this paragraph is not a grid child (a saved instruction
+     above a step list), where the property is simply ignored. */
+  grid-column: 2;
+  margin-top: var(--spacing-1);
+  max-width: 68ch;
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+  color: var(--color-text-secondary);
+}
+
+/* Label/value pairs, label on the left. `.ls-definition` stacks its label above its
+   value, which is right above a form and wastes a column here, where every value is
+   short enough to sit beside its name. */
+.ls-plan-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--spacing-2) var(--spacing-4);
+  margin: 0;
+  min-width: 0;
+}
+
+.ls-plan-facts dt {
+  color: var(--color-text-secondary);
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  font-weight: var(--type-overline-font-weight);
+  letter-spacing: var(--type-overline-letter-spacing);
+  text-transform: uppercase;
+}
+
+/* A pair whose label is a NAME — a Target System, a captured field — rather than a
+   word this surface chose. Upper-casing `max_manual_approval_amount` would print a
+   value the plan does not hold. */
+.ls-plan-facts--names dt {
+  color: var(--color-text-primary);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.ls-plan-facts dd {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  overflow-wrap: anywhere;
+}
+
+/* Anything that repeats — one per Target System, one per condition. The card ground and
+   the thicker left rule are what separate two of them at a glance, and the ground is the
+   CARD's rather than the sunken one because this block appears on both: inside the
+   Builder's fold, which is already sunken, a sunken panel is invisible. */
+.ls-plan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border-default);
+  border-left: 3px solid var(--color-border-strong);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+  min-width: 0;
+}
+
+.ls-plan-group > .ls-plan-panel + .ls-plan-panel {
+  margin-top: var(--spacing-3);
+}
+
+.ls-plan-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.ls-plan-panel__title {
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* A value out of a closed set — a captured field, a permitted read action. Neutral by
+   construction: a tag is not a status, and one wearing the success green would read as
+   a check that passed. */
+.ls-tag-row {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+}
+
+.ls-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 0 var(--spacing-2);
+  height: var(--spacing-badge-sm);
+  /* The stronger border, because the tag's own ground is the card's: on a white panel a
+     hairline in the neutral border colour does not read as an edge at all. */
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-full);
+  background: var(--color-surface-card);
+  color: var(--color-neutral-text);
+  font-family: var(--type-mono-font-family);
+  font-size: var(--type-micro-font-size);
+  line-height: var(--type-micro-line-height);
+  white-space: nowrap;
+}
+
+/* The kind beside a name, inside the same tag: two tags would read as two values. */
+.ls-tag__note {
+  color: var(--color-text-muted);
+  font-family: var(--type-caption-font-family);
+}
+
+/* Below the tablet floor a label column costs more than it gives: the value gets the
+   whole width and the label sits above it. */
+@media (max-width: 1023px) {
+  .ls-plan-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-1);
+  }
+
+  .ls-plan-facts dd:not(:last-child) {
+    margin-bottom: var(--spacing-3);
+  }
+}
+
+/* Inside the Builder's own fold the two plan cards are already framed by the card the
+   disclosure sits in, so their own border draws a box inside a box — the "so many
+   whistles and bells" reading of a surface whose content had not changed at all. On the
+   version review page, where each stands alone, the card treatment is right and stays. */
+.ls-disclosure__body > .ls-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.ls-disclosure__body > .ls-card + .ls-card {
+  padding-top: var(--spacing-5);
+  border-top: 1px solid var(--color-border-default);
 }

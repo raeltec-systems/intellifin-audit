@@ -21,10 +21,10 @@ vi.mock('@intellifin/infrastructure', () => ({
   PostgresWaitRepository: class {},
 }));
 
-import type { EscalationDetails, RunWait, WaitRepository } from '@intellifin/application';
+import type { EscalationDetails, EscalationWait, WaitRepository } from '@intellifin/application';
 
 import { ESCALATION_PANEL_COPY } from '../design/copy';
-import { EscalationPanel, countdownText, orderedEscalationOptions } from './EscalationPanel';
+import { EscalationPanel, countdownText, escalationMilestone, orderedEscalationOptions } from './EscalationPanel';
 import { readOpenEscalation, readOpenEscalationWith } from './escalation-read';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';
@@ -37,11 +37,13 @@ const DETAILS_NONE: EscalationDetails = {
   agentQuestion: null,
 };
 
-function wait(overrides: Partial<RunWait> = {}): RunWait {
+function wait(overrides: Partial<EscalationWait> = {}): EscalationWait {
   return {
     waitId: WAIT_ID,
     runId: RUN_ID,
     kind: 'choose-candidate',
+    openedAt: '2026-09-06T08:00:00.000Z',
+    openedBy: null,
     options: [
       { id: 'candidate-a', label: 'Alice A' },
       { id: 'candidate-b', label: 'Bob B' },
@@ -65,6 +67,18 @@ function renderPanel(input: Partial<React.ComponentProps<typeof EscalationPanel>
     readAt: READ_AT,
     ...input,
   }));
+}
+
+/**
+ * Every opening tag's attribute text, in render order.
+ *
+ * `renderToStaticMarkup` emits plain double-quoted attributes and no JSX braces, so this
+ * is exact rather than a heuristic — which is the whole point: an assertion against a
+ * substring of the attribute ORDER is satisfied by re-spelling the element.
+ */
+function openingTags(html: string): readonly string[] {
+  return [...html.matchAll(/<[a-z][a-z0-9-]*((?:\s+[a-zA-Z:-]+(?:="[^"]*")?)*)\s*\/?>/gu)]
+    .map((match) => match[1] ?? '');
 }
 
 describe('Escalation panel', () => {
@@ -158,6 +172,63 @@ describe('Escalation panel', () => {
   });
 });
 
+describe('what a screen reader is told about the countdown (Story 5.6)', () => {
+  /**
+   * EXPERIENCE.md's Accessibility rules name exactly two milestones — 10 minutes and 1
+   * minute — so the ladder is walked at both sides of each rung. Reading a clock aloud
+   * every second is the defect this replaced.
+   */
+  it('climbs one rung at a time and never goes back up', () => {
+    expect(escalationMilestone(4 * 60 * 60_000)).toBe('open');
+    expect(escalationMilestone(600_001)).toBe('open');
+    expect(escalationMilestone(600_000)).toBe('ten-minutes');
+    expect(escalationMilestone(60_001)).toBe('ten-minutes');
+    expect(escalationMilestone(60_000)).toBe('one-minute');
+    expect(escalationMilestone(1)).toBe('one-minute');
+    expect(escalationMilestone(0)).toBe('expired');
+    expect(escalationMilestone(-90_000)).toBe('expired');
+  });
+
+  it('calls an unreadable deadline open, which is what is actually known', () => {
+    // The visible countdown says `Unknown` beside it. Calling it expired would announce a
+    // deadline nobody can read as one that has passed.
+    expect(escalationMilestone(Number.NaN)).toBe('open');
+    expect(escalationMilestone(Number.POSITIVE_INFINITY)).toBe('open');
+  });
+
+  it('renders the polite region EMPTY on the server and the clock with no live region', () => {
+    // Two facts in one render, and both matter. The region has to exist before it has
+    // text or its first message is never announced; and `role="timer"` must not also be a
+    // live region, or the clock announces itself every second for the whole four-hour
+    // wait — the Story 4.8 defect this story was written to remove.
+    //
+    // Asserted on the ELEMENT, never on a substring of React's attribute order. This read
+    // `not.toContain('role="timer" aria-live')`, which the same clock respelled as
+    // `<p aria-live="polite" aria-atomic="true" role="timer">` satisfies — restoring the
+    // exact defect with the whole suite green. The companion `toContain('aria-live=
+    // "polite"')` was then satisfied by the clock itself, even with the real region gone.
+    const html = renderPanel();
+
+    const timers = openingTags(html).filter((tag) => tag.includes('role="timer"'));
+    expect(timers).toHaveLength(1);
+    expect(timers[0]).not.toMatch(/\baria-live\b/u);
+    expect(timers[0]).not.toMatch(/\baria-atomic\b/u);
+
+    const regions = openingTags(html).filter((tag) => tag.includes('aria-live="polite"'));
+    expect(regions).toHaveLength(1);
+    expect(regions[0]).not.toMatch(/\brole="timer"/u);
+
+    for (const sentence of Object.values(ESCALATION_PANEL_COPY.milestones)) {
+      expect(html).not.toContain(sentence);
+    }
+  });
+
+  it('reaches the panel by the skip link the contract names', () => {
+    expect(renderPanel()).toContain(ESCALATION_PANEL_COPY.skipLink);
+    expect(renderPanel()).not.toContain('Skip to open Escalation');
+  });
+});
+
 describe('Run-detail Escalation read seam', () => {
   it('refuses request-level metadata reads before constructing the repository', async () => {
     authorizeRead.mockResolvedValue({ allowed: false, reason: 'You are not allowed to view Runs.' });
@@ -165,6 +236,7 @@ describe('Run-detail Escalation read seam', () => {
     const result = await readOpenEscalation(RUN_ID);
     expect(result).toEqual({
       wait: null,
+      pause: null,
       runRevision: null,
       details: null,
     });
@@ -181,10 +253,31 @@ describe('Run-detail Escalation read seam', () => {
 
     await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({
       wait: opened,
+      pause: null,
       runRevision: 19,
       details: DETAILS_NONE,
     });
     expect(transaction).toHaveBeenCalledWith(RUN_ID, expect.any(Function));
+  });
+
+  /**
+   * A pause is a wait and is NOT an Escalation, so it reads as no open Escalation at all.
+   * The panel that asks a question takes an `EscalationWait`, so a pause cannot reach it
+   * even if a later caller forgets — this pins the read that makes that true.
+   */
+  it('reads an open pause as the pause, never as an Escalation', async () => {
+    const paused = { ...wait(), kind: 'pause' as const, openedBy: 'auditor', options: [{ id: 'resume', label: 'Resume' }] };
+    const repository = {
+      transaction: async (_runId: string, work: (context: unknown) => Promise<unknown>) =>
+        work({ wait: paused, run: { revision: 4 }, readEscalationDetails: async () => DETAILS_NONE }),
+    } as unknown as Pick<WaitRepository, 'transaction'>;
+
+    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({
+      wait: null,
+      pause: paused,
+      runRevision: 4,
+      details: null,
+    });
   });
 
   it('does not manufacture a revision when the repository has no current Run', async () => {
@@ -192,6 +285,6 @@ describe('Run-detail Escalation read seam', () => {
       transaction: async (_runId: string, work: (context: unknown) => Promise<unknown>) =>
         work({ wait: null, run: null, readEscalationDetails: async () => null }),
     } as unknown as Pick<WaitRepository, 'transaction'>;
-    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, runRevision: null, details: null });
+    await expect(readOpenEscalationWith(repository, RUN_ID)).resolves.toEqual({ wait: null, pause: null, runRevision: null, details: null });
   });
 });

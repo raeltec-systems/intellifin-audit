@@ -6,8 +6,7 @@ import type {
   RunResultExclusion,
   RunResultFindings,
   RunRecord,
-  RunResultPublication,
-} from '@intellifin/domain';
+  RunResultPublication, RunPauseRequest } from '@intellifin/domain';
 import {
   ANSWER_ESCALATION_REFUSALS,
   AWAITING_AUDITOR_TIMEOUT_MS,
@@ -15,6 +14,8 @@ import {
   FIXED_ESCALATION_OPTIONS,
   candidateMatchDisposition,
   answerEscalation,
+  waitClosureKindFor,
+  waitRunState,
   parseWaitJob,
   raiseEscalation,
   wakeEscalation,
@@ -29,6 +30,7 @@ import type {
   PackageSeal,
   RunGatePopulationFacts,
   StoredRunResult,
+  WithdrawnWait,
 } from './execution-ports.js';
 
 const RUN_ID = '01a06fd8-0000-7000-8000-0000000000a1';
@@ -53,7 +55,7 @@ const RUN: VersionedRun = {
   requestToken: '01a06fd8-0000-7000-8000-0000000000a6',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   revision: 0,
 };
 
@@ -92,6 +94,19 @@ class FakeWaitContext implements WaitContext {
   notifyTimeline = async (): Promise<void> => undefined;
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => null;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47: what a terminal transition withdraws, set by a test that opens one. */
+  openWait: WithdrawnWait | null = null;
+  withdrawnAt: string | null = null;
+  withdrawOpenWait = async (at: string): Promise<WithdrawnWait | null> => {
+    const wait = this.openWait;
+    if (wait === null) return null;
+    this.openWait = null;
+    this.withdrawnAt = at;
+    return wait;
+  };
+  requestPause = async (request: RunPauseRequest): Promise<void> => { this.pauseRequest = request; };
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     if (this.run && this.run.state !== state) this.run = { ...this.run, state, revision: this.run.revision + 1 };
   };
@@ -116,7 +131,10 @@ class FakeWaitContext implements WaitContext {
     if (!this.run) return { outcome: 'missing', wait: null, run: null };
     if (this.run.state !== 'RUNNING') return { outcome: 'not-running', wait: this.wait, run: this.run };
     if (this.wait) return { outcome: 'already-open', wait: this.wait, run: this.run };
-    this.run = { ...this.run, state: 'AWAITING_AUDITOR', revision: this.run.revision + 1 };
+    // Kind-aware, like the real repository: an Escalation holds the Run in
+    // `AWAITING_AUDITOR` and a pause in `PAUSED`. A fake that hard-coded one would let a
+    // pause test pass against a build that put the Run in the wrong state.
+    this.run = { ...this.run, state: waitRunState(wait.kind), revision: this.run.revision + 1 };
     this.wait = wait;
     return { outcome: 'created', wait, run: this.run };
   }
@@ -124,10 +142,11 @@ class FakeWaitContext implements WaitContext {
   async closeWait(input: { waitId: string; expectedRunRevision: number; answerOptionId: string; actor: string; now: string; stateAfterClose: 'RUNNING' | 'AWAITING_AUDITOR' }): Promise<WaitOperation> {
     if (!this.run || !this.wait || this.wait.waitId !== input.waitId) return { outcome: 'missing', wait: null, run: this.run };
     if (this.wait.closedAt !== null) return { outcome: 'superseded', wait: this.wait, run: this.run };
+    if (this.run.state !== waitRunState(this.wait.kind)) return { outcome: 'not-awaiting', wait: this.wait, run: this.run };
     if (this.run.revision !== input.expectedRunRevision) return { outcome: 'stale-revision', wait: this.wait, run: this.run };
     if (Date.parse(input.now) >= Date.parse(this.wait.deadline)) return { outcome: 'expired', wait: this.wait, run: this.run };
     if (!this.wait.options.some((option) => option.id === input.answerOptionId)) return { outcome: 'expired', wait: this.wait, run: this.run };
-    this.wait = { ...this.wait, closedAt: input.now, closureKind: 'answer', answerOptionId: input.answerOptionId, actor: input.actor };
+    this.wait = { ...this.wait, closedAt: input.now, closureKind: waitClosureKindFor(this.wait.kind), answerOptionId: input.answerOptionId, actor: input.actor };
     this.run = { ...this.run, state: input.stateAfterClose, revision: this.run.revision + 1 };
     return { outcome: 'closed', wait: this.wait, run: this.run };
   }
@@ -135,7 +154,7 @@ class FakeWaitContext implements WaitContext {
   async timeoutWait(input: { waitId: string; now: string }): Promise<WaitOperation> {
     if (!this.run || !this.wait || this.wait.waitId !== input.waitId) return { outcome: 'missing', wait: null, run: this.run };
     if (this.wait.closedAt !== null) return { outcome: 'superseded', wait: this.wait, run: this.run };
-    if (this.run.state !== 'AWAITING_AUDITOR') return { outcome: 'not-awaiting', wait: this.wait, run: this.run };
+    if (this.run.state !== waitRunState(this.wait.kind)) return { outcome: 'not-awaiting', wait: this.wait, run: this.run };
     if (Date.parse(input.now) < Date.parse(this.wait.deadline)) return { outcome: 'early', wait: this.wait, run: this.run };
     this.wait = { ...this.wait, closedAt: input.now, closureKind: 'timeout', actor: 'wait-wake' };
     this.run = { ...this.run, state: 'INCONCLUSIVE', revision: this.run.revision + 1 };

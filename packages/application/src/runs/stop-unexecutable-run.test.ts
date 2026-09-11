@@ -6,8 +6,7 @@ import type {
   RunRecord,
   RunResultConditionCount,
   RunResultExclusion,
-  RunResultFindings,
-} from '@intellifin/domain';
+  RunResultFindings, RunPauseRequest } from '@intellifin/domain';
 import { stopUnexecutableRun, UNEXECUTABLE_RUN_REASONS } from './stop-unexecutable-run.js';
 import type {
   GateCheckRow,
@@ -50,7 +49,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000f5',
 };
 
@@ -97,6 +96,10 @@ class FakePopulation implements PopulationExecutionContext {
 
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.run?.cancellation ?? null;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
     if (this.run !== null) this.run = { ...this.run, state };

@@ -1,11 +1,48 @@
-import { ESCALATION_KINDS, type EscalationKind } from './escalation-kind.js';
-export { ESCALATION_KINDS, type EscalationKind } from './escalation-kind.js';
+import {
+  AWAITING_AUDITOR_TIMEOUT_MS,
+  ESCALATION_KINDS,
+  ESCALATION_OPTION_IDS,
+  isEscalationKind,
+  waitRunState,
+  waitTimeoutMs,
+  type EscalationKind,
+  type EscalationOption,
+  type RunWait,
+  type WaitClosureKind,
+  type WaitKind,
+} from './escalation-kind.js';
+export {
+  AWAITING_AUDITOR_TIMEOUT_MS,
+  ESCALATION_KINDS,
+  ESCALATION_OPTION_IDS,
+  PAUSED_TIMEOUT_MS,
+  PAUSE_OPTIONS,
+  WAIT_CLOSURE_KINDS,
+  WAIT_WITHDRAWN_ACTOR,
+  WAIT_HELD_STATES,
+  WAIT_KINDS,
+  WAIT_OPENED_FROM_STATE,
+  isEscalationKind,
+  isEscalationWait,
+  isWaitKind,
+  waitClosureKindFor,
+  waitRunState,
+  waitTimeoutMs,
+  type EscalationKind,
+  type EscalationOption,
+  type EscalationOptionId,
+  type EscalationWait,
+  type RunWait,
+  type WaitClosureKind,
+  type WaitKind,
+} from './escalation-kind.js';
 import {
   authorizeAction,
   type JsonObject,
   type ExecutablePlan,
   type Role,
   type RunCancellationRequest,
+  type RunPauseRequest,
   type RunRecord,
 } from '@intellifin/domain';
 import type { AuditUnitOfWork } from '../audit/ports.js';
@@ -20,33 +57,8 @@ import type { RunResultContext } from './execution-ports.js';
 export const WAIT_SCHEMA_VERSION = 1 as const;
 export const WAIT_QUEUE_SCHEMA_VERSION = WAIT_SCHEMA_VERSION;
 
-/** The human-in-the-loop wait is bounded independently of the Run timeout. */
-export const AWAITING_AUDITOR_TIMEOUT_MS = 4 * 60 * 60 * 1000;
-
-/** The only lifecycle states a wait can record. */
-export const WAIT_CLOSURE_KINDS = ['answer', 'timeout'] as const;
-export type WaitClosureKind = (typeof WAIT_CLOSURE_KINDS)[number];
-
-/** Fixed answer ids. Candidate choices use the candidate's opaque id. */
-export const ESCALATION_OPTION_IDS = {
-  markAmbiguous: 'mark-ambiguous',
-  markUnevaluated: 'mark-unevaluated',
-  continue: 'continue',
-  abort: 'abort',
-  retry: 'retry',
-  skip: 'skip',
-} as const;
 const RESERVED_ESCALATION_OPTION_IDS: ReadonlySet<string> = new Set(Object.values(ESCALATION_OPTION_IDS));
 
-export type EscalationOptionId =
-  | (typeof ESCALATION_OPTION_IDS)[keyof typeof ESCALATION_OPTION_IDS]
-  | (string & {});
-
-/** An option is data. Its id is the only part an agent may receive after an answer. */
-export interface EscalationOption {
-  readonly id: string;
-  readonly label: string;
-}
 
 /** The fixed options from FR-27, in their user-facing order. */
 export const FIXED_ESCALATION_OPTIONS: Readonly<{
@@ -67,17 +79,6 @@ export const FIXED_ESCALATION_OPTIONS: Readonly<{
 /** A Run carries a revision for all human-in-the-loop compare-and-set commands. */
 export type VersionedRun = RunRecord & { readonly revision: number };
 
-export interface RunWait {
-  readonly waitId: string;
-  readonly runId: string;
-  readonly kind: EscalationKind;
-  readonly options: readonly EscalationOption[];
-  readonly deadline: string;
-  readonly closedAt: string | null;
-  readonly closureKind: WaitClosureKind | null;
-  readonly answerOptionId: string | null;
-  readonly actor: string | null;
-}
 
 /**
  * Safe metadata for the currently open Escalation.
@@ -133,6 +134,8 @@ export interface WaitContext extends RunResultContext {
   frozenPlan(): Promise<ExecutablePlan | null>;
   /** Persist the abort marker before the sole CANCELED transition. */
   requestCancellation(request: RunCancellationRequest): Promise<void>;
+  /** Record one person's pause request. The FIRST request wins, as with a cancellation. */
+  requestPause(request: RunPauseRequest): Promise<void>;
   /** Insert the wait, move the Run to Awaiting Auditor and enqueue its wake job atomically. */
   createWait(wait: RunWait): Promise<WaitOperation>;
   /** Close an answer and compare-and-set the Run revision; continuation recovery resumes it. */
@@ -217,10 +220,6 @@ export const chooseCandidateDisposition = candidateMatchDisposition;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPTION_ID = /^[A-Za-z0-9][A-Za-z0-9:._/-]{0,254}$/;
 
-function isEscalationKind(value: unknown): value is EscalationKind {
-  return typeof value === 'string' && (ESCALATION_KINDS as readonly string[]).includes(value);
-}
-
 function validRaiseMetadata(input: RaiseEscalationInput): boolean {
   const keys = Object.keys(input as object);
   if (keys.some((key) => !['runId', 'kind', 'options', 'stepId', 'supportingEvidenceIds'].includes(key))) return false;
@@ -281,12 +280,16 @@ export async function raiseEscalation(
   if (!options) return { ok: false, reason: RAISE_ESCALATION_REFUSALS.malformed };
   const now = dependencies.clock.now();
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) return { ok: false, reason: RAISE_ESCALATION_REFUSALS.malformed };
-  const deadline = new Date(now.getTime() + AWAITING_AUDITOR_TIMEOUT_MS);
+  const deadline = new Date(now.getTime() + waitTimeoutMs(input.kind));
   const wait: RunWait = {
     waitId: dependencies.ids.next(),
     runId: input.runId.toLowerCase(),
     kind: input.kind,
     options,
+    openedAt: now.toISOString(),
+    // The platform raised it, so no person is named. Generation 45 refuses an Escalation
+    // that names one, and refuses a pause that does not.
+    openedBy: null,
     deadline: deadline.toISOString(),
     closedAt: null,
     closureKind: null,
@@ -384,7 +387,12 @@ export async function answerEscalation(
       if (!locked.allowed) throw new Revoked(role, locked.reason);
       const run = context.run;
       const wait = await context.readWait(request.waitId);
-      if (!run || !wait || wait.waitId !== request.waitId) return { ok: false, reason: ANSWER_ESCALATION_REFUSALS.unknown, code: 'unknown' };
+      // A pause is a wait and is NOT an Escalation. Refused here as `unknown` because from
+      // this command's point of view there is no such Escalation — and refused again by
+      // generation 45, which cannot store `kind='pause'` closed as an `answer`. Resuming is
+      // `resumeRun`'s, which refuses an Escalation the same way.
+      if (!run || !wait || wait.waitId !== request.waitId || !isEscalationKind(wait.kind))
+        return { ok: false, reason: ANSWER_ESCALATION_REFUSALS.unknown, code: 'unknown' };
       const now = dependencies.clock.now().toISOString();
       const option = wait.options.find((candidate) => candidate.id === request.answerOptionId);
       if (!option) return { ok: false, reason: ANSWER_ESCALATION_REFUSALS['invalid-option'], code: 'invalid-option' };
@@ -485,9 +493,23 @@ export async function wakeEscalation(
     const run = context.run;
     if (!run) return { ok: false, reason: 'That Run does not exist.' };
     const at = dependencies.clock.now().toISOString();
+    // The event says which wait timed out, and every field of it is DERIVED from the
+    // wait's own kind (Story 5.4 review). Written as an Escalation for both kinds, a
+    // timed-out pause recorded `execution.escalation-timeout` by an actor called
+    // `escalation-wake`, leaving `priorState: 'AWAITING_AUDITOR'` — a state that Run was
+    // never in, in a row that can never be corrected. `waitRunState` is the SAME function
+    // the command, the insert, the closure and the recovery read already call, so there is
+    // no second spelling of "a pause means PAUSED" to drift.
+    //
+    // The family is closed and the suffix is not (`EVENT_TYPE_PATTERN`), so
+    // `execution.pause-timeout` needs no vocabulary change and no migration. It also
+    // keeps the bell correct by construction: `BellLive` re-reads on
+    // `execution.escalation-` and a pause is not in the inbox, so a pause timing out must
+    // not make it re-read.
+    const paused = operation.wait.kind === 'pause';
     const event = await context.auditEvents.append({
-      actor: { type: 'system', id: 'escalation-wake' },
-      eventType: 'execution.escalation-timeout',
+      actor: { type: 'system', id: paused ? 'pause-wake' : 'escalation-wake' },
+      eventType: paused ? 'execution.pause-timeout' : 'execution.escalation-timeout',
       source: 'worker',
       outcome: 'failure',
       aggregateId: run.runId,
@@ -497,7 +519,7 @@ export async function wakeEscalation(
         waitId: operation.wait.waitId,
         kind: operation.wait.kind,
         closureKind: 'timeout',
-        priorState: 'AWAITING_AUDITOR',
+        priorState: waitRunState(operation.wait.kind),
         state: 'INCONCLUSIVE',
         occurredAt: at,
       },

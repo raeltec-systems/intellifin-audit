@@ -31,6 +31,7 @@ import type {
   OutcomeRowId,
   RaisedException,
   RunCancellationRequest,
+  RunPauseRequest,
   RunRecord,
   RunResultConditionCount,
   RunResultExclusion,
@@ -44,6 +45,9 @@ import type {
 } from '@intellifin/domain';
 import type { AuditEventWriter } from '../audit/ports.js';
 import type { AgentPageDeclarationFacts } from './agent-page-declaration.js';
+// The dependency-free wait vocabulary leaf. `waits.ts` imports THIS module, so a pause
+// wait's type has to come from the leaf or the two files would import each other.
+import type { RunWait, WaitKind } from './escalation-kind.js';
 
 // Re-export the page declaration seam through the existing execution-ports barrel. The
 // infrastructure adapter already depends on this public application entrypoint, while the
@@ -352,11 +356,21 @@ export interface StepExecutionRecord {
   planStepId: string;
   workItemId: string | null;
   action: string;
-  state: 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+  /**
+   * `SUPERSEDED` is Story 5.4's: a pause interrupted this attempt.
+   *
+   * Neither `SUCCEEDED` nor `FAILED` is true of it — nothing went wrong, so `diagnostic`
+   * stays NULL — and leaving it `RUNNING` would make an interrupted attempt
+   * indistinguishable from a live one. Its Tool Actions stay on the Timeline; the resume
+   * starts a NEW attempt from the Work Item's first Tool Action.
+   */
+  state: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SUPERSEDED';
   attempt: number;
   startedAt: string;
   completedAt: string | null;
   diagnostic: string | null;
+  /** Why it was superseded. Set exactly when the state is `SUPERSEDED`; a CHECK pins that. */
+  supersededBy?: 'resume' | null;
 }
 
 /**
@@ -394,9 +408,38 @@ export interface PopulationRecord {
   readonly values: Record<string, JsonValue>;
 }
 
+/**
+ * A stage that can honour a pause at one of its own boundaries (Story 5.4).
+ *
+ * `openPauseWait` is the ONE way a pause wait row and its durable wake come into being
+ * from the worker side, and it is EXTENDED rather than injected: a composition root cannot
+ * leave it out, so no stage can move a Run to `PAUSED` and forget the deadline that ends
+ * it. The three stages with a boundary a pause can land on extend this; population
+ * acquisition does not, because a single bounded fetch has no boundary inside it and the
+ * request simply takes effect at the stage after it.
+ *
+ * It does NOT check the Run state. The guarded transaction that calls it has already
+ * established `RUNNING` and is writing `PAUSED` in the same commit, so a second check here
+ * would refuse the only caller there is.
+ */
+export interface RunPauseContext extends RunResultContext {
+  openPauseWait(wait: RunWait): Promise<void>;
+  /**
+   * Clear the request marker, in the transaction that honours it.
+   *
+   * The marker means exactly "a pause is requested and NOT yet honoured", which is what
+   * lets `CompleteRun` say a request was superseded by simply finding one still there. It
+   * is therefore cleared here, at the boundary that performs the pause, and not at the
+   * resume — the Paused banner reads `openedBy` and `openedAt` off the wait row, so
+   * nothing needs the marker to survive the transition it describes.
+   */
+  clearPauseRequest(): Promise<void>;
+}
+
 export interface AdapterExecutionContext
   extends ObservationRegistrationContext,
-    RunGateContext {
+    RunGateContext,
+    RunPauseContext {
   run: RunRecord | null;
   population: PopulationCheckpoint | null;
   checkpoint: AdapterExecutionCheckpoint | null;
@@ -877,6 +920,15 @@ export interface RunResultContext extends EvidencePackageContext {
    * Stories 1.5 and 2.7 follow: read inside the transaction that writes.
    */
   readCancellation(): Promise<RunCancellationRequest | null>;
+  /**
+   * The Run's OUTSTANDING pause request, read on this transaction's connection (Story 5.4).
+   *
+   * Same rule as `readCancellation`, and for the same reason: a person can press Pause
+   * during the last unit of a Run, after the claim that produced the `RunRecord` a stage
+   * carries. A still-outstanding request at a terminal transition is one no boundary ever
+   * reached, which is what `lifecycle.pause-superseded` records.
+   */
+  readPauseRequest(): Promise<RunPauseRequest | null>;
   /** The terminal transition being committed. Sealed in the same transaction. */
   saveRunState(state: RunRecord['state']): Promise<void>;
   readPopulationFacts(): Promise<RunGatePopulationFacts | null>;
@@ -923,6 +975,35 @@ export interface RunResultContext extends EvidencePackageContext {
     readonly exceptions: RunResultFindings;
     readonly unevaluated: RunResultFindings;
   }>;
+  /**
+   * Withdraw the wait this Run is still holding, if it is holding one (generation 47).
+   *
+   * Returns the wait it closed, so the caller can record WHICH question was withdrawn, and
+   * `null` when there was none — which is every ordinary terminal transition: a wake closes
+   * its own wait before completing the Run, and a Run that never waited has nothing to
+   * withdraw. So this is a read that usually finds nothing, and the case it exists for is
+   * the one the PR 29 review found: `RUN_CANCEL_TRANSITIONS` gives a `PAUSED` and an
+   * `AWAITING_AUDITOR` Run to the COMMAND, so cancelling one ends the Run while its wait is
+   * open.
+   *
+   * The actor and the closure kind are NOT parameters. Generation 47 pins both — the same
+   * discipline `waitClosureKindFor` applies one layer up, so no caller can withdraw a wait
+   * in a person's name or dress a withdrawal as an answer.
+   */
+  withdrawOpenWait(at: string): Promise<WithdrawnWait | null>;
+}
+
+/**
+ * The wait a terminal transition withdrew, as it was BEFORE it was closed.
+ *
+ * Identity and kind only. The question, its candidates and any retrieved text stay on the
+ * row: this is what an audit event records, and the chain is immutable, so a question a
+ * Target System's page could influence must never enter it.
+ */
+export interface WithdrawnWait {
+  readonly waitId: string;
+  readonly kind: WaitKind;
+  readonly openedAt: string;
 }
 
 /**
@@ -1417,7 +1498,7 @@ export interface AgentExecutionCheckpoint {
   diagnostic: string | null;
 }
 
-export interface AgentExecutionContext extends RunResultContext {
+export interface AgentExecutionContext extends RunPauseContext {
   run: RunRecord | null;
   checkpoint: AgentExecutionCheckpoint | null;
   /** The population stage's claim, so the agent stage inherits the Run's own deadline. */

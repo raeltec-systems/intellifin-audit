@@ -18,6 +18,7 @@ import {
 } from '@intellifin/infrastructure';
 
 import {
+  FLAG_COPY,
   LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
   LIVE_VIEW_QUEUED_SENTENCE,
   SESSION_ISOLATION_NOTE,
@@ -314,14 +315,36 @@ test.describe('Live View', () => {
     await expect(page.getByText(LIVE_VIEW_STAGE.awaitingFirstFrame)).toBeVisible();
   });
 
-  test('renders read-only below 1024px with the contract’s floor sentence', async ({ page }) => {
+  test('renders read-only below 1024px — the floor sentence, and the controls withdrawn', async ({ page }) => {
     const seeded = await seedRun({ workspace: true, frame: true });
     await page.setViewportSize({ width: 900, height: 800 });
     await page.goto(`/runs/${seeded.runId}/live`);
-    await expect(page.getByText(LIVE_VIEW_DESKTOP_ONLY_SENTENCE)).toBeVisible();
-    // Above the floor the same sentence is in the document and hidden by the stylesheet.
+    // The stage's own floor sentence, located by the element the STYLESHEET acts on,
+    // because that is what the second half of this test asserts. It is not located by its
+    // text: below the floor the same sentence is also each withdrawn control's reason
+    // (`LIVE_GATE_REASONS.viewport`), so a text locator resolves to four nodes. Its wording
+    // is still pinned here against `copy.ts`, which `copy.test.ts` pins to EXPERIENCE.md.
+    const floor = page.locator('.ls-session-desktop-only');
+    await expect(floor).toHaveText(LIVE_VIEW_DESKTOP_ONLY_SENTENCE);
+    await expect(floor).toBeVisible();
+
+    // READ-ONLY is the whole of UX-DR25's rule, and until PR 29 the sentence was all this
+    // viewport did: Pause, Cancel and Flag stayed fully usable from a width the contract
+    // defines as read-only. Each is withdrawn and says why, rather than hidden — the
+    // Escalation's question and the Paused banner stay readable on a phone.
+    const controls = ['Pause', 'Cancel Run', FLAG_COPY.submit];
+    for (const name of controls) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute('aria-disabled', 'true');
+    }
+
+    // Above the floor the same sentence is in the document and hidden by the stylesheet,
+    // and every control is live again: the gate is a verdict about the viewport, so it
+    // reopens on the media query rather than on a reload.
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(page.getByText(LIVE_VIEW_DESKTOP_ONLY_SENTENCE)).toBeHidden();
+    await expect(floor).toBeHidden();
+    for (const name of controls) {
+      await expect(page.getByRole('button', { name, exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    }
   });
 
   test('flips to REPLAY and names the terminal state when the Run ends while it is open', async ({ page }) => {

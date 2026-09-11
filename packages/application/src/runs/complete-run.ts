@@ -13,6 +13,7 @@ import {
   type RunResultGate,
   type RunResultPopulation,
 } from '@intellifin/domain';
+import { WAIT_WITHDRAWN_ACTOR } from './escalation-kind.js';
 import type { RunResultContext, StoredRunResult } from './execution-ports.js';
 import { sealPackage } from './seal-package.js';
 
@@ -76,6 +77,28 @@ const RESULT_EVENT = 'lifecycle.result-sealed';
  * command, and every path Epic 4 adds, and cannot be forgotten by a branch written later.
  */
 const CANCELLATION_SUPERSEDED_EVENT = 'lifecycle.cancellation-superseded';
+/**
+ * The same reading for a pause nothing reached (Story 5.4, AD-16).
+ *
+ * Defined here rather than imported from `PauseRun` for the reason its sibling above is:
+ * an event name lives where the event is appended, and `PauseRun` reaching back into this
+ * module would make the two import each other.
+ */
+const PAUSE_SUPERSEDED_EVENT = 'lifecycle.pause-superseded';
+/**
+ * The question a Run withdrew by ending while it was still holding one (generation 47).
+ *
+ * `execution.` and not `lifecycle.`, because it is what happened to the WAIT rather than to
+ * the Run — the same family `execution.escalation-timeout` and `execution.pause-timeout`
+ * sit in, and for the same reason. `EVENT_TYPE_PATTERN` closes the family and not the
+ * suffix, so no migration is needed for the name.
+ *
+ * It exists because a wait disappearing silently is the shape this codebase keeps finding:
+ * an Auditor whose inbox held that question watches it vanish, and without this the only
+ * durable trace is a `closed_at` nobody is looking at. The Run's own cancellation event
+ * says the Run stopped; this says the question stopped with it.
+ */
+const WAIT_WITHDRAWN_EVENT = 'execution.wait-withdrawn';
 
 export interface CompleteRunInput {
   readonly run: RunRecord;
@@ -176,6 +199,19 @@ async function publishResult(
   // leaves a condition Unevaluated". Taken BEFORE the seal so the package records the
   // state the Run actually reached, and it is the only row that moves one.
   if (decision.runState !== input.state) await context.saveRunState(decision.runState);
+
+  // A Run that ends while it is still holding a wait WITHDRAWS the question (generation
+  // 47, PR 29 review). Before the seal, so a wait cannot be left open by any path that
+  // returns early below it; and only on the FIRST publication, because a pending Result
+  // sealed later by a human review is not a Run ending — it ended already, and its wait was
+  // withdrawn then.
+  //
+  // Usually there is nothing to withdraw: a timeout wake closes its own wait first, and a
+  // Run that never waited has none. What this reaches is the case
+  // `RUN_CANCEL_TRANSITIONS` creates — a `PAUSED` or `AWAITING_AUDITOR` Run the COMMAND
+  // cancels, which before this left `closed_at` NULL for ever.
+  const withdrawn = previous === null ? await context.withdrawOpenWait(input.at) : null;
+
   const seal = await sealPackage(context, {
     run: input.run,
     terminalState: decision.runState,
@@ -314,6 +350,36 @@ async function publishResult(
   });
   await context.notifyTimeline(stored.sequence);
 
+  if (withdrawn !== null) {
+    const closed = await context.auditEvents.append({
+      // The system, not whoever cancelled the Run: they asked for the Run to stop, and
+      // withdrawing the question is what the platform did in consequence. The same reading
+      // `cancellation-superseded` takes, and generation 47 pins the actor on the row too.
+      actor: { type: 'system', id: WAIT_WITHDRAWN_ACTOR },
+      eventType: WAIT_WITHDRAWN_EVENT,
+      source: 'worker',
+      // A failure: a question was asked and never got an answer.
+      outcome: 'failure',
+      aggregateId: input.run.runId,
+      correlationId: input.run.correlationId,
+      sessionId: input.run.sessionId,
+      payload: {
+        waitId: withdrawn.waitId,
+        // WHICH kind, so a reader can tell a withdrawn Escalation from a withdrawn pause
+        // without joining. The question itself, its candidates and any retrieved text stay
+        // on the row: the chain is immutable, so a value a Target System's page could
+        // influence must never enter it.
+        kind: withdrawn.kind,
+        closureKind: 'withdrawn',
+        openedAt: withdrawn.openedAt,
+        // What ended the Run, so the chain says why the question stopped.
+        state: decision.runState,
+        occurredAt: input.at,
+      },
+    });
+    await context.notifyTimeline(closed.sequence);
+  }
+
   // The Replay asset set is not whole (Story 5.2, AC3). One event per Run, carrying the
   // exact total and a bounded sample: one per missing frame would put an unbounded number
   // of rows into an immutable chain for exactly the Run whose capture was misconfigured.
@@ -371,6 +437,35 @@ async function publishResult(
           requestedAt: request.requestedAt,
           reason: request.reason,
           // What happened instead, so the chain says why the request was outrun.
+          state: decision.runState,
+          outcome: decision.outcome,
+          occurredAt: input.at,
+        },
+      });
+      await context.notifyTimeline(superseded.sequence);
+    }
+  }
+
+  // AD-16: "a pause requested when no further Tool Action boundary occurs is recorded as
+  // superseded on the Timeline and the Run proceeds to its terminal state". The marker is
+  // cleared by the boundary that honours a pause, so one still outstanding here is one no
+  // boundary ever reached — no state comparison is needed to tell the two apart.
+  if (previous === null) {
+    const pause = await context.readPauseRequest();
+    if (pause !== null) {
+      const superseded = await context.auditEvents.append({
+        // The system, not the requester: they asked, and the platform did not do it.
+        actor: { type: 'system', id: 'result-sealer' },
+        eventType: PAUSE_SUPERSEDED_EVENT,
+        source: 'worker',
+        // Not a success: a person asked for something and did not get it.
+        outcome: 'failure',
+        aggregateId: input.run.runId,
+        correlationId: input.run.correlationId,
+        sessionId: input.run.sessionId,
+        payload: {
+          requestedBy: pause.requestedBy,
+          requestedAt: pause.requestedAt,
           state: decision.runState,
           outcome: decision.outcome,
           occurredAt: input.at,

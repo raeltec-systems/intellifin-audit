@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * `GET /api/session` is the spec's observable proof that role resolution works: the
@@ -40,6 +40,18 @@ async function callSession() {
 }
 
 describe('GET /api/session', () => {
+  /**
+   * The route module is imported ONCE, before any assertion is timed.
+   *
+   * `vi.mock` factories apply at import whenever it happens, and nothing here resets the
+   * module registry, so only the FIRST `callSession()` ever paid the import — and on a
+   * loaded machine transforming this workspace's graph took longer than the 5-second test
+   * timeout, failing the first case and leaking its role lookup into the second. Warming it
+   * in a hook keeps every assertion exactly as it was and puts the one-time cost where it
+   * belongs.
+   */
+  beforeAll(async () => { await import('../app/api/session/route'); }, 60_000);
+
   beforeEach(() => {
     state.session = null;
     state.role = null;

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { LIVE_STALE_MS, liveStatus, silenceSeconds, type LiveStatus } from './live-status';
+import { LIVE_STALE_MS, acceptsLiveSeq, liveStatus, silenceSeconds, type LiveStatus } from './live-status';
 
 /** One Timeline event as the channel carries it (`docs/contracts/live-timeline-channel-v1.md`). */
 export interface LiveTimelineEvent {
@@ -82,7 +82,9 @@ export function useLiveTimeline(
       const event = parseEvent(message.data);
       if (event === null) return;
       if (cursor !== null) {
-        if (event.seq <= lastSeqRef.current) return;
+        // The one rule that makes a reconnect lossless AND duplicate-free, and it lives in
+        // `live-status.ts` so the property is tested without a browser.
+        if (!acceptsLiveSeq(lastSeqRef.current, event.seq)) return;
         lastSeqRef.current = event.seq;
       }
       touch();

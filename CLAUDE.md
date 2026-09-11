@@ -1,3 +1,646 @@
+## 2026-09-11 — Guided preparation comes into v1, and ten of its rules are already the product
+
+The owner reviewed LivePlan's documentation and adopted the pattern for the authoring surface —
+*guide the auditor through the assignment, turn their inputs into a clear procedure, obtain their
+approval, then obtain independent manager approval before allowing execution.* It is **v1**, as
+**Epic 2 extension stories 2.9–2.15**, not v2 and not Epic 5. Whole direction, the reconciliation
+and the story breakdown: `_bmad-output/implementation-artifacts/guided-procedure-preparation.md`.
+`v2-conversational-authoring.md` is `[SUPERSEDED]` by it and kept for the reasoning.
+
+**The governing document an institution already has IS the Template, and there is no new entity.**
+A first version of this note proposed one, and the owner corrected it: every institution tracks
+its risks and the controls that mitigate them in some document — the names and formats differ by
+institution — and in production a Template would be shaped around whatever that institution uses.
+So the work is to make the EXISTING Template more structured, framed around **risk, control,
+objective and criterion reference**. `ProcedureTemplate` already carries `objective` for all four
+and `controlStatement` for P-1 only; risk and criterion reference are what is missing. **Do not
+introduce a separate entity for this, and do not use an institution-specific acronym for it in
+code, copy or documents** — the product word is Template.
+
+**Adding a Template field means editing addendum §C FIRST.** Templates are build constants pinned
+to §C on disk, and `procedure-templates.test.ts` requires every stored string to appear verbatim
+in that Template's block — deliberately, because "a stored default that appears nowhere in the
+block could never be pinned". So most of that story is the addendum, and the code follows.
+`initialDraftSections` already copies Template text into the version's `sections` at creation and
+`sections` is part of `FrozenPlanInputs`, so a Template edited later **cannot** retroactively
+change what an approved version says it was testing — risk and criterion ride that mechanism and
+need no new freezing rule.
+
+**The governance half was checked against the code and TEN requirements already hold**, several
+more strongly than the direction assumed. The proposed chain `Draft → auditor approved / awaiting
+manager review → manager approved → Active` IS `DRAFT → SUBMITTED → APPROVED → ACTIVE`, so
+**`SUBMITTED` already means "the auditor approved this and sent it for manager review"** and no
+new lifecycle state is needed. `authorApprovingOwnVersion` checks `humanAuthorIds` — EVERY human
+author, not only the creator — and DENIES when the author is unknown, so "a different person must
+approve" is identity-enforced rather than role-enforced. `createRun` refuses any period owner that
+is not `ACTIVE` with a frozen review, and manual initiation and rerun share that one function.
+**Read the code before scoping a governance ask**: most of this needed writing down, not building.
+
+**The one execution gap is named rather than assumed: scheduled Runs are Epic 8 and do not exist**,
+so "every path that can start work re-checks approval" is a rule to pin in Epic 8's spec.
+
+**What else is genuinely new:** AI drafting per section; a section state that separates DRAFTED
+from AUDITOR-REVIEWED, because today's `done | todo | attention | reference` cannot say "written
+but not yet accepted" — until now a person typed everything and there was nothing to distinguish;
+material proposals shown as UNAPPLIED changes carrying a basis; cross-section dependency flagging;
+and reference documents (design inputs) kept distinct from Evidence (execution inputs).
+
+**Prose has no compiler, so a rewrite is reviewed rather than checked.** `equivalentExecutablePlan`
+can refuse a model answer whose PLAN semantics differ; there is no such test for a sentence. The
+mechanism is therefore show-the-diff-and-require-acceptance, and the failure it prevents is
+concrete — *"check ALL terminated employees"* becoming *"review a REPRESENTATIVE SAMPLE"* silently
+narrows the test. **`scopeWideningWarnings` does not catch that**: it flags widening (a write verb,
+an out-of-scope origin, an unregistered system) because until now only a person could narrow scope
+and they knew they had. An assistant that rewrites prose makes narrowing reachable.
+
+**The assistance must be ADDITIVE — the forms keep working with no model at all.** That is what
+makes it safe in v1: help on top of a surface that already works, never a replacement for one. The
+cost to know about is paid model calls on the authoring path, where today the only one is the plan
+check, once per save.
+
+## 2026-09-11 — v2 authors by conversation, and three of its four rules already hold
+
+Owner direction, recorded and NOT built: in v2 an auditor builds a Procedure by talking to
+the agent one question at a time rather than working down the Builder, the agent then frames
+the whole plan, and the auditor confirms the framing is right. Whole shape, the constraints it
+inherits and the one open design question:
+`_bmad-output/implementation-artifacts/v2-conversational-authoring.md`.
+
+**Checked rather than assumed, because three of the four rules are already the product.**
+`PROCEDURE_VERSION_TRANSITIONS` is `DRAFT → SUBMITTED → APPROVED → ACTIVE` with no shortcut;
+`procedure.version.approve` is an Audit Manager's alone and is denied to the version's own
+author; and `createRun` refuses any period owner that is not `ACTIVE` with a frozen review, so
+a Draft, a Submitted, a Rejected or an approved-but-not-activated version cannot be run —
+manual initiation and rerun share that one function. So v2 changes HOW A DRAFT IS AUTHORED and
+nothing about who approves, what activation means, or what a Run may execute. **Keep it that
+cheap.**
+
+**The one thing v2 must decide deliberately: the auditor has ONE act of assent today** —
+Submit — and the owner's description has two, "you framed it right" and "send it to a
+manager". Whether the first becomes its own recorded act is a question about what an auditor is
+attesting to and it changes the immutable chain. It must not be settled inside a story about a
+chat surface.
+
+**The agent is a JUNIOR AUDITOR, not a typist, and a first reading of this that said "the
+model collects the inputs" was corrected by the owner.** It takes intent rather than dictation,
+puts it in its own words, understands why a control is tested this way, confirms before acting,
+catches a slip ("you said X, did you mean Y?"), and — told the status is in column C when the
+sheet has it in column B — reads the real source, reasons, asks, carries on and reports what it
+found. A form with a chat skin on it is not what was asked for.
+
+**What that does NOT change is WHEN the thinking stops being negotiable.** All of it lives
+BEFORE the auditor confirms; after the confirmation the artifact is frozen and the compiler
+writes the plan. The reason is not distrust of the model — an auditor SIGNS the work, and an
+artifact that moved after they approved it makes them attest to something they never decided.
+It is also why a correction is PROPOSED and accepted, never applied silently. The checkable
+form: throw the conversation away, keep the confirmed inputs, re-run `makePlan`, and the plan
+must come back byte for byte. **Epic 4's executing agent already has this posture** — it reasons,
+and raises a typed Escalation rather than guessing — so v2 extends a stance the product has
+rather than inventing one.
+
+## 2026-09-11 — The plan is the platform's own sentence, and it is laid out to be found
+
+The owner read the Builder's plan fold and asked one question — *"is this agent generated or
+its hardcoded?"* — then said the presentation was still poor. The first has a short answer and
+the second was a real defect.
+
+- **Every word on that surface is the PLATFORM's, built from the auditor's own fields.**
+  `makePlan` in `packages/domain/src/procedures/executable-plan.ts` writes each step's sentence
+  from a fixed template with names, ids, dates and lists slotted in; `ACTION_LABELS` supplies
+  the titles. The model IS called when a version freezes one, and its only power is to AGREE:
+  `derive-plan.ts` stores `result.plan` — the compiler's bytes — and refuses the attempt when
+  `equivalentExecutablePlan` says the candidate's semantics differ. The agent that will RUN the
+  Procedure has not started; it READS this. Worth restating here because the surface itself
+  never said so, and now its first line does.
+- **The two components are one treatment at two altitudes, not two documents.** `AgentSummary`
+  is the decision ("how many systems, how many steps, what is captured, when does it stop") and
+  `ExecutablePlanPreview` is the contract. They now share `.ls-plan-groups`, `.ls-plan-steps`,
+  `.ls-plan-facts`, `.ls-plan-panel` and `.ls-tag`, so a reader who learns one can read the
+  other.
+- **A Session Step happens ONCE and a plan step happens PER RECORD**, and the old summary said
+  that in a prose sentence after an undifferentiated list. They are two labelled groups now.
+  An auditor who cannot tell those apart cannot judge what a Run costs.
+- **`plan-numbers.ts` says a frozen number the way a person reads it and never a different
+  one.** `10000` → `10,000`, `3600` → `1 hour`. Grouping and unit words only: `durationWords`
+  is tested at 3599 precisely because "59 minutes 59 seconds" must not round to an hour. The
+  read-only contract preview prints the exact digits BESIDE the words, because that surface's
+  job is to be checked rather than skimmed.
+- **A label that is a NAME is not upper-cased.** `.ls-plan-facts--names` exists because the
+  overline treatment would print `MAX_MANUAL_APPROVAL_AMOUNT` for a field the plan holds as
+  `max_manual_approval_amount` — a value the plan does not contain, rendered as though it did.
+- **The `AgentSummary` limits test now asserts the FORMATTED value and that a different plan
+  says different numbers.** Importing the component's own formatter would have compared it with
+  a copy of itself, so the test formats independently with `toLocaleString('en-US')`.
+
+Three mechanical notes:
+
+- **A grid row with three children and two columns puts the third in column ONE**, and an
+  `auto` first column then sizes itself to that child. The step's long canonical text became
+  the marker column and pushed every step title into a narrow strip on the right. It is
+  `grid-column: 2` on the text, with `row-gap: 0`, so the marker column stays the width of the
+  marker. Caught by looking at the rendered page, not by any test.
+- **`plan.limits.retriesPerStep` is typed `3`, so `=== 1` does not compile.** The pluralisation
+  reads the value through a `number` binding — which is also what keeps the sentence right if a
+  later compiler version freezes a different bound.
+- **`renderToStaticMarkup` plus the two real stylesheets is a one-second visual check.** A
+  throwaway `*.test.ts` under `apps/web/src/procedures/` writes the page to the scratchpad and
+  Chromium screenshots it, with no database, no server and no seed. Delete it in the same
+  command that runs it; a preview generator left behind is a test that asserts nothing. Wrap
+  it in the REAL surrounding markup — the fold's `.ls-card` + `.ls-disclosure` — or the check
+  answers a question about a page nobody sees: the first screenshot showed white cards that
+  are transparent in the place they actually appear.
+- **`require-role.test.ts` had the module-warm-up gap its two siblings had already closed.**
+  Only the FIRST `await import('./require-role')` pays the transform of this workspace's
+  graph, and on a machine also running a browser suite that alone outran the 5-second case
+  timeout — reported as a failed assertion about sessions. It has `session-route.test.ts`'s
+  `beforeAll(..., 60_000)` now. Found by breaking the OTHER standing rule (two suites at once
+  against one machine), which is the trap that keeps producing failures that are not
+  product defects.
+
+## 2026-09-11 — Four review findings, and three tests that could not fail
+
+The Epic 5 code review (`_bmad-output/implementation-artifacts/review-epic-5-stories.md`)
+named four High findings. All four are fixed, each with a test proven by MUTATION — run
+against the code with the fix removed, and required to fail. Three of the four were tests
+that could not fail for the reason they existed, which is the shape this file keeps finding.
+
+- **The one mid-item boundary that passed no in-flight pair.**
+  `execute-agent-work-item.ts`'s `lifecycleBoundary()` inside `finishObservation` was called
+  bare, although `item` and `execution` were both in scope and its four siblings pass them.
+  `lifecycleBoundary` guards its whole supersede-and-give-back arm behind
+  `if (inFlight !== undefined)`, so a pause honoured there left the Step Execution `RUNNING`
+  for ever — the state `run-pause-v1.md` says must never exist, because it makes an
+  interrupted attempt indistinguishable from a live one — never gave the attempt back, never
+  wrote `superseded_by`, and opened a pause wait naming no Step Execution to resume into.
+  **An optional parameter that changes what a function DOES is a parameter a call site can
+  forget**; the four that remembered are why this one looked normal.
+- **A pause is not a lost commit, and `retry` is the difference.** `finishObservation`
+  returned `'lost'` for both, and every caller maps `'lost'` to
+  `{ retry: checkpoint.status === 'RETRY' }` — while the pause path writes `RETRY` for the
+  RECOVERY SWEEP, not for the queue. So a pause asked for a redelivery of a Run the claim
+  refuses (`run.state !== 'RUNNING'` → `null` → `{ retry: false }`), after `handle` had
+  already provisioned and released a browser session for it. `'stopped'` is its own return
+  value now, and the five call sites map it to `{ retry: false }` as the other four
+  boundaries already did.
+- **`RunFlagControl` never withdrew on a lost response**, unlike `RunCancelControl`
+  extracted in the same change, and a flag carries no request token — so a retry writes a
+  second `run_flag` and a second fan-out to every Audit Manager. `RUN_LOST_RESPONSE` moved
+  into `copy.ts`: two components already declared the identical sentence and the fix would
+  have made a third.
+- **A live region's TEXT is invisible to every SSR test, and that is not a gap in one test.**
+  `apps/web/src` renders with `renderToStaticMarkup` under `environment: 'node'`, so no
+  effect runs; the Escalation panel's polite region is therefore always `''` there, and the
+  one test naming the milestone sentences asserts their ABSENCE. Emptying the region
+  entirely, and freezing it at its first rung, each left 1073/1073 passing. It is asserted
+  in the BROWSER now, at two rungs — and the second rung needs a real deadline, so the
+  near-expiry Escalation is OPENED with the clock set back (a wait's deadline is immutable
+  since generation 34). Any state a component reaches only through an effect is a state the
+  unit suite cannot see; assert it where the DOM is real, or say what the hook answered.
+- **`not.toContain('role="timer" aria-live')` is an assertion about React's attribute
+  ORDER.** Re-spelling the clock `<p aria-live="polite" aria-atomic="true" role="timer">`
+  restored the exact Story 4.8 defect with the suite green — and the companion
+  `toContain('aria-live="polite"')` was then satisfied by the clock itself, even with the
+  real region deleted. The guard parses the opening tags and asserts on the ELEMENT.
+- **`useActionState` returns its INITIAL state under SSR**, so the one render a lost-response
+  withdrawal exists for is unreachable without saying what the hook answered. Mock that one
+  export with `{ ...actual, useActionState }`; the rest of react stays the real module, so
+  `react-dom/server` renders normally.
+
+**`[NAMED, NOT FIXED]` A lost Server Action response tells the auditor "Nothing was
+changed".** A flag form's action IS the Server Action — which is what makes it the one
+control here that works without JavaScript, and what stops the component catching a dropped
+RSC response. The error reaches the route boundary, which renders EXPERIENCE.md's own
+"Couldn't load this page. Nothing was changed." over a flag that committed and notified. The
+sentence is right for a surface that could not be built and wrong for an action whose
+acknowledgement was lost; `app/error.tsx` cannot tell them apart. Bounded rather than
+dangerous — the boundary takes the submit control with it, which is a stronger withdrawal
+than a disabled button — and `flag-run.spec.ts` asserts exactly one `run_flag` row and one
+notification after a dropped acknowledgement. The wording is a product decision, so it is
+reported rather than edited.
+
+## 2026-09-10 — Two accounts cannot walk the journey, and a suggestion is not a requirement
+
+The owner could not test the product: *"there are procedures that refuse to be created… for
+example the SOD procedure… i want to be able to test end to end… create the procedure, have
+it approved, run it and what its output"*. Nothing refused creation. Two other things were
+true, and the second is why the first read the way it did.
+
+- **`procedure.version.approve` is an Audit Manager's alone AND is denied to the version's
+  own author, and the deployment held neither a second auditor nor a manager.** So the
+  auditor wrote it and was refused as its author, the administrator was refused by role,
+  and the journey stopped one step in at a disabled Approve button whose reason was correct
+  and whose remedy did not exist. `seed-demo-accounts.yml` seeds three accounts now.
+  **A deployment that is already seeded needs no re-run**: a PoC Administrator can add an
+  Audit Manager from Administration → Users, which is the same audited command.
+- **No test could notice, and that is the lesson.** Every suite that approves a version
+  mints its own `audit-manager` by raw SQL first — `version-review.spec.ts`,
+  `immutable-versions.spec.ts`, `runs.spec.ts`, `version-decisions.test.ts` — and the
+  browser suite's `ACCOUNTS` fixture holds exactly the two roles it signs in as. A green
+  suite says nothing about what a deployed environment CONTAINS.
+- **`tests/e2e/owner-walkthrough.spec.ts` is the journey nobody had joined up.**
+  `hero-workflow` authors to Submit and stops (no worker); `version-review` drives submit →
+  reject → edit → approve; `clean-source` runs a P-2 Procedure from a version it INSERTS.
+  Each half was proven and the seam was not. It walks P-2 through the interface end to end
+  — create, author four sections, wait for derivation, submit, approve as a manager,
+  initiate, read the sealed Result — in about 20 seconds, and it reaches the golden
+  Inconclusive on `duplicate-primary-keys`.
+- **P-2 was the right Template to walk and P-1 was not**: AccessGate is an API, so the Run
+  is the Adapter path and needs no browser, no Solari key and no model at execution time.
+- **The Builder named systems the deployment does not have, and said nothing about it.**
+  A Template offers its defaults BY NAME and a registration is never minted from one — that
+  is correct, scope is the auditor's to declare — but P-1 suggests LedgerDesk, no deployment
+  registers a desktop system because this release cannot execute one, and the caption listed
+  it beside systems that ARE registered with nothing telling the two apart. `suggestedTargets`
+  matches each suggestion against the real registrations and `suggestedTargetNote` says which
+  of three things is true. The match is by display name and kind, which is a HEURISTIC, so
+  the wording is "no system with this name is set up here" and never "this system does not
+  exist".
+- **`procedures.spec.ts`'s `getByText('LoanCore (web)')` was ambiguous the moment a
+  deployment registers a system called LoanCore** — it also matches the picker's own
+  `<option>` — and every seeded environment does. It failed identically with this change
+  stashed, which is how it was established as pre-existing rather than a regression. It is
+  scoped to the suggestion list now, which is what its own comment says it asserts.
+
+Four mechanical notes:
+
+- **A Draft's first save can be refused for a reason the auditor did not cause.** Creating
+  a Procedure queues a derivation whose attempt record lands on the row a second or two
+  later, so a save made before the Builder's own poll (first refresh at 1500ms) catches up
+  is refused with "That procedure changed since this page was loaded". A person filling
+  three fields rarely meets it; a browser filling them in 300ms meets it every time. The
+  spec does what the sentence says — reload, redo, save — rather than the product growing a
+  special case.
+- **The model identity a version freezes comes from the WEB, not the worker.**
+  `playwright.config.ts` gives its web server `anthropic` / `synthetic-http-fixture`, so a
+  spec that spawns its own worker must hold the SAME identity and the fixture that answers
+  for it. A hand-started `next dev` without those variables freezes no model, derivation
+  goes deterministic, and `version-review.spec.ts` then fails on a line about the model
+  fixture — which reads as a product defect and is a missing environment variable.
+- **P-2 names no Schedule, so both of its fields start empty** and the save refuses until
+  the start time is filled. P-1 arrives with 00:00 because its Template pins one. That is
+  the one step on this Template a person has to discover from an error message.
+- **`pkill -f` matched this shell for the third time** (exit 144), and everything after it
+  in that command line never ran. Kill by PID.
+
+## 2026-09-10 — Generation 47: a Run that ends withdraws the question it was holding
+
+The first of the two findings the PR 29 round named and did not fix. It is fixed now, and the
+reason it was worth a migration is that the row it left behind was BOTH permanently false and
+quietly expensive.
+
+**`RUN_CANCEL_TRANSITIONS` gives a `PAUSED` and an `AWAITING_AUDITOR` Run to the COMMAND**, so
+cancelling one performed the terminal transition there and then — and left its wait `closed_at`
+NULL for ever. Two consequences, and the second is the one that grows: a row asserting that a
+question is open about a Run that is over, which nobody can answer and no later write can
+correct; and `recoverableWaits` reads open waits in a BOUNDED page, so enough of them starve
+the sweep whose whole job is finding waits whose wake was lost.
+
+- **The inbox and the bell were never wrong, which is exactly why this could hide.** Their one
+  visibility predicate requires `AWAITING_AUDITOR`, and a cancelled Run is `CANCELED`, so the
+  STATE excluded it. Two surfaces looked right while the row underneath them lied.
+- **`withdrawn` is its own closure kind, not a `timeout` and not an `answer`.** A timeout says
+  a deadline passed and an answer says somebody decided; nobody did either. The question was
+  WITHDRAWN because the Run it was about ended.
+- **The actor is the SYSTEM (`run-terminal`), never whoever cancelled the Run** — the reading
+  `lifecycle.cancellation-superseded` already takes. They asked for the Run to stop;
+  withdrawing the question is what the platform did in consequence, and naming them would say
+  they answered a question they never saw. Generation 47's CHECK pins the pair, exactly as the
+  timeout arm pins `wait-wake`, so `withdrawOpenWait` writes both itself and takes neither as
+  a parameter.
+- **`audit_run_no_open_wait` is a DEFERRED constraint trigger beside generations 21 and 25**,
+  so a path that ends a Run and forgets the wait fails to COMMIT rather than shipping the row.
+  Three statements of one rule again: the producer cannot ask, the domain would not honour it,
+  the database refuses to hold it.
+- **It withdraws at every terminal transition, not on the cancellation path.** `completeRun` is
+  where every one already goes, so one check covers both worker stages, the web command and
+  whatever a later epic adds. On the ordinary path it finds nothing — a wake closes its own
+  wait first — so this is a read that usually returns `null`.
+- **`execution.wait-withdrawn` records WHICH question went**, by kind and identity and never
+  its text. A wait disappearing silently is the defect shape this codebase keeps finding; the
+  Run's cancellation event says the Run stopped, and this says the question stopped with it.
+  `execution.` rather than `lifecycle.` because it happened to the WAIT, and
+  `EVENT_TYPE_PATTERN` closes the family and not the suffix, so the name needs no migration.
+
+**The round's other named finding was examined and is NOT a defect.** `parsePauseRequest`
+takes no expected revision where `parseResumeRequest` does, and the asymmetry is the contract:
+a pause RECORDS A MARKER and performs no transition, so AD-16's "at the next Tool Action
+boundary, whenever that is" is its whole meaning and the revision the page was rendered at has
+no bearing on it — refusing there would refuse a pause for a reason the person asking could not
+act on. A resume PERFORMS `PAUSED → RUNNING` and must not run against a state nobody saw, which
+is what its revision is for. The staleness that does matter is caught anyway under the pause
+command's own row lock (`AWAITING_AUDITOR` by name, anything else by `runPauseTransition`), and
+writing the marker bumps the revision through generation 34's trigger under that same lock, so
+a worker's compare-and-set serialises rather than races. **It was accepted too readily in the
+first round**; the reasoning now sits at the parser and in the contract so the next reader meets
+it instead of re-filing it. A finding that reproduces is not the same as a finding that is
+right — check what the contract already says before building the change it asks for.
+
+**The backfill is structural and was proven against a database that really had the defect.** A
+scratch database was migrated to generation 46 ONLY (a copy of `drizzle/` with 0047 and its
+journal entry removed), seeded through the repo's own `activeRunVersion` fixture with a
+`CANCELED` Run holding an open pause wait — which 46 permits, because that IS the defect — and
+then upgraded with the real migrator. The wait came out `withdrawn`/`run-terminal` at the
+Result's own `sealed_at`, and three waits on QUEUED Runs left by earlier failed seed attempts
+were untouched, which is the negative control the test did not have to invent. Fresh install,
+that upgrade and the working database all end at 539 columns, 769 constraints and 28 triggers.
+
+Three mechanical notes:
+
+- **Making the port REQUIRED is what found every caller.** Ten fake contexts failed to compile,
+  each in a file whose Run never opens a wait; an optional seam would have left them silently
+  answering `null` for ever. Nine say so in one line, and the four that drive a wait implement
+  it.
+- **A bounded read over the WHOLE table plus a post-filter is a test that other files can
+  break.** `run-surfaces.test.ts`'s `mine()` took one `RUN_LIST_PAGE_SIZE` page of every Run in
+  the database and then filtered to its own Procedure, so it passed at 24 rows and failed the
+  moment this change added three — and the row it lost was the OLDEST, which reads as a broken
+  ORDERING rather than as a full page. It walks the keyset now, which is what a real caller
+  does, so the assertion is unchanged and no longer hostage to the other 43 files.
+- **Read the FIRST failure, and clean the database before trusting the second run.** Both
+  failures in that run were the one cause, and 24 leftover Runs from earlier failed runs in the
+  same session were most of the page. `TRUNCATE TABLE audit_run CASCADE` is the way to clear
+  the Run tree in a test database: row triggers do not fire, so the immutability guards that
+  correctly refuse a piecemeal `DELETE` are not in the way.
+
+## 2026-09-10 — PR 29 review findings: one rule with three holes, and one limit in four places
+
+Codex reviewed the Epic 5 branch and left ten findings. Every one reproduced. Eight are
+fixed here; two are named at the bottom because each needs a change wider than the finding
+and neither belongs in a pull request that is otherwise ready.
+
+**Three findings were one rule with three holes.** Story 5.7's gate withdrew the controls
+that ASKED it — and the Escalation panel did not ask, a `ConfirmDialog` already open never
+re-asked, and the sub-1024px rule only showed a sentence. So the gate moved DOWN, into
+`ConfirmDialog` itself: every confirmation in the product goes through it, so a dialog now
+dismisses itself and refuses its confirm when the gate closes, once, rather than in each
+control that remembers to check. Outside a gated surface the gate is open, so administration
+and authoring are untouched.
+
+- **The viewport gate defaults to DESKTOP where none can be observed, and that is not the
+  fail-safe direction — it is the correct one.** Withdrawing on the server would disable
+  **Flag** permanently for a reader with no JavaScript, and Flag is the ONE control here
+  designed to work without it (`flag-run.spec.ts` proves that with `javaScriptEnabled:
+  false`). Closing a gate on a viewport nobody has measured breaks a guarantee that is real
+  to close a hole that is not. A unit test caught the first attempt.
+
+**A timed-out pause recorded an Escalation.** `wakeEscalation` hard-coded the event type,
+the actor and `priorState: 'AWAITING_AUDITOR'` — so every pause that ran out its thirty
+minutes wrote, into a row that can never be corrected, that an Escalation timed out from a
+state the Run was never in. All three are DERIVED from the wait's own kind now, through the
+same `waitRunState` the command, the insert, the closure and the recovery read already call.
+`execution.pause-timeout` needs no migration: `EVENT_TYPE_PATTERN` closes the FAMILY and not
+the suffix. It also keeps the bell right by construction — `BellLive` re-reads on
+`execution.escalation-`, and a pause is not in the inbox.
+
+**One limit in four places.** Replay renders up to `REPLAY_FRAME_LIMIT` frames and then
+joins each one against the Tool Actions, the Step Executions, the waits, the Exceptions and
+the Observation deltas — every one of which capped at `Math.min(limit, RUN_DETAIL_PAGE_SIZE)`,
+so a caller could only ever NARROW. Past the fiftieth: `No Tool Action` over an action the
+database held, jump targets missing with nothing saying so, and the Observation count frozen
+at the fiftieth delta. `REPLAY_PAGE_SIZE` is the ceiling for exactly those reads and equals
+the frame limit, because one lookup per rendered frame is the cardinality it must cover; the
+defaults stay `RUN_DETAIL_PAGE_SIZE`, so Run Detail is unchanged. **Second appearance of
+"a limit belongs to the cardinality of the READ, not to the table it starts from"** — the
+PR 23 second pass wrote that rule about `readGateObservations`, in this same file.
+
+**The inbox applied its limit twice and added the results.** `openFor(session, 100)` bounded
+the wait query and the flag query independently and concatenated them, so it could return
+200 — and `openFor(session, 1)` could return 2. One limit over the MERGED list, after a
+deterministic order across both kinds.
+
+Three mechanical lessons, and the first is the one that cost the most:
+
+- **A test whose fixture the server never sees cannot assert what the server does.**
+  `live-drop.spec.ts` intercepted the events route with SYNTHETIC sequences and asserted the
+  page resumed at them. CI failed it twice and this machine passed it every time. The second
+  CI failure said why in one line — ten reconnects, every cursor `0`, never `42` — and the
+  reason is not a race: `router.refresh()` re-reads a server cursor that never advances past
+  the seeded head, `useLiveTimeline` seeds `lastSeqRef` from that cursor and re-runs on
+  `[url, cursor]`, so a remount re-subscribes at the SERVER's number. Correct in production,
+  where every frame the client holds came FROM the chain and the server is therefore never
+  behind it; unobservable in a test whose frames did not. **The first diagnosis here was
+  "a race", and it was wrong** — the fix that followed it made the assertion clearer, which
+  is how the second CI run could say so plainly. Read the second failure too, and when a
+  spec passes locally and fails in CI, suspect the FIXTURE's relationship to the server
+  before suspecting the clock.
+- **A test's NAME is a claim, and a name that promises more than the test can establish is
+  the same defect as a label stating something untrue.** Renamed to what it proves; the
+  resume rule itself stays proven deterministically in `live-status.test.ts`, which is why
+  AD-17's comparison was put there rather than in a browser. **Second appearance, in the same
+  round**: `live-view.spec.ts`'s "renders read-only below 1024px" asserted a SENTENCE and
+  nothing else, which is exactly why the finding above it — that the narrow viewport
+  withdrew nothing — could exist under a green test named for the rule it was not checking.
+  It now asserts all three controls `aria-disabled` below the floor and live above it, and
+  a `setDesktop(true)` mutation kills it.
+- **A gate reason that reuses a contract sentence makes a text locator ambiguous, and
+  hydration decides whether the test sees it.** `LIVE_GATE_REASONS.viewport` IS
+  `LIVE_VIEW_DESKTOP_ONLY_SENTENCE` — deliberately, so a reader on a phone meets one
+  sentence and it is EXPERIENCE.md's own — so below the floor it is the stage's `<p>` AND
+  each withdrawn control's reason: four nodes, and `getByText` refuses that in strict mode.
+  The reasons are attached only after hydration measures the viewport, so a machine that
+  asserts before hydration sees ONE node and passes. That is the whole of "passes locally,
+  fails in CI" here, and it is the same fixture-versus-server shape as `live-drop`, one
+  layer along. Locate such an element by what the STYLESHEET acts on and pin its wording
+  with `toHaveText`; `live-drop.spec.ts` had already reached for `.first()` on its own
+  reasons for the same reason.
+- **Copy the working sibling, third time in one session.** Three rounds went on
+  `run_step_execution.action`, `run_tool_action`'s real column set and a teardown that
+  deletes Tool Actions before the Step Executions they name — each already written correctly
+  in `agent-execution.test.ts` or a few lines up in the same file. Every refusal was a
+  constraint doing its job.
+
+**`[NOT FIXED, NAMED]` Two findings are real and deliberately not in this PR.** A `PAUSED`
+Run that is cancelled leaves its pause wait `closed_at` NULL for ever, and that row then
+sits in `recoverableWaits`' bounded page permanently — but generation 45's `run_wait_closure`
+says a pause closes by `resume` or `timeout`, and a cancellation is neither, so the honest
+fix is a **new closure kind and therefore generation 47**. And `parsePauseRequest` takes
+`{runId}` alone while `parseResumeRequest` takes the revision, so a stale Live View can pause
+a Run the worker has advanced — but `RunRecord` carries no `revision` to compare against, so
+the fix touches every reader of that record. Both are on PR 29 with the patch each needs.
+
+## 2026-09-10 — Replay reaches nothing, and a jump that lands nowhere says so
+
+Story 5.8, the last of Epic 5. `/runs/<id>/replay` replays any terminal Run from the assets
+Story 5.2 froze, with the Workspace Provider unreachable. Whole rule:
+`docs/contracts/replay-v1.md`. No migration — every row it reads already existed.
+
+- **"It reaches nothing outside this platform" is a property of what the path can reach.**
+  Every prop is a row PostgreSQL holds, every frame comes through the Run's own protected
+  route (a worker-signed grant consumed on the server), and `replay.ts` takes rows and
+  returns indices. `tests/e2e/replay.spec.ts` makes it literal: every destination but the
+  application's own origin is ABORTED at the network and COUNTED, and the surface must
+  render whole with the count at zero. A later change that reached for a provider fails
+  there rather than in a deployment whose provider happened to answer.
+- **Nothing is re-executed, for the same reason.** There is no action, no command and no
+  port on this path. A Replay that could re-run a Tool Action could change what it shows.
+- **Where a jump lands is the one thing a reader cannot check.** A Work Item opens at its
+  FIRST frame (jumping to it means starting at it); an Exception at the first frame of the
+  Work Item it was raised against; an Escalation at the LAST frame captured at or BEFORE it
+  was raised — a frame after it belongs to whatever happened next, and jumping there shows
+  a screen the question was not about. A target with no frame is listed and SAYS SO: a pill
+  that opens nothing looks exactly like one that opens the right screen. A PAUSE is not a
+  jump target; EXPERIENCE.md names three kinds and a pause asks nothing.
+- **`SessionChrome` and `SessionStage` were EXTRACTED from `LiveViewer`, not copied.**
+  UX-DR24's "one session viewer for Live View and Replay" is met by sharing the parts that
+  are literally the same markup; two copies would have diverged first on a Replay whose dot
+  said one thing and whose word said another. `readFrames` is `readLatestFrame`'s join with
+  its order reversed, so Live View's newest frame and Replay's last are the same row by
+  construction.
+- **Space belongs to whatever has focus.** Pills and jump rows are real `<button>`s, so the
+  browser already activates them on Space and Enter; the viewer takes Space only when the
+  viewer ITSELF has focus. Otherwise one keystroke would jump AND toggle playback.
+- **It starts paused at the first frame (UX-DR26), and playing STOPS at the last.** A loop
+  would make a finished session look like one still going. SSR is exactly that state, so
+  `ReplayViewer.test.ts` asserts the contract rather than a convenience.
+- **`REPLAY_FRAME_LIMIT` is 500 and says when it binds.** A scrubber over fifty pills is a
+  scrubber over a fraction of the session, which misrepresents where a Step sits in it.
+- **`session-viewer.scrubber-pill-height` came out of `tokens.test.ts`'s DEFERRED list**, a
+  token deferred since Story 1.4 because Live View watches and does not scrub.
+
+Three mechanical lessons:
+
+- **The `aria-label` scanner is role-aware now, and it needed to be.** `<div role="group"
+  aria-label>` is a labelled group and valid ARIA; the guard refused it because it read the
+  TAG and not the role. Widening it exposed the older bug underneath: `[^>]*` ends an
+  opening tag at the `>` of `onClick={() => …}`, so an attribute after a handler was never
+  seen and the rest of the file was read as markup. It parses tags brace- and quote-aware
+  now — and **it has its own tests**, including the two spellings it must keep failing on,
+  because `form-method.test.ts` shipped asserting `/\bmethod=/` and passed `method="get"`.
+- **A seed that fails halfway leaves rows its own teardown must still be able to remove,
+  and a teardown that THROWS takes the rest of the file's cleanup with it.** Three rounds of
+  fixing this fixture left three Procedures and three `AWAITING_AUDITOR` Runs behind,
+  because `afterAll` hit `notification`'s foreign key to `run_wait` before reaching the
+  Procedure delete — and `procedures.spec.ts`'s empty-list test then failed for a reason
+  that was not its own. Read the FIRST failure, and clean the database before trusting the
+  second run.
+- **Copy the working sibling rather than guessing a fixture column by column.** Six rounds
+  went on `run_workspace.released_at`, `run_session_step_acquired`, the Work Item state
+  vocabulary, `run_work_item_run_step`'s subject key, `run_observation`'s real column set
+  and `run_exception.fingerprint_key_id` — every one of which was already written correctly
+  in `run-surfaces.spec.ts` or `live-view.spec.ts`. Each refusal was a constraint doing its
+  job, which is the good news; reading the sibling first would have cost one round.
+
+## 2026-09-10 — A clock is not a milestone, and an unreadable wait is not an absence
+
+Story 5.6. The Escalation panel is answered on Live View without leaving it, which is the
+last of the four session-viewer controls. Whole rule: `docs/contracts/live-view-v1.md`,
+section "The Escalation, answered in place". No migration.
+
+- **`OpenEscalationSection` is ONE mount and both surfaces use it**, the
+  `RunPauseControls` / `RunCancelControl` discipline. Its branch table is the rule: the
+  panel when the wait and revision read, a BANNER when either does not, nothing in a state
+  that holds no question. **An open wait that cannot be read is never rendered as an
+  absence** — `AWAITING_AUDITOR` means the Run is holding on a question, and showing
+  nothing tells a reader it is simply busy. A pause reaches neither arm, because
+  `readOpenEscalation` narrows at the READ.
+- **The panel sits ABOVE the session viewer and is not a dialog.** EXPERIENCE.md's Live
+  View / Awaiting Auditor row keeps the workspace screen visible; a modal over the viewer
+  would answer a question about the screen by hiding the screen. Focus is NOT moved: the
+  normative mechanism in UX-DR27 is a skip link plus a polite announcement, and "panel
+  focused" in that row is the surface's emphasis. The panel appears while somebody is
+  watching a Run rather than in response to anything they did, so taking focus would be an
+  unrequested context change.
+- **A clock in a live region announces itself every second, which is the opposite of a
+  milestone.** The countdown carried `role="timer" aria-live="polite" aria-atomic="true"`
+  from Story 4.8 — so a screen-reader user heard the time read out once a second for the
+  whole wait. It is now `role="timer"` alone (implicit `aria-live="off"`), and one polite
+  region beside it climbs `escalationMilestone`'s LADDER: `open` → `ten-minutes` →
+  `one-minute` → `expired`. It never climbs back down, so each rung is announced once and
+  an expired wait does not go back to saying an Escalation is open. An unreadable deadline
+  is `open`, which is what is known — the visible clock says `Unknown` beside it.
+- **A live region has to EXIST before it has text.** One that arrives with its text already
+  in it is ordinary content as far as a screen reader is concerned and is announced by
+  nothing. It renders empty on the server and is filled one tick after mount, which is also
+  the moment the panel really did appear. Derived from state, never set from an effect: two
+  effects racing to fill one region re-announce whichever wins.
+- **The skip link said the wrong thing for two epics.** EXPERIENCE.md's Accessibility rules
+  name it `("Go to open Escalation")`; the component said `Skip to open Escalation`, typed
+  inline, pinned against nothing. It is in `copy.ts` now and `copy.test.ts` reads the
+  artifact off disk — the standing rule, applied where it had not been.
+
+Two mechanical notes, and the first cost a debugging round:
+
+- **`{ ...activeRunVersion(...), controlName }` produces a version that can never own a
+  period.** `controlName` is a plan AUTHORING input, so overriding it after the fixture has
+  built `frozenReview` leaves the row disagreeing with its own frozen review;
+  `findPeriodOwner` refuses such a version, and the surface says **"No executable Active
+  version owns that period"** — a sentence about periods, for a defect that has nothing to
+  do with periods. Three specs did it and all three passed, because each seeds `audit_run`
+  directly and never initiates through the surface; only a journey that clicks Initiate Run
+  can see it. All three now pass the name through `executablePlanInputs()`.
+- **A journey that initiates a Run must delete its dispatch job before pretending a worker
+  holds it.** Nothing here can execute a Run, so a concurrently running worker claims it and
+  ends it `RUN_FAILED` for an unconfigured Evidence store — correct behaviour, which would
+  destroy the subject under test.
+
+## 2026-09-10 — A control is live only while the page is being told what the Run is doing
+
+Story 5.7. Live View gains ONE gate over the four controls 5.4 and 5.5 put on it, and the
+surface gains ONE `EventSource`. Whole rule: `docs/contracts/live-view-v1.md`, section "The
+live controls, and the gate over them". No migration: the gate is a client-side verdict over
+facts the page already had.
+
+- **One subscription for the surface, because two would be two silence clocks.** The banner
+  and every control need the same answer to "is this page still live", and two `EventSource`s
+  would be two reconnects and two cursors — which is how a page ends up disagreeing with
+  itself. So `LiveGate` subscribes, `LiveBannerView` became the markup it renders and
+  `useThrottledRefresh` the throttle it shares, and the controls read the verdict through
+  context. A second throttle would have been a second answer to "how often may this page
+  re-read".
+- **`useLiveGate` returns OPEN with no provider, and that is the TRUTH rather than a
+  default.** Run Detail mounts the same `RunPauseControls`, `RunCancelControl` and
+  `RunFlagControl` and makes no claim to be live, so it has nothing to withdraw. The gate is
+  Live View's because UX-DR25's rule is Live View's — and it is why the three components
+  spread `disabledReason` conditionally instead of taking a new required prop.
+- **`runEnded` outranks `lost`, and it exists for a second.** It is latched on the first
+  `lifecycle.result-sealed` or `lifecycle.run-canceled` and never cleared — a Run that has
+  ended does not start again — and what it closes is the window between that event arriving
+  and the server re-read that removes the controls entirely. Normally a fraction of a second;
+  the browser test HOLDS the re-read to observe it, and holds rather than refuses it, because
+  a refused RSC fetch can send the router to a full navigation, which would perform exactly
+  the read being held back.
+- **`stale` is deliberately NOT a gate reason.** UX-DR25 disables at SIXTY seconds, not
+  fifteen. A quiet Run goes stale routinely, and a surface that locked itself every fifteen
+  seconds would be unusable exactly when somebody most wants to pause it. `ended` IS one,
+  although the contract names only `lost`, because it is the STRONGER case: a lost stream is
+  reconnecting and an ended one is not, so gating the recoverable state and not the permanent
+  one would have it backwards.
+- **The gate is the surface being honest and never the guarantee.** With no JavaScript there
+  is no channel to lose and no gate to close; what actually refuses the action is the command,
+  which re-reads the Run under its own row lock (and, for Resume, compare-and-sets the
+  revision the page was rendered at). A withdrawn control is a person not being invited to do
+  something that would be refused.
+- **`acceptsLiveSeq(lastSeq, seq)` is `seq > lastSeq`, and that one comparison is both halves
+  of AD-17.** No gap, because the cursor is the last frame the page rendered and the route
+  replays everything after it; no duplicate, because the frames a resume repeats are at or
+  below it. It moved into `live-status.ts` so the property is tested without a browser.
+
+Four mechanical notes:
+
+- **A renamed surface leaves a `getByRole` that resolves to NOTHING, and nothing fails.**
+  Story 5.5 renamed the inbox's open section from `Runs waiting for your answer` to `Runs
+  that need you` (a flag asks no question) and the plain-words pass replaced the printed
+  kind identifier `choose-candidate` with the question it means. `escalations.spec.ts` was
+  not re-run by either story, and its region locator then matched no element — so
+  `open.locator('li').count()` returned **0**, the expectation it computed became `0
+  unread`, and the failure named the BELL. Two rules out of it: the region is named ONCE in
+  that file now, and an expectation is never computed from a bare `count()` — both sides are
+  re-read together, so a page still refreshing cannot fix the expected value at a number the
+  bell has already left. It also asserts `choose-candidate` is NOT rendered, which is the
+  plain-words rule stated in the place it was broken.
+- **Playwright refuses to click an `aria-disabled` element**, and reports the guard working
+  as `element is not enabled` after the full timeout. A test whose subject is that the
+  handler refuses activation must click with `{ force: true }`; without it the assertion
+  never runs and the failure names the wrong thing.
+- **A terminal Run renders no live control at all**, so the `runEnded` sentence is not on the
+  page after the re-read lands — every control removes itself on state, which is a STRONGER
+  withdrawal than a closed one. Asserting the sentence there was asserting a state the
+  product deliberately does not reach; the two facts are two tests.
+- **An SSR unit test must not assert a combination the server cannot pass.** `LiveGate.test.ts`
+  first rendered `cursor: null` (terminal) beside `flaggable: true`, which no server read
+  produces. Its helper takes the same predicate the page does, so the fixture cannot drift
+  from what is really rendered.
+
 ## 2026-09-10 — The Builder speaks the auditor's language, and asks one question at a time
 
 The owner opened the deployed authoring screens and could not use them: *"im reading this as
@@ -114,6 +757,167 @@ consequences worth knowing:
 - **`.ls-disclosure` is the one disclosure treatment.** Two arrived in the same change —
   `.ls-more` in the Builder and `.ls-disclosure` in Administration — which is how a design
   system ends up with two of everything. `.ls-more` was removed the same day it appeared.
+
+## 2026-09-10 — A pause is a wait, and the worker is what performs it
+
+Story 5.4. `run_wait` gains `kind = 'pause'` (generation 45), which is what buys four
+mechanisms rather than copies of them: `run_wait_one_open` IS the reason "a Run waiting on
+an answer cannot be paused" and a paused Run cannot raise an Escalation; the delayed wake
+at `deadline` is what ends an abandoned pause `INCONCLUSIVE`; `audit_run.revision` is what
+refuses a resume against a state nobody saw; and `recoverableWaits` is what finds a pause
+whose wake was lost. Whole rule: `docs/contracts/run-pause-v1.md`.
+
+- **A pause is a wait and is NOT an Escalation, and every reader says which.** No question,
+  no Audit Manager notified. The inbox and the bell exclude it with NO kind filter, because
+  their one visibility predicate requires `AWAITING_AUDITOR` and a pause holds the Run in
+  `PAUSED` — the state IS the exclusion, which is stronger than a filter to remember.
+  `EscalationWait` is a TYPE: the Escalation panel and `answerEscalation` take one, so a
+  pause cannot reach either, and `readOpenEscalation` narrows at the READ. `resumeRun`
+  refuses an Escalation and `answerEscalation` refuses a pause, and generation 45's
+  kind-aware `run_wait_closure` refuses the contradictory row underneath both.
+- **`RUN_PAUSE_TRANSITIONS` has ONE row and it says `worker`.** AD-16 makes a pause take
+  effect at the next Tool Action boundary, which only a Run a worker is executing has. A
+  `PAUSED` written from under a working stage would make its next guarded commit fail,
+  silently discarding that unit's Evidence, Observations and Step Execution — so the
+  command records a marker and the stage honours it where it already commits, exactly as
+  `CancelRun` does for a `RUNNING` Run. **A cancellation wins at every boundary**: ending
+  is stronger than holding, and a `PAUSED` Run's cancellation belongs to the COMMAND.
+- **The marker means "requested and NOT yet honoured", so it is cleared by the boundary
+  that honours it** — not by the resume. That gives it one meaning and two consequences
+  free: `CompleteRun` appends `lifecycle.pause-superseded` by simply FINDING one at a
+  terminal transition, with no state comparison; and a resume cannot leave a stale marker
+  that re-pauses the Run at the very next boundary. Who paused a Run and when is on the
+  WAIT row (`opened_by`, `opened_at`), which is what the Paused banner reads.
+- **The interrupted attempt is `SUPERSEDED`, and the attempt is GIVEN BACK.** `FAILED`
+  would be a lie and `RUNNING` would make it indistinguishable from a live attempt, so the
+  state is its own and `superseded_by` is its own column with `diagnostic` left NULL. A
+  person pausing is not the agent failing, so it must not spend one of the Work Item's
+  bounded retry cycles — eight pauses would otherwise fail the item with a diagnostic
+  naming nothing that went wrong. The Run-level `runStepExecutions` limit still counts the
+  row, because a Step Execution really did start.
+- **This follows epics.md over EXPERIENCE.md, deliberately.** EXPERIENCE.md line 292 says
+  "on resume the agent continues from the next Tool Action"; Story 5.4 says the current
+  Step Execution restarts from its FIRST Tool Action as a new attempt. The story spec is
+  the acceptance criteria and is the safer of the two — a page held for thirty minutes is
+  not the page the agent left. **Reported to the owner rather than edited away.**
+- **`openPauseWait` is EXTENDED onto the three stage contexts, never injected**, so no
+  composition root can move a Run to `PAUSED` and forget the deadline that ends it.
+  Population acquisition deliberately has none: a single bounded fetch has no boundary
+  inside it, and the request takes effect at the stage after it.
+
+Four mechanical lessons, three of them about tests:
+
+- **A CHECK arm built with `=` is NULL when its column is NULL, and a CHECK that evaluates
+  to NULL PASSES.** The new `run_wait_closure` was written with `closure_kind='answer'`
+  where generation 34 had `closure_kind IS NOT NULL AND closure_kind='answer'` — so a
+  half-closed row made all four arms NULL and was ACCEPTED. `run-waits.test.ts`'s
+  partial-closure case caught it. Every comparison in it is `IS [NOT] DISTINCT FROM` now,
+  which is never NULL. Fourth appearance of this trap after `array_length`,
+  `array_position` and `<@`.
+- **An integration file that adds an `audit-manager` changes what a concurrently running
+  file sees.** `escalationNotificationRecipients` reads every audit-manager in the
+  database, so `run-waits.test.ts` counted three recipients where it expects two. A test
+  file that needs a second person uses a second AUDITOR, and an inbox read uses the Run's
+  own initiator, who needs no globally visible role.
+- **A wait's `deadline` is immutable (generation 34), so an overdue wait is made by opening
+  one in the PAST.** Backdating the row raises "Wait identity and question are immutable" —
+  which is the guard working, and is also the honest shape: that is a pause somebody left
+  an hour ago.
+- **`Date` is not a bindable parameter on a client `createDb` has wrapped.** Same family as
+  the `sql.json` note: ISO text with an explicit `::timestamptz` is right on both.
+- **Regenerating an UNPUSHED migration moves its journal `when`, which makes the migrator
+  re-apply it to a database that already has it.** `column ... already exists`, in
+  `migrate.test.ts`, which is the guard working: the migrator applies what sorts after the
+  last applied `created_at`. Folding a fix into an unreleased generation is right — a 46
+  that fixes a 45 nobody ran is worse — but the LOCAL database that applied the old one has
+  to be rebuilt afterwards, not patched. CLAUDE.md's "never let a PUSHED migration's `when`
+  move" is unchanged and is the case this is not.
+
+## 2026-09-10 — A flag is not a wait, and a notification row is identity only
+
+Story 5.5 puts EXPERIENCE.md's full session-viewer control set on Live View — Pause /
+Resume, Cancel, Flag to Audit Manager — and adds the flag. Whole rule:
+`docs/contracts/run-flag-v1.md`. Generation 46.
+
+- **`run_flag` is its OWN table, not a `run_wait` of kind `flag`.** Every mechanism
+  `run_wait` gives a wait — the one-open unique index, the delayed wake, the revision
+  compare-and-set, the recovery sweep — exists to END a Run that is being HELD. A flag
+  holds nothing: no state, no deadline, no answer. All four would be machinery with no
+  meaning, and `run_wait_one_open` would additionally make flagging a Run mutually
+  exclusive with pausing it, which nothing asks for.
+- **"A flag has no execution effect" is a property of the CONTEXT, not a rule to
+  remember.** `RunFlagContext` deliberately does NOT extend `RunResultContext` the way
+  `RunCancellationContext` does, so there is no Run-state writer, no seal and no Result
+  seam a later branch could reach. The integration test asserts the WHOLE `audit_run` row
+  is unchanged — revision included, because a flag that moved the revision would refuse the
+  next resume against a state nobody changed.
+- **The note is stored on the Run; only its LENGTH and DIGEST enter the chain.** The chain
+  is immutable, so anything that reaches it can never be taken out, and a note is free text
+  a person types — the same reason Story 2.3's payloads identify Audit Instructions by
+  digest and length. An auditor who pastes a credential into a note has put it in a row
+  that can be deleted with its Run. Proven by mutation: putting the note in `noteDigest`
+  fails the unit case that scans the serialized payload.
+- **A notification row names WHICH flag and nothing else.** No note, and no `flaggedBy` or
+  `flaggedAt` either: those are columns on `run_flag`, and copying them onto the
+  notification would be two places one fact lives with no way to tell a stale copy from the
+  truth. `EscalationNotification` already said it in as many words about the question.
+- **`escalationNotificationRecipients` became `runNotificationRecipients`, and the rename
+  IS the change.** FR-28 gives ONE recipient rule for both of its triggers — the initiator,
+  or the Procedure's author for a scheduled Run, and every Audit Manager — and a shared
+  rule whose name claims one of its two callers is one a later reader duplicates rather
+  than reuses. The delivery path is shared for the same reason: `recordNotificationDelivery`
+  now takes `RunNotification` and uses the row's OWN kind in its `UPDATE` predicate. The
+  literal `'escalation'` that was there is the mutation that proves it — restored, the flag
+  delivery test fails.
+- **A flag needs attention while its Run is ACTIVE, and there is no acknowledge control.**
+  A flag has no deadline and no closure of its own, so what stops it needing attention is
+  the Run ending; `isActiveRunState` is that predicate. EXPERIENCE.md's Notification row
+  names no acknowledge action, and inventing one would be a product decision taken sideways
+  inside a story about a button. The consequence is that the inbox shows a flag with NO
+  countdown while an Escalation shows one — which is why `OpenNotification` became a UNION
+  with `deadline` only on the arm that has one, rather than a nullable field every reader
+  has to remember not to render.
+- **The bell counts waits and flags as two counts ADDED, never a join.** A Run can carry an
+  open wait and a flag at once, and a join would report their product.
+- **`notification_escalation_context` became `notification_context`, with three arms.** One
+  per kind the table now holds, so a flag cannot be dressed as an Escalation or the other
+  way round. Generation 35's trigger reaches an Escalation-carrying-a-flag-id row FIRST, so
+  the integration test asserts THAT message rather than the CHECK behind it — and then
+  asserts the row does not exist, which is what the rule actually promises.
+- **Flag is the ONE control on these surfaces with no confirmation dialog, so it is the one
+  that can work without JavaScript.** EXPERIENCE.md's confirmation table enumerates the
+  actions that get a dialog and flagging is not among them; pause and cancel are exempt
+  from the "JavaScript may enhance a control, never be its only path" rule only because the
+  dialog they must have cannot exist without script. The form's action IS the Server
+  Action and `useActionState` renders the result on both paths. `flag-run.spec.ts` proves
+  it with `javaScriptEnabled: false`.
+- **`RunCancelControl` was extracted for the reason `RunPauseControls` was.** Both surfaces
+  carry Cancel now, and two copies would agree on every case anybody tried and diverge on
+  the first one nobody did. Rerun stays on Run Detail: a terminal Run's Live View is a
+  Replay and has nothing to rerun from.
+- **`ActorNameReader` is the one place a user id becomes a person's name.** A Run records
+  its initiator, the auditor who paused it and the auditor who flagged it as IDs, because
+  an address cannot enter the chain; printing one at a reader is the platform speaking its
+  own language — the defect the plain-words pass removed from the authoring screens, met
+  again on the Run surfaces. It returns names only, never addresses, and an id with no row
+  comes back absent so the caller shows the id, which is honest about what it knows.
+
+Three mechanical notes:
+
+- **A React Server Action form cannot be asserted to POST in an SSR unit test.** With the
+  action mocked, React renders `action="javascript:throw new Error('React form
+  unexpectedly submitted.')"` instead of the endpoint Next's compiler emits, and it warns
+  that it overrides `method` and `encType`. Keep `method="POST"` anyway — `form-method.test.ts`
+  requires it of every form and React sets the same value — and prove the no-JavaScript
+  path in the browser, which is the only place it is real.
+- **`?? ` swallows an explicit `null` in a test harness.** A fake whose role came from
+  `options.lockedRole ?? options.role ?? 'auditor'` could not express the one case it
+  existed for — a role revoked between the outer check and the row lock — and the test
+  passed against a build with no recheck at all. `Object.hasOwn` is the test.
+- **A browser assertion that filters on a STATE counts other tests' rows.** The inbox
+  locator matched "flagged for an Audit Manager" and found three, because two earlier cases
+  in the same file had flagged Runs that are still active. Scope such a locator to the
+  subject the test itself created, never to the state it is in.
 
 ## 2026-09-09 — Queue maintenance needs a connection of its own
 
@@ -1306,6 +2110,71 @@ to be held to the rule the work is.
   and Epic 4's Story 4.1 both sat at generation 27, running one branch's suite against the
   other's database would have migrated nothing and tested the wrong shape while looking fine.
   A worktree gating a different branch needs its OWN database, not just its own checkout.
+
+- **Two database-backed suites must NEVER run at the same time against one database, and a
+  green one that did proves nothing either.** Started concurrently on 2026-09-10, the
+  integration suite reported ten failures and the browser suite one, and every single one
+  was the other suite: the browser specs start real worker processes whose recovery sweeps
+  claim any abandoned `RUNNING` Run in the database — sealing packages the integration
+  fixtures were about to write Evidence into, and leaving `run_gate_check` empty — while
+  the integration files insert `audit-manager` rows that `escalations.spec.ts`'s live
+  recipient query then counts and waits forever to see delivered. The failures name the
+  Gate, the absence judge and the notification path, so they read as product defects for
+  as long as it takes to notice both runs share a `DATABASE_URL`. Run them one after the
+  other; a suite that writes Runs also needs the OTHER suite's leftovers gone, because
+  `run-surfaces.test.ts`'s keyset page and `run-waits.test.ts`'s recipient count are both
+  bounded reads over the whole table.
+- **A backtick inside a `sql` template ends the template, and the file then has NO tests.**
+  A generation-45 comment carrying `` `run_wait_opened_by` `` was pasted inside
+  ``sql`INSERT INTO run_wait ...` `` in `notification-delivery.test.ts`; the file stopped
+  parsing and Vitest reported it as ` ❯ tests/integration/notification-delivery.test.ts
+  (0 test)` — a line that reads as a collection hiccup in a 43-file list rather than as a
+  suite whose coverage has silently gone to zero, and it survived two full runs unnoticed.
+  Keep prose comments OUTSIDE tagged templates, as `//` lines above the call, and treat
+  "(0 test)" as a failure with the same weight as a red assertion.
+- **A Turbopack internal panic aborts the dev server mid-run.** ` thread 'tokio-rt-worker'
+  panicked at turbopack/.../aggregation_update.rs` is followed by `Aborting.`, and every
+  spec after it fails `net::ERR_CONNECTION_REFUSED` in about a second. Sixteen red tests,
+  one cause, none of them the product. Read the first failure — again.
+- **A one-time module import inside a test's own timeout is a flake waiting for a busy
+  machine.** `session-route.test.ts` and `sign-in-route.test.ts` are fully mocked and touch
+  no database, and neither resets the module registry — so only the FIRST `await
+  import('../app/api/...')` ever pays the transform, and on this workspace's graph that can
+  exceed a 5-second test timeout or a 10-second hook one. The first case then fails and its
+  work leaks into the second (`roleLookups` read 2 where 1 was expected), and a timed-out
+  HOOK reports its 37 tests as **skipped** rather than failed — which reads as a collection
+  quirk, not as coverage that did not run. Warm the module in a `beforeAll` with room; every
+  assertion stays as it was, and the per-test times went from 5,354 ms to 6 ms.
+- **PostgreSQL 18 in this container dies under load, and running two suites at once is that
+  load.** Started together, the browser suite and the unit suite killed the cluster: the web
+  process logged `ECONNREFUSED`, `/api/health` answered 503 twenty times, and Playwright
+  ended with `Timed out waiting 180000ms from config.webServer` — while the unit run showed
+  four failures in the two files above, all of them the missing database. One cause, two
+  suites, six red results, none of them the product. It recovers cleanly with
+  `rm -f /tmp/pgdata18/postmaster.pid && pg_ctl -D /tmp/pgdata18 -o '-p 5434' start`.
+- **A background wrapper reports the SHELL's exit code, not the command's.** A run spelled
+  `pnpm exec playwright test > log; echo "E2E=$?"` was reported as **exit code 0** by the
+  task harness while the log said `Timed out waiting 180000ms` — the `echo` succeeded, so
+  the shell did. Read the log, never the wrapper's code. Same family as the `&&` chain that
+  reports a failure that never ran.
+- **The FIRST browser run after a cold `.next` pays route compilation inside a 10-second
+  assertion.** `auth.setup.ts` clicks Sign in and waits for the shell; Next compiles `/` on
+  that first navigation, and on this box it does not finish in ten seconds, so the setup
+  fails and all 188 specs report `did not run`. The webServer's own health check hits
+  `/api/health`, a route handler, so the PAGE is still cold when the suite starts. A second
+  run with the cache warm is the honest answer; `INTELLIFIN_LOW_DISK=1` exists for the
+  opposite problem and would make it slower.
+- **A test script that mutates the DOM before hydration makes React log a defect that is
+  not one.** The full browser run prints twenty `A tree hydrated but some attributes of the
+  server rendered HTML didn't match the client properties` blocks, each ending in a
+  `<details … data-plan-detail>` whose server HTML carries `open=""` and whose client
+  property is `open={false}`. `DraftBuilder.tsx` sets no `open` prop at all; what sets it is
+  `keepBuilderStepsOpen`, whose `addInitScript` opens the Builder's three disclosures before
+  React arrives — React's own message names that case ("a browser extension … which messes
+  with the HTML before React loaded"). So it is the harness, it is deliberate, and the right
+  response is to know it rather than to remove the `open` that no component writes. Read the
+  COMPONENT before believing a hydration diff, and check whether a spec's init script
+  touches the element the diff names.
 
 ### Credentials just in time, and capture suppressed while one is on the wire (added with Story 4.3)
 

@@ -16,6 +16,30 @@ export interface RunCancellationRequest {
   readonly requestedAt: string;
   readonly reason: string;
 }
+
+/**
+ * One person's request that a Run PAUSE (Story 5.4).
+ *
+ * The same durable-marker shape as a cancellation, and for the same reason: a RUNNING Run
+ * is held under a lease by a worker mid-transaction, so the only safe place to stop is the
+ * boundary that worker already commits at. The request is recorded here and honoured
+ * there.
+ *
+ * It carries no reason. EXPERIENCE.md puts pause under the ROUTINE confirmation weight,
+ * which restates the consequence and has no rationale field, so there is no note to store
+ * and a blank one would read as a missing fact.
+ *
+ * Unlike a cancellation this marker is CLEARED, by the boundary that HONOURS it. So it
+ * means exactly one thing — "a pause is requested and not yet honoured" — which is what
+ * lets a terminal transition say a request was superseded by simply finding one still
+ * there, and what stops a stale marker re-pausing the Run at the very next boundary after
+ * a resume. Who paused a Run, and when, is on the wait row rather than here.
+ */
+export interface RunPauseRequest {
+  readonly requestedBy: string;
+  readonly sessionId: string;
+  readonly requestedAt: string;
+}
 export interface RunRecord {
   readonly runId: string; readonly correlationId: string; readonly procedureId: string;
   readonly versionId: string; readonly versionNumber: number; readonly procedureName: string;
@@ -26,6 +50,8 @@ export interface RunRecord {
   readonly predecessorRunId: string | null; readonly rerunReason: string | null;
   /** A person's durable cancellation request, or `null`. */
   readonly cancellation: RunCancellationRequest | null;
+  /** A person's pause request that no boundary has honoured yet, or `null`. */
+  readonly pauseRequest: RunPauseRequest | null;
 }
 
 /**
@@ -89,6 +115,97 @@ export const RUN_CANCEL_TRANSITIONS: readonly RunCancelTransition[] = [
 export function runCancelTransition(state: unknown): RunCancelTransition | null {
   return RUN_CANCEL_TRANSITIONS.find((row) => row.from === state) ?? null;
 }
+
+/**
+ * Who performs the `PAUSED` transition, and out of which state (Story 5.4).
+ *
+ * ONE row, and that is the contract rather than an omission. AD-16 makes a pause take
+ * effect "at the next Tool Action boundary", which only a Run a worker is actually
+ * executing has: a `QUEUED` Run has no boundary to reach, and an `AWAITING_AUDITOR` Run is
+ * already stopped and waiting on a person — EXPERIENCE.md disables Pause there by name.
+ * Every other state refuses with the sentence beside it.
+ *
+ * `performedBy` is therefore always `worker`, unlike `RUN_CANCEL_TRANSITIONS` where three
+ * of four states have nothing holding them. The command records the request; the worker
+ * honours it at the boundary it already commits at, so no unit of work is interrupted
+ * mid-commit and no in-flight guarded write is discarded.
+ */
+export interface RunPauseTransition {
+  readonly from: ActiveRunState;
+  readonly to: Extract<RunState, 'PAUSED'>;
+  readonly performedBy: Extract<CancellationPerformer, 'worker'>;
+}
+
+export const RUN_PAUSE_TRANSITIONS: readonly RunPauseTransition[] = [
+  { from: 'RUNNING', to: 'PAUSED', performedBy: 'worker' },
+];
+
+/** `Array.prototype.find`, never an object index — the state can be read off a URL. */
+export function runPauseTransition(state: unknown): RunPauseTransition | null {
+  return RUN_PAUSE_TRANSITIONS.find((row) => row.from === state) ?? null;
+}
+
+/**
+ * The refusals both lifecycle commands state, in the domain that owns the transition.
+ *
+ * `AWAITING` is EXPERIENCE.md's own sentence for the disabled Pause control, character for
+ * character, so the disabled reason a person reads and the refusal a hand-made POST
+ * receives are one string rather than two that drift.
+ */
+export const RUN_PAUSE_REFUSALS = {
+  UNKNOWN: 'That Run does not exist.',
+  AWAITING: 'A Run waiting on an answer cannot be paused.',
+  NOT_RUNNING: 'Only a Running Run can be paused.',
+  ALREADY_REQUESTED: 'A pause has already been requested for this Run.',
+} as const;
+
+export const RUN_RESUME_REFUSALS = {
+  UNKNOWN: 'That Run does not exist.',
+  NOT_PAUSED: 'Only a Paused Run can be resumed.',
+} as const;
+
+/**
+ * Which states an Auditor may flag to the Audit Managers (Story 5.5, FR-27).
+ *
+ * The three the acceptance criterion names, and no fourth. `QUEUED` is deliberately
+ * excluded: the control lives in the session viewer, which watches a session that has
+ * started, and adding a state the contract does not name would be scope taken sideways.
+ *
+ * A flag is not a transition — it changes no state, holds nothing and is answered by
+ * nobody — so this is a membership test rather than a transition table. `includes` over a
+ * frozen list, never an object index: the state reaches here from a request.
+ */
+export const RUN_FLAG_STATES = ['RUNNING', 'PAUSED', 'AWAITING_AUDITOR'] as const;
+export type FlaggableRunState = (typeof RUN_FLAG_STATES)[number];
+
+export function isFlaggableRunState(state: unknown): state is FlaggableRunState {
+  return typeof state === 'string' && (RUN_FLAG_STATES as readonly string[]).includes(state);
+}
+
+/**
+ * One flag: who asked the Audit Managers to look, when, and the note they attached.
+ *
+ * `note` is OPTIONAL and `null` is its absence — never an empty string, which would read
+ * as a note somebody left blank. The text is stored on the Run; only its length and digest
+ * enter the immutable chain, because a note is free text a person types and the chain
+ * cannot be edited afterwards.
+ */
+export interface RunFlag {
+  readonly flagId: string;
+  readonly runId: string;
+  readonly flaggedBy: string;
+  readonly sessionId: string;
+  readonly flaggedAt: string;
+  readonly note: string | null;
+}
+
+/** The longest note a flag stores. The database refuses a longer one as well. */
+export const RUN_FLAG_NOTE_MAX_LENGTH = 500;
+
+export const RUN_FLAG_REFUSALS = {
+  UNKNOWN: 'That Run does not exist.',
+  NOT_FLAGGABLE: 'Only a Running, Paused or Awaiting Auditor Run can be flagged.',
+} as const;
 
 /**
  * The reason recorded when the person cancelling gave no note.

@@ -9,10 +9,9 @@ import {
   type RunRecord,
   type RunResultConditionCount,
   type RunResultExclusion,
-  type RunResultFindings,
-} from '@intellifin/domain';
+  type RunResultFindings, type RunPauseRequest } from '@intellifin/domain';
 import { cancelRun, CANCEL_REQUEST_MALFORMED, type CancelRunDependencies } from './cancel-run.js';
-import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult } from './execution-ports.js';
+import type { GateCheckRow, PackageSeal, RunGatePopulationFacts, StoredRunResult, WithdrawnWait } from './execution-ports.js';
 import type { RunCancellationContext } from './ports.js';
 
 /**
@@ -41,7 +40,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000c5',
 };
 
@@ -91,6 +90,18 @@ class FakeContext implements RunCancellationContext {
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => [];
   // What the terminal transaction sees, which `requestCancellation` has already written.
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.marker;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47: what a terminal transition withdraws, set by a test that opens one. */
+  openWait: WithdrawnWait | null = null;
+  withdrawnAt: string | null = null;
+  withdrawOpenWait = async (at: string): Promise<WithdrawnWait | null> => {
+    const wait = this.openWait;
+    if (wait === null) return null;
+    this.openWait = null;
+    this.withdrawnAt = at;
+    return wait;
+  };
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
   };

@@ -224,7 +224,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     */}
     <div className="ls-card">
       <details className="ls-disclosure" data-plan-detail>
-        <summary>What the agent will do, step by step</summary>
+        <summary>Show the full plan this will run</summary>
         <div className="ls-disclosure__body">
           <AgentSummary draft={draft} headingId={`${id}-agent-summary`} readiness={false} />
           <ExecutablePlanPreview draft={draft} />

@@ -19,7 +19,13 @@ import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { Digest } from '../design/Digest';
 import { UnavailableActions } from '../design/UnavailableActions';
-import { TARGET_SELECTION_MISSING, targetCoverageMissing, kindLabel } from './labels';
+import {
+  TARGET_SELECTION_MISSING,
+  targetCoverageMissing,
+  kindLabel,
+  suggestedTargetNote,
+  suggestedTargets,
+} from './labels';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
@@ -109,6 +115,9 @@ export function TargetSelectionForm({
     const key = `${registration.kind}:${registration.displayName.toLowerCase()}`;
     nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
   }
+
+  // What the Template offers, said against what a PoC Administrator actually registered.
+  const suggestions = suggestedTargets(defaultTargetsFor(draft.templateId), registrations);
 
   // Completeness diagnostics, live from the current selection (distinct from scope warnings).
   const requiredKinds = new Set(
@@ -222,16 +231,19 @@ export function TargetSelectionForm({
         />
       )}
 
-      <p className="ls-caption">
-        This Template suggests:{' '}
-        {defaultTargetsFor(draft.templateId).map((target, index) => (
-          <span key={target.name}>
-            {index > 0 ? ', ' : ''}
-            {target.name} ({kindLabel(target.kind)})
-          </span>
-        ))}
-        . Select the registered systems that match.
-      </p>
+      <div className="ls-stack">
+        <p className="ls-caption">
+          This Template suggests these systems. Add the ones this deployment has — the
+          selection is yours, and a suggestion is never added for you.
+        </p>
+        <ul className="ls-plain-list" data-suggested-targets>
+          {suggestions.map((target) => (
+            <li key={`${target.kind}:${target.name}`} className="ls-caption" data-suggested-target={target.name}>
+              <strong>{target.name}</strong> ({kindLabel(target.kind)}) — {suggestedTargetNote(target)}
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {selected.length === 0 ? (
         <p>No Target System is selected yet.</p>

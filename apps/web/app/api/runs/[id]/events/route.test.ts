@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * `GET /api/runs/<id>/events`: the gate before the lookup, the cursor rules, the SSE
@@ -48,6 +48,17 @@ async function call(path: string, headers: Record<string, string> = {}, id = RUN
   const { GET } = await import('./route');
   return GET(new Request(`https://audit.example.test${path}`, { headers }), { params: Promise.resolve({ id }) });
 }
+
+/**
+ * Warm the module graph once, inside a hook.
+ *
+ * The `vi.mock` factory calls `importOriginal` on the `@intellifin/infrastructure` BARREL,
+ * so the first test that reaches the subject pays for evaluating postgres.js, pg-boss and
+ * the storage client — seconds, against Vitest's 5-second per-test default, which under a
+ * loaded full-suite run is a timeout that reads as a hang in the code under test rather
+ * than as what it is. A hook gets the 10-second hook budget and pays it exactly once.
+ */
+beforeAll(async () => { await import('./route'); });
 
 describe('GET /api/runs/<id>/events', () => {
   beforeEach(() => {

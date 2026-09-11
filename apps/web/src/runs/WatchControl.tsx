@@ -14,9 +14,10 @@ const WATCH_REASON_ID = 'run-watch-unavailable';
  * the Run state, and the disabled state keeps its position with its reason in the panel
  * rather than in a tooltip.
  *
- * A terminal Run renders NOTHING here. Its session is Replay, which Story 5.5 builds; a
- * control labelled Watch that opened a page saying the Run is over would name the wrong
- * thing, and one labelled Replay would point at a surface that does not exist.
+ * A terminal Run gets REPLAY instead (Story 5.8). It is the same control in the rail's
+ * Session slot and it changes its NAME rather than its destination-with-a-different-word:
+ * a control labelled Watch that opened a page saying the Run is over would name the wrong
+ * thing, which is why it rendered nothing at all until the Replay surface existed.
  */
 export function WatchControl({
   runId,
@@ -27,7 +28,17 @@ export function WatchControl({
   readonly state: string;
   readonly active: boolean;
 }): React.JSX.Element | null {
-  if (!active) return null;
+  // The terminal session. EXPERIENCE.md reaches Replay from `Run Detail (terminal Run)`,
+  // and a Run that is neither active nor terminal does not exist.
+  if (!active) {
+    return (
+      <div className="ls-actions">
+        <Link className="ls-button ls-button--secondary ls-button--md" href={`/runs/${runId}/replay`}>
+          Replay
+        </Link>
+      </div>
+    );
+  }
   if (state === 'QUEUED') {
     return (
       <div className="ls-stack">

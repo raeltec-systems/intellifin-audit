@@ -735,6 +735,7 @@ export const notification = pgTable('notification', {
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   runId: uuid('run_id').references(() => auditRun.runId),
   waitId: uuid('wait_id').references(() => runWait.waitId),
+  flagId: uuid('flag_id').references(() => runFlag.flagId),
   escalationKind: text('escalation_kind'),
   deadline: timestamp('deadline', { withTimezone: true }),
   inAppOutcome: text('in_app_outcome'),
@@ -744,10 +745,16 @@ export const notification = pgTable('notification', {
   index('notification_recipient_delivery_idx').on(table.recipientId, table.deliveredAt.desc(), table.sendKey),
   index('notification_pending_delivery_idx').on(table.createdAt, table.sendKey).where(sql`${table.deliveredAt} IS NULL`),
   check('notification_version_number', sql`${table.versionNumber} > 0`),
-  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected','escalation')`),
-  check('notification_escalation_context', sql`coalesce(
-    (${table.kind} = 'escalation' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NOT NULL AND ${table.escalationKind} IN ('choose-candidate','unnamed-value','retry-or-skip') AND ${table.deadline} IS NOT NULL)
-    OR (${table.kind} <> 'escalation' AND ${table.runId} IS NULL AND ${table.waitId} IS NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL AND ${table.inAppOutcome} IS NULL AND ${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL), false)`),
+  check('notification_kind', sql`${table.kind} IN ('submitted','approved','rejected','escalation','flag')`),
+  // Three arms, one per kind of notification this table holds. A flag has a Run and a
+  // flag id and NO wait, escalation kind or deadline — nothing asked it a question and
+  // nothing times it out — while an Escalation has the opposite set; a Procedure Version
+  // review has neither, and no delivery outcomes either. `coalesce(..., false)` keeps a
+  // NULL comparison from passing, which is what a CHECK that evaluates to NULL does.
+  check('notification_context', sql`coalesce(
+    (${table.kind} = 'escalation' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NOT NULL AND ${table.flagId} IS NULL AND ${table.escalationKind} IN ('choose-candidate','unnamed-value','retry-or-skip') AND ${table.deadline} IS NOT NULL)
+    OR (${table.kind} = 'flag' AND ${table.runId} IS NOT NULL AND ${table.waitId} IS NULL AND ${table.flagId} IS NOT NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL)
+    OR (${table.kind} NOT IN ('escalation','flag') AND ${table.runId} IS NULL AND ${table.waitId} IS NULL AND ${table.flagId} IS NULL AND ${table.escalationKind} IS NULL AND ${table.deadline} IS NULL AND ${table.inAppOutcome} IS NULL AND ${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL), false)`),
   check('notification_in_app_outcome', sql`${table.inAppOutcome} IS NULL OR ${table.inAppOutcome} IN ('delivered','unconfigured','failed','superseded')`),
   check('notification_email_outcome', sql`(${table.emailOutcome} IS NULL AND ${table.emailOutcomeAt} IS NULL) OR (${table.emailOutcome} IS NOT NULL AND ${table.emailOutcome} IN ('delivered','unconfigured','failed','superseded') AND ${table.emailOutcomeAt} IS NOT NULL)`),
 ]);
@@ -808,6 +815,13 @@ export const auditRun = pgTable('audit_run', {
   cancelRequestedBy: text('cancel_requested_by'),
   cancelRequestedSession: text('cancel_requested_session'),
   cancelReason: text('cancel_reason'),
+  // One person's pause request, written whole or not at all (generation 45, Story 5.4).
+  // Unlike the cancellation marker beside it this one is CLEARED, by the boundary that
+  // honours it — so a row that still carries it at a terminal transition is a request no
+  // boundary ever reached, which is exactly `lifecycle.pause-superseded`.
+  pauseRequestedAt: timestamp('pause_requested_at', { withTimezone: true }),
+  pauseRequestedBy: text('pause_requested_by'),
+  pauseRequestedSession: text('pause_requested_session'),
 }, table => [
   uniqueIndex('audit_run_initiator_request').on(table.initiatorId, table.requestToken),
   // A marker is written whole or not at all: a Canceled Run Detail states the actor, the
@@ -816,6 +830,9 @@ export const auditRun = pgTable('audit_run', {
   // comparison of the values themselves this CHECK cannot pass by evaluating to NULL.
   check('audit_run_cancel_request', sql`(${table.cancelRequestedAt} IS NULL) = (${table.cancelRequestedBy} IS NULL) AND (${table.cancelRequestedAt} IS NULL) = (${table.cancelRequestedSession} IS NULL) AND (${table.cancelRequestedAt} IS NULL) = (${table.cancelReason} IS NULL)`),
   check('audit_run_cancel_reason', sql`${table.cancelReason} IS NULL OR (length(${table.cancelReason}) BETWEEN 1 AND 500)`),
+  // `(a IS NULL) = (b IS NULL)` is boolean = boolean and is never NULL, so unlike a
+  // comparison of the values themselves this cannot pass by evaluating to NULL.
+  check('audit_run_pause_request', sql`(${table.pauseRequestedAt} IS NULL) = (${table.pauseRequestedBy} IS NULL) AND (${table.pauseRequestedAt} IS NULL) = (${table.pauseRequestedSession} IS NULL)`),
   // The predecessor and the reason are one fact. A link with no reason records that a
   // rerun exists and not why, which is exactly what FR-26 asks for.
   check('audit_run_rerun_link', sql`(${table.predecessorRunId} IS NULL) = (${table.rerunReason} IS NULL)`),
@@ -1289,9 +1306,18 @@ export const runStepExecution = pgTable('run_step_execution', {
   action: text('action').notNull(), state: text('state').notNull(), attempt: integer('attempt').notNull(),
   startedAt: timestamp('started_at',{withTimezone:true}).notNull(),
   completedAt: timestamp('completed_at',{withTimezone:true}), diagnostic: text('diagnostic'),
+  // Why an attempt ended without succeeding or failing (generation 45, Story 5.4). A pause
+  // interrupts an attempt; nothing went wrong, so `diagnostic` stays NULL and this says
+  // what happened instead. A closed vocabulary of one value today, in the shape the next
+  // reason can join without a second marker being invented beside it.
+  supersededBy: text('superseded_by'),
 }, t=>[
   index('run_step_execution_run_idx').on(t.runId,t.startedAt),
-  check('run_step_execution_state',sql`${t.state} IN ('RUNNING','SUCCEEDED','FAILED')`),
+  check('run_step_execution_state',sql`${t.state} IN ('RUNNING','SUCCEEDED','FAILED','SUPERSEDED')`),
+  // Either half alone permits a row that reads as the other: a SUPERSEDED attempt with no
+  // reason is a finding nobody can act on, and a reason on a SUCCEEDED one reads as a
+  // finding that is not there.
+  check('run_step_execution_superseded',sql`(${t.state}='SUPERSEDED') = (${t.supersededBy} IS NOT NULL) AND (${t.supersededBy} IS NULL OR ${t.supersededBy} IN ('resume'))`),
   check('run_step_execution_action',sql`${t.action} IN ('create-workspace','acquire-population','sign-in','extract-adapter','inspect-record','capture-observation','evaluate-conditions')`),
   check('run_step_execution_attempt',sql`${t.attempt}>0`),
 ]);
@@ -1874,15 +1900,66 @@ export const runWait = pgTable('run_wait', {
   waitId: uuid('wait_id').primaryKey(),
   runId: uuid('run_id').notNull().references(() => auditRun.runId),
   kind: text('kind').notNull(), options: jsonb('options').notNull().$type<readonly EscalationOption[]>(),
+  // When the wait opened, and who caused it to (generation 45, Story 5.4). The Paused
+  // banner states both, and reads them from this one row rather than deriving the instant
+  // by subtracting a timeout constant from the deadline.
+  openedAt: timestamp('opened_at',{withTimezone:true}).notNull(),
+  openedBy: text('opened_by'),
   deadline: timestamp('deadline',{withTimezone:true}).notNull(),
   closedAt: timestamp('closed_at',{withTimezone:true}), closureKind: text('closure_kind'),
   answerOptionId: text('answer_option_id'), actor: text('actor'),
 }, t => [
   uniqueIndex('run_wait_one_open').on(t.runId).where(sql`${t.closedAt} IS NULL`),
   index('run_wait_deadline').on(t.deadline).where(sql`${t.closedAt} IS NULL`),
-  check('run_wait_kind',sql`${t.kind} IN ('choose-candidate','unnamed-value','retry-or-skip')`),
+  check('run_wait_kind',sql`${t.kind} IN ('choose-candidate','unnamed-value','retry-or-skip','pause')`),
+  // A pause names the auditor who asked for it; an Escalation never names anybody, because
+  // the platform raised it. Pinned rather than left a convention anybody can satisfy.
+  check('run_wait_opened_by',sql`(${t.kind}='pause') = (${t.openedBy} IS NOT NULL)`),
   check('run_wait_options',sql`jsonb_typeof(${t.options})='array' AND jsonb_array_length(${t.options})>0`),
-  check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT NULL AND ${t.closureKind}='answer' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT NULL AND ${t.actor} IS NOT NULL AND ${t.closureKind}='timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor}='wait-wake')`),
+  // Four arms, and the two middle ones pin the closure to the KIND: an Escalation closes
+  // by `answer` and a pause by `resume`, so "a pause can never be answered" is a database
+  // fact rather than a rule two commands remember. A timeout closes either.
+  //
+  // EVERY comparison is `IS [NOT] DISTINCT FROM`, never `=`. A plain `closure_kind='answer'`
+  // is NULL when the column is NULL, so a half-closed row made all four arms NULL — and a
+  // CHECK that evaluates to NULL PASSES. The generation-34 wording avoided that with an
+  // explicit `IS NOT NULL` beside each `=`; this is the same rule said once per comparison.
+  // `run-waits.test.ts`'s partial-closure case is what caught it.
+  //
+  // Generation 47 adds the fifth arm, `withdrawn`: a Run that reaches a terminal state
+  // while a wait is open withdraws the question rather than leaving a row that says one is
+  // open about a Run that is over. Its actor is PINNED to the system id, exactly as the
+  // timeout arm pins `wait-wake`, so no command can withdraw a wait in a person's name.
+  // Any KIND may be withdrawn — a cancellation reaches a pause and an Escalation alike.
+  check('run_wait_closure',sql`(${t.closedAt} IS NULL AND ${t.closureKind} IS NULL AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'answer' AND ${t.kind} IS DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT NULL AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'resume' AND ${t.kind} IS NOT DISTINCT FROM 'pause' AND ${t.answerOptionId} IS NOT DISTINCT FROM 'resume' AND ${t.actor} IS NOT NULL) OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'timeout' AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NOT DISTINCT FROM 'wait-wake') OR (${t.closedAt} IS NOT NULL AND ${t.closureKind} IS NOT DISTINCT FROM 'withdrawn' AND ${t.answerOptionId} IS NULL AND ${t.actor} IS NOT DISTINCT FROM 'run-terminal')`),
+]);
+
+/**
+ * One flag: an Auditor asked the Audit Managers to look at a Run (generation 46, Story 5.5).
+ *
+ * NOT a `run_wait`. Every mechanism that table gives a wait — the one-open unique index,
+ * the delayed wake, the revision compare-and-set, the recovery sweep — exists to end a Run
+ * that is being HELD, and a flag holds nothing; `run_wait_one_open` would also make
+ * flagging a Run mutually exclusive with pausing it, which nothing asks for.
+ *
+ * `flagged_by` is `text` with NO foreign key, exactly as `audit_run.initiator_id` is: a key
+ * there would make deleting a user fail on a Run's own history.
+ *
+ * It cascades from `audit_run` — removing a whole Run is a different act from rewriting one
+ * record of it, the reading that already makes `run_workspace` and `run_exception` cascade.
+ */
+export const runFlag = pgTable('run_flag', {
+  flagId: uuid('flag_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  flaggedBy: text('flagged_by').notNull(),
+  sessionId: text('session_id').notNull(),
+  flaggedAt: timestamp('flagged_at', { withTimezone: true }).notNull(),
+  note: text('note'),
+}, t => [
+  index('run_flag_run_idx').on(t.runId, t.flaggedAt, t.flagId),
+  // A note is absent or it says something. An empty string would read as a note somebody
+  // left blank rather than as one they chose not to write.
+  check('run_flag_note', sql`${t.note} IS NULL OR (btrim(${t.note}) <> '' AND length(${t.note}) <= 500)`),
 ]);
 
 export type RunObservationEvaluationRow = typeof runObservationEvaluation.$inferSelect;

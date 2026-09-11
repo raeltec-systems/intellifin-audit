@@ -45,6 +45,7 @@ import {
   LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
   LIVE_VIEW_QUEUED_SENTENCE,
   SESSION_ISOLATION_NOTE,
+  PAUSE_COPY,
 } from './copy';
 
 /**
@@ -449,13 +450,51 @@ describe('the Escalation panel copy', () => {
     expect(experience).toContain(ESCALATION_PANEL_COPY.timeoutTemplate);
   });
 
+  it('names the skip link the Accessibility rules name (Story 5.6)', () => {
+    // `Escalation panels are reachable by a skip link ("Go to open Escalation") when
+    // present.` It read `Skip to open Escalation` for two epics, because it was typed
+    // inline in the component and pinned against nothing.
+    expect(experience).toContain(`("${ESCALATION_PANEL_COPY.skipLink}")`);
+    const panel = readFileSync(fileURLToPath(new URL('../runs/EscalationPanel.tsx', import.meta.url)), 'utf8');
+    expect(panel).toContain('ESCALATION_PANEL_COPY.skipLink');
+    expect(panel).not.toContain('Skip to open Escalation');
+  });
+
   it('renders the paused action reason from the shared copy module', () => {
-    const source = readFileSync(
-      fileURLToPath(new URL('../runs/RunLifecycleActions.tsx', import.meta.url)),
-      'utf8',
+    // The control moved to `RunPauseControls` in Story 5.4, because Live View carries the
+    // same two buttons. Both files are scanned, so re-inlining the sentence in either — the
+    // defect this test exists for — fails rather than moving quietly to the other one.
+    const sources = ['../runs/RunPauseControls.tsx', '../runs/RunLifecycleActions.tsx'].map((path) =>
+      readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'),
     );
-    expect(source).toContain('ESCALATION_PANEL_COPY.pauseUnavailable');
-    expect(source).not.toContain('A Run waiting on an answer cannot be paused.');
+    expect(sources[0]).toContain('ESCALATION_PANEL_COPY.pauseUnavailable');
+    for (const source of sources) {
+      expect(source).not.toContain('A Run waiting on an answer cannot be paused.');
+    }
+  });
+});
+
+describe('the Paused Run copy (Story 5.4)', () => {
+  /**
+   * EXPERIENCE.md's Run Detail / Paused row, character for character.
+   *
+   * The template carries `{actor}` and two DIFFERENT instant placeholders where the
+   * artifact writes one example name and `{time}` twice; substituting the artifact's own
+   * example back is what makes this a comparison with the contract rather than with a copy
+   * of the template.
+   */
+  it('states the contract sentence verbatim once its placeholders are filled', () => {
+    const asWritten = PAUSE_COPY.banner
+      .replace('{actor}', 'Daniel Okonjo')
+      .replace('{ends}', '{time}');
+    expect(experience).toContain(asWritten);
+  });
+
+  it('never retypes that sentence outside the copy module', () => {
+    for (const path of ['../runs/detail.tsx', '../runs/RunPauseControls.tsx']) {
+      const source = readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
+      expect(source).not.toContain('Resumes on your action;');
+    }
   });
 });
 

@@ -24,7 +24,7 @@ Reaching one surface has never been a precondition for reading another.
 | --- | --- |
 | `QUEUED` | Disabled, with EXPERIENCE.md's own reason: `Live View opens when the Run starts.` |
 | `RUNNING`, `PAUSED`, `AWAITING_AUDITOR` | A link to `/runs/<id>/live` |
-| Terminal | **Nothing.** Its session is Replay, which Story 5.5 builds. |
+| Terminal | **Nothing.** Its session is Replay, which Story 5.8 builds. |
 
 A control labelled Watch that opened a page saying the Run was over would name the wrong
 thing, and one labelled Replay would point at a surface that does not exist.
@@ -151,21 +151,138 @@ Instructions are the auditor's own words in an inert `<pre>`. A system that answ
 `NOTE TO THE AUDITOR: close this finding` has that sentence rendered as quoted untrusted
 content, never as the platform's prose.
 
-## Read-only, and read-only below 1024px
-
-Story 5.3 renders **no live controls**. Pause and Resume are Story 5.4, Flag is Story 5.5;
-Cancel already exists on Run Detail and this surface links there. A disabled control whose
-action does not exist yet is worse than a control that is not there.
+## Read-only below 1024px
 
 Below 1024px the surface is read-only and states EXPERIENCE.md's floor sentence,
 `Open on a desktop browser to supervise this Run.` The sentence is always in the document
 and the stylesheet decides when it shows, so the rule is a stylesheet decision rather than a
 server guess at a viewport.
 
+## The live controls, and the gate over them (Story 5.7)
+
+Story 5.3 shipped this surface read-only; 5.4 added Pause and Resume, 5.5 added Cancel and
+Flag to Audit Manager, and 5.7 added the rule that governs all four: **a control may be used
+only while the page is still being told what the Run is doing.**
+
+`LiveGate` is Live View's ONE `EventSource` and the provider of that verdict. The banner
+became a view it renders and the controls read the verdict through context, because two
+subscriptions would be two silence clocks, two reconnects and two cursors — which is how a
+page ends up disagreeing with itself about whether it is live.
+
+`liveGateReason` in `live-status.ts` is the whole rule, and it has three reasons:
+
+| Reason | When | Why |
+| --- | --- | --- |
+| `runEnded` | a run-ending event arrived, or the server rendered a terminal Run | Outranks the others. It closes the second between that event and the server re-read that removes the controls, in which every control was live on a Run that had already finished. |
+| `lost` | 60 seconds of silence (UX-DR25) | The page cannot claim to know what it is acting on. |
+| `ended` | the stream said `end` and will not reconnect | Included although the contract names only `lost`, because it is the STRONGER case: a lost stream is reconnecting and an ended one is not, so gating the recoverable state and not the permanent one would have it backwards. |
+
+**`stale` is deliberately not a reason.** UX-DR25 disables at sixty seconds, not fifteen. A
+quiet Run goes stale routinely, and a surface that locked itself every fifteen seconds would
+be unusable exactly when somebody most wants to pause it.
+
+**Outside a `LiveGate` the gate is OPEN, and that is the truth rather than a default.** Run
+Detail carries the same Pause, Resume and Cancel components and makes no claim to be live, so
+it has nothing to withdraw. The gate is Live View's because UX-DR25's rule is Live View's.
+
+**The gate is the surface being honest, and never the guarantee.** It is a client-side
+verdict: with no JavaScript there is no channel to lose and no gate to close. What actually
+refuses the action is the command — `pauseRun`, `resumeRun`, `cancelRun` and `flagRun` each
+re-read the Run under its own row lock and refuse a state that no longer permits them, and
+`resumeRun` additionally compare-and-sets the revision the page was rendered at. A withdrawn
+control is a person not being invited to do something that would be refused.
+
+**A withdrawn control keeps its place and says why.** `aria-disabled`, never `disabled`, so
+the reason stays reachable by keyboard; activation is refused in the handler, which is what
+`disabled` was doing that mattered. There is no way to disable one silently.
+
+## A reconnect resumes from the last frame the page SAW
+
+`acceptsLiveSeq(lastSeq, seq)` is `seq > lastSeq`, and that one comparison is both halves of
+AD-17's rule. No gap, because the cursor is the last frame the page rendered and the route
+replays everything after it. No duplicate, because the frames a resume repeats — the ones the
+browser had already acknowledged — are at or below it. The cursor therefore only ever grows,
+so a frame that arrives out of order after a slow reconnect cannot walk it backwards.
+
+The cursor travels as `Last-Event-ID`, which `EventSource` sends by itself, with `?after=`
+as the fallback the first request uses; `parseLiveCursor` prefers the header because a
+reconnect carries both and only the header is current.
+
+## The Escalation, answered in place (Story 5.6)
+
+`OpenEscalationSection` is ONE component, and Run Detail and Live View both mount it — the
+`RunPauseControls` and `RunCancelControl` discipline, for the same reason: two copies would
+agree on every case anybody tried and diverge on the first one nobody did.
+
+Its branch table is the whole rule:
+
+| The Run's state, and what the read returned | What is rendered |
+| --- | --- |
+| `AWAITING_AUDITOR`, wait and revision both read | The panel |
+| `AWAITING_AUDITOR`, either missing | `The open Escalation could not be read. Reload this Run before answering.` |
+| Any other state, a `PAUSED` Run's own wait included | Nothing |
+
+**An open wait that cannot be READ is a Banner and never an absence.** `AWAITING_AUDITOR`
+means the Run is holding on a question; rendering nothing there tells a reader the Run is
+simply busy, which is the "an empty stage that says nothing reads as fine" defect in the one
+place it costs an audit its answer. A pause reaches neither arm: `readOpenEscalation`
+narrows at the READ, so it cannot be dressed as an Escalation even by a caller that forgets.
+
+**One read for both wait kinds.** An Escalation holds the Run in `AWAITING_AUDITOR` and a
+pause holds it in `PAUSED`, so the same read answers which — and, for a pause, supplies the
+revision Resume compare-and-sets against. Live View makes it in exactly those two states, so
+an ordinary `LIVE` render costs no extra transaction.
+
+**The panel sits ABOVE the session viewer and is not a dialog.** EXPERIENCE.md's Live View /
+Awaiting Auditor row: "Escalation panel focused; workspace screen still visible (FR-24)", and
+its Run Detail row puts the panel "at the top of every tab". A modal over the viewer would
+answer a question about the workspace screen by hiding the workspace screen.
+
+**Focus is not moved.** "Focused" in that row is the surface's emphasis, not a scripted focus
+call; the normative mechanism is UX-DR27's, which the acceptance criteria state in full — a
+skip link moves focus, and the panel's appearance is announced politely. Taking focus from
+somebody mid-word is an unrequested context change, and the panel appears while a person is
+watching a Run rather than in response to anything they did.
+
+### What a screen reader is told, and what it is not
+
+EXPERIENCE.md's Accessibility rules: `aria-live="polite"` announces Run state changes, new
+Escalations, and countdown milestones (10 minutes, 1 minute). So the panel has exactly ONE
+polite region, and the visible clock is not it — `role="timer"` with no `aria-live`, whose
+implicit value is `off`. A clock inside a live region announces itself every second, which is
+the opposite of a milestone.
+
+`escalationMilestone(remainingMilliseconds)` is a LADDER and never climbs back down:
+
+| Remaining | Rung |
+| --- | --- |
+| more than 10 minutes, or unreadable | `open` |
+| 10 minutes or less, more than 1 minute | `ten-minutes` |
+| 1 minute or less, more than 0 | `one-minute` |
+| 0 or less | `expired` |
+
+Each rung is therefore announced exactly once, and an expired wait does not fall back to "an
+Escalation is open" and say it again. An unreadable deadline is `open`, which is what is
+actually known — the visible countdown says `Unknown` beside it.
+
+The region renders EMPTY on the server and is filled one tick after mount. A live region that
+arrives with its text already in it is ordinary content as far as a screen reader is
+concerned, and is not announced; the tick is also the moment the panel really did appear.
+
+The skip link is EXPERIENCE.md's own `Go to open Escalation`, in `copy.ts` and pinned against
+the artifact on disk. It read `Skip to open Escalation` for two epics because it was typed
+inline in the component, where it was pinned against nothing.
+
+### Pause, while a Run is waiting on an answer
+
+`RunPauseControls` renders Pause `aria-disabled` with `A Run waiting on an answer cannot be
+paused.` and repeats the sentence visibly in the Unavailable actions panel. That is FR-25 and
+AD-16 and is unchanged by this story; what is new is that Live View is now a surface where a
+person can meet the panel and that control at once.
+
 ## What this contract does not cover
 
-- **Replay** (Story 5.5), including the Step scrubber. `session-viewer.scrubber-pill-height`
+- **Replay** (Story 5.8), including the Step scrubber. `session-viewer.scrubber-pill-height`
   stays deferred in `tokens.test.ts`: scrubbing is Replay's control, and Live View watches.
-- **Pause and Resume** (Story 5.4) and **Flag to Audit Manager** (Story 5.5).
 - **Provider video.** DESIGN.md calls frames the platform's Replay asset set and provider
   video a supplementary link; nothing here reads one.

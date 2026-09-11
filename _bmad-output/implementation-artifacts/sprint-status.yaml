@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 23:59
-last_updated: 09-05-2026
+last_updated: 09-10-2026
 project: IntelliFin Audit
 project_key: NOKEY
 tracking_system: file-system
@@ -88,13 +88,13 @@ development_status:
 
   epic-5: in-progress
   5-1-stream-the-execution-timeline-live-over-sse: review
-  5-2-capture-the-platform-owned-replay-asset-set-during-execution: backlog
-  5-3-watch-a-running-run-in-live-view: backlog
-  5-4-pause-and-resume-a-running-run: backlog
-  5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view: backlog
-  5-6-answer-an-escalation-without-leaving-live-view: backlog
-  5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open: backlog
-  5-8-replay-any-terminal-run-from-the-platform-owned-asset-set: backlog
+  5-2-capture-the-platform-owned-replay-asset-set-during-execution: review
+  5-3-watch-a-running-run-in-live-view: review
+  5-4-pause-and-resume-a-running-run: review
+  5-5-cancel-a-run-and-flag-it-to-audit-managers-from-live-view: review
+  5-6-answer-an-escalation-without-leaving-live-view: review
+  5-7-live-view-when-the-stream-drops-or-the-run-ends-while-open: review
+  5-8-replay-any-terminal-run-from-the-platform-owned-asset-set: review
   epic-5-retrospective: optional
 
   epic-6: backlog

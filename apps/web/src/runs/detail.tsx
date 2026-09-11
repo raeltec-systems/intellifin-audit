@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { isActiveRunState, type RunRecord } from '@intellifin/domain';
-import type { EvaluationReviewCommandStatus } from '@intellifin/application';
+import { runPauseTransition, isActiveRunState, type RunRecord } from '@intellifin/domain';
+import type { EvaluationReviewCommandStatus, RunWait } from '@intellifin/application';
 import {
   CryptoUuidV7Generator,
   DrizzleRunDetailRepository,
@@ -18,12 +18,12 @@ import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
 import { WatchControl } from './WatchControl';
-import { ESCALATION_PANEL_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
+import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
 import { EscalationPanel } from './EscalationPanel';
 import { EvaluationReview } from './EvaluationReview';
-import { readOpenEscalation } from './escalation-read';
+import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { runLifecycleWord, utcStamp } from './labels';
@@ -178,7 +178,10 @@ export async function RunDetailFrame({
   readonly readAt: Date;
   readonly children: React.ReactNode;
 }): Promise<React.JSX.Element> {
-  const escalation = run.state === 'AWAITING_AUDITOR'
+  // Read for both wait kinds: an Escalation holds the Run in `AWAITING_AUDITOR` and a
+  // pause holds it in `PAUSED`, and the same one read answers which — and, for a pause,
+  // supplies the revision the Resume control compare-and-sets against.
+  const escalation = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
     ? await readOpenEscalation(run.runId)
     : null;
   const evaluationReview = tab === '' && (run.state === 'COMPLETED' || run.state === 'INCONCLUSIVE')
@@ -222,6 +225,7 @@ export async function RunDetailFrame({
         : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       <CancellationBanners run={run} />
+      <PauseBanners run={run} pause={escalation?.pause ?? null} />
       <RerunLinks runId={run.runId} />
       {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
           is its own surface, not a sixth tab, so it is reached from here and from a
@@ -232,14 +236,14 @@ export async function RunDetailFrame({
         active={isActiveRunState(run.state)}
         awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
         cancelPending={run.cancellation !== null}
+        paused={run.state === 'PAUSED'}
+        pausePending={run.pauseRequest !== null}
+        pausable={runPauseTransition(run.state) !== null}
+        runRevision={escalation?.runRevision ?? null}
         requestToken={new CryptoUuidV7Generator().next()}
         procedureName={run.procedureName}
       />
-      {run.state === 'AWAITING_AUDITOR' && escalation !== null
-        ? escalation.wait !== null && escalation.runRevision !== null
-          ? <EscalationPanel runId={run.runId} wait={escalation.wait} details={escalation.details} runRevision={escalation.runRevision} readAt={readAt.toISOString()} />
-          : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />
-        : null}
+      <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />
       {evaluationReview !== null ? (
         <EvaluationReview
           runId={run.runId}
@@ -288,6 +292,81 @@ export async function RerunLinks({ runId }: { readonly runId: string }): Promise
       </ul>
     </Banner>
   );
+}
+
+/**
+ * What a pause says, on whichever tab the reader is on (Story 5.4).
+ *
+ * EXPERIENCE.md → Run Detail / Paused, character for character, with the three facts the
+ * row names filled from the WAIT row rather than from the request marker: `opened_by` and
+ * `opened_at` are when the Run actually paused, and `deadline` is when it ends
+ * Inconclusive. The marker says only that a pause has been ASKED for, which is the other
+ * banner here.
+ *
+ * A pause the Run outran gets no banner at all: `lifecycle.pause-superseded` is on the
+ * Timeline, the Run's own outcome stands, and a banner saying a request was not honoured
+ * would compete with the outcome for the reader's attention on every terminal tab.
+ */
+/**
+ * The open Escalation, on Run Detail AND on Live View (Story 5.6).
+ *
+ * ONE mount, for the reason `RunPauseControls` and `RunCancelControl` are one component
+ * each: both surfaces carry the same panel, and two copies would agree on every case
+ * anybody tried and diverge on the first one nobody did — here that would be one surface
+ * showing the panel and the other silently showing nothing when the wait cannot be read.
+ *
+ * A wait that is open but unreadable is a BANNER and never an absence. `AWAITING_AUDITOR`
+ * means the Run is holding on a question; rendering nothing there would tell a reader the
+ * Run is simply busy, which is the "an empty stage that says nothing reads as fine" defect
+ * in the one place it costs an audit its answer.
+ */
+export function OpenEscalationSection({ run, escalation, readAt }: {
+  readonly run: RunRecord;
+  readonly escalation: OpenEscalationRead | null;
+  readonly readAt: Date;
+}): React.JSX.Element | null {
+  if (run.state !== 'AWAITING_AUDITOR' || escalation === null) return null;
+  return escalation.wait !== null && escalation.runRevision !== null
+    ? <EscalationPanel
+        runId={run.runId}
+        wait={escalation.wait}
+        details={escalation.details}
+        runRevision={escalation.runRevision}
+        readAt={readAt.toISOString()}
+      />
+    : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />;
+}
+
+export function PauseBanners({ run, pause }: {
+  readonly run: RunRecord;
+  readonly pause: RunWait | null;
+}): React.JSX.Element {
+  if (run.state === 'PAUSED' && pause !== null && pause.openedBy !== null) {
+    return (
+      <Banner
+        tone="warning"
+        title={PAUSE_COPY.banner
+          .replace('{actor}', pause.openedBy)
+          .replace('{time}', utcStamp(pause.openedAt))
+          .replace('{ends}', utcStamp(pause.deadline))}
+      >
+        <p>Evidence already collected is preserved. The agent restarts the current Step from its first Tool Action.</p>
+      </Banner>
+    );
+  }
+  // Requested and not yet honoured. Only while the Run is still active: a terminal Run
+  // that carries one was never paused, and the Timeline records that as superseded.
+  if (run.pauseRequest !== null && isActiveRunState(run.state)) {
+    return (
+      <Banner
+        tone="warning"
+        title={`Pause requested by ${run.pauseRequest.requestedBy} at ${utcStamp(run.pauseRequest.requestedAt)}`}
+      >
+        <p>The Run holds at its next Tool Action, before any further Target System work.</p>
+      </Banner>
+    );
+  }
+  return <></>;
 }
 
 /**

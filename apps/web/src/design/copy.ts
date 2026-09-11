@@ -437,6 +437,63 @@ export const MASKED_BY_BINDING = 'Masked by the Population Source binding';
 export const UNREADABLE_PUBLICATION = 'The published Result document could not be read.';
 
 /**
+ * The Paused Run's own copy (Story 5.4, EXPERIENCE.md "Run Detail — Paused").
+ *
+ * `banner` is that row's sentence character for character, with the two instants the row
+ * names as `{actor}`, `{time}` and `{ends}`; `copy.test.ts` reads it off disk and pins the
+ * template. The disabled Pause reason lives in `ESCALATION_PANEL_COPY.pauseUnavailable`,
+ * which is EXPERIENCE.md's Awaiting-Auditor row and was already pinned there.
+ */
+export const PAUSE_COPY = {
+  banner: 'Paused by {actor} at {time}. Resumes on your action; ends Inconclusive at {ends}.',
+  requested: 'Pause requested.',
+  requestedBody:
+    'The Run pauses at its next Tool Action, before any further Target System work. Evidence already collected is preserved.',
+  resumed: 'Run resumed.',
+  resumedBody: 'The agent restarts the current Step from its first Tool Action. Nothing already recorded is removed.',
+  confirmTitle: 'Pause this Run?',
+  confirmConsequence:
+    'This holds the Run for {procedure} at its next Tool Action. It resumes only when you say so, and ends Inconclusive if it is still paused after 30 minutes. The pause is recorded against your name.',
+  unknown: 'The pause could not be confirmed. Reload the Run to see whether it was paused.',
+  resumeUnknown: 'The resume could not be confirmed. Reload the Run to see whether it restarted.',
+} as const;
+
+/**
+ * Flagging a Run to the Audit Managers (Story 5.5, FR-27, FR-28).
+ *
+ * There is no confirmation title here, and that is the contract rather than an omission:
+ * EXPERIENCE.md's confirmation table enumerates the actions that open a dialog and
+ * flagging is not among them. The control is a plain form with an optional note.
+ *
+ * `raised` never says the Run changed, because it did not: a flag has no execution effect,
+ * and a message implying otherwise would be a control reporting an outcome it did not
+ * produce.
+ */
+/**
+ * Shown as the reason a Run control is withdrawn after a response was lost.
+ *
+ * One home, because three controls say it. `RunPauseControls` and `RunCancelControl` each
+ * declared their own identical copy, and `RunFlagControl` — which needs it most, since a
+ * flag carries no request token and a retry writes a second flag and a second manager
+ * fan-out — had none at all.
+ */
+export const RUN_LOST_RESPONSE = 'The last response was lost. Reload this Run before trying again.';
+
+export const FLAG_COPY = {
+  heading: 'Ask an Audit Manager to look',
+  explanation:
+    'This tells every Audit Manager to look at this Run. It does not pause, stop or change the Run in any way.',
+  noteLabel: 'Note for the Audit Managers (optional)',
+  noteHelp: 'Up to 500 characters. It is stored with the Run and is not sent to the agent.',
+  submit: 'Flag to Audit Manager',
+  raised: 'Audit Managers notified.',
+  raisedBody: 'The Run carries on exactly as it was. Your note is recorded against your name.',
+  unknown: 'The flag could not be confirmed. Reload the Run to see whether it was recorded.',
+  none: 'This Run has not been flagged.',
+  by: 'Flagged by {actor} at {time}.',
+} as const;
+
+/**
  * The Run Detail Escalation panel's contract copy.
  *
  * The first three strings are quoted from EXPERIENCE.md's Awaiting Auditor and
@@ -449,6 +506,13 @@ export const ESCALATION_PANEL_COPY = {
   answerNoteLabel: 'Recorded, not sent to the agent',
   pauseUnavailable: 'A Run waiting on an answer cannot be paused.',
   timeoutTemplate: 'This Escalation timed out at {time}; the Run is Inconclusive.',
+  /**
+   * EXPERIENCE.md's Accessibility rules: `Escalation panels are reachable by a skip link
+   * ("Go to open Escalation") when present.` It read `Skip to open Escalation` from Story
+   * 4.8 until Story 5.6 pinned it — a sentence typed inline in a component is pinned
+   * against nothing.
+   */
+  skipLink: 'Go to open Escalation',
   unknown: 'The Escalation answer could not be confirmed. Reload the Run to see whether it was recorded.',
   noAgentQuestion: 'No agent-generated question was recorded for this Escalation.',
   noStep: 'Step was not recorded for this Escalation.',
@@ -458,6 +522,24 @@ export const ESCALATION_PANEL_COPY = {
     'choose-candidate': 'Choose one of the grounded candidates, or mark the record ambiguous.',
     'unnamed-value': 'Choose how the platform should handle this unnamed value.',
     'retry-or-skip': 'Choose whether the platform should retry this Work Item or skip it.',
+  },
+  /**
+   * What the one polite live region says, and the ONLY things it says (Story 5.6).
+   *
+   * EXPERIENCE.md's Accessibility rules: `aria-live="polite"` announces Run state changes,
+   * new Escalations, and countdown milestones (10 minutes, 1 minute)`. A clock in a live
+   * region announces itself every second, which is the opposite of a milestone — so the
+   * visible countdown is a `role="timer"` with no live region, and this ladder is what a
+   * screen reader hears. It only ever moves forward, so each rung is announced once.
+   *
+   * These four are platform vocabulary rather than contract quotations: EXPERIENCE.md fixes
+   * WHICH milestones are announced and does not write the sentences.
+   */
+  milestones: {
+    open: 'An Escalation is open on this Run. It is waiting for your answer.',
+    'ten-minutes': '10 minutes remain to answer this Escalation.',
+    'one-minute': '1 minute remains to answer this Escalation.',
+    expired: 'The Escalation deadline has been reached.',
   },
 } as const;
 
@@ -472,6 +554,34 @@ export const ESCALATION_PANEL_COPY = {
  * sentence with a substituted verb. `copy.test.ts` reads both off EXPERIENCE.md.
  */
 export const LIVE_VIEW_DESKTOP_ONLY_SENTENCE = 'Open on a desktop browser to supervise this Run.';
+
+/**
+ * Replay's own vocabulary (Story 5.8, FR-30, UX-DR26).
+ *
+ * Platform sentences, not contract quotations: EXPERIENCE.md's Replay row fixes what the
+ * surface DOES — chrome REPLAY, paused at the first frame, a jump list of Work Items,
+ * Exceptions and Escalations, and no provider — and does not write the words.
+ *
+ * `desktopOnly` is the exception and is the SAME sentence Live View shows, deliberately:
+ * UX-DR25's responsive floor is about supervising a session, and Replay is that session
+ * seen afterwards. A second sentence for the same rule is a second thing to keep in step.
+ */
+export const REPLAY_COPY = {
+  play: 'Play',
+  pause: 'Pause',
+  viewerLabel: 'Session replay. Arrow keys step one frame; Space plays and pauses.',
+  scrubberLabel: 'Step scrubber',
+  keys: 'Arrow keys step one frame. Space plays and pauses. Home and End jump to the first and last frame.',
+  noFrames: 'This Run captured no workspace frames, so there is nothing to replay. Its Session Steps, Evidence and Timeline are on Run Detail.',
+  noAction: 'No Tool Action was recorded for this frame.',
+  noJumpTargets: 'This Run recorded no Work Items, Exceptions or Escalations to jump to.',
+  noFrameForTarget: 'no frame was captured here',
+  observationsThrough: '{count} Observations had been registered when this frame was captured.',
+  bounded: 'Showing the first {shown} of {total} frames.',
+  notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',
+  desktopOnly: LIVE_VIEW_DESKTOP_ONLY_SENTENCE,
+} as const;
+
 
 /**
  * Why the Watch control is unavailable on a Queued Run (EXPERIENCE.md → Per-surface

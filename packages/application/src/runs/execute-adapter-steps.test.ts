@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { RunWait } from './waits.js';
 import {
   bytesDiscloseCompiled,
   compileSecret,
@@ -143,7 +144,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01920000-0000-7000-8000-000000000005',
 };
 
@@ -212,6 +213,7 @@ const RECORDS: readonly PopulationRecord[] = [
 
 /** An in-memory stand-in for `PostgresAdapterExecutionRepository`, with the same seams. */
 class FakeRepository implements AdapterExecutionRepository {
+  pauseWaits: RunWait[] = [];
   run: RunRecord = { ...RUN };
   population: PopulationCheckpoint | null = {
     revision: 1, status: 'POPULATION_READY', attempts: 1,
@@ -400,6 +402,11 @@ class FakeRepository implements AdapterExecutionRepository {
       // The marker as the terminal transaction sees it, which is why a cancellation
       // committed AFTER the claim is visible here and not on the claim-time `RunRecord`.
       readCancellation: async () => repository.run.cancellation,
+      readPauseRequest: async () => repository.run.pauseRequest,
+      /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+      withdrawOpenWait: async (): Promise<null> => null,
+      openPauseWait: async (wait: RunWait) => { repository.pauseWaits.push(wait); },
+      clearPauseRequest: async () => { repository.run = { ...repository.run, pauseRequest: null }; },
       saveGateChecks: async (rows) => {
         if (repository.gate.length === 0) repository.gate = [...rows];
       },

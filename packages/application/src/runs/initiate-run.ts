@@ -68,7 +68,7 @@ async function createRun(
   if (!owner || owner.state !== 'ACTIVE' || !owner.frozenReview) return refuse('no-owner', null);
   const run: RunRecord = { runId: dependencies.ids.next(), requestToken, correlationId: input.correlationId, procedureId, versionId: owner.versionId, versionNumber: owner.versionNumber, procedureName: owner.controlName,
     period, state: 'QUEUED', kind: 'STANDARD', initiatorId: input.session.userId, sessionId: input.session.sessionId, initiatedAt: dependencies.clock.now().toISOString(), authorizationRole: input.role,
-    predecessorRunId: link?.predecessorRunId ?? null, rerunReason: link?.reason ?? null, cancellation: null };
+    predecessorRunId: link?.predecessorRunId ?? null, rerunReason: link?.reason ?? null, cancellation: null, pauseRequest: null };
   if (!await context.runs.insert(run)) {
     const existing = await context.runs.findActive(procedureId, period);
     return refuse('already-active', existing?.runId ?? null);

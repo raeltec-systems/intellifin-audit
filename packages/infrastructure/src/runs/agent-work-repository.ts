@@ -28,7 +28,7 @@ export class PostgresAgentWorkRepository implements AgentWorkRepository {
         const events = await tx.select({ payload: auditEvents.payload }).from(auditEvents).where(and(eq(auditEvents.aggregateId, runId), eq(auditEvents.eventType, 'execution.escalation-raised'), sql`${auditEvents.payload}->>'waitId'=${retained.waitId}`)).limit(2);
         const payload = events.length === 1 ? events[0]!.payload : null;
         if (retained.closureKind !== 'answer' || retained.closedAt === null || retained.closedAt.getTime() >= retained.deadline.getTime() || retained.actor === null || !['choose-candidate','unnamed-value'].includes(retained.kind) || payload === null || typeof payload.stepId !== 'string' || !Array.isArray(payload.supportingEvidenceIds) || !payload.supportingEvidenceIds.every(id => typeof id === 'string')) throw new Error('Retained wait decision binding refused');
-        retainedDecisions.push({ wait: { ...retained, kind: retained.kind as RunWait['kind'], deadline: retained.deadline.toISOString(), closedAt: retained.closedAt.toISOString(), closureKind: 'answer' }, raised: { runId, waitId: retained.waitId, stepId: payload.stepId, supportingEvidenceIds: payload.supportingEvidenceIds as readonly string[] } });
+        retainedDecisions.push({ wait: { ...retained, kind: retained.kind as RunWait['kind'], openedAt: retained.openedAt.toISOString(), deadline: retained.deadline.toISOString(), closedAt: retained.closedAt.toISOString(), closureKind: 'answer' }, raised: { runId, waitId: retained.waitId, stepId: payload.stepId, supportingEvidenceIds: payload.supportingEvidenceIds as readonly string[] } });
       }
       if (retainedDecisions.length !== retainedIds.length) throw new Error('Retained wait decision binding refused');
       const turns = await tx.select().from(runAgentTurn).where(eq(runAgentTurn.runId, runId)).orderBy(asc(runAgentTurn.sequence));
@@ -52,7 +52,7 @@ export class PostgresAgentWorkRepository implements AgentWorkRepository {
         // row still reaches the application's existing missing-workspace protection.
         prerequisitesReady: signIn?.status === 'SIGNED_IN' && shared.checkpoint?.status === 'EXTRACTION_COMPLETE' &&
           workspace?.status !== 'PROVISIONING' && workspace?.status !== 'RETRY',
-        wait: wait === undefined ? null : { ...wait, kind: wait.kind as NonNullable<AgentWorkContext['wait']>['kind'], deadline: wait.deadline.toISOString(), closedAt: wait.closedAt?.toISOString() ?? null, closureKind: wait.closureKind as NonNullable<AgentWorkContext['wait']>['closureKind'] },
+        wait: wait === undefined ? null : { ...wait, kind: wait.kind as NonNullable<AgentWorkContext['wait']>['kind'], openedAt: wait.openedAt.toISOString(), deadline: wait.deadline.toISOString(), closedAt: wait.closedAt?.toISOString() ?? null, closureKind: wait.closureKind as NonNullable<AgentWorkContext['wait']>['closureKind'] },
         waitRaise, retainedDecisions,
         toolActions: actions.map(row => ({ ...row, startedAt: row.startedAt.toISOString(), completedAt: row.completedAt?.toISOString() ?? null })) as readonly SanitizedToolAction[],
         captures,

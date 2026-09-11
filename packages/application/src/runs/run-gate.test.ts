@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RUN_LIMIT_CAUSES, type ExecutablePlan, type GateCheckResult, type PackageArtifact, type RunRecord } from '@intellifin/domain';
+import { RUN_LIMIT_CAUSES, type ExecutablePlan, type GateCheckResult, type PackageArtifact, type RunRecord, type RunPauseRequest } from '@intellifin/domain';
 import { runRunLevelGate } from './run-gate.js';
 import type {
   GateCheckRow,
@@ -37,7 +37,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000f5',
 };
 
@@ -96,6 +96,10 @@ class FakeGate implements RunGateContext {
 
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.rows;
   readCancellation = async (): Promise<null> => null;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47. This context never opens a wait, so there is never one to withdraw. */
+  withdrawOpenWait = async (): Promise<null> => null;
+  pauseRequest: RunPauseRequest | null = null;
   saveGateChecks = async (rows: readonly GateCheckRow[]): Promise<void> => {
     this.rows = [...rows];
   };

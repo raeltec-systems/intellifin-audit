@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { isActiveRunState } from '@intellifin/domain';
+import { isActiveRunState, isFlaggableRunState, runPauseTransition } from '@intellifin/domain';
 import {
+  DrizzleActorNameReader,
   DrizzleFrozenExecutionReader,
   DrizzleRunDetailRepository,
   readTimelineHead,
@@ -11,8 +12,13 @@ import {
 import { getRuntime } from '../../../../src/bootstrap';
 import { LIVE_VIEW_QUEUED_SENTENCE } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
-import { LiveBanner } from '../../../../src/runs/LiveBanner';
-import { EndedBanner, LiveViewer } from '../../../../src/runs/LiveViewer';
+import { LiveGate } from '../../../../src/runs/LiveGate';
+import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
+import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
+import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
+import { readOpenEscalation } from '../../../../src/runs/escalation-read';
+import { OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
+import { LiveViewer } from '../../../../src/runs/LiveViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
@@ -42,9 +48,10 @@ export const dynamic = 'force-dynamic';
  * a REGISTERED artifact whose digest was verified when the platform froze it, never a
  * value that travelled over a stream.
  *
- * Story 5.3 is READ-ONLY supervision. Pause, Resume and Flag are Stories 5.4 and 5.5;
- * Cancel already exists on Run Detail and this surface links there. A disabled control
- * whose action does not exist yet is worse than a control that is not there.
+ * Story 5.3 shipped it READ-ONLY; 5.4 added Pause and Resume and 5.5 adds Cancel and Flag
+ * to Audit Manager, which is EXPERIENCE.md's full session-viewer control set. Each is the
+ * same component Run Detail mounts, so the two surfaces cannot disagree about a stale
+ * revision, a blocked retry or a pending request.
  */
 export default async function RunLivePage({
   params,
@@ -58,14 +65,19 @@ export default async function RunLivePage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [timeline, frame, agentWork, evidence, plan, liveCursor] = await Promise.all([
+  const [timeline, frame, agentWork, evidence, plan, liveCursor, flagRows] = await Promise.all([
     detail.readTimeline(run.runId),
     detail.readLatestFrame(run.runId),
     detail.readAgentWorkPosition(run.runId),
     detail.readEvidenceItems(run.runId),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     isActiveRunState(run.state) ? readTimelineHead(runtime.db, run.runId) : Promise.resolve(null),
+    detail.readFlags(run.runId),
   ]);
+  // Names, not ids. A Run records its actors as user IDs because an address cannot enter
+  // the audit chain; printing one at a reader is the platform speaking its own language.
+  const actorNames = await new DrizzleActorNameReader(runtime.db)
+    .namesFor(flagRows.map((row) => row.flaggedBy));
 
   const targetName = (registrationId: string | null): string | null =>
     registrationId === null
@@ -91,6 +103,14 @@ export default async function RunLivePage({
   const chrome = liveViewChrome(run.state);
   const lifecycle = runLifecycleWord(run.state);
   const here = `/runs/${run.runId}/live`;
+  // The open wait, for a Run holding on one, and ONE read for both kinds: an Escalation
+  // holds the Run in `AWAITING_AUDITOR` and a pause holds it in `PAUSED`, and the same read
+  // answers which — supplying the panel's wait and, for a pause, the revision Resume
+  // compare-and-sets against. Read only in the two states that can have one, so an ordinary
+  // LIVE render costs no extra transaction. Exactly what `RunDetailFrame` does.
+  const waits = run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED'
+    ? await readOpenEscalation(run.runId)
+    : null;
 
   // Why there is no frame, in words. An empty stage that says nothing reads as "fine",
   // which is the one thing a supervision surface must never do.
@@ -117,7 +137,7 @@ export default async function RunLivePage({
         <h1>Live View · {run.procedureName}</h1>
         <p>
           <Link href={runTabHref(run.runId, '')}>Open Run Detail</Link> for the Result, the
-          Evidence Quality Gate, the Execution Timeline and the Cancel control.
+          Evidence Quality Gate and the Execution Timeline.
         </p>
         {lifecycle === null ? (
           <p>Run lifecycle: {run.state}</p>
@@ -126,91 +146,132 @@ export default async function RunLivePage({
         )}
       </header>
 
-      {/* The channel subscribes only while the Run is active (UX-DR35). A terminal Run
-          gets the ended Banner instead, and nothing reconnects. */}
-      {liveCursor === null ? (
-        <EndedBanner runId={run.runId} state={run.state} />
-      ) : (
-        <LiveBanner
-          url={`/api/runs/${run.runId}/events`}
-          cursor={liveCursor}
-          readAt={readAt.toISOString()}
-          href={here}
-        />
-      )}
+      {/* ONE subscription for the surface, and the gate over every control under it
+          (Story 5.7). The channel subscribes only while the Run is active (UX-DR35); a
+          terminal Run gets the ended Banner instead, nothing reconnects, and the gate is
+          closed from the first render.
 
-      <LiveViewer
+          EXPERIENCE.md → session viewer: "Live controls: Pause / Resume, Cancel, Flag to
+          Audit Manager". Each is the SAME component Run Detail mounts, and each asks the
+          gate whether it may act — which is open everywhere else. */}
+      <LiveGate
         runId={run.runId}
-        chrome={chrome}
-        stateSentence={
-          chrome === null
-            ? 'This Run has not started, so there is no session to watch.'
-            : `Session ${chrome}.`
-        }
-        workspace={
-          timeline.workspace === null
-            ? null
-            : {
-                mode: timeline.workspace.mode,
-                workspaceId: timeline.workspace.workspaceId,
-                status: timeline.workspace.status,
-              }
-        }
-        stepsStarted={timeline.stepExecutions.total}
-        plannedSteps={plannedStepCount(plan)}
-        frame={
-          frame === null
-            ? null
-            : {
-                evidenceId: frame.evidenceId,
-                narration: frameNarration(frame, frameStep, systemOf(frameStep?.workItemId ?? frame.workItemId)),
-                sourceLocation: frame.sourceLocation,
-                digest: frame.digest,
-                capturedAt: frame.capturedAt,
-              }
-        }
-        stageNote={stageNote}
-        step={
-          current === null
-            ? null
-            : {
-                narration: stepNarration(current, systemOf(current.workItemId)),
-                state: current.state,
-                attempt: current.attempt,
-                diagnostic: current.diagnostic,
-              }
-        }
-        workItem={
-          workItem === null
-            ? null
-            : {
-                displayName: workItem.displayName,
-                state: workItem.state,
-                subjectKey: null,
-                observations: workItem.observations,
-              }
-        }
-        observations={timeline.workItems.reduce((total, item) => total + item.observations, 0)}
-        evidence={evidence.map((item) => ({
-          evidenceId: item.evidenceId,
-          kind: item.kind,
-          digest: item.digest,
-          capturedAt: item.capturedAt,
-        }))}
-        instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
-          system: targetName(instruction.registrationId) ?? instruction.registrationId,
-          text: instruction.text,
-        }))}
-        adapterSteps={timeline.sessionSteps
-          .filter((step) => step.action === 'extract-adapter')
-          .map((step) => ({
-            stepId: step.stepId,
-            displayName: `${planActionWord(step.action)} · ${step.displayName}`,
-            state: step.state,
-            attempts: step.attempts,
-            digest: null,
+        state={run.state}
+        url={`/api/runs/${run.runId}/events`}
+        cursor={liveCursor}
+        readAt={readAt.toISOString()}
+        href={here}
+      >
+        {/* AT THE TOP, and the workspace screen stays below it rather than behind it
+            (EXPERIENCE.md → Live View / Awaiting Auditor: "Escalation panel focused;
+            workspace screen still visible"). It is not a dialog: a modal over the session
+            viewer would answer the question by hiding the thing the question is about.
+            Focus is NOT moved here — the skip link moves it and the panel announces itself
+            politely, which is what UX-DR27 asks for; taking focus from somebody mid-word
+            is a context change nobody asked for. */}
+        <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
+        <PauseBanners run={run} pause={waits?.pause ?? null} />
+        <RunPauseControls
+          runId={run.runId}
+          procedureName={run.procedureName}
+          paused={run.state === 'PAUSED'}
+          pausePending={run.pauseRequest !== null}
+          awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+          pausable={runPauseTransition(run.state) !== null}
+          runRevision={waits?.runRevision ?? null}
+        />
+        <RunCancelControl
+          runId={run.runId}
+          procedureName={run.procedureName}
+          active={isActiveRunState(run.state)}
+          cancelPending={run.cancellation !== null}
+        />
+
+        <LiveViewer
+          runId={run.runId}
+          chrome={chrome}
+          stateSentence={
+            chrome === null
+              ? 'This Run has not started, so there is no session to watch.'
+              : `Session ${chrome}.`
+          }
+          workspace={
+            timeline.workspace === null
+              ? null
+              : {
+                  mode: timeline.workspace.mode,
+                  workspaceId: timeline.workspace.workspaceId,
+                  status: timeline.workspace.status,
+                }
+          }
+          stepsStarted={timeline.stepExecutions.total}
+          plannedSteps={plannedStepCount(plan)}
+          frame={
+            frame === null
+              ? null
+              : {
+                  evidenceId: frame.evidenceId,
+                  narration: frameNarration(frame, frameStep, systemOf(frameStep?.workItemId ?? frame.workItemId)),
+                  sourceLocation: frame.sourceLocation,
+                  digest: frame.digest,
+                  capturedAt: frame.capturedAt,
+                }
+          }
+          stageNote={stageNote}
+          step={
+            current === null
+              ? null
+              : {
+                  narration: stepNarration(current, systemOf(current.workItemId)),
+                  state: current.state,
+                  attempt: current.attempt,
+                  diagnostic: current.diagnostic,
+                }
+          }
+          workItem={
+            workItem === null
+              ? null
+              : {
+                  displayName: workItem.displayName,
+                  state: workItem.state,
+                  subjectKey: null,
+                  observations: workItem.observations,
+                }
+          }
+          observations={timeline.workItems.reduce((total, item) => total + item.observations, 0)}
+          evidence={evidence.map((item) => ({
+            evidenceId: item.evidenceId,
+            kind: item.kind,
+            digest: item.digest,
+            capturedAt: item.capturedAt,
           }))}
-      />
+          instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
+            system: targetName(instruction.registrationId) ?? instruction.registrationId,
+            text: instruction.text,
+          }))}
+          adapterSteps={timeline.sessionSteps
+            .filter((step) => step.action === 'extract-adapter')
+            .map((step) => ({
+              stepId: step.stepId,
+              displayName: `${planActionWord(step.action)} · ${step.displayName}`,
+              state: step.state,
+              attempts: step.attempts,
+              digest: null,
+            }))}
+        />
+        {/* Flag sits AFTER the viewer: it is the one control here that is not about stopping
+            or holding the Run, and it carries the record of the flags already raised. */}
+        <RunFlagControl
+          runId={run.runId}
+          flaggable={isFlaggableRunState(run.state)}
+          flags={flagRows.map((row) => ({
+            flagId: row.flagId,
+            flaggedBy: actorNames.get(row.flaggedBy) ?? row.flaggedBy,
+            flaggedAt: row.flaggedAt,
+            note: row.note,
+          }))}
+        />
+      </LiveGate>
       <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
     </div>
   );

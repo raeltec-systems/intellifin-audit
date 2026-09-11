@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -15,7 +15,9 @@ import {
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
+import { ESCALATION_PANEL_COPY } from '../../apps/web/src/design/copy';
 import { activeRunVersion } from '../fixtures/active-run-version';
+import { executablePlanInputs } from '../fixtures/executable-plan';
 import { startSyntheticS3 } from '../fixtures/s3-server';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase, signIn } from './accounts';
 
@@ -148,6 +150,34 @@ async function assertDeliveredNotifications(): Promise<void> {
   }
 }
 
+/**
+ * The open-notifications region, by the heading it actually has.
+ *
+ * It was `Runs waiting for your answer` until Story 5.5 put FLAGS in this inbox — a flag
+ * asks no question, so the heading became `Runs that need you`. Named once here, because a
+ * `getByRole` that resolves to nothing does not fail: it counts zero, and an expectation
+ * computed from that count then agrees with itself.
+ */
+const OPEN_REGION = 'Runs that need you';
+
+/**
+ * The bell agrees with the inbox it summarises.
+ *
+ * The bell counts open waits AND open flags (Story 5.5) and this region lists exactly
+ * those, so the two must be the same number. Both are re-read on every poll: a `count()`
+ * taken once while the page is still refreshing fixes the expectation at a number the bell
+ * has already left behind, and the failure then names the bell rather than the race.
+ */
+async function bellMatchesInbox(page: Page, open: Locator): Promise<void> {
+  await expect(open).toHaveCount(1);
+  const bell = page.locator('.ls-bell__count');
+  await expect.poll(async () => {
+    const listed = await open.locator('li').count();
+    const text = ((await bell.textContent()) ?? '').trim();
+    return text === `${listed} unread` ? text : `${text} (${listed} listed)`;
+  }).toMatch(/^\d+ unread$/);
+}
+
 async function openFromNotifications(page: Page): Promise<void> {
   await page.goto('/notifications');
   const bell = page.getByRole('button', { name: /^Notifications/ });
@@ -155,14 +185,19 @@ async function openFromNotifications(page: Page): Promise<void> {
   await bell.click();
   await expect(page.getByRole('link', { name: 'Open notifications', exact: true })).toHaveAttribute('href', '/notifications');
   await page.keyboard.press('Escape');
-  const open = page.getByRole('region', { name: 'Runs waiting for your answer' });
+  const open = page.getByRole('region', { name: OPEN_REGION });
   const delivered = page.getByRole('region', { name: 'Delivered notifications' });
-  await expect(bell.locator('.ls-bell__count')).toHaveText(`${await open.locator('li').count()} unread`);
+  await bellMatchesInbox(page, open);
   for (const surface of [open, delivered]) {
     const row = surface.locator('li').filter({ has: page.locator(`a[href="/runs/${runs.answered}"]`) });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText(controlName);
-    await expect(row).toContainText('choose-candidate');
+    // What is being ASKED, in the auditor's words. The row printed the kind identifier
+    // `choose-candidate` until the plain-words pass; an identifier on a surface is the
+    // platform speaking its own language, so both directions are asserted here — the
+    // sentence is present and the identifier is not.
+    await expect(row).toContainText(ESCALATION_PANEL_COPY.questions['choose-candidate']);
+    await expect(row).not.toContainText('choose-candidate');
     await expect(row).toContainText('Time remaining:');
     await expect(row).not.toContainText('Alice A');
     await expect(row).not.toContainText('Which candidate is correct?');
@@ -306,10 +341,13 @@ test.beforeAll(async () => {
     await sql`INSERT INTO user_role(user_id,role) VALUES (${managerId},'audit-manager')`;
   }
 
-  const version = activeRunVersion(procedureId, versionId, auditorId);
+  // The name goes through the fixture's INPUTS, never spread over the row it returns:
+  // `controlName` is a plan authoring input, so overriding it afterwards leaves the row
+  // disagreeing with its own frozen review and `findPeriodOwner` refuses the version.
+  const version = activeRunVersion(procedureId, versionId, auditorId, { ...executablePlanInputs(), controlName });
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
-    await context.procedures.insertProcedure({ ...version, controlName });
-    await context.procedures.insertVersion({ ...version, controlName });
+    await context.procedures.insertProcedure(version);
+    await context.procedures.insertVersion(version);
   });
 
   await seedRun(runs.answered, periods.answered);
@@ -519,8 +557,8 @@ test.describe('the Escalation panel as an Auditor', () => {
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     await scan(page);
     await page.goto('/notifications');
-    const open = page.getByRole('region', { name: 'Runs waiting for your answer' });
+    const open = page.getByRole('region', { name: OPEN_REGION });
     await expect(open.locator(`a[href="/runs/${runs.expired}"]`)).toHaveCount(0);
-    await expect(page.locator('.ls-bell__count')).toHaveText(`${await open.locator('li').count()} unread`);
+    await bellMatchesInbox(page, open);
   });
 });

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEscalationNotification,
+  createFlagNotification,
   escalationNotificationBody,
-  escalationNotificationRecipients,
+  flagNotificationBody,
+  flagNotificationSendKey,
+  isRunNotification,
+  runNotificationRecipients,
   type EscalationNotification,
 } from './ports.js';
 
@@ -20,7 +24,7 @@ const seed = {
 
 describe('escalation notifications', () => {
   it('deduplicates the initiator and preserves the identity reader order', () => {
-    expect(escalationNotificationRecipients('auditor', ['manager', 'auditor', 'manager'])).toEqual([
+    expect(runNotificationRecipients('auditor', ['manager', 'auditor', 'manager'])).toEqual([
       'auditor',
       'manager',
     ]);
@@ -64,5 +68,50 @@ describe('escalation notifications', () => {
 
   it('reports no remaining time after the deadline', () => {
     expect(escalationNotificationBody(seed, new Date('2026-09-07T15:00:00.000Z'))).toContain('Time remaining: 0 minutes');
+  });
+});
+
+describe('the flag notification projection (Story 5.5)', () => {
+  it('names the Procedure, the Run and the flag, and carries no note', () => {
+    const notification = createFlagNotification({
+      recipientId: 'manager-1',
+      runId: 'run-1',
+      flagId: 'flag-1',
+      procedureId: 'procedure-1',
+      versionId: 'version-1',
+      procedureName: 'Terminated users',
+      versionNumber: 2,
+    });
+    expect(notification).toEqual({
+      sendKey: 'flag:flag-1:manager-1',
+      recipientId: 'manager-1',
+      procedureId: 'procedure-1',
+      versionId: 'version-1',
+      procedureName: 'Terminated users',
+      versionNumber: 2,
+      kind: 'flag',
+      runId: 'run-1',
+      flagId: 'flag-1',
+    });
+    // There is nowhere for a note, a question or an Evidence value to live.
+    expect(Object.keys(notification)).not.toContain('note');
+  });
+  it('keys a send by the flag and the recipient, so a replay cannot duplicate one', () => {
+    expect(flagNotificationSendKey('flag-1', 'manager-1')).toBe('flag:flag-1:manager-1');
+    expect(flagNotificationSendKey('flag-1', 'manager-2')).not.toBe(flagNotificationSendKey('flag-1', 'manager-1'));
+  });
+  it('renders a body with NO countdown, because a flag has no deadline', () => {
+    const body = flagNotificationBody({ procedureName: 'Terminated users', runId: 'run-1' });
+    expect(body).toBe('Procedure Terminated users; Run run-1; flagged for an Audit Manager.');
+    // "0 minutes" would be a countdown that has already run out.
+    expect(body).not.toContain('minute');
+    expect(body).not.toContain('Time remaining');
+  });
+  it('tells a Run notification from a Procedure Version one', () => {
+    expect(isRunNotification({ kind: 'escalation' } as never)).toBe(true);
+    expect(isRunNotification({ kind: 'flag' } as never)).toBe(true);
+    for (const kind of ['submitted', 'approved', 'rejected'] as const) {
+      expect(isRunNotification({ kind } as never)).toBe(false);
+    }
   });
 });

@@ -14,6 +14,7 @@ import {
   type Sql,
 } from '@intellifin/infrastructure';
 import { activeRunVersion } from '../fixtures/active-run-version';
+import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -137,10 +138,13 @@ test.beforeAll(async () => {
   if (!auditor) throw new Error('Seed the E2E Auditor before the Escalation journey.');
   auditorId = String(auditor.id);
 
-  const version = activeRunVersion(procedureId, versionId, auditorId);
+  // The name goes through the fixture's INPUTS, never spread over the row it returns:
+  // `controlName` is a plan authoring input, so overriding it afterwards leaves the row
+  // disagreeing with its own frozen review and `findPeriodOwner` refuses the version.
+  const version = activeRunVersion(procedureId, versionId, auditorId, { ...executablePlanInputs(), controlName });
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
-    await context.procedures.insertProcedure({ ...version, controlName });
-    await context.procedures.insertVersion({ ...version, controlName });
+    await context.procedures.insertProcedure(version);
+    await context.procedures.insertVersion(version);
   });
 
   for (const [index, row] of cases.entries()) {

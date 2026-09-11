@@ -4,6 +4,7 @@ import type {
   EscalationNotification,
   NotificationChannel,
   NotificationDeliveryOutcome,
+  RunNotification,
 } from '@intellifin/application';
 import type { Transaction } from '../db/client.js';
 import {
@@ -77,20 +78,24 @@ async function runAuditContext(transaction: Transaction, runId: string): Promise
  */
 export async function recordNotificationDelivery(
   transaction: Transaction,
-  notification: EscalationNotification,
+  notification: RunNotification,
   channel: NotificationChannel,
   outcome: NotificationDeliveryOutcome,
   dependencies: PostgresAuditDependencies = {},
 ): Promise<boolean> {
+  // The row's OWN kind, never the literal `'escalation'` that was here before Story 5.5.
+  // FR-28 defines one delivery contract for both of its triggers, and a hard-coded kind in
+  // the predicate would silently deliver nothing for the second one.
+  const kind = notification.kind;
   const updated = channel === 'email'
     ? await transaction.execute(sql`
         UPDATE notification
         SET email_outcome = ${outcome}, email_outcome_at = now()
         WHERE send_key = ${notification.sendKey}
           AND recipient_id = ${notification.recipientId}
-          AND kind = 'escalation'
+          AND kind = ${kind}
           AND email_outcome IS NULL
-        RETURNING run_id::text AS run_id, wait_id::text AS wait_id
+        RETURNING run_id::text AS run_id, wait_id::text AS wait_id, flag_id::text AS flag_id
       `)
     : await transaction.execute(sql`
         UPDATE notification
@@ -98,14 +103,20 @@ export async function recordNotificationDelivery(
         WHERE send_key = ${notification.sendKey}
           AND recipient_id = ${notification.recipientId}
           AND version_id = ${notification.versionId}
-          AND kind = 'escalation'
+          AND kind = ${kind}
           AND delivered_at IS NULL
           AND in_app_outcome IS NULL
-        RETURNING run_id::text AS run_id, wait_id::text AS wait_id
+        RETURNING run_id::text AS run_id, wait_id::text AS wait_id, flag_id::text AS flag_id
       `);
   const row = rows(updated)[0];
   if (!row) return false;
-  if (row.run_id !== notification.runId || row.wait_id !== notification.waitId) {
+  // The identity the row names must be the identity this notification names — the guard
+  // that catches a send key colliding across kinds before an audit event records the wrong
+  // subject. Each kind's own key is checked, and the other kind's must be absent.
+  const subject = notification.kind === 'escalation'
+    ? { wait_id: notification.waitId, flag_id: null }
+    : { wait_id: null, flag_id: notification.flagId };
+  if (row.run_id !== notification.runId || row.wait_id !== subject.wait_id || row.flag_id !== subject.flag_id) {
     throw new Error('Notification delivery identity changed');
   }
 
@@ -125,10 +136,13 @@ export async function recordNotificationDelivery(
     payload: {
       sendKey: notification.sendKey,
       recipientId: notification.recipientId,
-      waitId: notification.waitId,
+      // The subject, by whichever id this kind of notification has. `null` on the other is
+      // a fact — this delivery was not about a wait — and never a missing field.
+      waitId: notification.kind === 'escalation' ? notification.waitId : null,
+      flagId: notification.kind === 'flag' ? notification.flagId : null,
       channel,
       deliveryOutcome: outcome,
-      escalationKind: notification.escalationKind,
+      escalationKind: notification.kind === 'escalation' ? notification.escalationKind : null,
     },
   });
   return true;
@@ -137,7 +151,7 @@ export async function recordNotificationDelivery(
 /** The configured transport is intentionally absent in this deployment. */
 export async function recordUnconfiguredEmail(
   transaction: Transaction,
-  notification: EscalationNotification,
+  notification: RunNotification,
   dependencies: PostgresAuditDependencies = {},
 ): Promise<boolean> {
   return recordEmailOutcome(transaction, notification, 'unconfigured', dependencies);
@@ -145,7 +159,7 @@ export async function recordUnconfiguredEmail(
 
 export async function recordEmailOutcome(
   transaction: Transaction,
-  notification: EscalationNotification,
+  notification: RunNotification,
   outcome: NotificationDeliveryOutcome,
   dependencies: PostgresAuditDependencies = {},
 ): Promise<boolean> {

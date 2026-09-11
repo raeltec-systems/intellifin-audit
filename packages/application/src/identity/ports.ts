@@ -59,6 +59,23 @@ export interface UserDirectory {
 }
 
 /**
+ * The display name behind an actor id, for surfaces that record who did something.
+ *
+ * A Run records its initiator, the auditor who paused it and the auditor who flagged it as
+ * user IDs, because an email address cannot enter the audit chain and a name can change.
+ * Printing the id at a reader is the platform speaking its own language at somebody — the
+ * defect the plain-words pass removed from the authoring screens — so every surface that
+ * shows an actor resolves it through this one port.
+ *
+ * It returns NAMES only, never email addresses: an address on a Run surface would be a
+ * disclosure no story asked for. An id with no row comes back absent, and the caller shows
+ * the id, which is honest about what it knows.
+ */
+export interface ActorNameReader {
+  namesFor(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+}
+
+/**
  * Writes the application-owned role, INSIDE the caller's transaction (FR-45, AD-8).
  *
  * `findRole` is here as well as on {@link RoleRepository} on purpose: the prior value an

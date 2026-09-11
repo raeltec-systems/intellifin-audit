@@ -1,7 +1,9 @@
-import { and, asc, desc, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { ACTIVE_RUN_STATES } from '@intellifin/domain';
 import {
   isNotificationCursor,
   type EscalationNotification,
+  type FlagNotification,
   type InAppNotification,
   type OpenNotification,
   type OpenNotificationReader,
@@ -38,6 +40,7 @@ const selection = {
   versionNumber: notification.versionNumber,
   runId: sql<string | null>`run_id::text`,
   waitId: sql<string | null>`wait_id::text`,
+  flagId: sql<string | null>`flag_id::text`,
   escalationKind: sql<string | null>`escalation_kind`,
   deadline: sql<string | null>`to_char(deadline AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
   inAppOutcome: sql<string | null>`in_app_outcome`,
@@ -53,19 +56,50 @@ type RawNotificationRow = {
   readonly versionNumber?: unknown;
   readonly runId?: unknown;
   readonly waitId?: unknown;
+  readonly flagId?: unknown;
   readonly escalationKind?: unknown;
   readonly deadline?: unknown;
 };
+
+/**
+ * Who may see a Run's open items at all, and which Runs are theirs.
+ *
+ * One predicate, shared by the wait read, the flag read and the bell's count, so a change
+ * to who can see what cannot land on two of the three.
+ */
+function runInboxAccess(session: SessionSnapshot) {
+  return sql`EXISTS (SELECT 1 FROM user_role access_role WHERE access_role.user_id = ${session.userId} AND access_role.role IN ('auditor','audit-manager'))
+    AND (
+      r.initiator_id = ${session.userId}
+      OR EXISTS (SELECT 1 FROM user_role ur WHERE ur.user_id = ${session.userId} AND ur.role = 'audit-manager')
+    )`;
+}
 
 /** One visibility predicate for the inbox and its count; delivery history is not unread work. */
 function openWaitAccess(session: SessionSnapshot) {
   return sql`w.closed_at IS NULL
     AND r.state = 'AWAITING_AUDITOR'
-    AND EXISTS (SELECT 1 FROM user_role access_role WHERE access_role.user_id = ${session.userId} AND access_role.role IN ('auditor','audit-manager'))
-    AND (
-      r.initiator_id = ${session.userId}
-      OR EXISTS (SELECT 1 FROM user_role ur WHERE ur.user_id = ${session.userId} AND ur.role = 'audit-manager')
-    )`;
+    AND ${runInboxAccess(session)}`;
+}
+
+/**
+ * A flag needs attention while its Run is still ACTIVE (Story 5.5).
+ *
+ * A flag has no deadline and no closure of its own, so what stops it needing attention is
+ * the Run ending. There is deliberately no "acknowledge" control: EXPERIENCE.md's
+ * Notification row names none, and inventing one would be a product decision taken
+ * sideways. The state list is `ACTIVE_RUN_STATES`, interpolated with `sql.raw` behind an
+ * assertion because it is a frozen domain constant and a bound JS array becomes a RECORD
+ * in a `sql` template, not an array.
+ */
+const ACTIVE_STATES = ACTIVE_RUN_STATES.map((state) => {
+  if (!/^[A-Z_]+$/.test(state)) throw new Error('Run state vocabulary is not SQL-safe');
+  return `'${state}'`;
+}).join(',');
+
+function openFlagAccess(session: SessionSnapshot) {
+  return sql`r.state IN (${sql.raw(ACTIVE_STATES)})
+    AND ${runInboxAccess(session)}`;
 }
 
 function parse(row: RawNotificationRow): InAppNotification[] {
@@ -82,6 +116,18 @@ function parse(row: RawNotificationRow): InAppNotification[] {
   };
   if (row.kind === 'submitted' || row.kind === 'approved' || row.kind === 'rejected') {
     return [{ ...base, kind: row.kind } satisfies VersionNotification];
+  }
+  if (row.kind === 'flag') {
+    // A flag's projection is the Escalation's minus the two fields it does not have. A row
+    // failing any of these reads as NOTHING rather than as a half-built notification.
+    if (typeof row.runId !== 'string' || !isUuidText(row.runId) ||
+        typeof row.flagId !== 'string' || !isUuidText(row.flagId)) return [];
+    return [{
+      ...base,
+      kind: 'flag',
+      runId: row.runId,
+      flagId: row.flagId,
+    } satisfies FlagNotification];
   }
   if (row.kind !== 'escalation' || typeof row.runId !== 'string' || !isUuidText(row.runId) ||
       typeof row.waitId !== 'string' || !isUuidText(row.waitId) ||
@@ -101,6 +147,21 @@ export class DrizzleNotificationWriter implements NotificationWriter {
   constructor(private readonly tx: Transaction) {}
 
   async enqueue(value: InAppNotification): Promise<void> {
+    if (value.kind === 'flag') {
+      // On the caller's transaction for the reason an Escalation's is: the flag row and
+      // every recipient's notification commit together or not at all.
+      await this.tx.execute(sql`
+        INSERT INTO notification (
+          send_key, recipient_id, procedure_id, version_id, procedure_name, version_number,
+          kind, run_id, flag_id, email_outcome, email_outcome_at
+        ) VALUES (
+          ${value.sendKey}, ${value.recipientId}, ${value.procedureId}, ${value.versionId},
+          ${value.procedureName}, ${value.versionNumber}, 'flag', ${value.runId},
+          ${value.flagId}, NULL, NULL
+        ) ON CONFLICT (send_key) DO NOTHING
+      `);
+      return;
+    }
     if (value.kind !== 'escalation') {
       await this.tx.insert(notification).values(value).onConflictDoNothing({ target: notification.sendKey });
       return;
@@ -125,12 +186,19 @@ export class DrizzleNotificationWriter implements NotificationWriter {
 export class DrizzleNotificationRepository implements NotificationRepository, OpenNotificationReader {
   constructor(private readonly db: Database) {}
 
-  /** The bell counts all visible open waits, independently of the inbox's bounded page. */
+  /**
+   * The bell counts all visible open items, independently of the inbox's bounded page.
+   *
+   * Open waits AND open flags, because the bell counts what needs attention and
+   * EXPERIENCE.md's Notifications row names both. Two counts added rather than a join: a
+   * Run can carry an open wait and a flag at once, and a join would report their product.
+   */
   async countOpenFor(session: SessionSnapshot): Promise<number> {
     const result = await this.db.execute(sql`
-      SELECT count(*)::int AS count
-      FROM run_wait w INNER JOIN audit_run r ON r.run_id = w.run_id
-      WHERE ${openWaitAccess(session)}
+      SELECT
+        (SELECT count(*) FROM run_wait w INNER JOIN audit_run r ON r.run_id = w.run_id WHERE ${openWaitAccess(session)})
+        + (SELECT count(*) FROM run_flag f INNER JOIN audit_run r ON r.run_id = f.run_id WHERE ${openFlagAccess(session)})
+        AS count
     `);
     const count = Number(result[0]?.count);
     if (!Number.isSafeInteger(count) || count < 0) throw new Error('Notification count could not be read');
@@ -160,12 +228,54 @@ export class DrizzleNotificationRepository implements NotificationRepository, Op
       ORDER BY w.deadline, w.wait_id
       LIMIT ${bounded}
     `);
-    const resultRows = Array.isArray(result)
-      ? result as readonly Record<string, unknown>[]
-      : result && typeof result === 'object' && 'rows' in result && Array.isArray((result as { rows?: unknown }).rows)
-        ? (result as { rows: readonly Record<string, unknown>[] }).rows
+    const flagResult = await this.db.execute(sql`
+      SELECT
+        r.procedure_id::text AS procedure_id,
+        r.version_id::text AS version_id,
+        r.procedure_name,
+        r.version_number,
+        r.run_id::text AS run_id,
+        f.flag_id::text AS flag_id,
+        f.flagged_by,
+        to_char(f.flagged_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS flagged_at
+      FROM run_flag f
+      INNER JOIN audit_run r ON r.run_id = f.run_id
+      WHERE ${openFlagAccess(session)}
+      ORDER BY f.flagged_at DESC, f.flag_id
+      LIMIT ${bounded}
+    `);
+    const readRows = (value: unknown): readonly Record<string, unknown>[] => Array.isArray(value)
+      ? value as readonly Record<string, unknown>[]
+      : value && typeof value === 'object' && 'rows' in value && Array.isArray((value as { rows?: unknown }).rows)
+        ? (value as { rows: readonly Record<string, unknown>[] }).rows
         : [];
-    return resultRows.flatMap((row): OpenNotification[] => {
+    const resultRows = readRows(result);
+    const flags = readRows(flagResult).flatMap((row): OpenNotification[] => {
+      const runId = typeof row.run_id === 'string' ? row.run_id.toLowerCase() : null;
+      const flagId = typeof row.flag_id === 'string' ? row.flag_id.toLowerCase() : null;
+      const procedureId = typeof row.procedure_id === 'string' ? row.procedure_id.toLowerCase() : null;
+      const versionId = typeof row.version_id === 'string' ? row.version_id.toLowerCase() : null;
+      const flaggedAt = typeof row.flagged_at === 'string' && Number.isFinite(Date.parse(row.flagged_at))
+        ? new Date(row.flagged_at).toISOString()
+        : null;
+      if (!runId || !flagId || !procedureId || !versionId || !isUuidText(runId) || !isUuidText(flagId) ||
+          !isUuidText(procedureId) || !isUuidText(versionId) || typeof row.procedure_name !== 'string' ||
+          typeof row.version_number !== 'number' || row.version_number < 1 ||
+          typeof row.flagged_by !== 'string' || row.flagged_by.length === 0 || flaggedAt === null) return [];
+      return [{
+        recipientId: session.userId,
+        procedureId,
+        versionId,
+        procedureName: row.procedure_name,
+        versionNumber: row.version_number,
+        kind: 'flag',
+        runId,
+        flagId,
+        flaggedBy: row.flagged_by,
+        flaggedAt,
+      }];
+    });
+    const escalations = resultRows.flatMap((row): OpenNotification[] => {
       const runId = typeof row.run_id === 'string' ? row.run_id.toLowerCase() : null;
       const waitId = typeof row.wait_id === 'string' ? row.wait_id.toLowerCase() : null;
       const procedureId = typeof row.procedure_id === 'string' ? row.procedure_id.toLowerCase() : null;
@@ -192,6 +302,21 @@ export class DrizzleNotificationRepository implements NotificationRepository, Op
         deadline,
       }];
     });
+    /**
+     * ONE limit over the merged inbox (PR 29 review).
+     *
+     * `bounded` was applied to each query and the two result sets were then concatenated,
+     * so `openFor(session, 100)` could return two hundred items and `openFor(session, 1)`
+     * two — the caller's bound honoured by neither. Each source is ordered inside itself
+     * (waits by deadline, flags by the moment they were raised), so the concatenation is
+     * deterministic and the trim takes the same rows every time.
+     *
+     * Escalations come first because a wait is the only kind that can EXPIRE: it carries a
+     * deadline and ends its Run Inconclusive if nobody answers, where a flag waits as long
+     * as its Run is active. A trim that dropped an expiring question to keep a flag would
+     * drop the item the bound most needs to keep.
+     */
+    return [...escalations, ...flags].slice(0, bounded);
   }
 
   async pending(limit: number): Promise<readonly InAppNotification[]> {
@@ -205,7 +330,7 @@ export class DrizzleNotificationRepository implements NotificationRepository, Op
       // original delivered_at-only predicate.
       .where(or(
         isNull(notification.deliveredAt),
-        and(eq(notification.kind, 'escalation'), isNull(notification.emailOutcome)),
+        and(inArray(notification.kind, ['escalation', 'flag']), isNull(notification.emailOutcome)),
       ))
       .orderBy(asc(notification.createdAt), asc(notification.sendKey))
       .limit(Math.min(100, Math.max(1, limit))))
@@ -253,6 +378,14 @@ export class InAppNotificationSender implements NotificationSender {
 
   async send(value: InAppNotification): Promise<void> {
     await this.db.transaction(async transaction => {
+      if (value.kind === 'flag') {
+        // No wait to lock and nothing that can supersede it: a flag is never answered, so
+        // there is no "the thing you are being told about has already been dealt with".
+        // Both channel outcomes are recorded in one transaction, as an Escalation's are.
+        await recordNotificationDelivery(transaction, value, 'in-app', 'delivered', this.dependencies);
+        await recordEmailOutcome(transaction, value, 'unconfigured', this.dependencies);
+        return;
+      }
       if (value.kind === 'escalation') {
         const closed = await lockEscalationWait(transaction, value);
         const outcome = closed ? 'superseded' : 'delivered';

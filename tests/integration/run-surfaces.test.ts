@@ -7,6 +7,8 @@ import {
   DrizzleRunDetailRepository,
   DrizzleRunListRepository,
   PostgresProceduresUnitOfWork,
+  REPLAY_PAGE_SIZE,
+  RUN_DETAIL_PAGE_SIZE,
   RUN_LIST_PAGE_SIZE,
   type Database,
   type Sql,
@@ -121,6 +123,9 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
         await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
         await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
         await sql`DELETE FROM run_exception WHERE run_id=${runId}`;
+        // A Tool Action names its Step Execution with a real foreign key, so it goes
+        // first. The Replay page-size case seeds a page and a bit of them.
+        await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
         await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
         await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
         await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
@@ -153,9 +158,32 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
 
   const list = (): DrizzleRunListRepository => new DrizzleRunListRepository(db);
   const detail = (): DrizzleRunDetailRepository => new DrizzleRunDetailRepository(db);
+  /**
+   * This file's own Runs, in the list's own order.
+   *
+   * It WALKS the keyset rather than filtering one page, because `listRuns` is a read over
+   * every Run in the database and this file holds four of them. Filtering a single page
+   * after the fact makes the assertion depend on how many Runs the other 43 integration
+   * files happen to be holding at that instant: at `RUN_LIST_PAGE_SIZE` (25) it passed with
+   * 24 rows present and failed the moment another file added three, and the row it lost was
+   * the OLDEST — which reads as a broken ordering rather than as a full page.
+   *
+   * Walking with the returned cursor is what a real caller does, so the keyset is still
+   * exercised; `after`/`limit` stay available for the cases whose subject IS one page. The
+   * walk is bounded so a cursor defect cannot spin here instead of failing.
+   */
   const mine = async (after?: string | null, limit = RUN_LIST_PAGE_SIZE) => {
-    const page = await list().listRuns(after, limit);
-    return { ...page, rows: page.rows.filter((row) => row.procedureId === procedureId) };
+    const rows: Awaited<ReturnType<DrizzleRunListRepository['listRuns']>>['rows'][number][] = [];
+    let cursor = after ?? null;
+    let next: string | null = null;
+    for (let page = 0; page < 20; page += 1) {
+      const read = await list().listRuns(cursor, limit);
+      rows.push(...read.rows.filter((row) => row.procedureId === procedureId));
+      next = read.next;
+      if (read.next === null || read.rows.length < limit) break;
+      cursor = read.next;
+    }
+    return { next, rows };
   };
 
   it('orders by initiation descending and pages by a keyset with a total order', async () => {
@@ -359,5 +387,37 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     expect(timeline.stepExecutions.total).toBe(1);
     expect(timeline.stepExecutions.rows[0]).toMatchObject({ planStepId: 'step-1', workItemId, state: 'SUCCEEDED' });
     expect(await detail().readTimeline('not-a-uuid')).toMatchObject({ population: null, execution: null });
+  });
+
+  it('lets REPLAY read past a Run Detail page, and leaves Run Detail bounded', async () => {
+    // Every read here capped at `Math.min(limit, RUN_DETAIL_PAGE_SIZE)`, so a caller could
+    // only ever narrow — and Replay renders up to `REPLAY_FRAME_LIMIT` frames and looks
+    // each one up in these tables. Past the fiftieth, the frames were there and the
+    // metadata came back empty: "No Tool Action" over a Tool Action the database held.
+    const stepExecutionId = ids.next();
+    await sql`INSERT INTO run_step_execution(step_execution_id,run_id,plan_step_id,work_item_id,action,state,attempt,started_at,completed_at,diagnostic)
+              VALUES(${stepExecutionId},${runs.first},'step-bulk',NULL,'extract-adapter','SUCCEEDED',1,'2026-09-01T09:05:00Z','2026-09-01T09:05:10Z',NULL)`;
+    const rows = RUN_DETAIL_PAGE_SIZE + 12;
+    for (let index = 0; index < rows; index += 1) {
+      await sql`
+        INSERT INTO run_tool_action(tool_action_id,run_id,step_execution_id,surface,target_system,action,method,destination,parameters,outcome,denial,redirected,downloads,started_at,capture)
+        VALUES(${ids.next()},${runs.first},${stepExecutionId},'agent','accessgate','read-attribute','GET',
+               ${'https://example.test/' + String(index)},'[]'::jsonb,'performed',NULL,false,0,
+               ${'2026-09-01T09:05:' + String(index % 60).padStart(2, '0') + 'Z'},'PERMITTED')
+      `;
+    }
+
+    // Run Detail is unchanged: its default still stops at a page, and `total` still says
+    // how many there really are.
+    const detailPage = await detail().readToolActions(runs.first);
+    expect(detailPage.rows).toHaveLength(RUN_DETAIL_PAGE_SIZE);
+    expect(detailPage.total).toBe(rows);
+
+    // Replay asks for its own size and gets it.
+    const replayPage = await detail().readToolActions(runs.first, REPLAY_PAGE_SIZE);
+    expect(replayPage.rows).toHaveLength(rows);
+    expect(REPLAY_PAGE_SIZE).toBeGreaterThan(RUN_DETAIL_PAGE_SIZE);
+    // And the Timeline forwards that size rather than capping its own lookups.
+    expect((await detail().readTimeline(runs.first, REPLAY_PAGE_SIZE)).toolActions.rows).toHaveLength(rows);
   });
 });

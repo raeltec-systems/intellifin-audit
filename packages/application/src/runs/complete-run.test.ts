@@ -11,8 +11,7 @@ import {
   type RunResultConditionCount,
   type RunResultExclusion,
   type RunResultFinding,
-  type RunResultFindings,
-} from '@intellifin/domain';
+  type RunResultFindings, type RunPauseRequest } from '@intellifin/domain';
 import { completeRun, sealResult } from './complete-run.js';
 import type {
   GateCheckRow,
@@ -20,6 +19,7 @@ import type {
   RunGatePopulationFacts,
   RunResultContext,
   StoredRunResult,
+  WithdrawnWait,
 } from './execution-ports.js';
 
 /**
@@ -49,7 +49,7 @@ const RUN: RunRecord = {
   authorizationRole: 'auditor',
   predecessorRunId: null,
   rerunReason: null,
-  cancellation: null,
+  cancellation: null, pauseRequest: null,
   requestToken: '01a06fd8-0000-7000-8000-0000000000e5',
 };
 
@@ -146,7 +146,13 @@ class FakeContext implements RunResultContext {
   /** The marker as the terminal TRANSACTION sees it, which is not the claim's copy. */
   cancellation: RunCancellationRequest | null = null;
   states: RunRecord['state'][] = [];
-  events: { eventType: string; outcome: string; payload: Record<string, unknown> }[] = [];
+  events: {
+    eventType: string;
+    outcome: string;
+    payload: Record<string, unknown>;
+    /** Captured too: generation 47 pins WHO withdraws a wait, and it is never a person. */
+    actor: { type: string; id: string };
+  }[] = [];
   writes = 0;
   private sequence = 0;
 
@@ -155,12 +161,14 @@ class FakeContext implements RunResultContext {
       eventType: string;
       outcome: string;
       payload: Record<string, unknown>;
+      actor: { type: string; id: string };
     }) => {
       this.sequence += 1;
       this.events.push({
         eventType: draft.eventType,
         outcome: draft.outcome,
         payload: draft.payload,
+        actor: draft.actor,
       });
       return { sequence: this.sequence } as never;
     },
@@ -176,6 +184,18 @@ class FakeContext implements RunResultContext {
 
   readGateChecks = async (): Promise<readonly GateCheckRow[]> => this.gate;
   readCancellation = async (): Promise<RunCancellationRequest | null> => this.cancellation;
+  readPauseRequest = async (): Promise<RunPauseRequest | null> => this.pauseRequest ?? null;
+  /** Generation 47: what a terminal transition withdraws, set by a test that opens one. */
+  openWait: WithdrawnWait | null = null;
+  withdrawnAt: string | null = null;
+  withdrawOpenWait = async (at: string): Promise<WithdrawnWait | null> => {
+    const wait = this.openWait;
+    if (wait === null) return null;
+    this.openWait = null;
+    this.withdrawnAt = at;
+    return wait;
+  };
+  pauseRequest: RunPauseRequest | null = null;
   saveRunState = async (state: RunRecord['state']): Promise<void> => {
     this.states.push(state);
   };
@@ -508,6 +528,73 @@ describe('a cancellation the Run outran', () => {
       context.events.filter((entry) => entry.eventType === 'lifecycle.cancellation-superseded'),
     ).toHaveLength(1);
     expect(context.writes).toBe(1);
+  });
+});
+
+/**
+ * Generation 47, from the PR 29 review.
+ *
+ * `RUN_CANCEL_TRANSITIONS` gives a `PAUSED` and an `AWAITING_AUDITOR` Run to the COMMAND —
+ * no worker is holding either — so cancelling one ended the Run while its wait was still
+ * open, and the row said a question was open about a Run that is over for ever. The inbox
+ * and the bell never showed it, because their one visibility predicate is the Run's STATE,
+ * which is exactly why it could sit behind two surfaces that looked right; what it really
+ * cost is `recoverableWaits`, whose BOUNDED page such a row occupies permanently.
+ */
+describe('a wait the Run was still holding when it ended', () => {
+  const OPEN = { waitId: 'wait-1', kind: 'pause' as const, openedAt: '2026-09-06T08:30:00.000Z' };
+
+  it('withdraws it, and records which question was withdrawn', async () => {
+    const context = new FakeContext();
+    context.openWait = OPEN;
+    context.gate = [];
+    await completeRun(context, { run: RUN, state: 'CANCELED', at: AT, plan: plan() });
+    expect(context.openWait).toBeNull();
+    expect(context.withdrawnAt).toBe(AT);
+    const withdrawn = context.events.filter((entry) => entry.eventType === 'execution.wait-withdrawn');
+    expect(withdrawn).toHaveLength(1);
+    // A failure: a question was asked and never got an answer.
+    expect(withdrawn[0]?.outcome).toBe('failure');
+    // The SYSTEM, never whoever cancelled the Run. They asked for the Run to stop;
+    // withdrawing the question is what the platform did in consequence.
+    expect(withdrawn[0]?.actor).toMatchObject({ type: 'system', id: 'run-terminal' });
+    expect(withdrawn[0]?.payload).toMatchObject({
+      waitId: 'wait-1',
+      kind: 'pause',
+      closureKind: 'withdrawn',
+      openedAt: OPEN.openedAt,
+      state: 'CANCELED',
+    });
+  });
+
+  it('withdraws an Escalation the same way, because a cancellation reaches both', async () => {
+    const context = new FakeContext();
+    context.openWait = { ...OPEN, kind: 'choose-candidate' };
+    context.gate = [];
+    await completeRun(context, { run: RUN, state: 'CANCELED', at: AT, plan: plan() });
+    const withdrawn = context.events.filter((entry) => entry.eventType === 'execution.wait-withdrawn');
+    // The KIND is on the event, so a reader tells a withdrawn Escalation from a withdrawn
+    // pause without joining. The question itself never reaches the chain.
+    expect(withdrawn[0]?.payload).toMatchObject({ kind: 'choose-candidate' });
+    expect(JSON.stringify(withdrawn[0]?.payload)).not.toContain('question');
+  });
+
+  it('says nothing on the ordinary path, where a wake closed its own wait first', async () => {
+    const context = new FakeContext();
+    await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+    expect(context.events.map((entry) => entry.eventType)).not.toContain('execution.wait-withdrawn');
+    expect(context.events.map((entry) => entry.eventType)).toContain('lifecycle.result-sealed');
+  });
+
+  it('withdraws once, not again on a redelivery that finds the Result already there', async () => {
+    const context = new FakeContext();
+    context.openWait = OPEN;
+    context.gate = [];
+    await completeRun(context, { run: RUN, state: 'CANCELED', at: AT, plan: plan() });
+    await completeRun(context, { run: RUN, state: 'CANCELED', at: AT, plan: plan() });
+    expect(
+      context.events.filter((entry) => entry.eventType === 'execution.wait-withdrawn'),
+    ).toHaveLength(1);
   });
 });
 

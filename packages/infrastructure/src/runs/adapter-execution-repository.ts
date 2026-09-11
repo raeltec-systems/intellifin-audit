@@ -67,6 +67,7 @@ import { runResultContext } from './result-repository.js';
 import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
+import { openPauseWaitRow } from './wait-rows.js';
 
 /**
  * Rows per statement.
@@ -498,11 +499,27 @@ export async function withRunExecutionContext<T>(
           },
         });
     },
+
+    /**
+     * Open the pause wait, inside the stage's own guarded commit (Story 5.4).
+     *
+     * `openPauseWaitRow` is the one implementation the Escalation producer also uses, so
+     * the row and the durable wake that ends an abandoned pause cannot come apart. It
+     * checks no Run state: the caller has already established `RUNNING` under the Run's
+     * row lock and is writing `PAUSED` in this same transaction.
+     */
+    async openPauseWait(wait) {
+      await openPauseWaitRow(tx, wait);
+    },
+    async clearPauseRequest() {
+      await new DrizzleRunRepository(tx).clearPauseRequest(runId);
+    },
     async saveStepExecution(execution: StepExecutionRecord) {
       const values = {
         ...execution,
         runId,
         action: execution.action,
+        supersededBy: execution.supersededBy ?? null,
         startedAt: new Date(execution.startedAt),
         completedAt: execution.completedAt === null ? null : new Date(execution.completedAt),
       };
@@ -515,6 +532,7 @@ export async function withRunExecutionContext<T>(
             state: execution.state,
             completedAt: values.completedAt,
             diagnostic: execution.diagnostic,
+            supersededBy: execution.supersededBy ?? null,
           },
         });
     },

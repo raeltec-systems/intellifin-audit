@@ -1,5 +1,6 @@
-import type { ExecutablePlan, ExplicitPeriod, RunCancellationRequest, RunRecord, RunRequestRefusalCode } from '@intellifin/domain';
-import type { AuditUnitOfWorkContext } from '../audit/ports.js';
+import type { ExecutablePlan, ExplicitPeriod, RunCancellationRequest, RunFlag, RunRecord, RunRequestRefusalCode } from '@intellifin/domain';
+import type { AuditEventWriter, AuditUnitOfWorkContext } from '../audit/ports.js';
+import type { FlagNotification } from '../notifications/ports.js';
 import type { RoleRepository } from '../identity/ports.js';
 import type { ProcedurePeriodOwnerReader } from '../procedures/ports.js';
 import type { RunResultContext } from './execution-ports.js';
@@ -85,4 +86,31 @@ export interface RunCancellationContext extends RunResultContext {
 
 export interface RunCancellationRepository {
   transaction<T>(runId: string, work: (context: RunCancellationContext) => Promise<T>): Promise<T>;
+}
+
+/**
+ * What `FlagRun` may reach (Story 5.5).
+ *
+ * Deliberately NARROWER than {@link RunCancellationContext}: it does not extend
+ * `RunResultContext`, so there is no Run state writer, no seal and no Result here. "A flag
+ * has no execution effect" is therefore a property of what this context can reach rather
+ * than a rule a later branch has to remember.
+ */
+export interface RunFlagContext {
+  /** The Run, read under its own row lock inside this transaction. */
+  readonly run: RunRecord | null;
+  /** Re-read after the lock, never from a cached role (AD-7). */
+  readonly authorizationRoles: RoleRepository;
+  readonly auditEvents: AuditEventWriter;
+  /** Every current Audit Manager, read on THIS transaction's connection. */
+  auditManagerIds(): Promise<readonly string[]>;
+  /** The Procedure name and version this Run froze, for the notification projection. */
+  insertFlag(flag: RunFlag): Promise<void>;
+  enqueueNotification(notification: FlagNotification): Promise<void>;
+  /** Wake the list channel so a bell somewhere re-reads its count (Story 5.1). */
+  notifyTimeline(sequence: number): Promise<void>;
+}
+
+export interface RunFlagRepository {
+  transaction<T>(runId: string, work: (context: RunFlagContext) => Promise<T>): Promise<T>;
 }

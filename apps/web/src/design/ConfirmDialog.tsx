@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+
+import { useActionGate } from './action-gate';
 import { createPortal } from 'react-dom';
 
 /**
@@ -90,6 +92,8 @@ export function ConfirmDialog({
   const cancelRef = useRef(onCancel);
   cancelRef.current = onCancel;
 
+  const gate = useActionGate();
+
   // Portalled to `<body>` so the shell can be made inert without the dialog, which
   // would otherwise be inside it, going inert too.
   useEffect(() => {
@@ -157,10 +161,34 @@ export function ConfirmDialog({
 
   useEffect(() => { if (refusal) confirmedRef.current = false; }, [refusal]);
 
+  /**
+   * A confirmation is a WINDOW in which the surface's gate can close underneath somebody
+   * (PR 29 review). Live View withdraws Pause, Cancel and Flag when the stream is lost or
+   * the Run ends, but a dialog already open kept its own Confirm button working — so the
+   * action could still commit from a page that no longer knows what the Run is doing,
+   * which is the state Story 5.7 exists to refuse.
+   *
+   * It is closed HERE because this is the component every confirmation on this product
+   * goes through, so no dialog — including one a later story adds — has to remember. The
+   * dialog dismisses itself through the parent's own `onCancel`, which is what the person
+   * would have pressed, and the guard in `handleConfirm` is the half that actually
+   * refuses: an event and a click can land in the same tick, before any effect runs.
+   *
+   * Outside a gated surface `useActionGate` is open, so every administration and authoring
+   * dialog is unchanged.
+   */
+  useEffect(() => {
+    if (open && gate.disabledReason !== null) cancelRef.current();
+  }, [open, gate.disabledReason]);
+
   if (!open || !container) return null;
 
   function handleConfirm(): void {
     if (confirmedRef.current || busy) return;
+    // The gate, re-read at the moment of the decision rather than at the moment the
+    // dialog opened. The effect above closes the dialog; this is what makes the refusal
+    // true even if the two land in the same tick.
+    if (gate.disabledReason !== null) return;
     if (needsRationale && rationale.trim() === '') {
       setError('A rationale is required.');
       document.getElementById(rationaleId)?.focus();
