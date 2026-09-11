@@ -1,3 +1,31 @@
+## 2026-09-11 — v2 authors by conversation, and three of its four rules already hold
+
+Owner direction, recorded and NOT built: in v2 an auditor builds a Procedure by talking to
+the agent one question at a time rather than working down the Builder, the agent then frames
+the whole plan, and the auditor confirms the framing is right. Whole shape, the constraints it
+inherits and the one open design question:
+`_bmad-output/implementation-artifacts/v2-conversational-authoring.md`.
+
+**Checked rather than assumed, because three of the four rules are already the product.**
+`PROCEDURE_VERSION_TRANSITIONS` is `DRAFT → SUBMITTED → APPROVED → ACTIVE` with no shortcut;
+`procedure.version.approve` is an Audit Manager's alone and is denied to the version's own
+author; and `createRun` refuses any period owner that is not `ACTIVE` with a frozen review, so
+a Draft, a Submitted, a Rejected or an approved-but-not-activated version cannot be run —
+manual initiation and rerun share that one function. So v2 changes HOW A DRAFT IS AUTHORED and
+nothing about who approves, what activation means, or what a Run may execute. **Keep it that
+cheap.**
+
+**The one thing v2 must decide deliberately: the auditor has ONE act of assent today** —
+Submit — and the owner's description has two, "you framed it right" and "send it to a
+manager". Whether the first becomes its own recorded act is a question about what an auditor is
+attesting to and it changes the immutable chain. It must not be settled inside a story about a
+chat surface.
+
+**The seam that must survive: conversation → validated authoring inputs → the same compiler →
+the same frozen bytes.** A model may COLLECT what an auditor means; it may not WRITE executable
+meaning. That is what `makePlan` plus `derive-plan.ts`'s equivalence refusal guarantee today,
+and a conversational builder is a new front door onto it rather than a second way in.
+
 ## 2026-09-11 — The plan is the platform's own sentence, and it is laid out to be found
 
 The owner read the Builder's plan fold and asked one question — *"is this agent generated or
