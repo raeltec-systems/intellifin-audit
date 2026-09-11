@@ -108,6 +108,14 @@ or deployment has been made for this correction.
   collapse. At `a213f85549095726e7da13435e974dd9b824f495`, hosted CI passed full
   types/unit/boundaries and the nine-test focused browser journey. A local concurrent
   boundary scan hit temporary mutation-fixture paths; rerun this gate sequentially.
+- At `cb36042429948c47541fadff501b13433659dffa`, CI 34644786787 passed 4,116 unit
+  tests, 550 real-PostgreSQL tests, migrations/populated upgrade, container checks,
+  22 database/Chromium guard mutations and seven hydrated worker mutations. Nine
+  focused browser cases and 196 full-suite cases passed. The sole full-suite failure
+  expected the Review plan to start closed, superseded by this correction's visible
+  full-plan review. The hero test now also proves the plan is absent from preparation
+  and can be manually collapsed/reopened; it joins focused CI. Local boundary mutation
+  tests (26) and the standalone boundary scan pass sequentially.
 
 ## Reviewing the implemented experience
 

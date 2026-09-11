@@ -1,3 +1,7 @@
+## 2026-09-11 — The complete plan opens in Review
+
+The corrected Builder keeps the executable plan out of preparation panels and opens it in Review and submission. The hero browser journey must check that distinction plus manual collapse/reopen; its old collapsed-by-default assertion belongs to the superseded layout. Include the hero journey in the focused CI step so a review-surface change is checked before the full browser suite.
+
 ## 2026-09-11 — Closing Help releases the preparation column
 
 Inspect actual browser captures: a closed disclosure still occupies a grid column unless the layout changes. Closed Help now gives that space to the working proposal and comparison. Its opener precedes the editor in DOM order; smaller screens stack the same controls. The browser journey checks that opening/closing Help changes the working width without losing draft state.
