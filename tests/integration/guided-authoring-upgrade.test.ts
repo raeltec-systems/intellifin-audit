@@ -88,14 +88,11 @@ describe.skipIf(!databaseUrl)('generation47 guided-authoring upgrade', () => {
         expect.objectContaining({ version_id: approvedVersion.versionId, sections: legacyInputs.sections, submitted_review: approvedVersion.submittedReview, frozen_review: approvedVersion.frozenReview, authorship: null }),
       ]));
 
-      // Generation 48 is additive metadata. It has no historical review to infer, so
-      // every row must receive SQL NULL and the application must read it as no preparation.
-      const preparationBefore = await sql`SELECT version_id, section_preparation FROM procedure_version ORDER BY version_id`;
-      expect(preparationBefore).toHaveLength(2);
-      expect(preparationBefore).toEqual(expect.arrayContaining([
-        { version_id: draftVersion.versionId, section_preparation: null },
-        { version_id: approvedVersion.versionId, section_preparation: null },
-      ]));
+      // Prove the actual preceding schema has no preparation column; it is introduced
+      // by the migration below, which must leave both historical values SQL NULL.
+      expect(await sql`SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+        AND table_name='procedure_version' AND column_name='section_preparation'`).toHaveLength(0);
+      await expect(assertSchemaSupported(sql)).rejects.toThrow();
 
       // The approved row carries a real submitted/frozen review and the existing database
       // trigger must continue to reject a definition rewrite after the upgrade.
@@ -119,6 +116,8 @@ describe.skipIf(!databaseUrl)('generation47 guided-authoring upgrade', () => {
         { version_id: draftVersion.versionId, section_preparation: null },
         { version_id: approvedVersion.versionId, section_preparation: null },
       ]));
+      await expect(sql`UPDATE procedure_version SET sections = '[]'::jsonb WHERE version_id = ${approvedVersion.versionId}`)
+        .rejects.toThrow(/immutable/i);
 
       const repository = new DrizzleProcedureRepository(createDb(sql));
       const draft = await repository.findVersion(draftVersion.versionId);

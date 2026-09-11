@@ -69,7 +69,7 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
           await tx`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
             VALUES(${workItemId},${runId},'inspect',1,'loancore','LoanCore','OBSERVED',1,0,NULL,${evidenceId},1)`;
           await tx`INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration)
-            VALUES(${record.observationId},${runId},${workItemId},1,'E-upgrade','loancore','false',${at},${stepExecutionId},'agent','platform',NULL,'[]'::jsonb,${JSON.stringify([evidenceId])}::jsonb,${observationDigest(record)},'UNINSPECTED',${at},'UNJUDGED')`;
+            VALUES(${record.observationId},${runId},${workItemId},1,'E-upgrade','loancore','false',${at},${stepExecutionId},'agent','platform',NULL,'[]'::jsonb,${tx.json([evidenceId])},${observationDigest(record)},'UNINSPECTED',${at},'UNJUDGED')`;
           if (sealed) {
             await tx`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
               VALUES(${runId},'SEALED','INCONCLUSIVE',${at},0,1,'[]'::jsonb,'[]'::jsonb)`;
@@ -84,7 +84,7 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
       };
       const insertProof = async (row: Awaited<ReturnType<typeof seed>>) => {
         await connection`INSERT INTO run_observation_absence(observation_id,run_id,proof,expected_query_keys,digest)
-          VALUES(${row.record.observationId},${row.runId},${JSON.stringify(row.proof)}::jsonb,${JSON.stringify(row.queryKeys)}::jsonb,${row.digest})`;
+          VALUES(${row.record.observationId},${row.runId},${connection.json(row.proof)},${connection.json(row.queryKeys)},${row.digest})`;
       };
       const active=await seed(false), sealed=await seed(true);
       // Actual preceding schema and real guard: SQLSTATE42702 is the PL/pgSQL FOUND/column
