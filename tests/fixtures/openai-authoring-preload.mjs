@@ -14,12 +14,22 @@ globalThis.fetch = async (input, init) => {
   const notes = envelope.notes;
   if (notes === 'SYNTHETIC:FAIL') return new Response(JSON.stringify({ error: { message: 'Synthetic provider failure', type: 'server_error', code: 'server_error' } }), { status: 503, headers: { 'content-type': 'application/json' } });
   if (notes.startsWith('SYNTHETIC:DELAY ')) await new Promise(resolve => setTimeout(resolve, 2000));
-  const proposal = notes === 'SYNTHETIC:CLARIFY'
+  let proposal = notes === 'SYNTHETIC:CLARIFY'
     ? { proposedText: null, clarifications: ['Which approved criterion should this procedure use?'] }
     : { proposedText: notes.replace(/^SYNTHETIC:DELAY /, '') || envelope.currentText, clarifications: [] };
+  // Explicit synthetic conversation case: exact payload assertions prove the real
+  // revision path, not a model's understanding or general wording faithfulness.
+  if (notes === 'Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.') {
+    const kept = '1. Read every baseline parameter in ProdConsole.\n2. Compare observed values with the approved baseline.';
+    if (envelope.mode === 'revise') {
+      if (!envelope.revision?.draft.endsWith('Human note: preserve exact parameter names.')
+        || !envelope.changes.includes('Drop the summary by owner.') || !envelope.revision.history.length) throw new Error('Missing synthetic revision context.');
+      proposal = { proposedText: `${kept}\n3. Leave missing or unreadable values unresolved and record the reason.\nHuman note: preserve exact parameter names.`, clarifications: [], explanation: 'Kept the first two steps, removed the owner summary, and added a reason for unreadable values. Does that reflect your intent?' };
+    } else proposal = { proposedText: `${kept}\n3. Add a separate summary by owner.\n4. Leave missing values unresolved.`, clarifications: [] };
+  }
   return new Response(JSON.stringify({
     id: 'resp_synthetic_authoring', object: 'response', created_at: 1789084800, model: body.model, status: 'completed',
-    output: [{ id: 'msg_synthetic_authoring', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify(proposal), annotations: [] }] }],
+    output: [{ id: 'msg_synthetic_authoring', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: JSON.stringify({ explanation: 'Synthetic provider fixture: review this proposed approach before accepting.', ...proposal }), annotations: [] }] }],
     usage: { input_tokens: 100, output_tokens: 100, total_tokens: 200, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } },
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 };

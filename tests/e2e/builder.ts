@@ -100,9 +100,8 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
 /**
  * Open the fold that holds the compiled plan and the agent summary.
  *
- * They are the platform proving what it will execute — worth reading, and the wrong
- * thing for an auditor to meet before they have answered a single question — so the
- * Builder keeps them one fold down.
+ * Review opens the compiled plan by default. A reader can close it; this helper
+ * selects Review and ensures it is open without changing preparation state.
  */
 export async function openPlanDetail(page: Page | Locator): Promise<void> {
   await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();

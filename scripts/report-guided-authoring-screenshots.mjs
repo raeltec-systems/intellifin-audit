@@ -9,6 +9,8 @@ const selected = [
   'guided-preparation-mobile', 'owner-objective-proposal-before-acceptance',
   'owner-auditor-full-procedure-review', 'owner-manager-revised-procedure-review',
   'writing-stale-suggestion', 'writing-clarification',
+  'test-design-intent-revision', 'test-design-intent-mobile',
+  'owner-seeded-template-selection',
 ];
 const found = new Set();
 async function visit(directory) {

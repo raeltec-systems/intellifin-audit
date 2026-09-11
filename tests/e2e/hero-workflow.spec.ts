@@ -174,9 +174,13 @@ test.describe('the hero workflow', () => {
     await expect(page.getByText('not editable yet')).toHaveCount(0);
 
     /* --------------------------------- what the agent will do, and readiness -- */
-    // Readiness is what an auditor must meet before spending a Run, so it is on the
-    // page. The compiled plan is one fold down, where somebody who wants it can get it.
+    // Preparation stays focused on the selected section. Review deliberately opens
+    // the compiled plan so the auditor can inspect executable work before submission.
+    await expect(page.locator('[data-plan-detail]')).not.toBeVisible();
     await openReview(page);
+    await expect(page.locator('[data-plan-detail]')).toHaveJSProperty('open', true);
+    await expect(page.locator('[data-agent-summary]')).toBeVisible();
+    await page.locator('[data-plan-detail] > summary').click();
     await expect(page.locator('[data-plan-detail]')).toHaveJSProperty('open', false);
     await openPlanDetail(page);
     const summary = page.locator('[data-agent-summary]');

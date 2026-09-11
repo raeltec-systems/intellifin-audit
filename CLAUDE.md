@@ -1,3 +1,31 @@
+## 2026-09-11 — The complete plan opens in Review
+
+The corrected Builder keeps the executable plan out of preparation panels and opens it in Review and submission. The hero browser journey must check that distinction plus manual collapse/reopen; its old collapsed-by-default assertion belongs to the superseded layout. Include the hero journey in the focused CI step so a review-surface change is checked before the full browser suite.
+
+## 2026-09-11 — Closing Help releases the preparation column
+
+Inspect actual browser captures: a closed disclosure still occupies a grid column unless the layout changes. Closed Help now gives that space to the working proposal and comparison. Its opener precedes the editor in DOM order; smaller screens stack the same controls. The browser journey checks that opening/closing Help changes the working width without losing draft state.
+
+## 2026-09-11 — Preserve intent through failed revision attempts
+
+A failed follow-up retains its original ready parent and the full edited proposal for a new attempt; do not accidentally fall back to rough notes alone. Explicit Help Me Write buttons claim focus once for their section's central assistant. Automatic section entry creates no focus request and no provider call.
+
+## 2026-09-11 — Protect authoring receipts before persistence
+
+The OpenAI adapter checks its configured key synchronously before the application persists revision content, then checks again before the provider call. Pattern-only credential checks cannot identify opaque configured values. Audit events retain the parent request ID for revision provenance, never the feedback or proposal body; the original notes travel with each request without a duplicate in receipt history.
+
+## 2026-09-11 — Central preparation assistance
+
+Open local assistant sessions on entering Scope or Audit steps without a paid request. Keep all manual editor panels mounted and preserve per-target conversation state. Generation uses saved context even while a manual editor is dirty; acceptance still uses the full submission guard. Test follow-up conversations under separate synthetic identities so earlier cases do not exhaust the real per-user rate budget.
+
+## 2026-09-11 — Intent-driven authoring revisions
+
+A follow-up carries the full human-edited proposal plus a same-author, same-section receipt reference. Resolve up to four prior turns inside the authorised transaction; stale/foreign/expired proposals cannot anchor a revision. Keep feedback out of immutable audit payloads. The bounded receipt may retain it; no credentials or source locations reach the provider. Parse legacy guided-prose-v1 receipts alongside guided-test-design-v2 without rewriting history. Test instructions refine registered read/inspection work; structured criteria and the compiler remain authoritative.
+
+## 2026-09-11 — Synthetic ITGC Template context
+
+The owner-supplied ACCA `IT General Controls.pdf` informs synthetic PoC controls in addendum §C. It is educational background, never Northstar policy or an invented criterion reference. P-2/P-4 now seed control statements; their execution contracts and historical versions are unchanged. The owner refinement is recorded in `guided-authoring-experience-correction.md`: select established controls and evidence, then guide and revise test design.
+
 ## Guided preparation state (2026-09-11)
 
 Story 2.9 stores nullable `section_preparation` metadata separately from compiler inputs.

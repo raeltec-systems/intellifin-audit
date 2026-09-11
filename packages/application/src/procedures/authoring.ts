@@ -8,7 +8,7 @@ import type { ProceduresUnitOfWorkContext, ProcedureVersionRecord } from './port
 import { updateContextDraft } from './update-context-draft.js';
 import { updatePopulationDraft } from './update-population-draft.js';
 import { updateTargetDraft } from './update-target-draft.js';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
+import { AUTHORING_IDENTITY, AUTHORING_LIMITS, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
 
 type Actor = { readonly session: SessionSnapshot; readonly correlationId: string };
 export interface AuthoringDependencies extends ProcedureDependencies { readonly clock: Clock; readonly model: ProcedureAuthoringModel | null }
@@ -24,9 +24,11 @@ export function isAuthoringSection(value: unknown): value is AuthoringSection {
     : value['kind'] === 'instructions' && Object.keys(value).length === 2 && uuid(value['registrationId']));
 }
 export function isAuthoringDraftFields(value: unknown): value is AuthoringDraftFields {
-  return object(value) && Object.keys(value).length === 8 && uuid(value['procedureId']) && uuid(value['versionId']) && uuid(value['requestId']) && hash(value['expectedRowVersion'])
+  return object(value) && Object.keys(value).length === (value['revision'] === undefined ? 8 : 9) && uuid(value['procedureId']) && uuid(value['versionId']) && uuid(value['requestId']) && hash(value['expectedRowVersion'])
     && isAuthoringSection(value['section']) && ['draft', 'improve', 'revise'].includes(String(value['mode'])) && text(value['notes'], AUTHORING_LIMITS.notes)
-    && text(value['changes'], AUTHORING_LIMITS.changes) && storable(value);
+    && text(value['changes'], AUTHORING_LIMITS.changes) && (value['revision'] === undefined || (value['mode'] === 'revise'
+      && typeof value['changes'] === 'string' && value['changes'].trim() !== '' && object(value['revision']) && Object.keys(value['revision']).length === 2
+      && uuid(value['revision']['requestId']) && value['revision']['requestId'] !== value['requestId'] && text(value['revision']['draft'], AUTHORING_LIMITS.outputText))) && storable(value);
 }
 export function isAcceptAuthoringFields(value: unknown): value is AcceptAuthoringFields {
   return object(value) && Object.keys(value).length === 5 && uuid(value['procedureId']) && uuid(value['versionId']) && uuid(value['requestId']) && hash(value['expectedRowVersion'])
@@ -36,7 +38,9 @@ export function isRejectAuthoringFields(value: unknown): value is RejectAuthorin
   return object(value) && Object.keys(value).length === 3 && uuid(value['procedureId']) && uuid(value['versionId']) && uuid(value['requestId']);
 }
 export function isAuthoringProposal(value: unknown, limit: number = AUTHORING_LIMITS.outputText): value is AuthoringProposal {
-  if (!object(value) || Object.keys(value).length !== 2 || !Array.isArray(value['clarifications']) || value['clarifications'].length > 4
+  if (!object(value) || Object.keys(value).length !== (value['explanation'] === undefined ? 2 : 3)
+    || (value['explanation'] !== undefined && (typeof value['explanation'] !== 'string' || !value['explanation'].trim() || value['explanation'].length > 2000))
+    || !Array.isArray(value['clarifications']) || value['clarifications'].length > 4
     || !value['clarifications'].every(v => typeof v === 'string' && v.trim() !== '' && v.length <= 1000) || !storable(value)) return false;
   // An unresolved question is not an applicable draft. The human can answer it in a new request.
   return value['proposedText'] === null ? value['clarifications'].length > 0
@@ -52,9 +56,15 @@ export function authoringContext(row: ProcedureVersionRecord): JsonValue {
   return { templateId: row.templateId, controlName: row.controlName, ...draftContext(row.sections), period: row.period, scope: row.scope,
     population: row.sourceSnapshot ? { name: row.sourceSnapshot.displayName, kind: row.sourceSnapshot.contract.kind, columns: row.sourceSnapshot.contract.declared_schema } : null,
     inclusionRule: row.inclusionRule, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates,
-    targets: row.targets.map(t => ({ id: t.registrationId, name: t.displayName, kind: t.contract.kind })),
+    targets: row.targets.map(t => ({ id: t.registrationId, name: t.displayName, kind: t.contract.kind,
+      permittedReadActions: t.contract.permitted_actions, attributeLabels: t.contract.attribute_label_patterns, secondaryKey: t.contract.secondary_key })),
     instructions: row.instructions, criteria: row.complianceConditions, confidenceThreshold: row.agentJudgedThreshold,
     evidence: row.evidenceRequirements, frequency: row.schedule,
+    preparationCapabilities: {
+      instructionPurpose: 'Read-only navigation and inspection within the selected system. The Template compiler owns matching, coverage and evaluation.',
+      structuredChanges: 'The auditor selects scope, evidence, systems, criteria and frequency in their preparation sections before requesting matching instructions.',
+      unsupported: ['Uploading or ingesting new documents', 'Selecting connections or accessing credentials', 'Writing to systems', 'Approving, activating or running a procedure', 'Automatic scheduled execution'],
+    },
   } as unknown as JsonValue;
 }
 class Refused extends Error {}
@@ -66,7 +76,8 @@ function hasCredentialMaterial(value: unknown, references: readonly string[]): b
 }
 function fieldsOnly(input: AuthoringDraftFields): AuthoringDraftFields {
   return { procedureId: input.procedureId, versionId: input.versionId, expectedRowVersion: input.expectedRowVersion, requestId: input.requestId,
-    section: input.section, mode: input.mode, notes: input.notes, changes: input.changes };
+    section: input.section, mode: input.mode, notes: input.notes, changes: input.changes,
+    ...(input.revision === undefined ? {} : { revision: input.revision }) };
 }
 function sameDraft(record: AuthoringRequestRecord, row: ProcedureVersionRecord, now: Date): boolean {
   return row.state === 'DRAFT' && record.authoringRevision === (row.sectionPreparation?.revision ?? 0)
@@ -77,6 +88,7 @@ function sameDraft(record: AuthoringRequestRecord, row: ProcedureVersionRecord, 
 function view(record: AuthoringRequestRecord, row: ProcedureVersionRecord, now: Date): AuthoringSuggestionView {
   const uncertain = record.state === 'pending' && now.getTime() - Date.parse(record.createdAt) > AUTHORING_LIMITS.timeoutMs + 5000;
   return { requestId: record.requestId, section: record.section, currentText: record.currentText, proposedText: record.proposedText, clarifications: record.clarifications,
+    ...(record.explanation === undefined ? {} : { explanation: record.explanation }),
     authoringRevision: record.authoringRevision, state: uncertain ? 'failed' : record.state, stale: !sameDraft(record, row, now),
     message: uncertain ? 'No response was confirmed. Your procedure is unchanged. Start a new request or keep writing manually.' : record.message };
 }
@@ -89,6 +101,25 @@ function ownedRequest(record: AuthoringRequestRecord | null, input: Actor & Reje
   if (!record || record.actorId !== input.session.userId || record.versionId !== input.versionId || record.procedureId !== input.procedureId) throw new Refused('That writing suggestion is unavailable.');
   return record;
 }
+/** Follow-ups are grounded in this human's live proposal. Walk a bounded history in
+ * the same locked transaction; a client cannot refer to another author's conversation. */
+async function revisionContext(tx: ProceduresUnitOfWorkContext, row: ProcedureVersionRecord, input: AuthoringDraftFields & Actor, now: Date): Promise<AuthoringRevisionContext | undefined> {
+  if (!input.revision) return undefined;
+  const history: Array<AuthoringRevisionContext['history'][number]> = [];
+  const visited = new Set<string>();
+  let id: string | undefined = input.revision.requestId;
+  while (id !== undefined && history.length < 4) {
+    if (visited.has(id)) throw new Refused('This revision history is invalid. Start with the saved section.');
+    visited.add(id);
+    const previous = ownedRequest(await tx.authoringRequests!.find(id), input);
+    if (previous.state !== 'ready' || digest(previous.section) !== digest(input.section) || !sameDraft(previous, row, now)) {
+      throw new Refused('This proposal is stale or no longer available for revision. Start with the current saved section.');
+    }
+    history.unshift({ feedback: previous.revision?.feedback ?? '', proposedText: previous.proposedText, clarifications: previous.clarifications });
+    id = previous.revision?.requestId;
+  }
+  return { draft: input.revision.draft, history };
+}
 async function audit(tx: ProceduresUnitOfWorkContext, input: Actor, record: AuthoringRequestRecord, decision: string): Promise<void> {
   await tx.auditEvents.append({ actor: { type: 'human', id: input.session.userId }, eventType: 'lifecycle.procedure-writing-assistance', source: 'web', outcome: record.state === 'failed' ? 'failure' : 'success',
     sessionId: input.session.sessionId, correlationId: input.correlationId, aggregateId: record.procedureId,
@@ -96,7 +127,8 @@ async function audit(tx: ProceduresUnitOfWorkContext, input: Actor, record: Auth
       // Full provider identity is retained in the bounded request receipt. The
       // immutable chain forbids provider payloads; record only identity references.
       modelId: record.identity.modelId, promptVersion: record.identity.promptVersion,
-      contextDigest: record.contextDigest, authoringRevision: record.authoringRevision, usage: record.usage as unknown as JsonValue, acceptedDigest: record.acceptedDigest } });
+      contextDigest: record.contextDigest, authoringRevision: record.authoringRevision, usage: record.usage as unknown as JsonValue, acceptedDigest: record.acceptedDigest,
+      ...(record.revision === undefined ? {} : { parentRequestId: record.revision.requestId }) } });
 }
 
 export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
@@ -122,16 +154,23 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
       const now = deps.clock.now();
       if (await store.countSince(input.session.userId, new Date(now.getTime() - 60000).toISOString()) >= AUTHORING_LIMITS.perMinute
         || await store.countSince(input.session.userId, new Date(now.getTime() - 3600000).toISOString()) >= AUTHORING_LIMITS.perHour) throw new Refused('The writing request limit has been reached. Try later or keep writing manually.');
-      const request = { section: input.section, mode: input.mode, context: authoringContext(row), currentText: authoringCurrentText(row, input.section), notes: input.notes, changes: input.changes };
+      const revision = await revisionContext(tx, row, input, now);
+      const request = { section: input.section, mode: input.mode, context: authoringContext(row), currentText: authoringCurrentText(row, input.section), notes: input.notes, changes: input.changes,
+        ...(revision === undefined ? {} : { revision }) };
       if (utf8Bytes(canonicalJson(request as unknown as JsonValue)).length > AUTHORING_LIMITS.contextBytes) throw new Refused('This procedure exceeds the writing context limit. Shorten the notes or continue manually.');
       // Refuse rather than silently redact a meaningful instruction. Manual saves
       // remain valid, including historical prose containing credential references.
       if (hasCredentialMaterial(request, row.targets.map(target => target.contract.credential_ref))) throw new Refused('Writing help cannot receive credential values or references. Remove them from the notes or saved prose, or continue writing manually.');
+      // Infrastructure knows its configured key. Check before retaining revision
+      // content, not only immediately before the network request.
+      try { deps.model.assertSafeInput?.(request); }
+      catch { throw new Refused('Writing help cannot receive protected configuration. Remove it from the proposal and feedback, or continue writing manually.'); }
       const record: AuthoringRequestRecord = { requestId: input.requestId, procedureId: row.procedureId, versionId: row.versionId, actorId: input.session.userId,
         createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + AUTHORING_LIMITS.lifetimeMs).toISOString(), section: input.section, requestDigest: digest(fields),
         authoringRevision: row.sectionPreparation?.revision ?? 0, contextDigest: planAuthoringDigest(row), sectionBasis: preparationBasis(row, preparationSection(input.section)),
         decisionDigest: digest(row.decisions ?? []),
-        currentText: request.currentText, state: 'pending', proposedText: null, clarifications: [], identity: AUTHORING_IDENTITY, usage: null, message: null, acceptedDigest: null };
+        currentText: request.currentText, state: 'pending', proposedText: null, clarifications: [], identity: AUTHORING_IDENTITY, usage: null, message: null, acceptedDigest: null,
+        ...(input.revision === undefined ? {} : { revision: { ...input.revision, feedback: input.changes } }) };
       await store.insert(record); await audit(tx, input, record, 'requested');
       return { record, request };
     });

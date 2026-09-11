@@ -13,9 +13,9 @@
  * claim.
  *
  * Where §C states nothing, the field is `null` rather than invented. §C gives a Schedule
- * default only for P-1 (`weekly`) and a Control statement only for P-1; putting a
- * plausible word where the contract is silent would put words in the product's mouth,
- * and a stored default that appears nowhere in the block could never be pinned.
+ * default only for P-1 (`weekly`) and synthetic Control statements for P-1, P-2 and P-4;
+ * P-3 remains null. A stored default that appears nowhere in the block could never be
+ * pinned.
  *
  * Each record also names, as data, its golden Population Source binding reference and
  * the version identifiers of its expected outcomes and confirmation script (AD-12,
@@ -250,7 +250,8 @@ const P2: ProcedureTemplate = {
   inclusionRule: { schemaVersion: 1, all: [{ column: 'status', kind: 'text', operator: 'eq', value: 'Active' }] },
   name: 'Segregation-of-Duties Conflicts',
   hero: false,
-  controlStatement: null,
+  controlStatement:
+    'Synthetic control: Roles assigned in AccessGate must not grant prohibited permission pairs defined in the versioned RoleMatrix.',
   objective:
     'Determine whether any active account contains an explicitly prohibited permission pair.',
   populationSource: 'AccessGate active accounts (Adapter).',
@@ -356,7 +357,8 @@ const P4: ProcedureTemplate = {
   inclusionRule: { schemaVersion: 1, all: [] },
   name: 'Production Configuration Deviation',
   hero: false,
-  controlStatement: null,
+  controlStatement:
+    'Synthetic control: Production parameters must match the approved ConfigRegistry baseline in effect at the observation time.',
   objective:
     'Determine whether observed production parameters equal the approved baseline in effect at the observation time.',
   populationSource: 'ConfigRegistry baseline parameters (Adapter).',

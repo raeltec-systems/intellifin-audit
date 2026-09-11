@@ -422,7 +422,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Focused guided authoring and owner journey
-        run: pnpm exec playwright test tests/e2e/builder-steps.spec.ts tests/e2e/owner-walkthrough.spec.ts tests/e2e/writing-assistant.spec.ts --output=guided-test-results
+        run: pnpm exec playwright test tests/e2e/builder-steps.spec.ts tests/e2e/hero-workflow.spec.ts tests/e2e/owner-walkthrough.spec.ts tests/e2e/writing-assistant.spec.ts --output=guided-test-results
 
       - name: End-to-end and accessibility suite
         run: pnpm test:e2e

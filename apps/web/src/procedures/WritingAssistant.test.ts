@@ -7,7 +7,7 @@ import { draftContext, refreshPreparation } from '@intellifin/domain';
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import {
   createWritingAssistantState, isWritingResponse, savedWritingText, writingDifference, writingSectionKey, writingSuggestionIsStale,
-  WritingAssistantPanel, WritingAssistantProvider, WritingTools,
+  PreparationAssistant, WritingAssistantPanel, WritingAssistantProvider, WritingTools, writingRevisionFor,
   type AuthoringDraftFields, type AuthoringSection, type AuthoringSuggestionView, type WritingAssistantActions,
 } from './WritingAssistant';
 import { BuilderSubmissionProvider } from './use-section';
@@ -126,6 +126,24 @@ describe('section writing request ownership', () => {
     expect(draft.scope).toBe('All production parameters');
   });
 
+  it.each(['refused', 'provider-failed'] as const)('keeps the edited revision basis after a %s attempt', outcome => {
+    const { machine, draft } = ready();
+    const working = 'Keep this exact edited proposal, including its final instruction.';
+    machine.edit('scope', 'proposal', working);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'Keep the first instruction and add evidence for unresolved values.');
+    const previous = machine.snapshot.sessions.get('scope')!;
+    const request: AuthoringDraftFields = { ...fields(scope, 'revision-2'), mode: 'revise', notes: previous.notes,
+      changes: previous.changes, revision: writingRevisionFor(previous) };
+    machine.begin(request, draft);
+    if (outcome === 'refused') machine.fail(request, 'Try again after the request limit resets.');
+    else machine.receive(request, response(request, draft, { state: 'failed', proposedText: null }), draft);
+    const retry = machine.snapshot.sessions.get('scope')!;
+    expect(writingRevisionFor(retry)).toEqual({ requestId: 'request-1', draft: working });
+    expect(retry.notes).toBe(previous.notes); expect(retry.changes).toBe(previous.changes);
+    expect(machine.beginAccept('scope')).toBe(false);
+  });
+
   it('refuses malformed or unbounded responses while preserving manual work', () => {
     const request = fields(), valid = response(request);
     expect(isWritingResponse(valid, request)).toBe(true);
@@ -147,6 +165,15 @@ describe('section writing request ownership', () => {
 });
 
 describe('draft comparison and acceptance', () => {
+  it('remembers the last instruction target when another preparation section is opened', () => {
+    const machine = createWritingAssistantState();
+    machine.open({ kind: 'instructions', registrationId: 'first-target' }, 'draft', '');
+    machine.open({ kind: 'instructions', registrationId: 'second-target' }, 'draft', '');
+    machine.open(scope, 'draft', '');
+    expect(machine.snapshot.selected).toBe('scope');
+    expect(machine.snapshot.lastInstructionTarget).toBe('second-target');
+    expect(machine.snapshot.sessions.has('instructions:second-target')).toBe(true);
+  });
   it('initializes improvement from the selected saved objective, scope or registered system', () => {
     const draft = view(), machine = createWritingAssistantState();
     const target = { kind: 'instructions' as const, registrationId: draft.targets[0]!.registrationId };
@@ -204,7 +231,7 @@ describe('draft comparison and acceptance', () => {
     expect(machine.snapshot.sessions.get('scope')?.suggestion?.state).toBe('ready');
   });
 
-  it('uses the edited proposal as revision notes and gives a new request its own feedback', () => {
+  it('keeps the original rough answer and sends the full edited proposal as revision context', () => {
     const { machine, draft, request } = ready();
     machine.edit('scope', 'proposal', 'Check every production parameter.');
     machine.askForChanges('scope');
@@ -213,11 +240,44 @@ describe('draft comparison and acceptance', () => {
     machine.open(scope, 'draft', draft.scope);
     const session = machine.snapshot.sessions.get('scope')!;
     expect(session.mode).toBe('revise');
-    expect(session.notes).toBe('Check every production parameter.');
+    expect(session.notes).toBe('Check all production parameters.');
+    expect(writingRevisionFor(session)).toEqual({ requestId: request.requestId, draft: 'Check every production parameter.' });
     const next = { ...fields(scope, 'revised-request'), mode: session.mode, notes: session.notes, changes: session.changes };
     expect(machine.begin(next, draft)).toBe(true);
     expect(machine.snapshot.sessions.get('scope')?.request).not.toBe(request);
     expect(machine.snapshot.sessions.get('scope')?.request?.changes).toContain('every parameter');
+  });
+
+  it('keeps an edited ten-thousand-character proposal intact for a revision', () => {
+    const { machine, request } = ready();
+    const proposal = 'p'.repeat(10_000);
+    machine.edit('scope', 'proposal', proposal);
+    machine.askForChanges('scope');
+    const session = machine.snapshot.sessions.get('scope')!;
+    expect(session.notes).toBe(request.notes);
+    expect(writingRevisionFor(session)).toEqual({ requestId: request.requestId, draft: proposal });
+  });
+
+  it('retains at most four previous proposal and correction entries', () => {
+    const machine = createWritingAssistantState(), draft = view();
+    machine.open(scope, 'draft', draft.scope);
+    let prior = fields(scope, 'request-0');
+    machine.edit('scope', 'notes', prior.notes);
+    machine.begin(prior, draft);
+    machine.receive(prior, response(prior, draft, { explanation: 'First approach.' }), draft);
+    for (let index = 1; index <= 5; index += 1) {
+      machine.askForChanges('scope');
+      machine.edit('scope', 'changes', `Keep the saved assignment; correction ${index}.`);
+      const next = { ...fields(scope, `request-${index}`), mode: 'revise' as const, notes: machine.snapshot.sessions.get('scope')!.notes,
+        changes: machine.snapshot.sessions.get('scope')!.changes, revision: writingRevisionFor(machine.snapshot.sessions.get('scope')!) };
+      expect(machine.begin(next, draft)).toBe(true);
+      machine.receive(next, response(next, draft, { proposedText: `Proposal ${index}` }), draft);
+      prior = next;
+    }
+    const history = machine.snapshot.sessions.get('scope')!.history;
+    expect(history).toHaveLength(4);
+    expect(history[0]?.proposal).toBe('Proposal 1');
+    expect(history.at(-1)?.feedback).toContain('correction 5');
   });
 
   it('allows reconciliation and rejection without applying any text', () => {
@@ -249,6 +309,13 @@ describe('draft comparison and acceptance', () => {
     expect(machine.snapshot.sessions.get('scope')?.notes).toHaveLength(8_000);
     expect(machine.snapshot.sessions.get('scope')?.changes).toHaveLength(2_000);
     expect(machine.snapshot.sessions.get('scope')?.proposal).toHaveLength(10_000);
+  });
+
+  it('validates an optional explanation without allowing an unbounded provider narration', () => {
+    const request = fields(), valid = response(request);
+    expect(isWritingResponse({ ...valid, explanation: 'I kept the saved scope and added the requested comparison.' }, request)).toBe(true);
+    expect(isWritingResponse({ ...valid, explanation: ' ' }, request)).toBe(false);
+    expect(isWritingResponse({ ...valid, explanation: 'x'.repeat(2_001) }, request)).toBe(false);
   });
 
   it('makes a narrowing visible and preserves the exact two text versions', () => {
@@ -291,5 +358,19 @@ describe('additive writing help surface', () => {
       React.createElement(WritingTools, { section: scope }), React.createElement(WritingAssistantPanel)));
     expect(html).toContain('Editable procedure');
     expect(html).not.toContain('Help Me Write');
+  });
+
+  it('renders saved preparation context and a section-specific lead question without requesting help', () => {
+    const actions: WritingAssistantActions = { generate: vi.fn(), accept: vi.fn(), reject: vi.fn() };
+    const html = renderToStaticMarkup(React.createElement(BuilderSubmissionProvider, {
+      children: React.createElement(WritingAssistantProvider, { draft: view(), rowVersion: 'row-1', onRowVersion: vi.fn(), actions,
+        children: React.createElement(PreparationAssistant, { step: 'instructions' }) }),
+    }));
+    expect(html).toContain('How should I locate each production parameter in ProdConsole and compare it with the approved baseline?');
+    expect(html).toContain('Baseline');
+    expect(html).toContain('Configuration baseline');
+    expect(html).toContain('Selected systems');
+    expect(html).not.toContain('Mark reviewed');
+    expect(actions.generate).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 import { deriveExecutablePlan, draftContext, refreshPreparation } from '@intellifin/domain';
 import { initialPlanDerivation, planAuthoringDigest, type AuthoringDraftFields, type ProcedureVersionRecord } from '@intellifin/application';
@@ -11,8 +12,8 @@ import { attachAuthoringScreenshot, openPlanDetail, openStep } from './builder';
 /**
  * Real browser, Server Actions, application writer and installed SDK, with the explicit
  * test-only OpenAI transport preload in playwright.config.ts. These checks establish
- * workflow and failure behavior, not a live model's prose quality. The three cases make
- * five new requests in total; an uncertain retry checks its original saved request.
+ * workflow and failure behavior, not a live model's prose quality. Follow-up cases
+ * check proposal provenance; an uncertain retry checks its original saved request.
  */
 test.use({ storageState: AUTH_STATE.auditor });
 test.describe.configure({ mode: 'serial' });
@@ -99,18 +100,19 @@ test('generation keeps manual editing available, retains its section after switc
     const scopeWriting = page.locator('[data-writing-section="scope"]');
     await scopeWriting.getByLabel('Rough notes for Scope note', { exact: true }).fill(notes);
     await page.getByLabel('Scope statement', { exact: true }).fill('An unsaved scope change.');
-    await expect(scopeWriting.getByRole('button', { name: 'Prepare draft', exact: true })).toHaveAccessibleDescription(/unsaved changes in Period and scope/);
-    await scopeWriting.getByRole('button', { name: 'Prepare draft', exact: true }).click({ force: true });
-    expect(await requestStates()).toEqual([]);
-    await page.getByRole('button', { name: 'Use saved Period and scope', exact: true }).click();
+    // Generation reads saved context and must not require discarding a rough manual edit.
+    await expect(scopeWriting.getByRole('button', { name: 'Prepare draft', exact: true })).toBeEnabled();
     await scopeWriting.getByRole('button', { name: 'Prepare draft', exact: true }).click();
     await expect(scopeWriting.getByRole('button', { name: 'Preparing a draft…', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue('An unsaved scope change.');
+    await page.getByRole('button', { name: 'Use saved Period and scope', exact: true }).click();
     // A request alone adds no save/review/submit gate to this complete Draft.
     await openPlanDetail(page);
     await expect(page.getByRole('button', { name: 'Submit for approval', exact: true })).toBeEnabled();
     await selectWriting(page, 'objective');
     const objectiveWriting = page.locator('[data-writing-section="objective"]');
     await expect(objectiveWriting.getByRole('heading', { name: 'Writing help: Objective', exact: true })).toBeVisible();
+    await expect(objectiveWriting.getByRole('heading', { name: 'Writing help: Objective', exact: true })).toBeFocused();
     await expect(objectiveWriting.getByRole('heading', { name: 'Proposed replacement — not applied' })).toHaveCount(0);
     await expect(page.getByLabel('Objective', { exact: true })).toBeEditable();
     await page.getByLabel('Objective', { exact: true }).fill(savedObjective);
@@ -260,4 +262,64 @@ test('an uncertain generation retries its original request and an uncertain acce
     await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(notes);
     await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
   } finally { releaseAcceptance(); await page.unroute(address); }
+});
+
+test('the central test assistant keeps, drops and enhances a proposal before edited acceptance and review', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openStep(page, 'Audit Instructions');
+  const panel = page.locator('[data-preparation-panel="instructions"]');
+  const writing = panel.locator('[data-writing-section]');
+  // It is present in the actual editing column without a Help Me Write activation.
+  await expect(writing).toBeVisible();
+  const work = page.locator('.ls-guided__work');
+  const closedWidth = (await work.boundingBox())!.width;
+  const help = page.locator('.ls-guided__help-disclosure');
+  await help.locator('summary').click();
+  const openWidth = (await work.boundingBox())!.width;
+  expect(closedWidth - openWidth).toBeGreaterThan(150);
+  await help.locator('summary').click();
+  expect(await requestStates()).toEqual([]);
+  await expect(panel).toContainText('ProdConsole');
+  await expect(panel).toContainText('Baseline');
+  const saved = page.getByLabel('What the agent should do in ProdConsole', { exact: true });
+  await expect(saved).toHaveValue('Read all baseline parameters.');
+  await panel.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+  await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');
+  await openStep(page, 'Audit Instructions');
+  await writing.getByLabel('Rough notes for Audit steps for ProdConsole', { exact: true }).fill('Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.');
+  await writing.getByRole('button', { name: 'Prepare draft', exact: true }).click();
+  const proposed = writing.locator('.ls-writing__comparison .ls-writing__version').last();
+  await expect(proposed).toContainText('Add a separate summary by owner.');
+  await expect(saved).toHaveValue('Read all baseline parameters.');
+  await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');
+  await writing.getByRole('button', { name: 'Edit', exact: true }).click();
+  const fullProposal = '1. Read every baseline parameter in ProdConsole.\n2. Compare observed values with the approved baseline.\n3. Add a separate summary by owner.\n4. Leave missing values unresolved.\nHuman note: preserve exact parameter names.';
+  await writing.getByLabel('Edit proposed replacement', { exact: true }).fill(fullProposal);
+  await writing.getByRole('button', { name: 'Ask for changes', exact: true }).click();
+  const correction = 'Keep steps 1 and 2 exactly. Drop the summary by owner. Enhance unresolved handling: record why a value could not be read.';
+  await writing.getByLabel('What should change?', { exact: true }).fill(correction);
+  await writing.getByRole('button', { name: 'Prepare revised draft', exact: true }).click();
+  await expect(proposed).toContainText('Leave missing or unreadable values unresolved and record the reason.');
+  await expect(proposed).not.toContainText('Add a separate summary by owner.');
+  await expect(writing).toContainText('Kept the first two steps, removed the owner summary');
+  await expect(saved).toHaveValue('Read all baseline parameters.');
+  const receipts = await sql<{ record: { revision?: { draft: string; feedback: string } } }[]>`SELECT record FROM procedure_authoring_request WHERE version_id = ${draft.versionId} ORDER BY created_at`;
+  expect(receipts).toHaveLength(2);
+  expect(receipts[1]!.record.revision).toMatchObject({ draft: fullProposal, feedback: correction });
+  await attachAuthoringScreenshot(page, testInfo, 'test-design-intent-revision');
+  expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await attachAuthoringScreenshot(page, testInfo, 'test-design-intent-mobile');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await writing.getByRole('button', { name: 'Edit', exact: true }).click();
+  const accepted = '1. Read every baseline parameter in ProdConsole.\n2. Compare observed values with the approved baseline.\n3. Leave missing or unreadable values unresolved and record the reason.\nPreserve exact parameter names.';
+  await writing.getByLabel('Edit proposed replacement', { exact: true }).fill(accepted);
+  await writing.getByRole('button', { name: 'Use this draft', exact: true }).click();
+  await expect(saved).toHaveValue(accepted);
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  await panel.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+  await expect(page.locator('[data-preparation-nav="instructions"] [data-preparation-status]')).toHaveAttribute('data-preparation-status', 'reviewed');
+  await page.reload();
+  await openStep(page, 'Audit Instructions');
+  await expect(saved).toHaveValue(accepted);
 });
