@@ -52,6 +52,22 @@ test('guided preparation preserves edits, records saved review and stays keyboar
   await expect(page.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('Period start')).toBeHidden();
 
+  // Question jumps are allowed; they cannot acknowledge missing saved content.
+  await page.locator('[data-preparation-nav="scope"]').click();
+  await page.getByRole('button', { name: '3. Check scope', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Does this saved scope match your assignment?', exact: true })).toBeFocused();
+  let review = page.locator('[data-section-review="scope"] button');
+  await expect(review).toHaveAccessibleDescription(/Save the scope and dates/);
+  await review.click({ force: true });
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  await page.locator('[data-preparation-nav="evidence"]').click();
+  await page.getByRole('button', { name: '4. Check choices', exact: true }).click();
+  review = page.locator('[data-section-review="evidence"] button');
+  await expect(review).toHaveAccessibleDescription(/Choose and save the population source and systems/);
+  await review.click({ force: true });
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+
   await openStep(page, 'Period and scope');
   await page.getByLabel('Scope statement').fill('All August leavers, without sampling.');
   await openStep(page, 'Compliance Rule conditions');

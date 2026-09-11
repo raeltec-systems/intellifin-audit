@@ -179,7 +179,8 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
     try {
       const response = await deps.model!.propose(prepared.request);
       complete = { ...complete, usage: { inputTokens: tokenUsage(response.usage?.inputTokens), outputTokens: tokenUsage(response.usage?.outputTokens) } };
-      if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)) throw new Error('Invalid authoring response');
+      if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)
+        || response.proposal.clarifications.length > 1) throw new Error('Invalid authoring response');
       complete = { ...complete, ...response.proposal, state: 'ready' };
     } catch { complete = { ...complete, state: 'failed', message: 'Writing assistance could not produce a confirmed draft. Your procedure is unchanged. Try again or keep writing manually.' }; }
     const suggestion = await deps.unitOfWork.execute(async tx => {

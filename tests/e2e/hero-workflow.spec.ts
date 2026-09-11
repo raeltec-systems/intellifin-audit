@@ -380,7 +380,7 @@ test.describe('the hero workflow', () => {
     await expect(captureRow).toHaveValue('disabled_time');
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Evidence choices saved. Check them below before reviewing this section.', { exact: true })).toBeVisible();
     await shot(page, 'timing-capture-declared', page.locator('[data-preparation-panel="evidence"]'));
     await openReview(page);
     await expect(page.locator('[data-readiness-item="disablement-capture-missing"]')).toHaveCount(0);

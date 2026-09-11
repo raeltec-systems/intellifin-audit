@@ -68,6 +68,7 @@ function actionFields(request: Request): Record<string, unknown> | null {
 }
 
 async function selectWriting(page: Page, section: 'objective' | 'scope'): Promise<void> {
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
   await page.locator(`[data-preparation-nav="${section === 'objective' ? 'context' : 'scope'}"]`).click();
   const editor = page.locator(`[data-preparation-panel="${section === 'objective' ? 'context' : 'scope'}"]`);
   if (section === 'scope') await editor.getByRole('button', { name: '1. Describe the scope', exact: true }).click();

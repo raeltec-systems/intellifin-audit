@@ -47,6 +47,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   const [activeStep, setActiveStep] = useState<PreparationStep>('context');
   const [scopeQuestion, setScopeQuestion] = useState('intent');
   const [evidenceQuestion, setEvidenceQuestion] = useState('source');
+  const [guidedNotice, setGuidedNotice] = useState<{ question: string; title: string } | null>(null);
   useEffect(() => setToken(rowVersion), [rowVersion]);
   const periodSection = useSection({ from: draft.period?.from ?? '', to: draft.period?.to ?? '', scope: draft.scope }, token);
   const { from, to, scope } = periodSection.value;
@@ -214,7 +215,10 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     const outcome = await onSaveTargets(fields);
     if (outcome.ok) {
       setToken(outcome.rowVersion);
-      if (fields.edit.section === 'target-systems') setEvidenceQuestion(current => current === 'systems' ? 'capture' : current);
+      if (fields.edit.section === 'target-systems') {
+        setGuidedNotice({ question: 'capture', title: 'Target systems saved. Next, choose the proof to retain.' });
+        setEvidenceQuestion(current => current === 'systems' ? 'capture' : current);
+      }
     }
     return outcome;
   };
@@ -229,7 +233,10 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     const outcome = await onSaveEvidence(fields);
     if (outcome.ok) {
       setToken(outcome.rowVersion);
-      if (fields.edit.section === 'evidence-requirements') setEvidenceQuestion(current => current === 'capture' ? 'confirm' : current);
+      if (fields.edit.section === 'evidence-requirements') {
+        setGuidedNotice({ question: 'confirm', title: 'Evidence choices saved. Check them below before reviewing this section.' });
+        setEvidenceQuestion(current => current === 'capture' ? 'confirm' : current);
+      }
     }
     return outcome;
   };
@@ -238,6 +245,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={onWriting}
     onAccepted={section => { if (section.kind === 'scope') setScopeQuestion(current => current === 'intent' ? 'period' : current); }}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
+    {activeStep === 'evidence' && guidedNotice?.question === evidenceQuestion ? <Banner tone="success" title={guidedNotice.title} /> : null}
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
     <GuidedPreparation onStepChange={setActiveStep} assistant={step => step === 'scope' ? null : <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
       context: <><TemplateContextForm draft={draft} rowVersion={token} onSave={async fields => { const outcome = await onSaveContext(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /><RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async fields => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /></>,

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { ProcedureVersionView } from '@intellifin/application';
-import { PREPARATION_SECTIONS, draftContext, preparationStatus, sectionReview, type PreparationSectionId } from '@intellifin/domain';
+import { PREPARATION_SECTIONS, draftContext, preparationStatus, preparationReviewBlocker, sectionReview, type PreparationSectionId } from '@intellifin/domain';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
@@ -175,6 +175,8 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
       announce('warning', 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.');
       return;
     }
+    const reviewBlocker = decision === 'review' ? preparationReviewBlocker(draft, section) : null;
+    if (reviewBlocker) { announce('warning', reviewBlocker); return; }
     changing.current = true;
     setBusy(true);
     setMessage(null);
@@ -255,7 +257,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
           const status = preparationStatus(draft, section);
           const acknowledgement = sectionReview(draft, section);
           const reviewReason = actionReason ?? (status === 'needs-clarification'
-            ? 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.' : undefined);
+            ? 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.' : preparationReviewBlocker(draft, section) ?? undefined);
           return <section key={section} className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-${section}`} hidden={hydrated && selected !== section} aria-labelledby={`${id}-heading-${section}`} data-preparation-panel={section}>
             <header className="ls-guided__panel-heading ls-stack">
               <p className="ls-caption">Step {index + 1} of {PREPARATION_SECTIONS.length + 1}</p>

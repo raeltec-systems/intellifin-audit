@@ -209,7 +209,7 @@ export function createWritingAssistantState() {
         ? [...session.history, {
           requestId: session.suggestion.requestId,
           feedback: session.changes,
-          proposal: session.proposal || session.suggestion.proposedText,
+          proposal: session.suggestion.proposedText === null ? null : session.proposal || session.suggestion.proposedText,
           ...(session.suggestion.explanation === undefined ? {} : { explanation: session.suggestion.explanation }),
           clarifications: session.suggestion.clarifications,
         }].slice(-4)
@@ -229,7 +229,9 @@ export function createWritingAssistantState() {
       }
       const prior = snapshot.sessions.get(key)!;
       const history = prior.history;
-      const session = { ...prior, suggestion, proposal: suggestion.proposedText ?? '', busy: null, generationUncertain: false, history,
+      // A question pauses the proposal; it must not erase the full human-edited draft
+      // that caused the question. The first question retains the original rough answer.
+      const session = { ...prior, suggestion, proposal: suggestion.proposedText ?? (suggestion.state === 'ready' ? request.revision?.draft || request.notes : ''), busy: null, generationUncertain: false, history,
         ...(suggestion.state === 'ready' ? { changes: '' } : {}) };
       put(key, { ...session, stale: writingSuggestionIsStale(session, draft), notice: suggestion.state === 'failed'
         ? { tone: 'warning', title: `${suggestion.message || 'Writing help is unavailable.'} You can still edit and save the procedure yourself.` }
@@ -242,7 +244,7 @@ export function createWritingAssistantState() {
     },
     beginAccept(key: string): boolean {
       const session = snapshot.sessions.get(key);
-      if (!session || session.busy || session.suggestion?.state !== 'ready' || session.stale || snapshot.accepting || snapshot.acceptanceUnknown) return false;
+      if (!session || session.busy || session.suggestion?.state !== 'ready' || session.suggestion.proposedText === null || session.stale || snapshot.accepting || snapshot.acceptanceUnknown) return false;
       snapshot = { ...snapshot, accepting: true };
       update(key, { busy: 'acceptance', notice: null });
       return true;

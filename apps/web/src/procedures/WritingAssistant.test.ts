@@ -254,7 +254,7 @@ describe('draft comparison and acceptance', () => {
     machine.askForChanges('scope');
     machine.edit('scope', 'changes', 'All records, with no sample.');
     const session = machine.snapshot.sessions.get('scope')!;
-    expect(writingRevisionFor(session)).toEqual({ requestId: request.requestId, draft: '' });
+    expect(writingRevisionFor(session)).toEqual({ requestId: request.requestId, draft: request.notes });
     const answer = { ...fields(scope, 'answered-question'), mode: session.mode, notes: session.notes, changes: session.changes, revision: writingRevisionFor(session)! };
     machine.begin(answer, draft);
     machine.receive(answer, response(answer, draft, { proposedText: 'Test all records without sampling.' }), draft);
@@ -263,6 +263,25 @@ describe('draft comparison and acceptance', () => {
     expect(replied.changes).toBe('');
     expect(replied.history.at(-1)).toMatchObject({ feedback: 'All records, with no sample.', clarifications: ['Which records should be tested?'] });
     expect(replied.suggestion?.state).toBe('ready');
+  });
+
+  it('retains the full edited proposal across a clarification and its answer', () => {
+    const { machine, draft } = ready();
+    const working = 'Keep all records. Do not change any account. Human edited tail.';
+    machine.edit('scope', 'proposal', working);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'Keep these steps and clarify the criterion.');
+    let session = machine.snapshot.sessions.get('scope')!;
+    const question = { ...fields(scope, 'clarification'), mode: session.mode, notes: session.notes, changes: session.changes, revision: writingRevisionFor(session)! };
+    machine.begin(question, draft);
+    machine.receive(question, response(question, draft, { proposedText: null, clarifications: ['Which criterion applies?'] }), draft);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'Keep the current test; no timing criterion has been supplied.');
+    session = machine.snapshot.sessions.get('scope')!;
+    expect(writingRevisionFor(session)).toEqual({ requestId: 'clarification', draft: working });
+    expect(session.proposal).toBe(working);
+    expect(session.suggestion?.proposedText).toBeNull();
+    expect(machine.beginAccept('scope')).toBe(false);
   });
 
   it('keeps an edited ten-thousand-character proposal intact for a revision', () => {

@@ -41,3 +41,11 @@ Local pinned toolchain: Node 24.20.0, pnpm 11.25.0. `pnpm typecheck` and `pnpm b
 Hosted CI still needs to verify the exact pushed tree, real PostgreSQL, migrations, full browser/accessibility suite and retained screenshots. No schema migration is introduced. The existing populated-upgrade and historical authoring receipt checks remain; both v1 and v2 receipt identities remain readable under v3.
 
 This checkpoint is not a release. Return the correction for review before merging. The PR will identify its exact tested SHA and the final browser results. The reviewer should inspect the initial confirmation and guided dialogue captures first, then exercise corrections against the configured live authoring provider using synthetic content.
+
+### Checkpoint 1 review and corrections
+
+Pushed `515111443accfb19883777bb9a7f8c89e06cd1c2` (tree `057a3576c35f91812e76ec9128c878ac5d884c1d`) in draft PR #32, targeting main. Hosted CI 34655005514 passed all 4,119 unit checks, typechecking, boundaries, 550 PostgreSQL integration checks (including populated upgrades) and container gates. Its focused browser run exposed hidden success messages after automatic question advancement, plus a helper clicking before hydration; the full browser gate did not run after those failures.
+
+The follow-up preserves save feedback on the destination question and waits for actual hydration in the dialogue helper. It also preserves the entire human-edited working draft across clarification responses; a question stays unapplied and cannot be accepted as a replacement. Fresh responses are limited to one question at the application boundary, while historical receipt parsing retains v1/v2 compatibility. New review acknowledgements require minimum saved section content on the server and in the UI, without restricting question jumps or changing historical approval. These presence checks are not a claim of plan readiness or semantic safety.
+
+Local correction verification: pinned typecheck and 95 focused state/application/provider checks pass. The owner journey now uses the default objective/scope dialogue rather than opening the underlying textareas to request help. Hosted browser verification remains required before this PR is ready.

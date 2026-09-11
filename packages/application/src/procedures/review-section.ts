@@ -1,4 +1,4 @@
-import { isPreparationSectionId, preparationBasis, refreshPreparation, type SectionPreparation } from '@intellifin/domain';
+import { isPreparationSectionId, preparationBasis, preparationReviewBlocker, refreshPreparation, type SectionPreparation } from '@intellifin/domain';
 import type { Clock } from '../audit/clock.js';
 import { authorizeCommand } from '../identity/authorize.js';
 import type { SessionSnapshot } from '../identity/ports.js';
@@ -27,6 +27,8 @@ export async function reviewSection(dependencies: ProcedureDependencies & { read
       if (row.state !== 'DRAFT') throw new Refused(PROCEDURE_REFUSALS.NOT_A_DRAFT);
       if (procedureVersionRowVersion(row) !== input.expectedRowVersion) throw new Refused(PROCEDURE_REFUSALS.STALE_ROW);
       if (!row.authorship) throw new Refused('The authorship of this draft could not be verified.');
+      const blocker = input.decision === 'review' ? preparationReviewBlocker(row, sectionId) : null;
+      if (blocker) throw new Refused(blocker);
       const state = row.sectionPreparation ?? refreshPreparation(row), current = state.sections[sectionId];
       const basis = preparationBasis(row, sectionId);
       if (basis !== current.basis) throw new Refused('The saved section changed. Reload and review its current content.');

@@ -18,6 +18,17 @@ export interface SectionPreparation {
   readonly sections: Readonly<Record<PreparationSectionId, PreparedSection>>;
 }
 export type PreparationInputs = FrozenPlanInputs & { readonly sectionPreparation?: SectionPreparation | null };
+/** Minimum saved content for a new acknowledgement, not plan or execution readiness. */
+export function preparationReviewBlocker(row: PreparationInputs, id: PreparationSectionId): string | null {
+  if (id === 'context' && !row.sections.some(s => s.heading === 'Objective' && s.content?.trim())) return 'Save the objective before reviewing this section.';
+  if (id === 'scope' && (row.period === null || !row.scope.trim())) return 'Save the scope and dates before reviewing this section.';
+  if (id === 'evidence' && (row.sourceSnapshot === null || row.targets.length === 0)) return 'Choose and save the population source and systems before reviewing this section.';
+  if (id === 'instructions' && (row.targets.length === 0 || row.targets.some(target =>
+    (target.contract.kind === 'web' || target.contract.kind === 'desktop') && !row.instructions.some(instruction => instruction.registrationId === target.registrationId && instruction.text.trim())))) return 'Save the test steps for each selected system before reviewing this section.';
+  if (id === 'assessment' && row.complianceConditions.length === 0) return 'Save the assessment criteria before reviewing this section.';
+  if (id === 'frequency' && row.schedule === null) return 'Save the frequency before reviewing this section.';
+  return null;
+}
 export function isPreparationSectionId(value: unknown): value is PreparationSectionId {
   return typeof value === 'string' && (PREPARATION_SECTIONS as readonly string[]).includes(value);
 }

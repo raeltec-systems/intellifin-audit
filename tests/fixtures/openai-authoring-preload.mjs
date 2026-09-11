@@ -18,7 +18,7 @@ globalThis.fetch = async (input, init) => {
     ? { proposedText: null, clarifications: ['Which approved criterion should this procedure use?'] }
     : { proposedText: notes.replace(/^SYNTHETIC:DELAY /, '') || envelope.currentText, clarifications: [] };
   if (notes === 'SYNTHETIC:CLARIFY' && envelope.mode === 'revise') {
-    if (envelope.revision?.draft !== '' || !envelope.revision.history.length) throw new Error('Missing clarification conversation.');
+    if (envelope.revision?.draft !== 'SYNTHETIC:CLARIFY' || !envelope.revision.history.length) throw new Error('Missing clarification conversation.');
     proposal = { proposedText: envelope.changes, clarifications: [] };
   }
   // Explicit synthetic conversation case: exact payload assertions prove the real

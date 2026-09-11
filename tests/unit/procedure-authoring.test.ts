@@ -341,6 +341,23 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
     expect(h.jobs).toBe(0);
     expect(h.model.propose).toHaveBeenCalledTimes(3);
   });
+  it.each(['scope', 'evidence', 'instructions', 'assessment', 'frequency'])('cannot acknowledge missing saved %s content as reviewed', async section => {
+    const h = harness();
+    h.row = { ...h.row, scope: '', period: null, sourceSnapshot: null, targets: [], instructions: [], complianceConditions: [], schedule: null };
+    const saved = structuredClone(h.row);
+    expect(await reviewSection(h.deps, { ...actor, procedureId, versionId, expectedRowVersion: procedureVersionRowVersion(h.row), section, decision: 'review' })).toMatchObject({ ok: false, reason: expect.stringContaining('before reviewing') });
+    expect(h.row).toEqual(saved);
+    expect(h.writes).toBe(0);
+  });
+
+  it('refuses several questions from a fresh provider response without changing the draft', async () => {
+    const h = harness(async () => response(null, { clarifications: ['Which population?', 'Which timing rule?'] }));
+    const before = structuredClone(h.row);
+    expect(await h.generate()).toMatchObject({ ok: true, suggestion: { state: 'failed' } });
+    expect(h.row).toEqual(before);
+    expect(h.writes).toBe(0);
+  });
+
   it('supports a clarification follow-up and makes an exact duplicate revision idempotent', async () => {
     type Prompt = Parameters<ProcedureAuthoringModel['propose']>[0];
     const prompts: Prompt[] = [];
