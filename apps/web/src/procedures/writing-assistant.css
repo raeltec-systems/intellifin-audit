@@ -1,0 +1,74 @@
+.ls-writing {
+  min-width: 0;
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-4);
+  border-top: 1px solid var(--color-border-default);
+  container-type: inline-size;
+}
+
+.ls-writing__tools {
+  margin-top: var(--spacing-2);
+}
+
+.ls-writing__notes {
+  min-height: calc(var(--spacing-6) * 5);
+  resize: vertical;
+}
+
+.ls-writing__questions {
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--rounded-md);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.ls-writing__questions ul {
+  margin: 0;
+  padding-left: var(--spacing-4);
+}
+
+.ls-writing__questions li + li {
+  margin-top: var(--spacing-2);
+}
+
+.ls-writing__comparison {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-3);
+}
+
+.ls-writing__version {
+  min-width: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+  gap: var(--spacing-2);
+}
+
+.ls-writing__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+}
+
+.ls-writing__text del {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.ls-writing__text ins {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+/* Preserve readable word comparisons in the narrow help column. Wider help surfaces
+ * show the two full versions beside one another. */
+@container (min-width: 32rem) {
+  .ls-writing__comparison {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

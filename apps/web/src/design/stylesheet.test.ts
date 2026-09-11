@@ -19,7 +19,7 @@ import { STATUS_TREATMENTS } from './status';
  * StatusBadge treatments, Banner tones, and Button variants and sizes.
  */
 
-const globals = (readFileSync(fileURLToPath(new URL('../../app/globals.css', import.meta.url)), 'utf8') + readFileSync(fileURLToPath(new URL('../procedures/guided-preparation.css', import.meta.url)), 'utf8'))
+const globals = (readFileSync(fileURLToPath(new URL('../../app/globals.css', import.meta.url)), 'utf8') + readFileSync(fileURLToPath(new URL('../procedures/guided-preparation.css', import.meta.url)), 'utf8') + readFileSync(fileURLToPath(new URL('../procedures/writing-assistant.css', import.meta.url)), 'utf8'))
   // A class named only in a comment is not a rule.
   .replace(/\/\*[\s\S]*?\*\//g, '');
 

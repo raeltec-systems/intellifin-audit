@@ -13,7 +13,7 @@ import { DraftBuilder } from '../../../../src/procedures/DraftBuilder';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { templateLabel } from '../../../../src/procedures/labels';
 import { requireServerAction } from '../../../../src/server-session';
-import { reviewSectionAction, updateContextDraftAction, retryPlanDerivationAction, renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction, updateComplianceDraftAction, updateEvidenceDraftAction } from './actions';
+import { generateAuthoringSuggestionAction, acceptAuthoringSuggestionAction, rejectAuthoringSuggestionAction, reviewSectionAction, updateContextDraftAction, retryPlanDerivationAction, renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction, updateComplianceDraftAction, updateEvidenceDraftAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Builder · IntelliFin Audit',
@@ -102,6 +102,7 @@ export default async function BuilderPage({
           onSave={updatePopulationDraftAction}
           onSaveContext={updateContextDraftAction}
           onReview={reviewSectionAction}
+          onWriting={{ generate: generateAuthoringSuggestionAction, accept: acceptAuthoringSuggestionAction, reject: rejectAuthoringSuggestionAction }}
           onSaveTargets={updateTargetDraftAction}
           onSaveCompliance={updateComplianceDraftAction}
           onSaveEvidence={updateEvidenceDraftAction}

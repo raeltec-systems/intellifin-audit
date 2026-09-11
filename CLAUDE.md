@@ -2727,3 +2727,24 @@ panels; changing server markup first creates hydration mismatches and lost inter
 Populated upgrade fixtures must insert the columns of their historical generation, rather
 than call the current Drizzle repository against an older schema. Keep their frozen-input,
 authorship, immutability and compatibility assertions intact.
+
+
+## Bounded procedure writing assistance (Stories2.9–2.10)
+
+Writing assistance has a separate application port and dedicated server-only
+AUTHORING_OPENAI_API_KEY. It uses the installed OpenAI AI SDK Responses provider with
+model gpt-5.6-terra, store:false, low reasoning, no summary, no temperature, no tools,
+maxRetries:0 and a 30-second timeout. Plan-check and Run configuration remain independent.
+Reserve a request receipt under the Procedure lock before provider I/O, release the
+transaction during I/O, then persist a validated proposal. Retries reuse the same exact
+request. Acceptance uses the existing authorised update command in the receipt transaction;
+attribute even an identical-wording acceptance to the human. Audit payloads cannot contain
+provider objects: the receipt holds identity; immutable events hold only identity references,
+usage and hashes. Exercise the real audit validator in command fakes.
+
+Suggestions bind the saved authoring revision, section basis, context hash and actor.
+Any authored change conservatively stales pending suggestions; plan-worker status and
+section review alone do not. Unsaved fields and uncertain acceptance block review/submission;
+generation does not. Per-section sessions prevent late responses appearing in another editor.
+The explicit test-only OpenAI preload proves SDK/workflow behavior and must never ship in
+runtime images or be described as live-provider or semantic-faithfulness evidence.

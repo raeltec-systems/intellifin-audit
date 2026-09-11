@@ -9,6 +9,7 @@ import {
 } from '../db/audit-events.js';
 import type { Clock, UuidV7Generator } from '@intellifin/application';
 import type { Database } from '../db/client.js';
+import { DrizzleProcedureAuthoringStore } from './authoring-store.js';
 import { DrizzleProcedureWriter } from './procedure-repository.js';
 import { transactionDerivationQueue } from './derivation-queue.js';
 import { DrizzlePopulationSourceReader } from '../sources/binding-repository.js';
@@ -46,6 +47,7 @@ export class PostgresProceduresUnitOfWork implements AuditUnitOfWork<ProceduresU
       return work({
         auditEvents: createAuditEventWriter(transaction, this.clock, this.ids),
         procedures: new DrizzleProcedureWriter(transaction),
+        authoringRequests: new DrizzleProcedureAuthoringStore(transaction),
         derivationJobs: transactionDerivationQueue(transaction),
         populationSources: new DrizzlePopulationSourceReader(transaction),
         targetRegistrations: new DrizzleTargetSystemRegistrationReader(transaction),

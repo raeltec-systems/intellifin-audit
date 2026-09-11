@@ -5,6 +5,7 @@ import { CONTEXT_TEXT_LIMIT, draftContext, type DraftContextEdit } from '@intell
 import type { ProcedureVersionView, UpdateContextDraftResult } from '@intellifin/application';
 import type { ContextDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, BUILDER_CONTROL_NAME_EDITABLE_SENTENCE } from '../design/copy';
+import { WritingTools } from './WritingAssistant';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { useSection, useSectionSubmissionStatus } from './use-section';
@@ -51,6 +52,7 @@ export function TemplateContextForm({ draft, rowVersion, onSave }: {
       <textarea className="ls-input" id={`${id}-${key}`} value={section.value[key] ?? ''} maxLength={CONTEXT_TEXT_LIMIT} required={key === 'objective'} aria-describedby={`${id}-${key}-help`}
         onChange={event => section.edit({ ...section.current.current.value, [key]: key === 'objective' ? event.target.value : event.target.value === '' ? null : event.target.value })} />
       <p className="ls-caption" id={`${id}-${key}-help`}>{help}</p>
+      {key === 'objective' ? <WritingTools section={{ kind: 'objective' }} /> : null}
     </div>)}
     {result === null ? null : <Banner tone={result.ok ? 'success' : 'danger'} title={result.ok ? 'Saved. Context changes apply to this procedure only.' : result.reason} />}
     <Button type="submit" variant="primary" busy={busy} disabledReason={unknown ? UNKNOWN_SAVE_OUTCOME : undefined}>Save context</Button>

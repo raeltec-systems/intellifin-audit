@@ -77,3 +77,43 @@ product model is gpt-5.6-terra, independent of plan-check and audit-Run model co
   gates passed; browser failed obsolete Objective locators, corrected in the next checkpoint.
 - Story2.10 is implemented locally with synthetic command/SDK tests; publication and full
   integration/browser acceptance are in progress. No live provider test has been performed.
+
+
+## Story2.10 implementation and verification candidate
+
+- Correction checkpoint pushed: `f9b6962c6c0146f37b2293b82748187f1ce7d428`, tree
+  `a1586413ec1c1d907716d2c3a9e58c628705aec7`, matching locally checked `6499b51`.
+  Isolated typecheck and41 focused UI/style tests passed. Hosted CI34595023824 is running.
+- That CI exposed two remaining historical fixture errors: querying the new column before
+  its migration, and passing JSON text where postgres expects JSON values. Corrected with
+  a preceding-schema absence assertion and explicit sql.json values; original preservation
+  and immutable-definition assertions remain, including a post-upgrade mutation refusal.
+- Story2.10: separate bounded port, independent OpenAI configuration, durable request
+  reservation, minimised audit, human-attributed acceptance through existing draft commands,
+  visible comparisons, section-scoped UI state, exact uncertain retries and manual fallback.
+  Requests also bind the lifecycle decision history so submission/rejection cannot revive
+  a pre-submission suggestion. Migration49 stores bounded request receipts.
+- Local targeted checks:31 command cases,16 writing-state cases,4 installed-SDK transport
+  cases and7 Server Action trust-boundary cases passed. Workspace build passed. Drizzle
+  generation reports no schema drift. Browser collection lists the owner journey and3
+  assistance cases with a synthetic collection-only password (no browser execution).
+- `node scripts/verify-authoring-provider.mts` exited2 with explicit blocked status and
+  zero live calls: dedicated key absent. See guided-authoring-openai.md for secure setup
+  and the six-case human faithfulness review. No synthetic result is live-provider evidence.
+- Next: finish complete local gates on the fixed tree, publish the atomic writing commit,
+  complete hosted PostgreSQL/browser/accessibility gates, inspect the actual PNG captures,
+  and record exact source/CI identities in the final review report.
+
+
+## Complete local candidate gates
+
+- Source snapshot `b08b8cb098f58f7b96860e2e2a221508e4603833`: all4,087 units in203
+  files passed in the isolated verification directory, including all planted boundary tests.
+  `pnpm typecheck` passed; `pnpm boundaries` passed with590 modules. The sole prior unit
+  failure was an unnamed-role div carrying aria-label; changed it to the correct group role.
+- `pnpm build` passed and `pnpm db:generate` reported no schema changes. The actual installed
+  SDK also round-tripped the test-only HTTP preload successfully, explicitly synthetic.
+- The exact candidate is ready for the atomic authoring checkpoint and hosted checks.
+  Database and browser results remain required; local PostgreSQL/browser prerequisites
+  are unavailable. The CI focused journey runs first for useful failure feedback, followed
+  by the unchanged complete browser/accessibility command.

@@ -1982,3 +1982,15 @@ export const runObservationAbsence = pgTable('run_observation_absence', {
   check('run_observation_absence_expected', sql`jsonb_typeof(${t.expectedQueryKeys}) = 'array' AND jsonb_array_length(${t.expectedQueryKeys}) <= 64 AND octet_length(${t.expectedQueryKeys}::text) <= 4194304`),
   index('run_observation_absence_run').on(t.runId),
 ]);
+
+
+/** Durable writing proposals and request receipts, never executable definitions. */
+export const procedureAuthoringRequest = pgTable('procedure_authoring_request', {
+  requestId: uuid('request_id').primaryKey(),
+  versionId: uuid('version_id').notNull().references(() => procedureVersion.versionId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  record: jsonb('record').$type<import('@intellifin/application').AuthoringRequestRecord>().notNull(),
+}, table => [index('procedure_authoring_actor_created').on(table.actorId, table.createdAt),
+  check('procedure_authoring_record_shape', sql`jsonb_typeof(${table.record}) = 'object' AND coalesce(${table.record}->>'state' IN ('pending','ready','failed','accepted','rejected'), false)`),
+]);

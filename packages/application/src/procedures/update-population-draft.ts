@@ -6,6 +6,7 @@ import { PROCEDURE_AUTHOR_ACTION, PROCEDURE_DRAFT_CHANGED_EVENT, PROCEDURE_REFUS
 import type { ProcedureVersionRecord } from './ports.js';
 
 export type DraftPopulationEdit =
+  | { readonly section: 'scope-note'; readonly scope: unknown }
   | { readonly section: 'period-scope'; readonly period: unknown; readonly scope: unknown }
   | { readonly section: 'population-source'; readonly source: { readonly mode: 'retain' } | { readonly mode: 'bind'; readonly bindingId: string; readonly expectedDigest: string }; readonly inclusionRule: unknown; readonly zeroRecordPass: unknown; readonly allowVersionedDuplicates: unknown };
 export interface UpdatePopulationDraftInput {
@@ -24,7 +25,9 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
   const decision = await authorizeCommand({ roles: dependencies.roles, unitOfWork: dependencies.unitOfWork }, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
   if (!decision.allowed) return { ok: false, reason: decision.reason };
   const edit = input.edit;
-  if (edit.section === 'period-scope') {
+  if (edit.section === 'scope-note') {
+    if (!isScopeStatement(edit.scope)) return { ok: false, reason: POPULATION_DRAFT_MESSAGES.SCOPE };
+  } else if (edit.section === 'period-scope') {
     if (!isExplicitPeriod(edit.period)) return { ok: false, reason: POPULATION_DRAFT_MESSAGES.PERIOD };
     if (!isScopeStatement(edit.scope)) return { ok: false, reason: POPULATION_DRAFT_MESSAGES.SCOPE };
   } else if (edit.section === 'population-source') {
@@ -38,7 +41,10 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
       if (before.state !== 'DRAFT') throw new Refused(PROCEDURE_REFUSALS.NOT_A_DRAFT);
       if (procedureVersionRowVersion(before) !== input.expectedRowVersion) throw new Refused(PROCEDURE_REFUSALS.STALE_ROW);
       let after: ProcedureVersionRecord;
-      if (edit.section === 'period-scope') {
+      if (edit.section === 'scope-note') {
+        if (!isScopeStatement(edit.scope)) throw new Refused(POPULATION_DRAFT_MESSAGES.SCOPE);
+        after = { ...before, scope: edit.scope };
+      } else if (edit.section === 'period-scope') {
         // Narrow again at the domain boundary; the persisted text is verbatim.
         if (!isExplicitPeriod(edit.period) || !isScopeStatement(edit.scope)) throw new Refused(POPULATION_DRAFT_MESSAGES.PERIOD);
         after = { ...before, period: edit.period, scope: edit.scope };
@@ -61,7 +67,7 @@ export async function updatePopulationDraft(dependencies: ProcedureDependencies,
       after = await queuePlanDerivation(after, derivationJobs, input.session.userId);
       rowVersion = procedureVersionRowVersion(after);
       await procedures.updateVersion(after);
-      const values = (row: ProcedureVersionRecord): JsonValue => edit.section === 'period-scope'
+      const values = (row: ProcedureVersionRecord): JsonValue => edit.section !== 'population-source'
         ? { period: row.period as unknown as JsonValue, scope: row.scope }
         : { sourceSnapshot: row.sourceSnapshot as unknown as JsonValue, inclusionRule: row.inclusionRule as unknown as JsonValue, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates, populationBlockers: [...row.populationBlockers] };
       await auditEvents.append({ actor: { type: 'human', id: input.session.userId }, eventType: PROCEDURE_DRAFT_CHANGED_EVENT, source: 'web', outcome: 'success', sessionId: input.session.sessionId, correlationId: input.correlationId, aggregateId: input.procedureId, payload: { procedureId: input.procedureId, versionId: input.versionId, versionNumber: before.versionNumber, section: edit.section, prior: values(before), current: values(after) } });

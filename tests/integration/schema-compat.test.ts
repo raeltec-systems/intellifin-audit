@@ -86,6 +86,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // Story 2.1. Owned by the procedures module (AD-2); no other module reads or
       // writes either table.
       'procedure',
+      'procedure_authoring_request',
       'procedure_change',
       'procedure_configuration',
       'procedure_succession',
@@ -198,6 +199,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_result_review',
       ['revision', 'run_id'],
     ],
+    ['procedure_authoring_request', ['actor_id', 'created_at', 'record', 'request_id', 'version_id']],
   ])('has exactly the reviewed release columns on %s', async (table, columns) => {
     const rows = await sql<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns

@@ -143,6 +143,7 @@ export interface ProcedureRecord {
  * somebody has to remember.
  */
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
+  readonly authoringRequests?: import('./authoring-ports.js').ProcedureAuthoringStore;
   readonly authorizationRoles: RoleRepository;
   readonly notifications: NotificationWriter;
   readonly notificationRecipients: NotificationRecipientReader;

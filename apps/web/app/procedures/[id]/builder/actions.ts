@@ -485,3 +485,35 @@ export async function reviewSectionAction(fields: ReviewSectionFields): Promise<
     return outcome;
   } catch { return { ok: false, reason: UNAVAILABLE }; }
 }
+
+
+/** Authoring responses are suggestions only. Each action independently resolves the user. */
+export async function generateAuthoringSuggestionAction(fields: import('@intellifin/application').AuthoringDraftFields) {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false as const, reason: decision.reason };
+  const { isAuthoringDraftFields, generateAuthoringSuggestion } = await import('@intellifin/application');
+  if (!isAuthoringDraftFields(fields)) return { ok: false as const, reason: MALFORMED };
+  try {
+    return await generateAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+  } catch { throw new Error('The writing response could not be confirmed. Check the same request again or continue writing manually.'); }
+}
+export async function acceptAuthoringSuggestionAction(fields: import('@intellifin/application').AcceptAuthoringFields) {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false as const, reason: decision.reason };
+  const { isAcceptAuthoringFields, acceptAuthoringSuggestion } = await import('@intellifin/application');
+  if (!isAcceptAuthoringFields(fields)) return { ok: false as const, reason: MALFORMED };
+  try {
+    const result = await acceptAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+    if (result.ok) { revalidatePath(`/procedures/${fields.procedureId}/builder`); revalidatePath(`/procedures/${fields.procedureId}`); }
+    return result;
+  } catch { throw new Error(UNAVAILABLE); }
+}
+export async function rejectAuthoringSuggestionAction(fields: import('@intellifin/application').RejectAuthoringFields) {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false as const, reason: decision.reason };
+  const { isRejectAuthoringFields, rejectAuthoringSuggestion } = await import('@intellifin/application');
+  if (!isRejectAuthoringFields(fields)) return { ok: false as const, reason: MALFORMED };
+  try {
+    return await rejectAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+  } catch { return { ok: false as const, reason: 'The response could not be confirmed. Your saved procedure was not changed by rejecting this suggestion.' }; }
+}

@@ -421,8 +421,15 @@ jobs:
       - name: Install the Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Focused guided authoring and owner journey
+        run: pnpm exec playwright test tests/e2e/builder-steps.spec.ts tests/e2e/owner-walkthrough.spec.ts tests/e2e/writing-assistant.spec.ts --output=guided-test-results
+
       - name: End-to-end and accessibility suite
         run: pnpm test:e2e
+
+      - name: Retain selected synthetic authoring screenshots for remote review
+        if: always()
+        run: node scripts/report-guided-authoring-screenshots.mjs
 
       # Both, and `if: always()`: the HTML report explains a failure, and
       # `test-results/` holds the per-test error context and any trace.
@@ -433,6 +440,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            guided-test-results/
           retention-days: 7
           if-no-files-found: ignore
 

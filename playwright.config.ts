@@ -98,7 +98,7 @@ export default defineConfig({
             env: { NORTHSTAR_PORT: String(NORTHSTAR_PORT) },
           },
           {
-            command: `pnpm --filter @intellifin/web exec next dev --port ${PORT}`,
+            command: `pnpm --filter @intellifin/web exec node --import ../../tests/fixtures/openai-authoring-preload.mjs node_modules/next/dist/bin/next dev --port ${PORT}`,
             url: `${baseURL}/api/health`,
             reuseExistingServer: !process.env['CI'],
             timeout: 180_000,
@@ -106,6 +106,7 @@ export default defineConfig({
             stderr: 'pipe',
             env: {
               SERVICE_NAME: 'web',
+              AUTHORING_OPENAI_API_KEY: 'isolated-synthetic-authoring-fixture',
               BETTER_AUTH_URL: baseURL,
               /**
                * What this deployment has been told about the credential references the

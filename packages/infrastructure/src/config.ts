@@ -241,6 +241,8 @@ export const configSchema = z
      * of the build (see `db/compat.ts`), not of the environment.
      */
     NODE_ENV: z.string().optional(),
+    /** Writing assistance is independently configured and optional for manual authoring. */
+    AUTHORING_OPENAI_API_KEY: optionalNonEmpty(10000),
     MODEL_PROVIDER: z.preprocess((value) => value === '' ? undefined : value, z.enum(['anthropic', 'openai']).optional()),
     MODEL_ID: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(1).max(200).optional()),
     MODEL_PROMPT_VERSION: z.preprocess((value) => value === '' ? undefined : value, z.literal(SUPPORTED_MODEL_PROMPT_VERSION).default(SUPPORTED_MODEL_PROMPT_VERSION)),
@@ -448,6 +450,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     EXCEPTION_FINGERPRINT_KEY: env['EXCEPTION_FINGERPRINT_KEY'],
     EXCEPTION_FINGERPRINT_KEY_ID: env['EXCEPTION_FINGERPRINT_KEY_ID'],
     NODE_ENV: env['NODE_ENV'],
+    AUTHORING_OPENAI_API_KEY: env['AUTHORING_OPENAI_API_KEY'],
     MODEL_PROVIDER: env['MODEL_PROVIDER'],
     MODEL_ID: env['MODEL_ID'],
     MODEL_PROMPT_VERSION: env['MODEL_PROMPT_VERSION'],
