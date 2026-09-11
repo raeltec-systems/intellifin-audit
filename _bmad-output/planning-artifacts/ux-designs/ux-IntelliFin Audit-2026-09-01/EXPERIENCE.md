@@ -342,3 +342,25 @@ This supersedes their former read-only Builder treatment. Show the source and lo
 The control name remains at the end. Missing context says it was not supplied; a reference
 is distinct from the structured assessment criterion. Manager comparison includes saved
 context; existing approved versions and their missing values are preserved.
+
+
+### Owner-adopted Story 2.9 guided preparation (2026-09-11)
+
+Guided preparation is editable below 900px, using a stacked outline/editor/help layout.
+This supersedes the Builder-only desktop floor above; Live View retains its own floor.
+The six preparation groups map to existing version fields. Jumping between groups keeps
+unsaved editors mounted. Review and submission contains the existing compiler preview
+and full assignment submission, without adding another lifecycle state.
+
+Each section acknowledgement identifies a human, timestamp, saved content digest and
+monotonic section revision. Context changes conservatively invalidate scope, evidence,
+instructions and assessment; scope/source/target changes invalidate evidence, instructions
+and assessment; schedule changes invalidate scope and its dependants. Evidence, assessment
+and instruction changes conservatively invalidate all three.
+Frequency depends on schedule and source kind. Other acknowledgements survive safely.
+A reversal never revives an invalidated review. Unknown legacy reviews remain absent.
+
+Section acknowledgements support preparation; they do not replace full-version auditor
+assent at submission. Existing required-field and plan-readiness gates still apply. A
+section explicitly marked Needs clarification blocks submission until explicitly resolved.
+No mandatory six-click ceremony is added to historical or experienced-author submission.

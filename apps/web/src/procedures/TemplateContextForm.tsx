@@ -4,6 +4,7 @@ import { useId, useRef, useState } from 'react';
 import { CONTEXT_TEXT_LIMIT, draftContext, type DraftContextEdit } from '@intellifin/domain';
 import type { ProcedureVersionView, UpdateContextDraftResult } from '@intellifin/application';
 import type { ContextDraftFields } from '../../app/procedures/[id]/builder/actions';
+import { BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, BUILDER_CONTROL_NAME_EDITABLE_SENTENCE } from '../design/copy';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { useSection, useSectionSubmissionStatus } from './use-section';
@@ -41,6 +42,8 @@ export function TemplateContextForm({ draft, rowVersion, onSave }: {
     finally { saving.current = false; setBusy(false); }
   }
   return <form method="post" className="ls-stack" onSubmit={event => { event.preventDefault(); void save(); }}>
+    <p className="ls-caption">{BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE}</p>
+    <p className="ls-caption">{BUILDER_CONTROL_NAME_EDITABLE_SENTENCE}</p>
     <SectionConflict dirty={section.status().dirty} conflict={section.conflict} name="Risk, control and objective" reset={() => section.reset()} />
     <UnknownSaveOutcome visible={unknown} />
     {fields.map(([key, label, help]) => <div className="ls-dialog__field ls-template-fact" key={key}>

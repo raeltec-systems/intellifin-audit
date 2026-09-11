@@ -4,6 +4,7 @@ import { planAuthoringDigest, planAuthoringInputs } from './plan-state.js';
 
 /** Reads the saved signal; no compiler or model is invoked here. */
 export function submissionUnavailableReason(row: ProcedureVersionRecord): string | null {
+  if (row.sectionPreparation && Object.values(row.sectionPreparation.sections).some(s => s.needsClarification)) return 'Resolve sections marked Needs clarification before submitting.';
   if (row.state !== 'DRAFT') return 'Only a Draft can be submitted.';
   const completeness = completenessReason(planAuthoringInputs(row));
   if (completeness) return completeness;

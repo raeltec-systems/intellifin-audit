@@ -337,6 +337,13 @@
       "when": 1789053633234,
       "tag": "0047_withdraw_an_open_wait",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789123514329,
+      "tag": "0048_condemned_terrax",
+      "breakpoints": true
     }
   ]
 }

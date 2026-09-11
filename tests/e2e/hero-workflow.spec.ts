@@ -251,7 +251,7 @@ test.describe('the hero workflow', () => {
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.')).toBeVisible();
     await expect(save).toBeFocused();
     await expect(page.getByText('Compliance Rule has unsaved changes.')).toHaveCount(0);
-    await shot(page, 'compliance-saved-directly', page.locator('[data-step="Compliance Rule conditions"]'));
+    await shot(page, 'compliance-saved-directly', page.locator('[data-preparation-panel="assessment"]'));
 
     // The saved rule survives a reload, in the author's own spelling and casing.
     await page.reload();
@@ -364,7 +364,7 @@ test.describe('the hero workflow', () => {
     await expect(page.locator('[data-readiness-item="disablement-capture-missing"]')).toHaveCount(0);
     // The source gap is NOT cleared by declaring a capture: they are two findings.
     await expect(page.locator('[data-readiness-item="termination-time-precision-missing"]')).toHaveCount(1);
-    await shot(page, 'timing-capture-declared', page.locator('[data-step="Evidence Requirements"]'));
+    await shot(page, 'timing-capture-declared', page.locator('[data-preparation-panel="evidence"]'));
 
     // Withdrawing the choice clears the finding, which is the other half of "readiness
     // shows and clears". The account-status rule is still exactly as it was authored.

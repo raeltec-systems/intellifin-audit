@@ -8,6 +8,7 @@ export class UnverifiablePreviousVersion extends Error {
 }
 
 export interface VersionReviewFields {
+  readonly sectionPreparation?: import('@intellifin/domain').SectionPreparation | null;
   readonly lifecycle?: import('@intellifin/domain').VersionLifecycle | null;
   readonly platformOrigin?: import('@intellifin/domain').PlatformDraftOrigin | null;
   readonly configurationRevision?: string | null;

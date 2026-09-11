@@ -9,6 +9,7 @@ import {
   retryPlanDerivation,
   updatePopulationDraft,
   updateContextDraft,
+  reviewSection,
   type UpdateContextDraftResult,
   updateTargetDraft,
   updateComplianceDraft,
@@ -21,7 +22,7 @@ import {
   type UpdateEvidenceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { isDraftContextEdit, type DraftContextEdit, COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
+import { isPreparationSectionId, type PreparationSectionId, isDraftContextEdit, type DraftContextEdit, COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -462,4 +463,25 @@ export async function updateContextDraftAction(fields: ContextDraftFields): Prom
     // Driver/provider error text can contain authored content. Return only a closed message.
     return { ok: false, reason: UNAVAILABLE };
   }
+}
+
+export interface ReviewSectionFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly section: PreparationSectionId;
+  readonly decision: 'review' | 'clarify' | 'draft';
+}
+export async function reviewSectionAction(fields: ReviewSectionFields): Promise<{ ok: true; rowVersion: string } | { ok: false; reason: string }> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!fields || typeof fields !== 'object' || !isUuid(fields.procedureId) || !isUuid(fields.versionId)
+    || typeof fields.expectedRowVersion !== 'string' || !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion)
+    || !isPreparationSectionId(fields.section) || !['review', 'clarify', 'draft'].includes(fields.decision)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await reviewSection({ ...await dependencies(), clock: { now: () => new Date() } }, { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) revalidatePath(`/procedures/${fields.procedureId}/builder`);
+    return outcome;
+  } catch { return { ok: false, reason: UNAVAILABLE }; }
 }

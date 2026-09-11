@@ -20,12 +20,16 @@ export const BUILDER_STEPS = DRAFT_SECTION_HEADINGS.filter(
  * one that is already open would close it, so the state is read first. The element is
  * native, so this works before React hydrates as well as after.
  */
+export const PREPARATION_STEP_FOR_HEADING: Readonly<Record<string, string>> = {
+  'Risk': 'context', 'Control': 'context', 'Objective': 'context', 'Criterion reference': 'context',
+  'Period and scope': 'scope', 'Population Source binding': 'evidence', 'Target System selection': 'evidence',
+  'Audit Instructions': 'instructions', 'Compliance Rule conditions': 'assessment', 'Evidence Requirements': 'evidence', 'Schedule': 'frequency',
+};
 export async function openStep(page: Page | Locator, heading: string): Promise<void> {
-  const step = page.locator(`[data-step="${heading}"]`);
-  await step.waitFor({ state: 'attached' });
-  if (await step.evaluate((node) => (node as HTMLDetailsElement).open)) return;
-  await step.locator('summary.ls-step__summary').click();
-  await expect(step).toHaveJSProperty('open', true);
+  if (!Object.hasOwn(PREPARATION_STEP_FOR_HEADING, heading)) throw new Error('Unknown preparation section: ' + heading);
+  const section = PREPARATION_STEP_FOR_HEADING[heading]!;
+  await page.locator(`[data-preparation-nav="${section}"]`).click();
+  await expect(page.locator(`[data-preparation-panel="${section}"]`)).toBeVisible();
 }
 
 /**
@@ -53,7 +57,7 @@ export async function openStep(page: Page | Locator, heading: string): Promise<v
  */
 const BUILDER_DISCLOSURES = [
   'details.ls-step', // a step
-  '.ls-step details', // a "More options" or Template-default fold inside one
+  '.ls-guided__editor details', // a "More options" or Template-default fold inside one
   'details[data-plan-detail]', // the Builder's own compiled-plan fold
 ].join(', ');
 
@@ -62,6 +66,11 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
   // second tab opened from this context, and a page-level script would not reach it.
   await page.context().addInitScript((selector: string) => {
     const open = (): void => {
+      // Editor-contract tests deliberately expose each mounted panel. The dedicated
+      // guided journey and owner walkthrough use real navigation WITHOUT this helper.
+      for (const panel of document.querySelectorAll<HTMLElement>('[data-preparation-panel]')) {
+        if (panel.hidden) panel.hidden = false;
+      }
       for (const step of document.querySelectorAll<HTMLDetailsElement>(selector)) {
         if (!step.open) step.open = true;
       }
@@ -71,6 +80,8 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
       new MutationObserver(open).observe(document.documentElement, {
         childList: true,
         subtree: true,
+        attributes: true,
+        attributeFilter: ['hidden'],
       });
     };
     if (document.readyState === 'loading') {
@@ -89,6 +100,7 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
  * Builder keeps them one fold down.
  */
 export async function openPlanDetail(page: Page | Locator): Promise<void> {
+  await page.locator('[data-preparation-nav="review"]').click();
   const detail = page.locator('[data-plan-detail]');
   await detail.waitFor({ state: 'attached' });
   if (await detail.evaluate((node) => (node as HTMLDetailsElement).open)) return;

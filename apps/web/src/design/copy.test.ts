@@ -275,19 +275,21 @@ describe('the Builder read-only sentences', () => {
   });
 });
 
-describe('the Builder desktop-only floor', () => {
+describe('the historical Builder desktop-only floor', () => {
   it("is EXPERIENCE.md's responsive-floor sentence, character for character", () => {
     // Quoted verbatim from the "< 900px" row, read off disk — not compared with a copy of
     // itself.
     expect(experience).toContain(`"${BUILDER_DESKTOP_ONLY_SENTENCE}"`);
   });
 
-  it('is rendered from this module by the Builder page, not retyped', () => {
+  it('is superseded by the adopted responsive guided Builder', () => {
     const source = readFileSync(
       fileURLToPath(new URL('../../app/procedures/[id]/builder/page.tsx', import.meta.url)),
       'utf8',
     );
-    expect(source).toContain('BUILDER_DESKTOP_ONLY_SENTENCE');
+    expect(source).not.toContain('BUILDER_DESKTOP_ONLY_SENTENCE');
+    expect(source).toContain('ls-guided-authoring');
+    expect(experience).toContain('Guided preparation is editable below 900px');
     expect(source).not.toContain('Open on a desktop browser to author');
   });
 });

@@ -1,5 +1,5 @@
-import { updateContextDraft, planAuthoringInputs } from '@intellifin/application';
-import { draftContext, isConsistentVersionReview } from '@intellifin/domain';
+import { reviewSection, updateContextDraft, planAuthoringInputs } from '@intellifin/application';
+import { sectionReview, draftContext, isConsistentVersionReview } from '@intellifin/domain';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { authoredEvidenceInput, deriveExecutablePlan } from '@intellifin/domain';
 import { derivePlan, updateEvidenceDraft, retryPlanDerivation, initialPlanDerivation, planAuthoringDigest, procedureVersionRowVersion, transitionVersion, deliverNotifications, type ProcedureVersionRecord, type ProceduresUnitOfWorkContext, type AuditUnitOfWork } from '@intellifin/application';
@@ -71,6 +71,22 @@ describe.skipIf(!url)('transactional Procedure Version decisions', () => {
     expect(isConsistentVersionReview(approved.frozenReview!, row.versionId)).toBe(true);
     expect(draftContext(approved.sections).risk).toBeNull();
     expect(draftContext(approved.sections).criterionReference).toBeNull();
+  });
+  it('persists content reviews separately, preserves them across compilation, and rejects edits after submission', async () => {
+    let row = await seed();
+    const command = (decision: 'review' | 'clarify' | 'draft') => reviewSection({ roles: new DrizzleRoleRepository(db), unitOfWork: uow, ids, clock: { now: () => new Date() } }, { session: { userId: author, sessionId: author }, correlationId: ids.next(), procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), section: 'context', decision });
+    const originalDigest = row.planInputDigest;
+    expect(await command('review')).toMatchObject({ ok: true });
+    row = (await repository.findVersion(row.versionId))!;
+    const ack = sectionReview(row, 'context');
+    expect(ack).toMatchObject({ actorId: author });
+    expect(row.planInputDigest).toBe(originalDigest);
+    expect(await act(row, 'submit', author)).toMatchObject({ ok: true });
+    row = (await repository.findVersion(row.versionId))!;
+    expect(sectionReview(row, 'context')).toEqual(ack);
+    expect(await command('draft')).toMatchObject({ ok: false, reason: 'Only a Draft can be edited.' });
+    expect(await act(row, 'approve', manager)).toMatchObject({ ok: true });
+    await expect(sql`UPDATE procedure_version SET section_preparation = NULL WHERE version_id = ${row.versionId}`).rejects.toThrow();
   });
   it('writes submission to every manager and worker delivery is private and idempotent', async () => {
     const row = await seed(); expect(await act(row,'submit',author)).toMatchObject({ ok: true });

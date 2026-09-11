@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-import { BUILDER_CONTROL_NAME_EDITABLE_SENTENCE, BUILDER_DESKTOP_ONLY_SENTENCE, BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
+import { BUILDER_CONTROL_NAME_EDITABLE_SENTENCE, BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
 import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
 import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
@@ -105,7 +105,7 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E period conflict ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Set this up' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Prepare an audit procedure' })).toBeVisible();
     await expect(async () => {
       await page.getByLabel('Scope statement').focus();
       await page.getByLabel('Scope statement').blur();
@@ -249,9 +249,9 @@ test.describe('as an Auditor', () => {
       await expect(sections.first()).toBeVisible();
       await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE).first()).toBeVisible();
       // Every step states what is set in it and says whether it still needs an answer.
-      await expect(page.locator('[data-builder-progress]')).toBeVisible();
-      for (const step of BUILDER_STEPS) {
-        await expect(page.locator(`[data-step="${step}"]`)).toHaveCount(1);
+      await expect(page.locator('[data-preparation-progress]')).toBeVisible();
+      for (const step of ['context', 'scope', 'evidence', 'instructions', 'assessment', 'frequency', 'review']) {
+        await expect(page.locator(`[data-preparation-panel="${step}"]`)).toHaveCount(1);
       }
 
       await expect(page.getByLabel('Period start')).toBeVisible();
@@ -497,8 +497,7 @@ test.describe('as an Auditor', () => {
     await scan(page);
     await testInfo.attach('compliance-editor-desktop', { body: await page.screenshot({ fullPage: false }), contentType: 'image/png' });
     await page.setViewportSize({ width: 899, height: 900 });
-    await expect(page.getByText(BUILDER_DESKTOP_ONLY_SENTENCE)).toBeVisible();
-    await expect(c1Text).toBeHidden();
+    await expect(c1Text).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 900 });
     await expect(c1Text).toBeVisible();
     expect(pageErrors).toEqual([]);
@@ -900,8 +899,7 @@ test.describe('as an Auditor', () => {
     );
     await scan(page);
     await page.setViewportSize({ width: 899, height: 900 });
-    await expect(page.getByText(BUILDER_DESKTOP_ONLY_SENTENCE)).toBeVisible();
-    await expect(instruction).toBeHidden();
+    await expect(instruction).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save Target Systems', exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 900, height: 900 });
     await expect(instruction).toBeVisible();

@@ -1,3 +1,16 @@
+## Guided preparation state (2026-09-11)
+
+Story 2.9 stores nullable `section_preparation` metadata separately from compiler inputs.
+Only an explicit authorised acknowledgement creates Reviewed by auditor. Every content
+save uses `queuePlanDerivation`, which advances authoring revision and invalidates review
+against an explicit conservative section dependency projection. Plan-worker changes do
+not invalidate review; content reversals cannot revive it. New versions reset reviews.
+Historical NULL metadata stays unknown. Six section reviews guide preparation; full-version
+submission remains auditor assent and retains all existing readiness gates. Explicit
+Needs clarification blocks submission. Guided preparation supersedes only the Builder's
+old 900px authoring floor. Narrow editor-contract browser tests expose all mounted panels;
+the guided and owner journeys retain real navigation and accessibility checks.
+
 ## 2026-09-11 — Structured Template context preserves historical definitions
 
 Story 2.15 appends Risk and Criterion reference to new section arrays while keeping the

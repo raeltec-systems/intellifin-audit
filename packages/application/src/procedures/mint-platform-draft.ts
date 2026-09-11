@@ -13,7 +13,7 @@ export async function copyActiveDraft(context: ProceduresUnitOfWorkContext, ids:
   const versionId = ids.next();
   let draft: ProcedureVersionRecord = { ...before, ...changes, ...initialPlanDerivation(changes.derivationModel === undefined ? before.derivationModel : changes.derivationModel),
     versionId, versionNumber: await context.procedures.maxVersionNumber(before.procedureId) + 1, state: 'DRAFT', lifecycle: null,
-    submittedReview: null, frozenReview: null, decisions: [], platformOrigin: origin,
+    sectionPreparation: null, submittedReview: null, frozenReview: null, decisions: [], platformOrigin: origin,
     authorship: { createdBy: authorId ? { type: 'human', id: authorId } : { type: 'platform', id: 'configuration-change' },
       responsibleAuthorId: authorId ?? before.authorship.responsibleAuthorId, humanAuthorIds: authorId ? [authorId] : [] } };
   draft = await queuePlanDerivation(draft, context.derivationJobs);

@@ -39,3 +39,22 @@ Commit identities and hosted/database/browser results are added at subsequent ch
 Stories 2.11–2.14 remain subsequent work. Live OpenAI authoring is not yet tested. Installed
 SDK versions: ai 7.0.89, @ai-sdk/openai 4.0.58, @ai-sdk/anthropic 4.0.47. The requested
 product model is gpt-5.6-terra, independent of plan-check and audit-Run model configuration.
+
+## Pushed first checkpoint and Story 2.9 candidate
+
+- Published context commit `65c1615a7bda06b92f123ee5330b37f292431f44` and CI-base
+  commit `22da7d0f27b07e72aef5304c0df78dfe03db66ea` in draft PR #30.
+- CLI Git had no push credentials. The authenticated GitHub connector published equivalent
+  atomic commits; both resulting tree SHAs were checked against the locally tested trees.
+  Local original commits remain preserved under the local-first-checkpoint branch.
+- CI run 34590523241: first checkpoint typecheck/unit/boundaries, real PostgreSQL18
+  migrations/integration, container build/startup checks passed. Browser jobs pending.
+- Story 2.9 implemented: responsive outline, separate durable review metadata, explicit
+  clarification, saved revision/actor acknowledgement, conservative invalidation, no
+  inherited reviews on new versions. Migration48 adds nullable metadata without backfill.
+- Local candidate: typecheck and boundaries pass. 4,027/4,028 units pass; the remaining
+  planted-boundary test fails because workspace synchronization creates a disappearing
+  .rsync-tmp file. Rechecking the same tests outside the synchronized directory.
+- Real populated47 upgrade test added; runtime DB/browser verification goes through CI.
+- No authoring credentials present (AUTHORING_OPENAI_API_KEY / OPENAI_API_KEY / MODEL_API_KEY
+  unset, no local env files). Live authoring verification remains blocked.

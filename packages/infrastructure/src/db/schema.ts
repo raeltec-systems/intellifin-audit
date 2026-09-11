@@ -1,5 +1,5 @@
 import type { PlanDerivationFields, AgentModelIdentity, AgentModelResponse, EscalationOption, AgentWorkCheckpoint } from '@intellifin/application';
-import type { VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
+import type { SectionPreparation, VersionAuthorship, VersionDecisionRecord, FrozenVersionReview, SubmittedVersionReview } from '@intellifin/domain';
 import { sql } from 'drizzle-orm';
 import {
   primaryKey,
@@ -661,6 +661,7 @@ export const procedureVersion = pgTable(
     decisions: jsonb('decisions').$type<readonly VersionDecisionRecord[]>().notNull().default([]),
     frozenReview: jsonb('frozen_review').$type<FrozenVersionReview>(),
     submittedReview: jsonb('submitted_review').$type<SubmittedVersionReview>(),
+    sectionPreparation: jsonb('section_preparation').$type<SectionPreparation>(),
     lifecycle: jsonb('lifecycle').$type<import('@intellifin/domain').VersionLifecycle>(),
     platformOrigin: jsonb('platform_origin').$type<import('@intellifin/domain').PlatformDraftOrigin>(),
     configurationRevision: text('configuration_revision'),
@@ -709,6 +710,7 @@ export const procedureVersion = pgTable(
     check('procedure_version_plan_status', sql`${table.planStatus} IN ('pending','succeeded','failed')`),
     check('procedure_version_plan_failure', sql`${table.planFailureReason} IS NULL OR length(${table.planFailureReason}) BETWEEN 1 AND 1000`),
     check('procedure_version_plan_attempts', sql`coalesce(jsonb_typeof(${table.planAttempts}) = 'array', false)`),
+    check('procedure_version_preparation_shape', sql`${table.sectionPreparation} IS NULL OR coalesce(jsonb_typeof(${table.sectionPreparation}) = 'object' AND ${table.sectionPreparation}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.sectionPreparation}->'revision') = 'number' AND jsonb_typeof(${table.sectionPreparation}->'sections') = 'object', false)`),
     check('procedure_version_authorship_shape', sql`${table.authorship} IS NULL OR coalesce(jsonb_typeof(${table.authorship}) = 'object' AND jsonb_typeof(${table.authorship}->'createdBy') = 'object' AND ${table.authorship}->'createdBy'->>'type' IN ('human','platform') AND jsonb_typeof(${table.authorship}->'createdBy'->'id') = 'string' AND jsonb_typeof(${table.authorship}->'responsibleAuthorId') = 'string' AND jsonb_typeof(${table.authorship}->'humanAuthorIds') = 'array', false)`),
     check('procedure_version_decisions_shape', sql`coalesce(jsonb_typeof(${table.decisions}) = 'array', false)`),
     check('procedure_version_submitted_review_shape', sql`${table.submittedReview} IS NULL OR coalesce(jsonb_typeof(${table.submittedReview}) = 'object' AND ${table.submittedReview}->'schemaVersion' = '1'::jsonb AND jsonb_typeof(${table.submittedReview}->'definition') = 'object' AND jsonb_typeof(${table.submittedReview}->'diff') = 'array', false)`),

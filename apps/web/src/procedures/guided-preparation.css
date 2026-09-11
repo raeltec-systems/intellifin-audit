@@ -1,0 +1,278 @@
+.ls-guided-authoring { min-width: 0; }
+/* The preparation outline shares the Ledger Signal palette and form controls. */
+.ls-guided {
+  min-width: 0;
+}
+
+.ls-guided__intro {
+  gap: var(--spacing-2);
+}
+
+.ls-guided__layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--spacing-sidebar)) minmax(0, 1fr) minmax(0, var(--spacing-sidebar));
+  align-items: start;
+  gap: var(--spacing-4);
+}
+
+.ls-guided__outline {
+  min-width: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-lg);
+  background: var(--color-surface-card);
+  overflow: hidden;
+}
+
+.ls-guided__outline-title {
+  padding: var(--spacing-4);
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+.ls-guided__steps {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  padding: var(--spacing-2);
+  margin: 0;
+  border-top: 1px solid var(--color-border-default);
+  gap: var(--spacing-1);
+}
+
+.ls-guided__step {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  padding: var(--spacing-3) var(--spacing-2);
+  gap: var(--spacing-2);
+  border: 1px solid transparent;
+  border-radius: var(--rounded-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ls-guided__step:hover {
+  background: var(--color-surface-sunken);
+}
+
+.ls-guided__step[aria-current='step'] {
+  border-color: var(--color-border-selected);
+  background: var(--color-surface-selected);
+}
+
+.ls-guided__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--spacing-5);
+  height: var(--spacing-5);
+  border-radius: var(--rounded-full);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  font-size: var(--type-micro-font-size);
+  line-height: var(--type-micro-line-height);
+  font-weight: var(--type-micro-font-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+.ls-guided__step-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+}
+
+.ls-guided__step-title {
+  font-size: var(--type-row-title-font-size);
+  line-height: var(--type-row-title-line-height);
+  font-weight: var(--type-row-title-font-weight);
+  overflow-wrap: anywhere;
+}
+
+.ls-guided__status {
+  display: inline-block;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--spacing-1) var(--spacing-2);
+  border: 1px solid var(--color-neutral-border);
+  border-radius: var(--rounded-sm);
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  font-size: var(--type-micro-font-size);
+  line-height: var(--type-micro-line-height);
+  font-weight: var(--type-micro-font-weight);
+}
+
+.ls-guided__status--not-started {
+  background: var(--color-neutral-bg);
+  border-color: var(--color-neutral-border);
+  color: var(--color-neutral-text);
+}
+
+.ls-guided__status--drafting {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.ls-guided__status--needs-clarification {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.ls-guided__status--reviewed {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.ls-guided__work,
+.ls-guided__panel,
+.ls-guided__editor,
+.ls-guided__help {
+  min-width: 0;
+}
+
+/* ls-stack sets display:flex, so explicitly preserve native hidden semantics. */
+.ls-guided__panel[hidden] {
+  display: none;
+}
+
+.ls-guided__panel-heading {
+  gap: var(--spacing-2);
+  padding-bottom: var(--spacing-4);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.ls-guided__editor {
+  overflow-wrap: anywhere;
+}
+
+.ls-guided__editor .ls-dialog__field label {
+  color: var(--color-text-primary);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+.ls-guided__acceptance {
+  padding-top: var(--spacing-4);
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-guided__review-record {
+  gap: var(--spacing-2);
+}
+
+.ls-guided__review-facts {
+  margin: 0;
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.ls-guided__review-facts dt {
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+.ls-guided__review-facts dd {
+  margin: var(--spacing-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ls-guided__review-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.ls-guided__review-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) 0;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.ls-guided__review-link {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-link);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: var(--spacing-1);
+  padding: var(--spacing-1) 0;
+  cursor: pointer;
+}
+
+.ls-guided__help-disclosure {
+  padding: var(--spacing-3) var(--spacing-4);
+}
+
+.ls-guided__help-title {
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+.ls-guided__help-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding-left: var(--spacing-4);
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-sm-relaxed-font-size);
+  line-height: var(--type-body-sm-relaxed-line-height);
+}
+
+/* Leave the editing column room for the existing forms at laptop widths. */
+@media (max-width: 1279px) {
+  .ls-guided__layout {
+    grid-template-columns: minmax(0, var(--spacing-sidebar)) minmax(0, 1fr);
+  }
+
+  .ls-guided__help {
+    grid-column: 2;
+  }
+}
+
+/* Preparation remains editable on small screens; outline, editor and help stack. */
+@media (max-width: 899px) {
+  .ls-guided__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-guided__steps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ls-guided__help {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 479px) {
+  .ls-guided__steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-guided__panel {
+    padding: var(--spacing-4);
+  }
+
+  .ls-guided__acceptance .ls-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
