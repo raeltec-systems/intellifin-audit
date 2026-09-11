@@ -258,7 +258,7 @@ const STALE = 'That procedure changed since this page was loaded. Reload the pag
  * queued attempt writes. Dedicated concurrency specs still force those races. */
 async function waitForPlanAttempt(page: Page): Promise<void> {
   await openPlanDetail(page);
-  await expect(page.getByTestId('executable-plan-preview').getByRole('status'))
+  await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role="status"]'))
     .toContainText(/Re-derived|Cannot derive:/, { timeout: 120_000 });
 }
 
