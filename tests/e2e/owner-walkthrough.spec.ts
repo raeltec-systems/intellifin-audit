@@ -15,7 +15,7 @@ import {
   READ_ONLY_CREDENTIAL,
 } from './credentials';
 import { NORTHSTAR_BASE_URL } from './northstar';
-import { openStep, openPlanDetail } from './builder';
+import { attachAuthoringScreenshot, openStep, openPlanDetail } from './builder';
 
 /**
  * The journey a person actually walks: create a Procedure, get it approved, run it, read
@@ -384,7 +384,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   await writing.getByRole('button', { name: 'Edit', exact: true }).click();
   await writing.getByLabel('Edit proposed replacement', { exact: true }).fill(ACCEPTED_OBJECTIVE);
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(templateObjective);
-  await testInfo.attach('owner-objective-proposal-before-acceptance', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'owner-objective-proposal-before-acceptance');
   await writing.getByRole('button', { name: 'Use this draft', exact: true }).click();
   await expect(writing.getByText('Your draft is saved. Review the section, then mark it reviewed when you are satisfied.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(ACCEPTED_OBJECTIVE);
@@ -442,7 +442,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   await openPlanDetail(page);
   await expect(page.getByLabel('Saved procedure context')).toContainText(ACCEPTED_OBJECTIVE);
   await expect(page.getByLabel('Saved procedure context')).toContainText(SCOPE);
-  await testInfo.attach('owner-auditor-full-procedure-review', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'owner-auditor-full-procedure-review');
   await executionIsRefused(page, 'the fully reviewed Draft before submission');
 
   /* ----------------------------------------------------------- 7. submit ---- */
@@ -469,7 +469,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
     await expect(manager.getByText(ACCEPTED_OBJECTIVE, { exact: true }).first()).toBeVisible();
     await manager.getByRole('button', { name: 'Reject', exact: true }).click();
     await manager.getByLabel('Rationale', { exact: true }).fill(MANAGER_CHANGES);
-    await testInfo.attach('owner-manager-requesting-changes', { body: await manager.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await attachAuthoringScreenshot(manager, testInfo, 'owner-manager-requesting-changes');
     await manager.getByRole('dialog').getByRole('button', { name: 'Reject', exact: true }).click();
     await expect(manager.getByText('Rejected', { exact: true }).first()).toBeVisible();
     await expect(manager.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
@@ -499,7 +499,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
     await manager.goto(reviewUrl);
     await expect(manager.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
     await expect(manager.getByText(REVISED_OBJECTIVE, { exact: true }).first()).toBeVisible();
-    await testInfo.attach('owner-manager-revised-procedure-review', { body: await manager.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await attachAuthoringScreenshot(manager, testInfo, 'owner-manager-revised-procedure-review');
     await confirmed(manager, 'Approve');
     await expect(manager.getByText('Active', { exact: true }).first()).toBeVisible();
   } finally {

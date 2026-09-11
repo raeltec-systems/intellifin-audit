@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
-import { openStep, openPlanDetail } from './builder';
+import { attachAuthoringScreenshot, openStep, openPlanDetail } from './builder';
 
 /**
  * The Builder as an auditor meets it: a short list of questions, not nine open forms.
@@ -83,7 +83,7 @@ test('guided preparation preserves edits, records saved review and stays keyboar
   await expect(page.getByRole('button', { name: 'Submit for approval', exact: true })).toHaveAttribute('aria-disabled', 'true');
 
   await openStep(page, 'Risk');
-  await testInfo.attach('guided-preparation-desktop', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'guided-preparation-desktop');
   for (const width of [1440, 899, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     await expect(page.getByLabel('Objective', { exact: true })).toBeVisible();
@@ -91,5 +91,5 @@ test('guided preparation preserves edits, records saved review and stays keyboar
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
   }
-  await testInfo.attach('guided-preparation-mobile', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'guided-preparation-mobile');
 });

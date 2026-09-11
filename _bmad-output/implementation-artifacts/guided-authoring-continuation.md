@@ -150,3 +150,16 @@ product model is gpt-5.6-terra, independent of plan-check and audit-Run model co
 - Credential/length corrections passed60 focused unit tests and the pinned typecheck.
   Guided hydration passed24 scoped Guided/Evidence tests. Final hosted verification and
   inspection of the actual screenshot artifacts remain required before handoff.
+
+## Correction checkpoint and screenshot retention
+
+- Credential/limit correction pushed as `fe9b991ff55c55c3270da522e27587dedadd7720`;
+  hydration/browser correction pushed as `e7e786e582b9b0fbea872c2e6eeabb52b4bea4c2`.
+  Exact tree67c980fa226f921eaccaaa80348e5c920090abba passed68 focused local tests,
+  typecheck and boundaries. Hosted run34598107130 passed units and the focused eight-case
+  guided/owner/writing browser step. Remaining hosted jobs were still running at this entry.
+- The earlier authoring run's full browser/mutation jobs were cancelled by the checkpoint
+  push, not passed. Its eight-case focused browser step passed. PNG captures were attached
+  by body only, so Playwright gave them opaque filenames; the name-based exporter found none.
+  The correction writes each actual screenshot to a named outputPath before attaching it.
+  Root-test typechecking passed. No image was generated, recreated or presented as inspected.

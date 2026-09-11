@@ -1,7 +1,15 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { DRAFT_SECTION_HEADINGS } from '@intellifin/domain';
 
 import { isTemplateOnly } from '../../apps/web/src/design/plain-words';
+
+/** Keep named PNG files as well as report attachments. Body-only attachments receive
+ * opaque report names, which prevents a remote reviewer selecting the actual captures. */
+export async function attachAuthoringScreenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
 
 /**
  * The Builder's steps, in order — every section the domain declares except the two the

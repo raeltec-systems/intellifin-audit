@@ -6,7 +6,7 @@ import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUni
 
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
-import { openPlanDetail, openStep } from './builder';
+import { attachAuthoringScreenshot, openPlanDetail, openStep } from './builder';
 
 /**
  * Real browser, Server Actions, application writer and installed SDK, with the explicit
@@ -120,7 +120,7 @@ test('generation keeps manual editing available, retains its section after switc
     // generation. Next may queue the save, but the manual editor accepts it immediately.
     await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(savedObjective);
     await expect.poll(() => responseReady).toBe(true);
-    await testInfo.attach('writing-section-switch-pending', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await attachAuthoringScreenshot(page, testInfo, 'writing-section-switch-pending');
     release();
     await expect(page.getByText('Saved. Context changes apply to this procedure only.', { exact: true })).toBeVisible();
     await expect(objectiveWriting.getByRole('heading', { name: 'Proposed replacement — not applied' })).toHaveCount(0);
@@ -135,7 +135,7 @@ test('generation keeps manual editing available, retains its section after switc
     await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
     await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
     expect(await requestStates()).toEqual(['ready']);
-    await testInfo.attach('writing-stale-suggestion', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await attachAuthoringScreenshot(page, testInfo, 'writing-stale-suggestion');
     await scopeWriting.getByRole('button', { name: 'Start again with this suggestion', exact: true }).click();
     await expect(scopeWriting.getByLabel('Rough notes for Scope note', { exact: true })).toHaveValue(proposal);
     await expect(scopeWriting.getByRole('heading', { name: 'Proposed replacement — not applied' })).toHaveCount(0);
@@ -154,7 +154,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await expect(scopeWriting.getByText(/still edit and save the procedure yourself/)).toBeVisible();
   await expect(scopeWriting.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Scope statement', { exact: true })).toBeEditable();
-  await testInfo.attach('writing-provider-failure', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'writing-provider-failure');
   await page.getByLabel('Scope statement', { exact: true }).fill(manualScope);
   await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
   await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.', { exact: true })).toBeVisible();
@@ -171,7 +171,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(originalObjective);
   await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
-  await testInfo.attach('writing-clarification', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'writing-clarification');
   await writing.getByRole('button', { name: 'Ask for changes', exact: true }).click();
   const revisedNotes = 'Compare every production parameter with the supplied baseline; keep a missing criterion unresolved.';
   await writing.getByLabel('Rough notes for Objective', { exact: true }).fill(revisedNotes);
@@ -184,7 +184,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(originalObjective);
   expect(await requestStates()).toEqual(['failed', 'ready', 'rejected']);
-  await testInfo.attach('writing-rejected-suggestion', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  await attachAuthoringScreenshot(page, testInfo, 'writing-rejected-suggestion');
   await page.reload();
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(originalObjective);
   await openStep(page, 'Period and scope');
@@ -245,7 +245,7 @@ test('an uncertain generation retries its original request and an uncertain acce
     releaseAcceptance();
     await expect(submit).toHaveAccessibleDescription(/unknown save outcome in Writing suggestion/);
     await expect(page.getByRole('button', { name: 'Reload saved version', exact: true })).toBeVisible();
-    await testInfo.attach('writing-unknown-acceptance', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await attachAuthoringScreenshot(page, testInfo, 'writing-unknown-acceptance');
     expect(await requestStates()).toEqual(['accepted']);
     await page.unroute(address);
     await page.getByRole('button', { name: 'Reload saved version', exact: true }).click();

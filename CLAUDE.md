@@ -2757,3 +2757,6 @@ redact saved instructions or change the manual-writing contract. Objective propo
 the domain's4,000-character limit in both editor and acceptance, rather than the other prose
 sections'10,000-character bound. A completed receipt can be ready but stale after submission;
 persist its usage and prove acceptance is refused both before and after completion.
+Authoring screenshots must be written to a named testInfo.outputPath before attachment.
+Body-only Playwright attachments use opaque report filenames and cannot be selected by
+the remote-review PNG exporter. Retain the original bytes, dimensions and SHA256 identity.
