@@ -1,7 +1,15 @@
 # v2 — the auditor builds a Procedure by talking to the agent
 
-**Status:** owner direction, recorded 2026-09-11. NOT built, NOT scheduled, NOT in Epic 5.
-**Supersedes nothing.** v1's Builder ships as it is and is what the owner tests first.
+**Status:** `[SUPERSEDED 2026-09-11]` by
+`_bmad-output/implementation-artifacts/guided-procedure-preparation.md`, which is the adopted
+direction. After reviewing LivePlan the owner moved this into **v1**, as Epic 2 extension
+stories, and settled the open question below: the auditor has TWO acts of assent and they are
+different claims — section acceptance ("this part is right") and auditor approval ("the whole of
+it is what I intend to delegate", which is the existing `SUBMITTED` state).
+
+**This file is kept as the record of how the idea started** and of the junior-auditor framing it
+produced, which the adopted direction builds on. Read it for the reasoning; read the adopted
+direction for what is planned.
 
 ## What the owner asked for
 

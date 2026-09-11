@@ -1,3 +1,46 @@
+## 2026-09-11 — Guided preparation comes into v1, and ten of its rules are already the product
+
+The owner reviewed LivePlan's documentation and adopted the pattern for the authoring surface —
+*guide the auditor through the assignment, turn their inputs into a clear procedure, obtain their
+approval, then obtain independent manager approval before allowing execution.* It is **v1**, as
+**Epic 2 extension stories 2.9–2.15**, not v2 and not Epic 5. Whole direction, the reconciliation
+and the story breakdown: `_bmad-output/implementation-artifacts/guided-procedure-preparation.md`.
+`v2-conversational-authoring.md` is `[SUPERSEDED]` by it and kept for the reasoning.
+
+**The governance half was checked against the code and TEN requirements already hold**, several
+more strongly than the direction assumed. The proposed chain `Draft → auditor approved / awaiting
+manager review → manager approved → Active` IS `DRAFT → SUBMITTED → APPROVED → ACTIVE`, so
+**`SUBMITTED` already means "the auditor approved this and sent it for manager review"** and no
+new lifecycle state is needed. `authorApprovingOwnVersion` checks `humanAuthorIds` — EVERY human
+author, not only the creator — and DENIES when the author is unknown, so "a different person must
+approve" is identity-enforced rather than role-enforced. `createRun` refuses any period owner that
+is not `ACTIVE` with a frozen review, and manual initiation and rerun share that one function.
+**Read the code before scoping a governance ask**: most of this needed writing down, not building.
+
+**The one execution gap is named rather than assumed: scheduled Runs are Epic 8 and do not exist**,
+so "every path that can start work re-checks approval" is a rule to pin in Epic 8's spec.
+
+**What is genuinely new, in size order:** RACM as a first-class entity (a Procedure starts from a
+risk/control entry, which nothing today has — **needs a PRD revision**, and a *minimal RACM entry*
+is the recommended PoC shape); AI drafting per section; a section state that separates DRAFTED
+from AUDITOR-REVIEWED, because today's `done | todo | attention | reference` cannot say "written
+but not yet accepted" — until now a person typed everything and there was nothing to distinguish;
+material proposals shown as UNAPPLIED changes carrying a basis; cross-section dependency flagging;
+and reference documents (design inputs) kept distinct from Evidence (execution inputs).
+
+**Prose has no compiler, so a rewrite is reviewed rather than checked.** `equivalentExecutablePlan`
+can refuse a model answer whose PLAN semantics differ; there is no such test for a sentence. The
+mechanism is therefore show-the-diff-and-require-acceptance, and the failure it prevents is
+concrete — *"check ALL terminated employees"* becoming *"review a REPRESENTATIVE SAMPLE"* silently
+narrows the test. **`scopeWideningWarnings` does not catch that**: it flags widening (a write verb,
+an out-of-scope origin, an unregistered system) because until now only a person could narrow scope
+and they knew they had. An assistant that rewrites prose makes narrowing reachable.
+
+**The assistance must be ADDITIVE — the forms keep working with no model at all.** That is what
+makes it safe in v1: help on top of a surface that already works, never a replacement for one. The
+cost to know about is paid model calls on the authoring path, where today the only one is the plan
+check, once per save.
+
 ## 2026-09-11 — v2 authors by conversation, and three of its four rules already hold
 
 Owner direction, recorded and NOT built: in v2 an auditor builds a Procedure by talking to
