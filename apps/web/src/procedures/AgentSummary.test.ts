@@ -34,6 +34,11 @@ function view(): ProcedureVersionView {
 const render = (draft: ProcedureVersionView): string =>
   renderToStaticMarkup(React.createElement(AgentSummary, { draft, headingId: 'summary' }));
 
+/** A plan with different frozen limits. The limits are `z.literal`s, so the cast is the
+ *  only way to state a plan this build would refuse to derive — which is the point. */
+const withLimits = (draft: ProcedureVersionView, limits: Record<string, number>): ProcedureVersionView =>
+  ({ ...draft, compiledPlan: { ...draft.compiledPlan!, limits: { ...draft.compiledPlan!.limits, ...limits } } }) as unknown as ProcedureVersionView;
+
 describe('what the agent will do', () => {
   it('names every Session Step the frozen plan carries, and none it does not', () => {
     const draft = view();
@@ -53,9 +58,20 @@ describe('what the agent will do', () => {
     const draft = view();
     const limits = draft.compiledPlan!.limits;
     const html = render(draft);
-    for (const value of [limits.runStepExecutions, limits.runTimeoutSeconds, limits.runTokens, limits.retriesPerStep]) {
-      expect(html).toContain(String(value));
-    }
+    // Grouped and said in words, because `10000` and `3600` are the frozen values and
+    // not what a person is trying to find out. Formatted INDEPENDENTLY here: importing
+    // the component's own formatter would compare it with a copy of itself.
+    expect(html).toContain(limits.runStepExecutions.toLocaleString('en-US'));
+    expect(html).toContain(limits.runTokens.toLocaleString('en-US'));
+    expect(html).toContain(String(limits.retriesPerStep));
+    expect(html).toContain('1 hour'); // limits.runTimeoutSeconds is 3600
+
+    // And they are READ: a plan carrying different limits says different numbers.
+    const other = render(withLimits(draft, { runStepExecutions: 42, runTimeoutSeconds: 90, runTokens: 7 }));
+    expect(other).toContain('42 steps');
+    expect(other).toContain('1 minute 30 seconds');
+    expect(other).toContain('7 tokens');
+    expect(other).not.toContain(limits.runStepExecutions.toLocaleString('en-US'));
   });
 
   it('says there is nothing to summarise rather than showing an empty plan', () => {

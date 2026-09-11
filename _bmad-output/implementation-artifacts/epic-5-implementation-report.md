@@ -180,6 +180,42 @@ Three things came out of it:
 `_bmad-output/implementation-artifacts/owner-walkthrough.md` is the same journey written for a
 person, with the exact click path and what to look at when a step stops.
 
+### 3.5 The plan reads like a document, and says who wrote it
+
+Reading the Builder's plan fold, the owner asked one question — *is this agent generated or is
+it hardcoded?* — and said the presentation was still poor.
+
+**The answer is that every word is the platform's**, and neither surface said so. `makePlan` in
+`packages/domain/src/procedures/executable-plan.ts` writes each step's sentence from a fixed
+template with the auditor's own values slotted in — the source name and binding id, the Period,
+the lookup columns, the allowed origins, the permitted actions — and `ACTION_LABELS` supplies
+the titles. A model IS called when a version freezes one, and its only power is to AGREE:
+`derive-plan.ts` stores `result.plan`, the compiler's own bytes, and refuses the attempt when
+`equivalentExecutablePlan` finds the candidate's semantics differ. The agent that will run the
+Procedure has not started; it READS this. Both surfaces now say that in their first line.
+
+**The presentation was the real defect.** The summary was a bare list of bold lines followed by
+three paragraphs of run-on prose, and the contract preview was headings over walls of compiled
+text — every fact present, none of them findable. They now share one treatment at two altitudes:
+
+- A labelled group per question. A Session Step happens ONCE and a plan step happens PER RECORD;
+  the summary used to say that in a sentence after an undifferentiated list, and they are two
+  headed groups now, because an auditor who cannot tell them apart cannot judge what a Run costs.
+- A numbered step whose title carries the weight, with its canonical text beneath it, quieter,
+  so a reader chooses to descend into it rather than meeting it first.
+- A panel per Target System and per condition; a tag for a value out of a closed set (a captured
+  field, a permitted read action); a label/value grid for everything else.
+- Frozen numbers said the way a person reads them — `10,000` rather than `10000`, `1 hour`
+  rather than `3600 seconds` — through `plan-numbers.ts`, which groups and names units and never
+  rounds (it is tested at 3,599 seconds precisely because that must not read as an hour). The
+  read-only contract preview keeps the exact digits beside the words, because that surface's job
+  is to be checked rather than skimmed.
+- Inside the Builder's fold the two cards no longer draw a box inside a box, and the derivation
+  timestamp no longer shows milliseconds.
+
+Nothing shown was added or removed; `AgentSummary` still states only what the frozen plan
+carries, and `ExecutablePlanPreview` still renders every key of the stored contract.
+
 ## 4. Decisions worth knowing
 
 **A pause is a wait; a flag is not.** `run_wait` gained a `pause` kind because every mechanism

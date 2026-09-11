@@ -1,3 +1,62 @@
+## 2026-09-11 — The plan is the platform's own sentence, and it is laid out to be found
+
+The owner read the Builder's plan fold and asked one question — *"is this agent generated or
+its hardcoded?"* — then said the presentation was still poor. The first has a short answer and
+the second was a real defect.
+
+- **Every word on that surface is the PLATFORM's, built from the auditor's own fields.**
+  `makePlan` in `packages/domain/src/procedures/executable-plan.ts` writes each step's sentence
+  from a fixed template with names, ids, dates and lists slotted in; `ACTION_LABELS` supplies
+  the titles. The model IS called when a version freezes one, and its only power is to AGREE:
+  `derive-plan.ts` stores `result.plan` — the compiler's bytes — and refuses the attempt when
+  `equivalentExecutablePlan` says the candidate's semantics differ. The agent that will RUN the
+  Procedure has not started; it READS this. Worth restating here because the surface itself
+  never said so, and now its first line does.
+- **The two components are one treatment at two altitudes, not two documents.** `AgentSummary`
+  is the decision ("how many systems, how many steps, what is captured, when does it stop") and
+  `ExecutablePlanPreview` is the contract. They now share `.ls-plan-groups`, `.ls-plan-steps`,
+  `.ls-plan-facts`, `.ls-plan-panel` and `.ls-tag`, so a reader who learns one can read the
+  other.
+- **A Session Step happens ONCE and a plan step happens PER RECORD**, and the old summary said
+  that in a prose sentence after an undifferentiated list. They are two labelled groups now.
+  An auditor who cannot tell those apart cannot judge what a Run costs.
+- **`plan-numbers.ts` says a frozen number the way a person reads it and never a different
+  one.** `10000` → `10,000`, `3600` → `1 hour`. Grouping and unit words only: `durationWords`
+  is tested at 3599 precisely because "59 minutes 59 seconds" must not round to an hour. The
+  read-only contract preview prints the exact digits BESIDE the words, because that surface's
+  job is to be checked rather than skimmed.
+- **A label that is a NAME is not upper-cased.** `.ls-plan-facts--names` exists because the
+  overline treatment would print `MAX_MANUAL_APPROVAL_AMOUNT` for a field the plan holds as
+  `max_manual_approval_amount` — a value the plan does not contain, rendered as though it did.
+- **The `AgentSummary` limits test now asserts the FORMATTED value and that a different plan
+  says different numbers.** Importing the component's own formatter would have compared it with
+  a copy of itself, so the test formats independently with `toLocaleString('en-US')`.
+
+Three mechanical notes:
+
+- **A grid row with three children and two columns puts the third in column ONE**, and an
+  `auto` first column then sizes itself to that child. The step's long canonical text became
+  the marker column and pushed every step title into a narrow strip on the right. It is
+  `grid-column: 2` on the text, with `row-gap: 0`, so the marker column stays the width of the
+  marker. Caught by looking at the rendered page, not by any test.
+- **`plan.limits.retriesPerStep` is typed `3`, so `=== 1` does not compile.** The pluralisation
+  reads the value through a `number` binding — which is also what keeps the sentence right if a
+  later compiler version freezes a different bound.
+- **`renderToStaticMarkup` plus the two real stylesheets is a one-second visual check.** A
+  throwaway `*.test.ts` under `apps/web/src/procedures/` writes the page to the scratchpad and
+  Chromium screenshots it, with no database, no server and no seed. Delete it in the same
+  command that runs it; a preview generator left behind is a test that asserts nothing. Wrap
+  it in the REAL surrounding markup — the fold's `.ls-card` + `.ls-disclosure` — or the check
+  answers a question about a page nobody sees: the first screenshot showed white cards that
+  are transparent in the place they actually appear.
+- **`require-role.test.ts` had the module-warm-up gap its two siblings had already closed.**
+  Only the FIRST `await import('./require-role')` pays the transform of this workspace's
+  graph, and on a machine also running a browser suite that alone outran the 5-second case
+  timeout — reported as a failed assertion about sessions. It has `session-route.test.ts`'s
+  `beforeAll(..., 60_000)` now. Found by breaking the OTHER standing rule (two suites at once
+  against one machine), which is the trap that keeps producing failures that are not
+  product defects.
+
 ## 2026-09-10 — Two accounts cannot walk the journey, and a suggestion is not a requirement
 
 The owner could not test the product: *"there are procedures that refuse to be created… for

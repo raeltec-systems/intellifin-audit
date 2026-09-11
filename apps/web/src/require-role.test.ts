@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AuditEventDraft } from '@intellifin/domain';
 
@@ -59,6 +59,15 @@ const request = (headers: Record<string, string> = {}) =>
 async function load() {
   return import('./require-role');
 }
+
+// Warm the module once, with room, before any case's own 5-second clock starts. Only
+// the FIRST `load()` pays the transform of this workspace's graph, and on a busy machine
+// that alone can outrun a test timeout — which then reports as a failed assertion about
+// sessions. `session-route.test.ts` and `sign-in-route.test.ts` already do this; this
+// file had the same shape and not the warm-up, and it failed exactly that way.
+beforeAll(async () => {
+  await load();
+}, 60_000);
 
 describe('requireSession', () => {
   beforeEach(() => {
