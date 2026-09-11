@@ -253,6 +253,23 @@ async function chooseOption(select: Locator, pattern: RegExp): Promise<string> {
  */
 const STALE = 'That procedure changed since this page was loaded. Reload the page and try again.';
 
+/** This journey runs a real worker. Observe its terminal preview before the next
+ * authoring decision, as opposed to racing three immediate retries against its
+ * queued attempt writes. Dedicated concurrency specs still force those races. */
+async function waitForPlanAttempt(page: Page): Promise<void> {
+  await openPlanDetail(page);
+  await expect(page.getByTestId('executable-plan-preview').getByRole('status'))
+    .toContainText(/Re-derived|Cannot derive:/, { timeout: 120_000 });
+}
+
+/** Await this action, not a success/stale banner retained from the preceding save. */
+async function acknowledgedAction(page: Page, action: () => Promise<void>): Promise<void> {
+  const address = page.url();
+  const response = page.waitForResponse(response => response.url() === address && response.request().method() === 'POST');
+  await action();
+  await (await response).finished();
+}
+
 async function step(
   page: Page,
   heading: string,
@@ -261,9 +278,10 @@ async function step(
   saved: string | RegExp,
 ): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForPlanAttempt(page);
     await openStep(page, heading);
     await fill();
-    await save();
+    await acknowledgedAction(page, save);
     const ok = page.getByText(saved).first();
     const stale = page.getByText(STALE).first();
     await expect(ok.or(stale).first()).toBeVisible();
@@ -284,6 +302,7 @@ async function confirmed(page: Page, name: string): Promise<void> {
 /** Follow the real dialogue, including the visible stale-version remedy. */
 async function askForProposal(page: Page, section: 'objective' | 'scope', notes: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForPlanAttempt(page);
     await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
     await page.locator(`[data-preparation-nav="${section === 'objective' ? 'context' : 'scope'}"]`).click();
     if (section === 'scope') await page.getByRole('button', { name: '1. Describe the scope', exact: true }).click();
@@ -303,11 +322,12 @@ async function askForProposal(page: Page, section: 'objective' | 'scope', notes:
 
 async function markReviewed(page: Page, section: string, title: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForPlanAttempt(page);
     await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
     await page.locator(`[data-preparation-nav="${section}"]`).click();
     const panel = page.locator(`[data-preparation-panel="${section}"]`);
     await expect(panel).toBeVisible();
-    await panel.getByRole('button', { name: /^(Yes, use this control|Mark reviewed and continue)$/ }).click();
+    await acknowledgedAction(page, () => panel.getByRole('button', { name: /^(Yes, use this control|Mark reviewed and continue)$/ }).click());
     const saved = page.getByText(`Review recorded for ${title}.`, { exact: true });
     const stale = page.getByText(STALE, { exact: true });
     await expect(saved.or(stale).first()).toBeVisible();

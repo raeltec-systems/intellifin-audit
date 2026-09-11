@@ -4,6 +4,8 @@
 
 Confirm saved Template facts before opening a manual editor. Guide scope and evidence through focused questions while keeping each existing editor mounted once, with its save/conflict guard. A visible conversation carries the original answer, full working proposal and precise corrections; a reply never accepts or reviews content. New guided-dialogue-v3 provider responses ask one focused question; receipt parsing still accepts v1/v2 unchanged. Browser editor helpers may open named manual disclosures, but the default journey must test their actual closed state and navigate without unhide scripts. See `_bmad-output/implementation-artifacts/guided-dialogue-correction.md`.
 
+The complete fresh-Template browser journey seeds only catalogue entries, then uses the real creation/forms/authoring actions through stored compiled-plan review. The owner journey has a real background worker: wait for the current preview attempt and the current Server Action response before asserting a save. A retained banner from an earlier section cannot acknowledge the next command. Keep intentional stale-row races in their dedicated concurrency tests.
+
 
 The corrected Builder keeps the executable plan out of preparation panels and opens it in Review and submission. The hero browser journey must check that distinction plus manual collapse/reopen; its old collapsed-by-default assertion belongs to the superseded layout. Include the hero journey in the focused CI step so a review-surface change is checked before the full browser suite.
 

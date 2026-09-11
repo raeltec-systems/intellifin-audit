@@ -380,6 +380,8 @@ test('the default journey confirms the control and guides scope and evidence cho
   await expect(evidence.getByText('Sign-in credential', { exact: true })).toBeHidden();
   await attachAuthoringScreenshot(page, testInfo, 'dialogue-system-choice');
   await evidence.getByRole('button', { name: 'Keep these systems and choose evidence', exact: true }).click();
+  await expect(evidence.getByRole('button', { name: 'Add an evidence item', exact: true })).toBeVisible();
+  await evidence.getByRole('button', { name: 'Add an evidence item', exact: true }).click();
   await expect(evidence.getByLabel('What to record', { exact: true }).first()).toBeVisible();
   await expect(evidence.getByLabel('Add a system', { exact: true })).toBeHidden();
   expect(await requestStates()).toEqual(['accepted']);
