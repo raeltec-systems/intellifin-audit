@@ -127,7 +127,8 @@ async function audit(tx: ProceduresUnitOfWorkContext, input: Actor, record: Auth
       // Full provider identity is retained in the bounded request receipt. The
       // immutable chain forbids provider payloads; record only identity references.
       modelId: record.identity.modelId, promptVersion: record.identity.promptVersion,
-      contextDigest: record.contextDigest, authoringRevision: record.authoringRevision, usage: record.usage as unknown as JsonValue, acceptedDigest: record.acceptedDigest } });
+      contextDigest: record.contextDigest, authoringRevision: record.authoringRevision, usage: record.usage as unknown as JsonValue, acceptedDigest: record.acceptedDigest,
+      ...(record.revision === undefined ? {} : { parentRequestId: record.revision.requestId }) } });
 }
 
 export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
@@ -160,6 +161,10 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
       // Refuse rather than silently redact a meaningful instruction. Manual saves
       // remain valid, including historical prose containing credential references.
       if (hasCredentialMaterial(request, row.targets.map(target => target.contract.credential_ref))) throw new Refused('Writing help cannot receive credential values or references. Remove them from the notes or saved prose, or continue writing manually.');
+      // Infrastructure knows its configured key. Check before retaining revision
+      // content, not only immediately before the network request.
+      try { deps.model.assertSafeInput?.(request); }
+      catch { throw new Refused('Writing help cannot receive protected configuration. Remove it from the proposal and feedback, or continue writing manually.'); }
       const record: AuthoringRequestRecord = { requestId: input.requestId, procedureId: row.procedureId, versionId: row.versionId, actorId: input.session.userId,
         createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + AUTHORING_LIMITS.lifetimeMs).toISOString(), section: input.section, requestDigest: digest(fields),
         authoringRevision: row.sectionPreparation?.revision ?? 0, contextDigest: planAuthoringDigest(row), sectionBasis: preparationBasis(row, preparationSection(input.section)),

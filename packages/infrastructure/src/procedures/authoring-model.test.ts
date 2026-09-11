@@ -75,7 +75,11 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
   it('refuses the configured provider key if supplied in prose, without a request or echo', async () => {
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
     const key = 'synthetic-configured-key';
-    await expect(new OpenAIProcedureAuthoringModel(key).propose({ ...input, notes: `Use ${key}` })).rejects.toThrow('Writing context contains protected configuration');
+    const model = new OpenAIProcedureAuthoringModel(key);
+    const unsafe = { ...input, notes: `Use ${key}` };
+    expect(() => model.assertSafeInput(unsafe)).toThrow('Writing context contains protected configuration');
+    expect(() => model.assertSafeInput({ ...input, mode: 'revise', revision: { draft: `A working proposal containing ${key}`, history: [] } })).toThrow('protected configuration');
+    await expect(model.propose(unsafe)).rejects.toThrow('Writing context contains protected configuration');
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

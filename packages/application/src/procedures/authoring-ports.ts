@@ -30,6 +30,9 @@ export interface AuthoringUsage { readonly inputTokens: number | null; readonly 
 /** Bounded test preparation, with no tools, executable-plan or autonomous-write capability. */
 export interface ProcedureAuthoringModel {
   readonly identity: typeof AUTHORING_IDENTITY;
+  /** Synchronous provider-specific input protection, before a receipt is persisted.
+   * Implementations with protected configuration must reject it here and in propose. */
+  readonly assertSafeInput?: (input: Parameters<ProcedureAuthoringModel['propose']>[0]) => void;
   propose(input: { readonly section: AuthoringSection; readonly mode: AuthoringDraftFields['mode']; readonly context: JsonValue; readonly currentText: string; readonly notes: string; readonly changes: string; readonly revision?: AuthoringRevisionContext }): Promise<{ readonly proposal: unknown; readonly usage: AuthoringUsage }>;
 }
 export interface AuthoringRequestRecord extends AuthoringProposal {

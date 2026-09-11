@@ -231,6 +231,24 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
       expect(h.model.propose).not.toHaveBeenCalled(); expect(h.requests.size).toBe(0);
     }
   });
+  it('refuses provider-protected revision content before retaining a receipt or audit event', async () => {
+    const h = harness(); await h.generate();
+    const saved = structuredClone(h.row), eventsBefore = h.events.length;
+    const protectedValue = 'opaque-synthetic-provider-configuration';
+    const assertSafeInput = vi.fn((input: Parameters<ProcedureAuthoringModel['propose']>[0]) => {
+      if (JSON.stringify(input).includes(protectedValue)) throw new Error(protectedValue);
+    });
+    const result = await generateAuthoringSuggestion({ ...h.deps, model: { ...h.model, assertSafeInput } }, {
+      ...h.fields({ requestId: requestId(2), mode: 'revise', changes: 'Keep the original steps.', revision: { requestId: requestId(), draft: `My edited proposal includes ${protectedValue}.` } }), ...actor,
+    });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining('continue writing manually') });
+    expect(assertSafeInput).toHaveBeenCalledTimes(1);
+    expect(h.model.propose).toHaveBeenCalledTimes(1);
+    expect(h.requests.size).toBe(1); expect(h.requests.has(requestId(2))).toBe(false);
+    expect(h.events).toHaveLength(eventsBefore); expect(h.row).toEqual(saved);
+    expect(JSON.stringify({ result, events: h.events, requests: [...h.requests.values()] })).not.toContain(protectedValue);
+    expect(await h.edit('Manually revised objective.')).toMatchObject({ ok: true });
+  });
   it('applies the saved section limit to edited proposals before acceptance', async () => {
     const h = harness(); await h.generate(); const saved = structuredClone(h.row);
     expect(await h.accept('x'.repeat(4001))).toMatchObject({ ok: false, reason: expect.stringContaining('section limit') });
@@ -285,6 +303,15 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
       draft: workingDraft,
       history: [{ feedback: '', proposedText: 'Base proposal', clarifications: [] }],
     });
+    // Initial notes are forwarded on every turn, without retaining a second copy
+    // in the receipt history or immutable audit chain.
+    expect(prompts[1]?.notes).toBe(followUp.notes);
+    expect(h.events.filter(event => event.payload['requestId'] === requestId(2))).toHaveLength(2);
+    for (const event of h.events.filter(event => event.payload['requestId'] === requestId(2))) {
+      expect(event.payload['parentRequestId']).toBe(requestId(1));
+      expect(JSON.stringify(event)).not.toContain(workingDraft);
+      expect(JSON.stringify(event)).not.toContain(followUp.changes);
+    }
     expect(h.requests.get(requestId(2))).toMatchObject({
       revision: { requestId: requestId(1), draft: workingDraft, feedback: followUp.changes },
       explanation: 'The requested correction is bounded to the supplied draft.',

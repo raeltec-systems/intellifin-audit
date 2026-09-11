@@ -1,3 +1,7 @@
+## 2026-09-11 — Protect authoring receipts before persistence
+
+The OpenAI adapter checks its configured key synchronously before the application persists revision content, then checks again before the provider call. Pattern-only credential checks cannot identify opaque configured values. Audit events retain the parent request ID for revision provenance, never the feedback or proposal body; the original notes travel with each request without a duplicate in receipt history.
+
 ## 2026-09-11 — Central preparation assistance
 
 Open local assistant sessions on entering Scope or Audit steps without a paid request. Keep all manual editor panels mounted and preserve per-target conversation state. Generation uses saved context even while a manual editor is dirty; acceptance still uses the full submission guard. Test follow-up conversations under separate synthetic identities so earlier cases do not exhaust the real per-user rate budget.
