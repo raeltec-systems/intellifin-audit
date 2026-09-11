@@ -111,8 +111,12 @@ export function writingSuggestionIsStale(session: WritingSession, draft: Procedu
  * receipt and supplies its bounded prior history; the client supplies the full current
  * working proposal and the latest human correction separately. */
 export function writingRevisionFor(session: WritingSession): AuthoringDraftFields['revision'] | undefined {
-  return session.mode === 'revise' && session.suggestion?.state === 'ready'
-    ? { requestId: session.suggestion.requestId, draft: session.proposal } : undefined;
+  if (session.mode !== 'revise') return undefined;
+  if (session.suggestion?.state === 'ready') return { requestId: session.suggestion.requestId, draft: session.proposal };
+  // A failed attempt has no replacement to revise. Retry against the same complete
+  // working proposal and original ready parent, not the initial rough notes alone.
+  return !session.suggestion || session.suggestion.state === 'pending' || session.suggestion.state === 'failed'
+    ? session.request?.revision : undefined;
 }
 
 /** One changed word range, with identical leading/trailing words retained verbatim.
@@ -279,6 +283,7 @@ interface WritingContextValue {
   readonly accept: (key: string) => void;
   readonly reject: (key: string) => void;
   readonly focusRequest: number;
+  readonly claimFocus: (key: string) => boolean;
 }
 const WritingContext = createContext<WritingContextValue | null>(null);
 export interface WritingAssistantProviderProps {
@@ -297,6 +302,7 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
   const [machine] = useState(createWritingAssistantState);
   const [snapshot, setSnapshot] = useState(machine.snapshot);
   const [focusRequest, setFocusRequest] = useState(0);
+  const requestedFocus = useRef<string | null>(null);
   const mounted = useRef(true);
   const latest = useRef({ draft, rowVersion, onRowVersion, actions });
   latest.current = { draft, rowVersion, onRowVersion, actions };
@@ -377,7 +383,8 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
   }
 
   return <WritingContext.Provider value={{ draft, snapshot, guardReason: guard.reason, focusRequest,
-    open(section, mode, focus = true) { machine.open(section, mode, savedWritingText(latest.current.draft, section)); publish(); if (focus) setFocusRequest(count => count + 1); },
+    open(section, mode, focus = true) { machine.open(section, mode, savedWritingText(latest.current.draft, section)); publish(); if (focus) { requestedFocus.current = writingSectionKey(section); setFocusRequest(count => count + 1); } },
+    claimFocus(key) { if (requestedFocus.current !== key) return false; requestedFocus.current = null; return true; },
     edit(key, field, value) { machine.edit(key, field, value); publish(); },
     editProposal(key) { machine.editProposal(key); publish(); },
     askForChanges(key) { machine.askForChanges(key); publish(); },
@@ -400,7 +407,7 @@ export function WritingTools({ section }: { readonly section: AuthoringSection }
 export interface WritingAssistantPanelProps {
   /** A central guided surface can pin the panel to its own section session. */
   readonly section?: AuthoringSection;
-  /** Inline panels must never move focus when a session is opened automatically. */
+  /** Inline panels share the explicit-button focus request; automatic entry has none. */
   readonly inline?: boolean;
   /** The question is derived from the saved section and shown before the first answer. */
   readonly guidedQuestion?: string;
@@ -410,13 +417,14 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
   const assistant = useContext(WritingContext), id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const focusRequest = assistant?.focusRequest ?? 0;
+  const panelKey = section === undefined ? assistant?.snapshot.selected : writingSectionKey(section);
   useEffect(() => {
-    if (inline || focusRequest === 0 || !heading.current) return;
+    if (focusRequest === 0 || !heading.current || !panelKey || !assistant?.claimFocus(panelKey)) return;
     // The existing section-help disclosure belongs to the reader until they ask for help.
     const disclosure = heading.current.closest('details');
     if (disclosure) disclosure.open = true;
     heading.current.focus();
-  }, [focusRequest, inline]);
+  }, [focusRequest, panelKey]);
   if (!assistant) return null;
   const { snapshot, draft } = assistant;
   const key = section === undefined ? snapshot.selected : writingSectionKey(section);

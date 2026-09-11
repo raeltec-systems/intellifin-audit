@@ -1,6 +1,6 @@
 # Guided preparation — owner experience correction
 
-Status: implementation in progress, 2026-09-11. This refines the adopted
+Status: implementation complete; final CI/browser review in progress, 2026-09-11. This refines the adopted
 `guided-procedure-preparation.md` direction following the owner's deployed-UI review.
 
 ## Baseline and review relationship
@@ -89,6 +89,40 @@ or deployment has been made for this correction.
   4,113 unit tests pass locally. The final focused authoring/UI/adapter check passes
   72 tests after the protected-configuration preflight correction. Browser validation
   follows the pushed UI checkpoint. No claim of live-provider semantic quality is made.
+- Central UI checkpoint: local `c68050844b1b586f31e7161623f7b3ee208b2da9`, pushed
+  `ca07951447a3ab6080eff92b990913ef6ebea36a`; identical tree
+  `d9277226d22ae46e23f5b5c590bbafd178345f41`.
+- Protected receipts: local `186ce6025fab29c93bb156a0d2f5a04509dbdc70`, pushed
+  `6bc9e7eaf314d1a61a0b74013b64f6b554e1043c`; identical tree
+  `799b57e8310912553b4500ece6b33f914c93e89a`. CI 34643787006 passed the complete
+  type/unit/boundary job and focused guided-authoring/owner browser step. Full browser,
+  database and mutation jobs were still running when the retry/focus correction followed.
+- Retry/focus correction: 24 UI state tests and pinned root typechecking pass locally.
+  Failed revision attempts preserve the full proposal and feedback. Explicit writing
+  buttons focus their central panel once; automatic section entry does not take focus.
+  The final exact pushed SHA, CI conclusions and screenshot links are maintained in
+  [PR #31's verification record](https://github.com/raeltec-systems/intellifin-audit/pull/31).
+
+## Reviewing the implemented experience
+
+Choose **Production Configuration Deviation** (P-4). Inspect its synthetic risk/control
+preview and prefilled name. In the Builder, select the period, registered baseline source,
+ProdConsole and evidence. In Audit steps the central assistant already knows those saved
+choices. Describe the intended comparison in rough language, then prepare a draft.
+
+An example correction is: “Keep steps 1 and 2 exactly. Drop the summary by owner.
+Enhance unresolved handling: record why a value could not be read.” The working proposal,
+including any direct edits, is the revision basis. Compare the replacement, edit if needed,
+and choose Use this draft. Acceptance saves human-authored content and makes the relevant
+review acknowledgement and plan stale. Mark reviewed separately, inspect the full compiled
+plan in Review and submission, then use the existing independent approval/activation flow.
+
+The browser fixture checks this keep/drop/add exchange against a synthetic SDK response;
+it is not evidence of real-model faithfulness. The reviewing agent should inspect the exact
+pushed SHA and CI captures, then assess live wording on the securely configured Railway
+service after an authorised release. Include all-versus-sample, negation, threshold,
+recurrence, undefined policy and embedded bypass instructions in that manual assessment.
+No production data or new paid browser Run is needed for writing-quality evaluation.
 
 ## Subsequent stories
 

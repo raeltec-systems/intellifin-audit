@@ -126,6 +126,24 @@ describe('section writing request ownership', () => {
     expect(draft.scope).toBe('All production parameters');
   });
 
+  it.each(['refused', 'provider-failed'] as const)('keeps the edited revision basis after a %s attempt', outcome => {
+    const { machine, draft } = ready();
+    const working = 'Keep this exact edited proposal, including its final instruction.';
+    machine.edit('scope', 'proposal', working);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'Keep the first instruction and add evidence for unresolved values.');
+    const previous = machine.snapshot.sessions.get('scope')!;
+    const request: AuthoringDraftFields = { ...fields(scope, 'revision-2'), mode: 'revise', notes: previous.notes,
+      changes: previous.changes, revision: writingRevisionFor(previous) };
+    machine.begin(request, draft);
+    if (outcome === 'refused') machine.fail(request, 'Try again after the request limit resets.');
+    else machine.receive(request, response(request, draft, { state: 'failed', proposedText: null }), draft);
+    const retry = machine.snapshot.sessions.get('scope')!;
+    expect(writingRevisionFor(retry)).toEqual({ requestId: 'request-1', draft: working });
+    expect(retry.notes).toBe(previous.notes); expect(retry.changes).toBe(previous.changes);
+    expect(machine.beginAccept('scope')).toBe(false);
+  });
+
   it('refuses malformed or unbounded responses while preserving manual work', () => {
     const request = fields(), valid = response(request);
     expect(isWritingResponse(valid, request)).toBe(true);

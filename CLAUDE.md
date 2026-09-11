@@ -1,3 +1,7 @@
+## 2026-09-11 — Preserve intent through failed revision attempts
+
+A failed follow-up retains its original ready parent and the full edited proposal for a new attempt; do not accidentally fall back to rough notes alone. Explicit Help Me Write buttons claim focus once for their section's central assistant. Automatic section entry creates no focus request and no provider call.
+
 ## 2026-09-11 — Protect authoring receipts before persistence
 
 The OpenAI adapter checks its configured key synchronously before the application persists revision content, then checks again before the provider call. Pattern-only credential checks cannot identify opaque configured values. Audit events retain the parent request ID for revision provenance, never the feedback or proposal body; the original notes travel with each request without a duplicate in receipt history.

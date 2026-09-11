@@ -112,6 +112,7 @@ test('generation keeps manual editing available, retains its section after switc
     await selectWriting(page, 'objective');
     const objectiveWriting = page.locator('[data-writing-section="objective"]');
     await expect(objectiveWriting.getByRole('heading', { name: 'Writing help: Objective', exact: true })).toBeVisible();
+    await expect(objectiveWriting.getByRole('heading', { name: 'Writing help: Objective', exact: true })).toBeFocused();
     await expect(objectiveWriting.getByRole('heading', { name: 'Proposed replacement — not applied' })).toHaveCount(0);
     await expect(page.getByLabel('Objective', { exact: true })).toBeEditable();
     await page.getByLabel('Objective', { exact: true }).fill(savedObjective);
