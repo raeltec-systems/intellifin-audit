@@ -6,8 +6,13 @@ the executable plan. Independent manager approval and activation still authorise
 
 Review PR: [#30](https://github.com/raeltec-systems/intellifin-audit/pull/30), a draft targeting
 `codex/epic-5-controls`. The actual baseline is `2ab2995e154885e006985cf49fb43f83ec32d878`;
-parent PR #29 was open and unmerged when the feature was created. No parent branch, main,
-release, merge or deployment was changed. The original checkout was clean.
+parent PR #29 was open and unmerged when the feature was created. No parent branch, main or release was changed; no pull request was merged or deployed.
+The original checkout was clean.
+
+The parent subsequently advanced to `3ab917a5a2f2ad7a3b6395c41256114ddda16fc3` with only
+an Epic 5 review document. It is incorporated into this feature branch; application code and
+instructions did not change. PR #29 is still open, and its review findings remain separate
+parent work. The feature includes that latest parent for an unambiguous final CI tree.
 
 Fully verified UI checkpoint: `abe27cab8ff323a2d15a090022b721153e6f283f`.
 Final code correction: `18b1eac961c77dde7a932d3b90f32eec2c3eaeb9`, tree

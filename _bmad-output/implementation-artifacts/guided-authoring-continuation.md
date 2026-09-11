@@ -8,8 +8,16 @@ targeting `codex/epic-5-controls`. Parent PR #29 was rechecked on 2026-09-11:
 open and unmerged at `2ab2995e154885e006985cf49fb43f83ec32d878`, the actual baseline.
 Main was `55b61e2d5c24aeabe804279e8d41ef6e64ed3097`.
 
+During final verification the parent advanced to `3ab917a5a2f2ad7a3b6395c41256114ddda16fc3`.
+Its only change is `review-epic-5-stories.md`; application code and instructions are unchanged.
+That documentation is incorporated through a merge into this feature branch, preserving both
+histories. PR #29 remains open/unmerged. Its separate review findings are not absorbed into
+this preparation slice. The final head includes the current parent so the CI merge tree and
+feature tree contain the same files. The actual implementation baseline remains the original
+`2ab2995e154885e006985cf49fb43f83ec32d878`.
+
 The initial checkout was clean; the feature branch did not exist. No user work was
-discarded. The parent, main and old Epic 2 branch were not modified. Nothing was merged,
+discarded. The parent, main and old Epic 2 branch were not modified. No pull request was merged; nothing was
 deployed or run against production. CI's base filter includes the stacked parent;
 the main-only release trigger is unchanged.
 
