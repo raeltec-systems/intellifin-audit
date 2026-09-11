@@ -163,3 +163,20 @@ product model is gpt-5.6-terra, independent of plan-check and audit-Run model co
   by body only, so Playwright gave them opaque filenames; the name-based exporter found none.
   The correction writes each actual screenshot to a named outputPath before attaching it.
   Root-test typechecking passed. No image was generated, recreated or presented as inspected.
+
+## Complete database gate and isolated native-timeout correction
+
+- Screenshot retention pushed as `5d9be5667d317a4fd413221cc9e167f3fb30c6d1`, tree
+  `d4f40a81fdac10a1925c70fe23125efc1c70e0f5`. Hosted run34598654756 passed all4,097
+  unit tests, typecheck,590-module boundaries, all549 PostgreSQL integration cases,
+  no-drift migration generation and22 selected mutation checks in the database job.
+  Its eight focused browser cases and container job passed; full browser and hydrated
+  abuse-mutation jobs were still running at this entry.
+- Run34598107130 had passed authoring/upgrades but exposed an unrelated existing native
+  browser timeout race. Playwright could time out just before the outer deadline, leaving
+  the page open. A separate correction recognises the installed Playwright TimeoutError
+  and disposes that page. It does not change deadlines or execution policy. The original
+ 40ms/500ms/300ms integration assertion is unchanged; a deterministic unit test forces
+  the competing native timeout. All37 focused browser-execution units and root test types
+  passed. This correction is isolated for independent review.
+- PR #29 was rechecked: still open/unmerged at the same original parent SHA.

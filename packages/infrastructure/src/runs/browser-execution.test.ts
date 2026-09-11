@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SolariError } from '@solarisdk/browser';
+import { errors as playwrightErrors } from 'playwright-core';
 import { NO_CREDENTIALS, WorkspaceProvisionError } from '@intellifin/application';
 
 import {
@@ -421,5 +422,48 @@ describe('one absolute browser-action deadline', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('native Playwright timeout cleanup', () => {
+  it('discards an existing page when Playwright times out before the action deadline', async () => {
+    const execution = new PlaywrightBrowserExecution({ mode: 'local' });
+    const ref = { runId: 'run-native-timeout', workspaceId: 'workspace-native-timeout', mode: 'local' as const };
+    let closed = false;
+    const page = {
+      goto: vi.fn(async () => {
+        throw new playwrightErrors.TimeoutError('native Playwright timeout');
+      }),
+      close: vi.fn(async () => {
+        closed = true;
+      }),
+      isClosed: vi.fn(() => closed),
+    };
+    const live = {
+      ref,
+      browser: { isConnected: () => true, close: vi.fn(async () => undefined) },
+      context: { close: vi.fn(async () => undefined) },
+      handle: { denied: () => 0 },
+      page,
+      lastResponse: null,
+      authPost: null,
+      downloads: 0,
+      allowed: () => true,
+    };
+    const liveWorkspaces = Reflect.get(execution, 'live') as Map<string, unknown>;
+    liveWorkspaces.set(ref.workspaceId, live);
+
+    await expect(
+      execution.perform(
+        ref,
+        { action: 'navigate', destination: 'http://localhost:4300/loancore', credential: null, capture: [] },
+        10_000,
+      ),
+    ).rejects.toMatchObject({ code: 'unavailable' });
+
+    expect(page.goto).toHaveBeenCalledOnce();
+    expect(page.close).toHaveBeenCalledOnce();
+    expect(page.isClosed()).toBe(true);
+    expect(live.page).toBeNull();
   });
 });

@@ -2760,3 +2760,11 @@ persist its usage and prove acceptance is refused both before and after completi
 Authoring screenshots must be written to a named testInfo.outputPath before attachment.
 Body-only Playwright attachments use opaque report filenames and cannot be selected by
 the remote-review PNG exporter. Retain the original bytes, dimensions and SHA256 identity.
+
+## Native browser timeout cleanup
+
+Playwright's own timeout can reject just before an independently enforced action deadline.
+Treat the installed Playwright TimeoutError as cleanup-worthy as well as the outer deadline
+error; otherwise a one-millisecond race can leave an expired page reusable. Preserve the
+deadline, execution policy and existing real-browser assertion. The deterministic regression
+case forces the native timeout while ample outer budget remains and requires page disposal.
