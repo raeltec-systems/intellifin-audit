@@ -21,10 +21,22 @@ manager". Whether the first becomes its own recorded act is a question about wha
 attesting to and it changes the immutable chain. It must not be settled inside a story about a
 chat surface.
 
-**The seam that must survive: conversation → validated authoring inputs → the same compiler →
-the same frozen bytes.** A model may COLLECT what an auditor means; it may not WRITE executable
-meaning. That is what `makePlan` plus `derive-plan.ts`'s equivalence refusal guarantee today,
-and a conversational builder is a new front door onto it rather than a second way in.
+**The agent is a JUNIOR AUDITOR, not a typist, and a first reading of this that said "the
+model collects the inputs" was corrected by the owner.** It takes intent rather than dictation,
+puts it in its own words, understands why a control is tested this way, confirms before acting,
+catches a slip ("you said X, did you mean Y?"), and — told the status is in column C when the
+sheet has it in column B — reads the real source, reasons, asks, carries on and reports what it
+found. A form with a chat skin on it is not what was asked for.
+
+**What that does NOT change is WHEN the thinking stops being negotiable.** All of it lives
+BEFORE the auditor confirms; after the confirmation the artifact is frozen and the compiler
+writes the plan. The reason is not distrust of the model — an auditor SIGNS the work, and an
+artifact that moved after they approved it makes them attest to something they never decided.
+It is also why a correction is PROPOSED and accepted, never applied silently. The checkable
+form: throw the conversation away, keep the confirmed inputs, re-run `makePlan`, and the plan
+must come back byte for byte. **Epic 4's executing agent already has this posture** — it reasons,
+and raises a typed Escalation rather than guessing — so v2 extends a stance the product has
+rather than inventing one.
 
 ## 2026-09-11 — The plan is the platform's own sentence, and it is laid out to be found
 

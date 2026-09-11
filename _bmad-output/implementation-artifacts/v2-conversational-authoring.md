@@ -48,21 +48,95 @@ Two readings, and they are not equivalent:
 **Do not decide this inside a story about a chat UI.** It is a product decision about what
 an auditor is attesting to, and it changes the immutable chain.
 
+## What the agent is: a junior auditor, not a typist
+
+The owner corrected a first reading of this note that described the agent as something that
+*collects* field values. That is a form with a chat skin on it, and it is not what was asked
+for.
+
+> "the agent can reframe words as long as the intent isnt lost… if as an auditor i get a junior
+> auditor to assit me, i will give them instructions, they will go and act in line with those
+> instructions based on their understanding of my intent, which they confirmed with me before
+> hand… we are building a digital assistant that can think and reason and understand intent,
+> understand the methodology, understand why we are testing the way we are testing… it should
+> even be able to catch clerical errors, missinterpretations, etc. — e.g. you said X, did you
+> mean Y? You tell it for example that the source document is an excel sheet and column C is
+> where the status of the employee is; if the status is actually on column B, it should be able
+> to read and reason that actually its on column B, continuing now."
+
+So the agent is expected to:
+
+- take **intent**, not dictation, and put it in its own words;
+- understand the **methodology** — why a control is tested this way, not only what fields a
+  Template has;
+- **confirm** its understanding before acting on it;
+- **catch a slip** and say so — "you said X, did you mean Y?";
+- **read the real source**, notice that it disagrees with what it was told, reason about it,
+  carry on, and **report what it found**.
+
+None of that is in tension with anything below. The line that matters is not how much the agent
+thinks; it is **when its thinking stops being negotiable.**
+
+## The line: reasoning before the freeze, never after it
+
+```
+agent reasons, reframes, questions, proposes corrections   ← all the intelligence lives here
+                          ↓
+        the auditor confirms: "yes, that is what I meant"
+                          ↓
+                  ═══ frozen ═══
+                          ↓
+        the compiler writes the plan; a Run executes exactly that
+```
+
+Above the line the agent may be as capable as it can be. Below it nothing moves — and the
+reason is not distrust of the model. It is that **an auditor signs the work**. If the artifact
+changed after they approved it, they attested to something they never decided. That is also why
+the agent must ASK rather than silently repair: a junior auditor who quietly rewrites your scope
+is not a good junior auditor.
+
+The owner's own example, end to end:
+
+- **Today.** The auditor declares column C. The Run reads column C, finds nothing, and reports
+  every record uninspected. Honest, and useless.
+- **v2.** The agent opens the sheet, sees `status` in column B, and says *"you said C — the file
+  has status in column B. Use B?"* The auditor accepts. **B** becomes the declared column, the
+  frozen plan names B, and the correction is on record with who proposed it and who accepted it.
+
+**This posture already exists on the execution side.** Epic 4's agent reasons about what it
+sees and, when it is not sure, raises a typed Escalation and waits for a person rather than
+guessing; a proposal that contradicts the frozen policy is `UNEVALUATED`, never quietly
+corrected. v2 extends the same stance to authoring.
+
 ## Constraints v2 inherits and must not weaken
 
-- **The model may not author executable meaning.** Today `makePlan` composes the plan from
-  the auditor's own frozen inputs and a configured model can only AGREE — `derive-plan.ts`
-  stores the compiler's bytes and refuses an attempt whose semantics differ. A conversational
-  builder makes the model the thing that *collects* the inputs; it must still not be the
-  thing that *writes* the plan. The seam to keep is: conversation → validated authoring
-  inputs → the same compiler → the same frozen bytes.
-- **Retrieved and typed text stays inert.** Whatever the auditor says in the conversation is
-  authored text like any other, and everything downstream already treats such text as
-  untrusted (`UntrustedText`, the digest-and-length audit payloads).
+- **The frozen artifact stays deterministic and compiler-produced.** The model may reason its
+  way to *what the inputs should be*; once those are confirmed, `makePlan` composes the plan and
+  `derive-plan.ts` refuses an attempt whose semantics differ. The check to keep: throw the
+  conversation away, keep only the confirmed inputs, re-run the compiler, and the plan must come
+  back byte for byte identical.
+- **A correction is proposed and accepted, never applied silently.** Anything the agent inferred
+  rather than heard is a question, not a decision.
+- **Retrieved and typed text stays inert.** What the auditor says, and what the agent read out
+  of a source file, are authored text like any other: `UntrustedText`, digest-and-length audit
+  payloads, no free text reaching an executable field.
 - **Every save is still an audited command against a row-version token.** A conversation that
   writes silently would lose the staleness guarantee the Builder has.
-- **A conversation is not a substitute for the plan preview.** The auditor must still be able
-  to read what will execute, in the platform's own words, before submitting.
+- **The auditor can still read what will execute**, in the platform's own words, before
+  submitting. The conversation does not replace the plan preview.
+
+## Three things v2 must work out
+
+1. **Provenance per input.** A reviewer later asks "who decided column B?" The record must
+   distinguish: the auditor said it, the agent proposed it and the auditor accepted, or the
+   agent read it from the source and the auditor accepted. Today every authored field has one
+   origin — a person typed it — and that is no longer true.
+2. **What the approval attests to.** With reframing, the auditor is confirming *"this wording
+   captures my intent"*, which is a larger claim than *"I typed this"*. That is the same open
+   question as the two-acts-of-assent one above, and reframing makes it matter more, not less.
+3. **Drift.** A confirmed reading of a source ("status is in column B") can go stale when the
+   source changes. The agent should notice and re-ask rather than carry a stale confirmation
+   forward — the binding digest already detects the change; what is missing is the re-ask.
 
 ## Where the pieces already are
 
