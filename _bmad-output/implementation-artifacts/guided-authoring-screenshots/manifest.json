@@ -1,0 +1,54 @@
+{
+  "captureMethod": "Actual Playwright Chromium page.screenshot({ fullPage: true }); unedited PNG files, synthetic fixtures.",
+  "files": [
+    {
+      "bytes": 225351,
+      "file": "guided-preparation-mobile.png",
+      "height": 3179,
+      "sha256": "10901bc0d315dc9824df1456fd77da23255f862f3713e90e5da36d24f10610fa",
+      "width": 390
+    },
+    {
+      "bytes": 1045833,
+      "file": "owner-auditor-full-procedure-review.png",
+      "height": 7431,
+      "sha256": "6613000f09ffe9a294ce7cd3e3db23ccea2075d98fa6a20039441ecb1ea4646f",
+      "width": 1280
+    },
+    {
+      "bytes": 1721539,
+      "file": "owner-manager-revised-procedure-review.png",
+      "height": 12129,
+      "sha256": "62afe12e0ec3c783ce059f808bfc302402fdf60b1d9b17cd5624d44e766e2041",
+      "width": 1280
+    },
+    {
+      "bytes": 312499,
+      "file": "owner-objective-proposal-before-acceptance.png",
+      "height": 1881,
+      "sha256": "4c1cb4210c0bc33a32e5ea40089eb6c5e810a85eab8e1ae772cf50470cb865fb",
+      "width": 1280
+    },
+    {
+      "bytes": 275181,
+      "file": "writing-stale-suggestion.png",
+      "height": 1902,
+      "sha256": "2d5ea32fb75f3f58d6aef879b7cda6ce787e8e4472c576e4f430422d1bf888f2",
+      "width": 1280
+    },
+    {
+      "bytes": 283298,
+      "file": "writing-clarification.png",
+      "height": 1645,
+      "sha256": "3b622083456738062fe33330006dc027a5edd293cbe162a8fb17382ef634315e",
+      "width": 1280
+    }
+  ],
+  "jobId": 103260409680,
+  "liveOpenAI": false,
+  "repository": "raeltec-systems/intellifin-audit",
+  "runId": 34598654756,
+  "sourceCommit": "5d9be5667d317a4fd413221cc9e167f3fb30c6d1",
+  "inspected": true,
+  "inspectionNotes": "Viewed all six original PNGs. Desktop and mobile structure, unapplied comparison, stale acceptance refusal, clarification without replacement and complete review surfaces are present. Long reconciliation-button wrapping identified for a subsequent focused CSS correction; capture provenance remains this exact source commit."
+}
