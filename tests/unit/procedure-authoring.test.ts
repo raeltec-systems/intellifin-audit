@@ -136,9 +136,14 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
   });
   it('lets rejection win over a late provider response', async () => {
     const model = pendingModel(), h = harness(model.propose), first = h.generate(); await model.entered;
+    const before = structuredClone(h.row);
     await rejectAuthoringSuggestion(h.deps, { ...actor, procedureId, versionId, requestId: requestId() });
     model.complete(); expect(await first).toMatchObject({ ok: true, suggestion: { state: 'rejected', proposedText: null } });
     expect(await h.accept()).toMatchObject({ ok: false }); expect(h.writes).toBe(0);
+    expect(h.row).toEqual(before); expect(h.jobs).toBe(0);
+    expect(h.requests.get(requestId())).toMatchObject({ state: 'rejected', proposedText: null, usage: { inputTokens: 100, outputTokens: 30 } });
+    expect(h.events.at(-1)?.payload).toMatchObject({ decision: 'responded-after-rejection', usage: { inputTokens: 100, outputTokens: 30 } });
+    expect(JSON.stringify(h.events)).not.toContain(response().proposal.proposedText);
   });
   it('requires reconciliation after submission, manager rejection and return to the same Draft content', async () => {
     const h = harness(); await h.generate();

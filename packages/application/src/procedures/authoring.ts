@@ -147,7 +147,16 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
       const row = await ownedDraft(tx, input), store = tx.authoringRequests!;
       const record = ownedRequest(await store.find(input.requestId), input);
       // Rejection while generation is pending wins. A late response cannot revive it.
-      if (record.state !== 'pending') return view(record, row, deps.clock.now());
+      if (record.state !== 'pending') {
+        if (record.state === 'rejected' && complete.usage !== null) {
+          // Keep known provider usage without retaining the rejected response text or
+          // changing the human's decision. There is no procedure write in this path.
+          const accounted = { ...record, usage: complete.usage };
+          await store.update(accounted); await audit(tx, input, accounted, 'responded-after-rejection');
+          return view(accounted, row, deps.clock.now());
+        }
+        return view(record, row, deps.clock.now());
+      }
       await store.update(complete); await audit(tx, input, complete, 'responded');
       return view(complete, row, deps.clock.now());
     });

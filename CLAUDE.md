@@ -2779,3 +2779,11 @@ below 900px: verify a saved mobile change and reload, not the old absence of sav
 Long writing-reconciliation labels must wrap inside the contextual help column. Capture
 inspection exposed the overflow; the stale-response browser case checks its actual bounds.
 Name-editor copy must not assume it remains at the end of the whole Builder.
+
+
+## Late writing-response accounting after rejection (2026-09-11)
+
+A human may dismiss a writing request from another tab while its provider call is pending.
+The late response must preserve the rejected receipt and never retain or apply its proposal,
+but known token usage still belongs in the receipt and minimised audit event. Account for
+that metadata without touching the procedure, authorship, preparation reviews or plan jobs.
