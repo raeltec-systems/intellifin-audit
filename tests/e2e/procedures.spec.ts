@@ -896,7 +896,20 @@ test.describe('as an Auditor', () => {
     await scan(page);
     await page.setViewportSize({ width: 899, height: 900 });
     await expect(instruction).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Save Target Systems', exact: true })).toHaveCount(0);
+    // The responsive Builder remains editable at this width. Remove one selected system,
+    // prove the dirty state is announced, and save the narrower selection from the mobile
+    // layout rather than asserting that an editor disappears.
+    const mobileDesktopTarget = page.locator('li.ls-card').filter({ hasText: `E2E LedgerDesk ${stamp}` });
+    await expect(mobileDesktopTarget).toBeVisible();
+    await mobileDesktopTarget.getByRole('button', { name: `Remove E2E LedgerDesk ${stamp}`, exact: true }).click();
+    await expect(page.getByText('Target Systems has unsaved changes.', { exact: true })).toBeVisible();
+    const mobileTargetSave = page.getByRole('button', { name: 'Save Target Systems', exact: true });
+    await expect(mobileTargetSave).toBeEnabled();
+    await mobileTargetSave.click();
+    await expect(page.getByText('The Target System selection is recorded in the audit chain.')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('li.ls-card').filter({ hasText: `E2E LedgerDesk ${stamp}` })).toHaveCount(0);
+    await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
     await page.setViewportSize({ width: 900, height: 900 });
     await expect(instruction).toBeVisible();
   });

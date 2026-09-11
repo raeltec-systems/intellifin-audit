@@ -142,12 +142,11 @@ export const BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE =
   'These sections are pre-filled from the Template. Edit the context for this procedure; the Template stays unchanged.';
 
 /**
- * Said under the Control section only, because the Control NAME is editable and the
- * Control statement is not. It names where the editable half is, so the reader is not
- * left to hunt for it.
+ * Keeps the procedure's name distinct from its editable control statement. Avoid
+ * positional directions: the guided Builder groups the name with the context.
  */
 export const BUILDER_CONTROL_NAME_EDITABLE_SENTENCE =
-  'The Control name is edited under "Control name" at the end of this Builder. Editing a Draft never changes the Template it came from.';
+  'Use the Control name form to edit the name saved on this Draft. Editing a Draft never changes the Template it came from.';
 
 /**
  * The responsive floor for the Builder (NFR-11, EXPERIENCE.md → Responsive breakpoints).

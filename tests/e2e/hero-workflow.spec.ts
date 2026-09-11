@@ -77,6 +77,13 @@ async function scan(page: Page): Promise<void> {
   expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
 }
 
+async function openReview(page: Page): Promise<void> {
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
+  await page.locator('[data-preparation-nav="review"]').click();
+  await expect(page.locator('[data-preparation-panel="review"]')).toBeVisible();
+  await expect(page.locator('[data-readiness]')).toBeVisible();
+}
+
 /**
  * One versioned-file Population Source and one web Target System, so the hero Draft can
  * be completed and submitted. They are seeded directly because this journey is about the
@@ -156,11 +163,12 @@ test.describe('the hero workflow', () => {
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
     await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
+    await openStep(page, 'Objective');
     await shot(page, 'builder-opened');
 
     /* ------------------------------------------- the Draft says it is editable */
-    // Two sections stay read-only, and the Control section names where its editable
-    // half is rather than claiming the Draft cannot be edited.
+    // The context is pre-filled from the Template and can be edited for this procedure.
+    // The Control copy also points to the separate name editor.
     await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(1);
     await expect(page.getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE)).toHaveCount(1);
     await expect(page.getByText('not editable yet')).toHaveCount(0);
@@ -168,9 +176,7 @@ test.describe('the hero workflow', () => {
     /* --------------------------------- what the agent will do, and readiness -- */
     // Readiness is what an auditor must meet before spending a Run, so it is on the
     // page. The compiled plan is one fold down, where somebody who wants it can get it.
-    await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
-    await page.locator('[data-preparation-nav="review"]').click();
-    await expect(page.locator('[data-readiness]')).toBeVisible();
+    await openReview(page);
     await expect(page.locator('[data-plan-detail]')).toHaveJSProperty('open', false);
     await openPlanDetail(page);
     const summary = page.locator('[data-agent-summary]');
@@ -261,8 +267,8 @@ test.describe('the hero workflow', () => {
     await expect(page.locator('[data-condition-id="C1"]').getByLabel('Values that count as Compliant C1')).toHaveValue('Disabled');
     await expect(page.locator('[data-condition-id="C2"]').getByLabel('Privileged roles C2', { exact: true })).toHaveValue('LOAN_ADMIN\nSYSTEM_ADMIN');
     // The readiness item C2 raised is gone now that a policy is frozen with it.
+    await openReview(page);
     await expect(page.locator('[data-readiness-item="agent-judged-without-policy"]')).toHaveCount(0);
-    await openPlanDetail(page);
     await shot(page, 'readiness-after-policy', page.locator('[data-readiness]'));
 
     /* -------------------------------------------- keyboard reach and axe ------ */
@@ -300,6 +306,7 @@ test.describe('the hero workflow', () => {
     /* --------------------------- readiness CLEARS as the Draft is completed --- */
     // Submit is unavailable while the Draft is incomplete, and it says why — the same
     // gaps the readiness panel is listing, stated where the action is.
+    await openReview(page);
     const submit = page.getByRole('button', { name: 'Submit for approval', exact: true });
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
 
@@ -316,8 +323,8 @@ test.describe('the hero workflow', () => {
     await page.getByRole('button', { name: 'Save records to test', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
+    await openReview(page);
     await expect(page.locator('[data-readiness-item="source-not-bound"]')).toHaveCount(0);
-    await openPlanDetail(page);
     await shot(page, 'readiness-after-source', page.locator('[data-readiness]'));
 
     /* ------------------- the optional timing rule, and what it needs ---------- */
@@ -344,18 +351,18 @@ test.describe('the hero workflow', () => {
     await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.')).toBeVisible();
+    await shot(page, 'timing-window-condition', c3);
 
     // Readiness now says both things this Draft cannot substantiate, BEFORE a Run is
     // paid for: the bound source declares a termination DATE, and nothing captures the
     // disablement time. Each names its own subject rather than one vague warning.
+    await openReview(page);
     const precision = page.locator('[data-readiness-item="termination-time-precision-missing"]');
     const capture = page.locator('[data-readiness-item="disablement-capture-missing"]');
     await expect(precision).toHaveCount(1);
     await expect(precision).toContainText('termination_effective_time');
     await expect(capture).toHaveCount(1);
     await expect(capture).toContainText('disabled_time');
-    await shot(page, 'timing-window-condition', c3);
-    await openPlanDetail(page);
     await shot(page, 'timing-window-readiness', page.locator('[data-readiness]'));
 
     // The capture gap is closed where it belongs — in Evidence Requirements, whose own
@@ -369,11 +376,12 @@ test.describe('the hero workflow', () => {
     await expect(captureRow).toHaveValue('disabled_time');
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
+    await expect(page.getByText('Saved. Evidence Requirements are recorded in the audit chain.', { exact: true })).toBeVisible();
+    await shot(page, 'timing-capture-declared', page.locator('[data-preparation-panel="evidence"]'));
+    await openReview(page);
     await expect(page.locator('[data-readiness-item="disablement-capture-missing"]')).toHaveCount(0);
     // The source gap is NOT cleared by declaring a capture: they are two findings.
     await expect(page.locator('[data-readiness-item="termination-time-precision-missing"]')).toHaveCount(1);
-    await shot(page, 'timing-capture-declared', page.locator('[data-preparation-panel="evidence"]'));
 
     // Withdrawing the choice clears the finding, which is the other half of "readiness
     // shows and clears". The account-status rule is still exactly as it was authored.
@@ -382,8 +390,9 @@ test.describe('the hero workflow', () => {
     await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.')).toBeVisible();
     await expect(page.locator('[data-condition-id="C3"]')).toHaveCount(0);
-    await expect(page.locator('[data-readiness-item="termination-time-precision-missing"]')).toHaveCount(0);
     await expect(page.locator('[data-condition-id="C1"]').locator('[data-simple-text="C1"]')).toHaveText(saved);
+    await openReview(page);
+    await expect(page.locator('[data-readiness-item="termination-time-precision-missing"]')).toHaveCount(0);
 
     // Adding a Target System EXPANDS the audited scope, so this one save still confirms
     // — and the dialog names the system being added rather than restating the section.
@@ -398,6 +407,7 @@ test.describe('the hero workflow', () => {
     await scan(page);
     await scopeDialog.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
     await expect(page.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible();
+    await openReview(page);
     await expect(page.locator('[data-readiness-item="targets-missing"]')).toHaveCount(0);
 
     await openStep(page, 'Audit Instructions');

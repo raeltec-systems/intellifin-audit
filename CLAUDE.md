@@ -2768,3 +2768,14 @@ Treat the installed Playwright TimeoutError as cleanup-worthy as well as the out
 error; otherwise a one-millisecond race can leave an expired page reusable. Preserve the
 deadline, execution policy and existing real-browser assertion. The deterministic regression
 case forces the native timeout while ample outer budget remains and requires page disposal.
+
+
+## Guided Builder browser assertions and narrow help actions (2026-09-11)
+
+The guided outline hides unselected groups. Browser journeys must open Review and submission
+before checking readiness or Submit, then navigate back to the actual editor. Keep dirty,
+required-field and focus assertions intact. The adopted responsive Builder remains editable
+below 900px: verify a saved mobile change and reload, not the old absence of save controls.
+Long writing-reconciliation labels must wrap inside the contextual help column. Capture
+inspection exposed the overflow; the stale-response browser case checks its actual bounds.
+Name-editor copy must not assume it remains at the end of the whole Builder.

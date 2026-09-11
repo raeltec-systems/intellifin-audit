@@ -135,8 +135,15 @@ test('generation keeps manual editing available, retains its section after switc
     await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
     await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
     expect(await requestStates()).toEqual(['ready']);
+    const reconcile = scopeWriting.getByRole('button', { name: 'Start again with this suggestion', exact: true });
+    await expect(reconcile).toBeVisible();
+    expect(await reconcile.evaluate(button => {
+      const help = button.closest('.ls-writing');
+      if (!help) throw new Error('Writing help is missing');
+      return button.getBoundingClientRect().right - help.getBoundingClientRect().right;
+    })).toBeLessThanOrEqual(1);
     await attachAuthoringScreenshot(page, testInfo, 'writing-stale-suggestion');
-    await scopeWriting.getByRole('button', { name: 'Start again with this suggestion', exact: true }).click();
+    await reconcile.click();
     await expect(scopeWriting.getByLabel('Rough notes for Scope note', { exact: true })).toHaveValue(proposal);
     await expect(scopeWriting.getByRole('heading', { name: 'Proposed replacement — not applied' })).toHaveCount(0);
     await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);

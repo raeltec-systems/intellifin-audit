@@ -10,6 +10,13 @@
   margin-top: var(--spacing-2);
 }
 
+/* Reconciliation actions can be longer than the contextual help column. */
+.ls-writing .ls-button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .ls-writing__notes {
   min-height: calc(var(--spacing-6) * 5);
   resize: vertical;
