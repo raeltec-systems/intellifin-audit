@@ -131,3 +131,22 @@ product model is gpt-5.6-terra, independent of plan-check and audit-Run model co
 - Added tests for notes, feedback and saved prose, recognised private-key material,
   known opaque references, no provider calls or receipt writes on refusal, manual saves,
   section-specific acceptance and UI limits. Live-provider verification remains blocked.
+
+## Hosted feedback and hydration correction
+
+- On `bd7bcdad0cdd359fc2c52ced1543b54e8263b038`, hosted typecheck/boundaries/unit,
+  container verification and the focused guided/owner/writing browser step passed.
+  The complete browser suite is still running. PostgreSQL passed548/549 cases, including
+  all populated upgrades; the sole failure expected a known-completed receipt to remain
+  pending after submission. The adopted contract instead returns an honestly stale ready
+  receipt with usage. Its integration case now proves refusal before AND after completion,
+  and exact preservation of the submitted row. No acceptance guard was changed.
+- The previous full browser run found that readable SSR inputs could be edited before
+  their React handlers were installed, losing keystrokes at hydration. Keep one native
+  disabled editing fieldset until hydration, then enable it in place. Native outline
+  links and saved text remain readable. Preserve all existing dirty/focus assertions;
+  identify Evidence groups by their own accessible names and wait for enabled state before
+  keyboard focus. The hero journey now actually navigates between editors and review.
+- Credential/length corrections passed60 focused unit tests and the pinned typecheck.
+  Guided hydration passed24 scoped Guided/Evidence tests. Final hosted verification and
+  inspection of the actual screenshot artifacts remain required before handoff.

@@ -339,6 +339,7 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
 
     let submitted: Awaited<ReturnType<typeof transitionVersion>>;
     let refusal: Awaited<ReturnType<typeof acceptAuthoringSuggestion>>;
+    let submittedRow!: ProcedureVersionRecord;
     try {
       submitted = await transitionVersion(procedureDependencies(), {
         session: identitySession(users.author),
@@ -348,17 +349,25 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
         expectedRowVersion: procedureVersionRowVersion(row),
       }, 'submit');
       expect(submitted).toMatchObject({ ok: true, state: 'SUBMITTED' });
-      const submittedRow = (await repository.findVersion(row.versionId))!;
+      submittedRow = (await repository.findVersion(row.versionId))!;
       refusal = await acceptAuthoringSuggestion(authoringDependencies(model), acceptanceInput(submittedRow, users.author, input.requestId, 'This cannot be accepted after submission.'));
       expect(refusal).toEqual({ ok: false, reason: 'Only a Draft can be edited.' });
     } finally {
       release.resolve();
     }
 
-    expect(await generation).toEqual({ ok: false, reason: 'Only a Draft can be edited.' });
+    const submittedBeforeCompletion = structuredClone(submittedRow);
+    const completed = await generation;
+    expect(completed).toMatchObject({ ok: true, suggestion: { requestId: input.requestId, state: 'ready', stale: true, proposedText: 'A pending suggestion that must never edit a submitted version.' } });
+    if (!completed.ok) throw new Error(completed.reason);
+    expect(await repository.findVersion(row.versionId)).toEqual(submittedBeforeCompletion);
+
+    const lateRefusal = await acceptAuthoringSuggestion(authoringDependencies(model), acceptanceInput(submittedRow, users.author, input.requestId, completed.suggestion.proposedText!));
+    expect(lateRefusal).toEqual({ ok: false, reason: 'Only a Draft can be edited.' });
+    expect(await repository.findVersion(row.versionId)).toEqual(submittedBeforeCompletion);
     const stored = await requestsFor(row.versionId);
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.record).toMatchObject({ state: 'pending' });
+    expect(stored[0]?.record).toMatchObject({ state: 'ready', usage: { inputTokens: 31, outputTokens: 17 } });
     await assertChain(row.procedureId);
   });
 

@@ -230,7 +230,13 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
         </ol>
       </nav>
 
-      <div className="ls-guided__work">
+      {/* Saved sections remain readable before hydration, but these forms need their
+          change handlers and submission registry before they can accept an edit. Keep
+          this one native fieldset mounted while enabling its controls; replacing the
+          editor tree at that boundary would discard state and keyboard focus. */}
+      <fieldset className="ls-guided__work" aria-label="Procedure editing controls" disabled={!hydrated}>
+        {!hydrated ? <p className="ls-caption" role="status">Editing controls are loading. You can read the saved sections below.</p> : null}
+        <noscript><p>JavaScript is required to edit this procedure. The saved sections and outline remain available to read.</p></noscript>
         {PREPARATION_SECTIONS.map((section, index) => {
           const status = preparationStatus(draft, section);
           const acknowledgement = sectionReview(draft, section);
@@ -280,7 +286,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
           </ul>
           {review}
         </section>
-      </div>
+      </fieldset>
 
       <aside className="ls-guided__help" aria-label="Section help">
         <details className="ls-disclosure ls-guided__help-disclosure" open={helpStartsOpen}>

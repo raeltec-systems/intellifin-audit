@@ -262,6 +262,7 @@ test.describe('the hero workflow', () => {
     await expect(page.locator('[data-condition-id="C2"]').getByLabel('Privileged roles C2', { exact: true })).toHaveValue('LOAN_ADMIN\nSYSTEM_ADMIN');
     // The readiness item C2 raised is gone now that a policy is frozen with it.
     await expect(page.locator('[data-readiness-item="agent-judged-without-policy"]')).toHaveCount(0);
+    await openPlanDetail(page);
     await shot(page, 'readiness-after-policy', page.locator('[data-readiness]'));
 
     /* -------------------------------------------- keyboard reach and axe ------ */
@@ -269,6 +270,7 @@ test.describe('the hero workflow', () => {
     // control on this surface. A radio GROUP is one tab stop — arrow keys move within
     // it and select as they go, and Tab leaves it — so this drives the real contract
     // rather than the one a Tab-per-radio assumption would invent.
+    await openStep(page, 'Compliance Rule conditions');
     const c1After = page.locator('[data-condition-id="C1"]');
     const simpleRadio = c1After.getByLabel('Pick the values from a list');
     const advancedRadio = c1After.getByLabel('Write it out myself');
@@ -301,6 +303,7 @@ test.describe('the hero workflow', () => {
     const submit = page.getByRole('button', { name: 'Submit for approval', exact: true });
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
 
+    await openStep(page, 'Period and scope');
     await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');
     await page.getByLabel('Period end', { exact: true }).fill('2026-08-31');
     await page.getByLabel('Scope statement').fill('Employees terminated in August 2026.');
@@ -308,11 +311,13 @@ test.describe('the hero workflow', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
 
+    await openStep(page, 'Population Source binding');
     await page.getByLabel('Where the records come from').selectOption(sourceId);
     await page.getByRole('button', { name: 'Save records to test', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.').first()).toBeVisible();
     await expect(page.locator('[data-readiness-item="source-not-bound"]')).toHaveCount(0);
+    await openPlanDetail(page);
     await shot(page, 'readiness-after-source', page.locator('[data-readiness]'));
 
     /* ------------------- the optional timing rule, and what it needs ---------- */
@@ -320,6 +325,7 @@ test.describe('the hero workflow', () => {
     // It must not replace it: an Active account has no disablement instant at all, so
     // the status condition is what makes that an Exception, and a swap would silently
     // drop the finding the Template exists to make.
+    await openStep(page, 'Compliance Rule conditions');
     const timing = page.locator('[data-timing-choice]');
     await expect(timing).toBeVisible();
     await expect(page.locator('[data-window-condition]')).toHaveCount(0);
@@ -349,6 +355,7 @@ test.describe('the hero workflow', () => {
     await expect(capture).toHaveCount(1);
     await expect(capture).toContainText('disabled_time');
     await shot(page, 'timing-window-condition', c3);
+    await openPlanDetail(page);
     await shot(page, 'timing-window-readiness', page.locator('[data-readiness]'));
 
     // The capture gap is closed where it belongs — in Evidence Requirements, whose own
@@ -370,6 +377,7 @@ test.describe('the hero workflow', () => {
 
     // Withdrawing the choice clears the finding, which is the other half of "readiness
     // shows and clears". The account-status rule is still exactly as it was authored.
+    await openStep(page, 'Compliance Rule conditions');
     await timing.getByRole('button', { name: 'Remove the 24-hour disablement window', exact: true }).click();
     await page.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click();
     await expect(page.getByText('Saved. The Compliance Rule is recorded in the audit chain.')).toBeVisible();
@@ -379,6 +387,7 @@ test.describe('the hero workflow', () => {
 
     // Adding a Target System EXPANDS the audited scope, so this one save still confirms
     // — and the dialog names the system being added rather than restating the section.
+    await openStep(page, 'Target System selection');
     await page.getByLabel('Add a system').selectOption(targetId);
     await page.getByRole('button', { name: 'Add Target System', exact: true }).click();
     await page.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
@@ -414,7 +423,7 @@ test.describe('the hero workflow', () => {
     // the ordinary saves above needed no dialog and this one still does.
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(page.getByText('Wait for the executable plan to finish deriving.')).toBeVisible();
-    await shot(page, 'submit-unavailable-with-its-reason', page.locator('.ls-actions').last().locator('xpath=..'));
+    await shot(page, 'submit-unavailable-with-its-reason', submit.locator('xpath=..'));
 
     // And the reason is NOT a missing section: every completeness blocker the Builder
     // could raise is gone, and readiness lists nothing about targets or the source.

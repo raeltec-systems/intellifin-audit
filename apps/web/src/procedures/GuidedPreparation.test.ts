@@ -73,6 +73,24 @@ describe('guided procedure preparation', () => {
     expect(html).toContain('Additional section help');
   });
 
+  it('waits for hydration before accepting any editor input or submission', () => {
+    const html = render(view());
+    const work = /<fieldset([^>]*aria-label="Procedure editing controls"[^>]*)>([\s\S]*)<\/fieldset>/.exec(html);
+    expect(work).not.toBeNull();
+    // A native disabled ancestor covers every editor and the Submit button. Merely
+    // waiting to hide panels left their SSR controls editable before onChange existed:
+    // hydration then restored saved text and the submission guard never saw the edit.
+    expect(work![1]).toContain('disabled');
+    for (const section of ['context', 'scope', 'evidence', 'instructions', 'assessment', 'frequency']) {
+      expect(work![2]).toContain(`aria-label="${section} editor"`);
+      expect(work![2]).toContain(`value="retained-${section}"`);
+    }
+    expect(work![2]).toContain('Submit for approval');
+    expect(work![2]).toContain('Editing controls are loading.');
+    expect(work![2]).not.toContain('aria-label="Procedure outline"');
+    expect(html.indexOf('aria-label="Procedure outline"')).toBeLessThan(html.indexOf('<fieldset'));
+  });
+
   it('keeps the whole-procedure review and submit control physically inside the final panel', () => {
     const html = render(view());
     const final = panel(html, 'review');

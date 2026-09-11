@@ -2724,6 +2724,10 @@ The outline uses native section links and keeps sections readable before hydrati
 shows the selected editor without unmounting other unsaved forms. Preserve a section selected
 while JavaScript loads. Editor-contract tests must wait for data-guided-ready before exposing
 panels; changing server markup first creates hydration mismatches and lost interactions.
+Keep one native disabled fieldset around editing controls until hydration installs their
+change handlers and submission registry. Saved text remains readable. Enabling the same
+fieldset preserves component identity and focus. Tests should select nested Evidence groups
+by their own accessible legend, and wait for an enabled control before calling focus().
 Populated upgrade fixtures must insert the columns of their historical generation, rather
 than call the current Drizzle repository against an older schema. Keep their frozen-input,
 authorship, immutability and compatibility assertions intact.
@@ -2748,3 +2752,8 @@ section review alone do not. Unsaved fields and uncertain acceptance block revie
 generation does not. Per-section sessions prevent late responses appearing in another editor.
 The explicit test-only OpenAI preload proves SDK/workflow behavior and must never ship in
 runtime images or be described as live-provider or semantic-faithfulness evidence.
+Check supplied prose for known credential references before authoring I/O; do not silently
+redact saved instructions or change the manual-writing contract. Objective proposals follow
+the domain's4,000-character limit in both editor and acceptance, rather than the other prose
+sections'10,000-character bound. A completed receipt can be ready but stale after submission;
+persist its usage and prove acceptance is refused both before and after completion.

@@ -140,6 +140,15 @@
   min-width: 0;
 }
 
+/* The native fieldset disables editing until hydration without changing the editor
+ * tree or adding the browser's default fieldset border and spacing. */
+.ls-guided__work {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 /* ls-stack sets display:flex, so explicitly preserve native hidden semantics. */
 .ls-guided__panel[hidden] {
   display: none;

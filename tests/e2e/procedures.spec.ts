@@ -243,8 +243,7 @@ test.describe('as an Auditor', () => {
       await expect(page.getByRole('heading', { level: 1, name: controlName })).toBeVisible();
       await expect(page.getByText(`Template ${template.id} · ${template.label}`)).toBeVisible();
 
-      // Control and Objective are pre-filled and read-only, read once at the top under
-      // the pinned sentence rather than as two cards each repeating it.
+      // Template context is pre-filled and editable for this procedure only.
       const sections = page.locator('.ls-card', { hasText: 'Objective' });
       await expect(sections.first()).toBeVisible();
       await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE).first()).toBeVisible();
@@ -256,9 +255,7 @@ test.describe('as an Auditor', () => {
 
       await expect(page.getByLabel('Period start')).toBeVisible();
       await expect(page.getByLabel('Where the records come from')).toBeVisible();
-      // Compliance Rule conditions are editable too (Story 2.4). Evidence Requirements
-      // and the Schedule are editable now too (Story 2.5): exactly TWO sections remain
-      // read-only — Control, Objective.
+      // Critical evidence, criteria and frequency settings retain their structured editors.
       await expect(page.getByLabel('Add a system')).toBeVisible();
       // The Compliance Rule is editable in both modes. A condition with a simple form
       // opens on it and its authored text is one radio away; one with no simple form
@@ -281,15 +278,13 @@ test.describe('as an Auditor', () => {
       if (template.id === 'P-1') {
         await expect(page.getByLabel('What to record').first()).toBeVisible();
       }
-      // Said once, over the one panel that carries both Template sections, and the panel
-      // has nothing to edit in it.
+      // The context panel explains the scope of adaptation and exposes all four fields.
       await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(1);
-      const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE });
-      await expect(readOnly.locator('textarea')).toHaveCount(4);
-      await expect(readOnly.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
-      await expect(readOnly.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
-      // The Control says where its editable half is, exactly once, and the Objective —
-      // which has no editable half — does not repeat it.
+      const context = page.locator('[data-preparation-panel="context"]');
+      await expect(context.locator('textarea')).toHaveCount(4);
+      await expect(context.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
+      await expect(context.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
+      // Control-name guidance is stated once, separately from the objective wording.
       await expect(page.getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE)).toHaveCount(1);
       await expect(
         page
@@ -587,7 +582,7 @@ test.describe('as an Auditor', () => {
 
     // The grounding rule: a screenshot or a recording segment alone never grounds an
     // attribute value.
-    const first = page.locator('fieldset', { hasText: 'Evidence item 1' });
+    const first = page.getByRole('group', { name: 'Evidence item 1', exact: true });
     await first.getByLabel('A saved copy of the page it was read from').uncheck();
     await first.getByLabel('The lines of the source file it came from').uncheck();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
@@ -605,12 +600,13 @@ test.describe('as an Auditor', () => {
 
     // Adding a new Evidence Requirement is keyboard reachable and focuses its name field.
     const add = page.getByRole('button', { name: 'Add an evidence item', exact: true });
+    await expect(add).toBeEnabled();
     await add.focus();
     await page.keyboard.press('Enter');
     const added = page.getByLabel('What to record').last();
     await expect(added).toBeFocused();
     await added.fill(' USERNAME ');
-    const addedFieldset = page.locator('fieldset', { hasText: 'Evidence item 4' });
+    const addedFieldset = page.getByRole('group', { name: 'Evidence item 4', exact: true });
     await addedFieldset.getByLabel('The lines of the source file it came from').check();
     await page.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -722,7 +718,7 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E capture ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    const first = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 1$/ }) });
+    const first = page.getByRole('group', { name: 'Evidence item 1', exact: true });
     await first.getByLabel('A saved copy of the page it was read from').uncheck();
     await first.getByLabel('Screenshot of the page').uncheck();
     await first.getByLabel('Accept a reading with no saved proof behind it').check();
@@ -737,7 +733,7 @@ test.describe('as an Auditor', () => {
     await expect(first.getByLabel('Screenshot of the page (always kept for a system the agent drives)', { exact: true })).toBeChecked();
     await expect(first.getByLabel('Screenshot of the page (always kept for a system the agent drives)', { exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Add an evidence item', exact: true }).click();
-    const addedCapture = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 4$/ }) });
+    const addedCapture = page.getByRole('group', { name: 'Evidence item 4', exact: true });
     await addedCapture.getByLabel('What to record').fill('capture_note');
     await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).toBeChecked();
     await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).toBeDisabled();
@@ -766,7 +762,7 @@ test.describe('as an Auditor', () => {
     await expect(first.getByLabel('Screenshot of the page')).not.toBeChecked();
     await expect(addedCapture.getByLabel('A saved copy of the page it was read from')).not.toBeChecked();
     await expect(addedCapture.getByLabel('Screenshot of the page')).not.toBeChecked();
-    const authored = page.locator('fieldset').filter({ has: page.locator('legend', { hasText: /^Evidence item 2$/ }) });
+    const authored = page.getByRole('group', { name: 'Evidence item 2', exact: true });
     await expect(authored.getByLabel('A saved copy of the page it was read from')).toBeChecked();
     await expect(authored.getByLabel('Screenshot of the page')).toBeChecked();
     await addedCapture.getByLabel('The lines of the source file it came from').check();
@@ -919,15 +915,9 @@ test.describe('as an Auditor', () => {
       await card.getByRole('link').click();
       // The sections are on the Builder; the detail surface lists versions.
       await page.getByRole('link', { name: 'Open Builder' }).click();
-      await expect(page.getByRole('heading', { level: 3, name: 'Objective' })).toBeVisible();
-      // The Objective's own block: Control and Objective share one panel now, so the
-      // first paragraph of the card is the Control statement, not this.
-      const objective = await page
-        .locator('.ls-template-fact')
-        .filter({ has: page.getByRole('heading', { level: 3, name: 'Objective' }) })
-        .locator('p')
-        .first()
-        .innerText();
+      const field = page.getByLabel('Objective', { exact: true });
+      await expect(field).toBeEditable();
+      const objective = await field.inputValue();
       objectives.add(objective);
     }
     expect(objectives.size).toBe(4);
@@ -1011,7 +1001,7 @@ test.describe('as an Auditor', () => {
       .first();
     await card.getByRole('link').click();
     await page.getByRole('link', { name: 'Open Builder' }).click();
-    await expect(page.getByRole('heading', { level: 3, name: 'Objective' })).toBeVisible();
+    await expect(page.getByLabel('Objective', { exact: true })).toBeEditable();
     await scan(page);
   });
 
