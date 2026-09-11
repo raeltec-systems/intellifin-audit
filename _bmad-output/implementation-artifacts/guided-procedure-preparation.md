@@ -1,6 +1,11 @@
 # Prepare an audit procedure — the guided authoring direction
 
-**Status:** owner-adopted direction, 2026-09-11. Planning artifact. Nothing here is built.
+**Status:** owner-adopted direction, 2026-09-11. Stories 2.15, 2.9 and 2.10 shipped
+in PR #30. The owner's deployed-UI review refines the experience in
+`guided-authoring-experience-correction.md`: select established synthetic Template
+context and evidence, then design and revise test steps with a central assistant.
+That document is the implementation-ready acceptance contract for this correction;
+the broader subsequent stories below remain outside this slice.
 **Supersedes:** `v2-conversational-authoring.md`, which framed this as v2. The owner moved it
 into v1 after reviewing LivePlan; that note stays as the record of how the idea started and the
 junior-auditor framing it produced.

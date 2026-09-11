@@ -1,3 +1,7 @@
+## 2026-09-11 — Intent-driven authoring revisions
+
+A follow-up carries the full human-edited proposal plus a same-author, same-section receipt reference. Resolve up to four prior turns inside the authorised transaction; stale/foreign/expired proposals cannot anchor a revision. Keep feedback out of immutable audit payloads. The bounded receipt may retain it; no credentials or source locations reach the provider. Parse legacy guided-prose-v1 receipts alongside guided-test-design-v2 without rewriting history. Test instructions refine registered read/inspection work; structured criteria and the compiler remain authoritative.
+
 ## 2026-09-11 — Synthetic ITGC Template context
 
 The owner-supplied ACCA `IT General Controls.pdf` informs synthetic PoC controls in addendum §C. It is educational background, never Northstar policy or an invented criterion reference. P-2/P-4 now seed control statements; their execution contracts and historical versions are unchanged. The owner refinement is recorded in `guided-authoring-experience-correction.md`: select established controls and evidence, then guide and revise test design.

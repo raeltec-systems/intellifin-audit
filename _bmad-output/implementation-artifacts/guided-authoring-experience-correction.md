@@ -66,3 +66,16 @@ from an operating-effectiveness test or from polished wording.
 Tested/pushed correction commits: none yet. Local, hosted CI and live-provider
 results will be recorded separately here before handoff. No new production Run or
 deployment has been made for this correction.
+
+## Checkpoints
+
+- Seed context: local commit `251f69b687455aa7f4b0142b4273e49200ae140b`, pushed
+  `e9f5518ba5caeec5f38b3a342426587ecae64687`; identical tree
+  `745a65ce2ac65c1b3604bf1d38b475143da2232d`. Thirty focused local tests pass.
+  PR #31 targets main. Hosted CI 34641421152 passed types/unit/boundaries,
+  container checks and the integration test step; its owner walkthrough correctly
+  exposed an obsolete P-2 empty-control expectation, corrected with this work.
+- Revision backend: 43 synthetic command tests and six installed-SDK transport tests;
+  infrastructure typecheck passes. These establish mechanical behavior, not live
+  wording quality. Local PostgreSQL execution is blocked because the environment
+  cannot change to an unprivileged service user; real PostgreSQL 18 runs in CI.

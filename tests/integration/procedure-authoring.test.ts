@@ -27,6 +27,7 @@ import {
   PostgresIdentityUnitOfWork,
   PostgresProceduresUnitOfWork,
   SystemClock,
+  parseAuthoringRecord,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
@@ -559,5 +560,82 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
     expect(await requestsFor(first.versionId)).toHaveLength(5);
     expect(await requestsFor(second.versionId)).toHaveLength(1);
     await assertChain(first.procedureId);
+  });
+
+  it('persists revision feedback and explanation, forwards the working draft, and parses legacy receipts', async () => {
+    const row = await seedDraft();
+    type Prompt = Parameters<ProcedureAuthoringModel['propose']>[0];
+    const prompts: Prompt[] = [];
+    const model: ProcedureAuthoringModel = {
+      identity: AUTHORING_IDENTITY,
+      propose: async (input) => {
+        prompts.push(input);
+        return prompts.length === 1
+          ? { proposal: { proposedText: 'Initial database-backed proposal.', clarifications: [] }, usage: { inputTokens: 31, outputTokens: 17 } }
+          : {
+            proposal: {
+              proposedText: 'Revised database-backed proposal.',
+              clarifications: [],
+              explanation: 'The latest correction was applied to the supplied working draft.',
+            },
+            usage: { inputTokens: 37, outputTokens: 19 },
+          };
+      },
+    };
+    const firstRequestId = ids.next();
+    const first = await generateAuthoringSuggestion(authoringDependencies(model), draftInput(row, users.author, {
+      requestId: firstRequestId,
+      changes: 'Start from the saved objective.',
+    }));
+    expect(first).toMatchObject({ ok: true, suggestion: { state: 'ready', proposedText: 'Initial database-backed proposal.' } });
+    const workingDraft = `${'d'.repeat(8990)} USER EDITED TAIL`;
+    const secondRequestId = ids.next();
+    const secondInput = draftInput(row, users.author, {
+      requestId: secondRequestId,
+      mode: 'revise',
+      changes: 'Keep the approved baseline and add the current evidence citation.',
+      revision: { requestId: firstRequestId, draft: workingDraft },
+    });
+    const second = await generateAuthoringSuggestion(authoringDependencies(model), secondInput);
+    expect(second).toMatchObject({
+      ok: true,
+      suggestion: {
+        state: 'ready',
+        proposedText: 'Revised database-backed proposal.',
+        explanation: 'The latest correction was applied to the supplied working draft.',
+      },
+    });
+    expect(prompts[1]?.revision).toEqual({
+      draft: workingDraft,
+      history: [{ feedback: '', proposedText: 'Initial database-backed proposal.', clarifications: [] }],
+    });
+
+    const persisted = await requestsFor(row.versionId);
+    const revisedRecord = persisted.find((record) => record.request_id === secondRequestId)?.record;
+    expect(revisedRecord).toMatchObject({
+      requestId: secondRequestId,
+      explanation: 'The latest correction was applied to the supplied working draft.',
+      revision: {
+        requestId: firstRequestId,
+        draft: workingDraft,
+        feedback: secondInput.changes,
+      },
+      usage: { inputTokens: 37, outputTokens: 19 },
+    });
+    expect(JSON.stringify(revisedRecord)).toContain('USER EDITED TAIL');
+
+    if (!revisedRecord) throw new Error('revision receipt was not persisted');
+    const legacyRecord = structuredClone(revisedRecord);
+    delete legacyRecord['explanation'];
+    delete legacyRecord['revision'];
+    const identity = legacyRecord['identity'];
+    if (typeof identity !== 'object' || identity === null || Array.isArray(identity)) throw new Error('receipt identity was not persisted');
+    legacyRecord['identity'] = { ...identity, promptVersion: 'guided-prose-v1' };
+    expect(parseAuthoringRecord(legacyRecord)).toMatchObject({
+      requestId: secondRequestId,
+      proposedText: 'Revised database-backed proposal.',
+      identity: { promptVersion: 'guided-prose-v1' },
+    });
+    await assertChain(row.procedureId);
   });
 });

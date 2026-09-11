@@ -358,7 +358,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
 
   /* -------------------------------------- 1a. inspect and prepare context ---- */
   await expect(page.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
-  await expect(page.getByLabel('Control statement', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Control statement', { exact: true })).toHaveValue('Synthetic control: Roles assigned in AccessGate must not grant prohibited permission pairs defined in the versioned RoleMatrix.');
   await expect(page.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
   const templateObjective = await page.getByLabel('Objective', { exact: true }).inputValue();
   expect(templateObjective).not.toBe('');

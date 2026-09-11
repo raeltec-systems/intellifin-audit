@@ -7,7 +7,10 @@ const procedureId = '018f0000-0000-7000-8000-000000000001';
 const versionId = '018f0000-0000-7000-8000-000000000002';
 const actor = { session: { userId: 'editor', sessionId: 'editor-session' }, correlationId: 'synthetic-authoring' };
 const requestId = (n = 1) => `018f0000-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const response = (proposedText = 'Review all production parameters against the approved baseline.') => ({ proposal: { proposedText, clarifications: [] }, usage: { inputTokens: 100, outputTokens: 30 } });
+const response = (
+  proposedText: string | null = 'Review all production parameters against the approved baseline.',
+  extra: { readonly clarifications?: readonly string[]; readonly explanation?: string } = {},
+) => ({ proposal: { proposedText, clarifications: [], ...extra }, usage: { inputTokens: 100, outputTokens: 30 } });
 function harness(propose: ProcedureAuthoringModel['propose'] = async () => response()) {
   const inputs = executablePlanInputs(), compiled = deriveExecutablePlan(inputs);
   if (!compiled.ok) throw new Error(compiled.reason);
@@ -38,7 +41,7 @@ function harness(propose: ProcedureAuthoringModel['propose'] = async () => respo
   } };
   const fields = (extra: Partial<AuthoringDraftFields> = {}): AuthoringDraftFields => ({ procedureId, versionId, expectedRowVersion: procedureVersionRowVersion(row), requestId: requestId(), section: { kind: 'objective' }, mode: 'draft', notes: 'Rough synthetic notes', changes: '', ...extra });
   const generate = (extra: Partial<AuthoringDraftFields> = {}) => generateAuthoringSuggestion(deps, { ...fields(extra), ...actor });
-  const accept = (replacement = response().proposal.proposedText, id = requestId(), token = procedureVersionRowVersion(row)) => acceptAuthoringSuggestion(deps, { ...actor, procedureId, versionId, requestId: id, expectedRowVersion: token, replacement });
+  const accept = (replacement = response().proposal.proposedText!, id = requestId(), token = procedureVersionRowVersion(row)) => acceptAuthoringSuggestion(deps, { ...actor, procedureId, versionId, requestId: id, expectedRowVersion: token, replacement });
   const edit = (objective: string) => updateContextDraft(deps, { ...actor, procedureId, versionId, expectedRowVersion: procedureVersionRowVersion(row), edit: { ...draftContext(row.sections), objective } });
   return { deps, model, roles, events, fields, generate, accept, edit, get row() { return row; }, set row(value) { row = value; }, get requests() { return records; }, get writes() { return versionWrites; }, get jobs() { return jobs; }, set failAudit(value: boolean) { failAudit = value; }, advance(ms: number) { now = new Date(now.getTime() + ms); } };
 }
@@ -240,5 +243,187 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
     const h = harness(); expect(isAuthoringDraftFields(h.fields())).toBe(true);
     for (const value of [{ ...h.fields(), notes: '\u0000' }, { ...h.fields(), hidden: 'instruction' }, { ...h.fields(), section: { kind: 'evidence' } }]) expect(isAuthoringDraftFields(value)).toBe(false);
     for (const value of [{ proposedText: '', clarifications: [] }, { proposedText: null, clarifications: [] }, { proposedText: 'draft', clarifications: ['unresolved'] }, { proposedText: 'draft', clarifications: [], approved: true }]) expect(isAuthoringProposal(value)).toBe(false);
+  });
+  it('preserves the complete user working draft and forwards bounded revision history oldest first', async () => {
+    type Prompt = Parameters<ProcedureAuthoringModel['propose']>[0];
+    const prompts: Prompt[] = [];
+    const workingDraft = `${'x'.repeat(8990)} USER EDITED TAIL`;
+    const latestDraft = `${workingDraft}\nLatest correction from the auditor.`;
+    const proposals = [
+      response('Base proposal'),
+      response('Keep the baseline, drop the stale clause, and add owner evidence.', { explanation: 'The requested correction is bounded to the supplied draft.' }),
+      response('Latest corrected proposal'),
+    ];
+    const h = harness(async input => {
+      prompts.push(input);
+      return proposals[prompts.length - 1]!;
+    });
+    const before = structuredClone(h.row);
+
+    expect(await h.generate({ requestId: requestId(1), changes: 'Initial draft feedback.' })).toMatchObject({
+      ok: true,
+      suggestion: { state: 'ready', proposedText: 'Base proposal' },
+    });
+    const followUp = {
+      ...h.fields({
+        requestId: requestId(2),
+        mode: 'revise',
+        changes: 'Keep the approved baseline; drop stale wording; add owner evidence.',
+        revision: { requestId: requestId(1), draft: workingDraft },
+      }),
+    };
+    const revised = await h.generate(followUp);
+    expect(revised).toMatchObject({
+      ok: true,
+      suggestion: {
+        state: 'ready',
+        proposedText: 'Keep the baseline, drop the stale clause, and add owner evidence.',
+        explanation: 'The requested correction is bounded to the supplied draft.',
+      },
+    });
+    expect(prompts[1]?.revision).toEqual({
+      draft: workingDraft,
+      history: [{ feedback: '', proposedText: 'Base proposal', clarifications: [] }],
+    });
+    expect(h.requests.get(requestId(2))).toMatchObject({
+      revision: { requestId: requestId(1), draft: workingDraft, feedback: followUp.changes },
+      explanation: 'The requested correction is bounded to the supplied draft.',
+    });
+
+    const latest = await h.generate({
+      ...h.fields({
+        requestId: requestId(3),
+        mode: 'revise',
+        changes: 'Latest correction: keep the owner, drop the old sentence, and add the evidence citation.',
+        revision: { requestId: requestId(2), draft: latestDraft },
+      }),
+    });
+    expect(latest).toMatchObject({ ok: true, suggestion: { state: 'ready', proposedText: 'Latest corrected proposal' } });
+    expect(prompts[2]?.revision).toEqual({
+      draft: latestDraft,
+      history: [
+        { feedback: '', proposedText: 'Base proposal', clarifications: [] },
+        { feedback: followUp.changes, proposedText: 'Keep the baseline, drop the stale clause, and add owner evidence.', clarifications: [] },
+      ],
+    });
+    expect(h.requests.get(requestId(3))).toMatchObject({
+      revision: { requestId: requestId(2), draft: latestDraft, feedback: 'Latest correction: keep the owner, drop the old sentence, and add the evidence citation.' },
+    });
+    expect(h.row).toEqual(before);
+    expect(h.writes).toBe(0);
+    expect(h.jobs).toBe(0);
+    expect(h.model.propose).toHaveBeenCalledTimes(3);
+  });
+  it('supports a clarification follow-up and makes an exact duplicate revision idempotent', async () => {
+    type Prompt = Parameters<ProcedureAuthoringModel['propose']>[0];
+    const prompts: Prompt[] = [];
+    let call = 0;
+    const h = harness(async input => {
+      prompts.push(input);
+      call += 1;
+      return call === 1
+        ? response('Initial proposal')
+        : call === 2
+          ? response(null, { clarifications: ['Which approved policy criterion applies?'], explanation: 'The criterion is not identified in the supplied context.' })
+          : response('Resolved proposal');
+    });
+    const before = structuredClone(h.row);
+    await h.generate({ requestId: requestId(1) });
+    const clarificationFields = {
+      ...h.fields({
+        requestId: requestId(2),
+        mode: 'revise',
+        changes: 'Keep the current evidence and answer the unresolved criterion question.',
+        revision: { requestId: requestId(1), draft: 'Initial proposal with my current edits.' },
+      }),
+    };
+    expect(await h.generate(clarificationFields)).toMatchObject({
+      ok: true,
+      suggestion: {
+        state: 'ready',
+        proposedText: null,
+        clarifications: ['Which approved policy criterion applies?'],
+        explanation: 'The criterion is not identified in the supplied context.',
+      },
+    });
+    expect(await h.generate(clarificationFields)).toMatchObject({
+      ok: true,
+      suggestion: { requestId: requestId(2), state: 'ready', proposedText: null },
+    });
+    expect(h.model.propose).toHaveBeenCalledTimes(2);
+    const resolved = await h.generate({
+      ...h.fields({
+        requestId: requestId(3),
+        mode: 'revise',
+        changes: 'The approved criterion is Policy A, section 4.2.',
+        revision: { requestId: requestId(2), draft: 'Initial proposal with my current edits and the answer.' },
+      }),
+    });
+    expect(resolved).toMatchObject({ ok: true, suggestion: { state: 'ready', proposedText: 'Resolved proposal' } });
+    expect(prompts[2]?.revision?.history).toEqual([
+      { feedback: '', proposedText: 'Initial proposal', clarifications: [] },
+      { feedback: clarificationFields.changes, proposedText: null, clarifications: ['Which approved policy criterion applies?'] },
+    ]);
+    expect(h.row).toEqual(before);
+    expect(h.writes).toBe(0);
+    expect(h.jobs).toBe(0);
+  });
+  it('refuses revision parents owned by another actor or bound to another section', async () => {
+    const h = harness();
+    await h.generate({ requestId: requestId(1) });
+    const foreign = await generateAuthoringSuggestion(h.deps, {
+      ...h.fields({ requestId: requestId(2), mode: 'revise', changes: 'Foreign actor feedback.', revision: { requestId: requestId(1), draft: 'Foreign draft.' } }),
+      session: { userId: 'creator', sessionId: 'creator-session' },
+      correlationId: 'creator-revision',
+    });
+    expect(foreign).toMatchObject({ ok: false, reason: 'That writing suggestion is unavailable.' });
+    expect(h.model.propose).toHaveBeenCalledTimes(1);
+    expect(h.requests.has(requestId(2))).toBe(false);
+
+    const differentSection = await h.generate({
+      requestId: requestId(3),
+      section: { kind: 'scope' },
+      mode: 'revise',
+      changes: 'Revise the scope instead.',
+      revision: { requestId: requestId(1), draft: 'Scope draft.' },
+    });
+    expect(differentSection).toMatchObject({ ok: false, reason: expect.stringContaining('stale') });
+    expect(h.model.propose).toHaveBeenCalledTimes(1);
+    expect(h.requests.has(requestId(3))).toBe(false);
+  });
+  it('refuses stale, expired, and submitted revision parents before provider use', async () => {
+    const stale = harness();
+    await stale.generate({ requestId: requestId(1) });
+    expect(await stale.edit('A newer saved objective supersedes the parent.')).toMatchObject({ ok: true });
+    expect(await stale.generate({ requestId: requestId(2), mode: 'revise', changes: 'Use the newer saved text.', revision: { requestId: requestId(1), draft: 'Stale working draft.' } })).toMatchObject({ ok: false, reason: expect.stringContaining('stale') });
+    expect(stale.model.propose).toHaveBeenCalledTimes(1);
+    expect(stale.requests.has(requestId(2))).toBe(false);
+
+    const expired = harness();
+    await expired.generate({ requestId: requestId(1) });
+    expired.advance(AUTHORING_LIMITS.lifetimeMs + 1);
+    expect(await expired.generate({ requestId: requestId(2), mode: 'revise', changes: 'Continue the expired conversation.', revision: { requestId: requestId(1), draft: 'Expired working draft.' } })).toMatchObject({ ok: false, reason: expect.stringContaining('stale') });
+    expect(expired.model.propose).toHaveBeenCalledTimes(1);
+    expect(expired.requests.has(requestId(2))).toBe(false);
+
+    const submitted = harness();
+    await submitted.generate({ requestId: requestId(1) });
+    submitted.row = { ...submitted.row, state: 'SUBMITTED' };
+    expect(await submitted.generate({ requestId: requestId(2), mode: 'revise', changes: 'This must not reach a submitted version.', revision: { requestId: requestId(1), draft: 'Submitted working draft.' } })).toMatchObject({ ok: false, reason: 'Only a Draft can be edited.' });
+    expect(submitted.model.propose).toHaveBeenCalledTimes(1);
+    expect(submitted.requests.has(requestId(2))).toBe(false);
+  });
+  it('validates revision envelopes and bounded explanations', () => {
+    const h = harness();
+    const valid = h.fields({ mode: 'revise', changes: 'A non-empty correction.', revision: { requestId: requestId(2), draft: 'A complete working draft.' } });
+    expect(isAuthoringDraftFields(valid)).toBe(true);
+    expect(isAuthoringDraftFields({ ...valid, mode: 'draft' })).toBe(false);
+    expect(isAuthoringDraftFields({ ...valid, changes: '   ' })).toBe(false);
+    expect(isAuthoringDraftFields({ ...valid, revision: { ...valid.revision!, requestId: valid.requestId } })).toBe(false);
+    expect(isAuthoringDraftFields({ ...valid, revision: { ...valid.revision!, draft: 'x'.repeat(AUTHORING_LIMITS.outputText + 1) } })).toBe(false);
+    expect(isAuthoringProposal({ proposedText: 'draft', clarifications: [], explanation: 'A bounded explanation.' })).toBe(true);
+    expect(isAuthoringProposal({ proposedText: 'draft', clarifications: [], explanation: '' })).toBe(false);
+    expect(isAuthoringProposal({ proposedText: 'draft', clarifications: [], explanation: 'x'.repeat(2001) })).toBe(false);
+    expect(isAuthoringProposal({ proposedText: 'draft', clarifications: [], explanation: 'why', hidden: true })).toBe(false);
   });
 });
