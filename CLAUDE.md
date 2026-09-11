@@ -1,3 +1,7 @@
+## 2026-09-11 — Synthetic ITGC Template context
+
+The owner-supplied ACCA `IT General Controls.pdf` informs synthetic PoC controls in addendum §C. It is educational background, never Northstar policy or an invented criterion reference. P-2/P-4 now seed control statements; their execution contracts and historical versions are unchanged. The owner refinement is recorded in `guided-authoring-experience-correction.md`: select established controls and evidence, then guide and revise test design.
+
 ## Guided preparation state (2026-09-11)
 
 Story 2.9 stores nullable `section_preparation` metadata separately from compiler inputs.

@@ -91,6 +91,15 @@ Historical payloads and approvals retain their original content and do not acqui
 This extends the downstream authoring contract through `spec-2-guided-authoring-slice.md`;
 execution rules, golden expectations and previously approved versions are unchanged.
 
+**Background source note (non-normative):** The uploaded `IT General Controls.pdf` from
+the ACCA UK Internal Audit Network is educational background only. Its page 3 discussion
+of access and segregation of duties informed the narrow synthetic P-2 control below; its
+page 4 discussion of program change and configuration changes informed the narrow synthetic
+P-4 baseline control below. Neither page is Northstar Financial Group policy, an approved
+criterion, a deadline, or a role definition. P-4 compares observed parameters with the
+effective approved baseline; it does not claim to test full change management, including
+authorisation, testing, documentation and approval of changes.
+
 ### P-1: Terminated Users Retaining Access (hero, fully configurable)
 
 - **Risk:** Synthetic example: Former employees may retain access and use it without authorisation.
@@ -113,6 +122,7 @@ execution rules, golden expectations and previously approved versions are unchan
 
 - **Risk:** Synthetic example: Conflicting permissions may let one person initiate and approve an unauthorised transaction.
 - **Criterion reference:** Not supplied (`null`).
+- **Control:** Synthetic control: Roles assigned in AccessGate must not grant prohibited permission pairs defined in the versioned RoleMatrix.
 - **Objective:** Determine whether any active account contains an explicitly prohibited permission pair.
 - **Population Source:** AccessGate active accounts (Adapter). **Target System:** AccessGate role detail (Adapter). **Reference Source:** RoleMatrix.
 - **Work Item coverage:** one adapter Work Item covering the whole population; per-record coverage is satisfied when every population account appears in the extraction with a grounded role list.
@@ -138,6 +148,7 @@ execution rules, golden expectations and previously approved versions are unchan
 
 - **Risk:** Synthetic example: Unapproved production settings may weaken controls or cause incorrect processing.
 - **Criterion reference:** Not supplied (`null`).
+- **Control:** Synthetic control: Production parameters must match the approved ConfigRegistry baseline in effect at the observation time.
 - **Objective:** Determine whether observed production parameters equal the approved baseline in effect at the observation time.
 - **Population Source:** ConfigRegistry baseline parameters (Adapter). **Target System:** ProdConsole (web, agent-driven).
 - **Work Item coverage:** one agent Work Item for the ProdConsole page read, owning one Observation per baseline parameter, each grounded in the page's Structural Snapshot with the parameter name as identity attribute.

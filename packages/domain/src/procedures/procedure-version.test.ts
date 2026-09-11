@@ -149,10 +149,14 @@ describe('initialDraftSections', () => {
     expect(p1Sections.get('Evidence Requirements')).not.toBeNull();
     expect(p1Sections.get('Schedule')).toBe('weekly');
 
-    // P-2 to P-4: §C gives no Control statement, no instructions, no evidence list, no Schedule.
+    // P-2/P-4 have synthetic controls; P-3 preserves the unspecified value.
+    expect(byHeading('P-2').get('Control')).toMatch(/^Synthetic control:/);
+    expect(byHeading('P-4').get('Control')).toMatch(/^Synthetic control:/);
+    expect(byHeading('P-3').get('Control')).toBeNull();
+    // P-2 to P-4 have no instructions, evidence list or Schedule defaults.
     for (const template of rest) {
       const sections = byHeading(template.id);
-      expect(sections.get('Control')).toBeNull();
+      expect(sections.get('Control')).toBe(template.controlStatement);
       expect(sections.get('Audit Instructions')).toBeNull();
       expect(sections.get('Evidence Requirements')).toBeNull();
       expect(sections.get('Schedule')).toBeNull();

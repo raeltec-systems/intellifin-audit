@@ -214,13 +214,25 @@ describe('the four Procedure Templates', () => {
     if (p1 === undefined || p2 === undefined || p3 === undefined || p4 === undefined) {
       throw new Error('a Template is missing from the array');
     }
-    // §C gives a Control statement and a Schedule default only to P-1.
+    // §C gives synthetic Control statements to P-1, P-2 and P-4; P-3 remains silent.
     expect(p1.controlStatement).not.toBeNull();
     expect(p1.schedule).toBe('weekly');
-    for (const template of [p2, p3, p4]) {
-      expect(template.controlStatement).toBeNull();
-      expect(template.schedule).toBeNull();
-    }
+    expect(p2.controlStatement).toBe('Synthetic control: Roles assigned in AccessGate must not grant prohibited permission pairs defined in the versioned RoleMatrix.');
+    expect(p4.controlStatement).toBe('Synthetic control: Production parameters must match the approved ConfigRegistry baseline in effect at the observation time.');
+    expect(p3.controlStatement).toBeNull();
+    for (const template of [p2, p3, p4]) expect(template.schedule).toBeNull();
+  });
+
+  it('seeds synthetic controls without turning ACCA background into Northstar policy', () => {
+    expect(addendum).toContain('IT General Controls.pdf');
+    expect(addendum).toMatch(/page 3 discussion\s+of access and segregation of duties/);
+    expect(addendum).toMatch(/page 4 discussion\s+of program change and configuration changes/);
+    expect(addendum).toContain('Neither page is Northstar Financial Group policy');
+    expect(addendum).toContain('does not claim to test full change management');
+    expect(PROCEDURE_TEMPLATES.find((template) => template.id === 'P-1')?.schedule).toBe('weekly');
+    expect(PROCEDURE_TEMPLATES.find((template) => template.id === 'P-1')?.criterionReference).toBeNull();
+    expect(PROCEDURE_TEMPLATES.find((template) => template.id === 'P-2')?.criterionReference).toBeNull();
+    expect(PROCEDURE_TEMPLATES.find((template) => template.id === 'P-4')?.criterionReference).toBeNull();
   });
 
   it('originates each condition as §C says: C1 is RULE, and P-1 C2 is Agent-Judged', () => {
