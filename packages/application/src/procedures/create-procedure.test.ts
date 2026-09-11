@@ -1,5 +1,5 @@
 import { reviewSection } from './review-section.js';
-import { preparationStatus, sectionReview, PREPARATION_SECTIONS } from '@intellifin/domain';
+import { preparationStatus, sectionReview, PREPARATION_SECTIONS, refreshPreparation, bindingDigestEnvelope, snapshotFromRegistration } from '@intellifin/domain';
 import { updateContextDraft } from './update-context-draft.js';
 import { draftContext, findProcedureTemplate, type DraftContextEdit } from '@intellifin/domain';
 import { initialPlanDerivation, planAuthoringDigest } from './plan-state.js';
@@ -1336,6 +1336,20 @@ describe('updateContextDraft — Story 2.15', () => {
 });
 
 
+/** Review invalidation starts with real saved section content. Blank-section refusal
+ * is covered separately; these fixtures must not rely on reviewing an empty Draft. */
+function withSavedPreparationContent(row: ProcedureVersionRecord): ProcedureVersionRecord {
+  const source = { kind: 'versioned-file' as const, location: 'https://synthetic.invalid/leavers.csv', declaredSchema: ['employee_id', 'full_name'], declaredCountMechanism: 'cover-sheet' as const, sensitiveFields: [] };
+  const registration = { registrationId: '018f0000-0000-7000-8000-0000000000a1', displayName: 'LoanCore', kind: 'web' as const, allowedOrigins: ['https://synthetic.invalid'], applicationIdentity: '', credentialRef: 'vault://synthetic/loancore', permittedActions: ['navigate', 'read-attribute'] as const, attributeLabelPatterns: ['Status'], secondaryKey: 'full_name' };
+  const saved: ProcedureVersionRecord = { ...row, scope: 'Every leaver in the saved period.', period: { from: '2026-08-01', to: '2026-08-31' },
+    sourceSnapshot: { bindingId: '018f0000-0000-7000-8000-000000000099', displayName: 'Leavers', digest: bindingDigest(source), contract: bindingDigestEnvelope(source) },
+    targets: [snapshotFromRegistration({ ...registration, digest: registrationDigest(registration) })],
+    instructions: [{ registrationId: registration.registrationId, text: 'Read the account status for every leaver.' }],
+    schedule: { frequency: 'once', startTime: '00:00', periodDerivationRule: 'explicit-period' },
+  };
+  return { ...saved, sectionPreparation: refreshPreparation(saved) };
+}
+
 describe('saved section preparation acknowledgements', () => {
   async function setup() {
     const test = harness(); const result = await create(test);
@@ -1360,6 +1374,7 @@ describe('saved section preparation acknowledgements', () => {
   });
   it('invalidates dependent reviews and keeps unrelated frequency review; reverting text cannot revive a review', async () => {
     const { row, review, test, result } = await setup();
+    test.storedVersions.set(row().versionId, withSavedPreparationContent(row()));
     for (const section of PREPARATION_SECTIONS) expect(await review(section)).toMatchObject({ ok: true });
     const old = row(), edit = draftContext(old.sections);
     const save = (objective: string) => updateContextDraft(test.dependencies, { session: AUDITOR, correlationId: 'prep-edit', procedureId: result.procedureId, versionId: result.versionId, expectedRowVersion: procedureVersionRowVersion(row()), edit: { ...edit, objective } });
@@ -1418,6 +1433,7 @@ describe('saved-content section acknowledgement', () => {
   });
   it('invalidates affected reviews on the ordinary update command and keeps independent reviews', async () => {
     const test = harness(); await create(test); let row = [...test.storedVersions.values()][0]!;
+    row = withSavedPreparationContent(row); test.storedVersions.set(row.versionId, row);
     for (const section of PREPARATION_SECTIONS) {
       expect((await reviewSection({ ...test.dependencies, clock }, { session: AUDITOR, correlationId: 'review', procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), section, decision: 'review' })).ok).toBe(true);
       row = test.storedVersions.get(row.versionId)!;

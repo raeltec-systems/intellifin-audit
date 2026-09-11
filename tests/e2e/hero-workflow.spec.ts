@@ -410,7 +410,7 @@ test.describe('the hero workflow', () => {
     await shot(page, 'scope-expansion-confirmation', scopeDialog);
     await scan(page);
     await scopeDialog.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
-    await expect(page.getByText('Saved. The Target System selection is recorded in the audit chain.')).toBeVisible();
+    await expect(page.getByText('Target systems saved. Next, choose the proof to retain.', { exact: true })).toBeVisible();
     await openReview(page);
     await expect(page.locator('[data-readiness-item="targets-missing"]')).toHaveCount(0);
 

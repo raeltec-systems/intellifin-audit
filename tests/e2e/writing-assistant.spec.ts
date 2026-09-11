@@ -336,7 +336,7 @@ test('the central test assistant keeps, drops and enhances a proposal before edi
 test('the default journey confirms the control and guides scope and evidence choices before test design', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const context = page.locator('[data-preparation-panel="context"]');
-  await expect(context.locator('[data-control-confirmation]')).toContainText('Configuration baseline');
+  await expect(context.locator('[data-control-confirmation]')).toContainText(draft.controlName);
   await expect(context.getByLabel('Risk', { exact: true })).toBeHidden();
   await expect(context.getByLabel('Objective', { exact: true })).toBeHidden();
   await expect(context.getByRole('button', { name: 'Help Me Write', exact: true })).toBeHidden();
