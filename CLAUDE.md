@@ -6,6 +6,8 @@ Confirm saved Template facts before opening a manual editor. Guide scope and evi
 
 The complete fresh-Template browser journey seeds only catalogue entries, then uses the real creation/forms/authoring actions through stored compiled-plan review. The owner journey has a real background worker: wait for the current preview attempt and the current Server Action response before asserting a save. A retained banner from an earlier section cannot acknowledge the next command. Keep intentional stale-row races in their dedicated concurrency tests.
 
+Expanded registration disclosures need secondary-text definition labels: muted text on their sunken surface fails WCAG AA contrast. Exercise both closed guidance and expanded manual details. Header assertions must identify the page's level-one heading because the guide also names the selected control. In the legacy `procedures.spec.ts`, a failing test restarts the worker and its timestamp namespace; missing later cards can therefore cascade from an earlier assertion, rather than indicate lost product data.
+
 
 The corrected Builder keeps the executable plan out of preparation panels and opens it in Review and submission. The hero browser journey must check that distinction plus manual collapse/reopen; its old collapsed-by-default assertion belongs to the superseded layout. Include the hero journey in the focused CI step so a review-surface change is checked before the full browser suite.
 

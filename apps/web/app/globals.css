@@ -2105,6 +2105,11 @@ a {
   background: var(--color-surface-sunken);
 }
 
+/* Muted definition labels fall below 4.5:1 on the disclosure's sunken surface. */
+.ls-disclosure .ls-definition dt {
+  color: var(--color-text-secondary);
+}
+
 .ls-disclosure summary {
   cursor: pointer;
   padding: var(--spacing-1) 0;

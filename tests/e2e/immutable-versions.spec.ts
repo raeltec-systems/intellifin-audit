@@ -81,7 +81,7 @@ test('all Procedure Detail states remain visible and New version is keyboard acc
       await expect.poll(async()=>(await repo.listVersions(procedureId)).filter(row=>row.platformOrigin?.kind===kind).length).toBe(1);
     }
     const button=page.getByRole('button',{name:'New version'});await button.focus();await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/builder\?version=/,{timeout:30000});await expect(page.getByRole('heading',{name:base.controlName,exact:true})).toBeVisible();
+    await expect(page).toHaveURL(/builder\?version=/,{timeout:30000});await expect(page.getByRole('heading',{level:1,name:base.controlName,exact:true})).toBeVisible();
     const activatedId=new URL(page.url()).searchParams.get('version')!;
     const activeDraft={...(await repo.findVersion(activatedId))!,schedule:{frequency:'weekly' as const,startTime:'15:30',periodDerivationRule:'previous-monday-sunday' as const}};const newPlan=deriveExecutablePlan(activeDraft);if(!newPlan.ok)throw new Error(newPlan.reason);
     await uow.execute(ctx=>ctx.procedures.updateVersion({...activeDraft,compiledPlan:newPlan.plan,planStatus:'succeeded',planDerivable:true,planInputDigest:planAuthoringDigest(activeDraft)}));
