@@ -157,6 +157,44 @@ test.describe('flagging a Run from Live View', () => {
     }
   });
 
+  test('flags once and only once when the acknowledgement is lost in transit', async ({ page }) => {
+    test.setTimeout(120_000);
+    const runId = await seedRun();
+    await page.goto(`/runs/${runId}/live`);
+    const panel = page.locator('#run-flag');
+    await expect(panel.getByRole('heading', { name: FLAG_COPY.heading })).toBeVisible();
+
+    // Commit the Server Action, then drop its acknowledgement — the `runs.spec.ts`
+    // pattern. A flag deliberately carries NO request token (`flagId` is minted per
+    // call), so a second submission would write a second `run_flag` row and a second
+    // full fan-out of notifications to every Audit Manager.
+    const liveUrl = page.url().split('#')[0]!;
+    await page.route(liveUrl, async route => {
+      if (route.request().method() !== 'POST') return route.continue();
+      await route.fetch();
+      await route.abort('failed');
+    });
+    await panel.getByLabel(FLAG_COPY.noteLabel).fill('The response will be lost.');
+    await panel.getByRole('button', { name: FLAG_COPY.submit }).click();
+
+    // The form's action IS the Server Action (that is what makes this the one control
+    // that works without JavaScript), so a lost RSC response is not something the
+    // component can catch: the surface fails closed to the route error boundary, taking
+    // the submit control with it. Which is a STRONGER withdrawal than a disabled button
+    // — there is nothing left to press — and it is why the retry cannot happen here.
+    // The withdrawal the component owns is for the case the action itself reports, and
+    // that is asserted in `RunFlagControl.test.ts`.
+    await expect(page.getByRole('heading', { name: 'This page could not be loaded' })).toBeVisible();
+    await expect(page.getByRole('button', { name: FLAG_COPY.submit })).toHaveCount(0);
+    await page.unroute(liveUrl);
+
+    // The flag committed once and exactly once, notifications included.
+    const flags = await sql`SELECT note FROM run_flag WHERE run_id=${runId}`;
+    expect(flags).toEqual([{ note: 'The response will be lost.' }]);
+    const notifications = await sql`SELECT kind FROM notification WHERE run_id=${runId}`;
+    expect(notifications).toEqual([{ kind: 'flag' }]);
+  });
+
   test('offers no flag form on a Queued Run, and says so rather than showing nothing', async ({ page }) => {
     const runId = await seedRun('QUEUED');
     await page.goto(`/runs/${runId}/live`);

@@ -2,7 +2,7 @@
 title: 'Code review: Epic 5 stories 5.4 to 5.8'
 type: 'code-review'
 created: '2026-09-11'
-status: 'partial'
+status: 'partial — four High findings fixed'
 ---
 
 # Code review — Epic 5, stories 5.4 to 5.8
@@ -30,6 +30,60 @@ for any story but 5.6.**
 Severity below is mine, not the reviewers'. Findings marked **[verified]** I confirmed by
 reading the code; **[demonstrated]** were proven by a reviewer running a mutation against the
 suite; the rest are rated from the report and are marked **[unverified]**.
+
+---
+
+## What has been fixed
+
+All four High findings are repaired on this branch, each with a regression test proven by
+mutation — the test was run against the code with the fix removed and had to fail.
+
+| Finding | Fix | Killing test |
+|---|---|---|
+| H1 | `lifecycleBoundary({ item, execution })`, and `stopped` no longer asks the queue to redeliver | `execute-agent-work-item.test.ts` → "holds AFTER the evaluation turn…" |
+| H2 | The submit button takes the `unknown` arm its sibling has; `RUN_LOST_RESPONSE` gets one home in `copy.ts` | `RunFlagControl.test.ts` → "WITHDRAWS the control…" |
+| H3 | The browser reads the polite region, at two rungs of the ladder | `live-escalation.spec.ts` |
+| H4 | The guard is on the ELEMENT, not on a substring of React's attribute order | `EscalationPanel.test.ts` |
+
+Three notes on what doing it showed:
+
+- **H1's `retry: true` was real.** `finishObservation` returning `'lost'` maps to
+  `{ retry: checkpoint.status === 'RETRY' }`, and the pause path sets `RETRY` — for the
+  RECOVERY SWEEP, not for the queue. The claim refuses a Run that is not `RUNNING`, so the
+  redelivery provisioned and released a browser session for a Run nothing could claim.
+  `finishObservation` now returns `'stopped'`, which every caller maps to `{ retry: false }`
+  as the other four boundaries already did.
+- **H2's unit test needed `useActionState` replaced.** Under `renderToStaticMarkup` the hook
+  returns its initial state, so the one render the withdrawal exists for is unreachable
+  without saying what the hook answered. Only that export is mocked; the rest of react is
+  the real module, so `react-dom/server` renders normally. This is the same trap as H3,
+  one hook along.
+- **H3 needed a second rung, and a real deadline rather than a fake clock.** A wait's
+  deadline is immutable (generation 34), so the near-expiry Escalation is OPENED with the
+  clock set back — which is exactly what one left for three hours and fifty-one minutes is.
+
+## New finding, found while fixing H2
+
+### N1 — A lost Server Action response tells the auditor "Nothing was changed" **[verified]**
+`apps/web/app/error.tsx:37`
+
+The flag form's action IS the Server Action, which is what makes it the one control on
+these surfaces that works without JavaScript — and it means the component cannot catch a
+lost RSC response. The error propagates to the route boundary, which renders
+**"Couldn't load this page. Nothing was changed."** and **"No Run, Result, or Evidence was
+altered."** while the flag has committed and every Audit Manager has been notified.
+
+That sentence is EXPERIENCE.md's own (line 179) and is correct where it belongs — a failed
+action the platform knows did not happen. This boundary catches two different failures and
+asserts the stronger claim for both: true for a surface that could not be built, false for
+an action whose acknowledgement was lost. It is the shape CLAUDE.md already names — "A path
+that THREW says the change may have been saved, never 'Nothing was changed'."
+
+Not fixed here: it is a contract sentence and the whole application's error boundary, so
+the wording is a product decision rather than a review repair. The consequence is bounded —
+the boundary takes the submit control with it, which is a stronger withdrawal than a
+disabled button, so the double flag cannot happen by this route; `flag-run.spec.ts` asserts
+exactly one `run_flag` row and one notification after a dropped acknowledgement.
 
 ---
 

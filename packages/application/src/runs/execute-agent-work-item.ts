@@ -980,7 +980,7 @@ export async function executeAgentWorkItem(
     snapshot: StoredSnapshot,
     state: 'OBSERVED' | 'UNINSPECTED',
     diagnostic: AgentWorkDiagnostic | null = state === 'UNINSPECTED' ? 'insufficient-evidence' : null,
-  ): Promise<'done' | 'lost' | { readonly refused: AgentWorkDiagnostic }> => {
+  ): Promise<'done' | 'lost' | 'stopped' | { readonly refused: AgentWorkDiagnostic }> => {
     const refused = (why: AgentWorkDiagnostic = 'observation-registration-refused') => ({ refused: why });
     if (observation === null) return refused();
     const priorObservations = item.observations;
@@ -1062,7 +1062,16 @@ export async function executeAgentWorkItem(
         const [checked] = await agentEvaluation.evaluateWithAgentProposals([judgedSubject], agentProposals);
         if (checked?.evaluations.some(row => row.diagnostic?.includes(POLICY_CONTRADICTED))) return refused('model-policy-contradiction');
       }
-      if (await lifecycleBoundary() !== 'continue') return 'lost';
+      // A Step Execution is RUNNING here, so the pair is what supersedes it, gives the
+      // attempt back and names it on the wait. Without it a pause honoured at this one
+      // boundary leaves the attempt `RUNNING` for ever — the state `run-pause-v1.md`
+      // says must never exist — and opens a pause wait naming no Step Execution.
+      const observationBoundary = await lifecycleBoundary({ item, execution });
+      // `stopped` is not a lost commit: the Run is PAUSED or CANCELED and no longer
+      // claimable, so a redelivery provisions and releases a browser session for a Run
+      // nothing can claim. Every other boundary returns `retry: false` for the same reason.
+      if (observationBoundary === 'stopped') return 'stopped';
+      if (observationBoundary !== 'continue') return 'lost';
     }
     item.state = state;
     item.observations += 1;
@@ -1248,6 +1257,7 @@ export async function executeAgentWorkItem(
         const decidedItem = originalScreenshot === undefined ? applied.item : { ...applied.item,
           record: { ...applied.item.record, evidenceIds: [...new Set([...applied.item.record.evidenceIds, originalScreenshot.evidenceId])] } };
         const finished = await finishObservation(item, execution, decidedItem, original, applied.workItemState);
+        if (finished === 'stopped') return { retry: false };
         if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
         if (typeof finished === 'object') {
           // Preserve the choice across a retry. It is consumed only with registration.
@@ -1500,6 +1510,7 @@ export async function executeAgentWorkItem(
               screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
             });
             const finished = await finishObservation(item, execution, absence, current.snapshot, 'UNINSPECTED', 'extraction-incomplete');
+            if (finished === 'stopped') return { retry: false };
             if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
             if (typeof finished === 'object') {
               const result = await persistRetry(item, execution, finished.refused);
@@ -1539,6 +1550,7 @@ export async function executeAgentWorkItem(
             screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
           });
           const finished = await finishObservation(item, execution, observation, current.snapshot, 'OBSERVED');
+          if (finished === 'stopped') return { retry: false };
           if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
           if (typeof finished === 'object') {
             const result = await persistRetry(item, execution, finished.refused);
@@ -1620,6 +1632,7 @@ export async function executeAgentWorkItem(
               screenshotEvidenceId: current.screenshotEvidenceId, observedAt: nowIso(dependencies.clock),
             });
             const finished = await finishObservation(item, execution, observation, current.snapshot, 'UNINSPECTED');
+            if (finished === 'stopped') return { retry: false };
             if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
             if (typeof finished === 'object') {
               const result = await persistRetry(item, execution, finished.refused);
@@ -1726,6 +1739,7 @@ export async function executeAgentWorkItem(
               observedAt: nowIso(dependencies.clock),
             });
             const finished = await finishObservation(item, execution, observation, current.snapshot, 'OBSERVED');
+            if (finished === 'stopped') return { retry: false };
             if (finished === 'lost') return { retry: checkpoint.status === 'RETRY' };
             if (typeof finished === 'object') {
               const result = await persistRetry(item, execution, finished.refused);

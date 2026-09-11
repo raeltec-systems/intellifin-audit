@@ -5,7 +5,7 @@ import { useActionState, useEffect } from 'react';
 import { flagRunFormAction, type FlagRunActionResult } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { FLAG_COPY } from '../design/copy';
+import { FLAG_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import { useLiveGate } from './LiveGate';
 import { utcStamp } from './labels';
 
@@ -76,8 +76,15 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
           />
           <p id="run-flag-note-help" className="ls-caption">{FLAG_COPY.noteHelp}</p>
         </div>
+        {/* A lost response WITHDRAWS the control, it does not merely offer a reload.
+            `flagId` is minted here and a flag deliberately carries no request token, so a
+            retry after a committed-but-unacknowledged flag writes a second `run_flag` row
+            and a second full fan-out of notifications to every Audit Manager — which is
+            why `run-flag-v1.md` says the surface blocks the retry and asks for a reload.
+            `RunCancelControl` was extracted from this change with exactly this arm. */}
         <Button type="submit" variant="secondary" busy={pending}
-          {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}>{FLAG_COPY.submit}</Button>
+          {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
+            : state?.unknownOutcome === true ? { disabledReason: RUN_LOST_RESPONSE } : {})}>{FLAG_COPY.submit}</Button>
       </form>
     ) : null}
     <h3>Flags on this Run</h3>

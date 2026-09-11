@@ -469,6 +469,16 @@ export const PAUSE_COPY = {
  * and a message implying otherwise would be a control reporting an outcome it did not
  * produce.
  */
+/**
+ * Shown as the reason a Run control is withdrawn after a response was lost.
+ *
+ * One home, because three controls say it. `RunPauseControls` and `RunCancelControl` each
+ * declared their own identical copy, and `RunFlagControl` — which needs it most, since a
+ * flag carries no request token and a retry writes a second flag and a second manager
+ * fan-out — had none at all.
+ */
+export const RUN_LOST_RESPONSE = 'The last response was lost. Reload this Run before trying again.';
+
 export const FLAG_COPY = {
   heading: 'Ask an Audit Manager to look',
   explanation:

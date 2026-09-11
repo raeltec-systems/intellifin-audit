@@ -1,14 +1,33 @@
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('../../app/runs/actions', () => ({ flagRunFormAction: vi.fn() }));
 
-import { FLAG_COPY } from '../design/copy';
+/**
+ * The action's own result, which is what `useActionState` hands the component.
+ *
+ * `unknownOutcome` is set by the Server Action when it throws AFTER the command may have
+ * committed, and there is no other way to reach that render: under
+ * `renderToStaticMarkup` the hook returns its initial state, so the one case the
+ * withdrawal exists for is unreachable without saying what the hook answered. Only
+ * `useActionState` is replaced — everything else react exports is the real module, so
+ * `react-dom/server` renders normally.
+ */
+let actionState: FlagRunActionResult | null = null;
+vi.mock('react', async () => {
+  const actual = await vi.importActual<typeof import('react')>('react');
+  return { ...actual, useActionState: () => [actionState, () => undefined, false] };
+});
+
+import { FLAG_COPY, RUN_LOST_RESPONSE } from '../design/copy';
+import type { FlagRunActionResult } from '../../app/runs/actions';
 import { RunFlagControl, type RunFlagView } from './RunFlagControl';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';
+
+beforeEach(() => { actionState = null; });
 
 function render(props: { flaggable: boolean; flags: readonly RunFlagView[] }): string {
   return renderToStaticMarkup(React.createElement(RunFlagControl, { runId: RUN_ID, ...props }));
@@ -43,6 +62,29 @@ describe('the Flag to Audit Manager control', () => {
 
   it('bounds the note in the markup as well as in the command', () => {
     expect(render({ flaggable: true, flags: [] })).toContain('maxLength="500"');
+  });
+
+  it('WITHDRAWS the control when the last response was lost, rather than only offering a reload', () => {
+    // A flag carries no request token — `flagId` is minted per call — so a retry after a
+    // committed-but-unacknowledged flag writes a second `run_flag` row and a second full
+    // fan-out of notifications to every Audit Manager. `run-flag-v1.md` says the surface
+    // blocks the retry and asks for a reload; this control offered the reload and left
+    // the button live, although `RunCancelControl`, extracted in the same change, has
+    // exactly this arm.
+    actionState = { ok: false, reason: FLAG_COPY.unknown, unknownOutcome: true };
+    const html = render({ flaggable: true, flags: [] });
+    expect(html).toContain('Reload this Run');
+    // `aria-disabled`, never `disabled`: a disabled element cannot be focused, so its
+    // reason would be unreachable by keyboard.
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain(RUN_LOST_RESPONSE);
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('leaves the control live while nothing has been lost', () => {
+    const html = render({ flaggable: true, flags: [] });
+    expect(html).not.toContain('aria-disabled="true"');
+    expect(html).not.toContain(RUN_LOST_RESPONSE);
   });
 
   it('says a Run has no flags in words rather than showing an empty list', () => {
