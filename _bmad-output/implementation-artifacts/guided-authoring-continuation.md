@@ -58,3 +58,22 @@ product model is gpt-5.6-terra, independent of plan-check and audit-Run model co
 - Real populated47 upgrade test added; runtime DB/browser verification goes through CI.
 - No authoring credentials present (AUTHORING_OPENAI_API_KEY / OPENAI_API_KEY / MODEL_API_KEY
   unset, no local env files). Live authoring verification remains blocked.
+
+
+## Story 2.9 published checkpoint and focused corrections
+
+- Pushed `62e97c4ace1d68df769dcba484089c318630aa72`, identical tree to local
+  `bed2016c848fb5e41db3072aabf7206b463c859c`. Local planted-boundary recheck outside
+  workspace synchronization passed all 26 cases. Other 4,027 units, typecheck and
+  boundaries passed on the checkpoint tree.
+- Hosted CI 34592479249: unit/typecheck/boundaries, container and agent-abuse gates passed.
+  PostgreSQL found three historical seed fixtures calling today's repository before
+  migration48. Corrected to raw historical-column inserts; preservation assertions retained.
+- Browser failures identified non-exact Frequency locators, old desktop-only expectations,
+  pre-hydration navigation and a test helper mutating SSR markup. Corrected the navigation
+  with native links and deferred helper mutation until hydration. Focused UI assertions
+  pass (57 including the new writing UI); full hosted browser recheck remains required.
+- First CI 34590523241 finished: PostgreSQL, unit/boundaries/typecheck, container and abuse
+  gates passed; browser failed obsolete Objective locators, corrected in the next checkpoint.
+- Story2.10 is implemented locally with synthetic command/SDK tests; publication and full
+  integration/browser acceptance are in progress. No live provider test has been performed.

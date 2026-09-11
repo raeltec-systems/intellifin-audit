@@ -119,6 +119,7 @@ const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
 export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help }: GuidedPreparationProps): React.JSX.Element {
   const id = useId();
   const [selected, setSelected] = useState<PreparationStep>('context');
+  const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [message, setMessage] = useState<{ tone: 'success' | 'danger' | 'warning'; title: string } | null>(null);
@@ -139,6 +140,15 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
     if (firstRender.current) { firstRender.current = false; return; }
     headings.current[selected]?.focus();
   }, [selected]);
+
+  useEffect(() => {
+    // Native outline links work before hydration. Keep the section a reader chose
+    // while JavaScript was loading, then switch to the focused editing layout.
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    const linked = [...PREPARATION_SECTIONS, 'review' as const].find(section => `${id}-panel-${section}` === hash);
+    if (linked) setSelected(linked);
+    setHydrated(true);
+  }, [id]);
 
   const reviewed = PREPARATION_SECTIONS.filter(section => preparationStatus(draft, section) === 'reviewed').length;
   const complete = reviewed === PREPARATION_SECTIONS.length;
@@ -186,7 +196,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
     }
   }
 
-  return <div className="ls-guided ls-stack" data-guided-preparation>
+  return <div className="ls-guided ls-stack" data-guided-preparation data-guided-ready={hydrated}>
     <header className="ls-guided__intro ls-stack">
       <h2 className="ls-card__title">Prepare an audit procedure</h2>
       <p>Work through the outline or choose any section. Your unsaved edits stay in place when you move.</p>
@@ -202,20 +212,20 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
           {PREPARATION_SECTIONS.map((section, index) => {
             const status = preparationStatus(draft, section);
             return <li key={section}>
-              <button type="button" className="ls-guided__step" aria-current={selected === section ? 'step' : undefined} aria-controls={`${id}-panel-${section}`} onClick={() => setSelected(section)} data-preparation-nav={section}>
+              <a className="ls-guided__step" aria-current={selected === section ? 'step' : undefined} href={`#${id}-panel-${section}`} aria-controls={`${id}-panel-${section}`} onClick={event => { event.preventDefault(); setSelected(section); }} data-preparation-nav={section}>
                 <span className="ls-guided__number" aria-hidden="true">{index + 1}</span>
                 <span className="ls-guided__step-copy">
                   <span className="ls-guided__step-title">{SECTION_WORDS[section].title}</span>
                   <span className={`ls-guided__status ls-guided__status--${status}`} data-preparation-status={status}>{STATUS_WORDS[status]}</span>
                 </span>
-              </button>
+              </a>
             </li>;
           })}
           <li>
-            <button type="button" className="ls-guided__step" aria-current={selected === 'review' ? 'step' : undefined} aria-controls={`${id}-panel-review`} onClick={() => setSelected('review')} data-preparation-nav="review">
+            <a className="ls-guided__step" aria-current={selected === 'review' ? 'step' : undefined} href={`#${id}-panel-review`} aria-controls={`${id}-panel-review`} onClick={event => { event.preventDefault(); setSelected('review'); }} data-preparation-nav="review">
               <span className="ls-guided__number" aria-hidden="true">{PREPARATION_SECTIONS.length + 1}</span>
               <span className="ls-guided__step-copy"><span className="ls-guided__step-title">{SECTION_WORDS.review.title}</span><span className="ls-caption">Review the whole assignment</span></span>
-            </button>
+            </a>
           </li>
         </ol>
       </nav>
@@ -226,7 +236,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
           const acknowledgement = sectionReview(draft, section);
           const reviewReason = actionReason ?? (status === 'needs-clarification'
             ? 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.' : undefined);
-          return <section key={section} className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-${section}`} hidden={selected !== section} aria-labelledby={`${id}-heading-${section}`} data-preparation-panel={section}>
+          return <section key={section} className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-${section}`} hidden={hydrated && selected !== section} aria-labelledby={`${id}-heading-${section}`} data-preparation-panel={section}>
             <header className="ls-guided__panel-heading ls-stack">
               <p className="ls-caption">Section {index + 1} of {PREPARATION_SECTIONS.length}</p>
               <h2 className="ls-card__title" id={`${id}-heading-${section}`} tabIndex={-1} ref={element => { headings.current[section] = element; }}>{SECTION_WORDS[section].title}</h2>
@@ -259,14 +269,14 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
           </section>;
         })}
 
-        <section className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-review`} hidden={selected !== 'review'} aria-labelledby={`${id}-heading-review`} data-preparation-panel="review">
+        <section className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-review`} hidden={hydrated && selected !== 'review'} aria-labelledby={`${id}-heading-review`} data-preparation-panel="review">
           <header className="ls-guided__panel-heading ls-stack">
             <h2 className="ls-card__title" id={`${id}-heading-review`} tabIndex={-1} ref={element => { headings.current.review = element; }}>{SECTION_WORDS.review.title}</h2>
             <p>{SECTION_WORDS.review.question}</p>
           </header>
           {complete ? <Banner tone="info" title="Preparation complete"><p>Review the whole procedure and submit it for independent manager approval. Execution is unavailable until approval and activation.</p></Banner> : <p>{PREPARATION_SECTIONS.length - reviewed} {PREPARATION_SECTIONS.length - reviewed === 1 ? 'section has' : 'sections have'} not been marked reviewed. Check the whole assignment before submission.</p>}
           <ul className="ls-guided__review-list" aria-label="Section review overview">
-            {PREPARATION_SECTIONS.map(section => <li key={section}><button type="button" className="ls-guided__review-link" onClick={() => setSelected(section)}>{SECTION_WORDS[section].title}</button><span className={`ls-guided__status ls-guided__status--${preparationStatus(draft, section)}`}>{STATUS_WORDS[preparationStatus(draft, section)]}</span></li>)}
+            {PREPARATION_SECTIONS.map(section => <li key={section}><a className="ls-guided__review-link" href={`#${id}-panel-${section}`} onClick={event => { event.preventDefault(); setSelected(section); }}>{SECTION_WORDS[section].title}</a><span className={`ls-guided__status ls-guided__status--${preparationStatus(draft, section)}`}>{STATUS_WORDS[preparationStatus(draft, section)]}</span></li>)}
           </ul>
           {review}
         </section>

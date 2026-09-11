@@ -12,14 +12,8 @@ export const BUILDER_STEPS = DRAFT_SECTION_HEADINGS.filter(
   (heading) => !isTemplateOnly(heading),
 );
 
-/**
- * Open one Builder step, the way a person does.
- *
- * The Builder is a list of questions: each step states what is already set and keeps its
- * editor behind a native `<details>`, closed once the step has been answered. Opening
- * one that is already open would close it, so the state is read first. The element is
- * native, so this works before React hydrates as well as after.
- */
+/** Open a section after the guided editor has hydrated. Its native links remain
+ * usable before hydration; these tests need the interactive focused layout. */
 export const PREPARATION_STEP_FOR_HEADING: Readonly<Record<string, string>> = {
   'Risk': 'context', 'Control': 'context', 'Objective': 'context', 'Criterion reference': 'context',
   'Period and scope': 'scope', 'Population Source binding': 'evidence', 'Target System selection': 'evidence',
@@ -27,6 +21,7 @@ export const PREPARATION_STEP_FOR_HEADING: Readonly<Record<string, string>> = {
 };
 export async function openStep(page: Page | Locator, heading: string): Promise<void> {
   if (!Object.hasOwn(PREPARATION_STEP_FOR_HEADING, heading)) throw new Error('Unknown preparation section: ' + heading);
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
   const section = PREPARATION_STEP_FOR_HEADING[heading]!;
   await page.locator(`[data-preparation-nav="${section}"]`).click();
   await expect(page.locator(`[data-preparation-panel="${section}"]`)).toBeVisible();
@@ -66,6 +61,8 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
   // second tab opened from this context, and a page-level script would not reach it.
   await page.context().addInitScript((selector: string) => {
     const open = (): void => {
+      // Do not mutate server-rendered markup while React is hydrating it.
+      if (!document.querySelector('[data-guided-ready="true"]')) return;
       // Editor-contract tests deliberately expose each mounted panel. The dedicated
       // guided journey and owner walkthrough use real navigation WITHOUT this helper.
       for (const panel of document.querySelectorAll<HTMLElement>('[data-preparation-panel]')) {
@@ -81,7 +78,7 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['hidden'],
+        attributeFilter: ['hidden', 'data-guided-ready'],
       });
     };
     if (document.readyState === 'loading') {
@@ -100,6 +97,7 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
  * Builder keeps them one fold down.
  */
 export async function openPlanDetail(page: Page | Locator): Promise<void> {
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
   await page.locator('[data-preparation-nav="review"]').click();
   const detail = page.locator('[data-plan-detail]');
   await detail.waitFor({ state: 'attached' });

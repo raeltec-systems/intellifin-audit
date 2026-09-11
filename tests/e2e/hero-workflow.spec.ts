@@ -168,6 +168,8 @@ test.describe('the hero workflow', () => {
     /* --------------------------------- what the agent will do, and readiness -- */
     // Readiness is what an auditor must meet before spending a Run, so it is on the
     // page. The compiled plan is one fold down, where somebody who wants it can get it.
+    await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
+    await page.locator('[data-preparation-nav="review"]').click();
     await expect(page.locator('[data-readiness]')).toBeVisible();
     await expect(page.locator('[data-plan-detail]')).toHaveJSProperty('open', false);
     await openPlanDetail(page);

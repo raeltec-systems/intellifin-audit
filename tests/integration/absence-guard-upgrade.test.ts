@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { observationAbsenceDigest } from '@intellifin/application';
 import { observationDigest, observationIdFor, sha256HexOfBytes, utf8Bytes, type ObservationRecord } from '@intellifin/domain';
-import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
+import { createSqlClient, CryptoUuidV7Generator, type Sql } from '@intellifin/infrastructure';
 import { runMigrations } from '@intellifin/infrastructure/migrate';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
+import { insertHistoricalProcedureVersion } from '../fixtures/historical-procedure-version.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const folder = fileURLToPath(new URL('../../packages/infrastructure/drizzle/', import.meta.url));
@@ -39,7 +40,7 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
       const author = ids.next();
       await sql`INSERT INTO auth_user(id,name,email) VALUES(${author},'Synthetic absence upgrade reviewer',${author+'@test.invalid'})`;
       const version = activeRunVersion(ids.next(),ids.next(),author);
-      await new PostgresProceduresUnitOfWork(createDb(sql)).execute(async c => { await c.procedures.insertProcedure(version); await c.procedures.insertVersion(version); });
+      await insertHistoricalProcedureVersion(sql, version);
       let ordinal = 0;
       const bytes = utf8Bytes('{"schemaVersion":1,"nodes":[],"completion":{"complete":true,"returned":0}}');
       const artifact = join(temporary,'empty-result.json');

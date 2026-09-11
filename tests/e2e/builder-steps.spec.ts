@@ -46,6 +46,7 @@ test('guided preparation preserves edits, records saved review and stays keyboar
   await page.getByRole('button', { name: 'Create Procedure' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
   await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
   await expect(page.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
   await expect(page.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
@@ -69,12 +70,13 @@ test('guided preparation preserves edits, records saved review and stays keyboar
     await expect(success.or(stale)).toBeVisible();
     if (await success.isVisible()) break;
     await page.reload();
+    await openStep(page, 'Risk');
   }
   await expect(page.locator('[data-preparation-nav="context"]')).toContainText('Reviewed by auditor');
   await expect(page.locator('[data-preparation-nav="scope"]')).toHaveAttribute('aria-current', 'step');
   await page.locator('[data-preparation-nav="frequency"]').focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByLabel('Frequency')).toBeVisible();
+  await expect(page.getByLabel('Frequency', { exact: true })).toBeVisible();
   await expect(page.locator('[data-preparation-panel="frequency"] h2')).toBeFocused();
   await openPlanDetail(page);
   await expect(page.getByRole('heading', { level: 2, name: 'What the agent will do' })).toBeVisible();

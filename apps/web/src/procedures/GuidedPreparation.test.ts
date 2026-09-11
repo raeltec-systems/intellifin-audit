@@ -57,24 +57,26 @@ function reviewedContext(): ProcedureVersionView {
 }
 
 describe('guided procedure preparation', () => {
-  it('keeps every editor mounted while exposing only the selected section', () => {
+  it('renders readable sections and native outline links before hydration', () => {
     const html = render(view());
     expect(panel(html, 'context').attributes).not.toContain('hidden');
     for (const section of ['scope', 'evidence', 'instructions', 'assessment', 'frequency'] as const) {
-      expect(panel(html, section).attributes).toContain('hidden');
+      expect(panel(html, section).attributes).not.toContain('hidden');
       expect(panel(html, section).body).toContain(`value="retained-${section}"`);
     }
-    const current = [...html.matchAll(/<button[^>]*aria-current="step"[^>]*>/g)];
+    const current = [...html.matchAll(/<a[^>]*aria-current="step"[^>]*>/g)];
     expect(current).toHaveLength(1);
     expect(current[0]?.[0]).toContain('data-preparation-nav="context"');
     expect(html).toContain('aria-label="Procedure outline"');
+    expect(html.match(/href="#[^"]+-panel-/g)).toHaveLength(13);
+    expect(html).toContain('data-guided-ready="false"');
     expect(html).toContain('Additional section help');
   });
 
   it('keeps the whole-procedure review and submit control physically inside the final panel', () => {
     const html = render(view());
     const final = panel(html, 'review');
-    expect(final.attributes).toContain('hidden');
+    expect(final.attributes).not.toContain('hidden');
     expect(final.body).toContain('The complete saved procedure and execution summary');
     expect(final.body).toContain('Submit for approval');
     expect(html.split('data-whole-procedure-review')).toHaveLength(2);

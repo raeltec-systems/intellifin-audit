@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
+import { createSqlClient, CryptoUuidV7Generator, type Sql } from '@intellifin/infrastructure';
 import { runMigrations } from '@intellifin/infrastructure/migrate';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
+import { insertHistoricalProcedureVersion } from '../fixtures/historical-procedure-version.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const folder = fileURLToPath(new URL('../../packages/infrastructure/drizzle/', import.meta.url));
@@ -43,7 +44,6 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       };
       expect(await runMigrations(historicalUrl, { migrationsFolder: await prefix('before', 31) })).toBe(31);
       sql = createSqlClient(historicalUrl, { max: 1 });
-      const db = createDb(sql);
       // The historical rows name real synthetic artifacts, with their real byte digests.
       // The migrator owns metadata only; it must not replace the evidence these rows name.
       const populationBytes = Buffer.from('employee_id,full_name\nE-SYNTH-1,Synthetic Leaver\n');
@@ -65,10 +65,7 @@ describe.skipIf(!databaseUrl)('real populated-schema evidence upgrade', () => {
       const author = ids.next(), runId = ids.next(), referenceId = ids.next(), populationId = ids.next();
       const version = activeRunVersion(ids.next(), ids.next(), author);
       await sql`INSERT INTO auth_user(id,name,email) VALUES(${author},'Synthetic upgrade reviewer',${author + '@test.invalid'})`;
-      await new PostgresProceduresUnitOfWork(db).execute(async context => {
-        await context.procedures.insertProcedure(version);
-        await context.procedures.insertVersion(version);
-      });
+      await insertHistoricalProcedureVersion(sql, version);
       await sql.begin(async tx => {
         await tx`INSERT INTO audit_run(run_id,request_token,correlation_id,procedure_id,version_id,version_number,procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
           VALUES(${runId},${ids.next()},${ids.next()},${version.procedureId},${version.versionId},1,'Synthetic historical Run','2026-08-01','2026-08-31','COMPLETED','STANDARD',${author},'synthetic-session','auditor','2026-09-01T09:00:00Z')`;

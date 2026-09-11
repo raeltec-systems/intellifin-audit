@@ -276,7 +276,7 @@ test.describe('as an Auditor', () => {
         await expect(page.getByLabel('Applies to C1', { exact: true })).toHaveValue('all records');
         await expect(page.getByLabel('Applies to C2', { exact: true })).toHaveValue('found = true');
       }
-      await expect(page.getByLabel('Frequency')).toBeVisible();
+      await expect(page.getByLabel('Frequency', { exact: true })).toBeVisible();
       await expect(page.getByLabel('Start time (UTC)')).toBeVisible();
       if (template.id === 'P-1') {
         await expect(page.getByLabel('What to record').first()).toBeVisible();
@@ -370,7 +370,7 @@ test.describe('as an Auditor', () => {
 
     // Saving a recurring Schedule now surfaces the pairing as a completeness blocker on
     // BOTH sections, never as a refusal on either.
-    await page.getByLabel('Frequency').selectOption('weekly');
+    await page.getByLabel('Frequency', { exact: true }).selectOption('weekly');
     await page.getByLabel('Start time (UTC)').fill('02:00');
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -632,18 +632,18 @@ test.describe('as an Auditor', () => {
 
     // The Schedule: a frequency, a fixed UTC start, and the recorded period-derivation
     // rule — this Procedure Version records it and never runs it.
-    await page.getByLabel('Frequency').selectOption('daily');
+    await page.getByLabel('Frequency', { exact: true }).selectOption('daily');
     await page.getByLabel('Start time (UTC)').fill('06:00');
     await expect(page.getByText('Each run covers: Previous calendar day, in UTC.')).toBeVisible();
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toBeVisible();
-    await page.getByLabel('Frequency').selectOption('');
-    await page.getByLabel('Frequency').blur();
-    await expect(page.getByLabel('Frequency')).toHaveAttribute('aria-invalid', 'true');
+    await page.getByLabel('Frequency', { exact: true }).selectOption('');
+    await page.getByLabel('Frequency', { exact: true }).blur();
+    await expect(page.getByLabel('Frequency', { exact: true })).toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByLabel('Start time (UTC)')).not.toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toHaveCount(0);
     await page.reload();
-    await expect(page.getByLabel('Frequency')).toHaveValue('daily');
+    await expect(page.getByLabel('Frequency', { exact: true })).toHaveValue('daily');
     await expect(page.getByLabel('Start time (UTC)')).toHaveValue('06:00');
     await scan(page);
   });
@@ -655,12 +655,12 @@ test.describe('as an Auditor', () => {
     await page.getByLabel('Control name').fill(`E2E schedule refresh ${stamp}`);
     await page.getByRole('button', { name: 'Create Procedure' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
-    await page.getByLabel('Frequency').selectOption('daily');
+    await page.getByLabel('Frequency', { exact: true }).selectOption('daily');
     await page.getByLabel('Start time (UTC)').fill('06:00');
     await page.getByLabel('New Control name').fill(`E2E schedule refresh renamed ${stamp}`);
     await page.getByRole('button', { name: 'Save Control name', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: `E2E schedule refresh renamed ${stamp}` })).toBeVisible();
-    await expect(page.getByLabel('Frequency')).toHaveValue('daily');
+    await expect(page.getByLabel('Frequency', { exact: true })).toHaveValue('daily');
     await expect(page.getByLabel('Start time (UTC)')).toHaveValue('06:00');
 
     let committed!: () => void;
@@ -698,7 +698,7 @@ test.describe('as an Auditor', () => {
     await page.unroute(builderUrl);
     await page.getByRole('button', { name: 'Reload saved version' }).click();
     await expect(page.getByLabel('Start time (UTC)')).toHaveValue('07:00');
-    await expect(page.getByLabel('Frequency')).toHaveValue('daily');
+    await expect(page.getByLabel('Frequency', { exact: true })).toHaveValue('daily');
     await scan(page);
   });
 

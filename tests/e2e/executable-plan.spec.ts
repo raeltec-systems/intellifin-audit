@@ -72,8 +72,8 @@ test('queued preview progresses from pending through failure to a read-only acce
     await expect(page).toHaveTitle('Builder · IntelliFin Audit');
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
     await page.setViewportSize({ width: 800, height: 900 });
-    await expect(page.getByText('Open on a desktop browser to author or approve.', { exact: true })).toBeVisible();
-    await expect(preview).not.toBeVisible();
+    await expect(preview).toBeVisible();
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   } finally {
     await queue.stop();
     await sql`DELETE FROM pgboss.job WHERE data->>'versionId' = ${versionId}`;

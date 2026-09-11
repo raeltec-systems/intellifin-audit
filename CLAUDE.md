@@ -2716,3 +2716,14 @@ The pre-evaluation rule preview already checks the captured Observation with sna
 ## Independent live isolation gate
 
 A genuine auditor decision may block representative audit acceptance after confirmed cleanup. The explicit solari-isolation-acceptance label can select only the existing overlapping-session test on the exact candidate. It does not make the combined audit gate green, alter maxFailures or relax any isolation assertion. Confirm prior remote cleanup before selecting it; recording remains disabled and the workflow remains read-only.
+
+
+## Guided preparation hydration and historical upgrade fixtures
+
+The outline uses native section links and keeps sections readable before hydration, then
+shows the selected editor without unmounting other unsaved forms. Preserve a section selected
+while JavaScript loads. Editor-contract tests must wait for data-guided-ready before exposing
+panels; changing server markup first creates hydration mismatches and lost interactions.
+Populated upgrade fixtures must insert the columns of their historical generation, rather
+than call the current Drizzle repository against an older schema. Keep their frozen-input,
+authorship, immutability and compatibility assertions intact.

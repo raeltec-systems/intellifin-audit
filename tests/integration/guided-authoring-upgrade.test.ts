@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { executablePlanInputs } from '../fixtures/executable-plan.js';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
+import { insertHistoricalProcedureVersion } from '../fixtures/historical-procedure-version.js';
 import {
   assertSchemaSupported,
   createDb,
@@ -19,9 +20,6 @@ import { runMigrations } from '@intellifin/infrastructure/migrate';
 
 const databaseUrl = process.env.DATABASE_URL;
 const folder = fileURLToPath(new URL('../../packages/infrastructure/drizzle/', import.meta.url));
-
-/** Keep nullable JSON columns SQL NULL, rather than the JSON scalar `null`. */
-const jsonb = (value: unknown): string | null => value == null ? null : JSON.stringify(value) ?? null;
 
 describe.skipIf(!databaseUrl)('generation47 guided-authoring upgrade', () => {
   it('preserves legacy nine-section drafts and approved reviews without inventing preparation', async () => {
@@ -77,37 +75,8 @@ describe.skipIf(!databaseUrl)('generation47 guided-authoring upgrade', () => {
         authorship: null,
         lifecycle: null,
       };
-
-      type HistoricalVersion = ReturnType<typeof activeRunVersion>;
-      const insertVersion = async (row: HistoricalVersion): Promise<void> => {
-        await sql!`INSERT INTO procedure_version(
-          version_id, procedure_id, version_number, state, control_name, template_id, sections,
-          period, scope, source_snapshot, inclusion_rule, zero_record_pass, allow_versioned_duplicates,
-          population_blockers, targets, instructions, compliance_schema_version, compliance_compiler_version,
-          compliance_conditions, agent_judged_threshold, evidence_schema_version, evidence_requirements,
-          schedule, plan_compiler_version, derivation_model, compiled_plan, plan_input_digest, plan_status,
-          plan_failure_reason, plan_derivable, plan_attempts, authorship, decisions, frozen_review,
-          submitted_review, lifecycle, platform_origin, configuration_revision
-        ) VALUES(
-          ${row.versionId}, ${row.procedureId}, ${row.versionNumber}, ${row.state}, ${row.controlName}, ${row.templateId},
-          ${jsonb(row.sections)}::jsonb, ${jsonb(row.period)}::jsonb, ${row.scope}, ${jsonb(row.sourceSnapshot)}::jsonb,
-          ${jsonb(row.inclusionRule)}::jsonb, ${row.zeroRecordPass}, ${row.allowVersionedDuplicates},
-          ${jsonb(row.populationBlockers)}::jsonb, ${jsonb(row.targets)}::jsonb, ${jsonb(row.instructions)}::jsonb,
-          ${row.complianceSchemaVersion}, ${row.complianceCompilerVersion}, ${jsonb(row.complianceConditions)}::jsonb,
-          ${row.agentJudgedThreshold}, ${row.evidenceSchemaVersion}, ${jsonb(row.evidenceRequirements)}::jsonb,
-          ${jsonb(row.schedule)}::jsonb, ${row.planCompilerVersion}, ${jsonb(row.derivationModel)}::jsonb,
-          ${jsonb(row.compiledPlan)}::jsonb, ${row.planInputDigest}, ${row.planStatus}, ${row.planFailureReason ?? null},
-          ${row.planDerivable}, ${jsonb(row.planAttempts)}::jsonb, ${jsonb(row.authorship)}::jsonb,
-          ${jsonb(row.decisions)}::jsonb, ${jsonb(row.frozenReview)}::jsonb, ${jsonb(row.submittedReview)}::jsonb,
-          ${jsonb(row.lifecycle)}::jsonb, ${jsonb(row.platformOrigin)}::jsonb, ${row.configurationRevision ?? null}
-        )`;
-      };
-
-      await sql`INSERT INTO procedure(procedure_id, control_name, template_id)
-        VALUES(${draftProcedureId}, ${draftVersion.controlName}, ${draftVersion.templateId}),
-              (${approvedProcedureId}, ${approvedVersion.controlName}, ${approvedVersion.templateId})`;
-      await insertVersion(draftVersion);
-      await insertVersion(approvedVersion);
+      await insertHistoricalProcedureVersion(sql, draftVersion);
+      await insertHistoricalProcedureVersion(sql, approvedVersion);
 
       const payloadBefore = await sql`
         SELECT version_id, sections, submitted_review, frozen_review, authorship
