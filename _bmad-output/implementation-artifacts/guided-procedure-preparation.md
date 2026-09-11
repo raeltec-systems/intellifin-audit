@@ -43,7 +43,7 @@ That is a rule to pin in Epic 8's spec, not a defect today.
 
 | | Size |
 |---|---|
-| **RACM as a first-class entity** — a procedure starts from a risk/control entry rather than a bare Template choice | **Largest. Needs a PRD revision** (see §7). |
+| **Templates structured around risk, control, objective and criterion reference** — the governing document an institution already has, in the form this product already uses | Small, but **addendum §C changes first** (see §7) |
 | **AI drafting per section** — the auditor's rough words become a professional draft they accept, edit or reject | Medium |
 | **Section state splits in two** — "drafted" is not "reviewed by the auditor" | Small, and load-bearing |
 | **Material proposals as explicit, unapplied changes** with a stated basis | Medium |
@@ -60,7 +60,7 @@ Presented as **"Prepare an audit procedure"**, not "Configure an agent".
 
 | Section | The question the auditor is asked | What assistance prepares |
 |---|---|---|
-| Risk, control and objective | "Which RACM control are we testing, and what do we need to establish?" | The objective, tied to the selected risk and control, with the policy criterion named separately |
+| Risk, control and objective | "Which control are we testing, and what do we need to establish?" | The objective, tied to the Template's risk and control, with the policy criterion named separately |
 | Scope and period | "Which records, entities, systems and period are included?" | The population definition, inclusion and exclusion criteria, the testing period |
 | Evidence to review | "What evidence should the agent examine?" | Evidence types, the fields or content that matter, approved locations, access prerequisites |
 | Audit steps | "What should the agent do with that evidence?" | Ordered instructions that preserve the auditor's intended work |
@@ -172,7 +172,7 @@ Not a green "Complete" badge beside a disabled button with no reason.
 
 ### What the manager reviews
 
-The selected RACM control, objective, scope, evidence, audit steps, assessment criteria,
+The Template's risk and control, the objective, scope, evidence, audit steps, assessment criteria,
 frequency and uncertainty handling — plus material changes since the last approved version and
 any open comments. Not the auditor's AI conversation, and not raw configuration.
 
@@ -188,21 +188,48 @@ edits return to the auditor for acceptance first.
 
 ---
 
-## 7. Sequencing, and the one thing that needs the PRD
+## 7. The governing document is the Template we already have
 
-**RACM is a new domain entity, not a UI change.** It carries risk, control, control identifier,
-objective and a criterion reference, and a Procedure links to it. Nothing like it exists today —
-a Procedure currently starts from a Template choice and a typed Control name. Adding it touches
-the PRD's requirements, so the honest path is a **PRD revision first**, which then invalidates
-the architecture spine and UX handoff until they are re-derived (the standing rule).
+Every institution has some governing document that tells an auditor what to test in each area —
+a risk register, a risk assessment register, a risk matrix; the name and the format differ by
+institution. **That thing is what this product already calls a Template.** In production a
+Template would be shaped around whatever the institution actually uses. So there is **no new
+entity**, and no PRD revision blocking this: the work is to make the existing Template more
+structured, framed around **risk, control, objective and criterion reference**.
 
-**Two options, and a recommendation:**
+### What a Template holds today
 
-- **Full RACM** — import, manage, link, report coverage. Its own epic.
-- **Minimal RACM entry (recommended for the PoC)** — a small record the auditor creates or picks:
-  risk, control, control id, objective, criterion reference. Enough to start a procedure from
-  the right place and to show the manager what is being tested, without building a matrix
-  manager. It can grow into the full thing later.
+`ProcedureTemplate` in `packages/domain/src/procedures/templates.ts` already carries `objective`
+for all four, and `controlStatement` for P-1 — `null` for the others, because §C states nothing
+there and the module refuses to invent a value where the contract is silent.
+
+So the gap is small and specific:
+
+| Field | Today |
+|---|---|
+| `objective` | present, all four |
+| `controlStatement` | P-1 only; `null` for P-2, P-3, P-4 |
+| **risk** — what this control mitigates | **missing** |
+| **criterion reference** — the policy or standard clause the test is grounded in | **missing** |
+
+### The mechanical consequence: the addendum is the work
+
+Templates are **build constants pinned to addendum §C on disk**.
+`tests/unit/procedure-templates.test.ts` reads the addendum and requires every stored string to
+appear verbatim in that Template's block — and, deliberately, *"a stored default that appears
+nowhere in the block could never be pinned"*.
+
+**So a new Template field cannot be typed into TypeScript first.** The order is: state it in
+addendum §C for each Template, then transcribe it, and the test proves the transcription. That
+is a feature — it is what stops a deployment drifting from the contract its own tests assert —
+and it means **most of this story is editing the addendum**, with the code following.
+
+### Freezing is already handled
+
+`initialDraftSections` copies the Template's text into the version's `sections` at creation, and
+`sections` is part of `FrozenPlanInputs`. **A Template edited later therefore cannot retroactively
+change what an approved version says it was testing.** Risk and criterion reference ride that
+same mechanism; they need no new freezing rule.
 
 ### Proposed Epic 2 extension stories
 
@@ -216,7 +243,7 @@ Epic 2 is *"Author and approve a Procedure"*, so this is its territory — not E
 | **2.12** | Cross-section dependency flagging on material change | 2.9 |
 | **2.13** | The manager's consolidated review view, comments per section, *Approve for activation* / *Request changes* | 2.9 |
 | **2.14** | Reference documents (design inputs) kept distinct from Evidence (execution inputs) | 2.9 |
-| **2.15** | Minimal RACM entry and the link from a Procedure | **PRD revision** |
+| **2.15** | Structure the Templates around risk, control, objective and criterion reference — addendum §C first, then the constants, then the pinning test | — |
 
 **Recommended first slice: 2.9 + 2.10.** It is the smallest thing that produces the LivePlan
 feel, it touches no frozen contract, and the owner can judge the rest after using it.
@@ -235,15 +262,15 @@ there is the plan check, once per save. Writing help runs whenever it is asked f
 
 ## 8. The acceptance demonstration
 
-> An auditor starts with rough RACM-linked instructions, uses assistance to prepare the
+> An auditor starts with rough instructions against a Template, uses assistance to prepare the
 > procedure, receives a manager comment, revises and resubmits, obtains approval, and starts the
 > agent. At every earlier stage execution is refused with a clear explanation.
 
 **Most of that harness already exists.** `tests/e2e/owner-walkthrough.spec.ts` walks create →
 author → submit → approve as a manager → initiate → read the sealed Result through the
-interface, against a real worker and real synthetic systems. What it would gain is the RACM
-start, the assistance steps, the manager comment round trip, and the explicit refusals at each
-earlier stage.
+interface, against a real worker and real synthetic systems. What it would gain is the structured
+Template start, the assistance steps, the manager comment round trip, and the explicit refusal at
+each earlier stage.
 
 ---
 

@@ -7,6 +7,25 @@ approval, then obtain independent manager approval before allowing execution.* I
 and the story breakdown: `_bmad-output/implementation-artifacts/guided-procedure-preparation.md`.
 `v2-conversational-authoring.md` is `[SUPERSEDED]` by it and kept for the reasoning.
 
+**The governing document an institution already has IS the Template, and there is no new entity.**
+A first version of this note proposed one, and the owner corrected it: every institution tracks
+its risks and the controls that mitigate them in some document — the names and formats differ by
+institution — and in production a Template would be shaped around whatever that institution uses.
+So the work is to make the EXISTING Template more structured, framed around **risk, control,
+objective and criterion reference**. `ProcedureTemplate` already carries `objective` for all four
+and `controlStatement` for P-1 only; risk and criterion reference are what is missing. **Do not
+introduce a separate entity for this, and do not use an institution-specific acronym for it in
+code, copy or documents** — the product word is Template.
+
+**Adding a Template field means editing addendum §C FIRST.** Templates are build constants pinned
+to §C on disk, and `procedure-templates.test.ts` requires every stored string to appear verbatim
+in that Template's block — deliberately, because "a stored default that appears nowhere in the
+block could never be pinned". So most of that story is the addendum, and the code follows.
+`initialDraftSections` already copies Template text into the version's `sections` at creation and
+`sections` is part of `FrozenPlanInputs`, so a Template edited later **cannot** retroactively
+change what an approved version says it was testing — risk and criterion ride that mechanism and
+need no new freezing rule.
+
 **The governance half was checked against the code and TEN requirements already hold**, several
 more strongly than the direction assumed. The proposed chain `Draft → auditor approved / awaiting
 manager review → manager approved → Active` IS `DRAFT → SUBMITTED → APPROVED → ACTIVE`, so
@@ -20,9 +39,7 @@ is not `ACTIVE` with a frozen review, and manual initiation and rerun share that
 **The one execution gap is named rather than assumed: scheduled Runs are Epic 8 and do not exist**,
 so "every path that can start work re-checks approval" is a rule to pin in Epic 8's spec.
 
-**What is genuinely new, in size order:** RACM as a first-class entity (a Procedure starts from a
-risk/control entry, which nothing today has — **needs a PRD revision**, and a *minimal RACM entry*
-is the recommended PoC shape); AI drafting per section; a section state that separates DRAFTED
+**What else is genuinely new:** AI drafting per section; a section state that separates DRAFTED
 from AUDITOR-REVIEWED, because today's `done | todo | attention | reference` cannot say "written
 but not yet accepted" — until now a person typed everything and there was nothing to distinguish;
 material proposals shown as UNAPPLIED changes carrying a basis; cross-section dependency flagging;
