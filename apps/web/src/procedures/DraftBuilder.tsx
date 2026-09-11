@@ -1,15 +1,17 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, bindingDigestEnvelope, evidenceBlockersFor, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
-import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult, UpdateComplianceDraftResult, UpdateEvidenceDraftResult } from '@intellifin/application';
-import type { PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields, ComplianceDraftFields, EvidenceDraftFields } from '../../app/procedures/[id]/builder/actions';
+import { draftContext, POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, bindingDigestEnvelope, evidenceBlockersFor, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
+import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult, UpdateComplianceDraftResult, UpdateEvidenceDraftResult, UpdateContextDraftResult } from '@intellifin/application';
+import type { ReviewSectionFields, ContextDraftFields, PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields, ComplianceDraftFields, EvidenceDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
 import { ReadinessPanel } from './ReadinessPanel';
-import { BuilderSections } from './BuilderSections';
+import { TemplateContextForm } from './TemplateContextForm';
+import { WritingAssistantProvider, WritingAssistantPanel, WritingTools, type WritingAssistantActions } from './WritingAssistant';
+import { GuidedPreparation } from './GuidedPreparation';
 import { RenameDraftForm } from './RenameDraftForm';
 import { TargetSelectionForm } from './TargetSelectionForm';
 import { AuditInstructionsForm } from './AuditInstructionsForm';
@@ -24,11 +26,14 @@ import { RetryPlanDerivation, type RetryPlanDerivationFields, type RetryPlanDeri
 import { submissionUnavailableReason } from '@intellifin/application';
 import { VersionActions } from './VersionActions';
 
-function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
+function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveContext, onReview, onWriting, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
   readonly draft: ProcedureVersionView;
   readonly sources: readonly PopulationSourceBinding[];
   readonly registrations: readonly TargetSystemRegistration[];
   readonly rowVersion: string;
+  readonly onWriting: WritingAssistantActions;
+  readonly onReview: (fields: ReviewSectionFields) => Promise<{ ok: true; rowVersion: string } | { ok: false; reason: string }>;
+  readonly onSaveContext: (fields: ContextDraftFields) => Promise<UpdateContextDraftResult>;
   readonly onSave: (fields: PopulationDraftFields) => Promise<UpdatePopulationDraftResult>;
   readonly onSaveTargets: (fields: TargetDraftFields) => Promise<UpdateTargetDraftResult>;
   readonly onSaveCompliance: (fields: ComplianceDraftFields) => Promise<UpdateComplianceDraftResult>;
@@ -91,7 +96,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       void save({ section, source: selection === 'retain' ? { mode: 'retain' } : { mode: 'bind', bindingId: selected!.bindingId, expectedDigest: selected!.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
     }
   }
-  async function save(edit: DraftPopulationEdit): Promise<void> {
+  async function save(edit: Exclude<DraftPopulationEdit, { section: 'scope-note' }>): Promise<void> {
     if (saving.current || unknownOutcome) return;
     saving.current = true;
     setBusy(true);
@@ -114,10 +119,11 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   }
   const periodEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('period-scope'); }} onBlur={() => setPeriodTouched(true)}>
     <SectionConflict dirty={periodSection.status().dirty} conflict={periodSection.conflict} name="Period and scope" reset={() => periodSection.reset()} />
-    <p id={`${id}-utc`}>Both dates are included, and both are UTC. A run you start by hand tests these dates. A run that starts on a schedule works out its own dates from how often it runs — see &ldquo;How often it runs&rdquo; below.</p>
+    <p id={`${id}-utc`}>Both dates are included, and both are UTC. A Run you start by hand tests these dates. Frequency settings describe the approved intent; automatic scheduled execution is not available yet.</p>
     <div className="ls-dialog__field"><label htmlFor={`${id}-from`}>Period start</label><input className="ls-input" id={`${id}-from`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
     <div className="ls-dialog__field"><label htmlFor={`${id}-to`}>Period end</label><input className="ls-input" id={`${id}-to`} type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
     <div className="ls-dialog__field"><label htmlFor={`${id}-scope`}>Scope statement</label><textarea className="ls-input" id={`${id}-scope`} value={scope} maxLength={POPULATION_DRAFT_LIMITS.scope} onChange={(e) => setScope(e.target.value)} aria-describedby={`${id}-period-error`} /></div>
+    <WritingTools section={{ kind: 'scope' }} />
     <div id={`${id}-period-error`} aria-live="polite">{periodTouched && periodError !== null ? <Banner tone="warning" title={periodError} /> : null}</div>
     <Button type="submit" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary">Save Period and scope</Button>
   </form>;
@@ -211,10 +217,20 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   };
   const evidenceRequirementsEditor = <EvidenceRequirementsForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
   const scheduleEditor = <ScheduleForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
-  return <div className="ls-stack">
+  return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={onWriting}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <BuilderSections draft={draft} sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
+    <GuidedPreparation help={<WritingAssistantPanel />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
+      context: <><TemplateContextForm draft={draft} rowVersion={token} onSave={async fields => { const outcome = await onSaveContext(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /><RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async fields => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /></>,
+      scope: periodEditor,
+      evidence: <><h3>What evidence should be reviewed?</h3><p>Specify the attributes and retained evidence the test needs. Examples include reports, minutes, extracts, logs and system settings.</p>{evidenceRequirementsEditor}<h3>Where should it be obtained or inspected?</h3><p>The current runtime uses registered population sources and selected targets. A listed evidence type does not add file ingestion or a new connector.</p>{populationEditor}{targetSystemsEditor}</>,
+      instructions: auditInstructionsEditor,
+      assessment: complianceRuleEditor,
+      frequency: <>{scheduleEditor}<p className="ls-caption">Frequency is saved with the procedure. Automatic scheduled execution is separate work. Unresolved observations remain unresolved; only approved, active versions can run.</p></>,
+    }} review={<>
+      <dl className="ls-stack" aria-label="Saved procedure context">
+        {Object.entries({ Risk: draftContext(draft.sections).risk, Control: draftContext(draft.sections).control, Objective: draftContext(draft.sections).objective, 'Criterion reference': draftContext(draft.sections).criterionReference, 'Scope note': draft.scope }).map(([label, content]) => <div key={label}><dt>{label}</dt><dd className="ls-whitespace">{content || 'Not supplied'}</dd></div>)}
+      </dl>
     <ReadinessPanel inputs={{ templateId: draft.templateId, targets: draft.targets, sourceSnapshot: draft.sourceSnapshot, complianceConditions: draft.complianceConditions, evidenceRequirements: draft.evidenceRequirements }} headingId={`${id}-readiness`} />
     {/*
       The plan and its preview are the platform proving what it will execute, which is
@@ -233,8 +249,9 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     </div>
     <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
-    <RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async (fields) => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} />
-  </div>;
+
+    </>} />
+  </div></WritingAssistantProvider>;
 }
 
 export function DraftBuilder(props: Parameters<typeof DraftBuilderContent>[0]): React.JSX.Element { return <BuilderSubmissionProvider><DraftBuilderContent {...props} /></BuilderSubmissionProvider>; }

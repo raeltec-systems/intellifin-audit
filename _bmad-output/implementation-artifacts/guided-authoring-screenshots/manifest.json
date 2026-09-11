@@ -1,0 +1,54 @@
+{
+  "captureMethod": "Actual Playwright Chromium page.screenshot({ fullPage: true }); unedited PNG files, synthetic fixtures.",
+  "files": [
+    {
+      "bytes": 225402,
+      "file": "guided-preparation-mobile.png",
+      "height": 3179,
+      "sha256": "1d5c5310781b3f92f9165965e554db811a45fc2531d1423ed57cd5524db42fcd",
+      "width": 390
+    },
+    {
+      "bytes": 1043550,
+      "file": "owner-auditor-full-procedure-review.png",
+      "height": 7431,
+      "sha256": "56e3e483d47838413421965361b399210eba552765a228f65e233168fe2e99e9",
+      "width": 1280
+    },
+    {
+      "bytes": 1719173,
+      "file": "owner-manager-revised-procedure-review.png",
+      "height": 12129,
+      "sha256": "4c44d7c99ea80577cd87145945d21a4325615e731a4dd0405010874ae3a6b12f",
+      "width": 1280
+    },
+    {
+      "bytes": 311713,
+      "file": "owner-objective-proposal-before-acceptance.png",
+      "height": 1881,
+      "sha256": "3584daf08eb99c1f3022807c60b52e9de7eda5f02d50778ede05e831ffa6306a",
+      "width": 1280
+    },
+    {
+      "bytes": 277587,
+      "file": "writing-stale-suggestion.png",
+      "height": 1902,
+      "sha256": "8427ca247aadb0da28e41f0750afcda62c9e47843f22d69b681222806525b380",
+      "width": 1280
+    },
+    {
+      "bytes": 284241,
+      "file": "writing-clarification.png",
+      "height": 1645,
+      "sha256": "8a72531bda7cccdce0d0bf54aeadeef9a3d96bd79873b0cd1f6184f11afbd5e9",
+      "width": 1280
+    }
+  ],
+  "jobId": 103269503120,
+  "liveOpenAI": false,
+  "repository": "raeltec-systems/intellifin-audit",
+  "runId": 34601457170,
+  "sourceCommit": "abe27cab8ff323a2d15a090022b721153e6f283f",
+  "inspected": true,
+  "inspectionNotes": "Viewed all six original PNGs from the fully passing 195-case browser/accessibility suite. Confirmed the long reconciliation action wraps within the help panel, location-neutral context copy, unapplied proposal, explicit stale refusal, clarification without replacement, stacked mobile layout and complete auditor/manager review surfaces."
+}

@@ -8,6 +8,9 @@ import {
   renameProcedureDraft,
   retryPlanDerivation,
   updatePopulationDraft,
+  updateContextDraft,
+  reviewSection,
+  type UpdateContextDraftResult,
   updateTargetDraft,
   updateComplianceDraft,
   updateEvidenceDraft,
@@ -19,7 +22,7 @@ import {
   type UpdateEvidenceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
+import { isPreparationSectionId, type PreparationSectionId, isDraftContextEdit, type DraftContextEdit, COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -434,4 +437,83 @@ export async function retryPlanDerivationAction(fields: { readonly procedureId: 
     } catch { /* Boot failures are already reported. */ }
     return { ok: false, reason: UNAVAILABLE };
   }
+}
+
+export interface ContextDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly edit: DraftContextEdit;
+}
+export async function updateContextDraftAction(fields: ContextDraftFields): Promise<UpdateContextDraftResult> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (typeof fields !== 'object' || fields === null || Object.keys(fields).length !== 4 ||
+      !isUuid(fields.procedureId) || !isUuid(fields.versionId) || typeof fields.expectedRowVersion !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion) || !isDraftContextEdit(fields.edit)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await updateContextDraft(await dependencies(), { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch {
+    // Driver/provider error text can contain authored content. Return only a closed message.
+    return { ok: false, reason: UNAVAILABLE };
+  }
+}
+
+export interface ReviewSectionFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly section: PreparationSectionId;
+  readonly decision: 'review' | 'clarify' | 'draft';
+}
+export async function reviewSectionAction(fields: ReviewSectionFields): Promise<{ ok: true; rowVersion: string } | { ok: false; reason: string }> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (!fields || typeof fields !== 'object' || !isUuid(fields.procedureId) || !isUuid(fields.versionId)
+    || typeof fields.expectedRowVersion !== 'string' || !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion)
+    || !isPreparationSectionId(fields.section) || !['review', 'clarify', 'draft'].includes(fields.decision)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await reviewSection({ ...await dependencies(), clock: { now: () => new Date() } }, { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) revalidatePath(`/procedures/${fields.procedureId}/builder`);
+    return outcome;
+  } catch { return { ok: false, reason: UNAVAILABLE }; }
+}
+
+
+/** Authoring responses are suggestions only. Each action independently resolves the user. */
+export async function generateAuthoringSuggestionAction(fields: import('@intellifin/application').AuthoringDraftFields) {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false as const, reason: decision.reason };
+  const { isAuthoringDraftFields, generateAuthoringSuggestion } = await import('@intellifin/application');
+  if (!isAuthoringDraftFields(fields)) return { ok: false as const, reason: MALFORMED };
+  try {
+    return await generateAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+  } catch { throw new Error('The writing response could not be confirmed. Check the same request again or continue writing manually.'); }
+}
+export async function acceptAuthoringSuggestionAction(fields: import('@intellifin/application').AcceptAuthoringFields) {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false as const, reason: decision.reason };
+  const { isAcceptAuthoringFields, acceptAuthoringSuggestion } = await import('@intellifin/application');
+  if (!isAcceptAuthoringFields(fields)) return { ok: false as const, reason: MALFORMED };
+  try {
+    const result = await acceptAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+    if (result.ok) { revalidatePath(`/procedures/${fields.procedureId}/builder`); revalidatePath(`/procedures/${fields.procedureId}`); }
+    return result;
+  } catch { throw new Error(UNAVAILABLE); }
+}
+export async function rejectAuthoringSuggestionAction(fields: import('@intellifin/application').RejectAuthoringFields) {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false as const, reason: decision.reason };
+  const { isRejectAuthoringFields, rejectAuthoringSuggestion } = await import('@intellifin/application');
+  if (!isRejectAuthoringFields(fields)) return { ok: false as const, reason: MALFORMED };
+  try {
+    return await rejectAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+  } catch { return { ok: false as const, reason: 'The response could not be confirmed. Your saved procedure was not changed by rejecting this suggestion.' }; }
 }

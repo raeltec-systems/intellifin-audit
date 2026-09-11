@@ -1,3 +1,7 @@
+import { reviewSection } from './review-section.js';
+import { preparationStatus, sectionReview, PREPARATION_SECTIONS } from '@intellifin/domain';
+import { updateContextDraft } from './update-context-draft.js';
+import { draftContext, findProcedureTemplate, type DraftContextEdit } from '@intellifin/domain';
 import { initialPlanDerivation, planAuthoringDigest } from './plan-state.js';
 import type { PlanDerivationJob } from './plan-ports.js';
 import { describe, expect, it } from 'vitest';
@@ -1266,5 +1270,185 @@ describe('Draft Evidence Requirements and Schedule changes', () => {
     expect(record.targets).toEqual([]);
     expect(record.evidenceRequirements.every((r) => !r.platformCaptured)).toBe(true);
     expect(record.schedule).toEqual({ frequency: 'weekly', startTime: '00:00', periodDerivationRule: 'previous-monday-sunday' });
+  });
+});
+
+
+describe('updateContextDraft — Story 2.15', () => {
+  const edit: DraftContextEdit = { risk: 'Synthetic adapted risk', control: 'Synthetic agreed control', objective: 'Establish whether all leavers retain active access.', criterionReference: 'Synthetic test policy, version A' };
+  async function setup() {
+    const test = harness(); const created = await create(test);
+    if (!created.ok) throw new Error(created.reason);
+    const record = () => test.storedVersions.get(created.versionId)!;
+    const save = (changes = edit, token = procedureVersionRowVersion(record()), actor = AUDITOR) => updateContextDraft(test.dependencies, {
+      ...created, session: actor, correlationId: 'context-edit', expectedRowVersion: token, edit: changes,
+    });
+    return { test, created, record, save };
+  }
+  it('persists each field, attributes the human and invalidates the plan without mutating another draft or Template', async () => {
+    const { test, record, save } = await setup();
+    const other = await create(test); if (!other.ok) throw new Error(other.reason);
+    const otherBefore = JSON.stringify(test.storedVersions.get(other.versionId));
+    const templateBefore = JSON.stringify(findProcedureTemplate('P-1'));
+    const beforeDigest = planAuthoringDigest(record());
+    expect(await save(edit, procedureVersionRowVersion(record()), { userId: 'auditor-2', sessionId: 'session-2' })).toMatchObject({ ok: true, changed: true });
+    expect(draftContext(record().sections)).toEqual(edit);
+    expect(record().authorship?.humanAuthorIds).toEqual(['auditor-1', 'auditor-2']);
+    expect(record().planStatus).toBe('pending'); expect(record().compiledPlan).toBeNull();
+    expect(planAuthoringDigest(record())).not.toBe(beforeDigest);
+    expect(JSON.stringify(test.storedVersions.get(other.versionId))).toBe(otherBefore);
+    expect(JSON.stringify(findProcedureTemplate('P-1'))).toBe(templateBefore);
+    const event = test.events.at(-1)!;
+    expect(event.actor).toEqual({ type: 'human', id: 'auditor-2' });
+    expect(JSON.stringify(event.payload)).not.toContain(edit.risk);
+  });
+  it('refuses stale and duplicate saves and rolls back content if auditing fails', async () => {
+    const { test, record, save } = await setup(); const token = procedureVersionRowVersion(record());
+    expect(await save()).toMatchObject({ ok: true });
+    expect(await save({ ...edit, objective: 'Stale replacement' }, token)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+    const before = JSON.stringify(record()); const events = test.events.length;
+    expect(await save()).toMatchObject({ ok: true, changed: false }); expect(test.events.length).toBe(events);
+    test.failAppend = true;
+    await expect(save({ ...edit, risk: 'Another synthetic risk' })).rejects.toThrow('audit append failed');
+    expect(JSON.stringify(record())).toBe(before);
+  });
+  it('does not fill missing historical context from a newer Template', async () => {
+    const { test, record, save } = await setup();
+    test.storedVersions.set(record().versionId, { ...record(), sections: record().sections.slice(0, 9) });
+    const existing = draftContext(record().sections);
+    expect(existing.risk).toBeNull(); expect(existing.criterionReference).toBeNull();
+    expect(await save({ ...existing, objective: 'An explicitly revised objective' })).toMatchObject({ ok: true });
+    expect(draftContext(record().sections)).toEqual({ ...existing, objective: 'An explicitly revised objective' });
+  });
+  it.each(['SUBMITTED', 'APPROVED', 'ACTIVE', 'RETIRED', 'REJECTED'] as const)('cannot edit %s through this command', async state => {
+    const { test, record, save } = await setup();
+    test.storedVersions.set(record().versionId, { ...record(), state });
+    const before = JSON.stringify(record());
+    expect(await save()).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+    expect(JSON.stringify(record())).toBe(before);
+  });
+  it('refuses invalid context and unrelated procedure ids', async () => {
+    const { test, created, record, save } = await setup();
+    expect(await save({ ...edit, objective: '' })).toMatchObject({ ok: false });
+    expect(await save({ ...edit, risk: 'x'.repeat(4001) })).toMatchObject({ ok: false });
+    expect(await updateContextDraft(test.dependencies, { session: AUDITOR, correlationId: 'context-edit', procedureId: 'another-procedure', versionId: created.versionId, expectedRowVersion: procedureVersionRowVersion(record()), edit })).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.UNKNOWN_VERSION });
+  });
+});
+
+
+describe('saved section preparation acknowledgements', () => {
+  async function setup() {
+    const test = harness(); const result = await create(test);
+    if (!result.ok) throw new Error(result.reason);
+    const row = () => test.storedVersions.get(result.versionId)!;
+    const review = (section: typeof PREPARATION_SECTIONS[number], decision: 'review'|'clarify'|'draft' = 'review', token = procedureVersionRowVersion(row())) => reviewSection({ ...test.dependencies, clock: { now: () => new Date('2026-09-11T12:00:00.000Z') } }, {
+      session: AUDITOR, correlationId: 'preparation-test', procedureId: result.procedureId, versionId: result.versionId, expectedRowVersion: token, section, decision,
+    });
+    return { test, row, review, result };
+  }
+  it('records saved content and the human reviewer without touching executable inputs or plan readiness', async () => {
+    const { row, review, test } = await setup();
+    const before = row(), digest = planAuthoringDigest(before), jobs = test.jobs.length;
+    expect(preparationStatus(before, 'context')).toBe('drafting');
+    expect(await review('context')).toMatchObject({ ok: true });
+    expect(sectionReview(row(), 'context')).toMatchObject({ actorId: AUDITOR.userId, at: '2026-09-11T12:00:00.000Z', revision: 1 });
+    expect(preparationStatus(row(), 'context')).toBe('reviewed');
+    expect(planAuthoringDigest(row())).toBe(digest);
+    expect(row().planStatus).toBe(before.planStatus);
+    expect(test.jobs).toHaveLength(jobs);
+    expect(test.events.at(-1)?.payload).not.toHaveProperty('content');
+  });
+  it('invalidates dependent reviews and keeps unrelated frequency review; reverting text cannot revive a review', async () => {
+    const { row, review, test, result } = await setup();
+    for (const section of PREPARATION_SECTIONS) expect(await review(section)).toMatchObject({ ok: true });
+    const old = row(), edit = draftContext(old.sections);
+    const save = (objective: string) => updateContextDraft(test.dependencies, { session: AUDITOR, correlationId: 'prep-edit', procedureId: result.procedureId, versionId: result.versionId, expectedRowVersion: procedureVersionRowVersion(row()), edit: { ...edit, objective } });
+    expect(await save('Test every record in the complete population.')).toMatchObject({ ok: true });
+    expect(sectionReview(row(), 'context')).toBeNull();
+    expect(sectionReview(row(), 'instructions')).toBeNull();
+    expect(sectionReview(row(), 'assessment')).toBeNull();
+    expect(sectionReview(row(), 'frequency')).toEqual(sectionReview(old, 'frequency'));
+    expect(row().compiledPlan).toBeNull();
+    expect(row().planStatus).toBe('pending');
+    expect(await save(edit.objective)).toMatchObject({ ok: true });
+    expect(sectionReview(row(), 'context')).toBeNull();
+    expect(row().sectionPreparation!.revision).toBeGreaterThan(old.sectionPreparation!.revision);
+  });
+  it('keeps clarification separate from review and requires an explicit resolution', async () => {
+    const { row, review } = await setup();
+    await review('context', 'clarify'); expect(preparationStatus(row(), 'context')).toBe('needs-clarification');
+    expect(sectionReview(row(), 'context')).toBeNull();
+    await review('context', 'draft'); expect(preparationStatus(row(), 'context')).toBe('drafting');
+    expect(sectionReview(row(), 'context')).toBeNull();
+  });
+  it('refuses stale or duplicate acknowledgements without creating contradictory events', async () => {
+    const { row, review, test } = await setup(); const token = procedureVersionRowVersion(row());
+    expect(await review('context', 'review', token)).toMatchObject({ ok: true });
+    const events = test.events.length;
+    expect(await review('context', 'review', token)).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.STALE_ROW });
+    expect(test.events).toHaveLength(events);
+  });
+  it.each(['SUBMITTED', 'APPROVED', 'ACTIVE', 'REJECTED', 'RETIRED'] as const)('cannot change a %s version', async state => {
+    const { row, review, test } = await setup(); test.storedVersions.set(row().versionId, { ...row(), state });
+    expect(await review('context')).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+    expect(sectionReview(row(), 'context')).toBeNull();
+  });
+  it('rolls back the acknowledgement if audit recording fails', async () => {
+    const { row, review, test } = await setup(); const before = row(); test.failAppend = true;
+    await expect(review('context')).rejects.toThrow('the audit append failed');
+    expect(row()).toEqual(before);
+  });
+});
+
+
+describe('saved-content section acknowledgement', () => {
+  const clock = { now: () => new Date('2026-09-11T12:00:00.000Z') };
+  it('records the actual human and saved revision without changing the executable plan', async () => {
+    const test = harness(); await create(test);
+    const before = [...test.storedVersions.values()][0]!;
+    const result = await reviewSection({ ...test.dependencies, clock }, { session: { userId: 'auditor-2', sessionId: 'session-2' }, correlationId: 'review', procedureId: before.procedureId, versionId: before.versionId, expectedRowVersion: procedureVersionRowVersion(before), section: 'context', decision: 'review' });
+    expect(result.ok).toBe(true);
+    const after = test.storedVersions.get(before.versionId)!;
+    expect(sectionReview(after, 'context')).toMatchObject({ actorId: 'auditor-2', at: clock.now().toISOString(), revision: 1 });
+    expect(after.authorship?.humanAuthorIds).toContain('auditor-2');
+    expect(planAuthoringDigest(after)).toBe(planAuthoringDigest(before));
+    expect(after.compiledPlan).toEqual(before.compiledPlan);
+    expect(test.jobs).toHaveLength(1);
+    expect(procedureVersionRowVersion(after)).not.toBe(procedureVersionRowVersion(before));
+  });
+  it('invalidates affected reviews on the ordinary update command and keeps independent reviews', async () => {
+    const test = harness(); await create(test); let row = [...test.storedVersions.values()][0]!;
+    for (const section of PREPARATION_SECTIONS) {
+      expect((await reviewSection({ ...test.dependencies, clock }, { session: AUDITOR, correlationId: 'review', procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), section, decision: 'review' })).ok).toBe(true);
+      row = test.storedVersions.get(row.versionId)!;
+    }
+    expect((await updateContextDraft(test.dependencies, { session: AUDITOR, correlationId: 'edit', procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), edit: { ...draftContext(row.sections), objective: 'Check every leaver; do not sample.' } })).ok).toBe(true);
+    const after = test.storedVersions.get(row.versionId)!;
+    for (const section of ['context', 'scope', 'evidence', 'instructions', 'assessment'] as const) expect(sectionReview(after, section)).toBeNull();
+    expect(sectionReview(after, 'frequency')).toEqual(sectionReview(row, 'frequency'));
+    expect(after.planStatus).toBe('pending');
+  });
+  it('keeps clarification distinct; a failed audit write rolls the acknowledgement back', async () => {
+    const test = harness(); await create(test); const row = [...test.storedVersions.values()][0]!;
+    const input = { session: AUDITOR, correlationId: 'review', procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), section: 'context', decision: 'clarify' };
+    test.failAppend = true;
+    await expect(reviewSection({ ...test.dependencies, clock }, input)).rejects.toThrow('audit append failed');
+    expect(test.storedVersions.get(row.versionId)).toEqual(row);
+    test.failAppend = false;
+    expect((await reviewSection({ ...test.dependencies, clock }, input)).ok).toBe(true);
+    expect(preparationStatus(test.storedVersions.get(row.versionId)!, 'context')).toBe('needs-clarification');
+    expect(sectionReview(test.storedVersions.get(row.versionId)!, 'context')).toBeNull();
+  });
+  it('refuses stale, unknown authorship, submitted and forbidden calls', async () => {
+    const test = harness(); await create(test); const row = [...test.storedVersions.values()][0]!;
+    const input = { session: AUDITOR, correlationId: 'review', procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), section: 'context', decision: 'review' };
+    expect(await reviewSection({ ...test.dependencies, clock }, { ...input, expectedRowVersion: '0'.repeat(64) })).toMatchObject({ ok: false });
+    test.storedVersions.set(row.versionId, { ...row, authorship: null });
+    expect(await reviewSection({ ...test.dependencies, clock }, { ...input, expectedRowVersion: procedureVersionRowVersion(test.storedVersions.get(row.versionId)!) })).toMatchObject({ ok: false });
+    for (const state of ['SUBMITTED', 'APPROVED', 'ACTIVE'] as const) {
+      const frozen = { ...row, state }; test.storedVersions.set(row.versionId, frozen);
+      expect(await reviewSection({ ...test.dependencies, clock }, { ...input, expectedRowVersion: procedureVersionRowVersion(frozen) })).toEqual({ ok: false, reason: PROCEDURE_REFUSALS.NOT_A_DRAFT });
+    }
+    expect(await reviewSection({ ...test.dependencies, clock }, { ...input, session: POC_ADMIN })).toMatchObject({ ok: false });
   });
 });

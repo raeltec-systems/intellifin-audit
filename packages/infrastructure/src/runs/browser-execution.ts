@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Solari, SolariError } from '@solarisdk/browser';
 import {
   chromium,
+  errors as playwrightErrors,
   type Browser,
   type BrowserContext,
   type Locator,
@@ -913,7 +914,12 @@ export class PlaywrightBrowserExecution implements BrowserExecution {
       // proof. The page is then an active browser surface that must not be reused. Set the
       // workspace page slot aside before bounded cleanup; the LiveWorkspace identity remains
       // in the map so release can still revoke the provider session.
-      const expired = isActionDeadlineExceeded(error) || remainingActionTime(deadline) === 0;
+      // Playwright may report its own operation timeout just before the outer deadline;
+      // that still leaves an active page unsafe to reuse.
+      const expired =
+        isActionDeadlineExceeded(error) ||
+        error instanceof playwrightErrors.TimeoutError ||
+        remainingActionTime(deadline) === 0;
       if (expired || action.credential !== null) {
         await this.discardActivePage(live, page, CLOSE_TIMEOUT_MS);
       }

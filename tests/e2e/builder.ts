@@ -1,7 +1,15 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { DRAFT_SECTION_HEADINGS } from '@intellifin/domain';
 
 import { isTemplateOnly } from '../../apps/web/src/design/plain-words';
+
+/** Keep named PNG files as well as report attachments. Body-only attachments receive
+ * opaque report names, which prevents a remote reviewer selecting the actual captures. */
+export async function attachAuthoringScreenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
 
 /**
  * The Builder's steps, in order — every section the domain declares except the two the
@@ -12,20 +20,19 @@ export const BUILDER_STEPS = DRAFT_SECTION_HEADINGS.filter(
   (heading) => !isTemplateOnly(heading),
 );
 
-/**
- * Open one Builder step, the way a person does.
- *
- * The Builder is a list of questions: each step states what is already set and keeps its
- * editor behind a native `<details>`, closed once the step has been answered. Opening
- * one that is already open would close it, so the state is read first. The element is
- * native, so this works before React hydrates as well as after.
- */
+/** Open a section after the guided editor has hydrated. Its native links remain
+ * usable before hydration; these tests need the interactive focused layout. */
+export const PREPARATION_STEP_FOR_HEADING: Readonly<Record<string, string>> = {
+  'Risk': 'context', 'Control': 'context', 'Objective': 'context', 'Criterion reference': 'context',
+  'Period and scope': 'scope', 'Population Source binding': 'evidence', 'Target System selection': 'evidence',
+  'Audit Instructions': 'instructions', 'Compliance Rule conditions': 'assessment', 'Evidence Requirements': 'evidence', 'Schedule': 'frequency',
+};
 export async function openStep(page: Page | Locator, heading: string): Promise<void> {
-  const step = page.locator(`[data-step="${heading}"]`);
-  await step.waitFor({ state: 'attached' });
-  if (await step.evaluate((node) => (node as HTMLDetailsElement).open)) return;
-  await step.locator('summary.ls-step__summary').click();
-  await expect(step).toHaveJSProperty('open', true);
+  if (!Object.hasOwn(PREPARATION_STEP_FOR_HEADING, heading)) throw new Error('Unknown preparation section: ' + heading);
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
+  const section = PREPARATION_STEP_FOR_HEADING[heading]!;
+  await page.locator(`[data-preparation-nav="${section}"]`).click();
+  await expect(page.locator(`[data-preparation-panel="${section}"]`)).toBeVisible();
 }
 
 /**
@@ -53,7 +60,7 @@ export async function openStep(page: Page | Locator, heading: string): Promise<v
  */
 const BUILDER_DISCLOSURES = [
   'details.ls-step', // a step
-  '.ls-step details', // a "More options" or Template-default fold inside one
+  '.ls-guided__editor details', // a "More options" or Template-default fold inside one
   'details[data-plan-detail]', // the Builder's own compiled-plan fold
 ].join(', ');
 
@@ -62,6 +69,13 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
   // second tab opened from this context, and a page-level script would not reach it.
   await page.context().addInitScript((selector: string) => {
     const open = (): void => {
+      // Do not mutate server-rendered markup while React is hydrating it.
+      if (!document.querySelector('[data-guided-ready="true"]')) return;
+      // Editor-contract tests deliberately expose each mounted panel. The dedicated
+      // guided journey and owner walkthrough use real navigation WITHOUT this helper.
+      for (const panel of document.querySelectorAll<HTMLElement>('[data-preparation-panel]')) {
+        if (panel.hidden) panel.hidden = false;
+      }
       for (const step of document.querySelectorAll<HTMLDetailsElement>(selector)) {
         if (!step.open) step.open = true;
       }
@@ -71,6 +85,8 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
       new MutationObserver(open).observe(document.documentElement, {
         childList: true,
         subtree: true,
+        attributes: true,
+        attributeFilter: ['hidden', 'data-guided-ready'],
       });
     };
     if (document.readyState === 'loading') {
@@ -89,6 +105,8 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
  * Builder keeps them one fold down.
  */
 export async function openPlanDetail(page: Page | Locator): Promise<void> {
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
+  await page.locator('[data-preparation-nav="review"]').click();
   const detail = page.locator('[data-plan-detail]');
   await detail.waitFor({ state: 'attached' });
   if (await detail.evaluate((node) => (node as HTMLDetailsElement).open)) return;

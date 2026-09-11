@@ -55,6 +55,8 @@ export function rejectionRationale(value: unknown): { ok: true; value: string } 
 function sections(value: ReviewedDefinition): Readonly<Record<string, JsonValue>> {
   const i = value.inputs;
   return {
+    // Old frozen reviews have neither row. Do not change their historical diff shape.
+    ...Object.fromEntries(i.sections.filter(s => s.heading === 'Risk' || s.heading === 'Criterion reference').map(s => [s.heading, s.content])),
     Control: { name: i.controlName, templateId: i.templateId, definition: i.sections.find(s => s.heading === 'Control')?.content ?? null },
     Objective: i.sections.find(s => s.heading === 'Objective')?.content ?? null,
     'Period and scope': { period: i.period, scope: i.scope },

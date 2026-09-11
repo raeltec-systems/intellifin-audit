@@ -1,3 +1,4 @@
+import { isSectionPreparation } from '@intellifin/domain';
 import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { planAuthoringDigest, planAuthoringInputs, UnverifiablePreviousVersion } from '@intellifin/application';
@@ -75,6 +76,7 @@ const PROCEDURE_SELECTION = {
 
 const VERSION_SELECTION = {
   lifecycle: procedureVersion.lifecycle, platformOrigin: procedureVersion.platformOrigin, configurationRevision: procedureVersion.configurationRevision,
+  sectionPreparation: procedureVersion.sectionPreparation,
   submittedReview: procedureVersion.submittedReview, authorship: procedureVersion.authorship, decisions: procedureVersion.decisions, frozenReview: procedureVersion.frozenReview,
   versionId: procedureVersion.versionId,
   procedureId: procedureVersion.procedureId,
@@ -221,11 +223,12 @@ const definitionSchema = z.strictObject({ schemaVersion: z.literal(1), inputs: j
   toolConfiguration: z.strictObject({ interpreterContract: z.literal('executable-plan-v1'), identityMatching: z.literal('opaque-exact-strings'), accessPolicy: z.literal('frozen-registered-read-actions'), actions: z.tuple([z.literal('create-workspace'),z.literal('acquire-population'),z.literal('sign-in'),z.literal('extract-adapter'),z.literal('inspect-record'),z.literal('capture-observation'),z.literal('evaluate-conditions')]) }),
 }).refine(value => canonicalJson(value.inputs) === canonicalJson(value.compiledPlan.inputs as unknown as JsonValue));
 const reviewShape = { schemaVersion: z.literal(1), versionId: z.uuid(), baseline: z.strictObject({ versionId: z.uuid(), versionNumber: z.number().int().positive(), revision: z.string().regex(/^[0-9a-f]{64}$/) }).nullable(), definition: definitionSchema,
-  diff: z.array(z.strictObject({ section: z.string().min(1), before: jsonValueSchema, after: jsonValueSchema, changed: z.boolean() })).length(12),
+  diff: z.array(z.strictObject({ section: z.string().min(1), before: jsonValueSchema, after: jsonValueSchema, changed: z.boolean() })).refine(diff => diff.length === 12 || diff.length === 14),
 };
 const submittedReviewSchema = z.strictObject(reviewShape);
 const frozenReviewSchema = z.strictObject({ ...reviewShape, approval: decisionSchema }).refine(value => value.approval.decision === 'approve');
 function validReviewFields(row: VersionReviewFields & { versionId: string; state: string }): boolean {
+  if (row.sectionPreparation != null && !isSectionPreparation(row.sectionPreparation)) return false;
   if (row.authorship != null && !authorshipSchema.safeParse(row.authorship).success) return false;
   if (!validVersionLifecycleMetadata(row)) return false;
   if (!z.array(decisionSchema).safeParse(row.decisions ?? []).success) return false;
@@ -235,7 +238,7 @@ function validReviewFields(row: VersionReviewFields & { versionId: string; state
   if (row.frozenReview != null && !isConsistentVersionReview(row.frozenReview, row.versionId)) return false;
   return true;
 }
-function reviewFields(row: VersionReviewFields) { return { lifecycle: row.lifecycle ?? null, platformOrigin: row.platformOrigin ?? null, configurationRevision: row.configurationRevision ?? null, submittedReview: row.submittedReview ?? null, authorship: row.authorship ?? null, decisions: row.decisions ?? [], frozenReview: row.frozenReview ?? null }; }
+function reviewFields(row: VersionReviewFields) { return { sectionPreparation: row.sectionPreparation ?? null, lifecycle: row.lifecycle ?? null, platformOrigin: row.platformOrigin ?? null, configurationRevision: row.configurationRevision ?? null, submittedReview: row.submittedReview ?? null, authorship: row.authorship ?? null, decisions: row.decisions ?? [], frozenReview: row.frozenReview ?? null }; }
 
 function populationFields(row: DraftPopulationFields): DraftPopulationFields {
   return { period: row.period, scope: row.scope, sourceSnapshot: row.sourceSnapshot, inclusionRule: row.inclusionRule, zeroRecordPass: row.zeroRecordPass, allowVersionedDuplicates: row.allowVersionedDuplicates, populationBlockers: row.populationBlockers };

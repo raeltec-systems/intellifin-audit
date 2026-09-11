@@ -332,3 +332,35 @@ Failure: she disagrees with a Rule-Classified evaluation → Record disagreement
 3. Workpaper Bundle format and delivery. **Owner:** Product and UX (PRD Open Question 5).
 4. Masked field set per Population Source binding (FR-41). **Owner:** Product. **Revisit:** when binding contracts are authored.
 5. Notification on Run completion (not required by the PRD; UJ-4 assumes none). **Owner:** Product. **Revisit:** after the first unattended Runs.
+
+
+## Story 2.15 — Context adaptation (2026-09-11)
+
+Control statement and Objective are now editable alongside Risk and Criterion reference.
+This supersedes their former read-only Builder treatment. Show the source and local scope:
+"These sections are pre-filled from the Template. Edit the context for this procedure; the Template stays unchanged."
+The control name remains at the end. Missing context says it was not supplied; a reference
+is distinct from the structured assessment criterion. Manager comparison includes saved
+context; existing approved versions and their missing values are preserved.
+
+
+### Owner-adopted Story 2.9 guided preparation (2026-09-11)
+
+Guided preparation is editable below 900px, using a stacked outline/editor/help layout.
+This supersedes the Builder-only desktop floor above; Live View retains its own floor.
+The six preparation groups map to existing version fields. Jumping between groups keeps
+unsaved editors mounted. Review and submission contains the existing compiler preview
+and full assignment submission, without adding another lifecycle state.
+
+Each section acknowledgement identifies a human, timestamp, saved content digest and
+monotonic section revision. Context changes conservatively invalidate scope, evidence,
+instructions and assessment; scope/source/target changes invalidate evidence, instructions
+and assessment; schedule changes invalidate scope and its dependants. Evidence, assessment
+and instruction changes conservatively invalidate all three.
+Frequency depends on schedule and source kind. Other acknowledgements survive safely.
+A reversal never revives an invalidated review. Unknown legacy reviews remain absent.
+
+Section acknowledgements support preparation; they do not replace full-version auditor
+assent at submission. Existing required-field and plan-readiness gates still apply. A
+section explicitly marked Needs clarification blocks submission until explicitly resolved.
+No mandatory six-click ceremony is added to historical or experienced-author submission.

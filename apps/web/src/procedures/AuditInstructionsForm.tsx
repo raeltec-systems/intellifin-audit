@@ -15,6 +15,7 @@ import type {
   UpdateTargetDraftResult,
 } from '@intellifin/application';
 
+import { WritingTools } from './WritingAssistant';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { AUDIT_INSTRUCTIONS_NO_AGENT } from './labels';
@@ -162,6 +163,7 @@ export function AuditInstructionsForm({
               : `${templateInstructionsId} ${scopeId}`;
             return (
               <div key={target.registrationId} className="ls-dialog__field">
+                <WritingTools section={{ kind: 'instructions', registrationId: target.registrationId }} />
                 <label htmlFor={fieldId}>What the agent should do in {target.displayName}</label>
                 {templateInstructions === null ? null : (
                   <Button type="button" onClick={() => setText(target.registrationId, templateInstructions)}>

@@ -31,6 +31,7 @@ import { builderProgress, sectionSummary } from './section-summary';
 export function BuilderSections({
   draft,
   sections,
+  contextEditor,
   periodScope,
   populationSource,
   targetSystems,
@@ -41,6 +42,7 @@ export function BuilderSections({
 }: {
   readonly draft: ProcedureVersionView;
   readonly sections: readonly { readonly heading: string; readonly content: string | null }[];
+  readonly contextEditor?: React.ReactNode;
   readonly periodScope?: React.ReactNode;
   readonly populationSource?: React.ReactNode;
   readonly targetSystems?: React.ReactNode;
@@ -76,7 +78,7 @@ export function BuilderSections({
         <h2 className="ls-card__title" id="builder-template">
           What this procedure tests
         </h2>
-        {reference.map((section) => {
+        {contextEditor ?? reference.map((section) => {
           // `Object.hasOwn` is not needed — the list is filtered by `isTemplateOnly`,
           // which is itself a membership test — but the words are read through a typed
           // record, so a heading added to the Template-only pair without a word here
@@ -106,6 +108,7 @@ export function BuilderSections({
             </div>
           );
         })}
+        {contextEditor ? <p className="ls-caption">{BUILDER_CONTROL_NAME_EDITABLE_SENTENCE}</p> : null}
         <p className="ls-caption">{BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE}</p>
       </section>
 

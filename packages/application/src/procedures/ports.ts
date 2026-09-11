@@ -8,6 +8,7 @@ export class UnverifiablePreviousVersion extends Error {
 }
 
 export interface VersionReviewFields {
+  readonly sectionPreparation?: import('@intellifin/domain').SectionPreparation | null;
   readonly lifecycle?: import('@intellifin/domain').VersionLifecycle | null;
   readonly platformOrigin?: import('@intellifin/domain').PlatformDraftOrigin | null;
   readonly configurationRevision?: string | null;
@@ -142,6 +143,7 @@ export interface ProcedureRecord {
  * somebody has to remember.
  */
 export interface ProceduresUnitOfWorkContext extends AuditUnitOfWorkContext {
+  readonly authoringRequests?: import('./authoring-ports.js').ProcedureAuthoringStore;
   readonly authorizationRoles: RoleRepository;
   readonly notifications: NotificationWriter;
   readonly notificationRecipients: NotificationRecipientReader;

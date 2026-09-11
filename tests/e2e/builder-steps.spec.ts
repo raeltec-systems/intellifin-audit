@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 import { AUTH_STATE, assertThrowawayDatabase } from './accounts';
-import { BUILDER_STEPS, openStep } from './builder';
+import { attachAuthoringScreenshot, openStep, openPlanDetail } from './builder';
 
 /**
  * The Builder as an auditor meets it: a short list of questions, not nine open forms.
@@ -38,70 +38,58 @@ test.afterAll(async () => {
   }
 });
 
-test('the Builder opens as a short list of questions', async ({ page }) => {
-  test.setTimeout(60_000);
+test('guided preparation preserves edits, records saved review and stays keyboard accessible', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   await page.goto('/procedures/new');
   await page.getByLabel('Template').selectOption('P-1');
   await page.getByLabel('Control name').fill(CONTROL);
   await page.getByRole('button', { name: 'Create Procedure' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Create Procedure' }).click();
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
+  await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  await expect(page.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
+  await expect(page.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Period start')).toBeHidden();
 
-  // Seven steps, each present exactly once, and a line saying how far through they are.
-  const progress = page.locator('[data-builder-progress]');
-  await expect(progress).toBeVisible();
-  await expect(progress).toHaveText(/^\d+ of 7 answered\./);
-  for (const heading of BUILDER_STEPS) {
-    await expect(page.locator(`[data-step="${heading}"]`)).toHaveCount(1);
-  }
-
-  // A fresh P-1 Draft has no Period, no source and no system: those are the questions
-  // in front of the auditor, so they are the steps already open.
-  for (const heading of ['Period and scope', 'Population Source binding', 'Target System selection']) {
-    const step = page.locator(`[data-step="${heading}"]`);
-    await expect(step).toHaveAttribute('data-step-state', 'todo');
-    await expect(step).toHaveJSProperty('open', true);
-  }
-  await expect(page.getByLabel('Period start')).toBeVisible();
-
-  // The Template answered the Compliance Rule, so that step is closed — and says what it
-  // holds without being opened. A closed step that said nothing would be hiding.
-  const rules = page.locator('[data-step="Compliance Rule conditions"]');
-  await expect(rules).toHaveAttribute('data-step-state', 'done');
-  await expect(rules).toHaveJSProperty('open', false);
-  await expect(rules.locator('.ls-step__title')).toHaveText('What counts as a finding');
-  await expect(rules.locator('.ls-step__line')).toHaveText(/^\d+ rules?$/);
-  await expect(rules.locator('.ls-step__mark')).toHaveText('Set');
-  // Its editor is behind the fold — the save control, which is unambiguous. The rule
-  // TEXT is a poor probe: the simple editor hides it whether the step is open or not.
-  const saveRules = page.getByRole('button', { name: 'Save Compliance Rule', exact: true });
-  await expect(saveRules).toBeHidden();
-
-  // Opening it is one click, and the editor is there.
+  await openStep(page, 'Period and scope');
+  await page.getByLabel('Scope statement').fill('All August leavers, without sampling.');
   await openStep(page, 'Compliance Rule conditions');
-  await expect(saveRules).toBeVisible();
-  await expect(page.locator('[data-simple-for="C1"]')).toBeVisible();
-
-  // And with the keyboard alone, on a step nothing has opened yet.
-  const schedule = page.locator('[data-step="Schedule"]');
-  await expect(schedule).toHaveJSProperty('open', false);
-  await schedule.locator('summary.ls-step__summary').focus();
+  await expect(page.getByRole('button', { name: 'Save Compliance Rule', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark reviewed and continue', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await openStep(page, 'Period and scope');
+  await expect(page.getByLabel('Scope statement')).toHaveValue('All August leavers, without sampling.');
+  await page.getByRole('button', { name: 'Use saved Period and scope' }).click();
+  await openStep(page, 'Risk');
+  // The background plan check may have moved the whole-row token. Follow the same
+  // visible reload remedy as an auditor, without bypassing the command's guard.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+    const success = page.getByText('Review recorded for Risk, control and objective.', { exact: true });
+    const stale = page.getByText('That procedure changed since this page was loaded. Reload the page and try again.', { exact: true });
+    await expect(success.or(stale)).toBeVisible();
+    if (await success.isVisible()) break;
+    await page.reload();
+    await openStep(page, 'Risk');
+  }
+  await expect(page.locator('[data-preparation-nav="context"]')).toContainText('Reviewed by auditor');
+  await expect(page.locator('[data-preparation-nav="scope"]')).toHaveAttribute('aria-current', 'step');
+  await page.locator('[data-preparation-nav="frequency"]').focus();
   await page.keyboard.press('Enter');
-  await expect(schedule).toHaveJSProperty('open', true);
-  await expect(page.getByLabel('Frequency')).toBeVisible();
-
-  // The plan the platform will execute is still reachable, one fold down, rather than
-  // being the first thing an auditor meets.
-  const plan = page.locator('[data-plan-detail]');
-  await expect(plan).toHaveJSProperty('open', false);
-  await plan.locator('summary').click();
+  await expect(page.getByLabel('Frequency', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-preparation-panel="frequency"] h2')).toBeFocused();
+  await openPlanDetail(page);
   await expect(page.getByRole('heading', { level: 2, name: 'What the agent will do' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submit for approval', exact: true })).toHaveAttribute('aria-disabled', 'true');
 
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze();
-  expect(
-    results.violations.map((violation) => ({ id: violation.id, help: violation.help })),
-    JSON.stringify(results.violations, null, 2),
-  ).toEqual([]);
+  await openStep(page, 'Risk');
+  await attachAuthoringScreenshot(page, testInfo, 'guided-preparation-desktop');
+  for (const width of [1440, 899, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expect(page.getByLabel('Objective', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
+  }
+  await attachAuthoringScreenshot(page, testInfo, 'guided-preparation-mobile');
 });

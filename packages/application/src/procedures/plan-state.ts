@@ -1,4 +1,4 @@
-import { canonicalJson, sha256Hex, EXECUTABLE_PLAN_COMPILER_VERSION, type FrozenPlanInputs, type JsonValue } from '@intellifin/domain';
+import { refreshPreparation, canonicalJson, sha256Hex, EXECUTABLE_PLAN_COMPILER_VERSION, type FrozenPlanInputs, type JsonValue } from '@intellifin/domain';
 import type { ModelIdentity, PlanDerivationFields, PlanDerivationQueue } from './plan-ports.js';
 import type { ProcedureVersionRecord } from './ports.js';
 
@@ -27,5 +27,5 @@ export async function queuePlanDerivation(row: ProcedureVersionRecord, queue: Pl
   const inputDigest = planAuthoringDigest(row);
   await queue.enqueue({ schemaVersion: 1, versionId: row.versionId, inputDigest });
   const authorship = row.authorship && authorId ? { ...row.authorship, humanAuthorIds: [...new Set([...row.authorship.humanAuthorIds, authorId])] } : row.authorship ?? null;
-  return { ...row, authorship, compiledPlan: null, planDerivable: false, planStatus: 'pending', planFailureReason: null, planInputDigest: inputDigest };
+  return { ...row, sectionPreparation: refreshPreparation(row), authorship, compiledPlan: null, planDerivable: false, planStatus: 'pending', planFailureReason: null, planInputDigest: inputDigest };
 }

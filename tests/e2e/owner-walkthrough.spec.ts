@@ -15,7 +15,7 @@ import {
   READ_ONLY_CREDENTIAL,
 } from './credentials';
 import { NORTHSTAR_BASE_URL } from './northstar';
-import { openStep, openPlanDetail } from './builder';
+import { attachAuthoringScreenshot, openStep, openPlanDetail } from './builder';
 
 /**
  * The journey a person actually walks: create a Procedure, get it approved, run it, read
@@ -38,6 +38,10 @@ const ids = new CryptoUuidV7Generator();
 const STAMP = Date.now();
 const CONTROL = `Owner walkthrough ${STAMP}`;
 const SCOPE = 'Every active AccessGate account for August 2026.';
+const OBJECTIVE_NOTES = 'Compare all active AccessGate accounts with the supplied role matrix.';
+const ACCEPTED_OBJECTIVE = 'Compare every active AccessGate account with the supplied role matrix, retaining unresolved role mappings for review.';
+const MANAGER_CHANGES = 'Name the RoleMatrix reference explicitly in the objective and explain how unresolved role mappings will be reported.';
+const REVISED_OBJECTIVE = 'Compare every active AccessGate account with the supplied RoleMatrix reference and report any role mapping that cannot be fully resolved as unresolved.';
 const MANAGER_ID = `walkthrough-manager-${STAMP}`;
 const MANAGER_EMAIL = `${MANAGER_ID}@example.test`;
 
@@ -175,6 +179,9 @@ test.afterAll(async () => {
   if (!sql) return;
   try {
     if (procedureId) {
+      // Refused initiation requests also need cleanup when the journey stops before a
+      // Run exists; their subject intentionally has no Procedure foreign key.
+      await sql`DELETE FROM run_initiation_request WHERE procedure_id = ${procedureId}`;
       const runs = await sql<{ run_id: string }[]>`SELECT run_id FROM audit_run WHERE procedure_id = ${procedureId}`;
       const runIds = runs.map(row => row.run_id);
       if (runIds.length) {
@@ -197,11 +204,11 @@ test.afterAll(async () => {
           // to the snapshot, which does not cascade either.
           await sql`DELETE FROM ${sql(table)} WHERE run_id = ANY(${runIds}::uuid[])`;
         }
-        await sql`DELETE FROM run_initiation_request WHERE procedure_id = ${procedureId}`;
         await sql`DELETE FROM audit_run WHERE run_id = ANY(${runIds}::uuid[]) AND predecessor_run_id IS NOT NULL`;
         await sql`DELETE FROM audit_run WHERE run_id = ANY(${runIds}::uuid[])`;
       }
       // Submitted/approved notices name the VERSION, so they go before it.
+      await sql`DELETE FROM pgboss.job WHERE data->>'versionId' IN (SELECT version_id::text FROM procedure_version WHERE procedure_id = ${procedureId})`;
       await sql`DELETE FROM notification WHERE procedure_id = ${procedureId}`;
       await sql`DELETE FROM procedure_succession WHERE procedure_id = ${procedureId}`;
       await sql`DELETE FROM procedure_version WHERE procedure_id = ${procedureId}`;
@@ -274,8 +281,70 @@ async function confirmed(page: Page, name: string): Promise<void> {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
-test('an auditor creates a Procedure, a manager approves it, and the Run reports what it found', async ({ page, browser, baseURL }) => {
-  test.setTimeout(360_000);
+async function markReviewed(page: Page, section: string, title: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
+    await page.locator(`[data-preparation-nav="${section}"]`).click();
+    const panel = page.locator(`[data-preparation-panel="${section}"]`);
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+    const saved = page.getByText(`Review recorded for ${title}.`, { exact: true });
+    const stale = page.getByText(STALE, { exact: true });
+    await expect(saved.or(stale).first()).toBeVisible();
+    if (await saved.isVisible()) {
+      await expect(page.locator(`[data-preparation-nav="${section}"]`)).toContainText('Reviewed by auditor');
+      return;
+    }
+    await page.reload();
+  }
+  throw new Error(`The saved ${title} review could not be acknowledged.`);
+}
+
+async function reviewPreparedSections(page: Page): Promise<void> {
+  for (const [section, title] of [
+    ['context', 'Risk, control and objective'], ['scope', 'Scope and period'], ['evidence', 'Evidence to review'],
+    ['instructions', 'Audit steps'], ['assessment', 'Assessment criteria'], ['frequency', 'Frequency and handling'],
+  ]) await markReviewed(page, section!, title!);
+  await expect(page.locator('[data-preparation-progress]')).toContainText('6 of 6 sections reviewed by auditor.');
+}
+
+/** Every refusal goes through the normal confirmation and the real initiation command. */
+async function executionIsRefused(page: Page, stage: string): Promise<void> {
+  const gate = await page.context().newPage();
+  try {
+    await gate.goto(`/procedures/${procedureId}`);
+    await expect(gate.locator('#initiate-run')).toHaveAttribute('data-client-ready', 'true');
+    await gate.getByLabel('Period from').fill('2026-08-01');
+    await gate.getByLabel('Period to').fill('2026-08-31');
+    await confirmed(gate, 'Initiate Run');
+    await expect(gate.getByText('No executable Active version owns that period. Check the approved version and handover dates.', { exact: true }), stage).toBeVisible();
+    const [runs] = await sql!<{ count: number }[]>`SELECT count(*)::int AS count FROM audit_run WHERE procedure_id = ${procedureId}`;
+    expect(runs?.count, `Execution must remain unavailable at ${stage}`).toBe(0);
+  } finally { await gate.close(); await page.bringToFront(); }
+}
+
+async function waitForSubmittablePlan(page: Page): Promise<void> {
+  let blocker = '(not read)';
+  await expect.poll(async () => {
+    await page.reload();
+    // Reload restores the context section. Navigate through the real outline to read
+    // the Submit control; a hidden panel is not a preparation shortcut.
+    await openPlanDetail(page);
+    const submit = page.getByRole('button', { name: 'Submit for approval', exact: true });
+    const unavailable = await submit.getAttribute('aria-disabled');
+    blocker = unavailable === 'true' ? await submit.evaluate(node => {
+      const id = node.getAttribute('aria-describedby')?.split(' ')[0];
+      return (id ? document.getElementById(id)?.textContent : null) ?? '(no reason given)';
+    }) : '';
+    return unavailable;
+  }, { timeout: 120_000, intervals: [3_000] }).toBeNull().catch((error: unknown) => {
+    throw new Error(`Submit stayed unavailable. It says: "${blocker}"\nWorker log:\n${workerLog}\n${String(error)}`);
+  });
+}
+
+test('an auditor prepares and accepts a draft, revises it after manager review, and runs the independently approved Procedure', async ({ page, browser, baseURL }, testInfo) => {
+  test.setTimeout(480_000);
+  page.setDefaultTimeout(20_000);
 
   /* ------------------------------------------------------------ 1. create --- */
   await page.goto('/procedures/new');
@@ -283,8 +352,46 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
   await page.getByLabel('Control name').fill(CONTROL);
   await confirmed(page, 'Create Procedure');
   await expect(page.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
+  await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
   procedureId = new URL(page.url()).pathname.split('/')[2] ?? '';
   expect(procedureId).not.toBe('');
+
+  /* -------------------------------------- 1a. inspect and prepare context ---- */
+  await expect(page.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
+  await expect(page.getByLabel('Control statement', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
+  const templateObjective = await page.getByLabel('Objective', { exact: true }).inputValue();
+  expect(templateObjective).not.toBe('');
+  await executionIsRefused(page, 'the initial Draft');
+  // This is the real OpenAI SDK path against the test-only synthetic preload. Its
+  // response is controlled notes, not evidence of a live model's prose quality.
+  const writing = page.locator('[data-writing-section="objective"]');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await openStep(page, 'Objective');
+    await page.getByRole('button', { name: 'Help Me Write', exact: true }).click();
+    await writing.getByLabel('Rough notes for Objective', { exact: true }).fill(OBJECTIVE_NOTES);
+    await writing.getByRole('button', { name: 'Prepare draft', exact: true }).click();
+    const prepared = writing.getByRole('heading', { name: 'Proposed replacement — not applied' });
+    const stale = writing.getByText(STALE, { exact: false });
+    await expect(prepared.or(stale).first()).toBeVisible();
+    if (await prepared.isVisible()) break;
+    // A refused row token creates no model request. Follow its visible reload remedy.
+    await page.reload();
+  }
+  await expect(writing.getByRole('heading', { name: 'Proposed replacement — not applied' })).toBeVisible();
+  await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(templateObjective);
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  await writing.getByRole('button', { name: 'Edit', exact: true }).click();
+  await writing.getByLabel('Edit proposed replacement', { exact: true }).fill(ACCEPTED_OBJECTIVE);
+  await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(templateObjective);
+  await attachAuthoringScreenshot(page, testInfo, 'owner-objective-proposal-before-acceptance');
+  await writing.getByRole('button', { name: 'Use this draft', exact: true }).click();
+  await expect(writing.getByText('Your draft is saved. Review the section, then mark it reviewed when you are satisfied.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(ACCEPTED_OBJECTIVE);
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  await markReviewed(page, 'context', 'Risk, control and objective');
+  await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');
+  await executionIsRefused(page, 'an accepted and reviewed section in a Draft');
 
   /* ------------------------------------------------- 2. Period and scope ---- */
   await step(page, 'Period and scope', async () => {
@@ -320,7 +427,7 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
   /* ------------------------------------------------------- 5. Schedule ------ */
   // P-2 names no Schedule, so it starts unset — and activation requires one.
   await step(page, 'Schedule', async () => {
-    await page.getByLabel('Frequency').selectOption('monthly');
+    await page.getByLabel('Frequency', { exact: true }).selectOption('monthly');
     // P-1 arrives with 00:00 already here because its Template pins a Schedule. P-2 names
     // none, so the field is EMPTY and the save refuses until it is filled — the one step
     // on this Template a person has to discover from an error message.
@@ -330,25 +437,13 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
   }, 'Saved. The Schedule is recorded in the audit chain.');
 
   /* --------------------------------------------- 6. the plan derives -------- */
-  const submit = page.getByRole('button', { name: 'Submit for approval', exact: true });
-  // The BLOCKER, not just the fact: "Submit is disabled" names nothing a reader can act
-  // on, and the surface already states the reason beside the control — so a failure here
-  // reports the sentence the auditor would have read.
-  let blocker = '(not read)';
-  const available = await expect.poll(async () => {
-    await page.reload();
-    blocker = await submit.getAttribute('aria-disabled') === 'true'
-      ? await submit.evaluate((node) => {
-          const id = node.getAttribute('aria-describedby')?.split(' ')[0];
-          return (id ? document.getElementById(id)?.textContent : null) ?? '(no reason given)';
-        })
-      : '';
-    return submit.getAttribute('aria-disabled');
-  }, { timeout: 120_000, intervals: [3_000] }).toBeNull().then(() => true, (error: unknown) => {
-    throw new Error(`Submit stayed unavailable. It says: "${blocker}"\nWorker log:\n${workerLog}\n${String(error)}`);
-  });
-  expect(available).toBe(true);
+  await waitForSubmittablePlan(page);
+  await reviewPreparedSections(page);
   await openPlanDetail(page);
+  await expect(page.getByLabel('Saved procedure context')).toContainText(ACCEPTED_OBJECTIVE);
+  await expect(page.getByLabel('Saved procedure context')).toContainText(SCOPE);
+  await attachAuthoringScreenshot(page, testInfo, 'owner-auditor-full-procedure-review');
+  await executionIsRefused(page, 'the fully reviewed Draft before submission');
 
   /* ----------------------------------------------------------- 7. submit ---- */
   await confirmed(page, 'Submit for approval');
@@ -358,8 +453,11 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
   // The author is refused, by name, on the surface.
   await expect(page.getByRole('button', { name: 'Approve', exact: true }))
     .toHaveAccessibleDescription(/You cannot approve a version you authored\./);
+  await page.getByRole('button', { name: 'Approve', exact: true }).click({ force: true });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await executionIsRefused(page, 'submission awaiting independent manager approval');
 
-  /* ---------------------------------------------------------- 8. approve ---- */
+  /* -------------------------------------------- 8. request changes and revise */
   const managerContext = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   const manager = await managerContext.newPage();
   try {
@@ -368,6 +466,40 @@ test('an auditor creates a Procedure, a manager approves it, and the Run reports
     await expect(manager.getByRole('link', { name: /Procedure Version submitted/ }).filter({ hasText: CONTROL }))
       .toBeVisible({ timeout: 20_000 });
     await manager.goto(reviewUrl);
+    await expect(manager.getByText(ACCEPTED_OBJECTIVE, { exact: true }).first()).toBeVisible();
+    await manager.getByRole('button', { name: 'Reject', exact: true }).click();
+    await manager.getByLabel('Rationale', { exact: true }).fill(MANAGER_CHANGES);
+    await attachAuthoringScreenshot(manager, testInfo, 'owner-manager-requesting-changes');
+    await manager.getByRole('dialog').getByRole('button', { name: 'Reject', exact: true }).click();
+    await expect(manager.getByText('Rejected', { exact: true }).first()).toBeVisible();
+    await expect(manager.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
+    await executionIsRefused(page, 'the manager request for changes');
+    await confirmed(page, 'Edit');
+    await expect(page).toHaveURL(/\/builder\?version=/);
+    await step(page, 'Objective', async () => {
+      await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(ACCEPTED_OBJECTIVE);
+      await page.getByLabel('Objective', { exact: true }).fill(REVISED_OBJECTIVE);
+    }, async () => {
+      await page.getByRole('button', { name: 'Save context', exact: true }).click();
+    }, 'Saved. Context changes apply to this procedure only.');
+    await expect(page.locator('[data-preparation-nav="context"]')).toContainText('Drafting');
+    await waitForSubmittablePlan(page);
+    await reviewPreparedSections(page);
+    await openPlanDetail(page);
+    await expect(page.getByLabel('Saved procedure context')).toContainText(REVISED_OBJECTIVE);
+    await executionIsRefused(page, 'the revised Draft before the auditor resubmits');
+    await confirmed(page, 'Submit for approval');
+    await expect(page).toHaveURL(reviewUrl);
+    await expect(page.getByText('Submitted', { exact: true }).first()).toBeVisible();
+    await executionIsRefused(page, 'the resubmitted version before independent approval');
+
+    /* ----------------------------------------------- 8a. independent approval */
+    await manager.goto(reviewUrl);
+    await expect(manager.getByRole('region', { name: 'Decision history' })).toContainText(MANAGER_CHANGES);
+    await expect(manager.getByText(REVISED_OBJECTIVE, { exact: true }).first()).toBeVisible();
+    await attachAuthoringScreenshot(manager, testInfo, 'owner-manager-revised-procedure-review');
     await confirmed(manager, 'Approve');
     await expect(manager.getByText('Active', { exact: true }).first()).toBeVisible();
   } finally {

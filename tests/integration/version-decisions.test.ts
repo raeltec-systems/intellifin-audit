@@ -1,3 +1,5 @@
+import { reviewSection, updateContextDraft, planAuthoringInputs } from '@intellifin/application';
+import { sectionReview, draftContext, isConsistentVersionReview } from '@intellifin/domain';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { authoredEvidenceInput, deriveExecutablePlan } from '@intellifin/domain';
 import { derivePlan, updateEvidenceDraft, retryPlanDerivation, initialPlanDerivation, planAuthoringDigest, procedureVersionRowVersion, transitionVersion, deliverNotifications, type ProcedureVersionRecord, type ProceduresUnitOfWorkContext, type AuditUnitOfWork } from '@intellifin/application';
@@ -22,15 +24,70 @@ describe.skipIf(!url)('transactional Procedure Version decisions', () => {
     for (const id of [author,manager,manager2]) await sql`DELETE FROM auth_user WHERE id = ${id}`;
     await sql.end({ timeout: 5 });
   });
-  async function seed() {
-    const plan = deriveExecutablePlan(executablePlanInputs()); if (!plan.ok) throw new Error(plan.reason);
-    let row: ProcedureVersionRecord = { ...executablePlanInputs(), ...initialPlanDerivation(), procedureId: ids.next(), versionId: ids.next(), versionNumber: 1, state: 'DRAFT', compiledPlan: plan.plan, planStatus: 'succeeded', planDerivable: true, authorship: { createdBy: { type: 'human', id: author }, responsibleAuthorId: author, humanAuthorIds: [author] } };
+  async function seed(legacy = false) {
+    const inputs = executablePlanInputs();
+    const frozenInputs = legacy ? { ...inputs, sections: inputs.sections.slice(0, 9) } : inputs;
+    const plan = deriveExecutablePlan(frozenInputs); if (!plan.ok) throw new Error(plan.reason);
+    let row: ProcedureVersionRecord = { ...frozenInputs, ...initialPlanDerivation(), procedureId: ids.next(), versionId: ids.next(), versionNumber: 1, state: 'DRAFT', compiledPlan: plan.plan, planStatus: 'succeeded', planDerivable: true, authorship: { createdBy: { type: 'human', id: author }, responsibleAuthorId: author, humanAuthorIds: [author] } };
     row = { ...row, planInputDigest: planAuthoringDigest(row) }; procedures.push(row.procedureId);
     await uow.execute(async ({ procedures: writer }) => { await writer.insertProcedure(row); await writer.insertVersion(row); }); return row;
   }
   function act(row: ProcedureVersionRecord, decision: 'submit'|'approve'|'reject'|'edit', actor: string, transaction: AuditUnitOfWork<ProceduresUnitOfWorkContext> = uow) {
     return transitionVersion({ roles: new DrizzleRoleRepository(db), unitOfWork: transaction, ids }, { session: { userId: actor, sessionId: actor }, correlationId: ids.next(), procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), rationale: 'Please clarify the Evidence Requirements.' }, decision);
   }
+  it('carries adapted context through persistence, submission, independent approval and immutable reads', async () => {
+    let row = await seed();
+    const edit = { risk: 'Synthetic adapted configuration risk', control: 'Synthetic approved baseline control', objective: 'Establish whether all observed parameters match the approved baseline.', criterionReference: 'Synthetic baseline approval, version A' };
+    const saved = await updateContextDraft({ roles: new DrizzleRoleRepository(db), unitOfWork: uow, ids }, { session: { userId: author, sessionId: author }, correlationId: ids.next(), procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), edit });
+    expect(saved).toMatchObject({ ok: true, changed: true });
+    row = (await repository.findVersion(row.versionId))!;
+    expect(draftContext(row.sections)).toEqual(edit);
+    expect(await derivePlan({ repository, unitOfWork: uow, ids, clock: { now: () => new Date() }, model: null }, { schemaVersion: 1, versionId: row.versionId, inputDigest: row.planInputDigest! })).toMatchObject({ ok: true, outcome: 'success' });
+    row = (await repository.findVersion(row.versionId))!;
+    expect(await act(row, 'submit', author)).toMatchObject({ ok: true });
+    const submitted = (await repository.findVersion(row.versionId))!;
+    expect(submitted.submittedReview?.diff).toEqual(expect.arrayContaining([
+      expect.objectContaining({ section: 'Risk', after: edit.risk, changed: true }),
+      expect.objectContaining({ section: 'Criterion reference', after: edit.criterionReference, changed: true }),
+      expect.objectContaining({ section: 'Objective', after: edit.objective }),
+    ]));
+    expect(await act(submitted, 'approve', manager)).toMatchObject({ ok: true });
+    const approved = (await repository.findVersion(row.versionId))!;
+    expect(draftContext(approved.frozenReview!.definition.inputs.sections)).toEqual(edit);
+    expect(approved.frozenReview!.definition.inputs).toEqual(planAuthoringInputs(approved));
+    await expect(sql`UPDATE procedure_version SET sections = '[]'::jsonb WHERE version_id = ${row.versionId}`).rejects.toThrow();
+    expect(draftContext((await repository.findVersion(row.versionId))!.sections)).toEqual(edit);
+  });
+  it('retains an approved historical nine-section definition and its original review shape', async () => {
+    const row = await seed(true);
+    expect(await act(row, 'submit', author)).toMatchObject({ ok: true });
+    const submitted = (await repository.findVersion(row.versionId))!;
+    const oldInputs = JSON.stringify(submitted.submittedReview!.definition.inputs);
+    expect(submitted.submittedReview!.diff.some(d => d.section === 'Risk' || d.section === 'Criterion reference')).toBe(false);
+    expect(await act(submitted, 'approve', manager)).toMatchObject({ ok: true });
+    const approved = (await repository.findVersion(row.versionId))!;
+    expect(approved.sections).toHaveLength(9);
+    expect(JSON.stringify(approved.frozenReview!.definition.inputs)).toBe(oldInputs);
+    expect(isConsistentVersionReview(approved.frozenReview!, row.versionId)).toBe(true);
+    expect(draftContext(approved.sections).risk).toBeNull();
+    expect(draftContext(approved.sections).criterionReference).toBeNull();
+  });
+  it('persists content reviews separately, preserves them across compilation, and rejects edits after submission', async () => {
+    let row = await seed();
+    const command = (decision: 'review' | 'clarify' | 'draft') => reviewSection({ roles: new DrizzleRoleRepository(db), unitOfWork: uow, ids, clock: { now: () => new Date() } }, { session: { userId: author, sessionId: author }, correlationId: ids.next(), procedureId: row.procedureId, versionId: row.versionId, expectedRowVersion: procedureVersionRowVersion(row), section: 'context', decision });
+    const originalDigest = row.planInputDigest;
+    expect(await command('review')).toMatchObject({ ok: true });
+    row = (await repository.findVersion(row.versionId))!;
+    const ack = sectionReview(row, 'context');
+    expect(ack).toMatchObject({ actorId: author });
+    expect(row.planInputDigest).toBe(originalDigest);
+    expect(await act(row, 'submit', author)).toMatchObject({ ok: true });
+    row = (await repository.findVersion(row.versionId))!;
+    expect(sectionReview(row, 'context')).toEqual(ack);
+    expect(await command('draft')).toMatchObject({ ok: false, reason: 'Only a Draft can be edited.' });
+    expect(await act(row, 'approve', manager)).toMatchObject({ ok: true });
+    await expect(sql`UPDATE procedure_version SET section_preparation = NULL WHERE version_id = ${row.versionId}`).rejects.toThrow();
+  });
   it('writes submission to every manager and worker delivery is private and idempotent', async () => {
     const row = await seed(); expect(await act(row,'submit',author)).toMatchObject({ ok: true });
     const rows = await sql`SELECT * FROM notification WHERE version_id = ${row.versionId}`;

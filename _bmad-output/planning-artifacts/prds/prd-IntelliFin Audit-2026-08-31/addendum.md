@@ -81,8 +81,20 @@ Each declared attribute is `{name, original_value, normalized_value, grounding, 
 
 Each Template pre-populates the Procedure Builder. Auditors edit Templates into Procedures; the values below are defaults, not fixed logic. Work Item coverage per Template is stated so §H per-record coverage is testable for each.
 
+**Story 2.15, 2026-09-11:** Templates carry risk, control, objective and a criterion
+reference. A reference identifies the approved basis; it is not the actual test criterion
+or an uploaded document. Risk defaults below are labelled synthetic examples. No real
+institutional policy or clause is asserted. Unspecified context remains null. New drafts
+copy these values; changing a Template does not change existing versions. The existing
+nine section identifiers keep their order; new payloads append `Risk` and `Criterion reference`.
+Historical payloads and approvals retain their original content and do not acquire defaults.
+This extends the downstream authoring contract through `spec-2-guided-authoring-slice.md`;
+execution rules, golden expectations and previously approved versions are unchanged.
+
 ### P-1: Terminated Users Retaining Access (hero, fully configurable)
 
+- **Risk:** Synthetic example: Former employees may retain access and use it without authorisation.
+- **Criterion reference:** Not supplied (`null`).
 - **Control:** Terminated employees must have their system access revoked.
 - **Objective default:** Determine whether employees terminated in the period retain an active account in any Target System.
 - **Population Source default:** Leavers export (versioned file); inclusion rule `employment_status = Terminated and termination_date within period`, applied by the Adapter.
@@ -99,6 +111,8 @@ Each Template pre-populates the Procedure Builder. Auditors edit Templates into 
 
 ### P-2: Segregation-of-Duties Conflicts
 
+- **Risk:** Synthetic example: Conflicting permissions may let one person initiate and approve an unauthorised transaction.
+- **Criterion reference:** Not supplied (`null`).
 - **Objective:** Determine whether any active account contains an explicitly prohibited permission pair.
 - **Population Source:** AccessGate active accounts (Adapter). **Target System:** AccessGate role detail (Adapter). **Reference Source:** RoleMatrix.
 - **Work Item coverage:** one adapter Work Item covering the whole population; per-record coverage is satisfied when every population account appears in the extraction with a grounded role list.
@@ -109,6 +123,8 @@ Each Template pre-populates the Procedure Builder. Auditors edit Templates into 
 
 ### P-3: High-Value Transactions Without Required Approval
 
+- **Risk:** Synthetic example: High-value transactions may be processed without timely approval by an authorised approver.
+- **Criterion reference:** Not supplied (`null`).
 - **Objective:** Determine whether processed high-value transactions had valid approval before processing.
 - **Population Source:** LedgerFlow processed transactions in USD ≥ 100,000 in the period (Adapter). **Target System:** ApproveNow (Adapter).
 - **Work Item coverage:** one adapter Work Item per extraction; per-record coverage is satisfied when every population transaction has a grounded approval lookup result (found or proven absent).
@@ -120,6 +136,8 @@ Each Template pre-populates the Procedure Builder. Auditors edit Templates into 
 
 ### P-4: Production Configuration Deviation
 
+- **Risk:** Synthetic example: Unapproved production settings may weaken controls or cause incorrect processing.
+- **Criterion reference:** Not supplied (`null`).
 - **Objective:** Determine whether observed production parameters equal the approved baseline in effect at the observation time.
 - **Population Source:** ConfigRegistry baseline parameters (Adapter). **Target System:** ProdConsole (web, agent-driven).
 - **Work Item coverage:** one agent Work Item for the ProdConsole page read, owning one Observation per baseline parameter, each grounded in the page's Structural Snapshot with the parameter name as identity attribute.

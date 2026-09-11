@@ -106,6 +106,8 @@ export interface ProcedureTemplate {
   readonly name: string;
   /** §C marks P-1 the hero; the flag is data so no surface has to hard-code the id. */
   readonly hero: boolean;
+  readonly risk: string | null;
+  readonly criterionReference: string | null;
   readonly controlStatement: string | null;
   readonly objective: string;
   readonly populationSource: string;
@@ -186,6 +188,8 @@ const P1_C2: TemplateCondition = {
 
 const P1: ProcedureTemplate = {
   id: 'P-1',
+  risk: 'Synthetic example: Former employees may retain access and use it without authorisation.',
+  criterionReference: null,
   // Explicit mapping from the prose's termination_date to the registered field.
   inclusionRule: { schemaVersion: 1, all: [
     { column: 'employment_status', kind: 'text', operator: 'eq', value: 'Terminated' },
@@ -241,6 +245,8 @@ const P1: ProcedureTemplate = {
 
 const P2: ProcedureTemplate = {
   id: 'P-2',
+  risk: 'Synthetic example: Conflicting permissions may let one person initiate and approve an unauthorised transaction.',
+  criterionReference: null,
   inclusionRule: { schemaVersion: 1, all: [{ column: 'status', kind: 'text', operator: 'eq', value: 'Active' }] },
   name: 'Segregation-of-Duties Conflicts',
   hero: false,
@@ -290,6 +296,8 @@ const P2: ProcedureTemplate = {
 
 const P3: ProcedureTemplate = {
   id: 'P-3',
+  risk: 'Synthetic example: High-value transactions may be processed without timely approval by an authorised approver.',
+  criterionReference: null,
   inclusionRule: { schemaVersion: 1, all: [
     { column: 'currency', kind: 'text', operator: 'eq', value: 'USD' },
     { column: 'amount', kind: 'decimal', operator: 'gte', value: '100000' },
@@ -343,6 +351,8 @@ const P3: ProcedureTemplate = {
 
 const P4: ProcedureTemplate = {
   id: 'P-4',
+  risk: 'Synthetic example: Unapproved production settings may weaken controls or cause incorrect processing.',
+  criterionReference: null,
   inclusionRule: { schemaVersion: 1, all: [] },
   name: 'Production Configuration Deviation',
   hero: false,

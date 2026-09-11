@@ -211,6 +211,7 @@ export function validateCreateProcedureInput(
 export function procedureVersionRowVersion(record: ProcedureVersionRecord): string {
   return sha256Hex(
     canonicalJson({
+      ...(record.sectionPreparation != null ? { sectionPreparation: record.sectionPreparation } : {}),
       lifecycle: record.lifecycle ?? null, platformOrigin: record.platformOrigin ?? null, configurationRevision: record.configurationRevision ?? null,
       controlName: record.controlName,
       procedureId: record.procedureId,

@@ -9,12 +9,11 @@ import { DrizzleProcedureRepository, DrizzleBindingRepository, DrizzleRegistrati
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
-import { BUILDER_DESKTOP_ONLY_SENTENCE } from '../../../../src/design/copy';
 import { DraftBuilder } from '../../../../src/procedures/DraftBuilder';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { templateLabel } from '../../../../src/procedures/labels';
 import { requireServerAction } from '../../../../src/server-session';
-import { retryPlanDerivationAction, renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction, updateComplianceDraftAction, updateEvidenceDraftAction } from './actions';
+import { generateAuthoringSuggestionAction, acceptAuthoringSuggestionAction, rejectAuthoringSuggestionAction, reviewSectionAction, updateContextDraftAction, retryPlanDerivationAction, renameProcedureDraftAction, updatePopulationDraftAction, updateTargetDraftAction, updateComplianceDraftAction, updateEvidenceDraftAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Builder · IntelliFin Audit',
@@ -69,10 +68,6 @@ export default async function BuilderPage({
 
   return (
     <div className="ls-stack">
-      {/* NFR-11: below 900px the desktop note replaces the authoring controls. */}
-      <p className="ls-desktop-only" role="note">
-        {BUILDER_DESKTOP_ONLY_SENTENCE}
-      </p>
       <DetailTrail
         trail={[
           { href: '/procedures', label: 'Procedures', mono: false },
@@ -98,13 +93,16 @@ export default async function BuilderPage({
         </p>
       </header>
 
-      <div className="ls-builder-authoring">
+      <div className="ls-guided-authoring">
         <DraftBuilder
           draft={draft}
           sources={sources}
           registrations={registrations}
           rowVersion={procedureVersionRowVersion(draft)}
           onSave={updatePopulationDraftAction}
+          onSaveContext={updateContextDraftAction}
+          onReview={reviewSectionAction}
+          onWriting={{ generate: generateAuthoringSuggestionAction, accept: acceptAuthoringSuggestionAction, reject: rejectAuthoringSuggestionAction }}
           onSaveTargets={updateTargetDraftAction}
           onSaveCompliance={updateComplianceDraftAction}
           onSaveEvidence={updateEvidenceDraftAction}

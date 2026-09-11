@@ -1,3 +1,27 @@
+## Guided preparation state (2026-09-11)
+
+Story 2.9 stores nullable `section_preparation` metadata separately from compiler inputs.
+Only an explicit authorised acknowledgement creates Reviewed by auditor. Every content
+save uses `queuePlanDerivation`, which advances authoring revision and invalidates review
+against an explicit conservative section dependency projection. Plan-worker changes do
+not invalidate review; content reversals cannot revive it. New versions reset reviews.
+Historical NULL metadata stays unknown. Six section reviews guide preparation; full-version
+submission remains auditor assent and retains all existing readiness gates. Explicit
+Needs clarification blocks submission. Guided preparation supersedes only the Builder's
+old 900px authoring floor. Narrow editor-contract browser tests expose all mounted panels;
+the guided and owner journeys retain real navigation and accessibility checks.
+
+## 2026-09-11 — Structured Template context preserves historical definitions
+
+Story 2.15 appends Risk and Criterion reference to new section arrays while keeping the
+original nine identifiers and order. Read exact legacy nine-section payloads without
+upcasting their frozen content. An explicit context save promotes only a Draft, taking
+unspecified values as null rather than consulting a newer Template. A successor copied
+from a historical approved version keeps that historical content until explicitly edited.
+Manager reviews use 14 rows for current inputs and retain the historical 12-row shape;
+both the domain consistency check and repository parser must accept the appropriate shape.
+Context edits use the same locked, revision-checked human authoring and plan-queue path.
+
 ## 2026-09-11 — Guided preparation comes into v1, and ten of its rules are already the product
 
 The owner reviewed LivePlan's documentation and adopted the pattern for the authoring surface —
@@ -2753,3 +2777,74 @@ The pre-evaluation rule preview already checks the captured Observation with sna
 ## Independent live isolation gate
 
 A genuine auditor decision may block representative audit acceptance after confirmed cleanup. The explicit solari-isolation-acceptance label can select only the existing overlapping-session test on the exact candidate. It does not make the combined audit gate green, alter maxFailures or relax any isolation assertion. Confirm prior remote cleanup before selecting it; recording remains disabled and the workflow remains read-only.
+
+
+## Guided preparation hydration and historical upgrade fixtures
+
+The outline uses native section links and keeps sections readable before hydration, then
+shows the selected editor without unmounting other unsaved forms. Preserve a section selected
+while JavaScript loads. Editor-contract tests must wait for data-guided-ready before exposing
+panels; changing server markup first creates hydration mismatches and lost interactions.
+Keep one native disabled fieldset around editing controls until hydration installs their
+change handlers and submission registry. Saved text remains readable. Enabling the same
+fieldset preserves component identity and focus. Tests should select nested Evidence groups
+by their own accessible legend, and wait for an enabled control before calling focus().
+Populated upgrade fixtures must insert the columns of their historical generation, rather
+than call the current Drizzle repository against an older schema. Keep their frozen-input,
+authorship, immutability and compatibility assertions intact.
+
+
+## Bounded procedure writing assistance (Stories2.9–2.10)
+
+Writing assistance has a separate application port and dedicated server-only
+AUTHORING_OPENAI_API_KEY. It uses the installed OpenAI AI SDK Responses provider with
+model gpt-5.6-terra, store:false, low reasoning, no summary, no temperature, no tools,
+maxRetries:0 and a 30-second timeout. Plan-check and Run configuration remain independent.
+Reserve a request receipt under the Procedure lock before provider I/O, release the
+transaction during I/O, then persist a validated proposal. Retries reuse the same exact
+request. Acceptance uses the existing authorised update command in the receipt transaction;
+attribute even an identical-wording acceptance to the human. Audit payloads cannot contain
+provider objects: the receipt holds identity; immutable events hold only identity references,
+usage and hashes. Exercise the real audit validator in command fakes.
+
+Suggestions bind the saved authoring revision, section basis, context hash and actor.
+Any authored change conservatively stales pending suggestions; plan-worker status and
+section review alone do not. Unsaved fields and uncertain acceptance block review/submission;
+generation does not. Per-section sessions prevent late responses appearing in another editor.
+The explicit test-only OpenAI preload proves SDK/workflow behavior and must never ship in
+runtime images or be described as live-provider or semantic-faithfulness evidence.
+Check supplied prose for known credential references before authoring I/O; do not silently
+redact saved instructions or change the manual-writing contract. Objective proposals follow
+the domain's4,000-character limit in both editor and acceptance, rather than the other prose
+sections'10,000-character bound. A completed receipt can be ready but stale after submission;
+persist its usage and prove acceptance is refused both before and after completion.
+Authoring screenshots must be written to a named testInfo.outputPath before attachment.
+Body-only Playwright attachments use opaque report filenames and cannot be selected by
+the remote-review PNG exporter. Retain the original bytes, dimensions and SHA256 identity.
+
+## Native browser timeout cleanup
+
+Playwright's own timeout can reject just before an independently enforced action deadline.
+Treat the installed Playwright TimeoutError as cleanup-worthy as well as the outer deadline
+error; otherwise a one-millisecond race can leave an expired page reusable. Preserve the
+deadline, execution policy and existing real-browser assertion. The deterministic regression
+case forces the native timeout while ample outer budget remains and requires page disposal.
+
+
+## Guided Builder browser assertions and narrow help actions (2026-09-11)
+
+The guided outline hides unselected groups. Browser journeys must open Review and submission
+before checking readiness or Submit, then navigate back to the actual editor. Keep dirty,
+required-field and focus assertions intact. The adopted responsive Builder remains editable
+below 900px: verify a saved mobile change and reload, not the old absence of save controls.
+Long writing-reconciliation labels must wrap inside the contextual help column. Capture
+inspection exposed the overflow; the stale-response browser case checks its actual bounds.
+Name-editor copy must not assume it remains at the end of the whole Builder.
+
+
+## Late writing-response accounting after rejection (2026-09-11)
+
+A human may dismiss a writing request from another tab while its provider call is pending.
+The late response must preserve the rejected receipt and never retain or apply its proposal,
+but known token usage still belongs in the receipt and minimised audit event. Account for
+that metadata without touching the procedure, authorship, preparation reviews or plan jobs.

@@ -13,6 +13,7 @@ import {
   credentialCapabilityManifest,
   loadConfig,
   modelIdentityFromConfig,
+  createProcedureAuthoringModel,
   type AppConfig,
   type Auth,
   type AuthConfig,
@@ -21,7 +22,7 @@ import {
   type Telemetry,
 } from '@intellifin/infrastructure';
 
-import type { CredentialProvider, DeadlinePort, ModelIdentity } from '@intellifin/application';
+import type { ProcedureAuthoringModel, CredentialProvider, DeadlinePort, ModelIdentity } from '@intellifin/application';
 
 import { telemetry } from './telemetry';
 
@@ -37,6 +38,7 @@ import { telemetry } from './telemetry';
 export interface WebRuntime {
   readonly config: AppConfig;
   readonly derivationModel: ModelIdentity | null;
+  readonly authoringModel: ProcedureAuthoringModel | null;
   readonly sql: Sql;
   /**
    * The Drizzle handle over the SAME pool as `sql`, built on first use. Route
@@ -153,6 +155,7 @@ async function start(): Promise<WebRuntime> {
     return {
       config,
       derivationModel: modelIdentityFromConfig(config),
+      authoringModel: createProcedureAuthoringModel(config),
       sql,
       get db(): Database {
         return database();

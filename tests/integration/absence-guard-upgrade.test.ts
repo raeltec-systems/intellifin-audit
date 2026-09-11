@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { observationAbsenceDigest } from '@intellifin/application';
 import { observationDigest, observationIdFor, sha256HexOfBytes, utf8Bytes, type ObservationRecord } from '@intellifin/domain';
-import { createDb, createSqlClient, CryptoUuidV7Generator, PostgresProceduresUnitOfWork, type Sql } from '@intellifin/infrastructure';
+import { createSqlClient, CryptoUuidV7Generator, type Sql } from '@intellifin/infrastructure';
 import { runMigrations } from '@intellifin/infrastructure/migrate';
 import { activeRunVersion } from '../fixtures/active-run-version.js';
+import { insertHistoricalProcedureVersion } from '../fixtures/historical-procedure-version.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const folder = fileURLToPath(new URL('../../packages/infrastructure/drizzle/', import.meta.url));
@@ -39,7 +40,7 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
       const author = ids.next();
       await sql`INSERT INTO auth_user(id,name,email) VALUES(${author},'Synthetic absence upgrade reviewer',${author+'@test.invalid'})`;
       const version = activeRunVersion(ids.next(),ids.next(),author);
-      await new PostgresProceduresUnitOfWork(createDb(sql)).execute(async c => { await c.procedures.insertProcedure(version); await c.procedures.insertVersion(version); });
+      await insertHistoricalProcedureVersion(sql, version);
       let ordinal = 0;
       const bytes = utf8Bytes('{"schemaVersion":1,"nodes":[],"completion":{"complete":true,"returned":0}}');
       const artifact = join(temporary,'empty-result.json');
@@ -68,7 +69,7 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
           await tx`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,state,attempts,cycles,diagnostic,evidence_id,observations)
             VALUES(${workItemId},${runId},'inspect',1,'loancore','LoanCore','OBSERVED',1,0,NULL,${evidenceId},1)`;
           await tx`INSERT INTO run_observation(observation_id,run_id,work_item_id,schema_version,population_record_key,target_system,found,observed_at,step_execution_id,capture_method,match_origin,identity,attributes,evidence_ids,digest,coverage,observed_at_source,corroboration)
-            VALUES(${record.observationId},${runId},${workItemId},1,'E-upgrade','loancore','false',${at},${stepExecutionId},'agent','platform',NULL,'[]'::jsonb,${JSON.stringify([evidenceId])}::jsonb,${observationDigest(record)},'UNINSPECTED',${at},'UNJUDGED')`;
+            VALUES(${record.observationId},${runId},${workItemId},1,'E-upgrade','loancore','false',${at},${stepExecutionId},'agent','platform',NULL,'[]'::jsonb,${tx.json([evidenceId])},${observationDigest(record)},'UNINSPECTED',${at},'UNJUDGED')`;
           if (sealed) {
             await tx`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
               VALUES(${runId},'SEALED','INCONCLUSIVE',${at},0,1,'[]'::jsonb,'[]'::jsonb)`;
@@ -83,7 +84,7 @@ describe.skipIf(!databaseUrl)('generation40 to final absence guard upgrade', () 
       };
       const insertProof = async (row: Awaited<ReturnType<typeof seed>>) => {
         await connection`INSERT INTO run_observation_absence(observation_id,run_id,proof,expected_query_keys,digest)
-          VALUES(${row.record.observationId},${row.runId},${JSON.stringify(row.proof)}::jsonb,${JSON.stringify(row.queryKeys)}::jsonb,${row.digest})`;
+          VALUES(${row.record.observationId},${row.runId},${connection.json(row.proof)},${connection.json(row.queryKeys)},${row.digest})`;
       };
       const active=await seed(false), sealed=await seed(true);
       // Actual preceding schema and real guard: SQLSTATE42702 is the PL/pgSQL FOUND/column
