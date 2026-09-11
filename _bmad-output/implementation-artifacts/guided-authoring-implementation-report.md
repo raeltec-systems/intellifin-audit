@@ -9,9 +9,9 @@ Review PR: [#30](https://github.com/raeltec-systems/intellifin-audit/pull/30), a
 parent PR #29 was open and unmerged when the feature was created. No parent branch, main,
 release, merge or deployment was changed. The original checkout was clean.
 
-Authoring/UI checkpoint: `5d9be5667d317a4fd413221cc9e167f3fb30c6d1`.
-Final code correction: `ff527a0ed62ebe8743f35296bfcd6d2d59e7b4ae`, tree
-`7eb103cb59e534c7518c0f982427dd274958d498`. The PR summary pins the exact final head
+Fully verified UI checkpoint: `abe27cab8ff323a2d15a090022b721153e6f283f`.
+Final code correction: `18b1eac961c77dde7a932d3b90f32eec2c3eaeb9`, tree
+`029b7a0542b2b748d9667b4109a39748c74b5257`. The PR summary pins the exact final head
 (including this report) and its hosted CI run. Results are updated there without changing
 the tested commit. The table below records checkpoint evidence and the live-provider limit.
 
@@ -37,6 +37,8 @@ the tested commit. The table below records checkpoint evidence and the live-prov
 - Duplicate acceptance returns one outcome without another content write or plan job.
   Lost-response retries reuse their exact request receipt. A late completed receipt can be
   ready but stale after submission; acceptance is refused before and after completion.
+  If a human rejects a pending request, its late proposal stays discarded; known token usage
+  is still recorded without changing the rejection, procedure, review or plan.
 - Review acknowledgements are optional preparation progress. Submission still represents
   the auditor's approval of the whole assignment and keeps all existing required-field,
   plan-readiness and governance checks. Explicit unresolved clarification blocks submission.
@@ -63,15 +65,15 @@ The toolchain is the repository's Node 24.20.0 and pnpm 11.25.0 with the frozen 
 | Environment | Actual result |
 | --- | --- |
 | Local authoring checkpoint | 4,087 unit tests passed; typecheck, 590-module dependency boundaries, build and no-drift schema generation passed. |
-| Local focused corrections | The final code tree passed 105 focused tests, pinned typecheck and 590-module boundaries. Earlier Guided/Evidence hydration checks passed 24 tests. |
-| Hosted `5d9be566…`: types, units and boundaries | Passed: 4,097 tests across 203 files; no violations across 590 modules. |
-| Hosted `5d9be566…`: PostgreSQL 18 and migrations | Passed: 549 integration tests across 46 files, populated historical upgrades, schema generation without drift, and all 22 selected guard mutations detected. |
-| Hosted `5d9be566…`: containers | Passed: all three images build; startup, authorisation and browser smoke checks pass. No image was published. |
-| Hosted `5d9be566…`: browser and accessibility | Focused guided/owner/writing journey passed all 8 cases, including setup. Full suite: 186 passed, 8 failed, 1 skipped. Two old navigation/mobile expectations caused the first failures; a restarted worker lost the shared named fixtures and caused the remaining failures. Corrections are isolated in `ff527a0e…`; final complete-suite results are pinned in PR #30. |
-| Hosted `5d9be566…`: hydrated UI/worker abuse | Passed: all 7 guard mutations detected by real assertion failures. |
+| Local focused corrections | The navigation/wrapping tree passed 105 focused tests, pinned typecheck and 590-module boundaries. The final late-usage correction passed all 38 authoring command cases and pinned typecheck. Earlier Guided/Evidence hydration checks passed 24 tests. |
+| Hosted `abe27cab…`: types, units and boundaries | Passed: 4,098 tests across 203 files; no violations across 590 modules. |
+| Hosted `abe27cab…`: PostgreSQL 18 and migrations | Passed: 549 integration tests across 46 files, populated historical upgrades, schema generation without drift, and all 22 selected guard mutations detected. |
+| Hosted `abe27cab…`: containers | Passed: all three images build; startup, authorisation and browser smoke checks pass. No image was published. |
+| Hosted `abe27cab…`: browser and accessibility | Passed: all 195 browser/accessibility cases, with zero failures or skips. The separate focused guided/owner/writing step passed all 8 cases, including setup. The complete suite exercises the actual hero review navigation and a saved mobile Target System change after reload. |
+| Hosted `abe27cab…`: hydrated UI/worker abuse | Passed: all 7 guard mutations detected by real assertion failures. |
 | Live OpenAI | Blocked: no AUTHORING_OPENAI_API_KEY configured. The verification script reported blocked and made zero live calls. Synthetic transport responses are not live-provider evidence. |
 
-Hosted evidence: [CI run 34598654756](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34598654756).
+Hosted evidence: [CI run 34601457170](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34601457170).
 The separately committed native-timeout correction closes an existing page-cleanup race
 found by the previous PostgreSQL run: Playwright can throw its native TimeoutError just
 before the outer deadline. Either timeout now discards the page. The original integration
@@ -103,12 +105,12 @@ review. Those examples prove review/acceptance mechanics, not semantic equivalen
    unauthorised stage.
 
 The following captures come from the actual Chromium-rendered implementation on
-`5d9be5667d317a4fd413221cc9e167f3fb30c6d1`, using labelled synthetic fixtures.
+`abe27cab8ff323a2d15a090022b721153e6f283f`, using labelled synthetic fixtures.
 They are unedited PNGs; their hashes, dimensions and originating job are retained in
 [the capture manifest](guided-authoring-screenshots/manifest.json).
-All six captures were inspected. Two subsequent presentation corrections wrap long help
-buttons inside the narrow panel and remove an obsolete positional name-editor instruction.
-The final CI browser artifact also retains fresh captures from the exact reviewed head.
+All six captures were inspected, including the corrected help-button wrapping and context
+copy. The subsequent correction only retains known usage for rejected requests; it does not
+change these UI surfaces. The final CI browser artifact also retains fresh captures.
 
 | Capture | What to inspect |
 | --- | --- |

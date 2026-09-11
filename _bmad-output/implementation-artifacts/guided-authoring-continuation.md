@@ -32,6 +32,8 @@ behavior, safeguards, acceptance evidence and actual UI captures; see
 | `5d9be5667d317a4fd413221cc9e167f3fb30c6d1` | Retain actual browser captures under named PNG paths. |
 | `ab41d7bbc47d2e7b8f75f9f53ee41042aba3aaf0` | Dispose the active browser page after a native Playwright timeout. |
 | `ff527a0ed62ebe8743f35296bfcd6d2d59e7b4ae` | Actual review navigation, persisted mobile saves, help-button wrapping and location-neutral copy. |
+| `abe27cab8ff323a2d15a090022b721153e6f283f` | Implementation report and six inspected original captures with provenance. |
+| `18b1eac961c77dde7a932d3b90f32eec2c3eaeb9` | Preserve known late-response usage after rejection without keeping or applying its proposal. |
 
 The authenticated GitHub connector publishes these commits because CLI Git has no push
 credential. Each blob and resulting tree SHA was verified against the local tested tree.
@@ -68,6 +70,19 @@ dependencies remain ai 7.0.89, @ai-sdk/openai 4.0.58 and @ai-sdk/anthropic 4.0.4
 - Live OpenAI: **blocked, zero live calls**. No dedicated authoring credential is configured.
   The live verification script exited 2 with an explicit blocked result. Synthetic command,
   SDK transport and browser responses do not prove provider access or wording faithfulness.
+
+Hosted [run 34601457170](https://github.com/raeltec-systems/intellifin-audit/actions/runs/34601457170)
+on exact pushed `abe27cab8ff323a2d15a090022b721153e6f283f` completed with **all five jobs green**:
+4,098 unit tests, typecheck and boundaries; all 549 PostgreSQL integration cases, migrations
+and populated upgrades; all container checks; all **195 browser/accessibility tests with no
+failures or skips** plus 8 focused cases; and all 29 guard mutations detected. The full suite
+now proves the corrected real review navigation and persisted mobile save.
+
+The late-response accounting correction has tree `029b7a0542b2b748d9667b4109a39748c74b5257`
+(local original `3158d1b4457cbb56f199737b7978601ae802cbda`). All 38 authoring command
+tests and the pinned typecheck passed. The strengthened rejection test verifies known usage
+in the receipt/audit, no retained proposal, exact unchanged procedure content, no plan job
+and refused acceptance. It changes metadata accounting only.
 
 Earlier runs found historical fixtures using new columns too early, obsolete UI locators,
 pre-hydration input races and an inconsistent completed-receipt assertion. These were corrected
@@ -112,7 +127,8 @@ units and root test typechecking. Equivalent remote object
 Six original hosted PNGs were inspected and retained with SHA-256 hashes, dimensions and
 source commit/job in `guided-authoring-screenshots/manifest.json`. They show the actual
 proposal, stale and clarification states, mobile layout, auditor review and manager review.
-They predate only the final small wrapping and copy corrections; final CI retains fresh captures.
+The refreshed captures come from fully passing `abe27cab…` and include the wrapping/copy
+corrections. The subsequent usage-accounting patch does not change these UI surfaces.
 
 Next for the independent reviewer: inspect the exact tested head and complete hosted gate
 results pinned in PR #30, then review the application acceptance/author identity transaction,
