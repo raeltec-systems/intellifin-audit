@@ -102,6 +102,12 @@ or deployment has been made for this correction.
   buttons focus their central panel once; automatic section entry does not take focus.
   The final exact pushed SHA, CI conclusions and screenshot links are maintained in
   [PR #31's verification record](https://github.com/raeltec-systems/intellifin-audit/pull/31).
+- Screenshot review exposed an empty Help column constraining the proposal. Closing
+  Help now releases that width, with the same accessible controls and responsive layout.
+  Focused preparation/UI tests pass (32); a browser width assertion covers the actual
+  collapse. At `a213f85549095726e7da13435e974dd9b824f495`, hosted CI passed full
+  types/unit/boundaries and the nine-test focused browser journey. A local concurrent
+  boundary scan hit temporary mutation-fixture paths; rerun this gate sequentially.
 
 ## Reviewing the implemented experience
 

@@ -265,11 +265,19 @@ test('an uncertain generation retries its original request and an uncertain acce
 });
 
 test('the central test assistant keeps, drops and enhances a proposal before edited acceptance and review', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await openStep(page, 'Audit Instructions');
   const panel = page.locator('[data-preparation-panel="instructions"]');
   const writing = panel.locator('[data-writing-section]');
   // It is present in the actual editing column without a Help Me Write activation.
   await expect(writing).toBeVisible();
+  const work = page.locator('.ls-guided__work');
+  const closedWidth = (await work.boundingBox())!.width;
+  const help = page.locator('.ls-guided__help-disclosure');
+  await help.locator('summary').click();
+  const openWidth = (await work.boundingBox())!.width;
+  expect(closedWidth - openWidth).toBeGreaterThan(150);
+  await help.locator('summary').click();
   expect(await requestStates()).toEqual([]);
   await expect(panel).toContainText('ProdConsole');
   await expect(panel).toContainText('Baseline');
@@ -278,7 +286,7 @@ test('the central test assistant keeps, drops and enhances a proposal before edi
   await panel.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
   await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');
   await openStep(page, 'Audit Instructions');
-  await writing.getByLabel('Rough notes for Audit steps for ProdConsole', { exact: true }).fill('SYNTHETIC:TEST-DESIGN');
+  await writing.getByLabel('Rough notes for Audit steps for ProdConsole', { exact: true }).fill('Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.');
   await writing.getByRole('button', { name: 'Prepare draft', exact: true }).click();
   const proposed = writing.locator('.ls-writing__comparison .ls-writing__version').last();
   await expect(proposed).toContainText('Add a separate summary by owner.');

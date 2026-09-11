@@ -231,6 +231,17 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
         </ol>
       </nav>
 
+      <aside className="ls-guided__help" aria-label="Section help">
+        <details className="ls-disclosure ls-guided__help-disclosure" open={helpStartsOpen}>
+          <summary>Help for this section</summary>
+          <div className="ls-disclosure__body">
+            <h3 className="ls-guided__help-title">{SECTION_WORDS[selected].title}</h3>
+            <ul className="ls-guided__help-list">{SECTION_WORDS[selected].help.map(sentence => <li key={sentence}>{sentence}</li>)}</ul>
+            {help}
+          </div>
+        </details>
+      </aside>
+
       {/* Saved sections remain readable before hydration, but these forms need their
           change handlers and submission registry before they can accept an edit. Keep
           this one native fieldset mounted while enabling its controls; replacing the
@@ -292,16 +303,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
         </section>
       </fieldset>
 
-      <aside className="ls-guided__help" aria-label="Section help">
-        <details className="ls-disclosure ls-guided__help-disclosure" open={helpStartsOpen}>
-          <summary>Help for this section</summary>
-          <div className="ls-disclosure__body">
-            <h3 className="ls-guided__help-title">{SECTION_WORDS[selected].title}</h3>
-            <ul className="ls-guided__help-list">{SECTION_WORDS[selected].help.map(sentence => <li key={sentence}>{sentence}</li>)}</ul>
-            {help}
-          </div>
-        </details>
-      </aside>
+
     </div>
   </div>;
 }

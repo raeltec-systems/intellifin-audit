@@ -19,7 +19,7 @@ globalThis.fetch = async (input, init) => {
     : { proposedText: notes.replace(/^SYNTHETIC:DELAY /, '') || envelope.currentText, clarifications: [] };
   // Explicit synthetic conversation case: exact payload assertions prove the real
   // revision path, not a model's understanding or general wording faithfulness.
-  if (notes === 'SYNTHETIC:TEST-DESIGN') {
+  if (notes === 'Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.') {
     const kept = '1. Read every baseline parameter in ProdConsole.\n2. Compare observed values with the approved baseline.';
     if (envelope.mode === 'revise') {
       if (!envelope.revision?.draft.endsWith('Human note: preserve exact parameter names.')

@@ -1,3 +1,7 @@
+## 2026-09-11 — Closing Help releases the preparation column
+
+Inspect actual browser captures: a closed disclosure still occupies a grid column unless the layout changes. Closed Help now gives that space to the working proposal and comparison. Its opener precedes the editor in DOM order; smaller screens stack the same controls. The browser journey checks that opening/closing Help changes the working width without losing draft state.
+
 ## 2026-09-11 — Preserve intent through failed revision attempts
 
 A failed follow-up retains its original ready parent and the full edited proposal for a new attempt; do not accidentally fall back to rough notes alone. Explicit Help Me Write buttons claim focus once for their section's central assistant. Automatic section entry creates no focus request and no provider call.
