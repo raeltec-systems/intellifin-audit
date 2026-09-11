@@ -93,7 +93,7 @@ export interface DraftSection {
  * Schedule. Each story promotes its part of the `jsonb` payload to typed columns as it
  * authors the section.
  */
-export const DRAFT_SECTION_HEADINGS = [
+export const LEGACY_DRAFT_SECTION_HEADINGS = [
   'Control',
   'Objective',
   'Period and scope',
@@ -104,6 +104,9 @@ export const DRAFT_SECTION_HEADINGS = [
   'Evidence Requirements',
   'Schedule',
 ] as const;
+
+// Append only: legacy arrays stay valid and are never filled from today's Template.
+export const DRAFT_SECTION_HEADINGS = [...LEGACY_DRAFT_SECTION_HEADINGS, 'Risk', 'Criterion reference'] as const;
 
 export type DraftSectionHeading = (typeof DRAFT_SECTION_HEADINGS)[number];
 
@@ -120,6 +123,8 @@ export function isDraftSectionHeading(value: unknown): value is DraftSectionHead
  * for; the rest are §C's own section vocabulary.
  */
 const SECTION_CONTENT: Readonly<Record<DraftSectionHeading, (template: ProcedureTemplate) => string | null>> = {
+  Risk: (template) => template.risk,
+  'Criterion reference': (template) => template.criterionReference,
   Control: (template) => template.controlStatement,
   Objective: (template) => template.objective,
   'Period and scope': () => null,
@@ -193,12 +198,15 @@ export function isValidDraftSectionsPayload(value: unknown): value is DraftSecti
   if (!isTemplateId(payload['templateId'])) return false;
   if (!Array.isArray(payload['sections'])) return false;
   const sections = payload['sections'];
-  if (sections.length !== DRAFT_SECTION_HEADINGS.length) return false;
+  const headings = sections.length === LEGACY_DRAFT_SECTION_HEADINGS.length
+    ? LEGACY_DRAFT_SECTION_HEADINGS : DRAFT_SECTION_HEADINGS;
+  if (sections.length !== headings.length) return false;
 
-  return DRAFT_SECTION_HEADINGS.every((heading, index) => {
+  return headings.every((heading, index) => {
     const section = sections[index];
     if (typeof section !== 'object' || section === null) return false;
     const entry = section as Record<string, unknown>;
+    if (Object.keys(entry).length !== 3 || !['heading', 'content', 'compiled'].every(key => Object.hasOwn(entry, key))) return false;
     if (entry['heading'] !== heading) return false;
     if (entry['compiled'] !== false) return false;
     const content = entry['content'];

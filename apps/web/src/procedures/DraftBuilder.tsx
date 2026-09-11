@@ -2,13 +2,14 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, bindingDigestEnvelope, evidenceBlockersFor, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
-import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult, UpdateComplianceDraftResult, UpdateEvidenceDraftResult } from '@intellifin/application';
-import type { PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields, ComplianceDraftFields, EvidenceDraftFields } from '../../app/procedures/[id]/builder/actions';
+import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult, UpdateComplianceDraftResult, UpdateEvidenceDraftResult, UpdateContextDraftResult } from '@intellifin/application';
+import type { ContextDraftFields, PopulationDraftFields, RenameActionResult, RenameDraftFields, TargetDraftFields, ComplianceDraftFields, EvidenceDraftFields } from '../../app/procedures/[id]/builder/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
 import { ReadinessPanel } from './ReadinessPanel';
+import { TemplateContextForm } from './TemplateContextForm';
 import { BuilderSections } from './BuilderSections';
 import { RenameDraftForm } from './RenameDraftForm';
 import { TargetSelectionForm } from './TargetSelectionForm';
@@ -24,11 +25,12 @@ import { RetryPlanDerivation, type RetryPlanDerivationFields, type RetryPlanDeri
 import { submissionUnavailableReason } from '@intellifin/application';
 import { VersionActions } from './VersionActions';
 
-function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
+function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveContext, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
   readonly draft: ProcedureVersionView;
   readonly sources: readonly PopulationSourceBinding[];
   readonly registrations: readonly TargetSystemRegistration[];
   readonly rowVersion: string;
+  readonly onSaveContext: (fields: ContextDraftFields) => Promise<UpdateContextDraftResult>;
   readonly onSave: (fields: PopulationDraftFields) => Promise<UpdatePopulationDraftResult>;
   readonly onSaveTargets: (fields: TargetDraftFields) => Promise<UpdateTargetDraftResult>;
   readonly onSaveCompliance: (fields: ComplianceDraftFields) => Promise<UpdateComplianceDraftResult>;
@@ -214,7 +216,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   return <div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <BuilderSections draft={draft} sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
+    <BuilderSections contextEditor={<TemplateContextForm draft={draft} rowVersion={token} onSave={async fields => { const outcome = await onSaveContext(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} />} draft={draft} sections={draft.sections} periodScope={periodEditor} populationSource={populationEditor} targetSystems={targetSystemsEditor} auditInstructions={auditInstructionsEditor} complianceRule={complianceRuleEditor} evidenceRequirements={evidenceRequirementsEditor} schedule={scheduleEditor} />
     <ReadinessPanel inputs={{ templateId: draft.templateId, targets: draft.targets, sourceSnapshot: draft.sourceSnapshot, complianceConditions: draft.complianceConditions, evidenceRequirements: draft.evidenceRequirements }} headingId={`${id}-readiness`} />
     {/*
       The plan and its preview are the platform proving what it will execute, which is

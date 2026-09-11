@@ -123,6 +123,11 @@ describe('the four Procedure Templates', () => {
       const block = BLOCKS[template.id];
       if (block === undefined) throw new Error(`no §C block pinned for ${template.id}`);
       expect(block).toContain(template.name);
+      expectPinned(block, template.risk);
+      expectPinned(block, template.criterionReference);
+      expect(block).toContain('Criterion reference: Not supplied (null).');
+      expect(template.criterionReference).toBeNull();
+      expect(template.risk).toMatch(/^Synthetic example:/);
       expectPinned(block, template.controlStatement);
       expectPinned(block, template.objective);
       expectPinned(block, template.populationSource);

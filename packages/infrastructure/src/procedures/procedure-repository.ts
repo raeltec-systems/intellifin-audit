@@ -221,7 +221,7 @@ const definitionSchema = z.strictObject({ schemaVersion: z.literal(1), inputs: j
   toolConfiguration: z.strictObject({ interpreterContract: z.literal('executable-plan-v1'), identityMatching: z.literal('opaque-exact-strings'), accessPolicy: z.literal('frozen-registered-read-actions'), actions: z.tuple([z.literal('create-workspace'),z.literal('acquire-population'),z.literal('sign-in'),z.literal('extract-adapter'),z.literal('inspect-record'),z.literal('capture-observation'),z.literal('evaluate-conditions')]) }),
 }).refine(value => canonicalJson(value.inputs) === canonicalJson(value.compiledPlan.inputs as unknown as JsonValue));
 const reviewShape = { schemaVersion: z.literal(1), versionId: z.uuid(), baseline: z.strictObject({ versionId: z.uuid(), versionNumber: z.number().int().positive(), revision: z.string().regex(/^[0-9a-f]{64}$/) }).nullable(), definition: definitionSchema,
-  diff: z.array(z.strictObject({ section: z.string().min(1), before: jsonValueSchema, after: jsonValueSchema, changed: z.boolean() })).length(12),
+  diff: z.array(z.strictObject({ section: z.string().min(1), before: jsonValueSchema, after: jsonValueSchema, changed: z.boolean() })).refine(diff => diff.length === 12 || diff.length === 14),
 };
 const submittedReviewSchema = z.strictObject(reviewShape);
 const frozenReviewSchema = z.strictObject({ ...reviewShape, approval: decisionSchema }).refine(value => value.approval.decision === 'approve');

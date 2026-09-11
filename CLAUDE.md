@@ -1,3 +1,14 @@
+## 2026-09-11 — Structured Template context preserves historical definitions
+
+Story 2.15 appends Risk and Criterion reference to new section arrays while keeping the
+original nine identifiers and order. Read exact legacy nine-section payloads without
+upcasting their frozen content. An explicit context save promotes only a Draft, taking
+unspecified values as null rather than consulting a newer Template. A successor copied
+from a historical approved version keeps that historical content until explicitly edited.
+Manager reviews use 14 rows for current inputs and retain the historical 12-row shape;
+both the domain consistency check and repository parser must accept the appropriate shape.
+Context edits use the same locked, revision-checked human authoring and plan-queue path.
+
 ## 2026-09-11 — Guided preparation comes into v1, and ten of its rules are already the product
 
 The owner reviewed LivePlan's documentation and adopted the pattern for the authoring surface —

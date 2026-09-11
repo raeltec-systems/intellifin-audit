@@ -139,7 +139,7 @@ export const PROCEDURE_CARD_ABSENT = {
  * same class of sentence as the empty states.
  */
 export const BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE =
-  'This section is pre-filled from the Template and is not edited in the Builder.';
+  'These sections are pre-filled from the Template. Edit the context for this procedure; the Template stays unchanged.';
 
 /**
  * Said under the Control section only, because the Control NAME is editable and the

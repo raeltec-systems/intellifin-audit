@@ -8,6 +8,8 @@ import {
   renameProcedureDraft,
   retryPlanDerivation,
   updatePopulationDraft,
+  updateContextDraft,
+  type UpdateContextDraftResult,
   updateTargetDraft,
   updateComplianceDraft,
   updateEvidenceDraft,
@@ -19,7 +21,7 @@ import {
   type UpdateEvidenceDraftResult,
   type ProcedureDependencies,
 } from '@intellifin/application';
-import { COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
+import { isDraftContextEdit, type DraftContextEdit, COMPLIANCE_LIMITS, ROLE_PRIVILEGE_LIMITS, TARGET_DRAFT_LIMITS, EVIDENCE_DRAFT_LIMITS, FREQUENCIES, GROUNDING_EVIDENCE_TYPES, type ComplianceDraftInput, type DraftEvidenceEdit } from '@intellifin/domain';
 import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
@@ -432,6 +434,32 @@ export async function retryPlanDerivationAction(fields: { readonly procedureId: 
     try {
       (await getRuntime()).telemetry.captureError('Retry Plan Derivation failed', error, { outcome: 'failure', correlationId });
     } catch { /* Boot failures are already reported. */ }
+    return { ok: false, reason: UNAVAILABLE };
+  }
+}
+
+export interface ContextDraftFields {
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly expectedRowVersion: string;
+  readonly edit: DraftContextEdit;
+}
+export async function updateContextDraftAction(fields: ContextDraftFields): Promise<UpdateContextDraftResult> {
+  const decision = await requireServerAction(PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return { ok: false, reason: decision.reason };
+  if (typeof fields !== 'object' || fields === null || Object.keys(fields).length !== 4 ||
+      !isUuid(fields.procedureId) || !isUuid(fields.versionId) || typeof fields.expectedRowVersion !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(fields.expectedRowVersion) || !isDraftContextEdit(fields.edit)) return { ok: false, reason: MALFORMED };
+  const correlationId = await currentCorrelationId();
+  try {
+    const outcome = await updateContextDraft(await dependencies(), { ...fields, session: decision.session, correlationId });
+    if (outcome.ok) {
+      revalidatePath(`/procedures/${fields.procedureId}/builder`);
+      revalidatePath(`/procedures/${fields.procedureId}`);
+    }
+    return outcome;
+  } catch {
+    // Driver/provider error text can contain authored content. Return only a closed message.
     return { ok: false, reason: UNAVAILABLE };
   }
 }

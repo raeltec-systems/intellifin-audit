@@ -137,7 +137,7 @@ describe('what a closed Builder step says about itself', () => {
 describe('the progress line', () => {
   it('counts only the steps somebody has to take', () => {
     const headings = DRAFT_SECTION_HEADINGS.filter(
-      (heading) => heading !== 'Control' && heading !== 'Objective',
+      (heading) => heading !== 'Control' && heading !== 'Objective' && heading !== 'Risk' && heading !== 'Criterion reference',
     );
     const progress = builderProgress(headings, emptyDraft());
     expect(progress.total).toBe(headings.length);

@@ -90,7 +90,7 @@ describe('the permitted transitions', () => {
 });
 
 describe('the Builder section headings', () => {
-  it('are the nine, in Builder order', () => {
+  it('preserves the nine stored identifiers and appends the two context fields', () => {
     expect(DRAFT_SECTION_HEADINGS).toEqual([
       'Control',
       'Objective',
@@ -101,6 +101,8 @@ describe('the Builder section headings', () => {
       'Compliance Rule conditions',
       'Evidence Requirements',
       'Schedule',
+      'Risk',
+      'Criterion reference',
     ]);
   });
 
@@ -119,6 +121,8 @@ describe('initialDraftSections', () => {
       const sections = initialDraftSections(template.id);
       expect(sections.map((section) => section.heading)).toEqual([...DRAFT_SECTION_HEADINGS]);
       const byHeading = new Map(sections.map((section) => [section.heading, section.content]));
+      expect(byHeading.get('Risk')).toBe(template.risk);
+      expect(byHeading.get('Criterion reference')).toBeNull();
       expect(byHeading.get('Control')).toBe(template.controlStatement);
       expect(byHeading.get('Objective')).toBe(template.objective);
       expect(byHeading.get('Population Source binding')).toBe(template.populationSource);
@@ -178,6 +182,15 @@ describe('initialDraftSections', () => {
 });
 
 describe('isValidDraftSectionsPayload', () => {
+  it('reads a legacy payload unchanged without inventing new context', () => {
+    const sections = initialDraftSections('P-1').slice(0, 9);
+    const payload = { templateId: 'P-1', sections };
+    const before = JSON.stringify(payload);
+    expect(isValidDraftSectionsPayload(payload)).toBe(true);
+    expect(JSON.stringify(payload)).toBe(before);
+    expect(sections.some(s => s.heading === 'Risk')).toBe(false);
+    expect(isValidDraftSectionsPayload({ ...payload, sections: initialDraftSections('P-1').slice(0, 10) })).toBe(false);
+  });
   it('accepts exactly what creation stores', () => {
     for (const template of PROCEDURE_TEMPLATES) {
       const payload = { templateId: template.id, sections: initialDraftSections(template.id) };

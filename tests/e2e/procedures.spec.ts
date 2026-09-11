@@ -285,7 +285,9 @@ test.describe('as an Auditor', () => {
       // has nothing to edit in it.
       await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(1);
       const readOnly = page.locator('.ls-card').filter({ hasText: BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE });
-      await expect(readOnly.locator('input, select, textarea')).toHaveCount(0);
+      await expect(readOnly.locator('textarea')).toHaveCount(4);
+      await expect(readOnly.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
+      await expect(readOnly.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
       // The Control says where its editable half is, exactly once, and the Objective —
       // which has no editable half — does not repeat it.
       await expect(page.getByText(BUILDER_CONTROL_NAME_EDITABLE_SENTENCE)).toHaveCount(1);

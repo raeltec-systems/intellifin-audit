@@ -16,3 +16,5 @@ export * from './plan-compiler.js';
 export * from './version-decision.js';
 export * from './configuration-tuple.js';
 export * from './readiness.js';
+
+export * from './context-draft.js';

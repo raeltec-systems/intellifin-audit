@@ -332,3 +332,13 @@ Failure: she disagrees with a Rule-Classified evaluation → Record disagreement
 3. Workpaper Bundle format and delivery. **Owner:** Product and UX (PRD Open Question 5).
 4. Masked field set per Population Source binding (FR-41). **Owner:** Product. **Revisit:** when binding contracts are authored.
 5. Notification on Run completion (not required by the PRD; UJ-4 assumes none). **Owner:** Product. **Revisit:** after the first unattended Runs.
+
+
+## Story 2.15 — Context adaptation (2026-09-11)
+
+Control statement and Objective are now editable alongside Risk and Criterion reference.
+This supersedes their former read-only Builder treatment. Show the source and local scope:
+"These sections are pre-filled from the Template. Edit the context for this procedure; the Template stays unchanged."
+The control name remains at the end. Missing context says it was not supplied; a reference
+is distinct from the structured assessment criterion. Manager comparison includes saved
+context; existing approved versions and their missing values are preserved.

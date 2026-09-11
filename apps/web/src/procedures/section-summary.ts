@@ -82,6 +82,8 @@ export function sectionSummary(
   draft: ProcedureVersionView,
 ): SectionSummary {
   switch (heading) {
+    case 'Risk':
+    case 'Criterion reference':
     case 'Control':
     case 'Objective':
       return { state: 'reference', line: 'Set by the Template. Read it before you start.' };

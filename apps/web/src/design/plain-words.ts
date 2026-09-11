@@ -41,6 +41,8 @@ import {
 export const SECTION_WORDS: Readonly<
   Record<DraftSectionHeading, { readonly title: string; readonly question: string }>
 > = {
+  Risk: { title: 'Risk', question: 'What could go wrong?' },
+  'Criterion reference': { title: 'Criterion reference', question: 'Which approved policy, standard or requirement is the test based on?' },
   Control: {
     title: 'The control being tested',
     question: 'What is this procedure checking, and why?',
@@ -88,7 +90,7 @@ export const SECTION_ORDER: readonly DraftSectionHeading[] = DRAFT_SECTION_HEADI
  * They are read once, at the top, as one panel rather than as two cards each repeating
  * the read-only sentence. Everything after them is a step somebody has to do.
  */
-export const TEMPLATE_ONLY_SECTIONS = ['Control', 'Objective'] as const;
+export const TEMPLATE_ONLY_SECTIONS = ['Control', 'Objective', 'Risk', 'Criterion reference'] as const;
 
 /** Whether a section is one of the two the Template writes. */
 export function isTemplateOnly(heading: string): boolean {
