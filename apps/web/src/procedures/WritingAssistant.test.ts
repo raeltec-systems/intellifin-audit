@@ -42,6 +42,17 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it('keeps edited proposals and received responses within each saved section limit', () => {
+    const machine = createWritingAssistantState();
+    for (const [section, limit] of [[objective, 4000], [scope, 10000]] as const) {
+      machine.open(section, 'draft', '');
+      machine.edit(section.kind, 'proposal', 'x'.repeat(limit + 1));
+      expect(machine.snapshot.sessions.get(section.kind)?.proposal).toHaveLength(limit);
+      const request = fields(section);
+      expect(isWritingResponse(response(request, view(), { proposedText: 'x'.repeat(limit) }), request)).toBe(true);
+      expect(isWritingResponse(response(request, view(), { proposedText: 'x'.repeat(limit + 1) }), request)).toBe(false);
+    }
+  });
   it('keeps a late scope result with scope after the auditor switches to an objective', () => {
     const machine = createWritingAssistantState(), draft = view(), scopeRequest = fields(), objectiveRequest = fields(objective, 'objective-request');
     machine.open(scope, 'draft', draft.scope);

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { draftContext } from '@intellifin/domain';
+import { CONTEXT_TEXT_LIMIT, draftContext } from '@intellifin/domain';
 import type { AuthoringDraftFields, AuthoringSection, AuthoringSuggestionView, ProcedureVersionView } from '@intellifin/application';
 
 import { Banner } from '../design/Banner';
@@ -20,6 +20,7 @@ export interface WritingAssistantActions {
 }
 
 export const WRITING_LIMITS = { notes: 8_000, changes: 2_000, proposal: 10_000 } as const;
+export const writingProposalLimit = (section: AuthoringSection) => section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : WRITING_LIMITS.proposal;
 const GENERATION_UNCERTAIN = 'The writing response was lost. Retry to check the same request. You can still edit and save the procedure yourself.';
 const GENERATION_FAILED = 'Writing help could not prepare a draft. You can still edit and save the procedure yourself.';
 const STALE_SUGGESTION = 'The saved procedure changed after this request. This suggestion cannot be used. Start again from the current saved content.';
@@ -66,7 +67,7 @@ export function isWritingResponse(value: unknown, request: AuthoringDraftFields)
     || typeof candidate['currentText'] !== 'string' || typeof candidate['stale'] !== 'boolean'
     || (candidate['message'] !== null && typeof candidate['message'] !== 'string')
     || typeof candidate['state'] !== 'string' || !['pending', 'ready', 'failed', 'accepted', 'rejected'].includes(candidate['state'])
-    || (text !== null && (typeof text !== 'string' || text.trim() === '' || text.length > WRITING_LIMITS.proposal))
+    || (text !== null && (typeof text !== 'string' || text.trim() === '' || text.length > writingProposalLimit(request.section)))
     || !Array.isArray(questions) || questions.length > 4 || !questions.every(question => typeof question === 'string' && question.trim() !== '' && question.length <= 1_000)) return false;
   return candidate['state'] !== 'ready' || (text === null ? questions.length > 0 : questions.length === 0);
 }
@@ -148,7 +149,7 @@ export function createWritingAssistantState() {
     edit(key: string, field: 'notes' | 'changes' | 'proposal', value: string) {
       const session = snapshot.sessions.get(key);
       if (!session || session.busy || session.generationUncertain || session.suggestion?.state === 'pending' || snapshot.acceptanceUnknown) return;
-      update(key, { [field]: value.slice(0, WRITING_LIMITS[field]) });
+      update(key, { [field]: value.slice(0, field === 'proposal' ? writingProposalLimit(session.section) : WRITING_LIMITS[field]) });
     },
     editProposal(key: string) {
       const session = snapshot.sessions.get(key);
@@ -379,7 +380,7 @@ export function WritingAssistantPanel(): React.JSX.Element | null {
     : session.askingForChanges && session.changes.trim() === '' ? 'Describe the changes you want first.' : undefined);
   const acceptReason = commonReason ?? (stale ? STALE_SUGGESTION : suggestion?.state !== 'ready' ? 'A prepared draft is needed before it can be used.'
     : !session.proposal.trim() ? 'The proposed replacement cannot be empty.'
-    : session.proposal.length > WRITING_LIMITS.proposal ? 'Shorten the proposal to 10,000 characters before using it.' : undefined);
+    : session.proposal.length > writingProposalLimit(session.section) ? `Shorten the proposal to ${writingProposalLimit(session.section).toLocaleString('en-US')} characters before using it.` : undefined);
   const comparisonCurrent = savedWritingText(draft, session.section);
   const difference = writingDifference(comparisonCurrent, session.proposal);
 
@@ -428,7 +429,7 @@ export function WritingAssistantPanel(): React.JSX.Element | null {
         </div>
         <div className="ls-writing__version ls-stack"><h4 className="ls-guided__help-title">Proposed replacement — not applied</h4>
           {session.editing ? <div className="ls-dialog__field"><label htmlFor={`${id}-proposal`}>Edit proposed replacement</label>
-            <textarea className="ls-input ls-writing__notes" id={`${id}-proposal`} value={session.proposal} maxLength={WRITING_LIMITS.proposal} readOnly={fieldsLocked}
+            <textarea className="ls-input ls-writing__notes" id={`${id}-proposal`} value={session.proposal} maxLength={writingProposalLimit(session.section)} readOnly={fieldsLocked}
               onChange={event => assistant.edit(key, 'proposal', event.target.value)} />
             <p className="ls-caption">Changes here stay in the proposal until you choose Use this draft.</p>
           </div> : <p className="ls-writing__text">{difference.before}{difference.added ? <ins>{difference.added}</ins> : null}{difference.after}</p>}

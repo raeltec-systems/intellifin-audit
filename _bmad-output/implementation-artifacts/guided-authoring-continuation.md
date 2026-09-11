@@ -117,3 +117,17 @@ product model is gpt-5.6-terra, independent of plan-check and audit-Run model co
   Database and browser results remain required; local PostgreSQL/browser prerequisites
   are unavailable. The CI focused journey runs first for useful failure feedback, followed
   by the unchanged complete browser/accessibility command.
+
+## Published authoring checkpoint and focused review corrections
+
+- Pushed migration fixture correction `181722d67084f525d250e64d3d17b74cf624e060`,
+  then authoring checkpoint `bd7bcdad0cdd359fc2c52ced1543b54e8263b038` (exact tree
+  `c80537c9c2f0d5f7e7308d0270836bdd060db09d`). Hosted CI run34596609481 started.
+- Independent focused code review identified prose containing credential references and
+  the objective proposal editor's generic10,000-character limit. The corrections refuse
+  recognised/known credential material before provider use without changing manual saves,
+  and enforce4,000 objective characters in received responses, editing and acceptance.
+  The adapter separately checks that its configured key cannot enter the prompt.
+- Added tests for notes, feedback and saved prose, recognised private-key material,
+  known opaque references, no provider calls or receipt writes on refusal, manual saves,
+  section-specific acceptance and UI limits. Live-provider verification remains blocked.

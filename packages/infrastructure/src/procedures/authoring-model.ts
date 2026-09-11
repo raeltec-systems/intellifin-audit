@@ -20,11 +20,12 @@ const proposalSchema = z.strictObject({ proposedText: z.string().nullable(), cla
 export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
   readonly identity = AUTHORING_IDENTITY;
   private readonly model: LanguageModel;
-  constructor(apiKey: string) { this.model = createOpenAI({ apiKey }).responses(AUTHORING_IDENTITY.modelId); }
+  constructor(private readonly apiKey: string) { this.model = createOpenAI({ apiKey }).responses(AUTHORING_IDENTITY.modelId); }
   async propose(input: Parameters<ProcedureAuthoringModel['propose']>[0]): ReturnType<ProcedureAuthoringModel['propose']> {
     // Bounds are enforced before the paid call, again here for direct adapter callers.
     const prompt = JSON.stringify(input);
     if (new TextEncoder().encode(prompt).length > AUTHORING_LIMITS.contextBytes) throw new Error('Writing context exceeds its limit');
+    if (this.apiKey && prompt.includes(this.apiKey)) throw new Error('Writing context contains protected configuration');
     try {
       const result = await generateText({
         model: this.model, system: AUTHORING_INSTRUCTIONS, prompt,

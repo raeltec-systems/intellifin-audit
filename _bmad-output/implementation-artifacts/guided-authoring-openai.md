@@ -25,8 +25,13 @@ the pinned provider's installed types and serialization source used to verify pa
 - Six new requests per minute and thirty per hour per human across procedures.
 - Suggestions expire for acceptance after ten minutes. Exact request retries reuse the
   durable receipt. Request records survive application restarts and are owned by actor/version.
-- Context contains the accepted saved assignment. It omits source contents, source locations
-  and credential references; free text remains untrusted and should contain no secrets.
+- Context contains the accepted saved assignment. The projection omits source contents,
+  structured source locations and credential references. Before a request, recognised
+  credential URI/private-key/API-key patterns and known selected-target credential references
+  in any supplied prose cause a refusal. The adapter also refuses its configured key in
+  prompt text. Nothing is silently redacted; manual writing and saving remain available.
+  These checks are bounded safeguards, not a comprehensive detector for arbitrary secrets;
+  supplied prose must contain no secrets and remains untrusted model input.
 - Bounded receipts retain current/proposed text, questions, actor/version, identity,
   hashes, expiry and token usage. Raw rough notes, feedback, reasoning and provider errors
   are not retained. Receipts currently remain until their owning version is deleted;

@@ -55,4 +55,10 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
     await expect(new OpenAIProcedureAuthoringModel('synthetic-key').propose({ ...input, notes: 'x'.repeat(AUTHORING_LIMITS.contextBytes) })).rejects.toThrow('exceeds its limit');
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('refuses the configured provider key if supplied in prose, without a request or echo', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const key = 'synthetic-configured-key';
+    await expect(new OpenAIProcedureAuthoringModel(key).propose({ ...input, notes: `Use ${key}` })).rejects.toThrow('Writing context contains protected configuration');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 });

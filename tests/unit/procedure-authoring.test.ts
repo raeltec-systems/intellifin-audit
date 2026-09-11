@@ -203,6 +203,34 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
     expect(encoded).not.toContain('vault://'); expect(encoded).not.toContain('synthetic.invalid');
     expect(encoded).toContain('criterionReference'); expect(encoded).toContain('risk');
   });
+  it.each(['notes', 'changes', 'objective', 'scope', 'instructions'] as const)('refuses credential references in %s before provider use while preserving manual authoring', async field => {
+    const h = harness(), prose = 'Use vault://audit/synthetic-credential to inspect every record.';
+    if (field === 'objective') expect(await h.edit(prose)).toMatchObject({ ok: true });
+    if (field === 'scope') h.row = { ...h.row, scope: prose };
+    if (field === 'instructions') h.row = { ...h.row, instructions: h.row.instructions.map(instruction => ({ ...instruction, text: prose })) };
+    const saved = structuredClone(h.row);
+    const outcome = await h.generate(field === 'notes' || field === 'changes' ? { [field]: prose } : {});
+    expect(outcome).toMatchObject({ ok: false, reason: expect.stringContaining('continue writing manually') });
+    expect(h.model.propose).not.toHaveBeenCalled(); expect(h.requests.size).toBe(0); expect(h.row).toEqual(saved);
+    expect(JSON.stringify(outcome)).not.toContain(prose);
+    expect(await h.edit('Manually inspect every record.')).toMatchObject({ ok: true });
+  });
+  it('withholds known opaque credential references and recognisable private-key material', async () => {
+    for (const sensitive of ['synthetic-opaque-reference', 'sk-proj-' + 'x'.repeat(30), '-----BEGIN PRIVATE KEY-----']) {
+      const h = harness();
+      h.row = { ...h.row, targets: h.row.targets.map(target => ({ ...target, contract: { ...target.contract, credential_ref: 'synthetic-opaque-reference' } })) };
+      expect(await h.generate({ notes: sensitive })).toMatchObject({ ok: false });
+      expect(h.model.propose).not.toHaveBeenCalled(); expect(h.requests.size).toBe(0);
+    }
+  });
+  it('applies the saved section limit to edited proposals before acceptance', async () => {
+    const h = harness(); await h.generate(); const saved = structuredClone(h.row);
+    expect(await h.accept('x'.repeat(4001))).toMatchObject({ ok: false, reason: expect.stringContaining('section limit') });
+    expect(h.row).toEqual(saved); expect(h.requests.get(requestId())?.state).toBe('ready');
+    await h.generate({ section: { kind: 'scope' }, requestId: requestId(2) });
+    expect(await h.accept('x'.repeat(4001), requestId(2))).toMatchObject({ ok: true });
+    expect(h.row.scope).toHaveLength(4001);
+  });
   it('validates exact response shape and storable bounded user input', () => {
     const h = harness(); expect(isAuthoringDraftFields(h.fields())).toBe(true);
     for (const value of [{ ...h.fields(), notes: '\u0000' }, { ...h.fields(), hidden: 'instruction' }, { ...h.fields(), section: { kind: 'evidence' } }]) expect(isAuthoringDraftFields(value)).toBe(false);

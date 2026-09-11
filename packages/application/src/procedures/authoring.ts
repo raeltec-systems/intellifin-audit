@@ -1,4 +1,4 @@
-import { utf8Bytes, canonicalJson, draftContext, isAgentDrivenKind, preparationBasis, sha256Hex, type JsonValue, type PreparationSectionId } from '@intellifin/domain';
+import { CONTEXT_TEXT_LIMIT, utf8Bytes, canonicalJson, draftContext, isAgentDrivenKind, preparationBasis, sha256Hex, type JsonValue, type PreparationSectionId } from '@intellifin/domain';
 import type { Clock } from '../audit/clock.js';
 import { authorizeCommand } from '../identity/authorize.js';
 import type { SessionSnapshot } from '../identity/ports.js';
@@ -46,7 +46,8 @@ const preparationSection = (s: AuthoringSection): PreparationSectionId => s.kind
 export function authoringCurrentText(row: ProcedureVersionRecord, s: AuthoringSection): string {
   return s.kind === 'objective' ? draftContext(row.sections).objective : s.kind === 'scope' ? row.scope : row.instructions.find(i => i.registrationId === s.registrationId)?.text ?? '';
 }
-/** Accepted, saved context only. No locations, credentials, source contents or live Template re-reads. */
+/** Saved context only, omitting structured source locations and credential references.
+ * User-authored prose is checked separately before it can leave the application. */
 export function authoringContext(row: ProcedureVersionRecord): JsonValue {
   return { templateId: row.templateId, controlName: row.controlName, ...draftContext(row.sections), period: row.period, scope: row.scope,
     population: row.sourceSnapshot ? { name: row.sourceSnapshot.displayName, kind: row.sourceSnapshot.contract.kind, columns: row.sourceSnapshot.contract.declared_schema } : null,
@@ -57,6 +58,12 @@ export function authoringContext(row: ProcedureVersionRecord): JsonValue {
   } as unknown as JsonValue;
 }
 class Refused extends Error {}
+function hasCredentialMaterial(value: unknown, references: readonly string[]): boolean {
+  if (typeof value === 'string') return references.some(ref => ref.length > 0 && value.includes(ref))
+    || /\b(?:vault|credentials?):\/\/|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i.test(value);
+  if (Array.isArray(value)) return value.some(item => hasCredentialMaterial(item, references));
+  return object(value) && Object.values(value).some(item => hasCredentialMaterial(item, references));
+}
 function fieldsOnly(input: AuthoringDraftFields): AuthoringDraftFields {
   return { procedureId: input.procedureId, versionId: input.versionId, expectedRowVersion: input.expectedRowVersion, requestId: input.requestId,
     section: input.section, mode: input.mode, notes: input.notes, changes: input.changes };
@@ -117,6 +124,9 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
         || await store.countSince(input.session.userId, new Date(now.getTime() - 3600000).toISOString()) >= AUTHORING_LIMITS.perHour) throw new Refused('The writing request limit has been reached. Try later or keep writing manually.');
       const request = { section: input.section, mode: input.mode, context: authoringContext(row), currentText: authoringCurrentText(row, input.section), notes: input.notes, changes: input.changes };
       if (utf8Bytes(canonicalJson(request as unknown as JsonValue)).length > AUTHORING_LIMITS.contextBytes) throw new Refused('This procedure exceeds the writing context limit. Shorten the notes or continue manually.');
+      // Refuse rather than silently redact a meaningful instruction. Manual saves
+      // remain valid, including historical prose containing credential references.
+      if (hasCredentialMaterial(request, row.targets.map(target => target.contract.credential_ref))) throw new Refused('Writing help cannot receive credential values or references. Remove them from the notes or saved prose, or continue writing manually.');
       const record: AuthoringRequestRecord = { requestId: input.requestId, procedureId: row.procedureId, versionId: row.versionId, actorId: input.session.userId,
         createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + AUTHORING_LIMITS.lifetimeMs).toISOString(), section: input.section, requestDigest: digest(fields),
         authoringRevision: row.sectionPreparation?.revision ?? 0, contextDigest: planAuthoringDigest(row), sectionBasis: preparationBasis(row, preparationSection(input.section)),
@@ -130,7 +140,7 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
     try {
       const response = await deps.model!.propose(prepared.request);
       complete = { ...complete, usage: { inputTokens: tokenUsage(response.usage?.inputTokens), outputTokens: tokenUsage(response.usage?.outputTokens) } };
-      if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? 4000 : AUTHORING_LIMITS.outputText)) throw new Error('Invalid authoring response');
+      if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)) throw new Error('Invalid authoring response');
       complete = { ...complete, ...response.proposal, state: 'ready' };
     } catch { complete = { ...complete, state: 'failed', message: 'Writing assistance could not produce a confirmed draft. Your procedure is unchanged. Try again or keep writing manually.' }; }
     const suggestion = await deps.unitOfWork.execute(async tx => {
@@ -157,6 +167,7 @@ export async function acceptAuthoringSuggestion(deps: AuthoringDependencies, inp
       if (row.state !== 'DRAFT') throw new Refused(PROCEDURE_REFUSALS.NOT_A_DRAFT);
       if (!row.authorship || !store) throw new Refused('The authorship of this draft could not be verified.');
       const record = ownedRequest(await store.find(input.requestId), input);
+      if (input.replacement.length > (record.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)) throw new Refused('Choose a valid replacement within the section limit.');
       if (record.state === 'accepted') {
         if (record.acceptedDigest !== digest(input.replacement)) throw new Refused('This suggestion was already accepted with different wording. Edit the saved section to make another change.');
         return { ok: true, rowVersion: procedureVersionRowVersion(row), alreadyApplied: true };
