@@ -56,7 +56,7 @@ test('guided preparation preserves edits, records saved review and stays keyboar
   await page.getByLabel('Scope statement').fill('All August leavers, without sampling.');
   await openStep(page, 'Compliance Rule conditions');
   await expect(page.getByRole('button', { name: 'Save Compliance Rule', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mark reviewed and continue', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('button', { name: /^(Yes, use this control|Mark reviewed and continue)$/ })).toHaveAttribute('aria-disabled', 'true');
   await openStep(page, 'Period and scope');
   await expect(page.getByLabel('Scope statement')).toHaveValue('All August leavers, without sampling.');
   await page.getByRole('button', { name: 'Use saved Period and scope' }).click();
@@ -64,7 +64,7 @@ test('guided preparation preserves edits, records saved review and stays keyboar
   // The background plan check may have moved the whole-row token. Follow the same
   // visible reload remedy as an auditor, without bypassing the command's guard.
   for (let attempt = 0; attempt < 3; attempt++) {
-    await page.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+    await page.getByRole('button', { name: /^(Yes, use this control|Mark reviewed and continue)$/ }).click();
     const success = page.getByText('Review recorded for Risk, control and objective.', { exact: true });
     const stale = page.getByText('That procedure changed since this page was loaded. Reload the page and try again.', { exact: true });
     await expect(success.or(stale)).toBeVisible();

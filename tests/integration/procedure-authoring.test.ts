@@ -633,12 +633,14 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
     delete legacyRecord['revision'];
     const identity = legacyRecord['identity'];
     if (typeof identity !== 'object' || identity === null || Array.isArray(identity)) throw new Error('receipt identity was not persisted');
-    legacyRecord['identity'] = { ...identity, promptVersion: 'guided-prose-v1' };
-    expect(parseAuthoringRecord(legacyRecord)).toMatchObject({
-      requestId: secondRequestId,
-      proposedText: 'Revised database-backed proposal.',
-      identity: { promptVersion: 'guided-prose-v1' },
-    });
+    for (const promptVersion of ['guided-prose-v1', 'guided-test-design-v2']) {
+      legacyRecord['identity'] = { ...identity, promptVersion };
+      expect(parseAuthoringRecord(legacyRecord)).toMatchObject({
+        requestId: secondRequestId,
+        proposedText: 'Revised database-backed proposal.',
+        identity: { promptVersion },
+      });
+    }
     await assertChain(row.procedureId);
   });
 });

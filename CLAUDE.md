@@ -1,5 +1,10 @@
 ## 2026-09-11 — The complete plan opens in Review
 
+## Guided dialogue correction (2026-09-11)
+
+Confirm saved Template facts before opening a manual editor. Guide scope and evidence through focused questions while keeping each existing editor mounted once, with its save/conflict guard. A visible conversation carries the original answer, full working proposal and precise corrections; a reply never accepts or reviews content. New guided-dialogue-v3 provider responses ask one focused question; receipt parsing still accepts v1/v2 unchanged. Browser editor helpers may open named manual disclosures, but the default journey must test their actual closed state and navigate without unhide scripts. See `_bmad-output/implementation-artifacts/guided-dialogue-correction.md`.
+
+
 The corrected Builder keeps the executable plan out of preparation panels and opens it in Review and submission. The hero browser journey must check that distinction plus manual collapse/reopen; its old collapsed-by-default assertion belongs to the superseded layout. Include the hero journey in the focused CI step so a review-surface change is checked before the full browser suite.
 
 ## 2026-09-11 — Closing Help releases the preparation column

@@ -17,6 +17,10 @@ globalThis.fetch = async (input, init) => {
   let proposal = notes === 'SYNTHETIC:CLARIFY'
     ? { proposedText: null, clarifications: ['Which approved criterion should this procedure use?'] }
     : { proposedText: notes.replace(/^SYNTHETIC:DELAY /, '') || envelope.currentText, clarifications: [] };
+  if (notes === 'SYNTHETIC:CLARIFY' && envelope.mode === 'revise') {
+    if (envelope.revision?.draft !== '' || !envelope.revision.history.length) throw new Error('Missing clarification conversation.');
+    proposal = { proposedText: envelope.changes, clarifications: [] };
+  }
   // Explicit synthetic conversation case: exact payload assertions prove the real
   // revision path, not a model's understanding or general wording faithfulness.
   if (notes === 'Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.') {

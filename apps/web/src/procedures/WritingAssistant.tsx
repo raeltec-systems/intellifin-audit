@@ -229,7 +229,8 @@ export function createWritingAssistantState() {
       }
       const prior = snapshot.sessions.get(key)!;
       const history = prior.history;
-      const session = { ...prior, suggestion, proposal: suggestion.proposedText ?? '', busy: null, generationUncertain: false, history };
+      const session = { ...prior, suggestion, proposal: suggestion.proposedText ?? '', busy: null, generationUncertain: false, history,
+        ...(suggestion.state === 'ready' ? { changes: '' } : {}) };
       put(key, { ...session, stale: writingSuggestionIsStale(session, draft), notice: suggestion.state === 'failed'
         ? { tone: 'warning', title: `${suggestion.message || 'Writing help is unavailable.'} You can still edit and save the procedure yourself.` }
         : suggestion.message ? { tone: 'info', title: suggestion.message } : null });
@@ -292,20 +293,21 @@ export interface WritingAssistantProviderProps {
   readonly onRowVersion: (token: string) => void;
   readonly children: ReactNode;
   readonly actions: WritingAssistantActions;
+  readonly onAccepted?: (section: AuthoringSection) => void;
 }
 
 export function WritingAssistantProvider(props: WritingAssistantProviderProps): React.JSX.Element {
   return <WritingAssistantSession key={`${props.draft.procedureId}:${props.draft.versionId}`} {...props} />;
 }
 
-function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, actions }: WritingAssistantProviderProps): React.JSX.Element {
+function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, actions, onAccepted }: WritingAssistantProviderProps): React.JSX.Element {
   const [machine] = useState(createWritingAssistantState);
   const [snapshot, setSnapshot] = useState(machine.snapshot);
   const [focusRequest, setFocusRequest] = useState(0);
   const requestedFocus = useRef<string | null>(null);
   const mounted = useRef(true);
-  const latest = useRef({ draft, rowVersion, onRowVersion, actions });
-  latest.current = { draft, rowVersion, onRowVersion, actions };
+  const latest = useRef({ draft, rowVersion, onRowVersion, actions, onAccepted });
+  latest.current = { draft, rowVersion, onRowVersion, actions, onAccepted };
   const guard = useSubmissionGuard();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const publish = () => { if (mounted.current) setSnapshot(machine.snapshot); };
@@ -365,7 +367,7 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
         expectedRowVersion: current.rowVersion, requestId: session.request.requestId, replacement: session.proposal });
       if (!mounted.current) return;
       machine.finishAccept(key, outcome.ok ? 'accepted' : 'failed', outcome.ok ? undefined : outcome.reason);
-      if (outcome.ok) current.onRowVersion(outcome.rowVersion);
+      if (outcome.ok) { current.onRowVersion(outcome.rowVersion); latest.current.onAccepted?.(session.section); }
     } catch { if (mounted.current) machine.finishAccept(key, 'unknown'); }
     finally { publish(); }
   }
@@ -458,6 +460,88 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
   const difference = writingDifference(comparisonCurrent, session.proposal);
   const notesLabel = `Rough notes for ${sectionLabel(draft, session.section)}`;
   const notesReadOnly = fieldsLocked;
+
+  if (guided) {
+    const ready = suggestion?.state === 'ready';
+    const hasReply = ready || session.history.length > 0 || pending || retry;
+    const retryingCorrection = !ready && session.mode === 'revise' && session.request?.revision !== undefined;
+    const correctionReason = generationReason ?? (session.changes.trim() === '' ? 'Add your reply first.' : undefined);
+    const proposalTitle = session.section.kind === 'instructions' ? 'Proposed test steps — not saved' : 'Proposed wording — not saved';
+    const send = <Button type="button" variant="primary" busy={pending}
+      disabledReason={ready ? correctionReason : generateReason} onClick={() => assistant.generate(key, retry)}>
+      {pending ? 'Preparing a response…' : retry ? 'Retry this request' : ready && suggestion.proposedText !== null ? 'Update draft' : retryingCorrection ? 'Retry reply' : 'Send answer'}
+    </Button>;
+    return <section className={`${className} ls-writing--dialogue`} aria-labelledby={`${id}-heading`} data-writing-section={key}>
+      <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>Procedure assistant</h3>
+      <div className="ls-writing__turn ls-writing__turn--assistant">
+        <p className="ls-writing__question" data-writing-question>{guidedQuestion}</p>
+        {!session.request ? <p className="ls-caption">Tell me in your own words. I’ll use the saved control and choices to develop a draft for you to check.</p> : null}
+      </div>
+      {hasReply || terminal ? <div className="ls-writing__turn ls-writing__turn--auditor"><h4>Your answer</h4><p>{session.request?.notes ?? session.notes}</p></div> : null}
+      {session.history.length > 0 ? <ol className="ls-writing__conversation" aria-label="Earlier proposals and your corrections">
+        {session.history.map(entry => <li key={entry.requestId} className="ls-stack">
+          <div className="ls-writing__turn ls-writing__turn--assistant"><h4>Earlier response</h4>
+            <p>{entry.proposal ?? entry.clarifications.join(' ')}</p>
+          </div>
+          {entry.feedback ? <div className="ls-writing__turn ls-writing__turn--auditor"><h4>Your correction</h4><p>{entry.feedback}</p></div> : null}
+        </li>)}
+      </ol> : null}
+      {session.notice ? <Banner tone={session.notice.tone} title={session.notice.title} /> : null}
+      {assistant.guardReason && !stale && !terminal ? <Banner tone="info" title="Using the last saved procedure as context. Save or reset manual changes before accepting a proposal." /> : null}
+      {stale && !terminal ? <Banner tone="warning" title={STALE_SUGGESTION} /> : null}
+      {pending ? <Banner tone="info" title="Preparing a response. You can still write, edit and save the procedure yourself." /> : null}
+      {suggestion?.state === 'pending' && !pending ? <Banner tone="info" title="This request is still being prepared. Retry this request to check its result." /> : null}
+      {ready ? <div className="ls-writing__turn ls-writing__turn--assistant ls-stack" data-current-assistant-response>
+        {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
+        {suggestion.proposedText === null ? <>
+          <h4 className="ls-writing__proposal-question">{suggestion.clarifications[0]}</h4>
+          {suggestion.clarifications.length > 1 ? <p className="ls-caption">Other questions from this earlier response: {suggestion.clarifications.slice(1).join(' ')}</p> : null}
+        </> : <>
+          <h4 className="ls-writing__proposal-question">{proposalTitle}</h4>
+          {session.editing ? <div className="ls-dialog__field"><label htmlFor={`${id}-proposal`}>Edit proposed replacement</label>
+            <textarea className="ls-input ls-writing__notes" id={`${id}-proposal`} value={session.proposal} maxLength={writingProposalLimit(session.section)} readOnly={fieldsLocked}
+              onChange={event => assistant.edit(key, 'proposal', event.target.value)} />
+          </div> : <p className="ls-writing__text">{session.proposal}</p>}
+          <details className="ls-writing__comparison-disclosure" open>
+            <summary>Compare with saved wording</summary>
+            <div className="ls-writing__comparison">
+              <div className="ls-writing__version"><h4>Current saved content</h4><p className="ls-writing__text">{comparisonCurrent ? <>{difference.before}{difference.removed ? <del>{difference.removed}</del> : null}{difference.after}</> : 'No saved wording yet.'}</p></div>
+              <div className="ls-writing__version"><h4>Proposed changes</h4><p className="ls-writing__text">{difference.before}{difference.added ? <ins>{difference.added}</ins> : null}{difference.after}</p></div>
+            </div>
+          </details>
+          <p><strong>Does this sound right?</strong> Check the steps, quantities, timing and criteria. Use this draft saves the wording; section review is a separate decision below.</p>
+          {acceptReason ? <p className="ls-caption" id={`${id}-accept-reason`}>{acceptReason}</p> : null}
+          <div className="ls-actions">
+            <Button type="button" variant="primary" busy={session.busy === 'acceptance'} disabledReason={acceptReason} disabledReasonId={`${id}-accept-reason`} onClick={() => assistant.accept(key)}>Use this draft</Button>
+            <Button type="button" disabledReason={fieldsLocked ? acceptanceReason ?? 'Retry this request first.' : undefined} onClick={() => assistant.editProposal(key)}>Edit</Button>
+          </div>
+        </>}
+      </div> : null}
+      {!terminal && !stale ? <div className="ls-writing__composer ls-stack">
+        {ready ? <div className="ls-dialog__field">
+          <label htmlFor={`${id}-changes`}>Your reply</label>
+          <textarea className="ls-input ls-writing__notes" id={`${id}-changes`} value={session.changes} maxLength={WRITING_LIMITS.changes} readOnly={fieldsLocked}
+            aria-describedby={`${id}-changes-help`} onChange={event => {
+              assistant.askForChanges(key);
+              assistant.edit(key, 'changes', event.target.value);
+            }} />
+          <p className="ls-caption" id={`${id}-changes-help`}>{suggestion.proposedText === null ? 'Answer the question in your own words.' : 'Tell me exactly what to keep, remove, add or change. I’ll revise the working draft, including your edits.'} Up to 2,000 characters.</p>
+        </div> : !pending && !retry && !retryingCorrection ? <div className="ls-dialog__field">
+          <label htmlFor={`${id}-notes`}>Your answer</label>
+          <textarea className="ls-input ls-writing__notes" id={`${id}-notes`} value={session.notes} maxLength={WRITING_LIMITS.notes} readOnly={notesReadOnly}
+            aria-describedby={`${id}-notes-help`} onChange={event => assistant.edit(key, 'notes', event.target.value)} />
+          <p className="ls-caption" id={`${id}-notes-help`}>A rough answer is enough. Up to 8,000 characters. Nothing is saved or marked reviewed when you send it.</p>
+        </div> : null}
+        <div className="ls-actions">{send}</div>
+      </div> : null}
+      {stale && session.busy === null && !terminal ? <Button type="button" disabledReason={snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reconcile(key)}>Start again with this suggestion</Button> : null}
+      {session.request && !terminal && !pending ? <Button type="button" busy={session.busy === 'rejection'} disabledReason={session.busy !== null || snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reject(key)}>Keep my wording</Button> : null}
+      {terminal ? <>
+        <div className="ls-writing__turn"><h4>Saved wording</h4><p>{comparisonCurrent || 'No wording saved yet.'}</p></div>
+        <Button type="button" disabledReason={generationReason} onClick={() => assistant.reconcile(key)}>Continue refining</Button>
+      </> : null}
+    </section>;
+  }
 
   return <section className={className} aria-labelledby={`${id}-heading`} data-writing-section={key}>
     <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>{session.section.kind === 'instructions' ? 'Test design assistant' : `Writing help: ${sectionLabel(draft, session.section)}`}</h3>
@@ -588,16 +672,14 @@ function PreparationContextDisclosure({ draft }: { readonly draft: ProcedureVers
 
 function preparationQuestion(step: PreparationStep, draft: ProcedureVersionView, targetId: string | null): string {
   if (step === 'scope') {
-    const source = draft.sourceSnapshot === null ? 'The population source still needs to be selected in the structured editor.' : `The structured editor already selects ${draft.sourceSnapshot.displayName}.`;
-    const period = draft.period === null ? 'The testing dates still belong in the structured editor.' : `The saved period is ${preparationPeriodLabel(draft)}.`;
-    return `Which records should be included, and are there any limits or exclusions to explain? ${source} ${period} Describe the scope in your own words. Choose dates below and source filters in Evidence to review.`;
+    return `Which records do you want this test to cover? Describe the population in your own words, including any exclusions. ${draft.sourceSnapshot ? `You have already selected ${draft.sourceSnapshot.displayName}.` : 'We’ll choose the evidence source next.'}`;
   }
   if (step === 'instructions') {
     const target = draft.targets.find(entry => entry.registrationId === targetId);
     const name = target?.displayName ?? 'the selected system';
-    if (draft.templateId === 'P-1') return `How should I find each person from the leavers list in ${name} and check their access? Tell me where to look and what you want recorded for an active account or an unresolved match. I already have the selected population, period and criteria.`;
-    if (draft.templateId === 'P-4') return `How should I locate each production parameter in ${name} and compare it with the approved baseline? Tell me where to look and how to handle a value that is missing or cannot be read. I already have the saved scope and criteria.`;
-    return `For ${name}, what is the rough test approach? Describe where the agent should look, what it should inspect or compare, and how it should handle an exception or missing evidence. The saved systems, evidence and criteria are already in context.`;
+    if (draft.templateId === 'P-1') return `What do you want to establish about the leavers’ access in ${name}? Give me your intent and I’ll develop the test steps using the control and evidence you selected.`;
+    if (draft.templateId === 'P-4') return `What do you want this check of ${name} to establish? I have the selected control and baseline criteria. Tell me your intent and I’ll propose the test steps.`;
+    return `What do you want to establish about this control in ${name}? A rough description is enough. I’ll use the saved evidence and criteria to propose the test steps.`;
   }
   return 'Read the saved assignment and plan. What, if anything, should be clarified before you mark the whole procedure reviewed?';
 }
@@ -642,7 +724,8 @@ export function PreparationAssistant({ step }: PreparationAssistantProps): React
 
   if (!assistant || !draft) return null;
   if (step === 'context') return assistant.snapshot.selected === 'objective'
-    ? <WritingAssistantPanel section={{ kind: 'objective' }} inline /> : null;
+    ? <WritingAssistantPanel section={{ kind: 'objective' }} inline guidedQuestion="What should this procedure establish that the selected objective does not yet capture?" />
+    : <Button type="button" onClick={() => assistant.open({ kind: 'objective' }, 'draft')}>Adjust the objective with the assistant</Button>;
   if (step !== 'scope' && step !== 'instructions' && step !== 'review') return null;
   if (step === 'review') return <section className="ls-writing ls-writing--preparation ls-writing--review ls-stack" aria-labelledby="preparation-review-assistant-heading">
     <h3 className="ls-guided__help-title" id="preparation-review-assistant-heading">Review helper</h3>

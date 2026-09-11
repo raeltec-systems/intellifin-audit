@@ -55,6 +55,13 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
     await expect(new OpenAIProcedureAuthoringModel('synthetic-key').propose({ ...input, notes: 'x'.repeat(AUTHORING_LIMITS.contextBytes) })).rejects.toThrow('exceeds its limit');
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it('allows one focused question and refuses a fresh response containing several questions', async () => {
+    vi.stubGlobal('fetch', async () => response({ explanation: 'Clarify the population first.', proposedText: null, clarifications: ['Which records should be tested?'] }));
+    const model = new OpenAIProcedureAuthoringModel('synthetic-key');
+    expect((await model.propose(input)).proposal).toMatchObject({ clarifications: ['Which records should be tested?'] });
+    vi.stubGlobal('fetch', async () => response({ explanation: 'Too many decisions at once.', proposedText: null, clarifications: ['Which records?', 'Which deadline?'] }));
+    await expect(model.propose(input)).rejects.toThrow('The writing provider did not return a confirmed response');
+  });
   it('forwards the working proposal, prior corrections and latest intent as untrusted context', async () => {
     let sent: { input: { role: string; content: unknown }[] } | undefined;
     vi.stubGlobal('fetch', async (_url: unknown, options?: RequestInit) => {

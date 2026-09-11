@@ -248,6 +248,23 @@ describe('draft comparison and acceptance', () => {
     expect(machine.snapshot.sessions.get('scope')?.request?.changes).toContain('every parameter');
   });
 
+  it('answers a clarification using the same proposal chain and clears the sent reply for the next turn', () => {
+    const { machine, draft, request } = ready();
+    machine.receive(request, response(request, draft, { proposedText: null, clarifications: ['Which records should be tested?'] }), draft);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'All records, with no sample.');
+    const session = machine.snapshot.sessions.get('scope')!;
+    expect(writingRevisionFor(session)).toEqual({ requestId: request.requestId, draft: '' });
+    const answer = { ...fields(scope, 'answered-question'), mode: session.mode, notes: session.notes, changes: session.changes, revision: writingRevisionFor(session)! };
+    machine.begin(answer, draft);
+    machine.receive(answer, response(answer, draft, { proposedText: 'Test all records without sampling.' }), draft);
+    const replied = machine.snapshot.sessions.get('scope')!;
+    expect(replied.notes).toBe(request.notes);
+    expect(replied.changes).toBe('');
+    expect(replied.history.at(-1)).toMatchObject({ feedback: 'All records, with no sample.', clarifications: ['Which records should be tested?'] });
+    expect(replied.suggestion?.state).toBe('ready');
+  });
+
   it('keeps an edited ten-thousand-character proposal intact for a revision', () => {
     const { machine, request } = ready();
     const proposal = 'p'.repeat(10_000);
@@ -366,7 +383,7 @@ describe('additive writing help surface', () => {
       children: React.createElement(WritingAssistantProvider, { draft: view(), rowVersion: 'row-1', onRowVersion: vi.fn(), actions,
         children: React.createElement(PreparationAssistant, { step: 'instructions' }) }),
     }));
-    expect(html).toContain('How should I locate each production parameter in ProdConsole and compare it with the approved baseline?');
+    expect(html).toContain('What do you want this check of ProdConsole to establish?');
     expect(html).toContain('Baseline');
     expect(html).toContain('Configuration baseline');
     expect(html).toContain('Selected systems');

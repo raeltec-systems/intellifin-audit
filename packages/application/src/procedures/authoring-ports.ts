@@ -19,8 +19,8 @@ export interface AuthoringSuggestionView extends AuthoringProposal {
   readonly state: 'pending' | 'ready' | 'failed' | 'accepted' | 'rejected';
   readonly authoringRevision: number; readonly stale: boolean; readonly message: string | null;
 }
-export const AUTHORING_IDENTITY = { provider: 'openai', modelId: 'gpt-5.6-terra', promptVersion: 'guided-test-design-v2' } as const;
-export type AuthoringIdentity = Omit<typeof AUTHORING_IDENTITY, 'promptVersion'> & { readonly promptVersion: 'guided-prose-v1' | typeof AUTHORING_IDENTITY.promptVersion };
+export const AUTHORING_IDENTITY = { provider: 'openai', modelId: 'gpt-5.6-terra', promptVersion: 'guided-dialogue-v3' } as const;
+export type AuthoringIdentity = Omit<typeof AUTHORING_IDENTITY, 'promptVersion'> & { readonly promptVersion: 'guided-prose-v1' | 'guided-test-design-v2' | typeof AUTHORING_IDENTITY.promptVersion };
 export interface AuthoringRevisionContext {
   readonly draft: string;
   readonly history: readonly { readonly feedback: string; readonly proposedText: string | null; readonly clarifications: readonly string[] }[];

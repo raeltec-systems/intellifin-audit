@@ -287,7 +287,7 @@ async function markReviewed(page: Page, section: string, title: string): Promise
     await page.locator(`[data-preparation-nav="${section}"]`).click();
     const panel = page.locator(`[data-preparation-panel="${section}"]`);
     await expect(panel).toBeVisible();
-    await panel.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+    await panel.getByRole('button', { name: /^(Yes, use this control|Mark reviewed and continue)$/ }).click();
     const saved = page.getByText(`Review recorded for ${title}.`, { exact: true });
     const stale = page.getByText(STALE, { exact: true });
     await expect(saved.or(stale).first()).toBeVisible();
@@ -372,16 +372,16 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await openStep(page, 'Objective');
     await page.getByRole('button', { name: 'Help Me Write', exact: true }).click();
-    await writing.getByLabel('Rough notes for Objective', { exact: true }).fill(OBJECTIVE_NOTES);
-    await writing.getByRole('button', { name: 'Prepare draft', exact: true }).click();
-    const prepared = writing.getByRole('heading', { name: 'Proposed replacement — not applied' });
+    await writing.getByLabel('Your answer', { exact: true }).fill(OBJECTIVE_NOTES);
+    await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
+    const prepared = writing.getByRole('heading', { name: 'Proposed wording — not saved' });
     const stale = writing.getByText(STALE, { exact: false });
     await expect(prepared.or(stale).first()).toBeVisible();
     if (await prepared.isVisible()) break;
     // A refused row token creates no model request. Follow its visible reload remedy.
     await page.reload();
   }
-  await expect(writing.getByRole('heading', { name: 'Proposed replacement — not applied' })).toBeVisible();
+  await expect(writing.getByRole('heading', { name: 'Proposed wording — not saved' })).toBeVisible();
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(templateObjective);
   await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
   await writing.getByRole('button', { name: 'Edit', exact: true }).click();
