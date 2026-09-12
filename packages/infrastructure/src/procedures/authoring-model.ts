@@ -64,10 +64,13 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
             last = Date.now(); previous = serialized;
           }
         }
-        return { output: await output, usage: await usage };
+        return { output: await output, usage: await usage, finishReason: await stream.finishReason };
       })() : await generateText(options);
       // New dialogue responses ask one question at a time. Historical receipts keep
       // their original parser; this bound applies only to a fresh provider response.
+      // Structured JSON can be valid even after an error, token cutoff or missing
+      // provider completion event. It is not a confirmed suggestion in those cases.
+      if (result.finishReason !== 'stop') throw new Error('Unconfirmed provider completion');
       if (result.output.clarifications.length > 1) throw new Error('Too many clarification questions');
       if (JSON.stringify(result.output).includes(this.apiKey)) throw new Error('Protected configuration in response');
       return { proposal: result.output, usage: { inputTokens: result.usage.inputTokens ?? null, outputTokens: result.usage.outputTokens ?? null } };

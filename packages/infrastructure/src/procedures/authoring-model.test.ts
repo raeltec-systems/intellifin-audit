@@ -11,6 +11,17 @@ function response(proposal: unknown) {
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 describe('OpenAI writing adapter through the installed AI SDK', () => {
+  it.each(['eof', 'failed', 'length'] as const)('refuses valid JSON when the provider ends with %s instead of completion', async ending => {
+    const events: object[] = [
+      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: JSON.stringify({ explanation: 'Synthetic proposal.', proposedText: 'Inspect all records.', clarifications: [] }) },
+      { type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+    ];
+    if (ending === 'failed') events.push({ type: 'response.failed', sequence_number: 3, response: { error: { code: 'server_error', message: 'PRIVATE_PROVIDER_BODY' } } });
+    if (ending === 'length') events.push({ type: 'response.incomplete', response: { incomplete_details: { reason: 'max_output_tokens' } } });
+    vi.stubGlobal('fetch', async () => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    await expect(new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, () => {})).rejects.toThrow('The writing provider did not return a confirmed response');
+  });
   it('withholds a credential token split between streamed chunks and filters completed output', async () => {
     const key = 'synthetic-configured-key';
     let controller!: ReadableStreamDefaultController<Uint8Array>;
