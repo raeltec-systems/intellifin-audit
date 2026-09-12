@@ -310,7 +310,7 @@ async function askForProposal(page: Page, section: 'objective' | 'scope', notes:
       await page.getByRole('button', { name: 'Adjust the objective with the assistant', exact: true }).click();
     const writing = page.locator(`[data-writing-section="${section}"]`);
     await writing.getByLabel('Your answer', { exact: true }).fill(notes);
-    await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click();
     const prepared = writing.getByRole('heading', { name: 'Proposed wording — not saved' });
     const stale = writing.getByText(STALE, { exact: false });
     await expect(prepared.or(stale).first()).toBeVisible();

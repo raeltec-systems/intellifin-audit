@@ -62,7 +62,7 @@ function actionFields(request: Request): Record<string, unknown> | null {
   if (request.method() !== 'POST') return null;
   try {
     const arguments_: unknown = JSON.parse(request.postData() ?? 'null');
-    const fields: unknown = Array.isArray(arguments_) ? arguments_[0] : null;
+    const fields: unknown = Array.isArray(arguments_) ? arguments_[0] : arguments_;
     return fields !== null && typeof fields === 'object' && !Array.isArray(fields) ? fields as Record<string, unknown> : null;
   } catch { return null; }
 }
@@ -82,12 +82,45 @@ async function requestStates(): Promise<readonly string[]> {
   return rows.map(row => row.state);
 }
 
+test('chat sends with Enter, renders real partial replies, and keeps reading position until Jump to latest', async ({ page }, testInfo) => {
+  await selectWriting(page, 'scope');
+  const writing = page.locator('[data-writing-section="scope"]');
+  const input = writing.getByLabel('Your answer', { exact: true });
+  const notes = 'SYNTHETIC:STREAM ' + Array.from({ length: 10 }, (_, i) => `Synthetic note ${i + 1}: inspect every selected parameter and keep unreadable values unresolved.`).join('\n');
+  await input.fill(notes);
+  await input.press('End'); await input.press('Shift+Enter');
+  await expect(input).toHaveValue(notes + '\n');
+  expect(await requestStates()).toEqual([]);
+  await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
+  expect(await requestStates()).toEqual([]);
+  await input.press('Backspace'); await input.press('Enter');
+  const thread = writing.getByRole('log', { name: 'Conversation with IntelliFin' });
+  await expect(thread.getByRole('article', { name: 'Message from you', exact: true })).toContainText(notes);
+  await expect(input).toHaveValue('');
+  await expect(writing.locator('[data-streaming-response]')).toContainText('Synthetic provider fixture');
+  await expect(writing.locator('[data-current-assistant-response]')).toHaveCount(0);
+  await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
+  expect(await requestStates()).toEqual(['pending']);
+  await attachAuthoringScreenshot(page, testInfo, 'chat-streaming-response');
+  // Reading earlier messages must not be undone by the next streamed snapshot.
+  await thread.focus(); await thread.press('Control+Home');
+  await expect(writing.getByRole('button', { name: 'Jump to latest', exact: true })).toBeVisible();
+  const readingPosition = await thread.evaluate(node => node.scrollTop);
+  await expect(writing.locator('[data-current-assistant-response]')).toContainText('Synthetic note 10');
+  expect(await thread.evaluate(node => node.scrollTop)).toBe(readingPosition);
+  await writing.getByRole('button', { name: 'Jump to latest', exact: true }).click();
+  expect(await thread.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThan(2);
+  expect(await requestStates()).toEqual(['ready']);
+  await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+});
+
 test('generation keeps manual editing available, retains its section after switching, and refuses a stale proposal', async ({ page }, testInfo) => {
   const originalObjective = draftContext(draft.sections).objective;
   const savedObjective = 'Verify every production parameter and retain unresolved comparisons for review.';
   const proposal = 'All production parameters, including unresolved comparisons.';
   const notes = `SYNTHETIC:DELAY ${proposal}`;
-  const address = page.url();
+  const address = /\/(?:api\/procedures\/authoring|procedures\/[^/]+\/builder)$/;
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   let responseReady = false;
@@ -106,9 +139,9 @@ test('generation keeps manual editing available, retains its section after switc
     await page.getByLabel('Scope statement', { exact: true }).fill('An unsaved scope change.');
     await selectWriting(page, 'scope');
     // Generation reads saved context and must not require discarding a rough manual edit.
-    await expect(scopeWriting.getByRole('button', { name: 'Send answer', exact: true })).toBeEnabled();
-    await scopeWriting.getByRole('button', { name: 'Send answer', exact: true }).click();
-    await expect(scopeWriting.getByRole('button', { name: 'Preparing a response…', exact: true })).toBeVisible();
+    await expect(scopeWriting.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(scopeWriting.getByRole('button', { name: 'Responding…', exact: true })).toBeVisible();
     await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue('An unsaved scope change.');
     await openStep(page, 'Period and scope');
     await page.getByRole('button', { name: 'Use saved Period and scope', exact: true }).click();
@@ -165,7 +198,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await selectWriting(page, 'scope');
   const scopeWriting = page.locator('[data-writing-section="scope"]');
   await scopeWriting.getByLabel('Your answer', { exact: true }).fill('SYNTHETIC:FAIL');
-  await scopeWriting.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(scopeWriting.getByText(/could not produce a confirmed draft/)).toBeVisible();
   await expect(scopeWriting.getByText(/still edit and save the procedure yourself/)).toBeVisible();
   await expect(scopeWriting.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
@@ -182,7 +215,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await selectWriting(page, 'objective');
   const writing = page.locator('[data-writing-section="objective"]');
   await writing.getByLabel('Your answer', { exact: true }).fill('SYNTHETIC:CLARIFY');
-  await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(writing.getByRole('heading', { name: 'Which approved criterion should this procedure use?', exact: true })).toBeVisible();
   await expect(writing.getByText('Which approved criterion should this procedure use?', { exact: true })).toBeVisible();
   await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
@@ -191,7 +224,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await attachAuthoringScreenshot(page, testInfo, 'writing-clarification');
   const revisedNotes = 'Compare every production parameter with the supplied baseline; keep a missing criterion unresolved.';
   await writing.getByLabel('Your reply', { exact: true }).fill(revisedNotes);
-  await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(writing.getByRole('heading', { name: 'Proposed wording — not saved' })).toBeVisible();
   await expect(writing.locator('.ls-writing__version').last()).toContainText(revisedNotes);
   await writing.getByRole('button', { name: 'Keep my wording', exact: true }).click();
@@ -208,7 +241,7 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
 
 test('an uncertain generation retries its original request and an uncertain acceptance blocks submission until reload', async ({ page }, testInfo) => {
   const notes = 'Compare all production parameters with the supplied baseline and retain unresolved differences.';
-  const address = page.url();
+  const address = /\/(?:api\/procedures\/authoring|procedures\/[^/]+\/builder)$/;
   const sent: AuthoringDraftFields[] = [];
   let loseGeneration = true, acceptanceCommitted = false;
   let releaseAcceptance!: () => void;
@@ -235,9 +268,10 @@ test('an uncertain generation retries its original request and an uncertain acce
     await selectWriting(page, 'objective');
     const writing = page.locator('[data-writing-section="objective"]');
     await writing.getByLabel('Your answer', { exact: true }).fill(notes);
-    await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(writing.getByText(/writing response was lost/)).toBeVisible();
-    await expect(writing.getByRole('textbox')).toHaveCount(0);
+    await expect(writing.getByRole('textbox')).toHaveValue('');
+    await expect(writing.getByRole('textbox')).not.toBeEditable();
     await writing.getByRole('button', { name: 'Retry this request', exact: true }).click();
     await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
     expect(sent).toHaveLength(2);
@@ -294,8 +328,8 @@ test('the central test assistant keeps, drops and enhances a proposal before edi
   await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');
   await openStep(page, 'Audit Instructions');
   await writing.getByLabel('Your answer', { exact: true }).fill('Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.');
-  await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
-  const proposed = writing.locator('.ls-writing__comparison .ls-writing__version').last();
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+  const proposed = writing.locator('[data-current-assistant-response]');
   await expect(proposed).toContainText('Add a separate summary by owner.');
   await expect(saved).toHaveValue('Read all baseline parameters.');
   await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');
@@ -304,10 +338,10 @@ test('the central test assistant keeps, drops and enhances a proposal before edi
   await writing.getByLabel('Edit proposed replacement', { exact: true }).fill(fullProposal);
   const correction = 'Keep steps 1 and 2 exactly. Drop the summary by owner. Enhance unresolved handling: record why a value could not be read.';
   await writing.getByLabel('Your reply', { exact: true }).fill(correction);
-  await writing.getByRole('button', { name: 'Update draft', exact: true }).click();
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(proposed).toContainText('Leave missing or unreadable values unresolved and record the reason.');
   await expect(proposed).not.toContainText('Add a separate summary by owner.');
-  await expect(writing.getByRole('list', { name: 'Earlier proposals and your corrections' })).toContainText(correction);
+  await expect(writing.getByRole('log', { name: 'Conversation with IntelliFin' })).toContainText(correction);
   await expect(writing.getByLabel('Your reply', { exact: true })).toHaveValue('');
   await expect(writing).toContainText('Kept the first two steps, removed the owner summary');
   await expect(saved).toHaveValue('Read all baseline parameters.');
@@ -355,7 +389,7 @@ test('the default journey confirms the control and guides scope and evidence cho
   const intended = 'Every production parameter in the approved baseline. Do not sample; retain unresolved comparisons.';
   await writing.getByLabel('Your answer', { exact: true }).fill(intended);
   await attachAuthoringScreenshot(page, testInfo, 'dialogue-scope-question');
-  await writing.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
   await expect(scope.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
   await expect(page.locator('[data-preparation-progress]')).toContainText('1 of 6 sections reviewed');

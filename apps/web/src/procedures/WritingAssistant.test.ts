@@ -42,6 +42,29 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it('keeps partial output display-only, section-owned and unavailable for acceptance', () => {
+    const machine = createWritingAssistantState(), draft = view(), request = fields();
+    const progress = { explanation: 'Inspect every record.', proposedText: 'Do not sample', clarification: null };
+    machine.open(scope, 'draft', ''); machine.begin(request, draft);
+    machine.open(objective, 'draft', '');
+    machine.progress({ ...request }, progress);
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toBeNull();
+    machine.progress(request, { ...progress, extra: 'untrusted' });
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toBeNull();
+    machine.progress(request, progress);
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toEqual(progress);
+    expect(machine.snapshot.sessions.get('scope')?.suggestion).toBeNull();
+    expect(machine.snapshot.sessions.get('objective')?.streaming).toBeNull();
+    expect(machine.beginAccept('scope')).toBe(false);
+    machine.fail(request);
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toEqual(progress);
+    expect(machine.beginAccept('scope')).toBe(false);
+    machine.begin(request, draft);
+    machine.receive(request, response(request), draft);
+    machine.progress(request, { ...progress, proposedText: 'Late chunk' });
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toBeNull();
+    expect(machine.snapshot.sessions.get('scope')?.proposal).toBe(response(request).proposedText);
+  });
   it('keeps edited proposals and received responses within each saved section limit', () => {
     const machine = createWritingAssistantState();
     for (const [section, limit] of [[objective, 4000], [scope, 10000]] as const) {

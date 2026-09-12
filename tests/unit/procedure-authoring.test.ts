@@ -54,6 +54,35 @@ function pendingModel() {
 }
 
 describe('bounded procedure writing commands (synthetic provider)', () => {
+  it('reserves before streaming, leaves the draft untouched, and replays only the completed receipt', async () => {
+    const progress = { explanation: 'Inspect every record.', proposedText: 'Do not sample', clarification: null };
+    const seen = vi.fn();
+    const h = harness(async (_input, emit) => {
+      expect(h.requests.get(requestId())?.state).toBe('pending');
+      await emit?.(progress);
+      expect(await h.accept()).toMatchObject({ ok: false });
+      return response();
+    });
+    const before = structuredClone(h.row), fields = h.fields();
+    expect(await generateAuthoringSuggestion(h.deps, { ...fields, ...actor }, seen)).toMatchObject({ ok: true, suggestion: { state: 'ready' } });
+    expect(seen).toHaveBeenCalledExactlyOnceWith(progress);
+    expect(h.row).toEqual(before); expect(h.writes).toBe(0);
+    seen.mockClear();
+    await generateAuthoringSuggestion(h.deps, { ...fields, ...actor }, seen);
+    expect(seen).not.toHaveBeenCalled(); expect(h.model.propose).toHaveBeenCalledTimes(1);
+  });
+  it.each(['invalid', 'revoked'] as const)('does not disclose %s progress or leave an acceptable suggestion', async kind => {
+    const seen = vi.fn();
+    const h = harness(async (_input, emit) => {
+      if (kind === 'revoked') h.roles.delete('editor');
+      await emit?.({ explanation: kind === 'invalid' ? 'x'.repeat(2001) : 'Private response', proposedText: null, clarification: null });
+      return response();
+    });
+    await generateAuthoringSuggestion(h.deps, { ...h.fields(), ...actor }, seen);
+    expect(seen).not.toHaveBeenCalled();
+    expect(h.requests.get(requestId())?.state).toBe('failed');
+    expect(await h.accept()).toMatchObject({ ok: false });
+  });
   it('generates a proposal without changing content, plan, authorship or review', async () => {
     const h = harness(), before = structuredClone(h.row);
     expect(await h.generate()).toMatchObject({ ok: true, suggestion: { state: 'ready', stale: false, currentText: draftContext(before.sections).objective } });

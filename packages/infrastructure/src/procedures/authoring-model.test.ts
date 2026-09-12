@@ -11,6 +11,30 @@ function response(proposal: unknown) {
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 describe('OpenAI writing adapter through the installed AI SDK', () => {
+  it('delivers real structured partial output before the complete validated result', async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const encoder = new TextEncoder();
+    const send = (event: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+      expect(JSON.parse(String(options?.body))).toMatchObject({ stream: true, model: AUTHORING_IDENTITY.modelId, store: false });
+      return new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }), { headers: { 'content-type': 'text/event-stream' } });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const updates: unknown[] = [];
+    let finished = false;
+    const pending = new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, progress => { updates.push(progress); }).then(result => { finished = true; return result; });
+    await vi.waitFor(() => expect(controller).toBeDefined());
+    send({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '{"explanation":"Check every record' });
+    await vi.waitFor(() => expect(updates).toContainEqual({ explanation: 'Check every record', proposedText: null, clarification: null }));
+    expect(finished).toBe(false);
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '","proposedText":"Do not sample. Check all 42 records.","clarifications":[]}' });
+    send({ type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
+    send({ type: 'response.completed', response: { usage: { input_tokens: 120, output_tokens: 40 } } });
+    controller.close();
+    expect(await pending).toMatchObject({ proposal: { explanation: 'Check every record', proposedText: input.notes, clarifications: [] }, usage: { inputTokens: 120, outputTokens: 40 } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('serializes the requested model, structured output and supported bounded parameters without tools', async () => {
     let sent: Record<string, unknown> | undefined;
     const fetcher = vi.fn(async (url: string | URL | Request, options?: RequestInit) => {

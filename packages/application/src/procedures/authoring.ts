@@ -8,7 +8,7 @@ import type { ProceduresUnitOfWorkContext, ProcedureVersionRecord } from './port
 import { updateContextDraft } from './update-context-draft.js';
 import { updatePopulationDraft } from './update-population-draft.js';
 import { updateTargetDraft } from './update-target-draft.js';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
+import { AUTHORING_IDENTITY, AUTHORING_LIMITS, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
 
 type Actor = { readonly session: SessionSnapshot; readonly correlationId: string };
 export interface AuthoringDependencies extends ProcedureDependencies { readonly clock: Clock; readonly model: ProcedureAuthoringModel | null }
@@ -131,7 +131,7 @@ async function audit(tx: ProceduresUnitOfWorkContext, input: Actor, record: Auth
       ...(record.revision === undefined ? {} : { parentRequestId: record.revision.requestId }) } });
 }
 
-export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
+export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor, onProgress?: (progress: AuthoringProgress) => Promise<void> | void): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
   const auth = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
   if (!auth.allowed) return { ok: false, reason: auth.reason };
   const fields = fieldsOnly(input);
@@ -177,7 +177,12 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
     if (prepared.existing !== undefined) return { ok: true, suggestion: prepared.existing };
     let complete: AuthoringRequestRecord = prepared.record;
     try {
-      const response = await deps.model!.propose(prepared.request);
+      const response = await deps.model!.propose(prepared.request, onProgress ? async progress => {
+        if (!isAuthoringProgress(progress) || hasCredentialMaterial(progress, [])) throw new Error('Invalid partial authoring response');
+        const allowed = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
+        if (!allowed.allowed) throw new Error('Authoring permission changed');
+        await onProgress(progress);
+      } : undefined);
       complete = { ...complete, usage: { inputTokens: tokenUsage(response.usage?.inputTokens), outputTokens: tokenUsage(response.usage?.outputTokens) } };
       if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)
         || response.proposal.clarifications.length > 1) throw new Error('Invalid authoring response');

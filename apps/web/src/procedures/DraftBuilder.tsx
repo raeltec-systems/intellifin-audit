@@ -11,6 +11,7 @@ import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '.
 import { ReadinessPanel } from './ReadinessPanel';
 import { TemplateContextForm } from './TemplateContextForm';
 import { WritingAssistantProvider, PreparationAssistant, type WritingAssistantActions, type PreparationStep } from './WritingAssistant';
+import { streamAuthoringSuggestion } from './authoring-chat-transport';
 import { GuidedPreparation } from './GuidedPreparation';
 import { GuidedQuestions } from './GuidedQuestions';
 import { RenameDraftForm } from './RenameDraftForm';
@@ -242,7 +243,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   };
   const evidenceRequirementsEditor = <EvidenceRequirementsForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
   const scheduleEditor = <ScheduleForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
-  return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={onWriting}
+  return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={{ ...onWriting, generate: streamAuthoringSuggestion }}
     onAccepted={section => { if (section.kind === 'scope') setScopeQuestion(current => current === 'intent' ? 'period' : current); }}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
     {activeStep === 'evidence' && guidedNotice?.question === evidenceQuestion ? <Banner tone="success" title={guidedNotice.title} /> : null}

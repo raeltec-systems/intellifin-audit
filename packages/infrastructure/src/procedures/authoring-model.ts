@@ -1,7 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, Output, type LanguageModel } from 'ai';
+import { generateText, streamText, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, type ProcedureAuthoringModel } from '@intellifin/application';
+import { AUTHORING_IDENTITY, AUTHORING_LIMITS, isAuthoringProgress, type ProcedureAuthoringModel } from '@intellifin/application';
 import type { AppConfig } from '../config.js';
 
 export const AUTHORING_INSTRUCTIONS = `You are a junior auditor helping a human design an audit test, section by section.
@@ -29,21 +29,39 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
     if (new TextEncoder().encode(prompt).length > AUTHORING_LIMITS.contextBytes) throw new Error('Writing context exceeds its limit');
     if (this.apiKey && prompt.includes(this.apiKey)) throw new Error('Writing context contains protected configuration');
   }
-  async propose(input: Parameters<ProcedureAuthoringModel['propose']>[0]): ReturnType<ProcedureAuthoringModel['propose']> {
+  async propose(input: Parameters<ProcedureAuthoringModel['propose']>[0], onProgress?: Parameters<ProcedureAuthoringModel['propose']>[1]): ReturnType<ProcedureAuthoringModel['propose']> {
     // Bounds are enforced before the paid call, again here for direct adapter callers.
     const prompt = JSON.stringify(input);
     this.assertSafeInput(input);
+    const abort = new AbortController();
     try {
-      const result = await generateText({
+      const options = {
         model: this.model, system: AUTHORING_INSTRUCTIONS, prompt,
         output: Output.object({ schema: proposalSchema }),
         maxOutputTokens: AUTHORING_LIMITS.outputTokens, maxRetries: 0,
-        abortSignal: AbortSignal.timeout(AUTHORING_LIMITS.timeoutMs),
+        abortSignal: AbortSignal.any([abort.signal, AbortSignal.timeout(AUTHORING_LIMITS.timeoutMs)]),
         // Official model reference and installed provider support this reasoning level.
         // Do not copy temperature from the separate executable-plan gateway.
-        providerOptions: { openai: { store: false, reasoningEffort: 'low', reasoningSummary: null } },
+        providerOptions: { openai: { store: false, reasoningEffort: 'low' as const, reasoningSummary: null } },
         experimental_telemetry: { isEnabled: false, recordInputs: false, recordOutputs: false },
-      });
+      };
+      const result = onProgress ? await (async () => {
+        const stream = streamText({ ...options, onError: () => { /* No provider payload logging. */ } });
+        // Observe terminal promise failures even if a rejected partial stops reading.
+        const output = Promise.resolve(stream.output), usage = Promise.resolve(stream.usage);
+        void output.catch(() => {}); void usage.catch(() => {});
+        let last = 0, previous = '';
+        for await (const partial of stream.partialOutputStream) {
+          const progress = { explanation: partial.explanation ?? '', proposedText: partial.proposedText ?? null, clarification: partial.clarifications?.[0] ?? null };
+          const serialized = JSON.stringify(progress);
+          if (!isAuthoringProgress(progress) || serialized.includes(this.apiKey)) throw new Error('Invalid partial response');
+          // Bounded snapshots, never a fake typing animation or saved draft content.
+          if (serialized !== previous && (progress.explanation || progress.proposedText || progress.clarification) && Date.now() - last >= 250) {
+            await onProgress(progress); last = Date.now(); previous = serialized;
+          }
+        }
+        return { output: await output, usage: await usage };
+      })() : await generateText(options);
       // New dialogue responses ask one question at a time. Historical receipts keep
       // their original parser; this bound applies only to a fresh provider response.
       if (result.output.clarifications.length > 1) throw new Error('Too many clarification questions');
@@ -51,7 +69,7 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
     } catch {
       // Never expose provider exceptions, response bodies, notes or keys to telemetry.
       throw new Error('The writing provider did not return a confirmed response');
-    }
+    } finally { abort.abort(); }
   }
 }
 export function createProcedureAuthoringModel(config: Pick<AppConfig, 'AUTHORING_OPENAI_API_KEY'>): ProcedureAuthoringModel | null {
