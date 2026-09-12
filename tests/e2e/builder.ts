@@ -32,7 +32,15 @@ export async function openStep(page: Page | Locator, heading: string): Promise<v
   await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
   const section = PREPARATION_STEP_FOR_HEADING[heading]!;
   await page.locator(`[data-preparation-nav="${section}"]`).click();
-  await expect(page.locator(`[data-preparation-panel="${section}"]`)).toBeVisible();
+  const panel = page.locator(`[data-preparation-panel="${section}"]`);
+  await expect(panel).toBeVisible();
+  // This helper opens a named MANUAL editor. Guided journey tests use outline and
+  // question controls directly so default visibility remains independently tested.
+  const question = heading === 'Period and scope' ? 'period' : heading === 'Population Source binding' ? 'source'
+    : heading === 'Target System selection' ? 'systems' : heading === 'Evidence Requirements' ? 'capture' : null;
+  if (question) await panel.locator(`.ls-guide-questions__nav button[aria-controls$="-${question}"]`).click();
+  const manual = ['context', 'scope', 'instructions', 'assessment'].includes(section) ? panel.locator(`[data-guided-manual="${section}"]`) : null;
+  if (manual && !(await manual.evaluate(node => (node as HTMLDetailsElement).open))) await manual.locator('summary').first().click();
 }
 
 /**
@@ -73,7 +81,7 @@ export async function keepBuilderStepsOpen(page: Page): Promise<void> {
       if (!document.querySelector('[data-guided-ready="true"]')) return;
       // Editor-contract tests deliberately expose each mounted panel. The dedicated
       // guided journey and owner walkthrough use real navigation WITHOUT this helper.
-      for (const panel of document.querySelectorAll<HTMLElement>('[data-preparation-panel]')) {
+      for (const panel of document.querySelectorAll<HTMLElement>('[data-preparation-panel], [data-guide-question]')) {
         if (panel.hidden) panel.hidden = false;
       }
       for (const step of document.querySelectorAll<HTMLDetailsElement>(selector)) {

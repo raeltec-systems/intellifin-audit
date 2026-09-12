@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { ProcedureVersionView } from '@intellifin/application';
-import { PREPARATION_SECTIONS, preparationStatus, sectionReview, type PreparationSectionId } from '@intellifin/domain';
+import { PREPARATION_SECTIONS, draftContext, preparationStatus, preparationReviewBlocker, sectionReview, type PreparationSectionId } from '@intellifin/domain';
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
@@ -28,6 +28,7 @@ export interface GuidedPreparationProps {
   readonly review: ReactNode;
   readonly help?: ReactNode;
   readonly assistant?: (step: PreparationStep) => ReactNode;
+  readonly onStepChange?: (step: PreparationStep) => void;
 }
 
 const SECTION_WORDS: Readonly<Record<PreparationStep, {
@@ -46,7 +47,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   },
   scope: {
     title: 'Scope and period',
-    question: 'Which period and population should this test cover? Choose the dates, then describe any scope limits.',
+    question: 'I’ll help you describe the population, then we’ll set the exact dates.',
     help: [
       'Set the testing period and describe the records included in the assignment.',
       'Check the source and any filters. A filter changes which records will be tested.',
@@ -55,7 +56,7 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
   },
   evidence: {
     title: 'Evidence to review',
-    question: 'Choose the evidence to retain, the source of the records, and the systems the agent should inspect.',
+    question: 'Let’s choose the records, the systems to inspect, and the proof to keep.',
     help: [
       'Identify the reports, files, logs or system settings needed to answer the audit question.',
       'State the fields or content the agent must capture, and check where that evidence is available.',
@@ -117,7 +118,7 @@ const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
  * stay mounted: removing one would discard useSection's unsaved state and unregister
  * its submission guard, making an unfinished section look safe to review or submit.
  */
-export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant }: GuidedPreparationProps): React.JSX.Element {
+export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant, onStepChange }: GuidedPreparationProps): React.JSX.Element {
   const id = useId();
   const [selected, setSelected] = useState<PreparationStep>('context');
   const [hydrated, setHydrated] = useState(false);
@@ -130,6 +131,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   const firstRender = useRef(true);
   const helpStartsOpen = useRef(false).current;
   const guard = useSubmissionGuard();
+  useEffect(() => { onStepChange?.(selected); }, [selected, onStepChange]);
 
   // A lost acknowledgement might already have recorded the decision. Keep submission
   // blocked until the saved version is inspected, just as each content editor does.
@@ -173,6 +175,8 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
       announce('warning', 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.');
       return;
     }
+    const reviewBlocker = decision === 'review' ? preparationReviewBlocker(draft, section) : null;
+    if (reviewBlocker) { announce('warning', reviewBlocker); return; }
     changing.current = true;
     setBusy(true);
     setMessage(null);
@@ -200,7 +204,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
   return <div className="ls-guided ls-stack" data-guided-preparation data-guided-ready={hydrated}>
     <header className="ls-guided__intro ls-stack">
       <h2 className="ls-card__title">Prepare an audit procedure</h2>
-      <p>Start with your selected control, choose the evidence and systems, then design the test with the assistant. You can move between sections at any time.</p>
+      <p>I’ll guide you through the choices and help prepare the test. Start by confirming the selected control. You can jump to any section.</p>
       <p className="ls-caption" data-preparation-progress>{reviewed} of {PREPARATION_SECTIONS.length} sections reviewed by auditor. Section review does not authorise execution.</p>
     </header>
     <UnknownSaveOutcome visible={unknownOutcome} />
@@ -253,7 +257,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
           const status = preparationStatus(draft, section);
           const acknowledgement = sectionReview(draft, section);
           const reviewReason = actionReason ?? (status === 'needs-clarification'
-            ? 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.' : undefined);
+            ? 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.' : preparationReviewBlocker(draft, section) ?? undefined);
           return <section key={section} className="ls-guided__panel ls-card ls-stack" id={`${id}-panel-${section}`} hidden={hydrated && selected !== section} aria-labelledby={`${id}-heading-${section}`} data-preparation-panel={section}>
             <header className="ls-guided__panel-heading ls-stack">
               <p className="ls-caption">Step {index + 1} of {PREPARATION_SECTIONS.length + 1}</p>
@@ -264,13 +268,30 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
 
             {status === 'needs-clarification' ? <Banner tone="warning" title="Resolve the open question before reviewing this section."><p>Save any changes, then choose Continue drafting when the question is resolved.</p></Banner> : null}
 
+            {section === 'context' ? <div className="ls-guide-facts ls-stack" data-control-confirmation>
+              <h3 className="ls-guide-question__heading">{draft.controlName}</h3>
+              <dl>{Object.entries({ Risk: draftContext(draft.sections).risk, Control: draftContext(draft.sections).control,
+                Objective: draftContext(draft.sections).objective, 'Criterion reference': draftContext(draft.sections).criterionReference }).map(([label, value]) =>
+                <div key={label}><dt>{label}</dt><dd>{value || 'Not supplied'}</dd></div>)}</dl>
+              <p className="ls-caption">This is the saved context for your procedure. A missing reference stays unknown; it is not an approved policy requirement.</p>
+            </div> : null}
+            {section === 'assessment' ? <div className="ls-guide-facts ls-stack" data-criteria-confirmation>
+              <p>I’ll use these saved criteria to distinguish a finding from a compliant result. Missing or ambiguous evidence stays unresolved.</p>
+              {draft.complianceConditions.length === 0 ? <Banner tone="warning" title="No assessment criteria have been supplied." />
+                : <ol>{draft.complianceConditions.map(condition => <li key={condition.conditionId}>{condition.text}</li>)}</ol>}
+              <p className="ls-caption">Confirm these criteria if they match the intended test, or change them explicitly below.</p>
+            </div> : null}
             {selected === section ? assistant?.(section) : null}
-            {section === 'context' ? <p className="ls-caption">The risk and control are already filled in. You can review them as supplied, or adapt the fields below for this procedure.</p> : null}
-            {section === 'assessment' ? <p className="ls-caption">These saved settings decide how results are assessed. If the proposed test needs a different threshold or policy criterion, change it here explicitly and review the resulting plan.</p> : null}
-            <div className="ls-guided__editor ls-stack">{editors[section]}</div>
+            <div className="ls-guided__editor ls-stack">
+              {section === 'context' || section === 'instructions' || section === 'assessment'
+                ? <details className="ls-disclosure" data-guided-manual={section}>
+                  <summary>{section === 'context' ? 'Edit risk, control or objective manually' : section === 'instructions' ? 'Write or edit the steps myself' : 'Change the assessment criteria'}</summary>
+                  <div className="ls-disclosure__body">{editors[section]}</div>
+                </details> : editors[section]}
+            </div>
 
             <footer className="ls-guided__acceptance ls-stack">
-              {acknowledgement === null ? <p className="ls-caption">Save this section, then mark it reviewed when it accurately describes your intended work.</p> : <div className="ls-guided__review-record ls-stack">
+              {acknowledgement === null ? <p className="ls-caption">{section === 'context' ? 'Confirming records your review of the saved risk, control and objective. It does not submit the procedure.' : 'When the saved content is correct, confirm your review and continue.'}</p> : <div className="ls-guided__review-record ls-stack">
                 <p>Reviewed by auditor on <time dateTime={acknowledgement.at}>{REVIEW_DATE.format(new Date(acknowledgement.at))} UTC</time>.</p>
                 <p className="ls-caption">This review covers the saved section. Changes to it need another review.</p>
                 <details className="ls-disclosure"><summary>Review record</summary><dl className="ls-guided__review-facts ls-disclosure__body">
@@ -281,7 +302,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
               </div>}
               {reviewReason === undefined ? null : <p className="ls-caption" id={`${id}-reason-${section}`}>{reviewReason}</p>}
               <div className="ls-actions">
-                <Button variant="primary" type="button" busy={busy} disabledReason={reviewReason} disabledReasonId={`${id}-reason-${section}`} onClick={() => { void decide(section, 'review'); }}>Mark reviewed and continue</Button>
+                <span data-section-review={section}><Button variant="primary" type="button" busy={busy} disabledReason={reviewReason} disabledReasonId={`${id}-reason-${section}`} onClick={() => { void decide(section, 'review'); }}>{section === 'context' ? 'Yes, use this control' : 'Mark reviewed and continue'}</Button></span>
                 {status === 'needs-clarification' || status === 'reviewed'
                   ? <Button type="button" busy={busy} disabledReason={actionReason} disabledReasonId={actionReason === undefined ? undefined : `${id}-reason-${section}`} onClick={() => { void decide(section, 'draft'); }}>Continue drafting</Button>
                   : <Button type="button" busy={busy} disabledReason={actionReason} disabledReasonId={actionReason === undefined ? undefined : `${id}-reason-${section}`} onClick={() => { void decide(section, 'clarify'); }}>Needs clarification</Button>}

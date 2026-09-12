@@ -255,7 +255,9 @@ export function TargetSelectionForm({
                 <p className="ls-card__title">
                   {target.displayName} · {kindLabel(target.kind)}
                 </p>
-                <dl className="ls-definition">
+                <details className="ls-disclosure">
+                  <summary>Registered access details</summary>
+                  <dl className="ls-definition">
                   <div>
                     <dt>Sign-in credential</dt>
                     <dd className="ls-mono">{target.credentialRef}</dd>
@@ -280,7 +282,8 @@ export function TargetSelectionForm({
                     <dt>Fingerprint</dt>
                     <Digest value={target.digest} label="Registration" as="dd" />
                   </div>
-                </dl>
+                  </dl>
+                </details>
                 <Button type="button" onClick={() => remove(target.registrationId)}>
                   Remove {target.displayName}
                 </Button>

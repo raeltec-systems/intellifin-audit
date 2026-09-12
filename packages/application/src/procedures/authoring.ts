@@ -8,7 +8,7 @@ import type { ProceduresUnitOfWorkContext, ProcedureVersionRecord } from './port
 import { updateContextDraft } from './update-context-draft.js';
 import { updatePopulationDraft } from './update-population-draft.js';
 import { updateTargetDraft } from './update-target-draft.js';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
+import { AUTHORING_IDENTITY, AUTHORING_LIMITS, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
 
 type Actor = { readonly session: SessionSnapshot; readonly correlationId: string };
 export interface AuthoringDependencies extends ProcedureDependencies { readonly clock: Clock; readonly model: ProcedureAuthoringModel | null }
@@ -70,7 +70,7 @@ export function authoringContext(row: ProcedureVersionRecord): JsonValue {
 class Refused extends Error {}
 function hasCredentialMaterial(value: unknown, references: readonly string[]): boolean {
   if (typeof value === 'string') return references.some(ref => ref.length > 0 && value.includes(ref))
-    || /\b(?:vault|credentials?):\/\/|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i.test(value);
+    || /\b(?:vault|cred|credentials?):\/\/|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i.test(value);
   if (Array.isArray(value)) return value.some(item => hasCredentialMaterial(item, references));
   return object(value) && Object.values(value).some(item => hasCredentialMaterial(item, references));
 }
@@ -131,7 +131,7 @@ async function audit(tx: ProceduresUnitOfWorkContext, input: Actor, record: Auth
       ...(record.revision === undefined ? {} : { parentRequestId: record.revision.requestId }) } });
 }
 
-export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
+export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor, onProgress?: (progress: AuthoringProgress) => Promise<void> | void): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
   const auth = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
   if (!auth.allowed) return { ok: false, reason: auth.reason };
   const fields = fieldsOnly(input);
@@ -160,7 +160,8 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
       if (utf8Bytes(canonicalJson(request as unknown as JsonValue)).length > AUTHORING_LIMITS.contextBytes) throw new Refused('This procedure exceeds the writing context limit. Shorten the notes or continue manually.');
       // Refuse rather than silently redact a meaningful instruction. Manual saves
       // remain valid, including historical prose containing credential references.
-      if (hasCredentialMaterial(request, row.targets.map(target => target.contract.credential_ref))) throw new Refused('Writing help cannot receive credential values or references. Remove them from the notes or saved prose, or continue writing manually.');
+      const credentialReferences = row.targets.map(target => target.contract.credential_ref);
+      if (hasCredentialMaterial(request, credentialReferences)) throw new Refused('Writing help cannot receive credential values or references. Remove them from the notes or saved prose, or continue writing manually.');
       // Infrastructure knows its configured key. Check before retaining revision
       // content, not only immediately before the network request.
       try { deps.model.assertSafeInput?.(request); }
@@ -172,14 +173,21 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
         currentText: request.currentText, state: 'pending', proposedText: null, clarifications: [], identity: AUTHORING_IDENTITY, usage: null, message: null, acceptedDigest: null,
         ...(input.revision === undefined ? {} : { revision: { ...input.revision, feedback: input.changes } }) };
       await store.insert(record); await audit(tx, input, record, 'requested');
-      return { record, request };
+      // References stay in server memory for output filtering, never in model context.
+      return { record, request, credentialReferences };
     });
     if (prepared.existing !== undefined) return { ok: true, suggestion: prepared.existing };
     let complete: AuthoringRequestRecord = prepared.record;
     try {
-      const response = await deps.model!.propose(prepared.request);
+      const response = await deps.model!.propose(prepared.request, onProgress ? async progress => {
+        if (!isAuthoringProgress(progress) || hasCredentialMaterial(progress, prepared.credentialReferences)) throw new Error('Invalid partial authoring response');
+        const allowed = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
+        if (!allowed.allowed) throw new Error('Authoring permission changed');
+        await onProgress(progress);
+      } : undefined);
       complete = { ...complete, usage: { inputTokens: tokenUsage(response.usage?.inputTokens), outputTokens: tokenUsage(response.usage?.outputTokens) } };
-      if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)) throw new Error('Invalid authoring response');
+      if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)
+        || response.proposal.clarifications.length > 1 || hasCredentialMaterial(response.proposal, prepared.credentialReferences)) throw new Error('Invalid authoring response');
       complete = { ...complete, ...response.proposal, state: 'ready' };
     } catch { complete = { ...complete, state: 'failed', message: 'Writing assistance could not produce a confirmed draft. Your procedure is unchanged. Try again or keep writing manually.' }; }
     const suggestion = await deps.unitOfWork.execute(async tx => {

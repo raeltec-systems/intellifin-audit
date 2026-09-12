@@ -253,6 +253,23 @@ async function chooseOption(select: Locator, pattern: RegExp): Promise<string> {
  */
 const STALE = 'That procedure changed since this page was loaded. Reload the page and try again.';
 
+/** This journey runs a real worker. Observe its terminal preview before the next
+ * authoring decision, as opposed to racing three immediate retries against its
+ * queued attempt writes. Dedicated concurrency specs still force those races. */
+async function waitForPlanAttempt(page: Page): Promise<void> {
+  await openPlanDetail(page);
+  await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role="status"]'))
+    .toContainText(/Re-derived|Cannot derive:/, { timeout: 120_000 });
+}
+
+/** Await this action, not a success/stale banner retained from the preceding save. */
+async function acknowledgedAction(page: Page, action: () => Promise<void>): Promise<void> {
+  const address = page.url();
+  const response = page.waitForResponse(response => response.url() === address && response.request().method() === 'POST');
+  await action();
+  await (await response).finished();
+}
+
 async function step(
   page: Page,
   heading: string,
@@ -261,9 +278,10 @@ async function step(
   saved: string | RegExp,
 ): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForPlanAttempt(page);
     await openStep(page, heading);
     await fill();
-    await save();
+    await acknowledgedAction(page, save);
     const ok = page.getByText(saved).first();
     const stale = page.getByText(STALE).first();
     await expect(ok.or(stale).first()).toBeVisible();
@@ -281,13 +299,35 @@ async function confirmed(page: Page, name: string): Promise<void> {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/** Follow the real dialogue, including the visible stale-version remedy. */
+async function askForProposal(page: Page, section: 'objective' | 'scope', notes: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForPlanAttempt(page);
+    await expect(page.locator('[data-guided-ready="true"]')).toBeVisible();
+    await page.locator(`[data-preparation-nav="${section === 'objective' ? 'context' : 'scope'}"]`).click();
+    if (section === 'scope') await page.getByRole('button', { name: '1. Describe the scope', exact: true }).click();
+    else if (await page.getByRole('button', { name: 'Adjust the objective with the assistant', exact: true }).count())
+      await page.getByRole('button', { name: 'Adjust the objective with the assistant', exact: true }).click();
+    const writing = page.locator(`[data-writing-section="${section}"]`);
+    await writing.getByLabel('Your answer', { exact: true }).fill(notes);
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+    const prepared = writing.getByRole('heading', { name: 'Proposed wording — not saved' });
+    const stale = writing.getByText(STALE, { exact: false });
+    await expect(prepared.or(stale).first()).toBeVisible();
+    if (await prepared.isVisible()) return;
+    await page.reload();
+  }
+  throw new Error(`The ${section} proposal remained stale.`);
+}
+
 async function markReviewed(page: Page, section: string, title: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForPlanAttempt(page);
     await expect(page.locator('[data-guided-preparation]')).toHaveAttribute('data-guided-ready', 'true');
     await page.locator(`[data-preparation-nav="${section}"]`).click();
     const panel = page.locator(`[data-preparation-panel="${section}"]`);
     await expect(panel).toBeVisible();
-    await panel.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+    await acknowledgedAction(page, () => panel.getByRole('button', { name: /^(Yes, use this control|Mark reviewed and continue)$/ }).click());
     const saved = page.getByText(`Review recorded for ${title}.`, { exact: true });
     const stale = page.getByText(STALE, { exact: true });
     await expect(saved.or(stale).first()).toBeVisible();
@@ -360,6 +400,8 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   expect(procedureId).not.toBe('');
 
   /* -------------------------------------- 1a. inspect and prepare context ---- */
+  await expect(page.locator('[data-control-confirmation]')).toContainText('Roles assigned in AccessGate');
+  await expect(page.getByLabel('Risk', { exact: true })).toBeHidden();
   await expect(page.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
   await expect(page.getByLabel('Control statement', { exact: true })).toHaveValue('Synthetic control: Roles assigned in AccessGate must not grant prohibited permission pairs defined in the versioned RoleMatrix.');
   await expect(page.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
@@ -369,19 +411,8 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   // This is the real OpenAI SDK path against the test-only synthetic preload. Its
   // response is controlled notes, not evidence of a live model's prose quality.
   const writing = page.locator('[data-writing-section="objective"]');
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await openStep(page, 'Objective');
-    await page.getByRole('button', { name: 'Help Me Write', exact: true }).click();
-    await writing.getByLabel('Rough notes for Objective', { exact: true }).fill(OBJECTIVE_NOTES);
-    await writing.getByRole('button', { name: 'Prepare draft', exact: true }).click();
-    const prepared = writing.getByRole('heading', { name: 'Proposed replacement — not applied' });
-    const stale = writing.getByText(STALE, { exact: false });
-    await expect(prepared.or(stale).first()).toBeVisible();
-    if (await prepared.isVisible()) break;
-    // A refused row token creates no model request. Follow its visible reload remedy.
-    await page.reload();
-  }
-  await expect(writing.getByRole('heading', { name: 'Proposed replacement — not applied' })).toBeVisible();
+  await askForProposal(page, 'objective', OBJECTIVE_NOTES);
+  await expect(writing.getByRole('heading', { name: 'Proposed wording — not saved' })).toBeVisible();
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(templateObjective);
   await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
   await writing.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -397,6 +428,12 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   await executionIsRefused(page, 'an accepted and reviewed section in a Draft');
 
   /* ------------------------------------------------- 2. Period and scope ---- */
+  await askForProposal(page, 'scope', SCOPE);
+  const scopeWriting = page.locator('[data-writing-section="scope"]');
+  await scopeWriting.getByRole('button', { name: 'Use this draft', exact: true }).click();
+  await expect(page.getByLabel('Period start', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(SCOPE);
+  await expect(page.getByLabel('Scope statement', { exact: true })).toBeHidden();
   await step(page, 'Period and scope', async () => {
     await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');
     await page.getByLabel('Period end', { exact: true }).fill('2026-08-31');
@@ -425,7 +462,7 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
     }
   }, async () => {
     await confirmed(page, 'Save Target Systems');
-  }, /Saved\. The Target System selection is recorded/);
+  }, 'Target systems saved. Next, choose the proof to retain.');
 
   /* ------------------------------------------------------- 5. Schedule ------ */
   // P-2 names no Schedule, so it starts unset — and activation requires one.

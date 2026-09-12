@@ -14,13 +14,22 @@ export interface AcceptAuthoringFields {
 }
 export interface RejectAuthoringFields { readonly procedureId: string; readonly versionId: string; readonly requestId: string }
 export interface AuthoringProposal { readonly proposedText: string | null; readonly clarifications: readonly string[]; readonly explanation?: string }
+/** Display-only partial output. It is never an applicable suggestion or a receipt. */
+export interface AuthoringProgress { readonly explanation: string; readonly proposedText: string | null; readonly clarification: string | null }
+export function isAuthoringProgress(value: unknown): value is AuthoringProgress {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return Object.keys(v).length === 3 && typeof v['explanation'] === 'string' && v['explanation'].length <= 2000
+    && (v['proposedText'] === null || typeof v['proposedText'] === 'string' && v['proposedText'].length <= 10000)
+    && (v['clarification'] === null || typeof v['clarification'] === 'string' && v['clarification'].length <= 1000);
+}
 export interface AuthoringSuggestionView extends AuthoringProposal {
   readonly requestId: string; readonly section: AuthoringSection; readonly currentText: string;
   readonly state: 'pending' | 'ready' | 'failed' | 'accepted' | 'rejected';
   readonly authoringRevision: number; readonly stale: boolean; readonly message: string | null;
 }
-export const AUTHORING_IDENTITY = { provider: 'openai', modelId: 'gpt-5.6-terra', promptVersion: 'guided-test-design-v2' } as const;
-export type AuthoringIdentity = Omit<typeof AUTHORING_IDENTITY, 'promptVersion'> & { readonly promptVersion: 'guided-prose-v1' | typeof AUTHORING_IDENTITY.promptVersion };
+export const AUTHORING_IDENTITY = { provider: 'openai', modelId: 'gpt-5.6-terra', promptVersion: 'guided-dialogue-v3' } as const;
+export type AuthoringIdentity = Omit<typeof AUTHORING_IDENTITY, 'promptVersion'> & { readonly promptVersion: 'guided-prose-v1' | 'guided-test-design-v2' | typeof AUTHORING_IDENTITY.promptVersion };
 export interface AuthoringRevisionContext {
   readonly draft: string;
   readonly history: readonly { readonly feedback: string; readonly proposedText: string | null; readonly clarifications: readonly string[] }[];
@@ -33,7 +42,7 @@ export interface ProcedureAuthoringModel {
   /** Synchronous provider-specific input protection, before a receipt is persisted.
    * Implementations with protected configuration must reject it here and in propose. */
   readonly assertSafeInput?: (input: Parameters<ProcedureAuthoringModel['propose']>[0]) => void;
-  propose(input: { readonly section: AuthoringSection; readonly mode: AuthoringDraftFields['mode']; readonly context: JsonValue; readonly currentText: string; readonly notes: string; readonly changes: string; readonly revision?: AuthoringRevisionContext }): Promise<{ readonly proposal: unknown; readonly usage: AuthoringUsage }>;
+  propose(input: { readonly section: AuthoringSection; readonly mode: AuthoringDraftFields['mode']; readonly context: JsonValue; readonly currentText: string; readonly notes: string; readonly changes: string; readonly revision?: AuthoringRevisionContext }, onProgress?: (progress: AuthoringProgress) => Promise<void> | void): Promise<{ readonly proposal: unknown; readonly usage: AuthoringUsage }>;
 }
 export interface AuthoringRequestRecord extends AuthoringProposal {
   readonly requestId: string; readonly procedureId: string; readonly versionId: string; readonly actorId: string;

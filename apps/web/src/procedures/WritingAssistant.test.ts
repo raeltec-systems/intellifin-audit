@@ -42,6 +42,40 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it('closes a dismissed uncertain request without erasing a completed rejected proposal', () => {
+    const machine = createWritingAssistantState(), draft = view(), request = fields();
+    machine.open(scope, 'draft', ''); machine.begin(request, draft); machine.fail(request);
+    expect(machine.beginReject('scope')).toBe(true); machine.finishReject('scope');
+    expect(machine.snapshot.sessions.get('scope')?.request).toBeNull();
+    expect(machine.snapshot.sessions.get('scope')?.generationUncertain).toBe(false);
+    machine.begin(request, draft); machine.receive(request, response(request), draft);
+    machine.beginReject('scope'); machine.finishReject('scope');
+    expect(machine.snapshot.sessions.get('scope')?.proposal).toBe(response(request).proposedText);
+    expect(machine.snapshot.sessions.get('scope')?.suggestion?.state).toBe('rejected');
+  });
+  it('keeps partial output display-only, section-owned and unavailable for acceptance', () => {
+    const machine = createWritingAssistantState(), draft = view(), request = fields();
+    const progress = { explanation: 'Inspect every record.', proposedText: 'Do not sample', clarification: null };
+    machine.open(scope, 'draft', ''); machine.begin(request, draft);
+    machine.open(objective, 'draft', '');
+    machine.progress({ ...request }, progress);
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toBeNull();
+    machine.progress(request, { ...progress, extra: 'untrusted' });
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toBeNull();
+    machine.progress(request, progress);
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toEqual(progress);
+    expect(machine.snapshot.sessions.get('scope')?.suggestion).toBeNull();
+    expect(machine.snapshot.sessions.get('objective')?.streaming).toBeNull();
+    expect(machine.beginAccept('scope')).toBe(false);
+    machine.fail(request);
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toEqual(progress);
+    expect(machine.beginAccept('scope')).toBe(false);
+    machine.begin(request, draft);
+    machine.receive(request, response(request), draft);
+    machine.progress(request, { ...progress, proposedText: 'Late chunk' });
+    expect(machine.snapshot.sessions.get('scope')?.streaming).toBeNull();
+    expect(machine.snapshot.sessions.get('scope')?.proposal).toBe(response(request).proposedText);
+  });
   it('keeps edited proposals and received responses within each saved section limit', () => {
     const machine = createWritingAssistantState();
     for (const [section, limit] of [[objective, 4000], [scope, 10000]] as const) {
@@ -248,6 +282,42 @@ describe('draft comparison and acceptance', () => {
     expect(machine.snapshot.sessions.get('scope')?.request?.changes).toContain('every parameter');
   });
 
+  it('answers a clarification using the same proposal chain and clears the sent reply for the next turn', () => {
+    const { machine, draft, request } = ready();
+    machine.receive(request, response(request, draft, { proposedText: null, clarifications: ['Which records should be tested?'] }), draft);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'All records, with no sample.');
+    const session = machine.snapshot.sessions.get('scope')!;
+    expect(writingRevisionFor(session)).toEqual({ requestId: request.requestId, draft: request.notes });
+    const answer = { ...fields(scope, 'answered-question'), mode: session.mode, notes: session.notes, changes: session.changes, revision: writingRevisionFor(session)! };
+    machine.begin(answer, draft);
+    machine.receive(answer, response(answer, draft, { proposedText: 'Test all records without sampling.' }), draft);
+    const replied = machine.snapshot.sessions.get('scope')!;
+    expect(replied.notes).toBe(request.notes);
+    expect(replied.changes).toBe('');
+    expect(replied.history.at(-1)).toMatchObject({ feedback: 'All records, with no sample.', clarifications: ['Which records should be tested?'] });
+    expect(replied.suggestion?.state).toBe('ready');
+  });
+
+  it('retains the full edited proposal across a clarification and its answer', () => {
+    const { machine, draft } = ready();
+    const working = 'Keep all records. Do not change any account. Human edited tail.';
+    machine.edit('scope', 'proposal', working);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'Keep these steps and clarify the criterion.');
+    let session = machine.snapshot.sessions.get('scope')!;
+    const question = { ...fields(scope, 'clarification'), mode: session.mode, notes: session.notes, changes: session.changes, revision: writingRevisionFor(session)! };
+    machine.begin(question, draft);
+    machine.receive(question, response(question, draft, { proposedText: null, clarifications: ['Which criterion applies?'] }), draft);
+    machine.askForChanges('scope');
+    machine.edit('scope', 'changes', 'Keep the current test; no timing criterion has been supplied.');
+    session = machine.snapshot.sessions.get('scope')!;
+    expect(writingRevisionFor(session)).toEqual({ requestId: 'clarification', draft: working });
+    expect(session.proposal).toBe(working);
+    expect(session.suggestion?.proposedText).toBeNull();
+    expect(machine.beginAccept('scope')).toBe(false);
+  });
+
   it('keeps an edited ten-thousand-character proposal intact for a revision', () => {
     const { machine, request } = ready();
     const proposal = 'p'.repeat(10_000);
@@ -366,7 +436,7 @@ describe('additive writing help surface', () => {
       children: React.createElement(WritingAssistantProvider, { draft: view(), rowVersion: 'row-1', onRowVersion: vi.fn(), actions,
         children: React.createElement(PreparationAssistant, { step: 'instructions' }) }),
     }));
-    expect(html).toContain('How should I locate each production parameter in ProdConsole and compare it with the approved baseline?');
+    expect(html).toContain('What do you want this check of ProdConsole to establish?');
     expect(html).toContain('Baseline');
     expect(html).toContain('Configuration baseline');
     expect(html).toContain('Selected systems');

@@ -10,8 +10,10 @@ import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
 import { ReadinessPanel } from './ReadinessPanel';
 import { TemplateContextForm } from './TemplateContextForm';
-import { WritingAssistantProvider, PreparationAssistant, WritingTools, type WritingAssistantActions } from './WritingAssistant';
+import { WritingAssistantProvider, PreparationAssistant, type WritingAssistantActions, type PreparationStep } from './WritingAssistant';
+import { streamAuthoringSuggestion } from './authoring-chat-transport';
 import { GuidedPreparation } from './GuidedPreparation';
+import { GuidedQuestions } from './GuidedQuestions';
 import { RenameDraftForm } from './RenameDraftForm';
 import { TargetSelectionForm } from './TargetSelectionForm';
 import { AuditInstructionsForm } from './AuditInstructionsForm';
@@ -43,6 +45,10 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
 }): React.JSX.Element {
   const id = useId();
   const [token, setToken] = useState(rowVersion);
+  const [activeStep, setActiveStep] = useState<PreparationStep>('context');
+  const [scopeQuestion, setScopeQuestion] = useState('intent');
+  const [evidenceQuestion, setEvidenceQuestion] = useState('source');
+  const [guidedNotice, setGuidedNotice] = useState<{ question: string; title: string } | null>(null);
   useEffect(() => setToken(rowVersion), [rowVersion]);
   const periodSection = useSection({ from: draft.period?.from ?? '', to: draft.period?.to ?? '', scope: draft.scope }, token);
   const { from, to, scope } = periodSection.value;
@@ -113,7 +119,11 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       if (edit.section === 'period-scope') periodSection.finish(outcome.ok ? outcome.rowVersion : undefined);
       else populationSection.finish(outcome.ok ? outcome.rowVersion : undefined);
       setResult(outcome);
-      if (outcome.ok) setToken(outcome.rowVersion);
+      if (outcome.ok) {
+        setToken(outcome.rowVersion);
+        if (edit.section === 'population-source') setEvidenceQuestion(current => current === 'source' ? 'systems' : current);
+        else setScopeQuestion(current => current === 'period' ? 'confirm' : current);
+      }
     } catch { if (edit.section === 'period-scope') periodSection.finish(); else populationSection.finish(); setUnknownOutcome(true); setResult(null); }
     finally { setAnnouncement((n) => n + 1); saving.current = false; setBusy(false); }
   }
@@ -122,8 +132,12 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     <p id={`${id}-utc`}>Both dates are included, and both are UTC. A Run you start by hand tests these dates. Frequency settings describe the approved intent; automatic scheduled execution is not available yet.</p>
     <div className="ls-dialog__field"><label htmlFor={`${id}-from`}>Period start</label><input className="ls-input" id={`${id}-from`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
     <div className="ls-dialog__field"><label htmlFor={`${id}-to`}>Period end</label><input className="ls-input" id={`${id}-to`} type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-describedby={`${id}-utc ${id}-period-error`} /></div>
-    <div className="ls-dialog__field"><label htmlFor={`${id}-scope`}>Scope statement</label><textarea className="ls-input" id={`${id}-scope`} value={scope} maxLength={POPULATION_DRAFT_LIMITS.scope} onChange={(e) => setScope(e.target.value)} aria-describedby={`${id}-period-error`} /></div>
-    <WritingTools section={{ kind: 'scope' }} />
+    <div className="ls-guide-facts"><p><strong>Scope to save with these dates</strong></p><p>{scope || 'Write the scope below, or return to Describe the scope for assistance.'}</p></div>
+    <details className="ls-disclosure" data-guided-manual="scope">
+      <summary>Write or edit the scope myself</summary>
+      <div className="ls-disclosure__body"><div className="ls-dialog__field"><label htmlFor={`${id}-scope`}>Scope statement</label><textarea className="ls-input" id={`${id}-scope`} value={scope} maxLength={POPULATION_DRAFT_LIMITS.scope} onChange={(e) => setScope(e.target.value)} aria-describedby={`${id}-period-error`} /></div>
+      <Button type="button" onClick={() => setScopeQuestion('intent')}>Get help describing the scope</Button></div>
+    </details>
     <div id={`${id}-period-error`} aria-live="polite">{periodTouched && periodError !== null ? <Banner tone="warning" title={periodError} /> : null}</div>
     <Button type="submit" busy={busy} disabledReason={unknownOutcome ? UNKNOWN_SAVE_OUTCOME : undefined} variant="primary">Save Period and scope</Button>
   </form>;
@@ -200,7 +214,13 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   // token every other editor guards against, exactly as the population and rename saves do.
   const saveTargets = async (fields: TargetDraftFields): Promise<UpdateTargetDraftResult> => {
     const outcome = await onSaveTargets(fields);
-    if (outcome.ok) setToken(outcome.rowVersion);
+    if (outcome.ok) {
+      setToken(outcome.rowVersion);
+      if (fields.edit.section === 'target-systems') {
+        setGuidedNotice({ question: 'capture', title: 'Target systems saved. Next, choose the proof to retain.' });
+        setEvidenceQuestion(current => current === 'systems' ? 'capture' : current);
+      }
+    }
     return outcome;
   };
   const targetSystemsEditor = <TargetSelectionForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} />;
@@ -212,18 +232,54 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   }} />;
   const saveEvidence = async (fields: EvidenceDraftFields): Promise<UpdateEvidenceDraftResult> => {
     const outcome = await onSaveEvidence(fields);
-    if (outcome.ok) setToken(outcome.rowVersion);
+    if (outcome.ok) {
+      setToken(outcome.rowVersion);
+      if (fields.edit.section === 'evidence-requirements') {
+        setGuidedNotice({ question: 'confirm', title: 'Evidence choices saved. Check them below before reviewing this section.' });
+        setEvidenceQuestion(current => current === 'capture' ? 'confirm' : current);
+      }
+    }
     return outcome;
   };
   const evidenceRequirementsEditor = <EvidenceRequirementsForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
   const scheduleEditor = <ScheduleForm draft={draft} rowVersion={token} onSave={saveEvidence} />;
-  return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={onWriting}><div className="ls-stack">
+  return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={{ ...onWriting, generate: streamAuthoringSuggestion }}
+    onAccepted={section => { if (section.kind === 'scope') setScopeQuestion(current => current === 'intent' ? 'period' : current); }}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
+    {activeStep === 'evidence' && guidedNotice?.question === evidenceQuestion ? <Banner tone="success" title={guidedNotice.title} /> : null}
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <GuidedPreparation assistant={step => <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
+    <GuidedPreparation onStepChange={setActiveStep} assistant={step => step === 'scope' ? null : <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
       context: <><TemplateContextForm draft={draft} rowVersion={token} onSave={async fields => { const outcome = await onSaveContext(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /><RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async fields => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /></>,
-      scope: periodEditor,
-      evidence: <><h3>What evidence should be reviewed?</h3><p>Specify the attributes and retained evidence the test needs. Examples include reports, minutes, extracts, logs and system settings.</p>{evidenceRequirementsEditor}<h3>Where should it be obtained or inspected?</h3><p>The current runtime uses registered population sources and selected targets. A listed evidence type does not add file ingestion or a new connector.</p>{populationEditor}{targetSystemsEditor}</>,
+      scope: <GuidedQuestions label="Scope questions" selected={scopeQuestion} onSelect={setScopeQuestion} questions={[
+        { id: 'intent', label: 'Describe the scope', question: 'Let’s agree what this test should cover.', content: <>
+          {activeStep === 'scope' && scopeQuestion === 'intent' ? <PreparationAssistant step="scope" /> : null}
+          {draft.scope ? <div className="ls-guide-facts"><p><strong>Saved scope</strong></p><p>{draft.scope}</p></div> : null}
+          <Button type="button" onClick={() => setScopeQuestion('period')}>{draft.scope ? 'Keep this scope and choose dates' : 'Enter dates and write the scope myself'}</Button>
+        </> },
+        { id: 'period', label: 'Choose dates', question: 'What period should the test cover?', content: periodEditor },
+        { id: 'confirm', label: 'Check scope', question: 'Does this saved scope match your assignment?', content: <div className="ls-guide-facts">
+          <p>{draft.scope || 'No scope statement has been saved.'}</p><p>{draft.period ? `${draft.period.from} to ${draft.period.to}, inclusive (UTC).` : 'No dates have been saved.'}</p>
+          <p>Confirm your review below when the scope and dates are right.</p>
+        </div> },
+      ]} />,
+      evidence: <GuidedQuestions label="Evidence questions" selected={evidenceQuestion} onSelect={setEvidenceQuestion} questions={[
+        { id: 'source', label: 'Choose records', question: 'Where is the list of records we should test?', content: <>
+          <p>Choose a source already set up for this institution. It supplies the population; we’ll choose the systems and proof next.</p>{populationEditor}
+          {draft.sourceSnapshot ? <Button type="button" onClick={() => setEvidenceQuestion('systems')}>Keep this source and choose systems</Button> : null}
+        </> },
+        { id: 'systems', label: 'Choose systems', question: 'Which registered systems should I inspect?', content: <>
+          {targetSystemsEditor}{draft.targets.length > 0 ? <Button type="button" onClick={() => setEvidenceQuestion('capture')}>Keep these systems and choose evidence</Button> : null}
+        </> },
+        { id: 'capture', label: 'Choose proof', question: 'Which values and supporting proof should we retain?', content: <>
+          <p>Use the values exposed by the selected systems. Reports, files, logs and settings are useful evidence only when a registered source or system makes them available.</p>{evidenceRequirementsEditor}
+        </> },
+        { id: 'confirm', label: 'Check choices', question: 'Are these the right evidence sources for the test?', content: <div className="ls-guide-facts">
+          <dl><div><dt>Records</dt><dd>{draft.sourceSnapshot?.displayName || 'Not selected'}</dd></div>
+            <div><dt>Systems</dt><dd>{draft.targets.map(target => target.displayName).join(', ') || 'Not selected'}</dd></div>
+            <div><dt>Values to retain</dt><dd>{draft.evidenceRequirements.map(requirement => requirement.attributeName).join(', ') || 'Not selected'}</dd></div></dl>
+          <p>Confirm your review below, then we’ll prepare the test steps together.</p>
+        </div> },
+      ]} />,
       instructions: auditInstructionsEditor,
       assessment: complianceRuleEditor,
       frequency: <>{scheduleEditor}<p className="ls-caption">Frequency is saved with the procedure. Automatic scheduled execution is separate work. Unresolved observations remain unresolved; only approved, active versions can run.</p></>,

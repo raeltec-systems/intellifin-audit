@@ -13,7 +13,7 @@ const recordSchema = z.strictObject({ requestId: z.uuid(), procedureId: z.uuid()
   explanation: z.string().min(1).max(2000).optional(),
   revision: z.strictObject({ requestId: z.uuid(), draft: z.string().max(10000), feedback: z.string().min(1).max(2000) }).optional(),
   state: z.enum(['pending', 'ready', 'failed', 'accepted', 'rejected']),
-  identity: z.strictObject({ provider: z.literal(AUTHORING_IDENTITY.provider), modelId: z.literal(AUTHORING_IDENTITY.modelId), promptVersion: z.enum(['guided-prose-v1', AUTHORING_IDENTITY.promptVersion]) }),
+  identity: z.strictObject({ provider: z.literal(AUTHORING_IDENTITY.provider), modelId: z.literal(AUTHORING_IDENTITY.modelId), promptVersion: z.enum(['guided-prose-v1', 'guided-test-design-v2', AUTHORING_IDENTITY.promptVersion]) }),
   usage: z.strictObject({ inputTokens: z.number().int().min(0).max(10000000).nullable(), outputTokens: z.number().int().min(0).max(10000000).nullable() }).nullable(),
   message: z.string().max(1000).nullable(), acceptedDigest: hash.nullable(),
 });

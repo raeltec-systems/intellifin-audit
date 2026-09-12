@@ -54,6 +54,50 @@ function pendingModel() {
 }
 
 describe('bounded procedure writing commands (synthetic provider)', () => {
+  it.each(['partial', 'complete'] as const)('withholds credential references from %s output and its receipt', async phase => {
+    for (const secret of ['cred://synthetic/demo', 'synthetic-opaque-reference', 'sk-proj-' + 'x'.repeat(28)]) {
+      const seen = vi.fn();
+      const h = harness(async (_input, emit) => {
+        if (phase === 'partial') await emit?.({ explanation: `Inspect with ${secret}`, proposedText: null, clarification: null });
+        return response(`Inspect with ${secret}`);
+      });
+      h.row = { ...h.row, targets: h.row.targets.map(t => ({ ...t, contract: { ...t.contract, credential_ref: 'synthetic-opaque-reference' } })) };
+      const result = await generateAuthoringSuggestion(h.deps, { ...h.fields(), ...actor }, seen);
+      expect(result).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null } });
+      expect(seen).not.toHaveBeenCalled();
+      expect(JSON.stringify(h.requests.get(requestId()))).not.toContain(secret);
+      expect(JSON.stringify(h.events)).not.toContain(secret);
+    }
+  });
+  it('reserves before streaming, leaves the draft untouched, and replays only the completed receipt', async () => {
+    const progress = { explanation: 'Inspect every record.', proposedText: 'Do not sample', clarification: null };
+    const seen = vi.fn();
+    const h = harness(async (_input, emit) => {
+      expect(h.requests.get(requestId())?.state).toBe('pending');
+      await emit?.(progress);
+      expect(await h.accept()).toMatchObject({ ok: false });
+      return response();
+    });
+    const before = structuredClone(h.row), fields = h.fields();
+    expect(await generateAuthoringSuggestion(h.deps, { ...fields, ...actor }, seen)).toMatchObject({ ok: true, suggestion: { state: 'ready' } });
+    expect(seen).toHaveBeenCalledExactlyOnceWith(progress);
+    expect(h.row).toEqual(before); expect(h.writes).toBe(0);
+    seen.mockClear();
+    await generateAuthoringSuggestion(h.deps, { ...fields, ...actor }, seen);
+    expect(seen).not.toHaveBeenCalled(); expect(h.model.propose).toHaveBeenCalledTimes(1);
+  });
+  it.each(['invalid', 'revoked'] as const)('does not disclose %s progress or leave an acceptable suggestion', async kind => {
+    const seen = vi.fn();
+    const h = harness(async (_input, emit) => {
+      if (kind === 'revoked') h.roles.delete('editor');
+      await emit?.({ explanation: kind === 'invalid' ? 'x'.repeat(2001) : 'Private response', proposedText: null, clarification: null });
+      return response();
+    });
+    await generateAuthoringSuggestion(h.deps, { ...h.fields(), ...actor }, seen);
+    expect(seen).not.toHaveBeenCalled();
+    expect(h.requests.get(requestId())?.state).toBe('failed');
+    expect(await h.accept()).toMatchObject({ ok: false });
+  });
   it('generates a proposal without changing content, plan, authorship or review', async () => {
     const h = harness(), before = structuredClone(h.row);
     expect(await h.generate()).toMatchObject({ ok: true, suggestion: { state: 'ready', stale: false, currentText: draftContext(before.sections).objective } });
@@ -341,6 +385,23 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
     expect(h.jobs).toBe(0);
     expect(h.model.propose).toHaveBeenCalledTimes(3);
   });
+  it.each(['scope', 'evidence', 'instructions', 'assessment', 'frequency'])('cannot acknowledge missing saved %s content as reviewed', async section => {
+    const h = harness();
+    h.row = { ...h.row, scope: '', period: null, sourceSnapshot: null, targets: [], instructions: [], complianceConditions: [], schedule: null };
+    const saved = structuredClone(h.row);
+    expect(await reviewSection(h.deps, { ...actor, procedureId, versionId, expectedRowVersion: procedureVersionRowVersion(h.row), section, decision: 'review' })).toMatchObject({ ok: false, reason: expect.stringContaining('before reviewing') });
+    expect(h.row).toEqual(saved);
+    expect(h.writes).toBe(0);
+  });
+
+  it('refuses several questions from a fresh provider response without changing the draft', async () => {
+    const h = harness(async () => response(null, { clarifications: ['Which population?', 'Which timing rule?'] }));
+    const before = structuredClone(h.row);
+    expect(await h.generate()).toMatchObject({ ok: true, suggestion: { state: 'failed' } });
+    expect(h.row).toEqual(before);
+    expect(h.writes).toBe(0);
+  });
+
   it('supports a clarification follow-up and makes an exact duplicate revision idempotent', async () => {
     type Prompt = Parameters<ProcedureAuthoringModel['propose']>[0];
     const prompts: Prompt[] = [];

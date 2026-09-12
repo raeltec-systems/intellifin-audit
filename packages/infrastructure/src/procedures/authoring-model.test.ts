@@ -11,6 +11,61 @@ function response(proposal: unknown) {
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 describe('OpenAI writing adapter through the installed AI SDK', () => {
+  it.each(['eof', 'failed', 'length'] as const)('refuses valid JSON when the provider ends with %s instead of completion', async ending => {
+    const events: object[] = [
+      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: JSON.stringify({ explanation: 'Synthetic proposal.', proposedText: 'Inspect all records.', clarifications: [] }) },
+      { type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+    ];
+    if (ending === 'failed') events.push({ type: 'response.failed', sequence_number: 3, response: { error: { code: 'server_error', message: 'PRIVATE_PROVIDER_BODY' } } });
+    if (ending === 'length') events.push({ type: 'response.incomplete', response: { incomplete_details: { reason: 'max_output_tokens' } } });
+    vi.stubGlobal('fetch', async () => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    await expect(new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, () => {})).rejects.toThrow('The writing provider did not return a confirmed response');
+  });
+  it('withholds a credential token split between streamed chunks and filters completed output', async () => {
+    const key = 'synthetic-configured-key';
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const send = (event: object) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+    vi.stubGlobal('fetch', async () => new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }), { headers: { 'content-type': 'text/event-stream' } }));
+    const seen = vi.fn(), model = new OpenAIProcedureAuthoringModel(key);
+    const pending = model.propose(input, seen);
+    const assertion = expect(pending).rejects.toThrow('The writing provider did not return a confirmed response');
+    await vi.waitFor(() => expect(controller).toBeDefined());
+    send({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '{"explanation":"Context synthetic-confi' });
+    await vi.waitFor(() => expect(seen).toHaveBeenCalledWith({ explanation: 'Context', proposedText: null, clarification: null }));
+    expect(JSON.stringify(seen.mock.calls)).not.toContain('synthetic-confi');
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: 'gured-key","proposedText":"Inspect all records.","clarifications":[]}' });
+    send({ type: 'response.completed', response: {} }); controller.close();
+    await assertion;
+    expect(JSON.stringify(seen.mock.calls)).not.toContain(key);
+    vi.stubGlobal('fetch', async () => response({ explanation: 'A completed response.', proposedText: key, clarifications: [] }));
+    await expect(model.propose(input)).rejects.toThrow('The writing provider did not return a confirmed response');
+  });
+  it('delivers real structured partial output before the complete validated result', async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const encoder = new TextEncoder();
+    const send = (event: object) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+      expect(JSON.parse(String(options?.body))).toMatchObject({ stream: true, model: AUTHORING_IDENTITY.modelId, store: false });
+      return new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }), { headers: { 'content-type': 'text/event-stream' } });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const updates: unknown[] = [];
+    let finished = false;
+    const pending = new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, progress => { updates.push(progress); }).then(result => { finished = true; return result; });
+    await vi.waitFor(() => expect(controller).toBeDefined());
+    send({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '{"explanation":"Check every record ' });
+    await vi.waitFor(() => expect(updates).toContainEqual({ explanation: 'Check every record', proposedText: null, clarification: null }));
+    expect(finished).toBe(false);
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '","proposedText":"Do not sample. Check all 42 records.","clarifications":[]}' });
+    send({ type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
+    send({ type: 'response.completed', response: { usage: { input_tokens: 120, output_tokens: 40 } } });
+    controller.close();
+    expect(await pending).toMatchObject({ proposal: { explanation: 'Check every record ', proposedText: input.notes, clarifications: [] }, usage: { inputTokens: 120, outputTokens: 40 } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('serializes the requested model, structured output and supported bounded parameters without tools', async () => {
     let sent: Record<string, unknown> | undefined;
     const fetcher = vi.fn(async (url: string | URL | Request, options?: RequestInit) => {
@@ -54,6 +109,13 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
     await expect(new OpenAIProcedureAuthoringModel('synthetic-key').propose({ ...input, notes: 'x'.repeat(AUTHORING_LIMITS.contextBytes) })).rejects.toThrow('exceeds its limit');
     expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('allows one focused question and refuses a fresh response containing several questions', async () => {
+    vi.stubGlobal('fetch', async () => response({ explanation: 'Clarify the population first.', proposedText: null, clarifications: ['Which records should be tested?'] }));
+    const model = new OpenAIProcedureAuthoringModel('synthetic-key');
+    expect((await model.propose(input)).proposal).toMatchObject({ clarifications: ['Which records should be tested?'] });
+    vi.stubGlobal('fetch', async () => response({ explanation: 'Too many decisions at once.', proposedText: null, clarifications: ['Which records?', 'Which deadline?'] }));
+    await expect(model.propose(input)).rejects.toThrow('The writing provider did not return a confirmed response');
   });
   it('forwards the working proposal, prior corrections and latest intent as untrusted context', async () => {
     let sent: { input: { role: string; content: unknown }[] } | undefined;
