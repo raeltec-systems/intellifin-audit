@@ -42,6 +42,17 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it('closes a dismissed uncertain request without erasing a completed rejected proposal', () => {
+    const machine = createWritingAssistantState(), draft = view(), request = fields();
+    machine.open(scope, 'draft', ''); machine.begin(request, draft); machine.fail(request);
+    expect(machine.beginReject('scope')).toBe(true); machine.finishReject('scope');
+    expect(machine.snapshot.sessions.get('scope')?.request).toBeNull();
+    expect(machine.snapshot.sessions.get('scope')?.generationUncertain).toBe(false);
+    machine.begin(request, draft); machine.receive(request, response(request), draft);
+    machine.beginReject('scope'); machine.finishReject('scope');
+    expect(machine.snapshot.sessions.get('scope')?.proposal).toBe(response(request).proposedText);
+    expect(machine.snapshot.sessions.get('scope')?.suggestion?.state).toBe('rejected');
+  });
   it('keeps partial output display-only, section-owned and unavailable for acceptance', () => {
     const machine = createWritingAssistantState(), draft = view(), request = fields();
     const progress = { explanation: 'Inspect every record.', proposedText: 'Do not sample', clarification: null };

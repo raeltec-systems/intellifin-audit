@@ -54,6 +54,21 @@ function pendingModel() {
 }
 
 describe('bounded procedure writing commands (synthetic provider)', () => {
+  it.each(['partial', 'complete'] as const)('withholds credential references from %s output and its receipt', async phase => {
+    for (const secret of ['cred://synthetic/demo', 'synthetic-opaque-reference', 'sk-proj-' + 'x'.repeat(28)]) {
+      const seen = vi.fn();
+      const h = harness(async (_input, emit) => {
+        if (phase === 'partial') await emit?.({ explanation: `Inspect with ${secret}`, proposedText: null, clarification: null });
+        return response(`Inspect with ${secret}`);
+      });
+      h.row = { ...h.row, targets: h.row.targets.map(t => ({ ...t, contract: { ...t.contract, credential_ref: 'synthetic-opaque-reference' } })) };
+      const result = await generateAuthoringSuggestion(h.deps, { ...h.fields(), ...actor }, seen);
+      expect(result).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null } });
+      expect(seen).not.toHaveBeenCalled();
+      expect(JSON.stringify(h.requests.get(requestId()))).not.toContain(secret);
+      expect(JSON.stringify(h.events)).not.toContain(secret);
+    }
+  });
   it('reserves before streaming, leaves the draft untouched, and replays only the completed receipt', async () => {
     const progress = { explanation: 'Inspect every record.', proposedText: 'Do not sample', clarification: null };
     const seen = vi.fn();

@@ -274,6 +274,7 @@ export function createWritingAssistantState() {
       const session = snapshot.sessions.get(key);
       update(key, { busy: null, ...(reason === undefined ? {
         suggestion: session?.suggestion ? { ...session.suggestion, state: 'rejected' as const } : null,
+        ...(!session?.suggestion ? { request: null } : {}),
         generationUncertain: false, streaming: null, editing: false, askingForChanges: false,
       } : {}), notice: { tone: reason === undefined ? 'info' : 'warning', title: reason ?? 'Your saved wording is unchanged.' } });
     },
@@ -537,7 +538,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
           <p className="ls-caption">{pending ? 'Responding… This draft is still being prepared.' : 'Incomplete response. Retry this request to recover the confirmed result.'}</p>
         </div> : <p role="status">Preparing a response…</p>}
       </ChatMessage> : null}
-      {ready || terminal ? <ChatMessage from="assistant">
+      {ready || terminal && (suggestion.proposedText !== null || suggestion.clarifications.length > 0) ? <ChatMessage from="assistant">
         <div className="ls-stack" data-current-assistant-response>
           {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
           {suggestion.proposedText === null ? <>
@@ -574,7 +575,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
         {stale && !terminal ? <Banner tone="warning" title={STALE_SUGGESTION} /> : null}
         {suggestion?.state === 'pending' && !pending ? <p>This request is still being prepared. Retry this request to check its result.</p> : null}
       </ChatMessage> : null}
-      {session.request && !terminal && !pending ? <div className="ls-chat__dismiss">
+      {session.request && (suggestion !== null || retry) && !terminal && !pending ? <div className="ls-chat__dismiss">
         <Button type="button" variant="ghost" busy={session.busy === 'rejection'} disabledReason={session.busy !== null || snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reject(key)}>Keep my wording</Button>
       </div> : null}
     </AuthoringChat>

@@ -57,7 +57,11 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
           if (!isAuthoringProgress(progress) || serialized.includes(this.apiKey)) throw new Error('Invalid partial response');
           // Bounded snapshots, never a fake typing animation or saved draft content.
           if (serialized !== previous && (progress.explanation || progress.proposedText || progress.clarification) && Date.now() - last >= 250) {
-            await onProgress(progress); last = Date.now(); previous = serialized;
+            // Keep the unfinished last token private: a credential split across
+            // chunks must be identifiable before any of that token is displayed.
+            const words = (text: string) => text.replace(/\S+$/u, '').trimEnd();
+            await onProgress({ explanation: words(progress.explanation), proposedText: progress.proposedText === null ? null : words(progress.proposedText), clarification: progress.clarification === null ? null : words(progress.clarification) });
+            last = Date.now(); previous = serialized;
           }
         }
         return { output: await output, usage: await usage };
@@ -65,6 +69,7 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
       // New dialogue responses ask one question at a time. Historical receipts keep
       // their original parser; this bound applies only to a fresh provider response.
       if (result.output.clarifications.length > 1) throw new Error('Too many clarification questions');
+      if (JSON.stringify(result.output).includes(this.apiKey)) throw new Error('Protected configuration in response');
       return { proposal: result.output, usage: { inputTokens: result.usage.inputTokens ?? null, outputTokens: result.usage.outputTokens ?? null } };
     } catch {
       // Never expose provider exceptions, response bodies, notes or keys to telemetry.

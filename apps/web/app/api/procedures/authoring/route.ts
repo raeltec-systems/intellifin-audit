@@ -31,14 +31,15 @@ async function readInput(request: Request): Promise<unknown> {
 /** Only display delivery changes here. The same reserved request, final validation,
  * audit receipt and independent acceptance command remain authoritative. */
 export async function POST(request: Request): Promise<Response> {
-  const decision = await requireAction(request, PROCEDURE_AUTHOR_ACTION);
-  if (!decision.allowed) return denialResponse(decision);
   const app = await getRuntime();
   // Cookie-authenticated custom routes do not inherit Server Action CSRF checks.
   // Never derive the trusted origin from Host or proxy headers supplied by a caller.
   if (request.headers.get('origin') !== new URL(app.authConfig.baseUrl).origin) {
     return Response.json({ reason: 'Open writing help from this application.' }, { status: 403, headers });
   }
+  // Reject foreign requests before an authorization refusal can append an audit event.
+  const decision = await requireAction(request, PROCEDURE_AUTHOR_ACTION);
+  if (!decision.allowed) return denialResponse(decision);
   let fields: unknown;
   try { fields = await readInput(request); } catch { return Response.json({ reason: 'That writing request was not valid.' }, { status: 400, headers }); }
   if (!isAuthoringDraftFields(fields)) return Response.json({ reason: 'That writing request was not valid.' }, { status: 400, headers });

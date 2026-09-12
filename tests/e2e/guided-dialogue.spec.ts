@@ -151,6 +151,7 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await attachAuthoringScreenshot(page, testInfo, 'chat-conversation-desktop');
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => conversation.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThan(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await attachAuthoringScreenshot(page, testInfo, 'fresh-dialogue-mobile');
   await attachAuthoringScreenshot(page, testInfo, 'chat-conversation-mobile');

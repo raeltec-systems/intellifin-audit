@@ -18,17 +18,18 @@ beforeEach(() => {
   mocks.generate.mockResolvedValue({ ok: false, reason: 'Not configured' });
 });
 describe('authoring chat stream boundary', () => {
-  it('authorizes before reading the body or runtime configuration', async () => {
+  it('authorizes a same-origin request before reading its body', async () => {
     mocks.authorize.mockResolvedValue({ allowed: false, status: 401 });
     const incoming = request();
     Object.defineProperty(incoming, 'body', { get() { throw new Error('Must not read'); } });
     expect((await POST(incoming)).status).toBe(401);
-    expect(mocks.runtime).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.authorize).toHaveBeenCalledExactlyOnceWith(incoming, 'procedure.author'); expect(mocks.generate).not.toHaveBeenCalled();
   });
   it.each([null, 'null', 'https://foreign.example'])('rejects a missing or foreign Origin (%s)', async origin => {
     const incoming = request(fields, origin);
     incoming.headers.set('host', 'foreign.example'); incoming.headers.set('x-forwarded-host', 'foreign.example');
     expect((await POST(incoming)).status).toBe(403);
+    expect(mocks.authorize).not.toHaveBeenCalled();
     expect(mocks.generate).not.toHaveBeenCalled();
   });
   it.each([

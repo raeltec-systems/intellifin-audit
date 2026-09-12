@@ -11,6 +11,26 @@ function response(proposal: unknown) {
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 describe('OpenAI writing adapter through the installed AI SDK', () => {
+  it('withholds a credential token split between streamed chunks and filters completed output', async () => {
+    const key = 'synthetic-configured-key';
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const send = (event: object) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+    vi.stubGlobal('fetch', async () => new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }), { headers: { 'content-type': 'text/event-stream' } }));
+    const seen = vi.fn(), model = new OpenAIProcedureAuthoringModel(key);
+    const pending = model.propose(input, seen);
+    const assertion = expect(pending).rejects.toThrow('The writing provider did not return a confirmed response');
+    await vi.waitFor(() => expect(controller).toBeDefined());
+    send({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '{"explanation":"Context synthetic-confi' });
+    await vi.waitFor(() => expect(seen).toHaveBeenCalledWith({ explanation: 'Context', proposedText: null, clarification: null }));
+    expect(JSON.stringify(seen.mock.calls)).not.toContain('synthetic-confi');
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: 'gured-key","proposedText":"Inspect all records.","clarifications":[]}' });
+    send({ type: 'response.completed', response: {} }); controller.close();
+    await assertion;
+    expect(JSON.stringify(seen.mock.calls)).not.toContain(key);
+    vi.stubGlobal('fetch', async () => response({ explanation: 'A completed response.', proposedText: key, clarifications: [] }));
+    await expect(model.propose(input)).rejects.toThrow('The writing provider did not return a confirmed response');
+  });
   it('delivers real structured partial output before the complete validated result', async () => {
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     const encoder = new TextEncoder();
@@ -25,14 +45,14 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
     const pending = new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, progress => { updates.push(progress); }).then(result => { finished = true; return result; });
     await vi.waitFor(() => expect(controller).toBeDefined());
     send({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
-    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '{"explanation":"Check every record' });
+    send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '{"explanation":"Check every record ' });
     await vi.waitFor(() => expect(updates).toContainEqual({ explanation: 'Check every record', proposedText: null, clarification: null }));
     expect(finished).toBe(false);
     send({ type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: '","proposedText":"Do not sample. Check all 42 records.","clarifications":[]}' });
     send({ type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } });
     send({ type: 'response.completed', response: { usage: { input_tokens: 120, output_tokens: 40 } } });
     controller.close();
-    expect(await pending).toMatchObject({ proposal: { explanation: 'Check every record', proposedText: input.notes, clarifications: [] }, usage: { inputTokens: 120, outputTokens: 40 } });
+    expect(await pending).toMatchObject({ proposal: { explanation: 'Check every record ', proposedText: input.notes, clarifications: [] }, usage: { inputTokens: 120, outputTokens: 40 } });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it('serializes the requested model, structured output and supported bounded parameters without tools', async () => {

@@ -11,6 +11,7 @@ export function AuthoringChat({ children, composer, busy, requestId }: {
 }): React.JSX.Element {
   const thread = useRef<HTMLDivElement>(null), follows = useRef(true);
   const previousRequest = useRef(requestId);
+  const size = useRef({ width: 0, height: 0 });
   const [away, setAway] = useState(false);
   useEffect(() => {
     const node = thread.current;
@@ -18,10 +19,32 @@ export function AuthoringChat({ children, composer, busy, requestId }: {
     if (requestId !== previousRequest.current) { follows.current = true; previousRequest.current = requestId; setAway(false); }
     if (follows.current) node.scrollTop = node.scrollHeight;
   }, [children, requestId]);
+  useEffect(() => {
+    const node = thread.current;
+    if (!node) return;
+    const resize = () => {
+      size.current = { width: node.clientWidth, height: node.clientHeight };
+      if (follows.current) node.scrollTop = node.scrollHeight;
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   return <div className="ls-chat">
     <div className="ls-chat__thread" ref={thread} role="log" aria-label="Conversation with IntelliFin"
       aria-live="polite" aria-relevant="additions" aria-busy={busy} tabIndex={0}
-      onScroll={() => { const node = thread.current!; follows.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64; setAway(!follows.current); }}>
+      onScroll={() => {
+        const node = thread.current!;
+        // Reflow on a viewport/keyboard resize is not the reader scrolling back.
+        if (size.current.width !== node.clientWidth || size.current.height !== node.clientHeight) {
+          size.current = { width: node.clientWidth, height: node.clientHeight };
+          if (follows.current) node.scrollTop = node.scrollHeight;
+          return;
+        }
+        follows.current = node.scrollHeight - node.scrollTop - node.clientHeight < 64;
+        setAway(!follows.current);
+      }}>
       {children}
     </div>
     {away ? <div className="ls-chat__latest"><Button type="button" onClick={() => {

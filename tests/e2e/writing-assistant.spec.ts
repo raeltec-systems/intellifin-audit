@@ -105,6 +105,7 @@ test('chat sends with Enter, renders real partial replies, and keeps reading pos
   // Reading earlier messages must not be undone by the next streamed snapshot.
   await thread.focus(); await thread.press('Control+Home');
   await expect(writing.getByRole('button', { name: 'Jump to latest', exact: true })).toBeVisible();
+  await expect.poll(() => thread.evaluate(node => node.scrollTop)).toBe(0);
   const readingPosition = await thread.evaluate(node => node.scrollTop);
   await expect(writing.locator('[data-current-assistant-response]')).toContainText('Synthetic note 10');
   expect(await thread.evaluate(node => node.scrollTop)).toBe(readingPosition);
