@@ -200,7 +200,9 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   const scopeWriting = page.locator('[data-writing-section="scope"]');
   await scopeWriting.getByLabel('Your answer', { exact: true }).fill('SYNTHETIC:FAIL');
   await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
-  await expect(scopeWriting.getByText(/could not produce a confirmed draft/)).toBeVisible();
+  // The installed-SDK fixture returns HTTP 503. Assert the actionable provider
+  // category, alongside the unchanged manual-save and unapplied-output guarantees.
+  await expect(scopeWriting.getByText(/OpenAI is currently unavailable to writing assistance/)).toBeVisible();
   await expect(scopeWriting.getByText(/still edit and save the procedure yourself/)).toBeVisible();
   await expect(scopeWriting.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
   await openStep(page, 'Period and scope');
@@ -238,6 +240,29 @@ test('provider failure leaves manual saves usable, questions stay unapplied, and
   await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(originalObjective);
   await openStep(page, 'Period and scope');
   await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(manualScope);
+});
+
+test('an expired writing session shows a refusal and preserves manual scope editing', async ({ page }, testInfo) => {
+  const address = '**/api/procedures/authoring';
+  await page.route(address, route => route.fulfill({ status: 401, body: 'PRIVATE_AUTH_BODY' }));
+  try {
+    await selectWriting(page, 'scope');
+    const writing = page.locator('[data-writing-section="scope"]');
+    await writing.getByLabel('Your answer', { exact: true }).fill('Suggest to me');
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(writing.getByText(/Your session has expired/)).toBeVisible();
+    await expect(writing.getByRole('button', { name: 'Retry this request', exact: true })).toHaveCount(0);
+    await expect(writing.getByText(/writing response was lost/)).toHaveCount(0);
+    await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toHaveCount(0);
+    expect(await requestStates()).toEqual([]);
+    await openStep(page, 'Period and scope');
+    await expect(page.getByLabel('Scope statement', { exact: true })).toBeEditable();
+    expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations).toEqual([]);
+    await attachAuthoringScreenshot(page, testInfo, 'writing-session-expired');
+    await page.getByLabel('Scope statement', { exact: true }).fill('Manual scope remains editable after a refused writing request.');
+    await page.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
+    await expect(page.getByText('Saved. The Draft change is recorded in the audit chain.', { exact: true })).toBeVisible();
+  } finally { await page.unroute(address); }
 });
 
 test('an uncertain generation retries its original request and an uncertain acceptance blocks submission until reload', async ({ page }, testInfo) => {

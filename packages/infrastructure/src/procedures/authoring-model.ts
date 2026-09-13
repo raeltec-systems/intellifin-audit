@@ -1,7 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, streamText, Output, type LanguageModel } from 'ai';
+import { APICallError, generateText, streamText, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, isAuthoringProgress, type ProcedureAuthoringModel } from '@intellifin/application';
+import { AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, isAuthoringProgress, type AuthoringProviderFailure, type ProcedureAuthoringModel } from '@intellifin/application';
 import type { AppConfig } from '../config.js';
 
 export const AUTHORING_INSTRUCTIONS = `You are a junior auditor helping a human design an audit test, section by section.
@@ -19,6 +19,18 @@ Return only the structured response: explanation, plus proposedText with an empt
 
 const proposalSchema = z.strictObject({ explanation: z.string(), proposedText: z.string().nullable(), clarifications: z.array(z.string()) });
 
+function failureCode(error: unknown): AuthoringProviderFailure {
+  if (APICallError.isInstance(error)) {
+    if (error.statusCode === 401) return 'AUTHENTICATION';
+    if (error.statusCode === 403 || error.statusCode === 404) return 'ACCESS';
+    if (error.statusCode === 400 || error.statusCode === 422) return 'REQUEST';
+    if (error.statusCode === 429) return 'RATE_LIMIT';
+    if (error.statusCode !== undefined && error.statusCode >= 500) return 'UNAVAILABLE';
+  }
+  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return 'TIMEOUT';
+  return 'UNCONFIRMED';
+}
+
 /** Uses the installed AI SDK OpenAI Responses provider; no parallel client stack. */
 export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
   readonly identity = AUTHORING_IDENTITY;
@@ -34,6 +46,7 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
     const prompt = JSON.stringify(input);
     this.assertSafeInput(input);
     const abort = new AbortController();
+    let streamError: unknown;
     try {
       const options = {
         model: this.model, system: AUTHORING_INSTRUCTIONS, prompt,
@@ -46,7 +59,10 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
         experimental_telemetry: { isEnabled: false, recordInputs: false, recordOutputs: false },
       };
       const result = onProgress ? await (async () => {
-        const stream = streamText({ ...options, onError: () => { /* No provider payload logging. */ } });
+        // The SDK can report an HTTP failure here and then reject output with a
+        // generic NoOutputGeneratedError. Keep only the original failure in memory
+        // until it can be mapped to a closed category; never log its payload.
+        const stream = streamText({ ...options, onError: ({ error }) => { streamError = error; } });
         // Observe terminal promise failures even if a rejected partial stops reading.
         const output = Promise.resolve(stream.output), usage = Promise.resolve(stream.usage);
         void output.catch(() => {}); void usage.catch(() => {});
@@ -74,9 +90,9 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
       if (result.output.clarifications.length > 1) throw new Error('Too many clarification questions');
       if (JSON.stringify(result.output).includes(this.apiKey)) throw new Error('Protected configuration in response');
       return { proposal: result.output, usage: { inputTokens: result.usage.inputTokens ?? null, outputTokens: result.usage.outputTokens ?? null } };
-    } catch {
-      // Never expose provider exceptions, response bodies, notes or keys to telemetry.
-      throw new Error('The writing provider did not return a confirmed response');
+    } catch (error) {
+      // Only this closed category crosses the port. No raw provider error or cause.
+      throw new AuthoringProviderError(failureCode(streamError ?? error));
     } finally { abort.abort(); }
   }
 }

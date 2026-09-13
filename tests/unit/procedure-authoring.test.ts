@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DENIAL_REASONS, deriveExecutablePlan, draftContext, refreshPreparation, sectionReview, validateAuditEventDraft, type AuditEventDraft, type Role } from '@intellifin/domain';
 import { AUTHORING_IDENTITY, AUTHORING_LIMITS, acceptAuthoringSuggestion, authoringContext, authoringCurrentText, generateAuthoringSuggestion, initialPlanDerivation, isAuthoringDraftFields, isAuthoringProposal, planAuthoringDigest, procedureVersionRowVersion, rejectAuthoringSuggestion, reviewSection, transitionVersion, updateContextDraft, updatePopulationDraft, type AuthoringDependencies, type AuthoringDraftFields, type AuthoringRequestRecord, type AuthoringSection, type ProcedureAuthoringModel, type ProcedureVersionRecord } from '@intellifin/application';
 import { executablePlanInputs } from '../fixtures/executable-plan.js';
+import { OpenAIProcedureAuthoringModel, parseAuthoringRecord, createTelemetry } from '@intellifin/infrastructure';
 
 const procedureId = '018f0000-0000-7000-8000-000000000001';
 const versionId = '018f0000-0000-7000-8000-000000000002';
@@ -54,6 +55,47 @@ function pendingModel() {
 }
 
 describe('bounded procedure writing commands (synthetic provider)', () => {
+  it('round-trips a streaming provider refusal through a validated receipt with safe diagnostics and exact recovery', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'PRIVATE_PROVIDER_BODY', type: 'invalid_request_error' } }), {
+      status: 401, headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    try {
+      const model = new OpenAIProcedureAuthoringModel('synthetic-key'), h = harness(model.propose.bind(model));
+      const chunks: string[] = [], telemetry = createTelemetry({ serviceName: 'web', destination: { write: chunk => chunks.push(String(chunk)) } });
+      const seen = vi.fn(), fields = h.fields({ section: { kind: 'scope' }, notes: 'Suggest to me' });
+      const before = structuredClone(h.row);
+      const deps: AuthoringDependencies = { ...h.deps, observeFailure: (stage, error) => telemetry.captureError('Writing assistance failed', error, { operation: stage }) };
+      const result = await generateAuthoringSuggestion(deps, { ...fields, ...actor }, seen);
+      expect(result).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null, message: expect.stringContaining('could not authenticate') } });
+      expect(parseAuthoringRecord(h.requests.get(fields.requestId))).toMatchObject({ state: 'failed', proposedText: null });
+      expect(await generateAuthoringSuggestion(deps, { ...fields, ...actor }, seen)).toEqual(result);
+      expect(fetcher).toHaveBeenCalledTimes(1); expect(seen).not.toHaveBeenCalled(); expect(h.row).toEqual(before);
+      expect(await h.accept()).toMatchObject({ ok: false });
+      expect(await h.edit('The auditor can still save manual content.')).toMatchObject({ ok: true });
+      const logs = chunks.join('');
+      expect(logs).toContain('"operation":"provider"'); expect(logs).toContain('"errorCode":"AUTHENTICATION"');
+      expect(logs + JSON.stringify(result) + JSON.stringify(h.events)).not.toMatch(/PRIVATE_PROVIDER_BODY|synthetic-key|Suggest to me/);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it.each(['prepare', 'finalize'] as const)('reports a %s failure without turning an uncommitted receipt into a confirmed result', async stage => {
+    const h = harness(), observed = vi.fn(), original = h.deps.unitOfWork;
+    let calls = 0;
+    const deps: AuthoringDependencies = { ...h.deps, observeFailure: observed, unitOfWork: { execute: async work => {
+      calls++;
+      if (calls === (stage === 'prepare' ? 1 : 2)) throw new Error('PRIVATE_DATABASE_BODY');
+      return original.execute(work);
+    } } };
+    await expect(generateAuthoringSuggestion(deps, { ...h.fields(), ...actor })).rejects.toThrow('PRIVATE_DATABASE_BODY');
+    expect(observed).toHaveBeenCalledExactlyOnceWith(stage, expect.any(Error));
+    expect(h.requests.get(requestId())?.state).toBe(stage === 'prepare' ? undefined : 'pending');
+    expect(h.writes).toBe(0);
+  });
+  it('does not let unavailable diagnostics prevent a confirmed failure receipt', async () => {
+    const h = harness(async () => { throw new Error('PRIVATE_PROVIDER_BODY'); });
+    const deps: AuthoringDependencies = { ...h.deps, observeFailure: () => { throw new Error('Telemetry unavailable'); } };
+    expect(await generateAuthoringSuggestion(deps, { ...h.fields(), ...actor })).toMatchObject({ ok: true, suggestion: { state: 'failed' } });
+  });
   it.each(['partial', 'complete'] as const)('withholds credential references from %s output and its receipt', async phase => {
     for (const secret of ['cred://synthetic/demo', 'synthetic-opaque-reference', 'sk-proj-' + 'x'.repeat(28)]) {
       const seen = vi.fn();

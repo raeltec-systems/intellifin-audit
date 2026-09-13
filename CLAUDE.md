@@ -2889,3 +2889,18 @@ A human may dismiss a writing request from another tab while its provider call i
 The late response must preserve the rejected receipt and never retain or apply its proposal,
 but known token usage still belongs in the receipt and minimised audit event. Account for
 that metadata without touching the procedure, authorship, preparation reviews or plan jobs.
+
+## Authoring failure diagnostics and recovery (2026-09-13)
+
+HTTP 200 on the authoring NDJSON route only means the stream began. Unexpected
+preparation/finalisation failures can still produce an `uncertain` frame. Preserve
+that uncertainty and the exact request ID; never turn a transaction exception or
+partial output into a confirmed suggestion. Report the failed stage through the
+existing minimising telemetry facade, without error messages, stacks or content.
+OpenAI streaming errors can arrive in `onError` before a generic output rejection;
+map them to the closed `AuthoringProviderError` categories before crossing the port.
+Confirmed failures have durable receipts and actionable messages. HTTP auth/input
+refusals must not strand a user in lost-response recovery. Test real SDK error
+transport, receipt persistence/replay and manual editing separately from live model
+access. A configured Railway variable name and green synthetic CI prove neither
+provider access nor resolution of an opaque production incident.

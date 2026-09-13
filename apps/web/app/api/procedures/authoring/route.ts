@@ -44,7 +44,8 @@ export async function POST(request: Request): Promise<Response> {
   try { fields = await readInput(request); } catch { return Response.json({ reason: 'That writing request was not valid.' }, { status: 400, headers }); }
   if (!isAuthoringDraftFields(fields)) return Response.json({ reason: 'That writing request was not valid.' }, { status: 400, headers });
   const input = fields, encoder = new TextEncoder();
-  let connected = true, progressCount = 0;
+  const correlationId = correlationIdFrom(request);
+  let connected = true, progressCount = 0, failureReported = false;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (event: object) => {
@@ -59,11 +60,22 @@ export async function POST(request: Request): Promise<Response> {
           const result = await generateAuthoringSuggestion({
             roles: new DrizzleRoleRepository(app.db), unitOfWork: new PostgresProceduresUnitOfWork(app.db),
             ids: new CryptoUuidV7Generator(), clock: { now: () => new Date() }, model: app.authoringModel,
-          }, { ...input, session: decision.session, correlationId: correlationIdFrom(request) }, progress => {
+            observeFailure: (stage, error) => {
+              failureReported = true;
+              app.telemetry.captureError('Writing assistance failed', error, {
+                correlationId, aggregateId: input.procedureId, operation: stage, outcome: 'failure',
+              });
+            },
+          }, { ...input, session: decision.session, correlationId }, progress => {
             if (++progressCount <= 128) send({ type: 'progress', progress });
           });
           send({ type: 'result', result });
-        } catch { send({ type: 'uncertain' }); }
+        } catch (error) {
+          if (!failureReported) app.telemetry.captureError('Writing assistance failed', error, {
+            correlationId, aggregateId: input.procedureId, operation: 'delivery', outcome: 'failure',
+          });
+          send({ type: 'uncertain' });
+        }
         finally { if (connected) { connected = false; controller.close(); } }
       })();
     },

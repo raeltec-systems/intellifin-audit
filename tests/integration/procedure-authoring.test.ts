@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { draftContext } from '@intellifin/domain';
 import {
   AUTHORING_IDENTITY,
@@ -27,6 +27,7 @@ import {
   PostgresIdentityUnitOfWork,
   PostgresProceduresUnitOfWork,
   SystemClock,
+  OpenAIProcedureAuthoringModel,
   parseAuthoringRecord,
   type Database,
   type Sql,
@@ -96,6 +97,7 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
     manager: ids.next(),
     rateAuthor: ids.next(),
     revisionAuthor: ids.next(),
+    failureAuthor: ids.next(),
   } as const;
   const allUsers = Object.values(users);
 
@@ -112,6 +114,7 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
       [users.manager, 'audit-manager'],
       [users.rateAuthor, 'auditor'],
       [users.revisionAuthor, 'auditor'],
+      [users.failureAuthor, 'auditor'],
     ] as const) {
       await sql`
         INSERT INTO auth_user(id, name, email)
@@ -471,6 +474,28 @@ describe.skipIf(!databaseUrl)('procedure writing assistance against PostgreSQL 1
     })).toMatchObject({ ok: true, changed: true });
     expect(draftContext((await repository.findVersion(row.versionId))!.sections).objective).toBe(manualObjective);
     await assertChain(row.procedureId);
+  });
+
+  it('persists and recovers a real-SDK streaming HTTP refusal without a second provider call', async () => {
+    const row = await seedDraft(users.failureAuthor);
+    const input = draftInput(row, users.failureAuthor, { section: { kind: 'scope' }, mode: 'draft', notes: 'Suggest to me', changes: '' });
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'PRIVATE_PROVIDER_BODY', type: 'invalid_request_error' } }), {
+      status: 401, headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    try {
+      const deps = authoringDependencies(new OpenAIProcedureAuthoringModel('synthetic-key'));
+      const seen = vi.fn(), first = await generateAuthoringSuggestion(deps, input, seen);
+      expect(first).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null, message: expect.stringContaining('could not authenticate') } });
+      const receipts = await requestsFor(row.versionId);
+      expect(receipts).toHaveLength(1);
+      expect(parseAuthoringRecord(receipts[0]!.record)).toMatchObject({ state: 'failed' });
+      expect(await generateAuthoringSuggestion(deps, input, seen)).toEqual(first);
+      expect(fetcher).toHaveBeenCalledTimes(1); expect(seen).not.toHaveBeenCalled();
+      expect(procedureVersionRowVersion((await repository.findVersion(row.versionId))!)).toBe(procedureVersionRowVersion(row));
+      expect(JSON.stringify(receipts) + JSON.stringify(await eventsFor(row.procedureId))).not.toMatch(/PRIVATE_PROVIDER_BODY|synthetic-key/);
+      await assertChain(row.procedureId);
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('records every human author, blocks a second author after a role change, and refuses an unknown actor', async () => {

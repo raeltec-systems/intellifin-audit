@@ -8,10 +8,18 @@ import type { ProceduresUnitOfWorkContext, ProcedureVersionRecord } from './port
 import { updateContextDraft } from './update-context-draft.js';
 import { updatePopulationDraft } from './update-population-draft.js';
 import { updateTargetDraft } from './update-target-draft.js';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
+import { AUTHORING_FAILURE_MESSAGES, AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
 
 type Actor = { readonly session: SessionSnapshot; readonly correlationId: string };
-export interface AuthoringDependencies extends ProcedureDependencies { readonly clock: Clock; readonly model: ProcedureAuthoringModel | null }
+export type AuthoringFailureStage = 'authorize' | 'prepare' | 'provider' | 'finalize';
+export interface AuthoringDependencies extends ProcedureDependencies {
+  readonly clock: Clock; readonly model: ProcedureAuthoringModel | null;
+  /** Server diagnostics only. The adapter must minimise errors before logging them. */
+  readonly observeFailure?: (stage: AuthoringFailureStage, error: unknown) => void;
+}
+function observeFailure(deps: AuthoringDependencies, stage: AuthoringFailureStage, error: unknown): void {
+  try { deps.observeFailure?.(stage, error); } catch { /* Diagnostics cannot change the request outcome. */ }
+}
 const object = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(v);
 const hash = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
@@ -132,11 +140,13 @@ async function audit(tx: ProceduresUnitOfWorkContext, input: Actor, record: Auth
 }
 
 export async function generateAuthoringSuggestion(deps: AuthoringDependencies, input: AuthoringDraftFields & Actor, onProgress?: (progress: AuthoringProgress) => Promise<void> | void): Promise<ProcedureOutcome<{ suggestion: AuthoringSuggestionView }>> {
-  const auth = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
-  if (!auth.allowed) return { ok: false, reason: auth.reason };
-  const fields = fieldsOnly(input);
-  if (!isAuthoringDraftFields(fields)) return { ok: false, reason: 'Enter valid notes within the writing limits.' };
+  let stage: AuthoringFailureStage = 'authorize';
   try {
+    const auth = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
+    if (!auth.allowed) return { ok: false, reason: auth.reason };
+    const fields = fieldsOnly(input);
+    if (!isAuthoringDraftFields(fields)) return { ok: false, reason: 'Enter valid notes within the writing limits.' };
+    stage = 'prepare';
     const prepared = await deps.unitOfWork.execute(async tx => {
       const row = await ownedDraft(tx, input), store = tx.authoringRequests;
       if (row.state !== 'DRAFT') throw new Refused(PROCEDURE_REFUSALS.NOT_A_DRAFT);
@@ -178,6 +188,7 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
     });
     if (prepared.existing !== undefined) return { ok: true, suggestion: prepared.existing };
     let complete: AuthoringRequestRecord = prepared.record;
+    stage = 'provider';
     try {
       const response = await deps.model!.propose(prepared.request, onProgress ? async progress => {
         if (!isAuthoringProgress(progress) || hasCredentialMaterial(progress, prepared.credentialReferences)) throw new Error('Invalid partial authoring response');
@@ -189,7 +200,11 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
       if (!isAuthoringProposal(response.proposal, input.section.kind === 'objective' ? CONTEXT_TEXT_LIMIT : AUTHORING_LIMITS.outputText)
         || response.proposal.clarifications.length > 1 || hasCredentialMaterial(response.proposal, prepared.credentialReferences)) throw new Error('Invalid authoring response');
       complete = { ...complete, ...response.proposal, state: 'ready' };
-    } catch { complete = { ...complete, state: 'failed', message: 'Writing assistance could not produce a confirmed draft. Your procedure is unchanged. Try again or keep writing manually.' }; }
+    } catch (error) {
+      observeFailure(deps, stage, error);
+      complete = { ...complete, state: 'failed', message: AUTHORING_FAILURE_MESSAGES[error instanceof AuthoringProviderError ? error.code : 'UNCONFIRMED'] };
+    }
+    stage = 'finalize';
     const suggestion = await deps.unitOfWork.execute(async tx => {
       const row = await ownedDraft(tx, input), store = tx.authoringRequests!;
       const record = ownedRequest(await store.find(input.requestId), input);
@@ -207,9 +222,14 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
       await store.update(complete); await audit(tx, input, complete, 'responded');
       return view(complete, row, deps.clock.now());
     });
+    stage = 'authorize';
     const finalAuth = await authorizeCommand(deps, { session: input.session, action: PROCEDURE_AUTHOR_ACTION, correlationId: input.correlationId });
     return finalAuth.allowed ? { ok: true, suggestion } : { ok: false, reason: finalAuth.reason };
-  } catch (error) { if (error instanceof Refused) return { ok: false, reason: error.message }; throw error; }
+  } catch (error) {
+    if (error instanceof Refused) return { ok: false, reason: error.message };
+    observeFailure(deps, stage, error);
+    throw error;
+  }
 }
 
 export async function acceptAuthoringSuggestion(deps: AuthoringDependencies, input: AcceptAuthoringFields & Actor): Promise<ProcedureOutcome<{ rowVersion: string; alreadyApplied: boolean }>> {

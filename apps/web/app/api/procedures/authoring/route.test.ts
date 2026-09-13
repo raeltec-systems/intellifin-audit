@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ authorize: vi.fn(), runtime: vi.fn(), generate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ authorize: vi.fn(), runtime: vi.fn(), generate: vi.fn(), captureError: vi.fn() }));
 vi.mock('../../../../src/require-role', () => ({ requireAction: mocks.authorize, denialResponse: (d: { status: number }) => new Response(null, { status: d.status }) }));
 vi.mock('../../../../src/bootstrap', () => ({ getRuntime: mocks.runtime }));
 vi.mock('@intellifin/application', async original => ({ ...await original<typeof import('@intellifin/application')>(), generateAuthoringSuggestion: mocks.generate }));
@@ -14,7 +14,7 @@ function request(body: unknown = fields, origin: string | null = 'https://audit.
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.authorize.mockResolvedValue({ allowed: true, session, role: 'auditor' });
-  mocks.runtime.mockResolvedValue({ db: {}, authConfig: { baseUrl: 'https://audit.example' }, authoringModel: null });
+  mocks.runtime.mockResolvedValue({ db: {}, authConfig: { baseUrl: 'https://audit.example' }, authoringModel: null, telemetry: { captureError: mocks.captureError } });
   mocks.generate.mockResolvedValue({ ok: false, reason: 'Not configured' });
 });
 describe('authoring chat stream boundary', () => {
@@ -55,7 +55,7 @@ describe('authoring chat stream boundary', () => {
     expect(JSON.parse(new TextDecoder().decode((await reader.read()).value))).toMatchObject({ type: 'result', result: { ok: false } });
     expect((await reader.read()).done).toBe(true);
   });
-  it('lets reserved work finish after disconnect and never logs or exposes an exception', async () => {
+  it('lets reserved work finish after disconnect and reports errors only through the safe telemetry facade', async () => {
     let finish!: () => void, completed = false;
     mocks.generate.mockImplementation(async (_deps, _input, emit) => {
       await new Promise<void>(resolve => { finish = resolve; });
@@ -68,5 +68,17 @@ describe('authoring chat stream boundary', () => {
     mocks.generate.mockRejectedValueOnce(new Error('PRIVATE_PROVIDER_BODY'));
     const text = await (await POST(request())).text();
     expect(text).toContain('uncertain'); expect(text).not.toContain('PRIVATE_PROVIDER_BODY');
+    expect(mocks.captureError).toHaveBeenCalledWith('Writing assistance failed', expect.any(Error), expect.objectContaining({ operation: 'delivery', outcome: 'failure' }));
+  });
+  it('records the failed request stage without duplicating its error at the route', async () => {
+    mocks.generate.mockImplementation(async deps => {
+      const failure = new TypeError('PRIVATE_SAVED_CONTEXT');
+      deps.observeFailure('prepare', failure);
+      throw failure;
+    });
+    const text = await (await POST(request())).text();
+    expect(text).toContain('uncertain'); expect(text).not.toContain('PRIVATE_SAVED_CONTEXT');
+    expect(mocks.captureError).toHaveBeenCalledTimes(1);
+    expect(mocks.captureError).toHaveBeenCalledWith('Writing assistance failed', expect.any(TypeError), expect.objectContaining({ operation: 'prepare', aggregateId: fields.procedureId }));
   });
 });
