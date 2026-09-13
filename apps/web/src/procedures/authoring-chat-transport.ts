@@ -8,6 +8,16 @@ export async function streamAuthoringSuggestion(fields: AuthoringDraftFields, on
     method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
     body: JSON.stringify(fields), signal: AbortSignal.timeout(45_000),
   });
+  // These statuses are explicit pre-generation refusals. Do not read an arbitrary
+  // proxy/server error body or trap an expired session in "recover this request".
+  const refusal = ({
+    400: 'That writing request was not valid. Review your notes and try again.',
+    401: 'Your session has expired. Sign in again to continue writing assistance.',
+    403: 'Writing assistance is not permitted for this request. Reload the application and check your access.',
+    413: 'That writing request is too large. Shorten your notes and try again.',
+    429: 'The writing request limit has been reached. Try later or keep writing manually.',
+  } as Record<number, string>)[response.status];
+  if (refusal) { await response.body?.cancel().catch(() => {}); return { ok: false, reason: refusal }; }
   if (!response.ok || !response.body) throw new Error('Writing response unavailable');
   const reader = response.body.getReader(), decoder = new TextDecoder('utf-8', { fatal: true });
   let buffer = '', bytes = 0, events = 0;

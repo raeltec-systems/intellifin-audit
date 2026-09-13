@@ -11,6 +11,21 @@ function response(proposal: unknown) {
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 describe('OpenAI writing adapter through the installed AI SDK', () => {
+  it.each([
+    [401, 'AUTHENTICATION'], [403, 'ACCESS'], [404, 'ACCESS'], [400, 'REQUEST'], [422, 'REQUEST'], [429, 'RATE_LIMIT'], [503, 'UNAVAILABLE'],
+  ] as const)('preserves a safe category for streaming HTTP %s without a provider body or retry', async (status, code) => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'PRIVATE_PROVIDER_BODY synthetic-key', type: 'invalid_request_error', code: 'private_value' } }), {
+      status, headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const seen = vi.fn();
+    const result = await new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, seen).catch(error => error);
+    expect(result).toMatchObject({ name: 'AuthoringProviderError', code });
+    expect(result).not.toHaveProperty('cause');
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_PROVIDER_BODY');
+    expect(result.message).not.toContain('synthetic-key');
+    expect(fetcher).toHaveBeenCalledTimes(1); expect(seen).not.toHaveBeenCalled();
+  });
   it.each(['eof', 'failed', 'length'] as const)('refuses valid JSON when the provider ends with %s instead of completion', async ending => {
     const events: object[] = [
       { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },

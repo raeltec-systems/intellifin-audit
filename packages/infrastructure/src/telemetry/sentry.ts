@@ -83,6 +83,7 @@ export const TELEMETRY_MESSAGES = [
   'Update Target Draft failed',
   'Update Compliance Draft failed',
   'Update Evidence Draft failed',
+  'Writing assistance failed',
   // Sign-out. The failure matters as much as the success: it means the session is still
   // live because its event could not be appended, so the person is still signed in.
   'Sign-out recorded',

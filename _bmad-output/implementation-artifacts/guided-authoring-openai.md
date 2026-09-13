@@ -8,7 +8,7 @@ Leaving the key unset keeps manual writing and saving available.
 
 This setting is independent of MODEL_PROVIDER / MODEL_ID / MODEL_API_KEY used for
 plan checks and of audit-Run execution settings. No automatic provider fallback exists.
-Prompt identity is `guided-prose-v1`. Calls use Responses, structured output,
+Prompt identity is `guided-dialogue-v3`. Calls use Responses, structured output,
 `store:false`, low reasoning, no reasoning summary, no temperature and no tools.
 Installed dependencies checked: ai7.0.89, @ai-sdk/openai4.0.58, @ai-sdk/anthropic4.0.47.
 
@@ -32,13 +32,18 @@ the pinned provider's installed types and serialization source used to verify pa
   prompt text. Nothing is silently redacted; manual writing and saving remain available.
   These checks are bounded safeguards, not a comprehensive detector for arbitrary secrets;
   supplied prose must contain no secrets and remains untrusted model input.
-- Bounded receipts retain current/proposed text, questions, actor/version, identity,
-  hashes, expiry and token usage. Raw rough notes, feedback, reasoning and provider errors
-  are not retained. Receipts currently remain until their owning version is deleted;
+- Bounded receipts retain current/proposed text, questions, explanations, actor/version,
+  identity, hashes, expiry and token usage. Follow-up receipts also retain the human's
+  working proposal and requested changes for the bounded revision history. Initial rough
+  notes, reasoning and raw provider errors are not retained. Receipts remain until their owning version is deleted;
   expiry prevents acceptance but does not delete historical receipts. Retention maintenance
   is a review point for subsequent operational work.
 - Immutable audit events retain request/section identifiers, model/prompt references,
   context and accepted-text hashes, and usage. They contain no model input or output.
+- Operational failures retain a safe category and request stage through the existing
+  telemetry facade. For `AUTHENTICATION` or `ACCESS`, check the dedicated key and model
+  access in **Railway → intellifin-audit → production → web → Variables**. Never copy
+  the key into logs or chat. A present variable is not proof that OpenAI accepts it.
 
 ## Live check and human review
 

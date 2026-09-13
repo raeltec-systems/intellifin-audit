@@ -7,6 +7,21 @@ const suggestion = { requestId: fields.requestId, section: fields.section, autho
 const frame = (event: object) => new TextEncoder().encode(JSON.stringify({ requestId: fields.requestId, ...event }) + '\n');
 afterEach(() => vi.unstubAllGlobals());
 describe('authoring chat client transport', () => {
+  it.each([400, 401, 403, 413, 429])('shows an actionable refusal for HTTP %s, without treating it as lost delivery', async status => {
+    vi.stubGlobal('fetch', async () => new Response('PRIVATE_PROXY_BODY', { status }));
+    const result = await streamAuthoringSuggestion(fields);
+    expect(result).toMatchObject({ ok: false, reason: expect.any(String) });
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_PROXY_BODY');
+  });
+  it('keeps HTTP 500 uncertain because a receipt might have committed', async () => {
+    vi.stubGlobal('fetch', async () => new Response('PRIVATE_SERVER_BODY', { status: 500 }));
+    await expect(streamAuthoringSuggestion(fields)).rejects.toThrow('Writing response unavailable');
+  });
+  it('returns a confirmed failed receipt so manual editing and a new request remain available', async () => {
+    const failed = { ...suggestion, state: 'failed', proposedText: null, message: 'OpenAI could not authenticate writing assistance.' };
+    vi.stubGlobal('fetch', async () => new Response(frame({ type: 'result', result: { ok: true, suggestion: failed } })));
+    expect(await streamAuthoringSuggestion(fields)).toEqual({ ok: true, suggestion: failed });
+  });
   it('shows only validated request-owned partials and waits for the authoritative result', async () => {
     let stream!: ReadableStreamDefaultController<Uint8Array>;
     vi.stubGlobal('fetch', vi.fn(async (_url, init: RequestInit) => {
