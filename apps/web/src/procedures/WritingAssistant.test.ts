@@ -42,6 +42,23 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it('a delayed command acknowledgement cannot clear a newer correction or another section’s rough notes', () => {
+    const { machine } = ready();
+    machine.edit('scope', 'changes', 'Record that');
+    machine.open(objective, 'draft', '');
+    machine.edit('objective', 'notes', 'Preserve this rough objective.');
+    machine.edit('scope', 'changes', 'Keep all records and explain missing evidence.');
+    machine.clearCommand('scope', 'changes', 'Record that');
+    expect(machine.snapshot.sessions.get('scope')?.changes).toBe('Keep all records and explain missing evidence.');
+    expect(machine.snapshot.sessions.get('objective')?.notes).toBe('Preserve this rough objective.');
+  });
+  it('clears only the submitted action text while retaining the original answer and proposal', () => {
+    const { machine } = ready();
+    const before = machine.snapshot.sessions.get('scope')!;
+    machine.edit('scope', 'changes', 'Take me to evidence');
+    machine.clearCommand('scope', 'changes', 'Take me to evidence');
+    expect(machine.snapshot.sessions.get('scope')).toMatchObject({ notes: before.notes, proposal: before.proposal, changes: '' });
+  });
   it('closes a dismissed uncertain request without erasing a completed rejected proposal', () => {
     const machine = createWritingAssistantState(), draft = view(), request = fields();
     machine.open(scope, 'draft', ''); machine.begin(request, draft); machine.fail(request);

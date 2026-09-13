@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 const selected = [
+  'chat-action-saved-scope', 'chat-action-selected-system', 'chat-action-saved-steps-mobile',
   'chat-streaming-response', 'chat-conversation-desktop', 'chat-conversation-mobile',
   'dialogue-control-confirmation', 'dialogue-scope-question', 'dialogue-system-choice', 'dialogue-test-intent-mobile',
   'guided-preparation-mobile', 'owner-objective-proposal-before-acceptance',

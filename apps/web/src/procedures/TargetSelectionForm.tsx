@@ -29,6 +29,7 @@ import {
 import { useSection, useSectionSubmissionStatus } from './use-section';
 import { SectionConflict } from './SectionConflict';
 import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
+import { usePreparationChoices, type PreparationActionResult } from './PreparationActions';
 
 /**
  * The Target System selection editor (FR-7, FR-8, scoped to this story).
@@ -46,6 +47,7 @@ import { UnknownSaveOutcome, UNKNOWN_SAVE_OUTCOME } from './UnknownSaveOutcome';
  */
 
 export interface TargetSelectionFormProps {
+  readonly conversationActive?: boolean;
   readonly draft: ProcedureVersionView;
   readonly registrations: readonly TargetSystemRegistration[];
   readonly rowVersion: string;
@@ -91,6 +93,7 @@ export function TargetSelectionForm({
   registrations,
   rowVersion,
   onSave,
+  conversationActive = false,
 }: TargetSelectionFormProps): React.JSX.Element {
   const id = useId();
   const section = useSection(fromSnapshot(draft), rowVersion);
@@ -107,6 +110,7 @@ export function TargetSelectionForm({
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   useSectionSubmissionStatus('Target Systems', section, busy, unknownOutcome);
   const saving = useRef(false);
+  const conversationConfirmation = useRef<((result: PreparationActionResult) => void) | null>(null);
 
   const selectedIds = new Set(selected.map((target) => target.registrationId));
   const available = registrations.filter((registration) => !selectedIds.has(registration.registrationId));
@@ -167,6 +171,27 @@ export function TargetSelectionForm({
     setResult(null);
   }
 
+  usePreparationChoices({
+    step: 'evidence', surface: 'evidence:systems', active: conversationActive, basis: `${draft.versionId}:${draft.sectionPreparation?.revision ?? 0}`,
+    choices: registrations.map(registration => ({ id: registration.registrationId,
+      label: `${registration.displayName} (${kindLabel(registration.kind)})${(nameCounts.get(`${registration.kind}:${registration.displayName.toLowerCase()}`) ?? 0) > 1 ? ` · ${registration.registrationId}` : ''}`,
+      aliases: [registration.displayName], description: `${selectedIds.has(registration.registrationId) ? 'Already selected.' : 'Adding this system expands the audited scope and requires confirmation.'} Existing systems are kept.`,
+    })),
+    async select(registrationId) {
+      if (draft.state !== 'DRAFT' || saving.current || unknownOutcome || section.current.current.conflict || confirming) return { ok: false, message: 'The target selection is not ready to change. Review the current saved values first.' };
+      const registration = registrations.find(item => item.registrationId === registrationId);
+      if (!registration) return { ok: false, message: 'That system is no longer available. Refresh the registered choices.' };
+      if (selectedRef.current.some(item => item.registrationId === registrationId)) return { ok: true, message: `${registration.displayName} is already selected. No duplicate was added.` };
+      setSelected(current => [...current, { registrationId, mode: 'bind', displayName: registration.displayName,
+        kind: registration.kind, digest: registration.digest, credentialRef: registration.credentialRef,
+        allowedOrigins: registration.allowedOrigins, applicationIdentity: registration.applicationIdentity,
+        permittedActions: registration.permittedActions, labels: registration.attributeLabelPatterns,
+        secondaryKey: registration.secondaryKey, expectedDigest: registration.digest }]);
+      setResult(null); setConfirming(true);
+      return new Promise(resolve => { conversationConfirmation.current = resolve; });
+    },
+  });
+
   /**
    * The systems this save would ADD to the frozen scope, by name.
    *
@@ -185,27 +210,30 @@ export function TargetSelectionForm({
     return next.filter((target) => !saved.has(target.registrationId)).map((target) => target.displayName);
   }
 
-  async function save(): Promise<void> {
-    if (saving.current || unknownOutcome || section.current.current.conflict) return;
+  async function save(): Promise<PreparationActionResult> {
+    if (saving.current || unknownOutcome || section.current.current.conflict) return { ok: false, message: unknownOutcome ? UNKNOWN_SAVE_OUTCOME : 'Resolve the target selection or wait for its current save.' };
     saving.current = true;
     setConfirming(false);
     setBusy(true);
+    const sentTargets = selectedRef.current;
     const edit: DraftTargetEdit = {
       section: 'target-systems',
-      selections: selectedRef.current.map((target) =>
+      selections: sentTargets.map((target) =>
         target.mode === 'retain'
           ? { mode: 'retain', registrationId: target.registrationId }
           : { mode: 'bind', registrationId: target.registrationId, expectedDigest: target.expectedDigest },
       ),
     };
-    section.begin(selectedRef.current.map((target) => ({ ...target, mode: 'retain' as const })));
+    section.begin(sentTargets.map((target) => ({ ...target, mode: 'retain' as const })));
     try {
       const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
       setResult(outcome);
       section.finish(outcome.ok ? outcome.rowVersion : undefined);
+      return { ok: outcome.ok, message: outcome.ok ? `Target systems saved: ${sentTargets.map(target => target.displayName).join(', ')}.` : outcome.reason };
     } catch {
       section.finish();
       setUnknownOutcome(true); setResult(null);
+      return { ok: false, message: UNKNOWN_SAVE_OUTCOME };
     } finally {
       setAnnouncement((count) => count + 1);
       saving.current = false;
@@ -367,9 +395,16 @@ export function TargetSelectionForm({
         consequence={`This adds ${added.join(', ')} to the Target Systems a Run of Draft version ${draft.versionNumber} of ${draft.controlName} may read. The change is recorded in the audit chain against your name.`}
         confirmLabel="Save Target Systems"
         onConfirm={() => {
-          void save();
+          const respond = conversationConfirmation.current;
+          conversationConfirmation.current = null;
+          void save().then(result => respond?.(result));
         }}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => {
+          setConfirming(false);
+          const respond = conversationConfirmation.current;
+          conversationConfirmation.current = null;
+          if (respond) { section.reset(); respond({ ok: false, message: 'Selection cancelled. The saved target systems were not changed.' }); }
+        }}
       />
     </div>
   );

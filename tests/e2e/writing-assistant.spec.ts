@@ -176,6 +176,10 @@ test('generation keeps manual editing available, retains its section after switc
     await expect(useDraft).toHaveAccessibleDescription(/saved procedure changed/);
     await useDraft.click({ force: true });
     await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
+    await scopeWriting.getByLabel('Your instruction', { exact: true }).fill('Record that');
+    await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(scopeWriting.locator('[data-preparation-action-turn]').last()).toContainText('saved procedure changed');
+    await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
     await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
     expect(await requestStates()).toEqual(['ready']);
     const reconcile = scopeWriting.getByRole('button', { name: 'Start again with this suggestion', exact: true });
@@ -269,7 +273,7 @@ test('an uncertain generation retries its original request and an uncertain acce
   const notes = 'Compare all production parameters with the supplied baseline and retain unresolved differences.';
   const address = /\/(?:api\/procedures\/authoring|procedures\/[^/]+\/builder)$/;
   const sent: AuthoringDraftFields[] = [];
-  let loseGeneration = true, acceptanceCommitted = false;
+  let loseGeneration = true, acceptanceCommitted = false, acceptanceCalls = 0;
   let releaseAcceptance!: () => void;
   const acceptanceHeld = new Promise<void>(resolve => { releaseAcceptance = resolve; });
   await page.route(address, async route => {
@@ -283,6 +287,7 @@ test('an uncertain generation retries its original request and an uncertain acce
       }
     }
     if (fields?.['replacement'] === notes) {
+      acceptanceCalls += 1;
       await route.fetch();
       acceptanceCommitted = true;
       await acceptanceHeld;
@@ -313,8 +318,13 @@ test('an uncertain generation retries its original request and an uncertain acce
     expect(await requestStates()).toEqual(['ready']);
     await page.getByRole('button', { name: 'Use saved Risk, control and objective', exact: true }).click();
     await expect(useDraft).toBeEnabled();
-    await useDraft.click();
+    await writing.getByLabel('Your reply', { exact: true }).fill('Record that');
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect.poll(() => acceptanceCommitted).toBe(true);
+    // Repeated activation while the first real save is awaiting its response cannot
+    // issue another mutation or turn the unknown outcome into a success claim.
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click({ force: true });
+    expect(acceptanceCalls).toBe(1);
     await openPlanDetail(page);
     const submit = page.getByRole('button', { name: 'Submit for approval', exact: true });
     await expect(submit).toHaveAccessibleDescription(/Writing suggestion save to be acknowledged/);

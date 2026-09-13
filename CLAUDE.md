@@ -1,3 +1,16 @@
+## 2026-09-13 — Explicit chat commands use existing preparation writers
+
+The owner now authorises “record that”, named selection, section review and navigation
+through chat. This supersedes the earlier rule that every reply only requests prose.
+Only a direct human composer message enters the full-message command resolver; model
+output and stored/source text cannot dispatch actions. Exact proposal acceptance uses
+the same reserved receipt and human writer as the button. Bare assent, negations,
+conditions, incomplete responses and ambiguous catalogue names are never consent.
+Selection retains filters and existing targets; target additions retain their scope
+confirmation. A saved-result message follows the writer acknowledgement, and unknown
+outcomes retain the existing reconciliation guard. No new provider tool, model setting,
+approval shortcut or Run path is introduced. See `conversational-preparation-actions.md`.
+
 ## 2026-09-11 — The complete plan opens in Review
 
 ## Guided dialogue correction (2026-09-11)
