@@ -494,7 +494,12 @@ export async function generateAuthoringSuggestionAction(fields: import('@intelli
   const { isAuthoringDraftFields, generateAuthoringSuggestion } = await import('@intellifin/application');
   if (!isAuthoringDraftFields(fields)) return { ok: false as const, reason: MALFORMED };
   try {
-    return await generateAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: (await getRuntime()).authoringModel }, { ...fields, session: decision.session, correlationId: await currentCorrelationId() });
+    const app = await getRuntime(), correlationId = await currentCorrelationId();
+    return await generateAuthoringSuggestion({ ...await dependencies(), clock: { now: () => new Date() }, model: app.authoringModel,
+      observeFailure: (stage, error) => app.telemetry.captureError('Writing assistance failed', error, {
+        correlationId, aggregateId: fields.procedureId, operation: stage, outcome: 'failure',
+      }),
+    }, { ...fields, session: decision.session, correlationId });
   } catch { throw new Error('The writing response could not be confirmed. Check the same request again or continue writing manually.'); }
 }
 export async function acceptAuthoringSuggestionAction(fields: import('@intellifin/application').AcceptAuthoringFields) {
