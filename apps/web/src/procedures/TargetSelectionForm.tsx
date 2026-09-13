@@ -116,8 +116,12 @@ export function TargetSelectionForm({
   const available = registrations.filter((registration) => !selectedIds.has(registration.registrationId));
   const nameCounts = new Map<string, number>();
   for (const registration of registrations) {
-    const key = `${registration.kind}:${registration.displayName.toLowerCase()}`;
+    const key = `${registration.kind}:${registration.displayName.trim().toLocaleLowerCase('en-GB')}`;
     nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+  function targetLabel(target: Pick<SelectedTarget, 'registrationId' | 'displayName' | 'kind'>): string {
+    const duplicate = (nameCounts.get(`${target.kind}:${target.displayName.trim().toLocaleLowerCase('en-GB')}`) ?? 0) > 1;
+    return `${target.displayName} (${kindLabel(target.kind)})${duplicate ? ` · ${target.registrationId}` : ''}`;
   }
 
   // What the Template offers, said against what a PoC Administrator actually registered.
@@ -174,14 +178,14 @@ export function TargetSelectionForm({
   usePreparationChoices({
     step: 'evidence', surface: 'evidence:systems', active: conversationActive, basis: `${draft.versionId}:${draft.sectionPreparation?.revision ?? 0}`,
     choices: registrations.map(registration => ({ id: registration.registrationId,
-      label: `${registration.displayName} (${kindLabel(registration.kind)})${(nameCounts.get(`${registration.kind}:${registration.displayName.toLowerCase()}`) ?? 0) > 1 ? ` · ${registration.registrationId}` : ''}`,
+      label: targetLabel(registration),
       aliases: [registration.displayName], description: `${selectedIds.has(registration.registrationId) ? 'Already selected.' : 'Adding this system expands the audited scope and requires confirmation.'} Existing systems are kept.`,
     })),
     async select(registrationId) {
       if (draft.state !== 'DRAFT' || saving.current || unknownOutcome || section.current.current.conflict || confirming) return { ok: false, message: 'The target selection is not ready to change. Review the current saved values first.' };
       const registration = registrations.find(item => item.registrationId === registrationId);
       if (!registration) return { ok: false, message: 'That system is no longer available. Refresh the registered choices.' };
-      if (selectedRef.current.some(item => item.registrationId === registrationId)) return { ok: true, message: `${registration.displayName} is already selected. No duplicate was added.` };
+      if (selectedRef.current.some(item => item.registrationId === registrationId)) return { ok: true, message: `${targetLabel(registration)} is already selected. No duplicate was added.` };
       setSelected(current => [...current, { registrationId, mode: 'bind', displayName: registration.displayName,
         kind: registration.kind, digest: registration.digest, credentialRef: registration.credentialRef,
         allowedOrigins: registration.allowedOrigins, applicationIdentity: registration.applicationIdentity,
@@ -193,7 +197,8 @@ export function TargetSelectionForm({
   });
 
   /**
-   * The systems this save would ADD to the frozen scope, by name.
+   * The systems this save would ADD to the frozen scope, with the same identity
+   * labels used by the choice catalogue and picker.
    *
    * Owner decision (2026-09-08): an ordinary Draft section save is a direct save, and
    * the focus-trapping confirmation is kept for the decisions a person cannot take back
@@ -207,7 +212,7 @@ export function TargetSelectionForm({
    */
   function addedSystems(next: readonly SelectedTarget[]): readonly string[] {
     const saved = new Set(draft.targets.map((target) => target.registrationId));
-    return next.filter((target) => !saved.has(target.registrationId)).map((target) => target.displayName);
+    return next.filter((target) => !saved.has(target.registrationId)).map(targetLabel);
   }
 
   async function save(): Promise<PreparationActionResult> {
@@ -229,7 +234,7 @@ export function TargetSelectionForm({
       const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
       setResult(outcome);
       section.finish(outcome.ok ? outcome.rowVersion : undefined);
-      return { ok: outcome.ok, message: outcome.ok ? `Target systems saved: ${sentTargets.map(target => target.displayName).join(', ')}.` : outcome.reason };
+      return { ok: outcome.ok, message: outcome.ok ? `Target systems saved: ${sentTargets.map(targetLabel).join(', ')}.` : outcome.reason };
     } catch {
       section.finish();
       setUnknownOutcome(true); setResult(null);
@@ -356,9 +361,7 @@ export function TargetSelectionForm({
             <option value="">Choose a system</option>
             {available.map((registration) => (
               <option key={registration.registrationId} value={registration.registrationId}>
-                {registration.displayName} ({kindLabel(registration.kind)})
-                {(nameCounts.get(`${registration.kind}:${registration.displayName.toLowerCase()}`) ?? 0) > 1
-                  ? ` · ${registration.registrationId}` : ''}
+                {targetLabel(registration)}
               </option>
             ))}
           </select>

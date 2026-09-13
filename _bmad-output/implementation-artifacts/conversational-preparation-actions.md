@@ -86,3 +86,13 @@ their original proposal in the conversation history and cannot appear below a ne
 draft or another system's steps. A fresh refinement retains the saved content and
 review but does not repeat the old save acknowledgement. Final hosted validation
 must run against this correction as well.
+
+The independent recheck also caught free-form audit prose beginning with “record” or
+“save” being intercepted. Only the complete explicit command phrases and short
+ambiguous assent now leave the writing path. Examples such as “Record why a value
+could not be read” and “Save evidence from every record” remain unapplied drafting
+requests. Target confirmation and acknowledged results use the same kind/identifier
+labels as catalogue choices, including case-insensitive duplicate names; the browser
+journey seeds such a duplicate and checks the exact confirmed registration. A model
+clarification alone does not claim that an unsaved replacement exists or change the
+existing manual section-review requirements.

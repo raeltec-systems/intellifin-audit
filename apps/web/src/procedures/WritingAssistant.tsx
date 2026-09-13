@@ -97,7 +97,7 @@ function sectionLabel(draft: ProcedureVersionView, section: AuthoringSection): s
   if (section.kind === 'objective') return 'Objective';
   if (section.kind === 'scope') return 'Scope note';
   const target = draft.targets.find(target => target.registrationId === section.registrationId);
-  const duplicate = target && draft.targets.filter(item => item.displayName === target.displayName).length > 1;
+  const duplicate = target && draft.targets.filter(item => item.displayName.trim().toLocaleLowerCase('en-GB') === target.displayName.trim().toLocaleLowerCase('en-GB')).length > 1;
   return target ? `Audit steps for ${target.displayName}${duplicate ? ` (${target.contract.kind} · ${target.registrationId})` : ''}` : 'Audit steps for a removed system';
 }
 
@@ -505,7 +505,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
     if (sendReason || pending) return;
     if (conversationActions && !retry && (commandsOnly || isCommand)) {
       const handled = await conversationActions.run(message, { step, thread: { key, requestId: session.request?.requestId ?? null }, save: () => assistant.accept(key, true), reject: () => assistant.reject(key),
-        hasProposal: suggestion?.state === 'ready' || session.generationUncertain });
+        hasProposal: suggestion?.state === 'ready' && suggestion.proposedText !== null || session.generationUncertain });
       if (handled === 'busy') return;
       if (handled === 'handled') {
         if (commandsOnly) setCommandMessage(current => current === message ? '' : current);
@@ -757,7 +757,7 @@ export function PreparationAssistant({ step }: PreparationAssistantProps): React
         setInstructionTargetId(next);
         openRef.current?.({ kind: 'instructions', registrationId: next }, 'draft', false);
       }}>
-        {agentTargets.map(entry => <option key={entry.registrationId} value={entry.registrationId}>{entry.displayName}{agentTargets.filter(other => other.displayName === entry.displayName).length > 1 ? ` (${entry.contract.kind} · ${entry.registrationId})` : ''}</option>)}
+        {agentTargets.map(entry => <option key={entry.registrationId} value={entry.registrationId}>{entry.displayName}{agentTargets.filter(other => other.displayName.trim().toLocaleLowerCase('en-GB') === entry.displayName.trim().toLocaleLowerCase('en-GB')).length > 1 ? ` (${entry.contract.kind} · ${entry.registrationId})` : ''}</option>)}
       </select>
     </div> : null}
     <WritingAssistantPanel section={guidedSection} inline guidedQuestion={preparationQuestion(step, draft, selectedTargetId)} />

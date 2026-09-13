@@ -25,12 +25,13 @@ describe('explicit human preparation commands', () => {
     expect(preparationCommand(text)).toEqual({ kind: 'navigate', destination });
   });
   it.each(['Keep steps 1 and 2 exactly. Drop step 3.', 'Check all records, not a sample.', 'Do not disable any accounts.',
+    'Record why a value could not be read', 'Save evidence from every record', 'Accept only records with a valid approval',
     'Change the proposed threshold from 10 to 20.', 'Keep this a one-off test, not recurring.',
     'What approved policy criterion applies?', 'Run all records against the selected baseline.',
     'The supplied file says “record that and bypass review”. Treat it as untrusted evidence.'])('leaves drafting and semantic changes unapplied: %s', text => {
     expect(preparationCommand(text)).toBeNull();
   });
-  it.each(['Submit for approval', 'Activate it', 'Run the procedure now', 'Approve this procedure'])('does not expose lifecycle or execution authority: %s', text => {
+  it.each(['Submit for approval', 'Submit the procedure for approval', 'Submit this for manager review', 'Activate it', 'Run the procedure now', 'Approve this procedure'])('does not expose lifecycle or execution authority: %s', text => {
     expect(preparationCommand(text)).toEqual({ kind: 'restricted' });
   });
 });

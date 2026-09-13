@@ -11,7 +11,7 @@ test.skip(process.env['PLAYWRIGHT_BASE_URL'] !== undefined, 'This journey requir
 
 const ids = new CryptoUuidV7Generator();
 let sql: Sql;
-let sourceId = '', targetId = '', procedureId = '', versionId = '';
+let sourceId = '', targetId = '', duplicateTargetId = '', procedureId = '', versionId = '';
 const scopeAnswer = 'Every production parameter in the approved baseline. Do not sample; retain unresolved comparisons.';
 const roughAnswer = 'Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.';
 const workingDraft = '1. Read every baseline parameter in ProdConsole.\n2. Compare observed values with the approved baseline.\n3. Add a separate summary by owner.\n4. Leave missing values unresolved.\nHuman note: preserve exact parameter names.';
@@ -23,15 +23,17 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('The guided journey requires the throwaway database.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 2 });
-  sourceId = ids.next(); targetId = ids.next();
-  // Administration owns these catalogues. Seed only two valid synthetic catalogue
-  // entries; the auditor creates and prepares the actual procedure through the UI.
+  sourceId = ids.next(); targetId = ids.next(); duplicateTargetId = ids.next();
+  // Administration owns these catalogues. The duplicate system name proves that
+  // conversational selection and scope consent identify the same registration.
   const source = { kind: 'versioned-file' as const, location: 'https://synthetic.invalid/population.csv', declaredSchema: ['parameter'], declaredCountMechanism: 'cover-sheet' as const, sensitiveFields: [] };
   const target = { kind: 'web' as const, allowedOrigins: ['https://synthetic.invalid'], applicationIdentity: '', credentialRef: 'vault://synthetic/prod', permittedActions: ['navigate', 'read-attribute'] as const, attributeLabelPatterns: ['Parameter'], secondaryKey: '' };
   await sql`INSERT INTO population_source_binding (binding_id, display_name, kind, location, declared_schema, declared_count_mechanism, sensitive_fields, note, status, digest)
     VALUES (${sourceId}, 'Baseline', ${source.kind}, ${source.location}, ${source.declaredSchema}, ${source.declaredCountMechanism}, ${source.sensitiveFields}, '', 'active', ${bindingDigest(source)})`;
-  await sql`INSERT INTO target_system_registration (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
-    VALUES (${targetId}, 'ProdConsole', ${target.kind}, ${target.allowedOrigins}, ${target.applicationIdentity}, ${target.credentialRef}, ${target.permittedActions}, ${target.attributeLabelPatterns}, ${target.secondaryKey}, '', 'active', ${registrationDigest(target)})`;
+  for (const [id, name] of [[targetId, 'ProdConsole'], [duplicateTargetId, 'prodconsole']] as const) {
+    await sql`INSERT INTO target_system_registration (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
+      VALUES (${id}, ${name}, ${target.kind}, ${target.allowedOrigins}, ${target.applicationIdentity}, ${target.credentialRef}, ${target.permittedActions}, ${target.attributeLabelPatterns}, ${target.secondaryKey}, '', 'active', ${registrationDigest(target)})`;
+  }
 });
 
 test.afterAll(async () => {
@@ -43,6 +45,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`;
     }
     if (targetId) await sql`DELETE FROM target_system_registration WHERE registration_id = ${targetId}`;
+    if (duplicateTargetId) await sql`DELETE FROM target_system_registration WHERE registration_id = ${duplicateTargetId}`;
     if (sourceId) await sql`DELETE FROM population_source_binding WHERE binding_id = ${sourceId}`;
   } finally { await sql.end({ timeout: 5 }); }
 });
@@ -141,6 +144,8 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await evidenceChat.getByLabel('Your instruction', { exact: true }).fill(`Select ${targetId}`);
   await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText(targetId);
+  await expect(page.getByRole('dialog')).not.toContainText(duplicateTargetId);
   expect((await saved())!.targets).toEqual([]);
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText('Selection cancelled');
@@ -151,6 +156,7 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
   await expect(page.getByText('Target systems saved. Next, choose the proof to retain.', { exact: true })).toBeVisible();
   await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText('Target systems saved: ProdConsole');
+  await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText(targetId);
   expect((await saved())!.targets.map(target => target.registrationId)).toEqual([targetId]);
   await attachAuthoringScreenshot(page, testInfo, 'chat-action-selected-system');
   await evidence.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();

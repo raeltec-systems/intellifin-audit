@@ -38,9 +38,9 @@ export function preparationCommand(message: string): PreparationCommand | null {
   const selection = /^(select|choose|tell me about|show me) (.+)$/.exec(text);
   if (selection) return { kind: selection[1] === 'select' || selection[1] === 'choose' ? 'select' : 'discuss',
     name: /^(?:that|this|that one|this one|it|the suggested (?:source|system|option))$/.test(selection[2]!) ? null : selection[2]! };
-  if (/^(?:submit(?: (?:it|this|that|the procedure|for approval))?|(?:activate|approve|run|execute)(?: (?:it|this|that|this procedure|the procedure|this run|the run))?)(?: now)?$/.test(text)) return { kind: 'restricted' };
-  if (/^(?:yes|yeah|yep|ok|okay|correct|sounds (?:good|right)|that's (?:right|correct)|continue|next|save|record|select|choose)$/.test(text)
-    || /^(?:(?:do not|don't|never) )?(?:save|record|accept|select|choose)\b/.test(text)) return { kind: 'clarify' };
+  if (/^submit(?: (?:it|this|that|this procedure|the procedure))?(?: for (?:manager )?(?:approval|review))?(?: now)?$/.test(text)
+    || /^(?:activate|approve|run|execute)(?: (?:it|this|that|this procedure|the procedure|this run|the run))?(?: now)?$/.test(text)) return { kind: 'restricted' };
+  if (/^(?:yes|yeah|yep|ok|okay|correct|sounds (?:good|right)|that's (?:right|correct)|continue|next|save|record|select|choose)$/.test(text)) return { kind: 'clarify' };
   return null;
 }
 
