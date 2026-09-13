@@ -20,11 +20,23 @@ interface GuideCommands {
   readonly navigate: (step: PreparationDestination) => void;
   readonly review: (step: PreparationDestination) => Promise<PreparationActionResult>;
 }
-interface ActionTurn {
+export interface PreparationActionThread {
+  readonly key: string;
+  readonly requestId: string | null;
+}
+export interface ActionTurn {
   readonly id: number;
   readonly step: PreparationDestination;
+  readonly thread: PreparationActionThread | null;
   readonly message: string;
   readonly result: PreparationActionResult | null;
+}
+
+/** A result belongs to the proposal and target that received the command, never
+ * to a later proposal that happens to occupy the same outline section. */
+export function preparationActionTurns(turns: readonly ActionTurn[], step: PreparationDestination, thread: PreparationActionThread | null = null): readonly ActionTurn[] {
+  return turns.filter(turn => turn.step === step && (thread === null ? turn.thread === null
+    : turn.thread?.key === thread.key && turn.thread.requestId === thread.requestId));
 }
 
 export function createPreparationActionRegistry() {
@@ -49,6 +61,7 @@ type CommandHandling = 'handled' | 'busy' | 'unhandled';
 type RunOptions = {
   readonly step: PreparationDestination;
   readonly surface?: string;
+  readonly thread?: PreparationActionThread;
   readonly save?: () => Promise<PreparationActionResult>;
   readonly reject?: () => Promise<PreparationActionResult>;
   readonly hasProposal?: boolean;
@@ -77,7 +90,7 @@ export function PreparationActionsProvider({ children }: { readonly children: Re
     if (gate.current) return 'busy';
     gate.current = true; setBusy(true);
     const id = ++sequence.current;
-    setTurns(prior => [...prior, { id, step: options.step, message, result: null }].slice(-12));
+    setTurns(prior => [...prior, { id, step: options.step, thread: options.thread ?? null, message, result: null }].slice(-12));
     let result: PreparationActionResult;
     try {
       const guide = [...registry.guides.values()][0]?.();
@@ -145,9 +158,9 @@ export function usePreparationGuide(guide: GuideCommands): void {
     return () => { registry.guides.delete(id); };
   }, [context?.registry, id]);
 }
-export function PreparationActionMessages({ step }: { readonly step: PreparationDestination }): React.JSX.Element {
+export function PreparationActionMessages({ step, thread = null }: { readonly step: PreparationDestination; readonly thread?: PreparationActionThread | null }): React.JSX.Element {
   const context = usePreparationActions();
-  return <>{context?.turns.filter(turn => turn.step === step).map(turn => <div key={turn.id} data-preparation-action-turn>
+  return <>{preparationActionTurns(context?.turns ?? [], step, thread).map(turn => <div key={turn.id} data-preparation-action-turn>
     <ChatMessage from="auditor"><p>{turn.message}</p></ChatMessage>
     <ChatMessage from="assistant" pending={turn.result === null}><p role="status">{turn.result?.message ?? 'Applying your request… Complete any confirmation shown above.'}</p></ChatMessage>
   </div>)}</>;

@@ -211,6 +211,15 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await writing.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('[data-preparation-nav="instructions"] [data-preparation-status]')).toHaveAttribute('data-preparation-status', 'reviewed');
 
+  // Starting another proposal must not put the old acknowledgement below it.
+  // The saved procedure and review remain intact while new rough notes are prepared.
+  await chooseSection(page, 'instructions');
+  await writing.getByRole('button', { name: 'Continue refining', exact: true }).click();
+  await expect(writing.getByLabel('Your answer', { exact: true })).toHaveValue(acceptedSteps);
+  await expect(writing.locator('[data-preparation-action-turn]')).toHaveCount(0);
+  expect((await saved())!.instructions.find(instruction => instruction.registrationId === targetId)!.text).toBe(acceptedSteps);
+  expect(sectionReview((await saved())!, 'instructions')).not.toBeNull();
+
   await chooseSection(page, 'frequency');
   await page.getByLabel('Frequency', { exact: true }).selectOption('once');
   await page.getByLabel('Start time (UTC)', { exact: true }).fill('00:00');

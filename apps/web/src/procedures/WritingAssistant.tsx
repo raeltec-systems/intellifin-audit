@@ -504,7 +504,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
   const send = async () => {
     if (sendReason || pending) return;
     if (conversationActions && !retry && (commandsOnly || isCommand)) {
-      const handled = await conversationActions.run(message, { step, save: () => assistant.accept(key, true), reject: () => assistant.reject(key),
+      const handled = await conversationActions.run(message, { step, thread: { key, requestId: session.request?.requestId ?? null }, save: () => assistant.accept(key, true), reject: () => assistant.reject(key),
         hasProposal: suggestion?.state === 'ready' || session.generationUncertain });
       if (handled === 'busy') return;
       if (handled === 'handled') {
@@ -559,7 +559,8 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
       <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>Procedure assistant</h3>
       <span className="ls-caption">{sectionLabel(draft, session.section)}</span>
     </div>
-    <AuthoringChat key={key} busy={pending} requestId={session.request?.requestId} composer={input}>
+    <AuthoringChat key={key} busy={pending || conversationActions?.busy === true}
+      requestId={`${session.request?.requestId ?? key}:${conversationActions?.turns.filter(turn => turn.thread?.key === key).at(-1)?.id ?? ''}`} composer={input}>
       <ChatMessage from="assistant">
         <p data-writing-question>{question}</p>
         {!session.request ? <p className="ls-caption">I’ll use your saved control and choices to develop a draft for you to check.</p> : null}
@@ -570,6 +571,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
           {entry.explanation ? <p>{entry.explanation}</p> : null}
           <p>{entry.proposal ?? entry.clarifications.join(' ')}</p>
         </ChatMessage>
+        <PreparationActionMessages step={step} thread={{ key, requestId: entry.requestId }} />
         {entry.feedback ? <ChatMessage from="auditor"><p>{entry.feedback}</p></ChatMessage> : null}
       </div>)}
       {pending || session.streaming ? <ChatMessage from="assistant" pending={pending}>
@@ -620,7 +622,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
       {session.request && (suggestion !== null || retry) && !terminal && !pending ? <div className="ls-chat__dismiss">
         <Button type="button" variant="ghost" busy={session.busy === 'rejection'} disabledReason={session.busy !== null || snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reject(key)}>Keep my wording</Button>
       </div> : null}
-      <PreparationActionMessages step={step} />
+      <PreparationActionMessages step={step} thread={{ key, requestId: session.request?.requestId ?? null }} />
     </AuthoringChat>
   </section>;
 }

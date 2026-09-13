@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { createPreparationActionRegistry, type PreparationChoices } from './PreparationActions';
+import { createPreparationActionRegistry, preparationActionTurns, type ActionTurn, type PreparationChoices } from './PreparationActions';
+
+describe('action result ownership', () => {
+  const saved: ActionTurn = { id: 1, step: 'instructions', thread: { key: 'instructions:system-a', requestId: 'proposal-a' },
+    message: 'Record that', result: { ok: true, message: 'Saved the displayed proposal.' } };
+  it('shows the acknowledgement with its original proposal, including when that proposal moves into history', () => {
+    expect(preparationActionTurns([saved], 'instructions', saved.thread)).toEqual([saved]);
+  });
+  it('does not show a saved result under a newer proposal, another target, or a general section question', () => {
+    expect(preparationActionTurns([saved], 'instructions', { key: 'instructions:system-a', requestId: 'proposal-b' })).toEqual([]);
+    expect(preparationActionTurns([saved], 'instructions', { key: 'instructions:system-b', requestId: 'proposal-a' })).toEqual([]);
+    expect(preparationActionTurns([saved], 'instructions')).toEqual([]);
+  });
+});
 
 describe('conversation choice lifetime', () => {
   function setup() {

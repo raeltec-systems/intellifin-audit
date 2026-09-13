@@ -77,3 +77,12 @@ stays with writing; action results clear only their exact submitted text; leavin
 changing a question clears its discussed choice; explicit reviews always call the
 authoritative command. Duplicate target names are distinguished in the step picker.
 Review recheck and hosted validation are pending. PR records exact pushed/tested SHAs.
+
+The initial pushed checkpoint `fdcc784b7b1579b786fcbd4394e4f3d6b777c8df`
+passed hosted typecheck, boundaries, all 4,230 unit tests, container smoke and the
+focused guided/owner browser journey. A follow-up review found that action replies
+needed a proposal/target identity as well as a section identity. They now stay with
+their original proposal in the conversation history and cannot appear below a newer
+draft or another system's steps. A fresh refinement retains the saved content and
+review but does not repeat the old save acknowledgement. Final hosted validation
+must run against this correction as well.
