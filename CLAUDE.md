@@ -83,7 +83,12 @@ Four mechanical notes:
   the replay fixture does too now, in ONE transaction with the Run row, and its teardown
   deletes the population rows a lost race leaves so one failure cannot take the rest of the
   file's cleanup with it. **A spec that spawns the real worker copies the sibling's held-Run
-  checkpoints, not only its columns.**
+  checkpoints, not only its columns.** PR #37 landed this same repair on `main` first, and
+  added the rule for the one place this fixture REOPENS the Run: the live-state test sets
+  `RUNNING` again on a Run whose agent phase is already `TERMINAL`, which is exactly the row
+  the adapter sweep selects, so the held claim is reopened in the same transaction and
+  closed again after — see "2026-09-15 — Replay fixtures with a running worker" at the end
+  of this file.
 - **Editing a file Next watches while a Playwright test is inside its silence window remounts the
   page.** `useLiveTimeline` resets `lastMessageAt` on every effect run (line 72), so Fast Refresh
   made the status cycle `connecting → stale → connecting` and never reach `lost`. The failure
@@ -3107,3 +3112,15 @@ and the `progress` diagnostic stage, without retaining their cause.
 
 These corrections repair reproduced diagnostic defects. They do not retrospectively
 identify the production `UNCONFIRMED` incident or prove a live provider recovery.
+
+## 2026-09-15 — Replay fixtures with a running worker
+
+Publish a synthetic RUNNING Run and its held population/agent checkpoints in one
+transaction when a real worker is already running. Otherwise recovery can claim the
+partly seeded fixture and reserve required evidence before the fixture seals its
+package. A ready population plus an unexpired EXECUTING agent claim holds the Replay
+fixture; mark the agent phase TERMINAL only after the Run becomes terminal. Keep the
+real frame-grant worker and all authorization/evidence assertions. Cleanup removes
+the phase and population rows before deleting evidence and the Run.
+If a surface test temporarily reopens the Run, reopen its held agent claim in the
+same transaction; a TERMINAL agent phase makes a RUNNING Run eligible for recovery.

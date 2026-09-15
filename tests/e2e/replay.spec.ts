@@ -409,11 +409,17 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await expect(page).toHaveURL(new RegExp(`/runs/${seeded.runId}/replay$`));
 
     // A Run that has not finished is WATCHED, not replayed, and the surface says which.
-    await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${seeded.runId}`;
+    // Reopen the held agent phase together with this synthetic live state, so the
+    // adapter sweep cannot claim a RUNNING Run whose agent phase is still TERMINAL.
+    await sql.begin(async (tx) => {
+      await tx`UPDATE run_agent_execution SET status='EXECUTING' WHERE run_id=${seeded.runId}`;
+      await tx`UPDATE audit_run SET state='RUNNING' WHERE run_id=${seeded.runId}`;
+    });
     await page.goto(`/runs/${seeded.runId}/replay`);
     await expect(page.getByText(REPLAY_COPY.notTerminal)).toBeVisible();
     await expect(page.locator('.ls-session__frame')).toHaveCount(0);
     await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${seeded.runId}`;
+    await sql`UPDATE run_agent_execution SET status='TERMINAL' WHERE run_id=${seeded.runId}`;
   });
 });
 
