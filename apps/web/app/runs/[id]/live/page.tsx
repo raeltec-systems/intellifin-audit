@@ -112,6 +112,12 @@ export default async function RunLivePage({
     ? await readOpenEscalation(run.runId)
     : null;
 
+  // The Paused banner names the person who paused the Run, not their user id.
+  const pauseNames = await new DrizzleActorNameReader(runtime.db).namesFor([
+    ...(waits?.pause?.openedBy == null ? [] : [waits.pause.openedBy]),
+    ...(run.pauseRequest === null ? [] : [run.pauseRequest.requestedBy]),
+  ]);
+
   // Why there is no frame, in words. An empty stage that says nothing reads as "fine",
   // which is the one thing a supervision surface must never do.
   const stageNote = frame !== null
@@ -170,7 +176,7 @@ export default async function RunLivePage({
             politely, which is what UX-DR27 asks for; taking focus from somebody mid-word
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
-        <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} />
+        <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={pauseNames} />
         <RunPauseControls
           runId={run.runId}
           procedureName={run.procedureName}

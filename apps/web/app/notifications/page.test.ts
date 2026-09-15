@@ -5,8 +5,11 @@ import NotificationsPage from './page';
 const delivered=vi.hoisted(()=>vi.fn());
 const open=vi.hoisted(()=>vi.fn());
 const names=vi.hoisted(()=>vi.fn());
+// The bell's own count, which the page now reads beside the bounded list. Zero by default:
+// no existing case is about the bound, and zero never exceeds a list's length.
+const count=vi.hoisted(()=>vi.fn().mockResolvedValue(0));
 vi.mock('@intellifin/infrastructure',()=>({
-  DrizzleNotificationRepository:class {deliveredFor=delivered; openFor=open;},
+  DrizzleNotificationRepository:class {deliveredFor=delivered; openFor=open; countOpenFor=count;},
   DrizzleActorNameReader:class {namesFor=names;},
 }));
 vi.mock('../../src/bootstrap',()=>({getRuntime:async()=>({db:{}})}));
@@ -94,4 +97,36 @@ it('falls back to the actor id when no name resolves', async()=>{
   delivered.mockResolvedValue({items:[],nextCursor:null});
   const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
   expect(html).toContain('Flagged by user-77 at');
+});
+
+// `openFor` bounds its merged list with Escalations first, so enough open Escalations push every
+// flag off the end, while `countOpenFor` counts both unbounded. Two numbers that disagree with
+// nothing explaining the gap is the silent-truncation defect; the page says so now.
+it('says how many it could not show when the bell counts more than the list', async()=>{
+  names.mockResolvedValue(new Map());
+  open.mockResolvedValue([{
+    recipientId:'signed-in', procedureId:'p1', versionId:'v1', procedureName:'Access review', versionNumber:1,
+    kind:'escalation', runId:'019823ab-0000-7000-8000-000000000001',
+    waitId:'019823ab-0000-7000-8000-000000000002', escalationKind:'choose-candidate',
+    deadline:'2026-09-07T14:00:00.000Z',
+  }]);
+  delivered.mockResolvedValue({items:[],nextCursor:null});
+  count.mockResolvedValueOnce(137);
+  const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
+  expect(html).toContain('Showing the first 1 of 137.');
+  expect(count).toHaveBeenCalledWith({userId:'signed-in',sessionId:'session'});
+});
+
+it('says nothing about a bound when the list holds everything the bell counts', async()=>{
+  names.mockResolvedValue(new Map());
+  open.mockResolvedValue([{
+    recipientId:'signed-in', procedureId:'p1', versionId:'v1', procedureName:'Access review', versionNumber:1,
+    kind:'escalation', runId:'019823ab-0000-7000-8000-000000000001',
+    waitId:'019823ab-0000-7000-8000-000000000002', escalationKind:'choose-candidate',
+    deadline:'2026-09-07T14:00:00.000Z',
+  }]);
+  delivered.mockResolvedValue({items:[],nextCursor:null});
+  count.mockResolvedValueOnce(1);
+  const html=renderToStaticMarkup(await NotificationsPage({searchParams:Promise.resolve({})}));
+  expect(html).not.toContain('Showing the first');
 });

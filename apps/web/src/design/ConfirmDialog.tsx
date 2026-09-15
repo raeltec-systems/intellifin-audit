@@ -84,6 +84,15 @@ export function ConfirmDialog({
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [rationale, setRationale] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Why this dialog refused a confirm, when the surface's gate closed under it.
+   *
+   * Separate from the `refusal` PROP, which is the command's answer: this one the
+   * dialog decides for itself, and it has to be shown. A control that looks live and
+   * silently does nothing is the thing DESIGN.md forbids, and the sentence is already
+   * written -- it is the reason every withdrawn control on the surface is showing.
+   */
+  const [gateRefusal, setGateRefusal] = useState<string | null>(null);
 
   const needsRationale = weight === 'routine-with-rationale';
 
@@ -178,8 +187,19 @@ export function ConfirmDialog({
    * dialog is unchanged.
    */
   useEffect(() => {
-    if (open && gate.disabledReason !== null) cancelRef.current();
-  }, [open, gate.disabledReason]);
+    if (!open || gate.disabledReason === null) return;
+    // Say it FIRST. Every Run dialog spells its `onCancel` as "if (!busy)", so a gate that
+    // closes mid-flight dismisses nothing -- and `busy` is not a dependency of the state
+    // that closed it, so without this the dialog sits there with a Confirm that does
+    // nothing and no reason on screen.
+    setGateRefusal(gate.disabledReason);
+    // `busy` IS a dependency, so the dismissal that was refused while the action was in
+    // flight happens as soon as it lands.
+    cancelRef.current();
+  }, [open, gate.disabledReason, busy]);
+
+  // A dialog reopened after the gate has opened again starts clean.
+  useEffect(() => { if (!open) setGateRefusal(null); }, [open]);
 
   if (!open || !container) return null;
 
@@ -188,7 +208,7 @@ export function ConfirmDialog({
     // The gate, re-read at the moment of the decision rather than at the moment the
     // dialog opened. The effect above closes the dialog; this is what makes the refusal
     // true even if the two land in the same tick.
-    if (gate.disabledReason !== null) return;
+    if (gate.disabledReason !== null) { setGateRefusal(gate.disabledReason); return; }
     if (needsRationale && rationale.trim() === '') {
       setError('A rationale is required.');
       document.getElementById(rationaleId)?.focus();
@@ -215,6 +235,7 @@ export function ConfirmDialog({
         </h2>
         <p id={consequenceId}>{consequence}</p>
         {refusal ? <p role="alert" className="ls-field-error">{refusal}</p> : null}
+        {gateRefusal ? <p role="alert" className="ls-field-error">{gateRefusal}</p> : null}
 
         {needsRationale ? (
           <div className="ls-dialog__field">
@@ -261,6 +282,7 @@ export function ConfirmDialog({
             }`}
             onClick={handleConfirm}
             disabled={busy}
+            {...(gate.disabledReason !== null ? { 'aria-disabled': true } : {})}
           >
             {confirmLabel}
           </button>

@@ -130,3 +130,23 @@ describe('Replay, as the server first paints it', () => {
     expect(html).not.toContain('<b>Read</b>');
   });
 });
+
+describe('a jump target with no frame to open', () => {
+  const target = { kind: 'work-item' as const, id: 'w-late', label: 'Leaver 9', frameIndex: null };
+
+  it('says no frame was captured when the page read every frame there is', () => {
+    const html = render({ framesTotal: 3, jumpTargets: [target] });
+    expect(html).toContain(REPLAY_COPY.noFrameForTarget);
+    expect(html).not.toContain('beyond the');
+  });
+
+  it('says the frame is beyond the ones shown when the read bound, never that none was captured', () => {
+    // The frame read bounds at `REPLAY_FRAME_LIMIT`. A target whose frames all lie past it
+    // has a null index for a reason that is NOT "nothing was captured": the database holds
+    // them and this page did not read them. The story's own rule is that a pill which opens
+    // nothing must say so; saying the wrong thing is worse than saying nothing.
+    const html = render({ framesTotal: 500, jumpTargets: [target] });
+    expect(html).toContain(REPLAY_COPY.frameBeyondRead.replace('{shown}', '3'));
+    expect(html).not.toContain(REPLAY_COPY.noFrameForTarget);
+  });
+});

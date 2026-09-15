@@ -288,8 +288,17 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
             value={note}
             maxLength={500}
             onChange={(event) => setNote(event.target.value)}
-            disabled={busy || unknown || gate.disabledReason !== null}
+            // `readOnly` and `aria-disabled`, never `disabled`: a disabled field cannot be
+            // focused, so the reason beside it is unreachable by keyboard -- the
+            // tooltip-only explanation DESIGN.md forbids, and this contract's own rule for
+            // every other control on the surface.
+            readOnly={busy || unknown || gate.disabledReason !== null}
+            aria-disabled={busy || unknown || gate.disabledReason !== null ? true : undefined}
+            aria-describedby={gate.disabledReason !== null ? `${noteId}-withdrawn` : undefined}
           />
+          {gate.disabledReason !== null
+            ? <p id={`${noteId}-withdrawn`} className="ls-caption">{gate.disabledReason}</p>
+            : null}
         </div>
       </section>
 

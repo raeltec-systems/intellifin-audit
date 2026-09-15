@@ -41,6 +41,7 @@ const LEASE = new Date(Date.now() + 3_600_000).toISOString();
 
 let sql: Sql;
 let author = '';
+let authorName = '';
 const runs: string[] = [];
 
 test.beforeAll(async () => {
@@ -48,9 +49,10 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for the pause journey.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 4 });
-  const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+  const [auditor] = await sql`SELECT id, name FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the pause journey.');
   author = auditor.id as string;
+  authorName = auditor.name as string;
   const version = activeRunVersion(procedureId, versionId, author);
   await new PostgresProceduresUnitOfWork(createDb(sql)).execute(async (context) => {
     await context.procedures.insertProcedure(version);
@@ -140,7 +142,8 @@ test.describe('pausing and resuming a Run', () => {
     const [requested] = await sql`SELECT state, pause_requested_by FROM audit_run WHERE run_id=${runId}`;
     expect(requested).toMatchObject({ state: 'RUNNING', pause_requested_by: author });
     await page.reload();
-    await expect(page.getByText(`Pause requested by ${author}`, { exact: false })).toBeVisible();
+    // The PERSON, never the user id: the spec used to pin the id as the expected text.
+    await expect(page.getByText(`Pause requested by ${authorName}`, { exact: false })).toBeVisible();
 
     // The worker's next Tool Action boundary.
     const waitId = await honourPause(runId);
@@ -150,7 +153,8 @@ test.describe('pausing and resuming a Run', () => {
     // EXPERIENCE.md's Run Detail / Paused banner, with the actor and both instants.
     await expect(page.getByText('Paused by', { exact: false })).toBeVisible();
     await expect(page.getByText('Resumes on your action; ends Inconclusive at', { exact: false })).toBeVisible();
-    await expect(page.getByText(author, { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(`Paused by ${authorName} at`, { exact: false })).toBeVisible();
+    await expect(page.locator('.ls-banner__title', { hasText: author })).toHaveCount(0);
     // Resume REPLACES Pause on a Paused Run.
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);

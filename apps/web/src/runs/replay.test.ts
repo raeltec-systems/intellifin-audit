@@ -10,6 +10,7 @@ import {
   replayFrameAt,
   replayFrameForWorkItem,
   replayJumpTargets,
+  resolveFrameWorkItems,
   replayObservationsThrough,
 } from './replay';
 
@@ -127,6 +128,23 @@ describe('the Observation count beside a frame', () => {
 
   it('counts nothing for a frame that is not there', () => {
     expect(replayObservationsThrough(deltas, null)).toBe(0);
+  });
+});
+
+describe('a frame whose Tool Action carries no Work Item id', () => {
+  it('is matched through the Step Execution that captured it', () => {
+    // `run_tool_action.work_item_id` is nullable. The page resolves the SYSTEM through the
+    // Step Execution; the jump list used the raw column and said "no frame was captured
+    // here" for a Work Item whose frames were all there.
+    const orphan = { ...FRAMES[0]!, workItemId: null, stepExecutionId: 'se-x' };
+    const resolved = resolveFrameWorkItems([orphan], [{ stepExecutionId: 'se-x', workItemId: WORK_A }]);
+    expect(replayFrameForWorkItem(resolved, WORK_A)).toBe(0);
+    expect(replayFrameForWorkItem([orphan], WORK_A)).toBeNull();
+  });
+
+  it('keeps a frame that already names its Work Item, and one nothing resolves', () => {
+    const resolved = resolveFrameWorkItems(FRAMES, [{ stepExecutionId: 'nope', workItemId: null }]);
+    expect(resolved).toEqual(FRAMES);
   });
 });
 

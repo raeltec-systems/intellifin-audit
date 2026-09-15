@@ -71,9 +71,15 @@ export const LIVE_VIEW_DESKTOP_MIN_PX = 1024;
 export function useDesktopViewport(): boolean {
   const [desktop, setDesktop] = useState(true);
   useEffect(() => {
+    // A browser with no `matchMedia`, or a MediaQueryList that predates `addEventListener`
+    // (Safari 13 has only `addListener`), must not throw here: an error inside this effect
+    // reaches the route boundary and takes the WHOLE surface down to close a gate. With no
+    // way to observe the viewport the gate stays open, which is its own stated default.
+    if (typeof window.matchMedia !== 'function') return undefined;
     const query = window.matchMedia(`(min-width: ${LIVE_VIEW_DESKTOP_MIN_PX}px)`);
     const read = (): void => { setDesktop(query.matches); };
     read();
+    if (typeof query.addEventListener !== 'function') return undefined;
     query.addEventListener('change', read);
     return () => { query.removeEventListener('change', read); };
   }, []);

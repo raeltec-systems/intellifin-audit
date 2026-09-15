@@ -36,6 +36,26 @@ export interface ReplayException {
 }
 
 /**
+ * Frames with their Work Item resolved through the Step Execution that captured them.
+ *
+ * `run_tool_action.work_item_id` is NULLABLE, and a jump matched on it alone reports "no
+ * frame was captured here" for a Work Item whose frames all carry the id on their Step
+ * Execution instead. The page already resolves the system NAME that way
+ * (`step?.workItemId ?? frame.workItemId`); the jump list used the raw column, so the two
+ * disagreed on the same row. This is the one rule, applied before either read.
+ */
+export function resolveFrameWorkItems(
+  frames: readonly RunFrameRow[],
+  stepExecutions: readonly { readonly stepExecutionId: string; readonly workItemId: string | null }[],
+): readonly RunFrameRow[] {
+  const byStep = new Map(stepExecutions.map((step) => [step.stepExecutionId, step.workItemId]));
+  return frames.map((frame) => {
+    const viaStep = byStep.get(frame.stepExecutionId);
+    return viaStep === undefined || viaStep === null ? frame : { ...frame, workItemId: viaStep };
+  });
+}
+
+/**
  * The first frame captured while a Work Item was being worked, or `null`.
  *
  * FIRST, not last: jumping to a Work Item means starting at it, and a reader who wants its

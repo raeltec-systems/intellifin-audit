@@ -364,6 +364,48 @@ describe('ResumeRun', () => {
     expect(repository.context.wait?.closedAt).toBeNull();
   });
 
+  it('refuses a resume whose deadline has passed by saying THAT, and nothing the wake has not written', async () => {
+    // Reachable: the wait is still open and the Run still PAUSED, because the delayed
+    // timeout wake has not run yet, and a person clicks Resume two seconds past the
+    // deadline. `closeWait` answers `expired`. The refusal used to say "the Run is
+    // Inconclusive" -- a state nothing had written; a reload still showed PAUSED and still
+    // offered Resume, and every further click repeated the claim.
+    const repository = await paused();
+    const revision = repository.context.run!.revision;
+    const deadline = repository.context.wait!.deadline;
+    const outcome = await resumeRun(
+      dependencies(repository, { now: () => new Date(Date.parse(deadline) + 2_000) }),
+      { session: SESSION, request: { runId: RUN_ID, expectedRunRevision: revision } },
+    );
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.code).toBe('timed-out');
+    expect(outcome.ok === false && outcome.reason).toContain(deadline);
+    expect(outcome.ok === false && outcome.reason).not.toContain('Inconclusive');
+    expect(repository.context.run?.state).toBe('PAUSED');
+  });
+
+  it('refuses a resume on a wait that is already closed as NOT PAUSED, before it claims anything', async () => {
+    // A second tab, or a double click, after the first resume closed the wait. The guard
+    // sees `closedAt` under the row lock and refuses as not-paused: no timestamp borrowed
+    // from somebody else's resume, no outcome asserted. This is the reachable path; the
+    // `superseded` arm below the guard mirrors `answerEscalation` and is defensive.
+    const repository = await paused();
+    const revision = repository.context.run!.revision;
+    const first = await resumeRun(
+      dependencies(repository, { now: () => new Date('2026-09-10T09:05:00.000Z') }),
+      { session: SESSION, request: { runId: RUN_ID, expectedRunRevision: revision } },
+    );
+    expect(first.ok).toBe(true);
+    const second = await resumeRun(
+      dependencies(repository, { now: () => new Date('2026-09-10T09:05:01.000Z') }),
+      { session: SESSION, request: { runId: RUN_ID, expectedRunRevision: revision } },
+    );
+    expect(second.ok).toBe(false);
+    expect(second.ok === false && second.code).toBe('not-paused');
+    expect(second.ok === false && second.reason).not.toMatch(/Inconclusive|timed out|deadline/);
+    expect(repository.context.run?.state).toBe('RUNNING');
+  });
+
   it('refuses a Run that is not paused', async () => {
     const repository = new FakeWaitRepository();
     await expect(resumeRun(dependencies(repository), { session: SESSION, request: { runId: RUN_ID, expectedRunRevision: 3 } }))

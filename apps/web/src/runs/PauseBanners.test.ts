@@ -45,7 +45,8 @@ const PAUSE: RunWait = {
   runId: RUN_ID,
   kind: 'pause',
   openedAt: '2026-09-10T08:55:00.000Z',
-  openedBy: 'Daniel Okonjo',
+  // A user ID, which is what the wait row holds -- an address cannot enter the chain.
+  openedBy: '019823ab-0000-7000-8000-000000000007',
   options: [],
   deadline: '2026-09-10T09:25:00.000Z',
   closedAt: null,
@@ -74,18 +75,43 @@ function run(state: RunRecord['state'], pauseRequest: RunRecord['pauseRequest'] 
   } as unknown as RunRecord;
 }
 
+const NAMES: ReadonlyMap<string, string> = new Map([
+  ['019823ab-0000-7000-8000-000000000007', 'Daniel Okonjo'],
+  ['019823ab-0000-7000-8000-000000000008', 'Amara Chen'],
+]);
+
 function render(state: RunRecord['state'], pause: RunWait | null, pauseRequest: RunRecord['pauseRequest'] = null): string {
   return renderToStaticMarkup(
-    React.createElement(PauseBanners, { run: run(state, pauseRequest), pause, readAt: READ_AT }),
+    React.createElement(PauseBanners, { run: run(state, pauseRequest), pause, readAt: READ_AT, names: NAMES }),
   );
 }
 
 describe('the Paused banner', () => {
-  it('names who paused the Run, when, and when it ends', () => {
+  it('names the PERSON who paused the Run, never their user id', () => {
+    // EXPERIENCE.md's row is "Paused by Daniel Okonjo at {time}". The wait holds an id,
+    // and the banner printed it: the platform speaking its own language on the one
+    // surface whose job is to name the person accountable. `ActorNameReader` exists for
+    // exactly this, and `pause-resume.spec.ts` pinned the id as the expected text.
     const html = render('PAUSED', PAUSE);
-    expect(html).toContain('Daniel Okonjo');
+    expect(html).toContain('Paused by Daniel Okonjo at');
+    expect(html).not.toContain('019823ab-0000-7000-8000-000000000007');
     expect(html).toContain('Resumes on your action');
     expect(html).not.toContain(PAUSE_COPY.unreadable);
+  });
+
+  it('shows the id only when no name is known for it, which is honest about what is known', () => {
+    const html = render('PAUSED', { ...PAUSE, openedBy: '019823ab-0000-7000-8000-0000000000ff' } as unknown as RunWait);
+    expect(html).toContain('Paused by 019823ab-0000-7000-8000-0000000000ff at');
+  });
+
+  it('cannot have its sentence rewritten by a name that spells a replacement pattern', () => {
+    // `String.prototype.replace` with a string pattern expands `$&` in the REPLACEMENT.
+    const hostile = new Map([['019823ab-0000-7000-8000-000000000007', 'Fee $& review']]);
+    const html = renderToStaticMarkup(
+      React.createElement(PauseBanners, { run: run('PAUSED'), pause: PAUSE, readAt: READ_AT, names: hostile }),
+    );
+    expect(html).toContain('Paused by Fee $&amp; review at');
+    expect(html).not.toContain('{actor}');
   });
 
   it('shows a countdown, not only two absolute timestamps', () => {
@@ -118,7 +144,7 @@ describe('the Paused banner', () => {
 
   it('shows the request while it is still unhonoured, and only while the Run is active', () => {
     const request = {
-      requestedBy: 'Amara Chen',
+      requestedBy: '019823ab-0000-7000-8000-000000000008',
       requestedAt: '2026-09-10T08:59:00.000Z',
       reason: null,
       sessionId: '019823ab-0000-7000-8000-000000000006',

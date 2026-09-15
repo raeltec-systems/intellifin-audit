@@ -492,7 +492,39 @@ export const PAUSE_COPY = {
  * flag carries no request token and a retry writes a second flag and a second manager
  * fan-out — had none at all.
  */
+/**
+ * Fill a `{placeholder}` template without letting a value rewrite the sentence.
+ *
+ * `String.prototype.replace` with a STRING pattern expands `$&`, `` $` ``, `$'` and `$$`
+ * in the REPLACEMENT -- so a Procedure named `Fee $& review` or a person named `A $' B`
+ * rewrites the surrounding copy. A replacer FUNCTION never expands them, which is the
+ * whole reason this exists rather than a chain of `.replace` calls.
+ *
+ * It also fills in ONE pass. Chained calls let an earlier value that happens to contain a
+ * later placeholder be substituted by the next call -- a name containing `{time}` picking
+ * up a timestamp.
+ *
+ * An unknown placeholder is left exactly as it is: a template naming a value nobody
+ * supplied should read as obviously unfinished, never as though the value were empty.
+ */
+export function fillTemplate(template: string, values: Readonly<Record<string, string>>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    Object.hasOwn(values, key) ? values[key] as string : match);
+}
+
 export const RUN_LOST_RESPONSE = 'The last response was lost. Reload this Run before trying again.';
+
+/**
+ * Said when the inbox could not show everything the bell is counting.
+ *
+ * `openFor` bounds its merged list and puts Escalations first, because only a wait can
+ * EXPIRE and end its Run Inconclusive — so a full page of them pushes every flag off the
+ * end, while `countOpenFor` counts both, unbounded. Two numbers that disagree with nothing
+ * explaining the gap is the silent-truncation shape this codebase treats as a defect; the
+ * ordering is right and saying nothing about it was not.
+ */
+export const NOTIFICATIONS_BOUNDED =
+  'Showing the first {shown} of {total}. Escalations come first because only they expire; the rest appear as these are answered.';
 
 export const FLAG_COPY = {
   heading: 'Ask an Audit Manager to look',
@@ -591,6 +623,13 @@ export const REPLAY_COPY = {
   noAction: 'No Tool Action was recorded for this frame.',
   noJumpTargets: 'This Run recorded no Work Items, Exceptions or Escalations to jump to.',
   noFrameForTarget: 'no frame was captured here',
+  /**
+   * The other reason a target has no frame to open: the frame read BOUND, and this
+   * target's frames lie past it. Saying "no frame was captured" there is a definite
+   * false statement about frames the database holds -- the story's own rule that a pill
+   * which opens nothing must say so, inverted.
+   */
+  frameBeyondRead: 'its frame is beyond the {shown} shown',
   observationsThrough: '{count} Observations had been registered when this frame was captured.',
   bounded: 'Showing the first {shown} of {total} frames.',
   notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',

@@ -13,7 +13,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { replayJumpTargets, replayObservationsThrough } from '../../../../src/runs/replay';
+import { replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -92,14 +92,19 @@ export default async function RunReplayPage({
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
   // a Run that had more than fifty. See `REPLAY_PAGE_SIZE`.
-  const [timeline, frames, waits, deltas, exceptions, plan] = await Promise.all([
+  const [timeline, frames, waits, deltas, exceptions, plan, evidence] = await Promise.all([
     detail.readTimeline(run.runId, REPLAY_PAGE_SIZE),
     detail.readFrames(run.runId),
     detail.readWaits(run.runId, REPLAY_PAGE_SIZE),
     detail.readObservationDeltas(run.runId, REPLAY_PAGE_SIZE),
     detail.readExceptions(run.runId, REPLAY_PAGE_SIZE),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
+    // The adapter log rows below promise "its integrity digest", and printed `null` for
+    // every one: "No artifact registered." over artifacts that ARE registered. The Evidence
+    // read this surface already has carries the digest per Evidence id.
+    detail.readEvidenceItems(run.runId),
   ]);
+  const digestByEvidence = new Map(evidence.map((item) => [item.evidenceId, item.digest]));
 
   const targetName = (registrationId: string | null): string | null =>
     registrationId === null
@@ -157,7 +162,7 @@ export default async function RunReplayPage({
         plannedSteps={plannedStepCount(plan)}
         stageNote={REPLAY_COPY.noFrames}
         jumpTargets={replayJumpTargets({
-          frames: frames.rows,
+          frames: resolveFrameWorkItems(frames.rows, timeline.stepExecutions.rows),
           workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName })),
           exceptions: exceptions.rows.map((row) => ({
             exceptionId: row.exceptionId,
@@ -177,7 +182,7 @@ export default async function RunReplayPage({
             displayName: `${planActionWord(step.action)} · ${step.displayName}`,
             state: step.state,
             attempts: step.attempts,
-            digest: null,
+            digest: step.evidenceId === null ? null : (digestByEvidence.get(step.evidenceId) ?? null),
           }))}
       />
       <p className="ls-caption">Read at {utcStamp(readAt)}.</p>

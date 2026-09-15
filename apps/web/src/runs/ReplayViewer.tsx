@@ -203,11 +203,15 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             {props.jumpTargets.map((target) => (
               <li key={`${target.kind}-${target.id}`}>
                 {target.frameIndex === null ? (
-                  // Nowhere to go, said in words. A pill that opens nothing looks
-                  // exactly like one that opens the right screen.
+                  // Nowhere to go, said in words -- and said TRUTHFULLY. A pill that opens
+                  // nothing looks exactly like one that opens the right screen; and when
+                  // the frame read bound, "no frame was captured" is a false statement
+                  // about frames the database holds and this page did not read.
                   <span>
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
-                    {' '}· {REPLAY_COPY.noFrameForTarget}
+                    {' '}· {props.framesTotal > props.frames.length
+                      ? REPLAY_COPY.frameBeyondRead.replace('{shown}', String(props.frames.length))
+                      : REPLAY_COPY.noFrameForTarget}
                   </span>
                 ) : (
                   <button

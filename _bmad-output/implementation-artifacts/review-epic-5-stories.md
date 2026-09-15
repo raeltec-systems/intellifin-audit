@@ -2,302 +2,203 @@
 title: 'Code review: Epic 5 stories 5.4 to 5.8'
 type: 'code-review'
 created: '2026-09-11'
-status: 'partial — four High findings fixed'
+updated: '2026-09-15'
+status: 'complete — twenty of twenty layers; repairs on codex/epic-2-procedure-builder'
 ---
 
 # Code review — Epic 5, stories 5.4 to 5.8
 
-Per-story adversarial review of the five stories on `codex/epic-5-controls` (PR 29), against
-their acceptance criteria in `epics.md` §Epic 5.
+Per-story adversarial review of the five stories that shipped in PR 29, against their
+acceptance criteria in `epics.md` §Epic 5, and the repairs made from it.
 
 ## Coverage — READ THIS FIRST
 
-Four layers were requested per story (Blind Hunter, Edge Case Hunter, Verification Gap,
-Acceptance Auditor). **Ten of the twenty completed; ten failed on a session rate limit.**
+Four layers per story. **Ten completed on 2026-09-11; the other ten failed on a session rate
+limit and ran on 2026-09-15.** Every layer read its story's diff in full (line counts stated in
+each findings file) and wrote to `scratchpad/cr5/findings/`.
 
 | Story | Blind | Edge case | Verification gap | Acceptance |
 |---|---|---|---|---|
-| 5.4 Pause and resume | ✅ | ❌ | ❌ | ❌ |
-| 5.5 Cancel and flag | ✅ | ✅ | ❌ | ✅ |
-| 5.6 Answer in place | ✅ | ✅ | ✅ | ✅ |
-| 5.7 Stream drops / Run ends | ❌ | ✅ | ❌ | ❌ |
-| 5.8 Replay | ❌ | ✅ | ❌ | ❌ |
+| 5.4 Pause and resume | ✅ 09-11 | ✅ 09-15 | ✅ 09-15 | ✅ 09-15 |
+| 5.5 Cancel and flag | ✅ 09-11 | ✅ 09-11 | ✅ 09-15 | ✅ 09-11 |
+| 5.6 Answer in place | ✅ 09-11 | ✅ 09-11 | ✅ 09-11 | ✅ 09-11 |
+| 5.7 Stream drops / Run ends | ✅ 09-15 | ✅ 09-11 | ✅ 09-15 | ✅ 09-15 |
+| 5.8 Replay | ✅ 09-15 | ✅ 09-11 | ✅ 09-15 | ✅ 09-15 |
 
-**Only Story 5.6 got the full review.** 5.4 and 5.7 and 5.8 are substantially under-reviewed —
-5.4 in particular has the largest diff and only one layer. **This is not a clean bill of health
-for any story but 5.6.**
+**Nothing below is rated from a report alone.** Every finding marked FIXED was read in the code
+on `main` at `b5e2ea6`, repaired, and — where a unit or browser test can see it — proven by
+mutation: the test run against the fix removed and required to fail. The status of each proof
+is stated; a proof this environment could not run says so rather than being implied.
 
-Severity below is mine, not the reviewers'. Findings marked **[verified]** I confirmed by
-reading the code; **[demonstrated]** were proven by a reviewer running a mutation against the
-suite; the rest are rated from the report and are marked **[unverified]**.
+## How the 09-11 Medium list was wrong
 
----
-
-## What has been fixed
-
-All four High findings are repaired on this branch, each with a regression test proven by
-mutation — the test was run against the code with the fix removed and had to fail.
-
-| Finding | Fix | Killing test |
-|---|---|---|
-| H1 | `lifecycleBoundary({ item, execution })`, and `stopped` no longer asks the queue to redeliver | `execute-agent-work-item.test.ts` → "holds AFTER the evaluation turn…" |
-| H2 | The submit button takes the `unknown` arm its sibling has; `RUN_LOST_RESPONSE` gets one home in `copy.ts` | `RunFlagControl.test.ts` → "WITHDRAWS the control…" |
-| H3 | The browser reads the polite region, at two rungs of the ladder | `live-escalation.spec.ts` |
-| H4 | The guard is on the ELEMENT, not on a substring of React's attribute order | `EscalationPanel.test.ts` |
-
-Three notes on what doing it showed:
-
-- **H1's `retry: true` was real.** `finishObservation` returning `'lost'` maps to
-  `{ retry: checkpoint.status === 'RETRY' }`, and the pause path sets `RETRY` — for the
-  RECOVERY SWEEP, not for the queue. The claim refuses a Run that is not `RUNNING`, so the
-  redelivery provisioned and released a browser session for a Run nothing could claim.
-  `finishObservation` now returns `'stopped'`, which every caller maps to `{ retry: false }`
-  as the other four boundaries already did.
-- **H2's unit test needed `useActionState` replaced.** Under `renderToStaticMarkup` the hook
-  returns its initial state, so the one render the withdrawal exists for is unreachable
-  without saying what the hook answered. Only that export is mocked; the rest of react is
-  the real module, so `react-dom/server` renders normally. This is the same trap as H3,
-  one hook along.
-- **H3 needed a second rung, and a real deadline rather than a fake clock.** A wait's
-  deadline is immutable (generation 34), so the near-expiry Escalation is OPENED with the
-  clock set back — which is exactly what one left for three hours and fifty-one minutes is.
-
-## New finding, found while fixing H2
-
-### N1 — A lost Server Action response tells the auditor "Nothing was changed" **[verified]**
-`apps/web/app/error.tsx:37`
-
-The flag form's action IS the Server Action, which is what makes it the one control on
-these surfaces that works without JavaScript — and it means the component cannot catch a
-lost RSC response. The error propagates to the route boundary, which renders
-**"Couldn't load this page. Nothing was changed."** and **"No Run, Result, or Evidence was
-altered."** while the flag has committed and every Audit Manager has been notified.
-
-That sentence is EXPERIENCE.md's own (line 179) and is correct where it belongs — a failed
-action the platform knows did not happen. This boundary catches two different failures and
-asserts the stronger claim for both: true for a surface that could not be built, false for
-an action whose acknowledgement was lost. It is the shape CLAUDE.md already names — "A path
-that THREW says the change may have been saved, never 'Nothing was changed'."
-
-Not fixed here: it is a contract sentence and the whole application's error boundary, so
-the wording is a product decision rather than a review repair. The consequence is bounded —
-the boundary takes the submit control with it, which is a stronger withdrawal than a
-disabled button, so the double flag cannot happen by this route; `flag-run.spec.ts` asserts
-exactly one `run_flag` row and one notification after a dropped acknowledgement.
+The first report listed ~35 Medium findings marked `[unverified]` — rated from the reviewers'
+text, never read in the code. Reading them found: **most real, several worse than Medium, two
+not reachable as described, and one whose spec pinned the defect as the expected value.** The
+shape that recurred most is a rule fixed in one sibling and not the other, in the same file.
 
 ---
 
-## High
+## Fixed in this round
 
-### H1 — A pause honoured at one boundary strands the Step Execution for ever (5.4) **[verified]**
-`packages/application/src/runs/execute-agent-work-item.ts:1065`
+Each row: what was wrong, where, what proves it now. "Mutation: killed" means the named test
+fails against the fix removed.
 
-`lifecycleBoundary()` is called with no `inFlight`, although `item` and `execution` are both in
-scope — this call sits inside `finishObservation`, with a Step Execution running. Every other
-mid-item boundary (`:1264`, `:1487`, `:1597`, `:1649`) passes `{ item, execution }`; only the
-pre-item boundary at `:1156` legitimately omits it.
+### 5.4 — Pause and resume
 
-The helper guards its supersede-and-give-back logic behind `if (inFlight !== undefined)`. So a
-pause honoured here:
+| # | Finding | Fix | Proof |
+|---|---|---|---|
+| F1 | **A `PAUSED` Run whose wait cannot be read rendered NOTHING.** `PauseBanners` needed the wait AND `openedBy`, or the pause marker — which the honouring boundary clears by design. `readOpenEscalation` answers all-nulls on an authorization refusal, so a held Run ending Inconclusive in 30 minutes showed a page saying nothing. `OpenEscalationSection`, twenty lines above, was fixed for exactly this in 5.6. | `detail.tsx` `PauseBanners`: the sibling's branch table — full banner, DANGER banner (`PAUSE_COPY.unreadable`), nothing. | `PauseBanners.test.ts` (new; the component had none). Mutation: killed. |
+| F2 | **No countdown.** EXPERIENCE.md asks for one at 115, 149 and 292; the banner printed two absolute timestamps. The Escalation sibling had a clock. | `WaitCountdown.tsx`: the arithmetic shared by both surfaces (`countdownText`, `remainingMilliseconds` moved out of `EscalationPanel`); `role="timer"`, no live region (the 5.6 decision). `PauseBanners` renders it from `readAt`. | `PauseBanners.test.ts`; `EscalationPanel.test.ts` unchanged and green. Mutation: killed. |
+| F3 | **The banner printed the auditor's UUID** — "Paused by 019a3c…" — where EXPERIENCE.md says "Paused by Daniel Okonjo". `pause-resume.spec.ts:153` asserted the id, pinning the defect. | `PauseBanners` takes `names` from `ActorNameReader`; both call sites resolve `opened_by` and `pause_requested_by`. Spec asserts the name and that the id is absent. | `PauseBanners.test.ts`. Mutation: killed. Browser: `pause-resume.spec.ts` (see Verification). |
+| F4 | **`$&` in a name rewrote the sentence.** `.replace('{actor}', name)` with a string pattern expands `$&`, `` $` ``, `$'`; chained calls let a value containing `{time}` be substituted next. Also in `FLAG_COPY.by`. | `fillTemplate` in `copy.ts`: replacer FUNCTION, one pass, unknown placeholder left visible. Used by the pause banner and the flag list. | `PauseBanners.test.ts` hostile-name case. Mutation (chained replace restored): killed. |
+| F5 | **Resume offered a request it could not send, then answered a lost-response sentence.** With `runRevision === null` (same all-null read as F1) the button was live and the click said "The resume could not be confirmed" — nothing was sent. The early return also skipped `setAttempt`, so a repeat click was never re-announced. | Resume withdrawn with `PAUSE_COPY.unreadable` as its reason; the guard behind it says why and bumps `attempt`. | Read; covered by the withdrawn-control pattern already tested for `RunFlagControl`. No new mutation. |
+| F6 | **`resumeRun`'s `expired` refusal said "the Run is Inconclusive"** — a state the delayed wake writes, reachable before the wake runs, so a reload still showed PAUSED and offered Resume, and every click repeated the claim. | Sentence says the deadline passed and to reload for the recorded outcome. `superseded` discriminated on closure kind (the `answerEscalation` shape), new `closed` code. | `pause-run.test.ts`: two cases at reachable states. Mutation (old sentence restored): killed. |
 
-- leaves the Step Execution in `RUNNING` for ever — which `run-pause-v1.md` says must never
-  happen ("leaving it `RUNNING` would make an interrupted attempt indistinguishable from a
-  live one");
-- does **not** give the attempt back, contradicting "The attempt is GIVEN BACK";
-- never writes `superseded_by`.
+**Verified and dismissed as described (5.4):** the reviewer's "a second tab is told Inconclusive
+with somebody else's timestamp" path (`superseded`) is NOT reachable through `resumeRun` — the
+guard at `pause-run.ts:342` refuses a closed wait as `not-paused` under the row lock before
+`closeWait` runs. The first two tests written modelled the reviewer's path and both received
+`not-paused`; the rewritten tests assert what actually happens. The `superseded` arm is kept as
+the sibling's defensive shape and said to be that.
 
-The same call site then returns `retry: true`, asking the queue to redeliver a job for a Run
-that has just become `PAUSED` — every other pause boundary returns `retry: false` deliberately.
+### 5.5 — Cancel and flag
 
-Neither new work-item test reaches this boundary: the two cases cover the pre-item and
-model-turn boundaries only.
+| # | Finding | Fix | Proof |
+|---|---|---|---|
+| F7 | **The inbox dropped every flag once Escalations filled the bound, and the bell counted them.** `openFor` returns `[...escalations, ...flags].slice(0, 100)`; `countOpenFor` adds both unbounded. The ordering was right (only a wait expires) and documented; the silence was the defect. | `notifications/page.tsx` reads the bell's own count and renders `NOTIFICATIONS_BOUNDED` — "Showing the first N of M…" — when it exceeds the list. | Read. The `openFor` array contract is used by 15 tests and is unchanged. |
+| F8 | **The flag note stayed fully editable under a closed gate**, unlike the Escalation note. | `readOnly` + `aria-disabled` + a `describedby` reason when the gate closes or the outcome is unknown. | `RunFlagControl.test.ts` green; browser gate journey (see Verification). |
 
-**Fix:** pass `{ item, execution }` at `:1065` as its four siblings do.
+### 5.6 — Answer in place
 
-### H2 — A lost flag response does not block the retry, so one click can flag twice (5.5) **[verified]**
-`apps/web/src/runs/RunFlagControl.tsx:63-80`
+| # | Finding | Fix | Proof |
+|---|---|---|---|
+| F9 | **The Escalation note was withdrawn with native `disabled`** — unfocusable, its reason unreachable by keyboard — against the contract's own "`aria-disabled`, never `disabled`". | `readOnly` + `aria-disabled` + a visible/describedby reason. | `EscalationPanel.test.ts` green (its mutation-proven H3/H4 cases untouched). |
 
-Found independently by three layers. On `unknownOutcome` the component renders a reload link
-and leaves the form and its submit button live — it spreads only the gate's `disabledReason`.
-`RunCancelControl.tsx:85-87`, extracted in the same change, has exactly the missing arm
-(`unknown ? { disabledReason: LOST_RESPONSE } : {}`).
+### 5.7 — The gate
 
-`flagId` is minted (`dependencies.ids.next()`) and the story deliberately designed no request
-token, so a retry after a committed-but-unacknowledged flag writes a second `run_flag` row and
-a second full recipient fan-out of `notification` rows.
+| # | Finding | Fix | Proof |
+|---|---|---|---|
+| F10 | **`ConfirmDialog` refused a confirm SILENTLY when the gate was closed, and a gate closing mid-flight never dismissed the dialog** (every Run dialog's `onCancel` is `if (!busy)`; `busy` was not a dependency). No test reached either half. | The refusal is stated (`role="alert"`); Confirm carries `aria-disabled`; the effect re-runs when `busy` clears and states the reason while it cannot dismiss. | `live-drop.spec.ts` "dismisses a confirmation that was already open…": opens the dialog, lets the stream go lost, asserts dismissal and `cancel_requested_by IS NULL`. Cannot be a unit test (portal container is effect-set; SSR renders nothing). Mutation = the effect deleted (see Verification). The `handleConfirm` refusal is same-tick defence a browser cannot deterministically reach; stated, not claimed. |
+| F11 | **`useDesktopViewport` threw where `matchMedia` is absent or predates `addEventListener`** (Safari 13), and a throw in an effect takes the WHOLE surface to the route boundary — to close a gate. | Guarded; with no way to observe a viewport the gate stays open, its own stated default. | Read; `LiveGate.test.ts` green. |
+| F12 | **`docs/contracts/live-view-v1.md` said the gate has THREE reasons and `runEnded` outranks the others; the code has four and `viewport` outranks everything.** The 1024px section said the rule was stylesheet-only. | Contract corrected: four reasons in priority order; the 1024px section says the controls' withdrawal is a client verdict and why not a server one. | Doc. |
 
-`docs/contracts/run-flag-v1.md` states the opposite in as many words: "the surface blocks the
-retry and asks for a reload".
+### 5.8 — Replay
 
-**Fix:** add the `unknown` arm to the submit button, matching the sibling control.
-
-### H3 — The story's headline accessibility guarantee is verified by nothing (5.6) **[demonstrated]**
-`apps/web/src/runs/EscalationPanel.tsx:144, :203`
-
-The reviewer ran two mutations against the full `apps/web/src` suite:
-
-- removing the announcing effect, so the polite region is empty for the life of the panel and a
-  screen-reader user is told nothing at all → **1073/1073 pass**;
-- freezing the announcement at `milestones.open`, so `ten-minutes`, `one-minute` and `expired`
-  are never announced → **1073/1073 pass**.
-
-The cause: unit tests render with `renderToStaticMarkup` under `environment: 'node'`, so
-`useEffect` never runs and `announcement` is always `''`. The one test that mentions the
-sentences asserts their **absence**, which both mutations preserve. The browser journey never
-reads the region, and axe has no rule requiring a live region to have content.
-
-`escalationMilestone` itself is well pinned at both sides of every rung — but nothing connects
-its output to anything a user perceives.
-
-**Fix:** assert the region's text in `live-escalation.spec.ts`, where the DOM is real.
-
-### H4 — The "clock is not a live region" guard is an attribute-order substring (5.6) **[demonstrated]**
-`apps/web/src/runs/EscalationPanel.test.ts:194`
-
-The guard is `expect(html).not.toContain('role="timer" aria-live')`. The reviewer rewrote the
-element as `<p aria-live="polite" aria-atomic="true" role="timer">` — restoring the exact Story
-4.8 defect this story was written to remove, a clock that announces itself once a second for a
-four-hour wait — and the full suite passed **1073/1073**. The companion assertion
-`toContain('aria-live="polite"')` is then satisfied by the clock itself, even if the real region
-were deleted.
-
-The repo already has the right idiom, in `tests/e2e/sign-in.spec.ts:38`:
-`await expect(alert).not.toHaveAttribute('aria-live', /.*/)`.
-
-**Fix:** assert on the element, not on a substring of React's attribute ordering.
+| # | Finding | Fix | Proof |
+|---|---|---|---|
+| F13 | **The jump list printed `choose-candidate` at an auditor**, in a monospace span — the plain-words defect reintroduced on a new surface. `replay.spec.ts:308,361` asserted the key, pinning it. Three layers found this independently. | `ESCALATION_KIND_WORDS` in `plain-words.ts` (typed against the application union; `EscalationPanel` drops its private copy); `escalationKindWord` is `Object.hasOwn`-guarded because the stored kind arrives typed `string` (seventh occurrence). Spec asserts the words. | `plain-words.test.ts`, `replay.test.ts`. Mutations (key printed; guard dropped): killed. |
+| F14 | **"No frame was captured here" for frames the database holds** past `REPLAY_FRAME_LIMIT` — the story's own rule inverted. | A null-frame row says which of two things is true: `frameBeyondRead` when the read bound, `noFrameForTarget` otherwise. | `ReplayViewer.test.ts` two cases. |
+| F15 | **Work Item and Exception jumps matched on nullable `run_tool_action.work_item_id`** while the same page resolved the system name through the Step Execution. | `resolveFrameWorkItems` in `replay.ts`: one rule, applied before the jump list. | `replay.test.ts` two cases. |
+| F16 | **Adapter Session Step rows printed `digest: null`** — "No artifact registered." under a sentence promising the digest, over Evidence the fixture seeds. | `page.tsx` reads `readEvidenceItems` (already on the repository) and maps evidence id → digest. | `replay.spec.ts` asserts a 64-hex digest and the absence of the false sentence (see Verification). |
+| F17 | **`replay.spec.ts` raced its own worker.** It seeds a bare `RUNNING` Run while the worker it spawns for frame grants is up; the population recovery sweep (every 5 s) claimed one as abandoned, reserved a REQUIRED artifact, and generation 21 refused the seal — the Story 5.3 trap, in a spec that copied `live-view.spec.ts`'s columns and not its checkpoints. Found by the run that was meant to observe F16. | The Run row, a `POPULATION_READY` population claim and an `EXECUTING` agent claim commit in ONE transaction (all four sweep predicates read against); the agent phase is set `TERMINAL` after the terminal transition; teardown deletes the population rows a lost race leaves. | Proven by the rows: `population_execution` at `RETRY`, claimed 5 s after the insert, and a `RESERVED` required `population_evidence`. Re-run green (see Verification). |
 
 ---
 
-## Medium
+## Named, NOT fixed here — with the reason
 
-**5.4 — pause (one layer only, so this list is certainly incomplete)** *[unverified]*
+Each is real. Each is either a product decision, a change wider than a review repair, or work
+that belongs in its own commit with its own proof. None is silent.
 
-- `PauseBanners` renders **nothing** for a `PAUSED` Run whose wait cannot be read: the first arm
-  needs `pause !== null && pause.openedBy !== null`, the second needs `run.pauseRequest`, which
-  the honouring boundary has already cleared. A held Run that will end Inconclusive in thirty
-  minutes says nothing about being paused. Absence rendered as normality.
-- In that same state `RunPauseControls` still offers Resume and answers the click with
-  "The resume could not be confirmed" — a sentence reserved for a genuinely lost response,
-  describing an outcome that did not occur.
-- Three resume refusals assert things the command has not established: an authorization denial
-  is reported as `code: 'malformed'`; `not-awaiting`/`missing` become "That Run does not exist.";
-  and `superseded` is reported as "This pause timed out at {time}; the Run is Inconclusive." with
-  `at` set to the instant somebody *else* resumed it.
-- The pause marker's documented meaning ("requested and NOT yet honoured") stops holding at the
-  terminal transition — `CompleteRun` appends `lifecycle.pause-superseded` without clearing it,
-  and a test asserts the leftover. Only `isActiveRunState` hides it from readers today.
-- `RUN_PAUSE_TRANSITIONS` is consulted by the command and the UI but never where the transition
-  is performed: `saveCheckpoint` writes the state with no `AND state='RUNNING'`.
-- Both `honourPause` test helpers call `performPause(context as never)`. `WaitContext` does not
-  declare `openPauseWait`/`clearPauseRequest`; the calls work only because extra properties
-  survive a spread. Renaming either breaks two journeys at runtime with no compile error.
-- `actions.ts` re-implements the pause/resume parsers with a **different** UUID rule from the
-  command's (version nibble unconstrained vs `[1-8]`). `cancelRunAction` beside it delegates.
-- `PAUSE_COPY.confirmConsequence` hard-codes "after 30 minutes" while `PAUSED_TIMEOUT_MS` is the
-  real window, and `copy.test.ts` pins only `banner`.
-- `copy.test.ts`'s "never retypes that sentence" walks a hard-coded two-file list — the
-  documented "a test that walks a list enforces the list, not the rule" trap.
+**Owner decisions needed**
 
-**5.5 — cancel and flag** *[unverified except where noted]*
+- **N1 — `app/error.tsx` says "Nothing was changed" over a committed flag** (from the 09-11 round).
+  The sentence is EXPERIENCE.md's own and the boundary catches two failures with one claim.
+  Product wording; bounded (`flag-run.spec.ts` asserts one row after a dropped acknowledgement).
+- **Flag is rendered AFTER `LiveViewer`; Pause/Resume and Cancel before it.** 5.5's final
+  criterion and UX-DR24 place all three together. Deliberate and documented in the diff; a stated
+  criterion nonetheless.
+- **`lifecycle.run-resumed` records no Step, and `run-paused` records none at two of three
+  boundaries.** 5.4's AC says "resume records actor, time, and Step". A payload shape decision on
+  an immutable chain, not a review repair.
 
-- **Flag is not beside Pause/Resume and Cancel**, which is what 5.5's final criterion and UX-DR24
-  state. It renders *after* `LiveViewer`; the other two render before it. Deliberate and
-  documented in the diff, but it is a stated criterion — **decision needed**.
-- No DB-backed test flags a Run with a real `audit-manager` row. The integration test seeds a
-  second *auditor* and asserts one notification; the browser spec asserts the same. "Every Audit
-  Manager is notified" — the sentence the control shows the user — is proven only against an
-  in-memory stub.
-- The merged inbox trims to `bounded` after concatenating, so a viewer with enough open
-  escalations sees **no flags at all** while the bell keeps counting them.
-- `readFlags` caps at 20 and the Live View page passes no limit: a partial flag history reads as
-  complete.
-- A note containing a lone surrogate or NUL turns a deterministic input refusal into an unknown
-  outcome, telling the auditor to reload repeatedly.
-- The 500-character bound exists in five places, pinned to none (`run.test.ts` asserts the
-  constant against itself), and is applied pre-trim in the command while the database applies it
-  post-trim.
-- `flag-run.spec.ts` asserts `toEqual` on the notification list, so a concurrent spec's
-  audit-manager row makes it fail intermittently. `arrayContaining` is the fix.
+**Wider than a repair — next commit(s), each with its own proof**
 
-**5.6 — answer in place**
+- **`readWaits` and `readObservationDeltas` bound at 500 with no total and no "it bound" sentence**
+  (`run-detail-repository.ts:510,542`); `readFlags` bounds at 20 the same way. `readFrames` already
+  returns `{rows,total}` — the shape to copy. Mechanical, but touches infra + page + viewer + tests.
+- **`LiveGate` swaps `TerminalGate` for `SubscribedGate` when `cursor` flips to null, remounting
+  `children`** — a typed flag note and a lost-response recovery banner vanish at the moment the Run
+  ends. Fixing it means one component type with an unconditional subscription hook; the window is
+  the second before controls are withdrawn anyway. Named, with that analysis.
+- **`failure.frame-missing` is never flagged on Replay** (5.2's AC "flagged on Replay and export").
+  The Replay page reads no Result; `framesMissing` has zero readers under `apps/web`.
+- **The 1024px floor is two copies of one number** (`LIVE_VIEW_DESKTOP_MIN_PX` and `globals.css`
+  `max-width: 1023px`) with the only test sampling 900 and 1280. Needs a stylesheet-reading test.
+- **`RUN_ENDING_EVENTS` is pinned against retyped literals**, never against the producer constants
+  in `complete-run.ts` / `cancel-run.ts`; both browser cases reach terminal via cancel, so
+  `lifecycle.result-sealed` never crosses the gate in a test.
+- **The adapter-stage pause arm is driven by no test**; **`pauseRunAction`/`resumeRunAction` have
+  none** while `cancelRunAction` beside them has five; **no DB-backed test flags a Run with a real
+  `audit-manager`** — `accounts.ts` has no manager state. (This environment now seeds one, so the
+  follow-up is unblocked.)
+- **`Digest.test.ts`'s tag scanner fails open** (a role outside its denylist is permitted; a tag it
+  cannot terminate is skipped) and **`tokens.test.ts`'s scrubber-pill assertion is a whole-file
+  substring** three other rules already satisfy — both demonstrated by the 5.8 verification layer.
+- **`readObservationDeltas`'s payload key is asserted nowhere end to end.**
 
-- The skip link does not move focus: `<section id="open-escalation">` has no `tabIndex={-1}`, so
-  the fragment link scrolls and sets a focus starting point only. AC2 says it "moves focus to the
-  panel", and the decision *not* to auto-focus rests on the link working. `AppShell.tsx:67` already
-  carries the comment explaining exactly this. **Three layers found it.**
-- The link also sits mid-document, below nothing and above its own target, so it is unreachable
-  by forward Tab from anywhere else on the page — while `position: fixed` makes it look like a
-  top-of-document skip link.
-- The chrome does not carry a countdown when it flips to AWAITING (AC1, EXPERIENCE.md:160).
-  `SessionChrome` is untouched; the only countdown is inside a different card.
-- The milestone region announces the current rung on **mount**, not on a crossing. With a
-  four-hour window, opening from the bell with 90 seconds left announces "10 minutes remain", and
-  `milestones.open` is never spoken at all.
-- `escalationMilestone` is memoryless, so "a ladder that never goes back up" is a property of the
-  wall clock, not of the code.
-- A second Escalation while the panel stays mounted carries over the stale note, banner and
-  disabled fieldset — no `key={waitId}`.
-- The success Banner is destroyed by the `router.refresh()` that proves the answer worked.
-- The open Escalation never states its timeout consequence (Inconclusive), though the pause
-  sibling does.
-- `live-escalation.spec.ts` races its own fixture (`seedAgentContext` notifies nothing after
-  `raise`), and its teardown omits `run_gate_check` on the one spec in the family that initiates
-  a real Run.
+**Small, true, low-risk — batched for a tidy-up commit**
 
-**5.7 — the gate** *[unverified; only one layer ran]*
-
-- `ConfirmDialog` ignores the gate while the action is in flight, so all three Run dialogs can be
-  left undismissable; and a confirm pressed while the gate is closed is refused silently, with no
-  reason shown — which DESIGN.md forbids.
-- When `cursor` flips number→null, `TerminalGate` replaces `SubscribedGate` at the same position,
-  so the children **remount** — losing a typed flag note and any lost-response recovery banner.
-- A reconnect that opens but delivers no frame resets the silence clock, so the gate reopens on a
-  socket handshake rather than on knowing what the Run is doing.
-- Below 1024px the viewport reason wins over `runEnded`, so a phone reader is told to open a
-  desktop to supervise a Run that has already finished.
-- `window.matchMedia` absent, or a MediaQueryList without `addEventListener`, throws in the effect
-  and takes the whole surface down.
-- `RunFlagControl`'s note textarea is not inside a disabled fieldset when the gate closes, unlike
-  `EscalationPanel`.
-
-**5.8 — replay** *[unverified; only one layer ran]*
-
-- A jump target whose frames lie past `REPLAY_FRAME_LIMIT` is reported as "no frame was captured
-  here" for frames the database holds — the inverse of the story's own rule that a pill which
-  opens nothing must say so.
-- Frames are matched to Work Items on `run_tool_action.work_item_id`, which is nullable;
-  `page.tsx:118` already resolves through the Step Execution instead.
-- `ReplayViewer`'s arrow/Home/End handling is not scoped to the viewer the way Space is, and
-  checks no modifier — so `Alt+ArrowLeft` cancels browser Back and steps a frame.
-- Play on a zero-frame Run latches to Pause; a single-frame Run's Play appears broken.
-- Up to 500 scrubber pills are each a tab stop, with no roving tabindex, and nothing scrolls the
-  current pill into view.
-- Two Target Systems with the same display name collide as React keys, so one system's frozen
-  Audit Instructions can render against another.
-- `Digest.test.ts`'s tag scanner **fails open**: a tag it cannot parse is silently skipped.
-
----
-
-## Deferred (pre-existing, not caused by this change)
-
-- `docs/contracts/durable-escalation-v1.md:106,258` still name `notification_escalation_context`
-  and `escalationNotificationRecipients`, both renamed in an earlier story.
-- `epic-5-story-status.md` records generation 46 as "539/764/**41**" triggers. Generation 45 is 26
-  and 46 adds one, so it should be 27; CLAUDE.md's generation 47 entry says 28. A verification
-  claim that is wrong in a number is worse than one that is absent.
+- Two UUID rules for one path (`actions.ts:98` vs `pause-run.ts:180`); `performPause(context as
+  never)` in three test files; "after 30 minutes" as prose beside `PAUSED_TIMEOUT_MS`;
+  `copy.test.ts` walking a two-file list; `PAUSE_UNKNOWN`/`RESUME_UNKNOWN`/`FLAG_UNKNOWN` retyped in
+  `actions.ts`; the Rerun button's inline lost-response sentence; `ReplayViewer`'s Space guard is
+  dead (the scrubber and jump list are SIBLINGS of the keyed element, so their keydown never reaches
+  it) and arrows/Home/End check no modifier (Alt+ArrowLeft cancels browser Back); `Play` on a
+  zero-frame Run latches; `epic-5-story-status.md` records generation 46 as 41 triggers (27);
+  `durable-escalation-v1.md` names two identifiers renamed earlier.
 
 ## Dismissed
 
 - *A run-ending event naming a different Run latches the gate* (5.7). The subscription URL is
-  Run-scoped, so another Run's event cannot arrive on it. **[verified false]**
-- *`EventSource` undefined leaves every control usable for ever* (5.7). True of the code path, but
-  reachable only outside a browser, where there is no interactivity to gate. Downgraded to low.
+  Run-scoped. **[verified false, 09-11]**
+- *`EventSource` undefined leaves every control usable* (5.7). Reachable only outside a browser.
+  Low.
+- *Second-tab resume told Inconclusive with another's timestamp* (5.4). Not reachable through the
+  command; see F6. **[verified 09-15]**
 
----
+## Verification
 
-## Note on review conditions
+Unit and typecheck gates, and the browser journeys over the touched surfaces, are recorded below
+as they were run — a claim about a suite this environment did not run is not made.
 
-A second agent was working in this repository throughout. One reviewer observed a planted
-mutation in `EscalationPanel.tsx` mid-run and correctly reviewed the committed diff instead; the
-working tree was clean when checked. Reviews taken while another agent mutates the tree are worth
-treating with suspicion — this one survived it, but only because the reviewer noticed.
+**Gates, run on this machine against the working tree that is committed (Node 24.20.0, pnpm 11.25.0):**
+
+| Gate | Result |
+|---|---|
+| `pnpm -r typecheck` | exit 0 (every workspace package) |
+| `tsc -p tsconfig.root-tests.json` (root tests, after the spec change) | exit 0 |
+| `pnpm boundaries` | exit 0 |
+| `pnpm test` (Vitest, no database) | **206 files, 4201 of 4201 passed**, exit 0 |
+| `pnpm test:integration` | **not run here.** This round adds no repository, migration or worker code — `countOpenFor` already existed for the bell — so the integration suite is CI's to run on the PR. Stated, not assumed. |
+| Full browser suite | **not run here**; the specs over every touched surface were (below). CI runs the full suite. |
+
+**Unit mutations, each run against the fix removed and required to fail (files copied aside and restored from the copy, never `git checkout --`):**
+
+| Fix | Mutation | Result |
+|---|---|---|
+| F1 `PauseBanners` unreadable wait | fall through to the request banner for `pause === null` | KILLED |
+| F2 countdown | `WaitCountdown` removed from the Paused banner | KILLED |
+| F3 plain words on Replay | print `wait.kind` instead of `escalationKindWord(wait.kind)` | KILLED |
+| F3 `Object.hasOwn` guard | plain index into `ESCALATION_KIND_WORDS` | KILLED (`constructor` case) |
+| F4 person's name on the Paused banner | print `pause.openedBy` | KILLED |
+| F7 `fillTemplate` | chained `String.replace` restored | KILLED (`$&` case) |
+| F6 `resumeRun` expired refusal | old "the Run is Inconclusive" sentence restored | KILLED |
+| F9 inbox bound | `openTotal > open.length` short-circuited to `false` | KILLED (the `1 of 137` case) |
+
+**Browser, Playwright against the real web server, worker, Northstar and PostgreSQL 18 at generation 49:**
+
+- Touched surfaces, fixes in place — `live-drop.spec.ts`, `pause-resume.spec.ts`, `replay.spec.ts`, `live-escalation.spec.ts`: **14 passed, 1 failed** (3.4 m). The failure was `replay.spec.ts`'s seed racing the spec's own worker — F17, diagnosed from the rows it left (`population_execution` at `RETRY` five seconds after the insert, a `RESERVED` required `population_evidence`), not from the assertion. The new dialog-dismissal test, the pause-resume name assertions and the live-escalation journey are in the 14.
+- F8 `ConfirmDialog` mutation — the auto-dismiss EFFECT deleted, `live-drop.spec.ts -g "dismisses a confirmation"` re-run: **KILLED** at `expect(dialog).toHaveCount(0)`; source restored (two `cancelRef.current()` calls present). The `handleConfirm` same-tick refusal is defence a browser cannot deterministically reach and is not claimed as proven.
+- `replay.spec.ts` after F17, alone: **7 passed** (55 s) — the whole-Run test now runs its adapter-digest assertions (a 64-hex digest rendered, "No artifact registered." absent). The two runs before it never reached a test: the first timed out Playwright's 180-second web-server wait while Turbopack compiled `/api/health` from a cold cache, the second failed the auth setup's 10-second shell assertion while `/sign-in` (10.7 s) and `/` compiled on their first request — the documented cold-`.next` case in CLAUDE.md, and the honest answer is a run with the cache warm. No product assertion was re-run after a genuine failure.
+- The test database was checked after the run: 0 Runs, 0 Procedures, 0 `population_evidence`, 0 `run_evidence` — the widened teardown cleans up after itself.
+
+**The one thing this round did not prove and says so:** the Escalation panel and flag note gating (F11, F12) are asserted by the unit suite on the `readOnly`/`aria-disabled` attributes only; that they are withdrawn in a live browser when the gate closes follows from the same `LiveGate` verdict `live-drop.spec.ts` already proves for the three controls, and is not separately re-asserted here.
+
+## Note on the review harness
+
+Two things cost a round each and are in CLAUDE.md so they cost nobody a third: editing a file
+Next watches while a Playwright test sat inside its 60-second silence window remounted the page
+and reset the silence clock (the failure read exactly like a product finding about reconnects);
+and parallel shell calls share one working directory, so a relative path in one is decided by the
+other's `cd`.

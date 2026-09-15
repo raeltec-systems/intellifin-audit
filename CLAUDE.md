@@ -1,3 +1,92 @@
+## 2026-09-15 — Twenty of twenty Epic 5 review layers, and a fix applied to one of two siblings
+
+The Epic 5 code review had completed ten of its twenty layers before a rate limit stopped it;
+the other ten ran now, and the report's whole Medium list — marked `[unverified]` since 2026-09-11
+— was read against `main` before anything was fixed. Findings and repairs:
+`_bmad-output/implementation-artifacts/review-epic-5-stories.md`.
+
+- **A rule fixed in one sibling and not the other is the defect class this round found most.**
+  `OpenEscalationSection` was repaired in Story 5.6 so an unreadable open wait renders a Banner and
+  never an absence, with the rule in its own JSDoc; `PauseBanners`, twenty lines below in the same
+  file, rendered NOTHING for a `PAUSED` Run whose wait could not be read — and `readOpenEscalation`
+  answers all-nulls on an authorization refusal, so that is a state a reader reaches. Same shape
+  twice more: the Escalation panel had a countdown and the Paused banner had two timestamps where
+  EXPERIENCE.md asks for a countdown in three places; the Escalation note field was gated and the
+  flag note was not. **When a review lands a rule on one component, grep for its siblings before
+  closing the finding.**
+- **A spec can pin the defect as the expected value.** `pause-resume.spec.ts` asserted
+  `getByText(author)` where `author` was the auditor's UUID — so "Paused by 019a3c…" was REQUIRED
+  by a green test, on the one surface whose job is to name the person accountable, while
+  `ActorNameReader` existed for exactly this. `replay.spec.ts` did the same with `Escalation ·
+  choose-candidate`, a stored key in a monospace span, the plain-words defect reintroduced on a new
+  surface. Both now assert the words. `ESCALATION_KIND_WORDS` joins `plain-words.ts`; the stored
+  kind arrives typed `string`, so the lookup is `Object.hasOwn`-guarded (seventh occurrence).
+- **`String.prototype.replace` with a STRING pattern expands `$&` in the replacement.** A Procedure
+  named `Fee $& review`, or a person named that way, rewrote the sentence around it in two
+  templates. `fillTemplate` in `copy.ts` uses a replacer FUNCTION and fills in one pass, so a value
+  containing a later placeholder cannot be substituted by the next call either.
+- **A refusal must say only what it knows.** `resumeRun`'s `expired` arm said "the Run is
+  Inconclusive" — a state the delayed wake writes, reachable before the wake runs, so a reload
+  still showed PAUSED and still offered Resume. It says the deadline passed and to reload for the
+  recorded outcome. The "second tab is told Inconclusive with somebody else's timestamp" scenario
+  the reviewer described is NOT reachable: the guard refuses a closed wait as `not-paused` under
+  the row lock before `closeWait` runs. **A finding that describes a path must be checked for
+  reachability before its test is written** — the first two tests I wrote modelled the reviewer's
+  path and both received `not-paused`.
+- **`ConfirmDialog`'s gate guard had no test and refused silently.** It now states the reason
+  (`role="alert"`), marks Confirm `aria-disabled`, and re-runs its auto-dismiss when `busy` clears
+  — every Run dialog spells `onCancel` as `if (!busy)`, so a gate closing mid-flight dismissed
+  nothing. It cannot be a unit test: the dialog portals into a container set in an effect, so under
+  `renderToStaticMarkup` it renders nothing. `live-drop.spec.ts` opens the dialog, lets the stream
+  go lost, and asserts dismissal and no commit; the mutation that proves it deletes the EFFECT. The
+  `handleConfirm` refusal is same-tick defence a browser cannot deterministically reach and is
+  stated as such rather than claimed.
+- **The inbox bounded its merged list and the bell counted unbounded**, so 100 open Escalations
+  hid every flag with nothing saying so. The ordering (Escalations first, because only they expire)
+  was right and documented; the silence was the defect. The page now reads the same count the bell
+  does and says "Showing the first N of M" when they disagree.
+- **Replay said "no frame was captured here" for frames the database holds** past
+  `REPLAY_FRAME_LIMIT`, printed `digest: null` under a sentence promising the digest, and matched
+  Work Item jumps on nullable `run_tool_action.work_item_id` while the same page resolved the
+  system name through the Step Execution. `resolveFrameWorkItems` is the one rule; the adapter
+  digest comes from the Evidence read the page already had; a null-frame row says which of two
+  things is true.
+- **`docs/contracts/live-view-v1.md` said three gate reasons and that `runEnded` outranks the
+  others; the code has four and `viewport` outranks everything.** A contract the story itself
+  rewrote, out of date by the story's second commit. Corrected, with the priority stated.
+
+Four mechanical notes:
+
+- **`replay.spec.ts` seeded a bare `RUNNING` Run with its own worker up, and lost the race it
+  had been warned about.** The spec spawns the worker because frame grants are worker-signed;
+  the Story 5.3 note says a `RUNNING` Run with no `population_execution` row IS abandoned, and
+  every five seconds `startPopulationRecovery` selects exactly that. Its claim landed five
+  seconds after the insert, reserved a REQUIRED population artifact it could never acquire,
+  and generation 21 then refused the seal with "a required artifact is not REGISTERED" — read
+  at first as a defect the new adapter-digest assertion had found; the assertion never ran.
+  Three of four tests in the same file passed because the tick fell elsewhere, which is what
+  makes this the kind of race that ships. `live-view.spec.ts` already seeds the pair every
+  sweep respects (`POPULATION_READY` plus an `EXECUTING` agent phase, both with live leases);
+  the replay fixture does too now, in ONE transaction with the Run row, and its teardown
+  deletes the population rows a lost race leaves so one failure cannot take the rest of the
+  file's cleanup with it. **A spec that spawns the real worker copies the sibling's held-Run
+  checkpoints, not only its columns.**
+- **Editing a file Next watches while a Playwright test is inside its silence window remounts the
+  page.** `useLiveTimeline` resets `lastMessageAt` on every effect run (line 72), so Fast Refresh
+  made the status cycle `connecting → stale → connecting` and never reach `lost`. The failure
+  read as the 5.7 edge finding about reconnects resetting the clock; it was my edit. Same run,
+  untouched tree: green. **No `apps/web` edit during a browser run, and read the log before
+  believing a status that will not settle.**
+- **Parallel Bash calls share one shell, and `cd` in one wins the race in the other.** A read spelled
+  `cd /repo && sed apps/web/...` failed with "No such file" because a sibling call had `cd
+  packages/application` first. Absolute paths for every file and every `-p` config in a parallel
+  batch; never rely on cwd there.
+- **`seed-identity` needs `--name`, and never resets a password**, so an account seeded by an
+  earlier session cannot be signed into with a new `E2E_PASSWORD`. Seed fresh addresses. A cluster
+  whose password nobody has is reset through a temporary `local … trust` line in `pg_hba.conf`,
+  restored to `scram-sha-256` in the same script: `migrate.test.ts` proves a driver error with a
+  wrong password, and trust auth would accept it.
+
 ## 2026-09-11 — The complete plan opens in Review
 
 ## Guided dialogue correction (2026-09-11)

@@ -5,6 +5,7 @@ import { runPauseTransition, isActiveRunState, type RunRecord } from '@intellifi
 import type { EvaluationReviewCommandStatus, RunWait } from '@intellifin/application';
 import {
   CryptoUuidV7Generator,
+  DrizzleActorNameReader,
   DrizzleRunDetailRepository,
   DrizzleRunRepository,
   PostgresEvaluationReviewRepository,
@@ -18,7 +19,7 @@ import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
 import { Tabs } from '../design/Tabs';
 import { WatchControl } from './WatchControl';
-import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, runCanceledBy, updatedAtTitle } from '../design/copy';
+import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, fillTemplate, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
 import { EscalationPanel } from './EscalationPanel';
@@ -196,6 +197,12 @@ export async function RunDetailFrame({
   const liveCursor = isActiveRunState(run.state)
     ? await readTimelineHead((await getRuntime()).db, run.runId)
     : null;
+  // A user id printed at a reader is the platform speaking its own language, and the two
+  // pause banners are the surfaces whose job is to name the person accountable.
+  const pauseNames = await new DrizzleActorNameReader((await getRuntime()).db).namesFor([
+    ...(escalation?.pause?.openedBy === undefined || escalation.pause.openedBy === null ? [] : [escalation.pause.openedBy]),
+    ...(run.pauseRequest === null ? [] : [run.pauseRequest.requestedBy]),
+  ]);
   const trail = [
     { href: '/runs', label: 'Runs' },
     { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
@@ -226,7 +233,7 @@ export async function RunDetailFrame({
         : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
       <CancellationBanners run={run} />
-      <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} />
+      <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={pauseNames} />
       <RerunLinks runId={run.runId} />
       {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
           is its own surface, not a sixth tab, so it is reached from here and from a
@@ -355,11 +362,21 @@ export function OpenEscalationSection({ run, escalation, readAt }: {
  * The second arm is the marker, which means "requested and NOT yet honoured": the boundary
  * that honours a pause clears it, so it cannot overlap the first arm.
  */
-export function PauseBanners({ run, pause, readAt }: {
+export function PauseBanners({ run, pause, readAt, names }: {
   readonly run: RunRecord;
   readonly pause: RunWait | null;
   /** The instant the server read, so the countdown's first client render matches it. */
   readonly readAt: Date;
+  /**
+   * User id to person's name, from `ActorNameReader`.
+   *
+   * `run_wait.opened_by` and `pause_requested_by` are user IDS -- an address cannot enter
+   * the chain, so the row holds an id. EXPERIENCE.md's sentence is "Paused by Daniel
+   * Okonjo at {time}", and this banner printed the UUID: the platform speaking its own
+   * language on the one surface whose job is to name the person accountable. An id with no
+   * row comes back absent and the id is shown, which is honest about what is known.
+   */
+  readonly names: ReadonlyMap<string, string>;
 }): React.JSX.Element {
   if (run.state === 'PAUSED') {
     if (pause === null || pause.openedBy === null) {
@@ -368,10 +385,11 @@ export function PauseBanners({ run, pause, readAt }: {
     return (
       <Banner
         tone="warning"
-        title={PAUSE_COPY.banner
-          .replace('{actor}', pause.openedBy)
-          .replace('{time}', utcStamp(pause.openedAt))
-          .replace('{ends}', utcStamp(pause.deadline))}
+        title={fillTemplate(PAUSE_COPY.banner, {
+          actor: names.get(pause.openedBy) ?? pause.openedBy,
+          time: utcStamp(pause.openedAt),
+          ends: utcStamp(pause.deadline),
+        })}
       >
         {/* EXPERIENCE.md asks for a COUNTDOWN here, in three places (lines 115, 149 and
             292), and this banner printed two absolute timestamps. "Ends Inconclusive at
@@ -392,7 +410,7 @@ export function PauseBanners({ run, pause, readAt }: {
     return (
       <Banner
         tone="warning"
-        title={`Pause requested by ${run.pauseRequest.requestedBy} at ${utcStamp(run.pauseRequest.requestedAt)}`}
+        title={`Pause requested by ${names.get(run.pauseRequest.requestedBy) ?? run.pauseRequest.requestedBy} at ${utcStamp(run.pauseRequest.requestedAt)}`}
       >
         <p>The Run holds at its next Tool Action, before any further Target System work.</p>
       </Banner>

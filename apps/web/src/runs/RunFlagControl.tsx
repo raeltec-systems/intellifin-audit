@@ -5,7 +5,7 @@ import { useActionState, useEffect } from 'react';
 import { flagRunFormAction, type FlagRunActionResult } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
-import { FLAG_COPY, RUN_LOST_RESPONSE } from '../design/copy';
+import { FLAG_COPY, RUN_LOST_RESPONSE, fillTemplate } from '../design/copy';
 import { useLiveGate } from './LiveGate';
 import { utcStamp } from './labels';
 
@@ -72,9 +72,17 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
             name="note"
             rows={3}
             maxLength={500}
-            aria-describedby="run-flag-note-help"
+            // The submit button is withdrawn when the gate closes; the note stayed fully
+            // editable beside it, unlike the Escalation panel's. `readOnly` rather than
+            // `disabled`, so the reason stays reachable by keyboard.
+            readOnly={gate.disabledReason !== null || state?.unknownOutcome === true}
+            aria-disabled={gate.disabledReason !== null || state?.unknownOutcome === true ? true : undefined}
+            aria-describedby={gate.disabledReason !== null ? 'run-flag-note-help run-flag-note-withdrawn' : 'run-flag-note-help'}
           />
           <p id="run-flag-note-help" className="ls-caption">{FLAG_COPY.noteHelp}</p>
+          {gate.disabledReason !== null
+            ? <p id="run-flag-note-withdrawn" className="ls-caption">{gate.disabledReason}</p>
+            : null}
         </div>
         {/* A lost response WITHDRAWS the control, it does not merely offer a reload.
             `flagId` is minted here and a flag deliberately carries no request token, so a
@@ -92,7 +100,7 @@ export function RunFlagControl({ runId, flaggable, flags }: RunFlagControlProps)
       <ul className="ls-stack">
         {flags.map((item) => (
           <li key={item.flagId}>
-            <p>{FLAG_COPY.by.replace('{actor}', item.flaggedBy).replace('{time}', utcStamp(item.flaggedAt))}</p>
+            <p>{fillTemplate(FLAG_COPY.by, { actor: item.flaggedBy, time: utcStamp(item.flaggedAt) })}</p>
             {item.note === null ? null : <p className="ls-quote">{item.note}</p>}
           </li>
         ))}

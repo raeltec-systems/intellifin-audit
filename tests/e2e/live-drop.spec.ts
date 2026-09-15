@@ -147,6 +147,50 @@ test.describe('Live View when the stream drops', () => {
     expect(attempts).toBeGreaterThan(0);
   });
 
+  test('dismisses a confirmation that was already open, and refuses its confirm in words', async ({ page }) => {
+    /**
+     * The one path that can still COMMIT after the gate closes (PR 29 review).
+     *
+     * Every other control is withdrawn before it is pressed. A dialog opened while the
+     * gate was open is different: its Confirm is what performs the action, and it lives
+     * inside `ConfirmDialog` rather than in the control that opened it. Both halves of
+     * that guard -- the auto-dismissal and the refusal in `handleConfirm` -- were reached
+     * by NO test, so deleting either left every suite green.
+     *
+     * It cannot be a unit test: `ConfirmDialog` portals to a container set in an effect,
+     * so under `renderToStaticMarkup` in the `node` environment it renders nothing at all.
+     * This is the only place the DOM is real.
+     */
+    test.setTimeout(180_000);
+    const runId = await seedRun();
+
+    let attempts = 0;
+    await page.route('**/api/runs/*/events*', async (route) => { attempts += 1; await route.abort(); });
+
+    await page.goto(`/runs/${runId}/live`);
+    await expect(page.getByRole('heading', { name: /^Live View · / })).toBeVisible();
+    await expect(page.locator('#run-cancel')).toHaveAttribute('data-client-ready', 'true');
+
+    // Opened while the page still knows what the Run is doing.
+    await expect(page.getByRole('button', { name: 'Cancel Run', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await page.getByRole('button', { name: 'Cancel Run', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    // Now the stream goes quiet under it.
+    await expect(page.locator('[data-live-status]'))
+      .toHaveAttribute('data-live-status', 'lost', { timeout: LIVE_LOST_MS + 30_000 });
+
+    // The dialog takes itself away rather than sitting there over a page that no longer
+    // knows the Run's state.
+    await expect(dialog).toHaveCount(0);
+    expect(attempts).toBeGreaterThan(0);
+
+    // And nothing was committed: this is the assertion the guard exists for.
+    const [row] = await sql`SELECT state, cancel_requested_by FROM audit_run WHERE run_id=${runId}`;
+    expect(row).toMatchObject({ state: 'RUNNING', cancel_requested_by: null });
+  });
+
   test('re-subscribes with a cursor it could hold, and never one ahead of the chain', async ({ page }) => {
     test.setTimeout(120_000);
     const runId = await seedRun();

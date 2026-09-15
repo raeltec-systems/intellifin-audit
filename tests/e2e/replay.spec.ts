@@ -84,10 +84,24 @@ async function seedReplayRun(): Promise<Replayed> {
   const frames = [ids.next(), ids.next(), ids.next()];
   const recordKey = 'E-000106';
 
-  await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
-    procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
-    VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,${controlName},
-    ${`2026-07-${day}`},${`2026-07-${day}`},'RUNNING','STANDARD',${author},'replay-fixture','auditor',${stamp(0)})`;
+  // The Run is RUNNING while the rest of this fixture is written, and the spec's own worker
+  // is up (the frame grants need it) — so the Run has to carry the checkpoints a held Run
+  // really has, or the population recovery sweep (`startPopulationRecovery`, every five
+  // seconds) claims it as abandoned, reserves a REQUIRED population artifact it can never
+  // acquire, and generation 21 then refuses the seal below. `live-view.spec.ts` seeds the same
+  // pair for the same reason; here the row and its claims commit TOGETHER, so there is no
+  // window at all rather than a small one.
+  const lease = stamp(3_600);
+  await sql.begin(async (tx) => {
+    await tx`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
+      procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
+      VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,${controlName},
+      ${`2026-07-${day}`},${`2026-07-${day}`},'RUNNING','STANDARD',${author},'replay-fixture','auditor',${stamp(0)})`;
+    await tx`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,step_id,attempt_id)
+      VALUES(${runId},1,'POPULATION_READY',1,${stamp(0)},${stamp(0)},${lease},'session-1',${ids.next()})`;
+    await tx`INSERT INTO run_agent_execution(run_id,revision,status,attempts,run_started_at,started_at,attempt_started_at,lease_until,attempt_id)
+      VALUES(${runId},1,'EXECUTING',1,${stamp(0)},${stamp(0)},${stamp(0)},${lease},${ids.next()})`;
+  });
   runs.push(runId);
   // RELEASED, with the instant it was released: `run_workspace_released_at` refuses the
   // pairing without it, which is the truthful shape of a terminal Run's workspace.
@@ -192,6 +206,10 @@ async function seedReplayRun(): Promise<Replayed> {
   await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
     VALUES(${runId},1,'CONTROL_FAILURE','control-failure',true,'COMPLETED',true,now(),NULL,'{}'::jsonb)`;
   await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
+  // The Run has ended, so its agent phase has too: a live claim on a terminal Run is a
+  // state no worker leaves behind. Written after the terminal transition, because a
+  // TERMINAL agent phase on a RUNNING Run is exactly what the adapter sweep selects.
+  await sql`UPDATE run_agent_execution SET status='TERMINAL' WHERE run_id=${runId}`;
 
   // The stored kind is `choose-candidate`; what a reader must SEE is the question it
   // means. The spec pinned the key, so it pinned the plain-words defect as intended.
@@ -254,6 +272,15 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
       await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
       await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
+      // The held-Run checkpoints seeded above, and the population rows a sweep that DID
+      // claim a Run would leave — so a fixture that lost that race still cleans up after
+      // itself instead of taking every later delete in this loop with it.
+      await sql`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_row WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
       await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
       await sql`DELETE FROM notification WHERE run_id=${runId}`;
       await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
@@ -308,6 +335,14 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await expect(page.getByRole('button', { name: /^Work Item · Leaver 1$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: `Exception · ${seeded.recordKey}` })).toBeVisible();
     await expect(page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` })).toBeVisible();
+
+    // The adapter Session Step's log row shows the artifact's integrity digest. It printed
+    // "No artifact registered." over the Evidence this fixture seeds, because the page
+    // hard-coded `digest: null` under a sentence promising the digest.
+    const adapterLog = page.getByRole('region', { name: 'Adapter Session Steps' });
+    await expect(adapterLog).toBeVisible();
+    await expect(adapterLog).not.toContainText('No artifact registered.');
+    await expect(adapterLog.locator('text=/[0-9a-f]{64}/').first()).toBeVisible();
 
     // The auditor's own frozen words, verbatim.
     await expect(page.getByRole('heading', { name: 'Audit Instructions', exact: true })).toBeVisible();
