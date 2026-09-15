@@ -63,6 +63,32 @@ Manager reviews use 14 rows for current inputs and retain the historical 12-row 
 both the domain consistency check and repository parser must accept the appropriate shape.
 Context edits use the same locked, revision-checked human authoring and plan-queue path.
 
+## 2026-09-15 — A literal in the declared shape can undo a live setting that cannot be redone
+
+`SOLARI_API_KEY` sat as a **STAGED** Railway change for two days, so the worker kept booting
+in `local` mode while the key was, by every ordinary reading, "added". Railway holds a
+variable edit in a pending patch until somebody deploys it; `list-variables` shows the LIVE
+set and says nothing about what is staged. **Read `get-staged-changes` before concluding a
+Railway variable is missing**, and before concluding one is present.
+
+- **The key lives in two unrelated places and only one of them was set.** A GitHub Actions
+  secret feeds `solari-acceptance.yml`; a Railway worker variable feeds the worker that runs
+  real audits. The acceptance workflow had passed fourteen times, which is why it read as
+  configured. Neither place implies the other.
+- **`SOLARI_RECORDING` was declared `'false'` as a LITERAL in `.railway/railway.ts`, and that
+  is the trap.** `preserve()` leaves a value alone; a literal is WRITTEN by an apply. So the
+  file that describes the deployment would have turned recording back off — and recording can
+  only be set at session creation, so every Run after such an apply would have had no replay,
+  permanently and silently. It is `'true'` now, changed in the same breath as the live value.
+  **A declared default whose cost is irreversible must agree with the live state**; for
+  anything else, `preserve()` is what "the dashboard owns this" looks like.
+- **`accept-deploy` timed out at 60 seconds, twice, and committed nothing either time.** A
+  timeout is not an outcome: `get-staged-changes` still read `STAGED` with the same
+  `updatedAt`, and the worker's latest deployment was unmoved. Check the patch and the
+  deployment after any deploy call that does not return, and stop after two attempts rather
+  than hammering a production commit — the same rule as reading a background wrapper's exit
+  code instead of its log.
+
 ## 2026-09-11 — Guided preparation comes into v1, and ten of its rules are already the product
 
 The owner reviewed LivePlan's documentation and adopted the pattern for the authoring surface —

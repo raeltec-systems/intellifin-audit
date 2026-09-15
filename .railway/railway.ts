@@ -104,7 +104,14 @@ export default defineRailway(() => {
       // declared here rather than preserved. It can ONLY be set at session creation -- the
       // replay endpoint 404s forever for a session created without it -- so turning it on
       // applies to Runs made after the change and never to Runs already recorded.
-      SOLARI_RECORDING: 'false',
+      //
+      // ON since 2026-09-15, in the same commit the owner set it live on the worker. It was
+      // declared `'false'` as a LITERAL, which is the trap: a literal is WRITTEN by an
+      // apply, so the declared shape would have turned recording back off and every Run
+      // after that apply would have had no replay, permanently and silently. A value whose
+      // default costs something irreversible has to agree with the live state, or the file
+      // that describes the deployment is the thing that breaks it.
+      SOLARI_RECORDING: 'true',
       // Stories 3.2 to 3.5. The PRIVATE S3-compatible bucket every Evidence artifact is
       // frozen into. All five together or none: `loadConfig` refuses a partial set. Absent,
       // the worker starts, logs `Population execution disabled` and ends every Run
