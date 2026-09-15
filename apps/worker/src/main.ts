@@ -149,10 +149,13 @@ async function main(): Promise<void> {
   telemetry.info('Agent Workspace mode selected', {
     mode: provider.connection.mode,
     reason: provider.reason,
-    // Recording is decided at `sessions.create()` and can never be turned on afterwards,
-    // so a deployment running with it off produces Runs whose Replay 404s permanently —
-    // and the mode alone cannot say which. `false` for the local mode is the truth rather
-    // than a placeholder: a locally launched browser records nothing at all.
+    // Whether the PROVIDER is recording this session, which is not whether Replay works:
+    // Replay is whole from the platform-owned asset set. It matters because Solari records
+    // input values by default and a sign-in types a credential into a form field, so a
+    // recorded session puts that credential somewhere this platform cannot reach — and it
+    // is decided at `sessions.create()`, so an operator cannot learn it later from the Run.
+    // `false` for the local mode is the truth rather than a placeholder: a locally launched
+    // browser records nothing at all.
     recording: provider.connection.mode === 'solari' ? provider.connection.recording : false,
   });
   // NFR-5: a workspace whose Run has already ended and which nothing gave back. A release

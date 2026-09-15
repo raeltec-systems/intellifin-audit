@@ -42,12 +42,14 @@ export const TELEMETRY_FIELD_KEYS = [
    */
   'reason',
   /**
-   * Whether an Agent Workspace session is created with replay recording (Story 4.1).
+   * Whether an Agent Workspace session is created with PROVIDER recording (Story 4.1).
    *
    * A build-constant boolean that says nothing about what was read, so it clears the same
-   * NFR-6 bar `mode` does — and it is logged for a stronger reason. Recording can only be
-   * set at `sessions.create()`: a deployment running with it off produces Runs whose
-   * Replay 404s for ever, and nothing else in this stream says which one is running.
+   * NFR-6 bar `mode` does — and it is logged for a stronger reason. It is not whether
+   * Replay works (Replay is whole from the platform-owned asset set); it is whether the
+   * provider is capturing input values, which a sign-in types a credential into. It can
+   * only be set at `sessions.create()`, so nothing else in this stream says which one a
+   * deployment is running.
    */
   'recording',
   'role',

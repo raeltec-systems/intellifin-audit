@@ -100,18 +100,25 @@ export default defineRailway(() => {
       // isolate the worker process, and egress is policed inside the browser rather than at
       // the network. Every workspace row records which mode it actually had.
       SOLARI_API_KEY: preserve(),
-      // Session recording, which Epic 5's replay reads. It carries no secret, so it is
-      // declared here rather than preserved. It can ONLY be set at session creation -- the
-      // replay endpoint 404s forever for a session created without it -- so turning it on
-      // applies to Runs made after the change and never to Runs already recorded.
+      // The PROVIDER's own session recording, which is NOT Replay. `replay-v1.md` says
+      // Replay is whole from the platform-owned asset set without it, and nothing in this
+      // build reads a provider recording at all -- a supplementary link to one is a later
+      // story's. So the only thing this buys today is an artifact no surface opens.
       //
-      // ON since 2026-09-15, in the same commit the owner set it live on the worker. It was
-      // declared `'false'` as a LITERAL, which is the trap: a literal is WRITTEN by an
-      // apply, so the declared shape would have turned recording back off and every Run
-      // after that apply would have had no replay, permanently and silently. A value whose
-      // default costs something irreversible has to agree with the live state, or the file
-      // that describes the deployment is the thing that breaks it.
-      SOLARI_RECORDING: 'true',
+      // OFF as a LITERAL, and the literal is the point. Solari records input values BY
+      // DEFAULT (the verified vendor review, `review-technology-reality-rev2.md`), the
+      // sign-in types the credential into a form field (`enterCredential` -> `field.fill`),
+      // and `copyRecording` only DOWNLOADS what the provider already holds: its scanner
+      // refuses the platform upload and cannot reach the provider's copy. The SDK exposes
+      // no masking and no retention control (`replay-asset-set-v1.md`), so a session
+      // created with this on puts an audit credential on a third party's servers for an
+      // unknown period, permanently and beyond anything this platform can do about it.
+      //
+      // `preserve()` would be wrong here: it would let a dashboard `true` survive an apply.
+      // A literal `'false'` is the fail-closed direction, which is the one this value needs
+      // until provider input masking and minimum retention are verified against the
+      // account. Turning it on is an owner decision with that verification behind it.
+      SOLARI_RECORDING: 'false',
       // Stories 3.2 to 3.5. The PRIVATE S3-compatible bucket every Evidence artifact is
       // frozen into. All five together or none: `loadConfig` refuses a partial set. Absent,
       // the worker starts, logs `Population execution disabled` and ends every Run
