@@ -41,6 +41,17 @@ export const TELEMETRY_FIELD_KEYS = [
    * repository, and `safeScalar` caps it at 256 characters.
    */
   'reason',
+  /**
+   * Whether an Agent Workspace session is created with PROVIDER recording (Story 4.1).
+   *
+   * A build-constant boolean that says nothing about what was read, so it clears the same
+   * NFR-6 bar `mode` does — and it is logged for a stronger reason. It is not whether
+   * Replay works (Replay is whole from the platform-owned asset set); it is whether the
+   * provider is capturing input values, which a sign-in types a credential into. It can
+   * only be set at `sessions.create()`, so nothing else in this stream says which one a
+   * deployment is running.
+   */
+  'recording',
   'role',
   'route',
   'schemaVersion',

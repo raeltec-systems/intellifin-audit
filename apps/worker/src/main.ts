@@ -146,7 +146,18 @@ async function main(): Promise<void> {
     clock: new SystemClock(),
     ids: new CryptoUuidV7Generator(),
   };
-  telemetry.info('Agent Workspace mode selected', { mode: provider.connection.mode, reason: provider.reason });
+  telemetry.info('Agent Workspace mode selected', {
+    mode: provider.connection.mode,
+    reason: provider.reason,
+    // Whether the PROVIDER is recording this session, which is not whether Replay works:
+    // Replay is whole from the platform-owned asset set. It matters because Solari records
+    // input values by default and a sign-in types a credential into a form field, so a
+    // recorded session puts that credential somewhere this platform cannot reach — and it
+    // is decided at `sessions.create()`, so an operator cannot learn it later from the Run.
+    // `false` for the local mode is the truth rather than a placeholder: a locally launched
+    // browser records nothing at all.
+    recording: provider.connection.mode === 'solari' ? provider.connection.recording : false,
+  });
   // NFR-5: a workspace whose Run has already ended and which nothing gave back. A release
   // is network I/O, so it cannot happen inside the transaction that ends the Run; a worker
   // that dies between the two leaves a browser held by nobody and, under Solari, a pool

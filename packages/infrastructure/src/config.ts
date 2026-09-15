@@ -271,14 +271,19 @@ export const configSchema = z
      * `SOLARI_REGION` and `SOLARI_BASE_URL` are the SDK's own two ways of naming a
      * gateway; `baseUrl` replaces `region` when both are set. Neither is hard-coded (AD-11).
      *
-     * `SOLARI_RECORDING` decides session replay, which CANNOT be enabled afterwards: the
-     * replay endpoint 404s forever for a session created without it. Epic 5 is what reads a
-     * replay and Story 4.1 is where the decision is taken, so the flag is threaded through
-     * now even though nothing reads one yet. It is OFF by default, matching the provider's
-     * own default: recording is a metered feature and turning one on is a cost decision
-     * this build must not take for a deployment. **The consequence is that a Run made
-     * before it is switched on has no replay, permanently** — so Epic 5 turns it on before
-     * the Runs whose replay it wants, and cannot recover the ones behind it.
+     * `SOLARI_RECORDING` decides the PROVIDER's own session recording, which CANNOT be
+     * enabled afterwards: the provider's replay endpoint 404s forever for a session
+     * created without it. **It is not the product's Replay** — `replay-v1.md` says Replay
+     * is whole from the platform-owned asset set — and nothing in this build reads a
+     * provider recording at all, so today it buys an artifact no surface opens.
+     *
+     * It is OFF by default, and the default is a SAFETY choice rather than a cost one.
+     * Solari records input values by default and a sign-in types a credential into a form
+     * field, so a recorded session puts a working credential on the provider's servers;
+     * `copyRecording` downloads what the provider already holds and its scanner can only
+     * refuse the platform upload. The SDK exposes no masking and no retention control.
+     * Turning it on is an owner decision with provider input masking and minimum retention
+     * verified against the account first; see the 2026-09-15 entry in CLAUDE.md.
      */
     SOLARI_API_KEY: z.preprocess(
       (value) => (value === '' ? undefined : value),
