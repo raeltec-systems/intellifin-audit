@@ -84,10 +84,21 @@ async function seedReplayRun(): Promise<Replayed> {
   const frames = [ids.next(), ids.next(), ids.next()];
   const recordKey = 'E-000106';
 
-  await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
-    procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
-    VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,${controlName},
-    ${`2026-07-${day}`},${`2026-07-${day}`},'RUNNING','STANDARD',${author},'replay-fixture','auditor',${stamp(0)})`;
+  // The frame-grant worker is already running. Publish this held Run together with
+  // its population checkpoint and live agent claim, so a recovery sweep cannot see
+  // an abandoned RUNNING row while the rest of the synthetic evidence is seeded.
+  // The same held-Run shape is used by live-view.spec.ts.
+  const lease = stamp(3_600);
+  await sql.begin(async (tx) => {
+    await tx`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,
+      procedure_name,period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
+      VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,${controlName},
+      ${`2026-07-${day}`},${`2026-07-${day}`},'RUNNING','STANDARD',${author},'replay-fixture','auditor',${stamp(0)})`;
+    await tx`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,step_id,attempt_id)
+      VALUES(${runId},1,'POPULATION_READY',1,${stamp(0)},${stamp(0)},${lease},'session-1',${ids.next()})`;
+    await tx`INSERT INTO run_agent_execution(run_id,revision,status,attempts,run_started_at,started_at,attempt_started_at,lease_until,attempt_id)
+      VALUES(${runId},1,'EXECUTING',1,${stamp(0)},${stamp(0)},${stamp(0)},${lease},${ids.next()})`;
+  });
   runs.push(runId);
   // RELEASED, with the instant it was released: `run_workspace_released_at` refuses the
   // pairing without it, which is the truthful shape of a terminal Run's workspace.
@@ -192,6 +203,9 @@ async function seedReplayRun(): Promise<Replayed> {
   await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
     VALUES(${runId},1,'CONTROL_FAILURE','control-failure',true,'COMPLETED',true,now(),NULL,'{}'::jsonb)`;
   await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
+  // Close the agent claim after the terminal Run transition. A TERMINAL agent
+  // phase on a RUNNING Run would make the adapter recovery sweep eligible again.
+  await sql`UPDATE run_agent_execution SET status='TERMINAL' WHERE run_id=${runId}`;
 
   return { runId, frames, workItems, recordKey, waitKind: 'choose-candidate' };
 }
@@ -252,6 +266,12 @@ test.afterAll(async () => {
       await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
       await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
       await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_agent_execution WHERE run_id=${runId}`;
+      await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_row WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
+      await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
       await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
       await sql`DELETE FROM notification WHERE run_id=${runId}`;
       await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
@@ -372,11 +392,17 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await expect(page).toHaveURL(new RegExp(`/runs/${seeded.runId}/replay$`));
 
     // A Run that has not finished is WATCHED, not replayed, and the surface says which.
-    await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${seeded.runId}`;
+    // Reopen the held agent phase together with this synthetic live state, so the
+    // adapter sweep cannot claim a RUNNING Run whose agent phase is still TERMINAL.
+    await sql.begin(async (tx) => {
+      await tx`UPDATE run_agent_execution SET status='EXECUTING' WHERE run_id=${seeded.runId}`;
+      await tx`UPDATE audit_run SET state='RUNNING' WHERE run_id=${seeded.runId}`;
+    });
     await page.goto(`/runs/${seeded.runId}/replay`);
     await expect(page.getByText(REPLAY_COPY.notTerminal)).toBeVisible();
     await expect(page.locator('.ls-session__frame')).toHaveCount(0);
     await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${seeded.runId}`;
+    await sql`UPDATE run_agent_execution SET status='TERMINAL' WHERE run_id=${seeded.runId}`;
   });
 });
 

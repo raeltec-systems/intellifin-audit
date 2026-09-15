@@ -61,3 +61,29 @@ live AI incident resolved until this check passes.
 
 References: [Railway public ingress headers](https://docs.railway.com/networking/public-networking/specs-and-limits),
 [Better Auth trusted IP configuration](https://better-auth.com/docs/concepts/rate-limit).
+
+## Follow-up: Replay fixture race exposed by main CI
+
+PR #34 passed all five candidate CI jobs: 4,262 unit tests, 552 PostgreSQL integration
+tests, 203 full browser/accessibility tests and 16 focused authoring browser tests,
+plus container and guard-mutation checks. It merged as `9fc71aa812f18b552f183c152c69d504bc1b7eae`,
+whose tree exactly matches the tested candidate. Railway's web sign-in header was
+configured with deployment skipped so it takes effect in the next release.
+
+Main CI run `34987342406` then passed four jobs and 202 of 203 browser tests. The Replay
+administrator case failed **during fixture construction, before its page or permission
+assertions**. Its real frame-grant worker's recovery sweep could claim the newly
+inserted RUNNING row before the fixture supplied phase checkpoints. That worker
+reserved population evidence, so the database correctly refused a sealed package
+with a required unregistered artifact. Cleanup also encountered the new population
+evidence foreign key. The automatic release remained blocked.
+
+The bounded follow-up creates the Run, ready population checkpoint and unexpired
+agent claim atomically. It closes the agent claim after the terminal Run transition
+and removes phase/population rows during cleanup. The live-state Replay assertion
+also reopens the held agent claim atomically with its temporary RUNNING transition.
+This uses the held-Run pattern
+already present in Live View coverage and the isolated fixture repair in PR #36;
+no unrelated PR #36 changes are included. The real worker, evidence seal constraints,
+authorization assertions, browser timeouts and release gates remain intact. Exact
+follow-up validation and release results are recorded in the repair PRs.

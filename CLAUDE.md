@@ -3005,3 +3005,15 @@ and the `progress` diagnostic stage, without retaining their cause.
 
 These corrections repair reproduced diagnostic defects. They do not retrospectively
 identify the production `UNCONFIRMED` incident or prove a live provider recovery.
+
+## 2026-09-15 — Replay fixtures with a running worker
+
+Publish a synthetic RUNNING Run and its held population/agent checkpoints in one
+transaction when a real worker is already running. Otherwise recovery can claim the
+partly seeded fixture and reserve required evidence before the fixture seals its
+package. A ready population plus an unexpired EXECUTING agent claim holds the Replay
+fixture; mark the agent phase TERMINAL only after the Run becomes terminal. Keep the
+real frame-grant worker and all authorization/evidence assertions. Cleanup removes
+the phase and population rows before deleting evidence and the Run.
+If a surface test temporarily reopens the Run, reopen its held agent claim in the
+same transaction; a TERMINAL agent phase makes a RUNNING Run eligible for recovery.
