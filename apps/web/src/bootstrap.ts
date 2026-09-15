@@ -121,6 +121,7 @@ function requireAuthConfig(config: AppConfig): AuthConfig {
   return {
     secret: config.BETTER_AUTH_SECRET as string,
     baseUrl: config.BETTER_AUTH_URL as string,
+    ...(config.AUTH_TRUSTED_IP_HEADER ? { trustedIpHeader: config.AUTH_TRUSTED_IP_HEADER } : {}),
   };
 }
 

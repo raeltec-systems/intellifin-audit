@@ -28,6 +28,8 @@ export interface AuthConfig {
   readonly secret: string;
   /** Public origin the browser reaches, e.g. `https://audit.example.com`. */
   readonly baseUrl: string;
+  /** The deployment's edge must overwrite this header and be the only ingress. */
+  readonly trustedIpHeader?: 'x-real-ip';
 }
 
 /** Where the authentication endpoints are mounted. The route handler must match. */
@@ -51,6 +53,9 @@ function buildAuth(db: Database, config: AuthConfig, internal: InternalAuthOptio
     secret: config.secret,
     baseURL: config.baseUrl,
     basePath: AUTH_BASE_PATH,
+    // Railway's public HTTP edge supplies X-Real-IP. Never fall back to a
+    // caller-supplied X-Forwarded-For chain when an edge header is configured.
+    ...(config.trustedIpHeader ? { advanced: { ipAddress: { ipAddressHeaders: [config.trustedIpHeader] } } } : {}),
     database: drizzleAdapter(db, {
       provider: 'pg',
       // Keyed by the model names below, which is what the adapter looks up.

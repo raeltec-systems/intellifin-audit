@@ -14,6 +14,7 @@ import { WritingAssistantProvider, PreparationAssistant, type WritingAssistantAc
 import { streamAuthoringSuggestion } from './authoring-chat-transport';
 import { GuidedPreparation } from './GuidedPreparation';
 import { GuidedQuestions } from './GuidedQuestions';
+import { PreparationActionsProvider, PreparationActionPanel, PreparationActionFeedback, usePreparationChoices, type PreparationActionResult } from './PreparationActions';
 import { RenameDraftForm } from './RenameDraftForm';
 import { TargetSelectionForm } from './TargetSelectionForm';
 import { AuditInstructionsForm } from './AuditInstructionsForm';
@@ -102,11 +103,11 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       void save({ section, source: selection === 'retain' ? { mode: 'retain' } : { mode: 'bind', bindingId: selected!.bindingId, expectedDigest: selected!.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
     }
   }
-  async function save(edit: Exclude<DraftPopulationEdit, { section: 'scope-note' }>): Promise<void> {
-    if (saving.current || unknownOutcome) return;
+  async function save(edit: Exclude<DraftPopulationEdit, { section: 'scope-note' }>): Promise<PreparationActionResult> {
+    if (saving.current || unknownOutcome) return { ok: false, message: unknownOutcome ? UNKNOWN_SAVE_OUTCOME : 'Wait for the current save.' };
     saving.current = true;
     setBusy(true);
-    if (edit.section === 'period-scope' ? periodSection.current.current.conflict : populationSection.current.current.conflict) { saving.current = false; setBusy(false); return; }
+    if (edit.section === 'period-scope' ? periodSection.current.current.conflict : populationSection.current.current.conflict) { saving.current = false; setBusy(false); return { ok: false, message: 'Resolve the saved-value conflict before selecting a source.' }; }
     if (edit.section === 'period-scope') periodSection.begin({ from, to, scope });
     else {
       const source = edit.source;
@@ -124,9 +125,31 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
         if (edit.section === 'population-source') setEvidenceQuestion(current => current === 'source' ? 'systems' : current);
         else setScopeQuestion(current => current === 'period' ? 'confirm' : current);
       }
-    } catch { if (edit.section === 'period-scope') periodSection.finish(); else populationSection.finish(); setUnknownOutcome(true); setResult(null); }
+      const boundId = edit.section === 'population-source' && edit.source.mode === 'bind' ? edit.source.bindingId : null;
+      const selectedSource = boundId === null ? sourceSnapshot?.displayName : sources.find(source => source.bindingId === boundId)?.displayName;
+      return { ok: outcome.ok, message: outcome.ok ? edit.section === 'population-source' ? `Selected and saved ${selectedSource ?? 'the source'} as the records to test. Existing filters were kept.` : 'Period and scope saved.' : outcome.reason };
+    } catch { if (edit.section === 'period-scope') periodSection.finish(); else populationSection.finish(); setUnknownOutcome(true); setResult(null); return { ok: false, message: UNKNOWN_SAVE_OUTCOME }; }
     finally { setAnnouncement((n) => n + 1); saving.current = false; setBusy(false); }
   }
+  usePreparationChoices({
+    step: 'context', surface: 'context:control', active: activeStep === 'context', basis: `${draft.versionId}:${draft.sectionPreparation?.revision ?? 0}`,
+    choices: [{ id: draft.templateId, label: draft.controlName, aliases: ['this control', 'that control', 'the current control'], description: 'The control already selected for this procedure. Its saved risk, control and objective are shown above.' }],
+    async select() { return { ok: true, message: `${draft.controlName} is already selected for this procedure. No Template or context was replaced. Say “I’ve reviewed this; continue” when you have checked the saved context.` }; },
+  });
+  usePreparationChoices({
+    step: 'evidence', surface: 'evidence:source', active: activeStep === 'evidence' && evidenceQuestion === 'source', basis: `${draft.versionId}:${draft.sectionPreparation?.revision ?? 0}`,
+    choices: sources.map(source => ({ id: source.bindingId, aliases: [source.displayName],
+      label: sources.filter(other => other.displayName.toLowerCase() === source.displayName.toLowerCase()).length > 1 ? `${source.displayName} · ${source.bindingId}` : source.displayName,
+      description: `${source.kind}. Fields: ${source.declaredSchema.join(', ')}. Existing record filters are retained.`,
+    })),
+    async select(bindingId) {
+      if (draft.state !== 'DRAFT') return { ok: false, message: 'Only a Draft can select a different source.' };
+      const source = sources.find(item => item.bindingId === bindingId);
+      if (!source) return { ok: false, message: 'That source is no longer available. Refresh the available choices.' };
+      if (!isInclusionRule(rule, source.declaredSchema)) return { ok: false, message: 'The existing record filters do not fit this source. Review the filters in the records editor before saving.' };
+      return save({ section: 'population-source', source: draft.sourceSnapshot?.bindingId === bindingId ? { mode: 'retain' } : { mode: 'bind', bindingId, expectedDigest: source.digest }, inclusionRule: rule, zeroRecordPass, allowVersionedDuplicates: duplicates });
+    },
+  });
   const periodEditor = <form method="post" className="ls-stack" onSubmit={(e) => { e.preventDefault(); requestSave('period-scope'); }} onBlur={() => setPeriodTouched(true)}>
     <SectionConflict dirty={periodSection.status().dirty} conflict={periodSection.conflict} name="Period and scope" reset={() => periodSection.reset()} />
     <p id={`${id}-utc`}>Both dates are included, and both are UTC. A Run you start by hand tests these dates. Frequency settings describe the approved intent; automatic scheduled execution is not available yet.</p>
@@ -223,7 +246,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     }
     return outcome;
   };
-  const targetSystemsEditor = <TargetSelectionForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} />;
+  const targetSystemsEditor = <TargetSelectionForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} conversationActive={activeStep === 'evidence' && evidenceQuestion === 'systems'} />;
   const auditInstructionsEditor = <AuditInstructionsForm draft={draft} registrations={registrations} rowVersion={token} onSave={saveTargets} />;
   const complianceRuleEditor = <ComplianceRuleForm draft={draft} rowVersion={token} onSave={async (fields) => {
     const outcome = await onSaveCompliance(fields);
@@ -246,6 +269,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   return <WritingAssistantProvider draft={draft} rowVersion={token} onRowVersion={setToken} actions={{ ...onWriting, generate: streamAuthoringSuggestion }}
     onAccepted={section => { if (section.kind === 'scope') setScopeQuestion(current => current === 'intent' ? 'period' : current); }}><div className="ls-stack">
     <UnknownSaveOutcome visible={unknownOutcome} />
+    <PreparationActionFeedback step={activeStep} />
     {activeStep === 'evidence' && guidedNotice?.question === evidenceQuestion ? <Banner tone="success" title={guidedNotice.title} /> : null}
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
     <GuidedPreparation onStepChange={setActiveStep} assistant={step => step === 'scope' ? null : <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
@@ -256,11 +280,11 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
           {draft.scope ? <div className="ls-guide-facts"><p><strong>Saved scope</strong></p><p>{draft.scope}</p></div> : null}
           <Button type="button" onClick={() => setScopeQuestion('period')}>{draft.scope ? 'Keep this scope and choose dates' : 'Enter dates and write the scope myself'}</Button>
         </> },
-        { id: 'period', label: 'Choose dates', question: 'What period should the test cover?', content: periodEditor },
-        { id: 'confirm', label: 'Check scope', question: 'Does this saved scope match your assignment?', content: <div className="ls-guide-facts">
+        { id: 'period', label: 'Choose dates', question: 'What period should the test cover?', content: <>{activeStep === 'scope' && scopeQuestion === 'period' ? <PreparationActionPanel step="scope" question="Enter the exact dates below. You can ask me to open another section, or review the saved scope and dates when they are complete." /> : null}{periodEditor}</> },
+        { id: 'confirm', label: 'Check scope', question: 'Does this saved scope match your assignment?', content: <>{activeStep === 'scope' && scopeQuestion === 'confirm' ? <PreparationActionPanel step="scope" /> : null}<div className="ls-guide-facts">
           <p>{draft.scope || 'No scope statement has been saved.'}</p><p>{draft.period ? `${draft.period.from} to ${draft.period.to}, inclusive (UTC).` : 'No dates have been saved.'}</p>
           <p>Confirm your review below when the scope and dates are right.</p>
-        </div> },
+        </div></> },
       ]} />,
       evidence: <GuidedQuestions label="Evidence questions" selected={evidenceQuestion} onSelect={setEvidenceQuestion} questions={[
         { id: 'source', label: 'Choose records', question: 'Where is the list of records we should test?', content: <>
@@ -306,4 +330,4 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
   </div></WritingAssistantProvider>;
 }
 
-export function DraftBuilder(props: Parameters<typeof DraftBuilderContent>[0]): React.JSX.Element { return <BuilderSubmissionProvider><DraftBuilderContent {...props} /></BuilderSubmissionProvider>; }
+export function DraftBuilder(props: Parameters<typeof DraftBuilderContent>[0]): React.JSX.Element { return <BuilderSubmissionProvider><PreparationActionsProvider key={`${props.draft.procedureId}:${props.draft.versionId}`}><DraftBuilderContent {...props} /></PreparationActionsProvider></BuilderSubmissionProvider>; }

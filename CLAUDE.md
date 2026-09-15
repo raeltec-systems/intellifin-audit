@@ -1,3 +1,16 @@
+## 2026-09-13 — Explicit chat commands use existing preparation writers
+
+The owner now authorises “record that”, named selection, section review and navigation
+through chat. This supersedes the earlier rule that every reply only requests prose.
+Only a direct human composer message enters the full-message command resolver; model
+output and stored/source text cannot dispatch actions. Exact proposal acceptance uses
+the same reserved receipt and human writer as the button. Bare assent, negations,
+conditions, incomplete responses and ambiguous catalogue names are never consent.
+Selection retains filters and existing targets; target additions retain their scope
+confirmation. A saved-result message follows the writer acknowledgement, and unknown
+outcomes retain the existing reconciliation guard. No new provider tool, model setting,
+approval shortcut or Run path is introduced. See `conversational-preparation-actions.md`.
+
 ## 2026-09-11 — The complete plan opens in Review
 
 ## Guided dialogue correction (2026-09-11)
@@ -2960,3 +2973,35 @@ refusals must not strand a user in lost-response recovery. Test real SDK error
 transport, receipt persistence/replay and manual editing separately from live model
 access. A configured Railway variable name and green synthetic CI prove neither
 provider access nor resolution of an opaque production incident.
+
+## 2026-09-15 — Chat consent and trusted authentication ingress
+
+Question marks retain their meaning before command normalization: a command-shaped
+question grants no save, selection, review, dismissal or navigation authority. The
+writing composer tracks fresh human edits separately from prefilled saved/proposed
+prose; opening Improve wording, reconciling a proposal and submitting generation
+clear command eligibility. The existing writers still own all mutations and guards.
+
+Railway's public HTTP edge supplies `X-Real-IP`. Web deployments explicitly set
+`AUTH_TRUSTED_IP_HEADER=x-real-ip`; Better Auth reads only that header, with no
+fallback to a caller-controlled forwarded chain. Keep the origin behind the edge;
+another hosting/proxy arrangement needs its own verified ingress contract. The
+database-backed 10-per-minute sign-in limit and IPv6 normalization remain in force.
+The identity integration exercises separate clients, spoofed forwarding headers
+and shared counters across authentication instances.
+
+Builder context-field assertions scope to `.ls-template-fact`, because the mounted
+chat composer is another textarea and is not a fifth saved context field.
+
+## 2026-09-15 — Authoring errors after streaming begins
+
+The installed AI SDK reports post-output provider failures as `StreamProviderError`,
+not `APICallError`. Classify both by their HTTP-equivalent status, never by copying
+provider error text or arbitrary codes. A 429/503 after valid partial JSON remains
+a failed receipt with no applicable proposal. Keep the `finishReason === 'stop'`
+guard; valid JSON alone is insufficient. Incomplete and invalid output have distinct
+closed categories. Local progress/authorization failures use `AuthoringProgressError`
+and the `progress` diagnostic stage, without retaining their cause.
+
+These corrections repair reproduced diagnostic defects. They do not retrospectively
+identify the production `UNCONFIRMED` incident or prove a live provider recovery.

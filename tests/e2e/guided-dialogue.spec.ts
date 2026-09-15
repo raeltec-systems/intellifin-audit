@@ -11,7 +11,7 @@ test.skip(process.env['PLAYWRIGHT_BASE_URL'] !== undefined, 'This journey requir
 
 const ids = new CryptoUuidV7Generator();
 let sql: Sql;
-let sourceId = '', targetId = '', procedureId = '', versionId = '';
+let sourceId = '', targetId = '', duplicateTargetId = '', procedureId = '', versionId = '';
 const scopeAnswer = 'Every production parameter in the approved baseline. Do not sample; retain unresolved comparisons.';
 const roughAnswer = 'Synthetic test: Compare every baseline parameter in ProdConsole with the approved baseline. Keep evidence and flag values that cannot be read.';
 const workingDraft = '1. Read every baseline parameter in ProdConsole.\n2. Compare observed values with the approved baseline.\n3. Add a separate summary by owner.\n4. Leave missing values unresolved.\nHuman note: preserve exact parameter names.';
@@ -23,15 +23,17 @@ test.beforeAll(async () => {
   if (!databaseUrl) throw new Error('The guided journey requires the throwaway database.');
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 2 });
-  sourceId = ids.next(); targetId = ids.next();
-  // Administration owns these catalogues. Seed only two valid synthetic catalogue
-  // entries; the auditor creates and prepares the actual procedure through the UI.
+  sourceId = ids.next(); targetId = ids.next(); duplicateTargetId = ids.next();
+  // Administration owns these catalogues. The duplicate system name proves that
+  // conversational selection and scope consent identify the same registration.
   const source = { kind: 'versioned-file' as const, location: 'https://synthetic.invalid/population.csv', declaredSchema: ['parameter'], declaredCountMechanism: 'cover-sheet' as const, sensitiveFields: [] };
   const target = { kind: 'web' as const, allowedOrigins: ['https://synthetic.invalid'], applicationIdentity: '', credentialRef: 'vault://synthetic/prod', permittedActions: ['navigate', 'read-attribute'] as const, attributeLabelPatterns: ['Parameter'], secondaryKey: '' };
   await sql`INSERT INTO population_source_binding (binding_id, display_name, kind, location, declared_schema, declared_count_mechanism, sensitive_fields, note, status, digest)
     VALUES (${sourceId}, 'Baseline', ${source.kind}, ${source.location}, ${source.declaredSchema}, ${source.declaredCountMechanism}, ${source.sensitiveFields}, '', 'active', ${bindingDigest(source)})`;
-  await sql`INSERT INTO target_system_registration (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
-    VALUES (${targetId}, 'ProdConsole', ${target.kind}, ${target.allowedOrigins}, ${target.applicationIdentity}, ${target.credentialRef}, ${target.permittedActions}, ${target.attributeLabelPatterns}, ${target.secondaryKey}, '', 'active', ${registrationDigest(target)})`;
+  for (const [id, name] of [[targetId, 'ProdConsole'], [duplicateTargetId, 'prodconsole']] as const) {
+    await sql`INSERT INTO target_system_registration (registration_id, display_name, kind, allowed_origins, application_identity, credential_ref, permitted_actions, attribute_label_patterns, secondary_key, note, status, digest)
+      VALUES (${id}, ${name}, ${target.kind}, ${target.allowedOrigins}, ${target.applicationIdentity}, ${target.credentialRef}, ${target.permittedActions}, ${target.attributeLabelPatterns}, ${target.secondaryKey}, '', 'active', ${registrationDigest(target)})`;
+  }
 });
 
 test.afterAll(async () => {
@@ -43,6 +45,7 @@ test.afterAll(async () => {
       await sql`DELETE FROM procedure WHERE procedure_id = ${procedureId}`;
     }
     if (targetId) await sql`DELETE FROM target_system_registration WHERE registration_id = ${targetId}`;
+    if (duplicateTargetId) await sql`DELETE FROM target_system_registration WHERE registration_id = ${duplicateTargetId}`;
     if (sourceId) await sql`DELETE FROM population_source_binding WHERE binding_id = ${sourceId}`;
   } finally { await sql.end({ timeout: 5 }); }
 });
@@ -76,7 +79,14 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await expect(context.getByLabel('Objective', { exact: true })).toBeHidden();
   await expect(context.getByRole('button', { name: 'Help Me Write', exact: true })).toBeHidden();
   await attachAuthoringScreenshot(page, testInfo, 'fresh-dialogue-control');
-  await context.getByRole('button', { name: 'Yes, use this control', exact: true }).click();
+  const controlChat = context.locator('[data-preparation-action-panel="context"]');
+  await controlChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue?');
+  await controlChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(controlChat.getByText('I can select a named source or system, record your section review, or take you to another section. Use Scope or Audit steps to draft and refine wording with me.', { exact: true })).toBeVisible();
+  expect(sectionReview((await saved())!, 'context')).toBeNull();
+  await expect(page.locator('[data-preparation-nav="context"]')).toHaveAttribute('aria-current', 'step');
+  await controlChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue');
+  await controlChat.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('[data-preparation-nav="scope"]')).toHaveAttribute('aria-current', 'step');
   expect(draftContext((await saved())!.sections)).toEqual(draftContext(original.sections));
   expect(sectionReview((await saved())!, 'context')).not.toBeNull();
@@ -90,7 +100,30 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await expect(scopeWriting.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
   expect((await saved())!.scope).toBe('');
   expect(sectionReview((await saved())!, 'scope')).toBeNull();
-  await scopeWriting.getByRole('button', { name: 'Use this draft', exact: true }).click();
+  // Neither an ambiguous yes nor an explicit review request accepts the proposal.
+  await scopeWriting.getByLabel('Your reply', { exact: true }).fill('yes');
+  await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(scopeWriting.locator('[data-preparation-action-turn]').last()).toContainText('What would you like me to do?');
+  expect((await saved())!.scope).toBe('');
+  await scopeWriting.getByLabel('Your reply', { exact: true }).fill('I’ve reviewed this; continue');
+  await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(scopeWriting.locator('[data-preparation-action-turn]').last()).toContainText('still unsaved');
+  expect(sectionReview((await saved())!, 'scope')).toBeNull();
+  const beforeAccept = await sql`SELECT request_id FROM procedure_authoring_request WHERE version_id = ${versionId}`;
+  await scopeWriting.getByLabel('Your reply', { exact: true }).fill('Record that');
+  await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(scopeWriting.locator('[data-preparation-action-turn]').last()).toContainText('Saved to Scope note');
+  expect((await saved())!.scope).toBe(scopeAnswer);
+  expect(sectionReview((await saved())!, 'scope')).toBeNull();
+  expect(await sql`SELECT request_id FROM procedure_authoring_request WHERE version_id = ${versionId}`).toHaveLength(beforeAccept.length);
+  // Repeating an accepted command does not create another authoring update.
+  const afterAccept = await saved();
+  await scopeWriting.getByLabel('Your instruction', { exact: true }).fill('Record that');
+  await scopeWriting.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(scopeWriting.locator('[data-preparation-action-turn]').last()).toContainText('already been saved');
+  expect((await saved())!.sectionPreparation).toEqual(afterAccept!.sectionPreparation);
+  await attachAuthoringScreenshot(page, testInfo, 'chat-action-saved-scope');
+  await scope.getByRole('button', { name: 'Keep this scope and choose dates', exact: true }).click();
   await expect(scope.getByLabel('Period start', { exact: true })).toBeVisible();
   await expect(scope.getByLabel('Scope statement', { exact: true })).toHaveValue(scopeAnswer);
   await expect(scope.getByLabel('Scope statement', { exact: true })).toBeHidden();
@@ -99,22 +132,50 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await scope.getByRole('button', { name: 'Save Period and scope', exact: true }).click();
   await expect(scope.locator('[data-guide-question="confirm"]')).toContainText('2026-08-01 to 2026-08-31');
 
-  await chooseSection(page, 'evidence');
+  const scopeChat = scope.locator('[data-preparation-action-panel="scope"]');
+  await scopeChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue');
+  await scopeChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.locator('[data-preparation-nav="evidence"]')).toHaveAttribute('aria-current', 'step');
   const evidence = page.locator('[data-preparation-panel="evidence"]');
-  await evidence.getByLabel('Where the records come from', { exact: true }).selectOption(sourceId);
-  await evidence.getByRole('button', { name: 'Save records to test', exact: true }).click();
+  const evidenceChat = evidence.locator('[data-preparation-action-panel="evidence"]');
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill(`Tell me about ${sourceId}`);
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText('has not been selected');
+  expect((await saved())!.sourceSnapshot).toBeNull();
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill('Yes, select that?');
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(evidenceChat.getByText('I can select a named source or system, record your section review, or take you to another section. Use Scope or Audit steps to draft and refine wording with me.', { exact: true })).toBeVisible();
+  expect((await saved())!.sourceSnapshot).toBeNull();
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill('Yes, select that');
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(evidence.getByLabel('Add a system', { exact: true })).toBeVisible();
-  await evidence.getByLabel('Add a system', { exact: true }).selectOption(targetId);
-  await evidence.getByRole('button', { name: 'Add Target System', exact: true }).click();
+  expect((await saved())!.sourceSnapshot?.bindingId).toBe(sourceId);
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill(`Select ${targetId}`);
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText(targetId);
+  await expect(page.getByRole('dialog')).not.toContainText(duplicateTargetId);
+  expect((await saved())!.targets).toEqual([]);
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText('Selection cancelled');
+  expect((await saved())!.targets).toEqual([]);
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill(`Select ${targetId}`);
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
   await attachAuthoringScreenshot(page, testInfo, 'fresh-dialogue-systems');
-  await evidence.getByRole('button', { name: 'Save Target Systems', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Save Target Systems', exact: true }).click();
   await expect(page.getByText('Target systems saved. Next, choose the proof to retain.', { exact: true })).toBeVisible();
+  await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText('Target systems saved: ProdConsole');
+  await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText(targetId);
+  expect((await saved())!.targets.map(target => target.registrationId)).toEqual([targetId]);
+  await attachAuthoringScreenshot(page, testInfo, 'chat-action-selected-system');
   await evidence.getByRole('button', { name: 'Save Evidence Requirements', exact: true }).click();
   await expect(evidence.locator('[data-guide-question="confirm"]')).toBeVisible();
   await expect(evidence.locator('[data-guide-question="confirm"]')).toContainText('ProdConsole');
 
-  await chooseSection(page, 'instructions');
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill('Take me to audit steps');
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.locator('[data-preparation-nav="instructions"]')).toHaveAttribute('aria-current', 'step');
+  expect(sectionReview((await saved())!, 'evidence')).toBeNull();
   const steps = page.locator('[data-preparation-panel="instructions"]');
   const writing = steps.locator(`[data-writing-section="instructions:${targetId}"]`);
   const manualSteps = steps.getByLabel('What the agent should do in ProdConsole', { exact: true });
@@ -155,11 +216,24 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await attachAuthoringScreenshot(page, testInfo, 'fresh-dialogue-mobile');
   await attachAuthoringScreenshot(page, testInfo, 'chat-conversation-mobile');
-  await writing.getByRole('button', { name: 'Use this draft', exact: true }).click();
+  await writing.getByLabel('Your reply', { exact: true }).fill('Save this draft');
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(writing.locator('[data-preparation-action-turn]').last()).toContainText('Saved to Audit steps for ProdConsole');
   await expect(manualSteps).toHaveValue(acceptedSteps);
   expect(sectionReview((await saved())!, 'instructions')).toBeNull();
-  await steps.getByRole('button', { name: 'Mark reviewed and continue', exact: true }).click();
+  await attachAuthoringScreenshot(page, testInfo, 'chat-action-saved-steps-mobile');
+  await writing.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue');
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('[data-preparation-nav="instructions"] [data-preparation-status]')).toHaveAttribute('data-preparation-status', 'reviewed');
+
+  // Starting another proposal must not put the old acknowledgement below it.
+  // The saved procedure and review remain intact while new rough notes are prepared.
+  await chooseSection(page, 'instructions');
+  await writing.getByRole('button', { name: 'Continue refining', exact: true }).click();
+  await expect(writing.getByLabel('Your answer', { exact: true })).toHaveValue(acceptedSteps);
+  await expect(writing.locator('[data-preparation-action-turn]')).toHaveCount(0);
+  expect((await saved())!.instructions.find(instruction => instruction.registrationId === targetId)!.text).toBe(acceptedSteps);
+  expect(sectionReview((await saved())!, 'instructions')).not.toBeNull();
 
   await chooseSection(page, 'frequency');
   await page.getByLabel('Frequency', { exact: true }).selectOption('once');

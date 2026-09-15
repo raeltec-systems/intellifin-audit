@@ -8,6 +8,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { UNKNOWN_SAVE_OUTCOME, UnknownSaveOutcome } from './UnknownSaveOutcome';
 import { useSectionSubmissionStatus, useSubmissionGuard } from './use-section';
+import { usePreparationGuide, type PreparationActionResult } from './PreparationActions';
 import './guided-preparation.css';
 
 type PreparationStep = PreparationSectionId | 'review';
@@ -165,24 +166,24 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
     setAnnouncement(value => value + 1);
   }
 
-  async function decide(section: PreparationSectionId, decision: PreparationDecision): Promise<void> {
-    if (changing.current || unknownOutcome || draft.state !== 'DRAFT') return;
+  async function decide(section: PreparationSectionId, decision: PreparationDecision): Promise<PreparationActionResult> {
+    if (changing.current || unknownOutcome || draft.state !== 'DRAFT') return { ok: false, message: unknownOutcome ? UNKNOWN_SAVE_OUTCOME : 'Only an available Draft section can be reviewed.' };
     // Read the live registry again at activation, including editors in hidden panels.
     // A rendered enabled button is not a durable acknowledgement of their latest save.
     const reason = guard.check();
-    if (reason !== null) { announce('warning', reason); return; }
+    if (reason !== null) { announce('warning', reason); return { ok: false, message: reason }; }
     if (decision === 'review' && preparationStatus(draft, section) === 'needs-clarification') {
       announce('warning', 'Resolve the question, save this section and choose Continue drafting before marking it reviewed.');
-      return;
+      return { ok: false, message: 'Resolve the open question before reviewing this section.' };
     }
     const reviewBlocker = decision === 'review' ? preparationReviewBlocker(draft, section) : null;
-    if (reviewBlocker) { announce('warning', reviewBlocker); return; }
+    if (reviewBlocker) { announce('warning', reviewBlocker); return { ok: false, message: reviewBlocker }; }
     changing.current = true;
     setBusy(true);
     setMessage(null);
     try {
       const outcome = await onReview({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: rowVersion, section, decision });
-      if (!outcome.ok) { announce('danger', outcome.reason); return; }
+      if (!outcome.ok) { announce('danger', outcome.reason); return { ok: false, message: outcome.reason }; }
       onRowVersion(outcome.rowVersion);
       announce('success', decision === 'review' ? `Review recorded for ${SECTION_WORDS[section].title}.`
         : decision === 'clarify' ? `${SECTION_WORDS[section].title} needs clarification.`
@@ -192,14 +193,26 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
         // If the auditor jumped elsewhere while the response arrived, leave them there.
         setSelected(current => current === section ? next : current);
       }
+      return { ok: true, message: `Review recorded for ${SECTION_WORDS[section].title}.` };
     } catch {
       setUnknownOutcome(true);
       setMessage(null);
+      return { ok: false, message: UNKNOWN_SAVE_OUTCOME };
     } finally {
       changing.current = false;
       setBusy(false);
     }
   }
+
+  usePreparationGuide({
+    navigate(destination) { setSelected(destination); },
+    async review(section) {
+      if (section === 'review') return { ok: false, message: 'Review the complete saved plan and use Submit for approval. A chat section review does not submit or approve the procedure.' };
+      if (section !== selected) return { ok: false, message: 'The active section changed. Review the section now shown before confirming it.' };
+      if (draft.state !== 'DRAFT' || unknownOutcome || changing.current) return { ok: false, message: 'This section is not available for review. Inspect the saved draft first.' };
+      return decide(section, 'review');
+    },
+  });
 
   return <div className="ls-guided ls-stack" data-guided-preparation data-guided-ready={hydrated}>
     <header className="ls-guided__intro ls-stack">

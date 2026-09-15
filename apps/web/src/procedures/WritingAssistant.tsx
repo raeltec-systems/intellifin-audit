@@ -7,6 +7,8 @@ import { isAuthoringProgress, type AuthoringProgress, type AuthoringDraftFields,
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { AuthoringChat, ChatMessage } from './AuthoringChat';
+import { PreparationActionMessages, PreparationActionPanel, usePreparationActions, type PreparationActionResult } from './PreparationActions';
+import { preparationCommand } from './preparation-commands';
 import { UnknownSaveOutcome } from './UnknownSaveOutcome';
 import { useSectionSubmissionStatus, useSubmissionGuard } from './use-section';
 import './writing-assistant.css';
@@ -33,6 +35,8 @@ export interface WritingSession {
   readonly mode: WritingMode;
   readonly notes: string;
   readonly changes: string;
+  /** Only a fresh composer edit can supply a command; prefilled prose cannot. */
+  readonly commandInput: 'notes' | 'changes' | null;
   readonly proposal: string;
   readonly editing: boolean;
   readonly askingForChanges: boolean;
@@ -95,7 +99,8 @@ function sectionLabel(draft: ProcedureVersionView, section: AuthoringSection): s
   if (section.kind === 'objective') return 'Objective';
   if (section.kind === 'scope') return 'Scope note';
   const target = draft.targets.find(target => target.registrationId === section.registrationId);
-  return target ? `Audit steps for ${target.displayName}` : 'Audit steps for a removed system';
+  const duplicate = target && draft.targets.filter(item => item.displayName.trim().toLocaleLowerCase('en-GB') === target.displayName.trim().toLocaleLowerCase('en-GB')).length > 1;
+  return target ? `Audit steps for ${target.displayName}${duplicate ? ` (${target.contract.kind} · ${target.registrationId})` : ''}` : 'Audit steps for a removed system';
 }
 
 /** Worker updates and section acknowledgements do not change the authored revision.
@@ -119,6 +124,10 @@ export function writingRevisionFor(session: WritingSession): AuthoringDraftField
   // working proposal and original ready parent, not the initial rough notes alone.
   return !session.suggestion || session.suggestion.state === 'pending' || session.suggestion.state === 'failed'
     ? session.request?.revision : undefined;
+}
+
+export function writingMessageCommand(session: WritingSession, field: 'notes' | 'changes') {
+  return session.commandInput === field ? preparationCommand(session[field]) : null;
 }
 
 /** One changed word range, with identical leading/trailing words retained verbatim.
@@ -165,17 +174,23 @@ export function createWritingAssistantState() {
       if (!existing) put(key, {
         section, mode, notes: mode === 'improve' ? text.slice(0, WRITING_LIMITS.notes) : '', changes: '', proposal: '',
         editing: false, askingForChanges: false, request: null, basisRevision: 0, basisText: '', suggestion: null,
-        history: [], streaming: null,
+        history: [], streaming: null, commandInput: null,
         busy: null, generationUncertain: false, stale: false, notice: lengthNotice,
       });
       else if (mode === 'improve' && existing.busy === null && !existing.generationUncertain && existing.suggestion?.state !== 'pending') {
-        update(key, { mode, notes: text.slice(0, WRITING_LIMITS.notes), changes: '', askingForChanges: false, notice: lengthNotice });
+        update(key, { mode, notes: text.slice(0, WRITING_LIMITS.notes), changes: '', commandInput: null, askingForChanges: false, notice: lengthNotice });
       }
     },
     edit(key: string, field: 'notes' | 'changes' | 'proposal', value: string) {
       const session = snapshot.sessions.get(key);
       if (!session || session.busy || session.generationUncertain || session.suggestion?.state === 'pending' || snapshot.acceptanceUnknown) return;
-      update(key, { [field]: value.slice(0, field === 'proposal' ? writingProposalLimit(session.section) : WRITING_LIMITS[field]) });
+      update(key, { [field]: value.slice(0, field === 'proposal' ? writingProposalLimit(session.section) : WRITING_LIMITS[field]),
+        ...(field === 'proposal' ? {} : { commandInput: field }) });
+    },
+    clearCommand(key: string, field: 'notes' | 'changes', submitted: string) {
+      // An action response may arrive after another section or composer was opened.
+      // Clear only the exact command that was sent, never a newer rough answer.
+      if (snapshot.sessions.get(key)?.[field] === submitted) update(key, { [field]: '', commandInput: null });
     },
     editProposal(key: string) {
       const session = snapshot.sessions.get(key);
@@ -188,14 +203,14 @@ export function createWritingAssistantState() {
       // human edit up to 10,000 characters, is sent in revision.draft when the next
       // request is built. Truncating it into the 8,000-character notes field would
       // silently remove the very passage the auditor is correcting.
-      update(key, { askingForChanges: true, mode: 'revise', changes: '' });
+      update(key, { askingForChanges: true, mode: 'revise', changes: '', commandInput: null });
     },
     notice(key: string, notice: Notice) { update(key, { notice }); },
     reconcile(key: string) {
       const session = snapshot.sessions.get(key);
       if (!session || session.busy || snapshot.acceptanceUnknown) return;
       const text = session.proposal || session.notes;
-      update(key, { notes: text.slice(0, WRITING_LIMITS.notes), mode: 'draft', changes: '', suggestion: null, request: null,
+      update(key, { notes: text.slice(0, WRITING_LIMITS.notes), mode: 'draft', changes: '', commandInput: null, suggestion: null, request: null,
         proposal: '', history: [], streaming: null, editing: false, askingForChanges: false, generationUncertain: false, stale: false,
         notice: { tone: 'info', title: text.length > WRITING_LIMITS.notes
           ? 'The first 8,000 characters are in your rough notes. Review them before requesting a new draft.'
@@ -216,7 +231,7 @@ export function createWritingAssistantState() {
           clarifications: session.suggestion.clarifications,
         }].slice(-4)
         : session.history;
-      update(key, { request, busy: 'generation', generationUncertain: false, notice: null,
+      update(key, { request, busy: 'generation', generationUncertain: false, notice: null, commandInput: null,
         history, streaming: null,
         ...(retry ? {} : { basisRevision: draft.sectionPreparation?.revision ?? 0, basisText: savedWritingText(draft, request.section),
           suggestion: null, proposal: '', editing: false, askingForChanges: false, stale: false }) });
@@ -287,12 +302,13 @@ interface WritingContextValue {
   readonly guardReason: string | null;
   readonly open: (section: AuthoringSection, mode: 'draft' | 'improve', focus?: boolean) => void;
   readonly edit: (key: string, field: 'notes' | 'changes' | 'proposal', value: string) => void;
+  readonly clearCommand: (key: string, field: 'notes' | 'changes', submitted: string) => void;
   readonly editProposal: (key: string) => void;
   readonly askForChanges: (key: string) => void;
   readonly reconcile: (key: string) => void;
   readonly generate: (key: string, retry?: boolean) => void;
-  readonly accept: (key: string) => void;
-  readonly reject: (key: string) => void;
+  readonly accept: (key: string, stay?: boolean) => Promise<PreparationActionResult>;
+  readonly reject: (key: string) => Promise<PreparationActionResult>;
   readonly focusRequest: number;
   readonly claimFocus: (key: string) => boolean;
 }
@@ -365,34 +381,37 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
     finally { publish(); }
   }
 
-  async function accept(key: string): Promise<void> {
+  async function accept(key: string, stay = false): Promise<PreparationActionResult> {
     const session = machine.snapshot.sessions.get(key);
-    if (!session || !canAccept(key)) return;
+    if (!session || !canAccept(key)) return { ok: false, message: machine.snapshot.sessions.get(key)?.notice?.title ?? 'This draft cannot be saved yet.' };
+    if (session.suggestion?.state === 'accepted') return { ok: true, message: 'This proposal has already been saved. No second update was made.' };
     if (writingSuggestionIsStale(session, latest.current.draft)) {
-      machine.notice(key, { tone: 'warning', title: STALE_SUGGESTION }); publish(); return;
+      machine.notice(key, { tone: 'warning', title: STALE_SUGGESTION }); publish(); return { ok: false, message: STALE_SUGGESTION };
     }
-    if (!session.proposal.trim() || session.proposal.length > writingProposalLimit(session.section) || !session.request || !machine.beginAccept(key)) return;
+    if (!session.proposal.trim() || session.proposal.length > writingProposalLimit(session.section) || !session.request || !machine.beginAccept(key)) return { ok: false, message: 'A completed, current proposal is needed before it can be saved.' };
     publish();
     const current = latest.current;
     try {
       const outcome = await current.actions.accept({ procedureId: current.draft.procedureId, versionId: current.draft.versionId,
         expectedRowVersion: current.rowVersion, requestId: session.request.requestId, replacement: session.proposal });
-      if (!mounted.current) return;
+      if (!mounted.current) return { ok: false, message: 'The section was closed. Check the saved procedure for this action’s result.' };
       machine.finishAccept(key, outcome.ok ? 'accepted' : 'failed', outcome.ok ? undefined : outcome.reason);
-      if (outcome.ok) { current.onRowVersion(outcome.rowVersion); latest.current.onAccepted?.(session.section); }
-    } catch { if (mounted.current) machine.finishAccept(key, 'unknown'); }
+      if (outcome.ok) { current.onRowVersion(outcome.rowVersion); if (!stay) latest.current.onAccepted?.(session.section); }
+      return { ok: outcome.ok, message: outcome.ok ? `Saved to ${sectionLabel(current.draft, session.section)}. The exact displayed proposal is recorded. Section review is still a separate action.` : outcome.reason };
+    } catch { if (mounted.current) machine.finishAccept(key, 'unknown'); return { ok: false, message: 'The save could not be confirmed. Reload to inspect the saved version before trying again.' }; }
     finally { publish(); }
   }
 
-  async function reject(key: string): Promise<void> {
+  async function reject(key: string): Promise<PreparationActionResult> {
     const session = machine.snapshot.sessions.get(key);
-    if (!session?.request || !machine.beginReject(key)) return;
+    if (!session?.request || !machine.beginReject(key)) return { ok: false, message: 'There is no available proposal to discard. Your saved wording is unchanged.' };
     publish();
     const current = latest.current;
     try {
       const outcome = await current.actions.reject({ procedureId: current.draft.procedureId, versionId: current.draft.versionId, requestId: session.request.requestId });
       if (mounted.current) machine.finishReject(key, outcome.ok ? undefined : outcome.reason);
-    } catch { if (mounted.current) machine.finishReject(key, 'The dismissal response was lost. Your saved wording was not changed by this action. Retry Keep my wording.'); }
+      return { ok: outcome.ok, message: outcome.ok ? 'Your saved wording is unchanged. The proposal was discarded.' : outcome.reason };
+    } catch { if (mounted.current) machine.finishReject(key, 'The dismissal response was lost. Your saved wording was not changed by this action. Retry Keep my wording.'); return { ok: false, message: 'The dismissal could not be confirmed. Your saved wording was not changed by this action.' }; }
     finally { publish(); }
   }
 
@@ -400,10 +419,11 @@ function WritingAssistantSession({ draft, rowVersion, onRowVersion, children, ac
     open(section, mode, focus = true) { machine.open(section, mode, savedWritingText(latest.current.draft, section)); publish(); if (focus) { requestedFocus.current = writingSectionKey(section); setFocusRequest(count => count + 1); } },
     claimFocus(key) { if (requestedFocus.current !== key) return false; requestedFocus.current = null; return true; },
     edit(key, field, value) { machine.edit(key, field, value); publish(); },
+    clearCommand(key, field, submitted) { machine.clearCommand(key, field, submitted); publish(); },
     editProposal(key) { machine.editProposal(key); publish(); },
     askForChanges(key) { machine.askForChanges(key); publish(); },
     reconcile(key) { machine.reconcile(key); publish(); },
-    generate(key, retry) { void generate(key, retry); }, accept(key) { void accept(key); }, reject(key) { void reject(key); },
+    generate(key, retry) { void generate(key, retry); }, accept, reject,
   }}><UnknownSaveOutcome visible={snapshot.acceptanceUnknown} />{children}</WritingContext.Provider>;
 }
 
@@ -429,10 +449,13 @@ export interface WritingAssistantPanelProps {
 
 export function WritingAssistantPanel({ section, inline = false, guidedQuestion }: WritingAssistantPanelProps = {}): React.JSX.Element | null {
   const assistant = useContext(WritingContext), id = useId();
+  const conversationActions = usePreparationActions();
+  const [commandMessage, setCommandMessage] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const focusRequest = assistant?.focusRequest ?? 0;
   const panelKey = section === undefined ? assistant?.snapshot.selected : writingSectionKey(section);
+  useEffect(() => { setCommandMessage(''); }, [panelKey]);
   useEffect(() => {
     if (focusRequest === 0 || !heading.current || !panelKey || !assistant?.claimFocus(panelKey)) return;
     // The existing section-help disclosure belongs to the reader until they ask for help.
@@ -473,43 +496,70 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
   const difference = writingDifference(comparisonCurrent, session.proposal);
   const ready = suggestion?.state === 'ready';
   const correction = ready || session.mode === 'revise' && session.request?.revision !== undefined;
-  const sendReason = generationReason ?? (retry ? undefined : correction
+  const writingReason = generationReason ?? (retry ? undefined : correction
     ? session.changes.trim() === '' ? 'Add your reply first.' : undefined : generateReason);
+  const step = session.section.kind === 'objective' ? 'context' : session.section.kind === 'scope' ? 'scope' : 'instructions';
+  const commandsOnly = terminal || stale;
+  const message = commandsOnly ? commandMessage : correction ? session.changes : session.notes;
+  const isCommand = conversationActions !== null && (commandsOnly ? preparationCommand(message)
+    : writingMessageCommand(session, correction ? 'changes' : 'notes')) !== null;
+  const sendReason = conversationActions?.busy ? 'Wait for this action to finish.' : !pending && !retry && (commandsOnly || isCommand)
+    ? message.trim() === '' ? 'Add your instruction first.' : undefined : writingReason;
   const proposalTitle = session.section.kind === 'instructions' ? 'Proposed test steps — not saved' : 'Proposed wording — not saved';
   const question = guidedQuestion ?? (session.mode === 'improve'
     ? `I have your saved ${sectionLabel(draft, session.section).toLowerCase()}. What would you like me to improve?`
     : `What should this ${sectionLabel(draft, session.section).toLowerCase()} establish? Tell me in your own words.`);
-  const send = () => {
+  const send = async () => {
     if (sendReason || pending) return;
+    if (conversationActions && !retry && (commandsOnly || isCommand)) {
+      const handled = await conversationActions.run(message, { step, thread: { key, requestId: session.request?.requestId ?? null }, save: () => assistant.accept(key, true), reject: () => assistant.reject(key),
+        hasProposal: suggestion?.state === 'ready' && suggestion.proposedText !== null || session.generationUncertain });
+      if (handled === 'busy') return;
+      if (handled === 'handled') {
+        if (commandsOnly) setCommandMessage(current => current === message ? '' : current);
+        else assistant.clearCommand(key, correction ? 'changes' : 'notes', message);
+        composer.current?.focus(); return;
+      }
+      // Accepted/rejected/stale receipts cannot anchor a revision. A new rough reply
+      // starts from the current saved assignment without reapplying the old proposal.
+      if (commandsOnly) {
+        assistant.reconcile(key); assistant.edit(key, 'notes', commandMessage);
+        setCommandMessage('');
+      }
+    }
     assistant.generate(key, retry);
     composer.current?.focus();
   };
-  const input = !terminal && !stale ? <div className="ls-chat__composer">
-    <label className="ls-visually-hidden" htmlFor={`${id}-message`}>{correction ? 'Your reply' : 'Your answer'}</label>
+  const input = <div className="ls-chat__composer">
+    <label className="ls-visually-hidden" htmlFor={`${id}-message`}>{commandsOnly ? 'Your instruction' : correction ? 'Your reply' : 'Your answer'}</label>
     <textarea ref={composer} className="ls-input ls-chat__input" id={`${id}-message`}
       placeholder={pending ? 'IntelliFin is responding…' : retry ? 'Retry to recover this response…' : 'Message IntelliFin…'}
-      value={pending || retry ? '' : correction ? session.changes : session.notes}
-      maxLength={correction ? WRITING_LIMITS.changes : WRITING_LIMITS.notes} readOnly={fieldsLocked}
+      value={pending || retry ? '' : message}
+      maxLength={correction || commandsOnly ? WRITING_LIMITS.changes : WRITING_LIMITS.notes} readOnly={fieldsLocked || conversationActions?.busy}
       aria-describedby={`${id}-composer-help`}
       onChange={event => {
+        if (commandsOnly) { setCommandMessage(event.target.value); return; }
         if (correction) assistant.askForChanges(key);
         assistant.edit(key, correction ? 'changes' : 'notes', event.target.value);
       }}
       onKeyDown={event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
-          event.preventDefault(); send();
+          event.preventDefault(); void send();
         }
       }} />
     <div className="ls-chat__composer-footer">
-      <p className="ls-caption" id={`${id}-composer-help`}>{correction ? 'Tell me what to keep, drop, add or change.' : 'A rough answer is enough.'}<br />Shift + Enter for a new line.</p>
-      <Button type="button" variant="primary" busy={pending} disabledReason={sendReason} onClick={send}>
+      <p className="ls-caption" id={`${id}-composer-help`}>{commandsOnly ? 'Ask for a new draft, review this saved section, or open another section.' : correction ? 'Tell me what to keep, drop, add or change. Say “record that” to save this proposal.' : 'A rough answer is enough.'}<br />Shift + Enter for a new line.</p>
+      <Button type="button" variant="primary" busy={pending || conversationActions?.busy} disabledReason={sendReason} onClick={() => { void send(); }}>
         {pending ? 'Responding…' : retry ? 'Retry this request' : 'Send message'}
       </Button>
     </div>
-  </div> : <div className="ls-chat__composer ls-actions">
-    <Button type="button" disabledReason={generationReason} onClick={() => assistant.reconcile(key)}>
+    {commandsOnly ? <Button type="button" disabledReason={generationReason} onClick={() => {
+      assistant.reconcile(key);
+      if (commandMessage.trim()) assistant.edit(key, 'notes', commandMessage);
+      setCommandMessage('');
+    }}>
       {stale && !terminal ? 'Start again with this suggestion' : 'Continue refining'}
-    </Button>
+    </Button> : null}
   </div>;
 
   return <section className={`${className} ls-writing--dialogue`} aria-labelledby={`${id}-heading`} data-writing-section={key}>
@@ -517,7 +567,8 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
       <h3 className="ls-guided__help-title" id={`${id}-heading`} tabIndex={-1} ref={heading}>Procedure assistant</h3>
       <span className="ls-caption">{sectionLabel(draft, session.section)}</span>
     </div>
-    <AuthoringChat key={key} busy={pending} requestId={session.request?.requestId} composer={input}>
+    <AuthoringChat key={key} busy={pending || conversationActions?.busy === true}
+      requestId={`${session.request?.requestId ?? key}:${conversationActions?.turns.filter(turn => turn.thread?.key === key).at(-1)?.id ?? ''}`} composer={input}>
       <ChatMessage from="assistant">
         <p data-writing-question>{question}</p>
         {!session.request ? <p className="ls-caption">I’ll use your saved control and choices to develop a draft for you to check.</p> : null}
@@ -528,6 +579,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
           {entry.explanation ? <p>{entry.explanation}</p> : null}
           <p>{entry.proposal ?? entry.clarifications.join(' ')}</p>
         </ChatMessage>
+        <PreparationActionMessages step={step} thread={{ key, requestId: entry.requestId }} />
         {entry.feedback ? <ChatMessage from="auditor"><p>{entry.feedback}</p></ChatMessage> : null}
       </div>)}
       {pending || session.streaming ? <ChatMessage from="assistant" pending={pending}>
@@ -578,6 +630,7 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
       {session.request && (suggestion !== null || retry) && !terminal && !pending ? <div className="ls-chat__dismiss">
         <Button type="button" variant="ghost" busy={session.busy === 'rejection'} disabledReason={session.busy !== null || snapshot.acceptanceUnknown ? acceptanceReason : undefined} onClick={() => assistant.reject(key)}>Keep my wording</Button>
       </div> : null}
+      <PreparationActionMessages step={step} thread={{ key, requestId: session.request?.requestId ?? null }} />
     </AuthoringChat>
   </section>;
 }
@@ -685,13 +738,14 @@ export function PreparationAssistant({ step }: PreparationAssistantProps): React
   if (!assistant || !draft) return null;
   if (step === 'context') return assistant.snapshot.selected === 'objective'
     ? <WritingAssistantPanel section={{ kind: 'objective' }} inline guidedQuestion="What should this procedure establish that the selected objective does not yet capture?" />
-    : <Button type="button" onClick={() => assistant.open({ kind: 'objective' }, 'draft')}>Adjust the objective with the assistant</Button>;
-  if (step !== 'scope' && step !== 'instructions' && step !== 'review') return null;
+    : <><PreparationActionPanel step={step} question="The control above is already selected for this procedure. Say ‘I’ve reviewed this; continue’ to confirm the saved risk, control and objective, or ask me to open another section." /><Button type="button" onClick={() => assistant.open({ kind: 'objective' }, 'draft')}>Adjust the objective with the assistant</Button></>;
+  if (step !== 'scope' && step !== 'instructions' && step !== 'review') return <PreparationActionPanel step={step} />;
   if (step === 'review') return <section className="ls-writing ls-writing--preparation ls-writing--review ls-stack" aria-labelledby="preparation-review-assistant-heading">
     <h3 className="ls-guided__help-title" id="preparation-review-assistant-heading">Review helper</h3>
     <p className="ls-writing__question" data-writing-question>{preparationQuestion(step, draft, null)}</p>
     <PreparationContextDisclosure draft={draft} />
     <p className="ls-caption">Resolve questions in the saved editors, then review the full plan before marking the procedure reviewed.</p>
+    <PreparationActionPanel step={step} question="Tell me which section to open if something needs changing. Use the submission control after reviewing the complete saved plan." />
   </section>;
 
   if (step === 'instructions' && agentTargets.length === 0) return <section className="ls-writing ls-writing--preparation ls-stack" aria-labelledby="instructions-assistant-heading">
@@ -711,7 +765,7 @@ export function PreparationAssistant({ step }: PreparationAssistantProps): React
         setInstructionTargetId(next);
         openRef.current?.({ kind: 'instructions', registrationId: next }, 'draft', false);
       }}>
-        {agentTargets.map(entry => <option key={entry.registrationId} value={entry.registrationId}>{entry.displayName}</option>)}
+        {agentTargets.map(entry => <option key={entry.registrationId} value={entry.registrationId}>{entry.displayName}{agentTargets.filter(other => other.displayName.trim().toLocaleLowerCase('en-GB') === entry.displayName.trim().toLocaleLowerCase('en-GB')).length > 1 ? ` (${entry.contract.kind} · ${entry.registrationId})` : ''}</option>)}
       </select>
     </div> : null}
     <WritingAssistantPanel section={guidedSection} inline guidedQuestion={preparationQuestion(step, draft, selectedTargetId)} />

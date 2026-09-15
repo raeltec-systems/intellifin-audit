@@ -168,6 +168,8 @@ export const configSchema = z
         .regex(/^https?:\/\//, 'must start with http:// or https://')
         .optional(),
     ),
+    /** Set only behind an edge that overwrites this header; no forwarded fallback. */
+    AUTH_TRUSTED_IP_HEADER: z.enum(['x-real-ip']).optional(),
     /**
      * Declared capabilities of credential references, as JSON (FR-8).
      *
@@ -450,6 +452,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     SENTRY_TRACES_SAMPLE_RATE: env['SENTRY_TRACES_SAMPLE_RATE'],
     BETTER_AUTH_SECRET: env['BETTER_AUTH_SECRET'],
     BETTER_AUTH_URL: env['BETTER_AUTH_URL'],
+    AUTH_TRUSTED_IP_HEADER: env['AUTH_TRUSTED_IP_HEADER'],
     CREDENTIAL_CAPABILITIES: env['CREDENTIAL_CAPABILITIES'],
     CREDENTIAL_TOKENS: env['CREDENTIAL_TOKENS'],
     EXCEPTION_FINGERPRINT_KEY: env['EXCEPTION_FINGERPRINT_KEY'],

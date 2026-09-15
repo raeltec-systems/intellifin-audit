@@ -93,6 +93,14 @@ describe('loadConfig', () => {
 describe('loadConfig and the Better Auth keys', () => {
   const secret = 'x'.repeat(32);
 
+  it('accepts only the explicitly supported trusted edge header', () => {
+    expect(loadConfig(validEnv).AUTH_TRUSTED_IP_HEADER).toBeUndefined();
+    expect(loadConfig({ ...validEnv, AUTH_TRUSTED_IP_HEADER: 'x-real-ip' }).AUTH_TRUSTED_IP_HEADER).toBe('x-real-ip');
+    for (const value of ['x-forwarded-for,x-real-ip', 'arbitrary-header', 'true']) {
+      expect(() => loadConfig({ ...validEnv, AUTH_TRUSTED_IP_HEADER: value })).toThrow(/AUTH_TRUSTED_IP_HEADER/);
+    }
+  });
+
   it('accepts a well-formed secret and https origin', () => {
     const config = loadConfig({
       ...validEnv,
