@@ -10,7 +10,7 @@ import {
 } from '@intellifin/application';
 import { DrizzleActorNameReader, DrizzleNotificationRepository } from '@intellifin/infrastructure';
 import { getRuntime } from '../../src/bootstrap';
-import { EMPTY_STATES, ESCALATION_PANEL_COPY } from '../../src/design/copy';
+import { EMPTY_STATES, ESCALATION_PANEL_COPY, NOTIFICATIONS_BOUNDED } from '../../src/design/copy';
 import { currentIdentity } from '../../src/server-session';
 import { NotificationRefresh } from './NotificationRefresh';
 export const dynamic = 'force-dynamic';
@@ -88,9 +88,12 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   }
   const runtime = await getRuntime();
   const repository = new DrizzleNotificationRepository(runtime.db);
-  const [open, page] = await Promise.all([
+  const [open, page, openTotal] = await Promise.all([
     repository.openFor(identity.session),
     repository.deliveredFor(identity.session, cursor),
+    // The number the BELL shows, which counts waits and flags unbounded. The list is
+    // bounded, so without this the two disagree and nothing on the page says why.
+    repository.countOpenFor(identity.session),
   ]);
   // One lookup for every actor on the page. A user id printed at a reader is the platform
   // speaking its own language at somebody.
@@ -104,6 +107,9 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       {open.length
         ? <ul className="ls-stack">{open.map(n => <li key={n.kind === 'flag' ? n.flagId : n.waitId}>{openItem(n, names)}</li>)}</ul>
         : <><p>{EMPTY_STATES.notificationsEmpty.headline}</p><p>{EMPTY_STATES.notificationsEmpty.sentence}</p></>}
+      {openTotal > open.length
+        ? <p role="status">{NOTIFICATIONS_BOUNDED.replace('{shown}', String(open.length)).replace('{total}', String(openTotal))}</p>
+        : null}
     </section>
     <section aria-labelledby="delivered-notifications-heading" className="ls-stack">
       <h2 id="delivered-notifications-heading">Delivered notifications</h2>

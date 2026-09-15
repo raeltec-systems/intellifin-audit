@@ -1,5 +1,7 @@
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
+import { escalationKindWord } from '../design/plain-words';
+
 /**
  * Replay's presentation logic (Story 5.8, FR-30, UX-DR26, addendum §F).
  *
@@ -14,12 +16,39 @@ import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@int
 export const REPLAY_JUMP_KINDS = ['work-item', 'exception', 'escalation'] as const;
 export type ReplayJumpKind = (typeof REPLAY_JUMP_KINDS)[number];
 
-export interface ReplayJumpTarget {
+/**
+ * Why a jump target has no frame to open, said only as far as the read can KNOW it.
+ *
+ * - `none-captured`: the page read every frame the Run has, and none belongs to this target.
+ * - `none-before`: no frame was captured at or before the instant an Escalation was raised.
+ *   Decidable under ANY bound, because the read holds the EARLIEST frames: if none of them
+ *   precedes the instant, none at all does.
+ * - `not-read`: the read bound at `REPLAY_FRAME_LIMIT` and none of the frames read belongs
+ *   to this target. Whether one exists past the bound is NOT known, so the sentence for it
+ *   claims neither that a frame exists nor that none was captured. The first version of this
+ *   inferred "beyond the frames shown" from the global count alone, which was a false claim
+ *   about a Work Item that captured nothing in a long Run (the Codex finding on PR 36).
+ */
+export const REPLAY_FRAME_ABSENCES = ['none-captured', 'none-before', 'not-read'] as const;
+export type ReplayFrameAbsence = (typeof REPLAY_FRAME_ABSENCES)[number];
+
+/**
+ * A jump target either lands on a frame or says why it cannot -- never a null index with no
+ * reason, and never a reason beside a frame. A pill that opens nothing is worse than none.
+ */
+export type ReplayJumpTarget = {
   readonly kind: ReplayJumpKind;
   readonly id: string;
   readonly label: string;
-  /** `null` when nothing was captured there: a pill that opens nothing is worse than none. */
-  readonly frameIndex: number | null;
+} & (
+  | { readonly frameIndex: number; readonly absence: null }
+  | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence }
+);
+
+function landing(frameIndex: number | null, whenMissing: ReplayFrameAbsence):
+  | { readonly frameIndex: number; readonly absence: null }
+  | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence } {
+  return frameIndex === null ? { frameIndex: null, absence: whenMissing } : { frameIndex, absence: null };
 }
 
 export interface ReplayWorkItem {
@@ -31,6 +60,26 @@ export interface ReplayException {
   readonly exceptionId: string;
   readonly workItemId: string;
   readonly populationRecordKey: string;
+}
+
+/**
+ * Frames with their Work Item resolved through the Step Execution that captured them.
+ *
+ * `run_tool_action.work_item_id` is NULLABLE, and a jump matched on it alone reports "no
+ * frame was captured here" for a Work Item whose frames all carry the id on their Step
+ * Execution instead. The page already resolves the system NAME that way
+ * (`step?.workItemId ?? frame.workItemId`); the jump list used the raw column, so the two
+ * disagreed on the same row. This is the one rule, applied before either read.
+ */
+export function resolveFrameWorkItems(
+  frames: readonly RunFrameRow[],
+  stepExecutions: readonly { readonly stepExecutionId: string; readonly workItemId: string | null }[],
+): readonly RunFrameRow[] {
+  const byStep = new Map(stepExecutions.map((step) => [step.stepExecutionId, step.workItemId]));
+  return frames.map((frame) => {
+    const viaStep = byStep.get(frame.stepExecutionId);
+    return viaStep === undefined || viaStep === null ? frame : { ...frame, workItemId: viaStep };
+  });
 }
 
 /**
@@ -81,17 +130,22 @@ export function replayFrameAt(frames: readonly RunFrameRow[], instant: string): 
  */
 export function replayJumpTargets(input: {
   readonly frames: readonly RunFrameRow[];
+  /** How many frames the Run holds, so a bounded read is known to be one. */
+  readonly framesTotal: number;
   readonly workItems: readonly ReplayWorkItem[];
   readonly exceptions: readonly ReplayException[];
   readonly waits: readonly RunReplayWait[];
 }): readonly ReplayJumpTarget[] {
+  // A Work Item's frames are matched by id, so a bounded read cannot tell "captured nothing"
+  // from "captured past the bound"; a complete read can.
+  const whenNoFrame: ReplayFrameAbsence = input.framesTotal > input.frames.length ? 'not-read' : 'none-captured';
   const targets: ReplayJumpTarget[] = [];
   for (const item of input.workItems) {
     targets.push({
       kind: 'work-item',
       id: item.workItemId,
       label: item.displayName,
-      frameIndex: replayFrameForWorkItem(input.frames, item.workItemId),
+      ...landing(replayFrameForWorkItem(input.frames, item.workItemId), whenNoFrame),
     });
   }
   for (const exception of input.exceptions) {
@@ -99,7 +153,7 @@ export function replayJumpTargets(input: {
       kind: 'exception',
       id: exception.exceptionId,
       label: exception.populationRecordKey,
-      frameIndex: replayFrameForWorkItem(input.frames, exception.workItemId),
+      ...landing(replayFrameForWorkItem(input.frames, exception.workItemId), whenNoFrame),
     });
   }
   for (const wait of input.waits) {
@@ -107,8 +161,14 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'escalation',
       id: wait.waitId,
-      label: wait.kind,
-      frameIndex: replayFrameAt(input.frames, wait.openedAt),
+      // The stored kind is a KEY, and this row renders its label in a monospace span --
+      // which presents whatever it is given as an identifier. `choose-candidate` is not a
+      // question an auditor asked, and the plain-words pass removed exactly this from the
+      // authoring screens; Replay reintroduced it in a new place.
+      label: escalationKindWord(wait.kind),
+      // Decided whatever the bound: the frames read are the earliest, so none preceding the
+      // instant among them means none preceding it at all.
+      ...landing(replayFrameAt(input.frames, wait.openedAt), 'none-before'),
     });
   }
   const rank = (target: ReplayJumpTarget): number => REPLAY_JUMP_KINDS.indexOf(target.kind);

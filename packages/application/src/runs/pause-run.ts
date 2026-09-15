@@ -164,7 +164,7 @@ export type ResumeRunOutcome =
   | { readonly ok: true; readonly state: 'RUNNING'; readonly waitId: string }
   | { readonly ok: false; readonly reason: string; readonly code: ResumeRefusalCode };
 
-export type ResumeRefusalCode = 'malformed' | 'unknown' | 'not-paused' | 'stale-revision' | 'timed-out';
+export type ResumeRefusalCode = 'malformed' | 'unknown' | 'not-paused' | 'stale-revision' | 'timed-out' | 'closed';
 
 export const PAUSE_REQUEST_MALFORMED = 'Choose a Run that is still running.';
 export const RESUME_REQUEST_MALFORMED = 'Choose a Paused Run and the revision you read.';
@@ -174,7 +174,22 @@ export const RESUME_RUN_REFUSALS: Readonly<Record<ResumeRefusalCode, string>> = 
   unknown: RUN_RESUME_REFUSALS.UNKNOWN,
   'not-paused': RUN_RESUME_REFUSALS.NOT_PAUSED,
   'stale-revision': 'This Run changed while you were reading it. Reload the Run.',
-  'timed-out': 'This pause timed out at {time}; the Run is Inconclusive.',
+  /**
+   * Says what this refusal KNOWS -- the deadline passed -- and not what the delayed wake
+   * writes. `closeWait` answers `expired` from `now >= deadline`, which is reachable before
+   * the wake job has run: a resume clicked thirty minutes and two seconds in was told "the
+   * Run is Inconclusive" while the row still said `PAUSED`, and a reload still offered
+   * Resume, and every further click repeated the claim.
+   */
+  'timed-out': 'This pause reached its deadline at {time}. Reload the Run for the recorded outcome.',
+  /**
+   * The wait was already closed by something other than a timeout -- another tab's
+   * resume, or a second click. Folded into `timed-out` it told the second clicker the Run
+   * was Inconclusive, with `{time}` set to the instant somebody ELSE resumed it, while the
+   * Run was in fact RUNNING. `answerEscalation` discriminates on the closure kind first
+   * and says `closed` otherwise; this is that rule, one command along.
+   */
+  closed: 'This pause was already closed. Reload the Run to see its state.',
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -339,11 +354,23 @@ export async function resumeRun(
       });
       if (operation.outcome === 'stale-revision')
         return { ok: false, reason: RESUME_RUN_REFUSALS['stale-revision'], code: 'stale-revision' };
-      if (operation.outcome === 'expired' || operation.outcome === 'superseded') {
-        const at = operation.wait?.closedAt ?? wait.deadline;
+      if (operation.outcome === 'superseded') {
+        // Closed already. By the timeout wake, or by somebody else's resume -- and only the
+        // first is a timeout. The closure kind on the locked row says which.
+        const closed = operation.wait ?? wait;
+        if (closed.closureKind === 'timeout') {
+          return {
+            ok: false,
+            reason: RESUME_RUN_REFUSALS['timed-out'].replace('{time}', closed.closedAt ?? wait.deadline),
+            code: 'timed-out',
+          };
+        }
+        return { ok: false, reason: RESUME_RUN_REFUSALS.closed, code: 'closed' };
+      }
+      if (operation.outcome === 'expired') {
         return {
           ok: false,
-          reason: RESUME_RUN_REFUSALS['timed-out'].replace('{time}', at),
+          reason: RESUME_RUN_REFUSALS['timed-out'].replace('{time}', wait.deadline),
           code: 'timed-out',
         };
       }

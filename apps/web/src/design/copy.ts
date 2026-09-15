@@ -455,6 +455,22 @@ export const PAUSE_COPY = {
     'This holds the Run for {procedure} at its next Tool Action. It resumes only when you say so, and ends Inconclusive if it is still paused after 30 minutes. The pause is recorded against your name.',
   unknown: 'The pause could not be confirmed. Reload the Run to see whether it was paused.',
   resumeUnknown: 'The resume could not be confirmed. Reload the Run to see whether it restarted.',
+  /**
+   * A `PAUSED` Run whose pause wait could not be read.
+   *
+   * It says the Run IS paused first, because that is the fact a reader needs and the one
+   * the surface would otherwise withhold: a held Run ends Inconclusive when its deadline
+   * passes, and a page that renders nothing tells the reader it is simply busy. Who paused
+   * it and when it ends live on the wait row, so they are the part that is missing here --
+   * never guessed, and never left implied by an empty space.
+   *
+   * The sibling sentence is `ESCALATION_PANEL_COPY.unavailable`, deliberately: the two
+   * surfaces meet the same read failure and a reader who learns one should recognise the
+   * other.
+   */
+  unreadable: 'This Run is paused and the pause could not be read. Reload this Run before resuming.',
+  /** What the countdown says once it runs out. A pause that times out ends the Run. */
+  expired: 'the pause timed out; reload this Run for the recorded outcome.',
 } as const;
 
 /**
@@ -476,7 +492,39 @@ export const PAUSE_COPY = {
  * flag carries no request token and a retry writes a second flag and a second manager
  * fan-out — had none at all.
  */
+/**
+ * Fill a `{placeholder}` template without letting a value rewrite the sentence.
+ *
+ * `String.prototype.replace` with a STRING pattern expands `$&`, `` $` ``, `$'` and `$$`
+ * in the REPLACEMENT -- so a Procedure named `Fee $& review` or a person named `A $' B`
+ * rewrites the surrounding copy. A replacer FUNCTION never expands them, which is the
+ * whole reason this exists rather than a chain of `.replace` calls.
+ *
+ * It also fills in ONE pass. Chained calls let an earlier value that happens to contain a
+ * later placeholder be substituted by the next call -- a name containing `{time}` picking
+ * up a timestamp.
+ *
+ * An unknown placeholder is left exactly as it is: a template naming a value nobody
+ * supplied should read as obviously unfinished, never as though the value were empty.
+ */
+export function fillTemplate(template: string, values: Readonly<Record<string, string>>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    Object.hasOwn(values, key) ? values[key] as string : match);
+}
+
 export const RUN_LOST_RESPONSE = 'The last response was lost. Reload this Run before trying again.';
+
+/**
+ * Said when the inbox could not show everything the bell is counting.
+ *
+ * `openFor` bounds its merged list and puts Escalations first, because only a wait can
+ * EXPIRE and end its Run Inconclusive — so a full page of them pushes every flag off the
+ * end, while `countOpenFor` counts both, unbounded. Two numbers that disagree with nothing
+ * explaining the gap is the silent-truncation shape this codebase treats as a defect; the
+ * ordering is right and saying nothing about it was not.
+ */
+export const NOTIFICATIONS_BOUNDED =
+  'Showing the first {shown} of {total}. Escalations come first because only they expire; the rest appear as these are answered.';
 
 export const FLAG_COPY = {
   heading: 'Ask an Audit Manager to look',
@@ -575,6 +623,15 @@ export const REPLAY_COPY = {
   noAction: 'No Tool Action was recorded for this frame.',
   noJumpTargets: 'This Run recorded no Work Items, Exceptions or Escalations to jump to.',
   noFrameForTarget: 'no frame was captured here',
+  /** An Escalation raised before the first frame: decidable whatever the read's bound. */
+  noFrameBeforeTarget: 'no frame was captured before it was raised',
+  /**
+   * The frame read BOUND, and none of the frames read belongs to this target. Whether one
+   * exists past the bound is not known, so this claims neither that a frame exists nor that
+   * none was captured. A first version said "its frame is beyond the {shown} shown", which
+   * was a definite false statement about a Work Item that captured nothing in a long Run.
+   */
+  frameNotRead: 'not among the {shown} frames shown',
   observationsThrough: '{count} Observations had been registered when this frame was captured.',
   bounded: 'Showing the first {shown} of {total} frames.',
   notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',

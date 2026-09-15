@@ -114,8 +114,8 @@ describe('Replay, as the server first paints it', () => {
 
   it('names a jump target that has nowhere to go instead of offering a dead pill', () => {
     const targets: readonly ReplayJumpTarget[] = [
-      { kind: 'work-item', id: 'w1', label: 'Leaver 1', frameIndex: 0 },
-      { kind: 'work-item', id: 'w2', label: 'Adapter read', frameIndex: null },
+      { kind: 'work-item', id: 'w1', label: 'Leaver 1', frameIndex: 0, absence: null },
+      { kind: 'work-item', id: 'w2', label: 'Adapter read', frameIndex: null, absence: 'none-captured' },
     ];
     const html = render({ jumpTargets: targets });
     expect(html).toContain('Leaver 1');
@@ -128,5 +128,35 @@ describe('Replay, as the server first paints it', () => {
     const html = render({ instructions: [{ system: 'LoanCore', text: '<b>Read</b> every leaver.' }] });
     expect(html).toContain('&lt;b&gt;Read&lt;/b&gt; every leaver.');
     expect(html).not.toContain('<b>Read</b>');
+  });
+});
+
+describe('a jump target with no frame to open', () => {
+  const missing = (absence: ReplayJumpTarget['absence'] & string): ReplayJumpTarget =>
+    ({ kind: 'work-item', id: 'w-late', label: 'Leaver 9', frameIndex: null, absence });
+
+  it('says no frame was captured when the resolver decided that', () => {
+    const html = render({ framesTotal: 3, jumpTargets: [missing('none-captured')] });
+    expect(html).toContain(REPLAY_COPY.noFrameForTarget);
+    expect(html).not.toContain('frames shown');
+  });
+
+  it('says only that no frame is among those shown when the read bound -- neither that one exists nor that none was captured', () => {
+    // The frame read bounds at `REPLAY_FRAME_LIMIT`. Past it, a Work Item's null index has
+    // TWO possible reasons and the page cannot tell them apart; the resolver says so with
+    // `not-read`, and this row must claim no more than that. A first version inferred "its
+    // frame is beyond the frames shown" from the global count, which was a false statement
+    // about a Work Item that captured nothing in a long Run.
+    const html = render({ framesTotal: 500, jumpTargets: [missing('not-read')] });
+    expect(html).toContain(REPLAY_COPY.frameNotRead.replace('{shown}', '3'));
+    expect(html).not.toContain(REPLAY_COPY.noFrameForTarget);
+    expect(html).not.toContain('beyond');
+  });
+
+  it('says no frame preceded an Escalation, whatever the bound', () => {
+    const target: ReplayJumpTarget = { kind: 'escalation', id: 'w1', label: 'Choose candidate', frameIndex: null, absence: 'none-before' };
+    const html = render({ framesTotal: 500, jumpTargets: [target] });
+    expect(html).toContain(REPLAY_COPY.noFrameBeforeTarget);
+    expect(html).not.toContain(REPLAY_COPY.frameNotRead.replace('{shown}', '3'));
   });
 });

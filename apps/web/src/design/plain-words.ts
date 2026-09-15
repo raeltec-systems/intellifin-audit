@@ -29,6 +29,10 @@ import {
   type PopulationSourceKind,
   type TargetSystemKind,
 } from '@intellifin/domain';
+// The Escalation kinds are the APPLICATION's closed vocabulary, not the domain's:
+// `escalation-kind.ts` is the dependency-free leaf the wait commands and the
+// notification ports share.
+import type { EscalationKind } from '@intellifin/application';
 
 /**
  * Each Builder section as a title and the question it answers.
@@ -145,6 +149,40 @@ export const COUNT_MECHANISM_WORDS: Readonly<
     detail: 'Nobody states how many records to expect, so a short file cannot be told from a complete one.',
   },
 };
+
+/**
+ * What an Escalation is ASKING, in words (FR-27).
+ *
+ * The stored value is a closed domain vocabulary, and printing one at an auditor is the
+ * defect the plain-words pass removed from the authoring screens: `choose-candidate` is a
+ * key, not a question. Story 5.6's panel already had this map privately; Story 5.8's
+ * Replay jump list printed the raw identifier in a MONOSPACE span, which presents it as an
+ * identifier on purpose. One home, typed against the domain union so a kind added there
+ * fails to COMPILE rather than reaching a reader as its own name.
+ */
+export const ESCALATION_KIND_WORDS: Readonly<Record<EscalationKind, string>> = {
+  'choose-candidate': 'Choose candidate',
+  'unnamed-value': 'Unnamed value',
+  'retry-or-skip': 'Retry or skip',
+};
+
+/** What a stored kind this build does not recognise is called, rather than its own value. */
+export const ESCALATION_KIND_UNKNOWN = 'Unrecognised kind';
+
+/**
+ * The plain word for a kind read back from the database, which is typed `string`.
+ *
+ * `Object.hasOwn`, because a plain-object index keyed by stored input inherits from
+ * `Object.prototype` — `'constructor'` returns a function, and this codebase has now been
+ * bitten by that six times. An unrecognised kind is NAMED rather than printed: a row
+ * already says "Escalation", so repeating an identifier it does not understand would be
+ * the defect this map exists to remove, said less clearly.
+ */
+export function escalationKindWord(kind: string): string {
+  return Object.hasOwn(ESCALATION_KIND_WORDS, kind)
+    ? ESCALATION_KIND_WORDS[kind as EscalationKind]
+    : ESCALATION_KIND_UNKNOWN;
+}
 
 /** How a Target System is reached, in words. */
 export const TARGET_KIND_WORDS: Readonly<Record<TargetSystemKind, string>> = {

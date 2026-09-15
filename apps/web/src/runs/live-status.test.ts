@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_STALE_MS, LIVE_STATUSES, RUN_ENDING_EVENTS, isRunEndingEvent, acceptsLiveSeq, liveGateReason, liveSentence, liveStatus, parseLiveCursor, silenceSeconds } from './live-status';
+import { LIVE_GATE_REASONS, LIVE_LOST_MS, LIVE_SENTENCES, LIVE_STALE_MS, LIVE_STATUSES, RUN_ENDING_EVENTS, isRunEndingEvent, acceptsLiveSeq, liveGateReason, liveSentence, liveStatus, parseLiveCursor, silenceSeconds, subscribeViewport, type ViewportQueryList } from './live-status';
 
 describe('the live status machine', () => {
   const base = { ended: false, everConnected: true, lastMessageAt: 100_000 };
@@ -173,5 +173,61 @@ describe('a reconnect replays every missed event, in order, with no gap and no d
       expect(acceptsLiveSeq(0, seq)).toBe(false);
     }
     expect(acceptsLiveSeq(0, Number.MAX_SAFE_INTEGER)).toBe(true);
+  });
+});
+
+describe('subscribing the viewport gate to a MediaQueryList (PR 36 review)', () => {
+  /** A list of one of the three shapes real browsers have, recording what was registered. */
+  function list(shape: 'modern' | 'legacy' | 'neither'): ViewportQueryList & { readonly listeners: Array<() => void>; readonly removed: Array<() => void> } {
+    const listeners: Array<() => void> = [];
+    const removed: Array<() => void> = [];
+    const base = { matches: true, listeners, removed };
+    if (shape === 'modern') {
+      return {
+        ...base,
+        addEventListener: (_type: 'change', listener: () => void) => { listeners.push(listener); },
+        removeEventListener: (_type: 'change', listener: () => void) => { removed.push(listener); },
+      };
+    }
+    if (shape === 'legacy') {
+      return {
+        ...base,
+        addListener: (listener: () => void) => { listeners.push(listener); },
+        removeListener: (listener: () => void) => { removed.push(listener); },
+      };
+    }
+    return base;
+  }
+
+  it('uses addEventListener where the list has it, and unsubscribes through its pair', () => {
+    const query = list('modern');
+    let reads = 0;
+    const unsubscribe = subscribeViewport(query, () => { reads += 1; });
+    expect(query.listeners).toHaveLength(1);
+    query.listeners[0]!();
+    expect(reads).toBe(1);
+    unsubscribe();
+    expect(query.removed).toEqual(query.listeners);
+  });
+
+  it('falls back to the legacy addListener pair (Safari 13), so a rotation still re-reads the gate', () => {
+    // The guard that replaced a throw first returned BEFORE subscribing on such a list, so the
+    // gate kept whatever verdict it had at mount across a rotation over the 1024px floor.
+    const query = list('legacy');
+    let reads = 0;
+    const unsubscribe = subscribeViewport(query, () => { reads += 1; });
+    expect(query.listeners).toHaveLength(1);
+    query.listeners[0]!();
+    expect(reads).toBe(1);
+    unsubscribe();
+    expect(query.removed).toEqual(query.listeners);
+  });
+
+  it('observes a list with neither API once and never throws', () => {
+    const query = list('neither');
+    let reads = 0;
+    expect(() => subscribeViewport(query, () => { reads += 1; })()).not.toThrow();
+    expect(query.listeners).toHaveLength(0);
+    expect(reads).toBe(0);
   });
 });

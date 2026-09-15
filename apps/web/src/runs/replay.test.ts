@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
+import { ESCALATION_KIND_UNKNOWN } from '../design/plain-words';
+
 import {
   REPLAY_JUMP_KINDS,
   clampReplayIndex,
   replayFrameAt,
   replayFrameForWorkItem,
   replayJumpTargets,
+  resolveFrameWorkItems,
   replayObservationsThrough,
 } from './replay';
 
@@ -78,6 +81,7 @@ describe('where a Replay jump lands', () => {
 
 describe('the Replay jump list', () => {
   const targets = replayJumpTargets({
+    framesTotal: FRAMES.length,
     frames: FRAMES,
     workItems: [
       { workItemId: WORK_A, displayName: 'Leaver 1' },
@@ -111,6 +115,39 @@ describe('the Replay jump list', () => {
   });
 });
 
+describe('why a jump target has no frame, said only as far as the read knows (PR 36 review)', () => {
+  const WORK_C = '019823ab-0000-7000-8000-0000000000c1';
+  const targets = (framesTotal: number) => replayJumpTargets({
+    frames: FRAMES,
+    framesTotal,
+    workItems: [{ workItemId: WORK_A, displayName: 'Leaver 1' }, { workItemId: WORK_C, displayName: 'Leaver 3' }],
+    exceptions: [],
+    waits: [wait({ waitId: 'w-early', openedAt: '2026-09-10T08:59:00.000Z' })],
+  });
+  const of = (framesTotal: number, id: string) => targets(framesTotal).find((target) => target.id === id)!;
+
+  it('a target that lands on a frame carries no reason', () => {
+    expect(of(FRAMES.length, WORK_A)).toMatchObject({ frameIndex: 0, absence: null });
+  });
+
+  it('a Work Item with no frame among a COMPLETE read captured none', () => {
+    expect(of(FRAMES.length, WORK_C)).toMatchObject({ frameIndex: null, absence: 'none-captured' });
+  });
+
+  it('a Work Item with no frame among a BOUNDED read is only "not read": the page cannot know more', () => {
+    // Its frames may all lie past the bound, or it may have captured nothing; the read holds
+    // the earliest frames and cannot tell. Inferring "beyond the read" here was the defect.
+    expect(of(FRAMES.length + 1, WORK_C)).toMatchObject({ frameIndex: null, absence: 'not-read' });
+  });
+
+  it('an Escalation raised before the first frame has none before it, even when the read bound', () => {
+    // The frames read are the EARLIEST, so none of them preceding the instant means none
+    // at all does -- decidable under any bound, and never "not read".
+    expect(of(FRAMES.length, 'w-early')).toMatchObject({ frameIndex: null, absence: 'none-before' });
+    expect(of(FRAMES.length + 1, 'w-early')).toMatchObject({ frameIndex: null, absence: 'none-before' });
+  });
+});
+
 describe('the Observation count beside a frame', () => {
   const deltas: readonly RunReplayObservationDelta[] = [
     { sequence: 4, occurredAt: '2026-09-10T09:00:30.000Z', workItemId: WORK_A, stepExecutionId: null, registered: 2 },
@@ -125,6 +162,52 @@ describe('the Observation count beside a frame', () => {
 
   it('counts nothing for a frame that is not there', () => {
     expect(replayObservationsThrough(deltas, null)).toBe(0);
+  });
+});
+
+describe('a frame whose Tool Action carries no Work Item id', () => {
+  it('is matched through the Step Execution that captured it', () => {
+    // `run_tool_action.work_item_id` is nullable. The page resolves the SYSTEM through the
+    // Step Execution; the jump list used the raw column and said "no frame was captured
+    // here" for a Work Item whose frames were all there.
+    const orphan = { ...FRAMES[0]!, workItemId: null, stepExecutionId: 'se-x' };
+    const resolved = resolveFrameWorkItems([orphan], [{ stepExecutionId: 'se-x', workItemId: WORK_A }]);
+    expect(replayFrameForWorkItem(resolved, WORK_A)).toBe(0);
+    expect(replayFrameForWorkItem([orphan], WORK_A)).toBeNull();
+  });
+
+  it('keeps a frame that already names its Work Item, and one nothing resolves', () => {
+    const resolved = resolveFrameWorkItems(FRAMES, [{ stepExecutionId: 'nope', workItemId: null }]);
+    expect(resolved).toEqual(FRAMES);
+  });
+});
+
+describe('what a Replay jump row calls an Escalation', () => {
+  it('names the question, never the stored key', () => {
+    // The jump row renders its label in a MONOSPACE span, which presents whatever it is
+    // given as an identifier. `choose-candidate` is a database value, not a question an
+    // auditor asked -- the defect the plain-words pass removed from the authoring screens
+    // and Replay reintroduced on a new surface.
+    const [target] = replayJumpTargets({
+    framesTotal: FRAMES.length,
+      frames: FRAMES,
+      workItems: [],
+      exceptions: [],
+      waits: [wait({ waitId: 'w1', openedAt: '2026-09-10T09:01:30.000Z' })],
+    });
+    expect(target?.label).toBe('Choose candidate');
+    expect(target?.label).not.toBe('choose-candidate');
+  });
+
+  it('names an unrecognised stored kind rather than printing it', () => {
+    const [target] = replayJumpTargets({
+    framesTotal: FRAMES.length,
+      frames: FRAMES,
+      workItems: [],
+      exceptions: [],
+      waits: [wait({ waitId: 'w1', openedAt: '2026-09-10T09:01:30.000Z', kind: 'constructor' as RunReplayWait['kind'] })],
+    });
+    expect(target?.label).toBe(ESCALATION_KIND_UNKNOWN);
   });
 });
 

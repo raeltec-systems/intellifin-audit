@@ -10,6 +10,7 @@ import {
   POPULATION_SOURCE_KINDS,
   TARGET_SYSTEM_KINDS,
 } from '@intellifin/domain';
+import { ESCALATION_KINDS } from '@intellifin/application';
 
 import {
   COUNT_MECHANISM_WORDS,
@@ -17,6 +18,9 @@ import {
   SECTION_WORDS,
   SOURCE_KIND_WORDS,
   TARGET_KIND_WORDS,
+  ESCALATION_KIND_WORDS,
+  ESCALATION_KIND_UNKNOWN,
+  escalationKindWord,
   filterComparisonId,
 } from './plain-words';
 
@@ -39,6 +43,23 @@ describe('every domain vocabulary the Builder shows has words for it', () => {
 
   it.each(TARGET_SYSTEM_KINDS)('%s says what kind of system it is', (kind) => {
     expect(TARGET_KIND_WORDS[kind].length).toBeGreaterThan(0);
+  });
+
+  it.each(ESCALATION_KINDS)('%s says what the Escalation is asking', (kind) => {
+    // Walked against the APPLICATION's own closed vocabulary, so a kind added there and
+    // not given words here fails, rather than reaching a reader as its own identifier.
+    expect(escalationKindWord(kind)).toBe(ESCALATION_KIND_WORDS[kind]);
+    expect(escalationKindWord(kind)).not.toBe(kind);
+    expect(escalationKindWord(kind)).not.toBe(ESCALATION_KIND_UNKNOWN);
+  });
+
+  it('never answers a stored kind with the kind itself, or with an inherited property', () => {
+    // `run_wait.kind` reaches the surface typed `string`. A plain-object index inherits
+    // from `Object.prototype`, so `constructor` returns a FUNCTION -- the trap this
+    // codebase has met six times.
+    expect(escalationKindWord('constructor')).toBe(ESCALATION_KIND_UNKNOWN);
+    expect(escalationKindWord('toString')).toBe(ESCALATION_KIND_UNKNOWN);
+    expect(escalationKindWord('a-kind-this-build-does-not-know')).toBe(ESCALATION_KIND_UNKNOWN);
   });
 });
 

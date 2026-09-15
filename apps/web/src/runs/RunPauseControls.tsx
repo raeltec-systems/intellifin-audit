@@ -90,7 +90,10 @@ export function RunPauseControls({
   };
 
   const resume = async (): Promise<void> => {
-    if (runRevision === null) { setMessage({ tone: 'danger', title: PAUSE_COPY.resumeUnknown }); return; }
+    // Withdrawn below when the revision could not be read; this is the guard behind it, so
+    // a click that reaches here anyway (a forced one) sends nothing and says WHY rather
+    // than describing a lost response for a request that was never made.
+    if (runRevision === null) { setAttempt(value => value + 1); setMessage({ tone: 'danger', title: PAUSE_COPY.unreadable }); return; }
     setBusy(true); setMessage(null); setAttempt(value => value + 1);
     try {
       const result = await resumeRunAction({ runId, expectedRunRevision: runRevision });
@@ -122,7 +125,10 @@ export function RunPauseControls({
     >Pause</Button> : null}
     {paused ? <Button variant="primary" busy={busy} onClick={() => { void resume(); }}
         {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
-          : unknown ? { disabledReason: RUN_LOST_RESPONSE } : {})}>Resume</Button> : null}
+          : unknown ? { disabledReason: RUN_LOST_RESPONSE }
+          // The revision is the compare-and-set the resume needs; without it the request
+          // cannot be made, so the control is withdrawn with the banner's own reason.
+          : runRevision === null ? { disabledReason: PAUSE_COPY.unreadable } : {})}>Resume</Button> : null}
     {pausable && !paused && !awaitingAuditor ? <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
         {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
           : pausePending ? { disabledReason: ALREADY_REQUESTED }

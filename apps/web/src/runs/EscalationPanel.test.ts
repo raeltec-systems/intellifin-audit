@@ -24,7 +24,8 @@ vi.mock('@intellifin/infrastructure', () => ({
 import type { EscalationDetails, EscalationWait, WaitRepository } from '@intellifin/application';
 
 import { ESCALATION_PANEL_COPY } from '../design/copy';
-import { EscalationPanel, countdownText, escalationMilestone, orderedEscalationOptions } from './EscalationPanel';
+import { EscalationPanel, escalationMilestone, orderedEscalationOptions } from './EscalationPanel';
+import { countdownText } from './WaitCountdown';
 import { readOpenEscalation, readOpenEscalationWith } from './escalation-read';
 
 const RUN_ID = '019823ab-0000-7000-8000-000000000001';

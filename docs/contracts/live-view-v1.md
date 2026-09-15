@@ -155,8 +155,15 @@ content, never as the platform's prose.
 
 Below 1024px the surface is read-only and states EXPERIENCE.md's floor sentence,
 `Open on a desktop browser to supervise this Run.` The sentence is always in the document
-and the stylesheet decides when it shows, so the rule is a stylesheet decision rather than a
-server guess at a viewport.
+and the stylesheet decides when it shows. The CONTROLS are a different matter: their
+withdrawal is `viewport`, the fourth gate reason below, decided on the client by
+`useDesktopViewport` one tick after mount and re-read whenever the media query changes. It
+is deliberately not decided on the server, because a server cannot observe a viewport and
+the fail-safe direction there is OPEN: closing on a viewport nobody has measured would
+disable Flag permanently for a reader with no JavaScript, and Flag is the one control on
+this surface designed to work without it (`flag-run.spec.ts` proves that with
+`javaScriptEnabled: false`). So with no script there is no gate, and what actually refuses
+an out-of-scope action is the command.
 
 ## The live controls, and the gate over them (Story 5.7)
 
@@ -169,11 +176,13 @@ became a view it renders and the controls read the verdict through context, beca
 subscriptions would be two silence clocks, two reconnects and two cursors — which is how a
 page ends up disagreeing with itself about whether it is live.
 
-`liveGateReason` in `live-status.ts` is the whole rule, and it has three reasons:
+`liveGateReason` in `live-status.ts` is the whole rule, and it has FOUR reasons, applied in
+this order so that the first that holds is the one the reader is told:
 
 | Reason | When | Why |
 | --- | --- | --- |
-| `runEnded` | a run-ending event arrived, or the server rendered a terminal Run | Outranks the others. It closes the second between that event and the server re-read that removes the controls, in which every control was live on a Run that had already finished. |
+| `viewport` | the page has measured its viewport below 1024px | Outranks every stream reason. "Open this on a desktop" is the sentence a reader on a phone can act on, where "the connection is lost" is not — and a Run that has ended is still one they cannot supervise from there. |
+| `runEnded` | a run-ending event arrived, or the server rendered a terminal Run | Outranks the stream reasons. It closes the second between that event and the server re-read that removes the controls, in which every control was live on a Run that had already finished. |
 | `lost` | 60 seconds of silence (UX-DR25) | The page cannot claim to know what it is acting on. |
 | `ended` | the stream said `end` and will not reconnect | Included although the contract names only `lost`, because it is the STRONGER case: a lost stream is reconnecting and an ended one is not, so gating the recoverable state and not the permanent one would have it backwards. |
 

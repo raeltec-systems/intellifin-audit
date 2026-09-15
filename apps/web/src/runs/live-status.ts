@@ -153,3 +153,39 @@ export function parseLiveCursor(url: URL, lastEventId: string | null): number | 
   const value = Number(raw);
   return Number.isSafeInteger(value) ? value : null;
 }
+
+/**
+ * What a MediaQueryList looks like to the viewport gate: the SHAPE, not the DOM type, so a
+ * test can hand it the three shapes real browsers have without a DOM. Safari 13 and earlier
+ * expose only the legacy `addListener` / `removeListener` pair.
+ */
+export interface ViewportQueryList {
+  readonly matches: boolean;
+  addEventListener?(type: 'change', listener: () => void): void;
+  removeEventListener?(type: 'change', listener: () => void): void;
+  addListener?(listener: () => void): void;
+  removeListener?(listener: () => void): void;
+}
+
+/**
+ * Subscribe `read` to viewport changes and return the unsubscribe.
+ *
+ * `addEventListener` where the list has it; the legacy pair where it has only that; and a
+ * list with neither is read once at mount and never again, which is the gate's own stated
+ * default (open) rather than a throw that would take the whole surface down to close a gate.
+ * The fallback exists because the guard that replaced the throw first RETURNED before
+ * subscribing, so a Safari 13 tablet rotated across the 1024px floor kept whatever verdict
+ * it had at mount — the Codex finding on PR 36. Pure, so the branch a browser test cannot
+ * reach is proven here.
+ */
+export function subscribeViewport(query: ViewportQueryList, read: () => void): () => void {
+  if (typeof query.addEventListener === 'function' && typeof query.removeEventListener === 'function') {
+    query.addEventListener('change', read);
+    return () => { query.removeEventListener?.('change', read); };
+  }
+  if (typeof query.addListener === 'function' && typeof query.removeListener === 'function') {
+    query.addListener(read);
+    return () => { query.removeListener?.(read); };
+  }
+  return () => undefined;
+}

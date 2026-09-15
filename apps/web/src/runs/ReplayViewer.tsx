@@ -7,7 +7,7 @@ import { Digest } from '../design/Digest';
 import { REPLAY_COPY } from '../design/copy';
 import { SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
 import { UntrustedText } from './UntrustedText';
-import { clampReplayIndex, type ReplayJumpTarget } from './replay';
+import { clampReplayIndex, type ReplayFrameAbsence, type ReplayJumpTarget } from './replay';
 import { utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
@@ -46,6 +46,19 @@ export interface ReplayViewerProps {
 
 /** How long one frame is held while Replay is playing. */
 const FRAME_INTERVAL_MS = 1_200;
+
+/**
+ * The sentence for a jump target with no frame, from the resolver's reason: each says only
+ * what the read could know (see `ReplayFrameAbsence`). Exhaustive over the vocabulary, so a
+ * reason added to the resolver fails to compile here rather than rendering nothing.
+ */
+function absenceSentence(absence: ReplayFrameAbsence, shown: number): string {
+  switch (absence) {
+    case 'none-captured': return REPLAY_COPY.noFrameForTarget;
+    case 'none-before': return REPLAY_COPY.noFrameBeforeTarget;
+    case 'not-read': return REPLAY_COPY.frameNotRead.replace('{shown}', String(shown));
+  }
+}
 
 const JUMP_WORDS: Readonly<Record<ReplayJumpTarget['kind'], string>> = {
   'work-item': 'Work Item',
@@ -203,17 +216,19 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             {props.jumpTargets.map((target) => (
               <li key={`${target.kind}-${target.id}`}>
                 {target.frameIndex === null ? (
-                  // Nowhere to go, said in words. A pill that opens nothing looks
-                  // exactly like one that opens the right screen.
+                  // Nowhere to go, said in words -- and said only as far as it is KNOWN. A
+                  // pill that opens nothing looks exactly like one that opens the right
+                  // screen; and the resolver, not this row, decides whether the read could
+                  // tell "captured nothing" from "not among the frames read".
                   <span>
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
-                    {' '}· {REPLAY_COPY.noFrameForTarget}
+                    {' '}· {absenceSentence(target.absence, props.frames.length)}
                   </span>
                 ) : (
                   <button
                     type="button"
                     className="ls-button ls-button--ghost ls-button--sm"
-                    onClick={() => go(target.frameIndex ?? 0)}
+                    onClick={() => go(target.frameIndex)}
                   >
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
                   </button>
