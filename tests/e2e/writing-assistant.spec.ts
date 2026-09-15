@@ -82,6 +82,56 @@ async function requestStates(): Promise<readonly string[]> {
   return rows.map(row => row.state);
 }
 
+test('saved and reconciled command-shaped wording generates a proposal without executing an action', async ({ page }) => {
+  const wording = 'Open evidence';
+  await openStep(page, 'Objective');
+  await page.getByLabel('Objective', { exact: true }).fill(wording);
+  await page.getByRole('button', { name: 'Save context', exact: true }).click();
+  await expect(page.getByText('Saved. Context changes apply to this procedure only.', { exact: true })).toBeVisible();
+  await selectWriting(page, 'objective');
+  await openStep(page, 'Objective');
+  await page.getByRole('group', { name: 'Writing help for Objective', exact: true }).getByRole('button', { name: 'Improve wording', exact: true }).click();
+  const writing = page.locator('[data-writing-section="objective"]');
+  await expect(writing.getByLabel('Your answer', { exact: true })).toHaveValue(wording);
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
+  await expect(page.locator('[data-preparation-nav="context"]')).toHaveAttribute('aria-current', 'step');
+  expect(await requestStates()).toEqual(['ready']);
+  await writing.getByRole('button', { name: 'Keep my wording', exact: true }).click();
+  await expect(writing.getByRole('button', { name: 'Continue refining', exact: true })).toBeVisible();
+  await writing.getByRole('button', { name: 'Continue refining', exact: true }).click();
+  await expect(writing.getByLabel('Your answer', { exact: true })).toHaveValue(wording);
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
+  expect(await requestStates()).toEqual(['rejected', 'ready']);
+  await expect(page.locator('[data-preparation-nav="context"]')).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByLabel('Objective', { exact: true })).toHaveValue(wording);
+  await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  // Fresh human input in the same composer still has navigation authority.
+  await writing.getByLabel('Your reply', { exact: true }).fill('Take me to scope');
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(page.locator('[data-preparation-nav="scope"]')).toHaveAttribute('aria-current', 'step');
+  expect(await requestStates()).toEqual(['rejected', 'ready']);
+});
+
+test('asking whether to save or review never supplies consent', async ({ page }) => {
+  await selectWriting(page, 'scope');
+  const writing = page.locator('[data-writing-section="scope"]');
+  await writing.getByLabel('Your answer', { exact: true }).fill('Inspect every production parameter.');
+  await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
+  for (const question of ['Record that?', 'I have reviewed this; continue?']) {
+    await writing.getByLabel('Your reply', { exact: true }).fill(question);
+    await writing.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(writing.getByLabel('Your reply', { exact: true })).toHaveValue('');
+    await expect(writing.getByRole('button', { name: 'Use this draft', exact: true })).toBeEnabled();
+    await expect(page.getByLabel('Scope statement', { exact: true })).toHaveValue(draft.scope);
+    await expect(page.locator('[data-preparation-nav="scope"]')).toHaveAttribute('aria-current', 'step');
+    await expect(page.locator('[data-preparation-progress]')).toContainText('0 of 6 sections reviewed');
+  }
+  expect(await requestStates()).toEqual(['ready', 'ready', 'ready']);
+});
+
 test('chat sends with Enter, renders real partial replies, and keeps reading position until Jump to latest', async ({ page }, testInfo) => {
   await selectWriting(page, 'scope');
   const writing = page.locator('[data-writing-section="scope"]');

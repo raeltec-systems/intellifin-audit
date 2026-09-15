@@ -35,6 +35,8 @@ export interface WritingSession {
   readonly mode: WritingMode;
   readonly notes: string;
   readonly changes: string;
+  /** Only a fresh composer edit can supply a command; prefilled prose cannot. */
+  readonly commandInput: 'notes' | 'changes' | null;
   readonly proposal: string;
   readonly editing: boolean;
   readonly askingForChanges: boolean;
@@ -124,6 +126,10 @@ export function writingRevisionFor(session: WritingSession): AuthoringDraftField
     ? session.request?.revision : undefined;
 }
 
+export function writingMessageCommand(session: WritingSession, field: 'notes' | 'changes') {
+  return session.commandInput === field ? preparationCommand(session[field]) : null;
+}
+
 /** One changed word range, with identical leading/trailing words retained verbatim.
  * This is a readable comparison, never a claim that prose has equivalent meaning. */
 export function writingDifference(current: string, proposed: string) {
@@ -168,22 +174,23 @@ export function createWritingAssistantState() {
       if (!existing) put(key, {
         section, mode, notes: mode === 'improve' ? text.slice(0, WRITING_LIMITS.notes) : '', changes: '', proposal: '',
         editing: false, askingForChanges: false, request: null, basisRevision: 0, basisText: '', suggestion: null,
-        history: [], streaming: null,
+        history: [], streaming: null, commandInput: null,
         busy: null, generationUncertain: false, stale: false, notice: lengthNotice,
       });
       else if (mode === 'improve' && existing.busy === null && !existing.generationUncertain && existing.suggestion?.state !== 'pending') {
-        update(key, { mode, notes: text.slice(0, WRITING_LIMITS.notes), changes: '', askingForChanges: false, notice: lengthNotice });
+        update(key, { mode, notes: text.slice(0, WRITING_LIMITS.notes), changes: '', commandInput: null, askingForChanges: false, notice: lengthNotice });
       }
     },
     edit(key: string, field: 'notes' | 'changes' | 'proposal', value: string) {
       const session = snapshot.sessions.get(key);
       if (!session || session.busy || session.generationUncertain || session.suggestion?.state === 'pending' || snapshot.acceptanceUnknown) return;
-      update(key, { [field]: value.slice(0, field === 'proposal' ? writingProposalLimit(session.section) : WRITING_LIMITS[field]) });
+      update(key, { [field]: value.slice(0, field === 'proposal' ? writingProposalLimit(session.section) : WRITING_LIMITS[field]),
+        ...(field === 'proposal' ? {} : { commandInput: field }) });
     },
     clearCommand(key: string, field: 'notes' | 'changes', submitted: string) {
       // An action response may arrive after another section or composer was opened.
       // Clear only the exact command that was sent, never a newer rough answer.
-      if (snapshot.sessions.get(key)?.[field] === submitted) update(key, { [field]: '' });
+      if (snapshot.sessions.get(key)?.[field] === submitted) update(key, { [field]: '', commandInput: null });
     },
     editProposal(key: string) {
       const session = snapshot.sessions.get(key);
@@ -196,14 +203,14 @@ export function createWritingAssistantState() {
       // human edit up to 10,000 characters, is sent in revision.draft when the next
       // request is built. Truncating it into the 8,000-character notes field would
       // silently remove the very passage the auditor is correcting.
-      update(key, { askingForChanges: true, mode: 'revise', changes: '' });
+      update(key, { askingForChanges: true, mode: 'revise', changes: '', commandInput: null });
     },
     notice(key: string, notice: Notice) { update(key, { notice }); },
     reconcile(key: string) {
       const session = snapshot.sessions.get(key);
       if (!session || session.busy || snapshot.acceptanceUnknown) return;
       const text = session.proposal || session.notes;
-      update(key, { notes: text.slice(0, WRITING_LIMITS.notes), mode: 'draft', changes: '', suggestion: null, request: null,
+      update(key, { notes: text.slice(0, WRITING_LIMITS.notes), mode: 'draft', changes: '', commandInput: null, suggestion: null, request: null,
         proposal: '', history: [], streaming: null, editing: false, askingForChanges: false, generationUncertain: false, stale: false,
         notice: { tone: 'info', title: text.length > WRITING_LIMITS.notes
           ? 'The first 8,000 characters are in your rough notes. Review them before requesting a new draft.'
@@ -224,7 +231,7 @@ export function createWritingAssistantState() {
           clarifications: session.suggestion.clarifications,
         }].slice(-4)
         : session.history;
-      update(key, { request, busy: 'generation', generationUncertain: false, notice: null,
+      update(key, { request, busy: 'generation', generationUncertain: false, notice: null, commandInput: null,
         history, streaming: null,
         ...(retry ? {} : { basisRevision: draft.sectionPreparation?.revision ?? 0, basisText: savedWritingText(draft, request.section),
           suggestion: null, proposal: '', editing: false, askingForChanges: false, stale: false }) });
@@ -494,7 +501,8 @@ export function WritingAssistantPanel({ section, inline = false, guidedQuestion 
   const step = session.section.kind === 'objective' ? 'context' : session.section.kind === 'scope' ? 'scope' : 'instructions';
   const commandsOnly = terminal || stale;
   const message = commandsOnly ? commandMessage : correction ? session.changes : session.notes;
-  const isCommand = conversationActions !== null && preparationCommand(message) !== null;
+  const isCommand = conversationActions !== null && (commandsOnly ? preparationCommand(message)
+    : writingMessageCommand(session, correction ? 'changes' : 'notes')) !== null;
   const sendReason = conversationActions?.busy ? 'Wait for this action to finish.' : !pending && !retry && (commandsOnly || isCommand)
     ? message.trim() === '' ? 'Add your instruction first.' : undefined : writingReason;
   const proposalTitle = session.section.kind === 'instructions' ? 'Proposed test steps — not saved' : 'Proposed wording — not saved';

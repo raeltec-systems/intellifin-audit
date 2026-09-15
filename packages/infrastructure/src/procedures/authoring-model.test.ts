@@ -12,7 +12,7 @@ function response(proposal: unknown) {
 }
 describe('OpenAI writing adapter through the installed AI SDK', () => {
   it.each([
-    [401, 'AUTHENTICATION'], [403, 'ACCESS'], [404, 'ACCESS'], [400, 'REQUEST'], [422, 'REQUEST'], [429, 'RATE_LIMIT'], [503, 'UNAVAILABLE'],
+    [401, 'AUTHENTICATION'], [403, 'ACCESS'], [404, 'ACCESS'], [400, 'REQUEST'], [413, 'REQUEST'], [422, 'REQUEST'], [429, 'RATE_LIMIT'], [503, 'UNAVAILABLE'],
   ] as const)('preserves a safe category for streaming HTTP %s without a provider body or retry', async (status, code) => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'PRIVATE_PROVIDER_BODY synthetic-key', type: 'invalid_request_error', code: 'private_value' } }), {
       status, headers: { 'content-type': 'application/json' },
@@ -25,6 +25,46 @@ describe('OpenAI writing adapter through the installed AI SDK', () => {
     expect(JSON.stringify(result)).not.toContain('PRIVATE_PROVIDER_BODY');
     expect(result.message).not.toContain('synthetic-key');
     expect(fetcher).toHaveBeenCalledTimes(1); expect(seen).not.toHaveBeenCalled();
+  });
+  it.each([['rate_limit_exceeded', 'RATE_LIMIT'], ['server_error', 'UNAVAILABLE']] as const)('preserves %s reported after output starts, with no raw payload or automatic retry', async (providerCode, code) => {
+    const events = [
+      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: JSON.stringify({ explanation: 'Synthetic proposal.', proposedText: 'Inspect every record.', clarifications: [] }) },
+      { type: 'response.failed', sequence_number: 3, response: { error: { code: providerCode, message: 'PRIVATE_PROVIDER_BODY synthetic-key' } } },
+    ];
+    const fetcher = vi.fn(async () => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const failure = await new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, () => {}).catch(error => error);
+    expect(failure).toMatchObject({ name: 'AuthoringProviderError', code });
+    expect(failure).not.toHaveProperty('cause');
+    expect(JSON.stringify(failure)).not.toContain('PRIVATE_PROVIDER_BODY');
+    expect(failure.message).not.toContain('synthetic-key');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('distinguishes a failed progress callback from a confirmed provider response without retaining the callback cause', async () => {
+    const events = [
+      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: JSON.stringify({ explanation: 'Synthetic complete explanation.', proposedText: 'Inspect every record.', clarifications: [] }) },
+      { type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.completed', response: { usage: { input_tokens: 120, output_tokens: 40 } } },
+    ];
+    vi.stubGlobal('fetch', async () => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    const failure = await new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, () => { throw new Error('PRIVATE_CALLBACK_DATA'); }).catch(error => error);
+    expect(failure).toMatchObject({ name: 'AuthoringProgressError', code: 'PROGRESS_REFUSED' });
+    expect(failure).not.toHaveProperty('cause');
+    expect(failure.message).not.toContain('PRIVATE_CALLBACK_DATA');
+  });
+  it('classifies an invalid provider event without exposing its payload', async () => {
+    const events = [
+      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: { private: 'PRIVATE_INVALID_EVENT' } },
+      { type: 'response.completed', response: {} },
+    ];
+    vi.stubGlobal('fetch', async () => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }));
+    const failure = await new OpenAIProcedureAuthoringModel('synthetic-key').propose(input, () => {}).catch(error => error);
+    expect(failure).toMatchObject({ name: 'AuthoringProviderError', code: 'INVALID_RESPONSE' });
+    expect(failure).not.toHaveProperty('cause');
+    expect(JSON.stringify(failure)).not.toContain('PRIVATE_INVALID_EVENT');
   });
   it.each(['eof', 'failed', 'length'] as const)('refuses valid JSON when the provider ends with %s instead of completion', async ending => {
     const events: object[] = [

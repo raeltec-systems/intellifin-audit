@@ -76,6 +76,62 @@ Manager reviews use 14 rows for current inputs and retain the historical 12-row 
 both the domain consistency check and repository parser must accept the appropriate shape.
 Context edits use the same locked, revision-checked human authoring and plan-queue path.
 
+## 2026-09-15 — A literal in the declared shape can undo a live setting that cannot be redone
+
+`SOLARI_API_KEY` sat as a **STAGED** Railway change for two days, so the worker kept booting
+in `local` mode while the key was, by every ordinary reading, "added". Railway holds a
+variable edit in a pending patch until somebody deploys it; `list-variables` shows the LIVE
+set and says nothing about what is staged. **Read `get-staged-changes` before concluding a
+Railway variable is missing**, and before concluding one is present.
+
+- **The key lives in two unrelated places and only one of them was set.** A GitHub Actions
+  secret feeds `solari-acceptance.yml`; a Railway worker variable feeds the worker that runs
+  real audits. The acceptance workflow had passed fourteen times, which is why it read as
+  configured. Neither place implies the other.
+- **`SOLARI_RECORDING` must stay OFF, and the first version of this note argued the opposite
+  from a wrong premise.** It said a Run made without it "would have had no replay,
+  permanently", which reads as though Replay depends on it. It does not: `replay-v1.md` says
+  Replay is whole from the platform-owned asset set, and **nothing in this build reads a
+  provider recording at all** — a supplementary link to one is a later story's. So the only
+  thing turning it on buys today is an artifact no surface opens. **A provider recording is
+  not Replay, and a note that conflates them turns a metered extra into a necessity.**
+- **What it costs is an audit credential on a third party's servers, permanently.** Solari
+  records input values BY DEFAULT — the repo's own verified vendor review says so, citing
+  the provider's recording docs — the sign-in TYPES the credential into a form field
+  (`enterCredential` → `field.fill`), and `copyRecording` only DOWNLOADS what the provider
+  already holds: its scanner refuses the PLATFORM upload and cannot reach the provider's
+  copy. The SDK exposes no masking and no retention control. So every recorded sign-in puts
+  a working credential somewhere this platform cannot reach, for an unknown period. The whole
+  credential-containment contract is "the value has nowhere to land"; this hands it a
+  landing place outside the system. **Found by the Codex review on PR 35, after this session
+  had recommended the change and the owner had deployed it** — the reasoning was checked
+  against `browser-execution.ts`, `copy-recording.ts` and both contracts before it was
+  accepted, and every leg held.
+- **So the declaration is a literal `'false'`, and `preserve()` would be wrong.** `preserve()`
+  would let a dashboard `true` survive an apply, and fail-closed is the direction this value
+  needs until provider input masking and minimum retention are verified against the account.
+  The general rule still stands and simply points the other way once the cost is read
+  correctly: **a declared default whose cost is irreversible must agree with the live state**,
+  and here the irreversible cost is on the ON side. For anything else, `preserve()` is what
+  "the dashboard owns this" looks like.
+- **The worker named its mode and said nothing about recording, so the deploy could not be
+  checked.** `Agent Workspace mode selected` logged `mode` and `reason`; whether these Runs
+  are being recorded by the provider — which decides whether a credential is leaving the
+  platform — was in no stream at all, and the Railway API redacts variable values over an
+  OAuth connection. It logs `recording` beside `mode` now, `false` for the local mode
+  because a local browser really does record nothing. The allowlist's own note on `mode`
+  already gave the reason ("the two modes are not the same guarantee"); recording is the
+  stronger case, because a session already created with it on cannot be un-recorded. The
+  regression test asserts a **`false`** survives sanitization: a sanitizer filtering on
+  truthiness rather than on the key would keep `mode` and lose exactly this, and a dropped
+  key is dropped SILENTLY.
+- **`accept-deploy` timed out at 60 seconds, twice, and committed nothing either time.** A
+  timeout is not an outcome: `get-staged-changes` still read `STAGED` with the same
+  `updatedAt`, and the worker's latest deployment was unmoved. Check the patch and the
+  deployment after any deploy call that does not return, and stop after two attempts rather
+  than hammering a production commit — the same rule as reading a background wrapper's exit
+  code instead of its log.
+
 ## 2026-09-11 — Guided preparation comes into v1, and ten of its rules are already the product
 
 The owner reviewed LivePlan's documentation and adopted the pattern for the authoring surface —
@@ -2133,7 +2189,7 @@ Both are stated on the surface in words rather than shown as a dash, and both ar
 - **`SOLARI_API_KEY` absent is not a disabled duty.** Unlike `populationExecution` and `adapterExtraction`, `agentWorkspace` is never disabled: the local mode is the same code path against a locally launched Chromium, so the question is only WHICH guarantee, said once at boot by name. Provisioning still lives inside the storage branch because that is where the job handler is; the REAPER is outside it, because a deployment that lost its bucket still has workspaces to give back.
 - **`await solari.close()` is REQUIRED in Node and `browser.close()` is not enough.** The client keeps a loopback proxy server open for its connection-retry path and that handle keeps the event loop alive, so a worker that closes only its browsers never exits. Same defect class as an unread `fetch` body holding a socket (Story 1.8) and a deadline's `dispose` that cleared the timer without aborting (PR 23), so it is a shutdown step in `main.ts`, not a happy-path call.
 - **`Session.expiresAt` is a HARD provider deadline, not an idle window.** The SDK's `timeoutMs` is the CLIENT's HTTP timeout and has nothing to do with the browser; what ends a session is `expiresAt`, at which Solari auto-releases it, and nothing a Run does resets it. It is stored on the row, and a resumed claim past it treats the identity as GONE (`workspace-expired`) rather than as an outage. The frozen Run limits stay the authority for ending the RUN.
-- **`recording: true` must be passed at session creation or the replay 404s forever**, and there is no way to enable it later. That decision is taken in Story 4.1's code and Epic 5 is what reads a replay, so the flag is threaded through now (`SOLARI_RECORDING`) even though nothing reads one yet. It is OFF by default, matching the provider: recording is metered, and turning one on is a cost decision this build must not take for a deployment. The consequence is written down rather than discovered — **a Run made before it is switched on has no replay, permanently**, so Epic 5 turns it on before the Runs whose replay it wants and cannot recover the ones behind it.
+- **`[SUPERSEDED 2026-09-15 — see the `SOLARI_RECORDING` entry at the top]` `recording: true` must be passed at session creation or the replay 404s forever**, and there is no way to enable it later. That decision is taken in Story 4.1's code and Epic 5 is what reads a replay, so the flag is threaded through now (`SOLARI_RECORDING`) even though nothing reads one yet. It is OFF by default, matching the provider: recording is metered, and turning one on is a cost decision this build must not take for a deployment. The consequence is written down rather than discovered — **a Run made before it is switched on has no replay, permanently**, so Epic 5 turns it on before the Runs whose replay it wants and cannot recover the ones behind it. — **Two things in this were wrong and a later session acted on both.** The replay that 404s is the PROVIDER's, not the product's: Epic 5 shipped Replay reading the platform-owned asset set and `replay-v1.md` says it is whole without a provider recording, so "Epic 5 turns it on before the Runs whose replay it wants" describes a dependency that never existed. And the default is not a cost choice: Solari records input values by default and a sign-in types a credential into a form field, so ON puts an audit credential on a third party's servers permanently. It stays OFF for that reason.
 - **`proxy`, `stealth`, `captcha`, `webBotAuth` and profiles are OFF and named rather than defaulted.** `proxy: "smart"` runs an escalation ladder and swaps the egress in place when it detects a block page — the opposite of confining a Run to its frozen origins. Naming no profile is what makes every session start clean, which is exactly what per-Run isolation wants; a later "resume where the agent left off" story would be choosing to weaken it.
 - **`SolariErrorCode` is five codes and they are not one class**, and it is widened with `| string`. `ConcurrencyLimitExceeded` → `capacity` (retried), `BrowserUnhealthy` → `unavailable` (retried), `FeatureRequiresPlan`/`PlanLimitExceeded` → `entitlement` (terminal), and **an unrecognised code → `refused`, terminal**: calling an unknown reason transient would retry it four times on the strength of not knowing what it is. Folding a refusal into `unavailable` would leave the only durable record saying something was unreachable — the `credential-unresolved` rule from Story 3.3.
 - **`attach` returning `null` is expected, not exceptional, and the stale identity is RELEASED before a replacement is made.** A browser does not survive the process that connected to it: Solari's `wsEndpoint` is loopback-wrapped by the client, so it means nothing outside the process that created it, and the SDK has no `sessions.get`. So reattach across a worker RESTART is impossible with `@solarisdk/browser@0.1.3` and the I/O matrix's "reattach impossible" row is the honest path — release, recreate, record `workspace-reattach-failed`. Within one process a lost claim really does reattach.
@@ -2917,3 +2973,35 @@ refusals must not strand a user in lost-response recovery. Test real SDK error
 transport, receipt persistence/replay and manual editing separately from live model
 access. A configured Railway variable name and green synthetic CI prove neither
 provider access nor resolution of an opaque production incident.
+
+## 2026-09-15 — Chat consent and trusted authentication ingress
+
+Question marks retain their meaning before command normalization: a command-shaped
+question grants no save, selection, review, dismissal or navigation authority. The
+writing composer tracks fresh human edits separately from prefilled saved/proposed
+prose; opening Improve wording, reconciling a proposal and submitting generation
+clear command eligibility. The existing writers still own all mutations and guards.
+
+Railway's public HTTP edge supplies `X-Real-IP`. Web deployments explicitly set
+`AUTH_TRUSTED_IP_HEADER=x-real-ip`; Better Auth reads only that header, with no
+fallback to a caller-controlled forwarded chain. Keep the origin behind the edge;
+another hosting/proxy arrangement needs its own verified ingress contract. The
+database-backed 10-per-minute sign-in limit and IPv6 normalization remain in force.
+The identity integration exercises separate clients, spoofed forwarding headers
+and shared counters across authentication instances.
+
+Builder context-field assertions scope to `.ls-template-fact`, because the mounted
+chat composer is another textarea and is not a fifth saved context field.
+
+## 2026-09-15 — Authoring errors after streaming begins
+
+The installed AI SDK reports post-output provider failures as `StreamProviderError`,
+not `APICallError`. Classify both by their HTTP-equivalent status, never by copying
+provider error text or arbitrary codes. A 429/503 after valid partial JSON remains
+a failed receipt with no applicable proposal. Keep the `finishReason === 'stop'`
+guard; valid JSON alone is insufficient. Incomplete and invalid output have distinct
+closed categories. Local progress/authorization failures use `AuthoringProgressError`
+and the `progress` diagnostic stage, without retaining their cause.
+
+These corrections repair reproduced diagnostic defects. They do not retrospectively
+identify the production `UNCONFIRMED` incident or prove a live provider recovery.

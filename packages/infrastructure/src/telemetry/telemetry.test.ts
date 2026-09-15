@@ -59,6 +59,29 @@ describe('telemetry sanitizer', () => {
     });
   });
 
+  it('keeps the Agent Workspace guarantee fields, including a FALSE recording flag', () => {
+    /**
+     * `mode` and `recording` are the two facts that say what guarantee a deployment is
+     * running under, and `recording` is the one that cannot be corrected: it is fixed at
+     * `sessions.create()`, and a session recorded with a credential typed into it cannot
+     * be un-recorded. Dropped here, the line would say Solari and be silent about that.
+     *
+     * The value under test is `false` deliberately, and not only for symmetry: `false` is
+     * the SAFE state, so a sanitizer that filtered on truthiness rather than on the key
+     * would keep `mode`, lose exactly this, and leave the stream unable to show the one
+     * value an operator needs to confirm.
+     */
+    expect(sanitizeTelemetryFields({ mode: 'solari', reason: 'x', recording: false })).toEqual({
+      mode: 'solari',
+      reason: 'x',
+      recording: false,
+    });
+    expect(sanitizeTelemetryFields({ mode: 'solari', recording: true })).toEqual({
+      mode: 'solari',
+      recording: true,
+    });
+  });
+
   it('writes only safe Pino fields and sends only safe fields to the Sentry sink', () => {
     const chunks: string[] = [];
     const captures: Array<{ message: string; fields: unknown }> = [];

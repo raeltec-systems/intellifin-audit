@@ -8,10 +8,10 @@ import type { ProceduresUnitOfWorkContext, ProcedureVersionRecord } from './port
 import { updateContextDraft } from './update-context-draft.js';
 import { updatePopulationDraft } from './update-population-draft.js';
 import { updateTargetDraft } from './update-target-draft.js';
-import { AUTHORING_FAILURE_MESSAGES, AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
+import { AUTHORING_FAILURE_MESSAGES, AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, AuthoringProgressError, isAuthoringProgress, type AuthoringProgress, type AcceptAuthoringFields, type AuthoringDraftFields, type AuthoringProposal, type AuthoringRequestRecord, type AuthoringRevisionContext, type AuthoringSection, type AuthoringSuggestionView, type ProcedureAuthoringModel, type RejectAuthoringFields } from './authoring-ports.js';
 
 type Actor = { readonly session: SessionSnapshot; readonly correlationId: string };
-export type AuthoringFailureStage = 'authorize' | 'prepare' | 'provider' | 'finalize';
+export type AuthoringFailureStage = 'authorize' | 'prepare' | 'provider' | 'progress' | 'finalize';
 export interface AuthoringDependencies extends ProcedureDependencies {
   readonly clock: Clock; readonly model: ProcedureAuthoringModel | null;
   /** Server diagnostics only. The adapter must minimise errors before logging them. */
@@ -201,7 +201,7 @@ export async function generateAuthoringSuggestion(deps: AuthoringDependencies, i
         || response.proposal.clarifications.length > 1 || hasCredentialMaterial(response.proposal, prepared.credentialReferences)) throw new Error('Invalid authoring response');
       complete = { ...complete, ...response.proposal, state: 'ready' };
     } catch (error) {
-      observeFailure(deps, stage, error);
+      observeFailure(deps, error instanceof AuthoringProgressError ? 'progress' : stage, error);
       complete = { ...complete, state: 'failed', message: AUTHORING_FAILURE_MESSAGES[error instanceof AuthoringProviderError ? error.code : 'UNCONFIRMED'] };
     }
     stage = 'finalize';

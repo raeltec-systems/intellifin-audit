@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { preparationCommand, preparationWritingCommand, resolvePreparationChoice } from './preparation-commands';
 
 describe('explicit human preparation commands', () => {
+  it.each(['Record that?', 'Save this draft?!', 'Yes, use that ?', 'Keep my wording?',
+    'Select Baseline?', 'Yes, select that?', 'Choose LoanCore？', 'Record that؟',
+    'I have reviewed this; continue?', 'Open evidence?', 'Please save this draft? Please.'])('keeps a command-shaped question out of every action: %s', text => {
+    expect(preparationCommand(text)).toBeNull();
+    expect(preparationWritingCommand(text, [{ id: 'baseline', label: 'Baseline', description: 'Registered source.' }])).toBeNull();
+  });
   it.each(['Record that', 'Please save this draft.', 'Yes, use that', 'Accept the proposal exactly as shown', 'Save this wording, please'])('recognises explicit acceptance: %s', text => {
     expect(preparationCommand(text)).toEqual({ kind: 'save' });
   });

@@ -7,7 +7,7 @@ import { draftContext, refreshPreparation } from '@intellifin/domain';
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import {
   createWritingAssistantState, isWritingResponse, savedWritingText, writingDifference, writingSectionKey, writingSuggestionIsStale,
-  PreparationAssistant, WritingAssistantPanel, WritingAssistantProvider, WritingTools, writingRevisionFor,
+  PreparationAssistant, WritingAssistantPanel, WritingAssistantProvider, WritingTools, writingRevisionFor, writingMessageCommand,
   type AuthoringDraftFields, type AuthoringSection, type AuthoringSuggestionView, type WritingAssistantActions,
 } from './WritingAssistant';
 import { BuilderSubmissionProvider } from './use-section';
@@ -42,6 +42,26 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it.each(['Open evidence', 'Record that', 'Select Baseline', 'I have reviewed this; continue'])('never executes prefilled saved or provider prose: %s', text => {
+    const machine = createWritingAssistantState(), draft = view({ scope: text }), request = fields();
+    machine.open(scope, 'improve', text);
+    expect(machine.snapshot.sessions.get('scope')?.notes).toBe(text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).toBeNull();
+    // A later direct human reply is eligible, but reopening saved content discards
+    // that eligibility even when the saved words happen to be identical.
+    machine.edit('scope', 'notes', text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).not.toBeNull();
+    machine.open(scope, 'improve', text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).toBeNull();
+    machine.begin(request, draft);
+    machine.receive(request, response(request, draft, { proposedText: text }), draft);
+    machine.edit('scope', 'changes', 'Record that');
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'changes')).toEqual({ kind: 'save' });
+    machine.reconcile('scope');
+    expect(machine.snapshot.sessions.get('scope')?.notes).toBe(text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).toBeNull();
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'changes')).toBeNull();
+  });
   it('a delayed command acknowledgement cannot clear a newer correction or another section’s rough notes', () => {
     const { machine } = ready();
     machine.edit('scope', 'changes', 'Record that');

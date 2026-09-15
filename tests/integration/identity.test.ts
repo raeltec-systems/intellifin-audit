@@ -402,6 +402,23 @@ describe.skipIf(!databaseUrl)('the deployed Better Auth instance', () => {
     await expect(findUserIdByEmail(db, email)).resolves.toBeNull();
   });
 
+  it('limits each trusted edge client independently across auth instances and ignores spoofed forwarding headers', async () => {
+    const config = { secret: SECRET, baseUrl: BASE_URL, trustedIpHeader: 'x-real-ip' as const };
+    const first = createAuth(db, config), second = createAuth(db, config);
+    const attempt = (instance: Auth, ip: string, forwarded: string) => instance.handler(new Request(`${BASE_URL}/api/auth/sign-in/email`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-real-ip': ip, 'x-forwarded-for': forwarded },
+      body: JSON.stringify({ email: 'missing-edge-client@synthetic.invalid', password: PASSWORD }),
+    }));
+    for (let index = 0; index < 10; index += 1) {
+      expect((await attempt(first, '192.0.2.41', `198.51.100.${index + 1}`)).status).toBe(401);
+    }
+    // Another process cannot reset the bucket. Changing an untrusted header cannot
+    // rotate it either, while a different edge-reported client retains its attempts.
+    expect((await attempt(second, '192.0.2.41', '203.0.113.19')).status).toBe(429);
+    expect((await attempt(second, '192.0.2.42', '203.0.113.19')).status).toBe(401);
+    expect((await attempt(second, '::ffff:192.0.2.41', '203.0.113.20')).status).toBe(429);
+  });
+
   it('has no role field on its user model, so a role can never come from the session', async () => {
     const auth = createAuth(db, { secret: SECRET, baseUrl: BASE_URL });
     const columns = await sql<{ column_name: string }[]>`

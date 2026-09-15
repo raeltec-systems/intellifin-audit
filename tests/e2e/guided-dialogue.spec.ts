@@ -80,6 +80,11 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await expect(context.getByRole('button', { name: 'Help Me Write', exact: true })).toBeHidden();
   await attachAuthoringScreenshot(page, testInfo, 'fresh-dialogue-control');
   const controlChat = context.locator('[data-preparation-action-panel="context"]');
+  await controlChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue?');
+  await controlChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(controlChat.getByText('I can select a named source or system, record your section review, or take you to another section. Use Scope or Audit steps to draft and refine wording with me.', { exact: true })).toBeVisible();
+  expect(sectionReview((await saved())!, 'context')).toBeNull();
+  await expect(page.locator('[data-preparation-nav="context"]')).toHaveAttribute('aria-current', 'step');
   await controlChat.getByLabel('Your instruction', { exact: true }).fill('I’ve reviewed this; continue');
   await controlChat.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('[data-preparation-nav="scope"]')).toHaveAttribute('aria-current', 'step');
@@ -136,6 +141,10 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
   await evidenceChat.getByLabel('Your instruction', { exact: true }).fill(`Tell me about ${sourceId}`);
   await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(evidenceChat.locator('[data-preparation-action-turn]').last()).toContainText('has not been selected');
+  expect((await saved())!.sourceSnapshot).toBeNull();
+  await evidenceChat.getByLabel('Your instruction', { exact: true }).fill('Yes, select that?');
+  await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(evidenceChat.getByText('I can select a named source or system, record your section review, or take you to another section. Use Scope or Audit steps to draft and refine wording with me.', { exact: true })).toBeVisible();
   expect((await saved())!.sourceSnapshot).toBeNull();
   await evidenceChat.getByLabel('Your instruction', { exact: true }).fill('Yes, select that');
   await evidenceChat.getByRole('button', { name: 'Send message', exact: true }).click();

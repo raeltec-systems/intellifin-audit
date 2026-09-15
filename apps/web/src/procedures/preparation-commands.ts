@@ -28,6 +28,9 @@ const destinations: Readonly<Record<string, PreparationDestination>> = {
  * full-message matching: an embedded instruction, condition or negation cannot grant
  * consent. Free-form revisions still go to the bounded writing operation. */
 export function preparationCommand(message: string): PreparationCommand | null {
+  // Punctuation is meaningful consent: “Record that?” asks a question. Keep this
+  // check before catalogue/name normalization, which deliberately folds punctuation.
+  if (/[?？؟]/u.test(message)) return null;
   if (message.length > 8_000) return { kind: 'clarify' };
   const text = commandWords(message).replace(/^(?:yes[,;]? |okay[,;]? |ok[,;]? )/, '').replace(/^please /, '').replace(/[,;]? please$/, '');
   if (/^(?:save|record|accept|use) (?:that|this|it|the proposal|this proposal|that proposal|this draft|that draft|the draft|this wording|that wording|these steps|the proposed wording)(?: (?:as is|as it is|exactly as shown))?$/.test(text)) return { kind: 'save' };
