@@ -467,10 +467,15 @@ test('an auditor prepares and accepts a draft, revises it after manager review, 
   /* ------------------------------------------------------- 5. Schedule ------ */
   // P-2 names no Schedule, so it starts unset — and activation requires one.
   await step(page, 'Schedule', async () => {
+    // P-2 names no Schedule, so the time starts EMPTY. Choosing Once generates 00:00 — a
+    // one-time Procedure's time starts nothing — and leaving Once takes that generated
+    // time away again, so a recurring frequency never inherits a midnight nobody chose.
+    await page.getByLabel('Frequency', { exact: true }).selectOption('once');
+    await expect(page.getByLabel('Start time (UTC)')).toHaveValue('00:00');
     await page.getByLabel('Frequency', { exact: true }).selectOption('monthly');
-    // P-1 arrives with 00:00 already here because its Template pins a Schedule. P-2 names
-    // none, so the field is EMPTY and the save refuses until it is filled — the one step
-    // on this Template a person has to discover from an error message.
+    await expect(page.getByLabel('Start time (UTC)')).toHaveValue('');
+    // For a recurring Schedule the time is the person's to choose, so P-2's save refuses
+    // until it is filled — the one step on this Template discovered from an error message.
     await page.getByLabel('Start time (UTC)').fill('00:00');
   }, async () => {
     await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();

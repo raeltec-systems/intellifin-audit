@@ -8,7 +8,7 @@ import type { ReviewSectionFields, ContextDraftFields, PopulationDraftFields, Re
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
-import { initiateRunHref, NO_AUTOMATIC_RUNS_SENTENCE, RUN_STARTS_ON_CONFIRM_SENTENCE } from '../design/run-start-words';
+import { initiateRunHref, NO_AUTOMATIC_RUNS_SENTENCE, RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../design/run-start-words';
 import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
 import { ReadinessPanel } from './ReadinessPanel';
 import { TemplateContextForm } from './TemplateContextForm';
@@ -327,8 +327,11 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     </div>
     <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
     {/* Where a Run is started, said where the Builder ends: nothing before this step names
-        the Initiate Run box, and the Schedule step reads as though the time were the start. */}
-    <p className="ls-caption">After an Audit Manager approves this version, <Link href={initiateRunHref(draft.procedureId)}>start a Run from the Procedure page</Link>. {RUN_STARTS_ON_CONFIRM_SENTENCE} {NO_AUTOMATIC_RUNS_SENTENCE}</p>
+        the Initiate Run box, and the Schedule step reads as though the time were the start.
+        "Once this version is Active", not "after approval": a configuration-changing revision
+        is APPROVED pending a Regression Run, and Initiate Run selects the ACTIVE owner, so
+        "after approval" would send an auditor to run the predecessor. */}
+    <p className="ls-caption">Once this version is Active, <Link href={initiateRunHref(draft.procedureId)}>start a Run from the Procedure page</Link>: its version card will offer “{START_RUN_LINK_LABEL}”. Approval by an Audit Manager makes it Active, unless a revision first needs a Regression Run. {RUN_STARTS_ON_CONFIRM_SENTENCE} {NO_AUTOMATIC_RUNS_SENTENCE}</p>
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
 
     </>} />

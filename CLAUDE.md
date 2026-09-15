@@ -14,7 +14,10 @@ already does it and read the words around it.**
   `HH:MM` — because a one-time Schedule's time is kept for the record and starts nothing, so
   the surface may supply it. Daily, weekly and monthly are left empty: there the time will
   mean something once a scheduler exists, and a default nobody chose would be the instant it
-  fires at. A time the person typed is never replaced.
+  fires at. A time the person typed is never replaced — and a GENERATED midnight leaves with
+  Once: `scheduleEdit` carries a `generated` flag, typing clears it, a save makes the value
+  the record, and switching to a recurring frequency clears a time the flag still marks.
+  Codex found the first version letting Daily inherit the midnight Once had generated.
 - **The words live in `apps/web/src/design/run-start-words.ts`, and four surfaces read them.**
   Not `copy.ts`: those are quotations from the UX contract, these are the platform's own
   sentences. `run-start-words.test.ts` refuses a retyped copy on any of the four and pins the
@@ -26,6 +29,10 @@ already does it and read the words around it.**
   The card and the box share the Procedure page, so the box takes a `key` from the suggestion —
   a mounted client form keeps its state and its request token until a full navigation, and a
   link on the same page would otherwise change the URL and nothing else.
+- **The Review step says "once this version is Active", not "after approval".** A
+  configuration-changing revision is APPROVED pending a Regression Run, and Initiate Run
+  selects the ACTIVE owner, so "after approval" would send an auditor to run the
+  predecessor. Codex again; the sentence now names the card that offers the Run.
 - **`immutable-versions.spec.ts` pins "No automatic Schedule boundary" on the once card**, so
   the rewritten sentence keeps that phrase rather than the spec learning new words for the
   same fact. And `getByRole('link')` excludes hidden elements: the guided outline hides
