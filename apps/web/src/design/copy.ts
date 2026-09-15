@@ -623,13 +623,15 @@ export const REPLAY_COPY = {
   noAction: 'No Tool Action was recorded for this frame.',
   noJumpTargets: 'This Run recorded no Work Items, Exceptions or Escalations to jump to.',
   noFrameForTarget: 'no frame was captured here',
+  /** An Escalation raised before the first frame: decidable whatever the read's bound. */
+  noFrameBeforeTarget: 'no frame was captured before it was raised',
   /**
-   * The other reason a target has no frame to open: the frame read BOUND, and this
-   * target's frames lie past it. Saying "no frame was captured" there is a definite
-   * false statement about frames the database holds -- the story's own rule that a pill
-   * which opens nothing must say so, inverted.
+   * The frame read BOUND, and none of the frames read belongs to this target. Whether one
+   * exists past the bound is not known, so this claims neither that a frame exists nor that
+   * none was captured. A first version said "its frame is beyond the {shown} shown", which
+   * was a definite false statement about a Work Item that captured nothing in a long Run.
    */
-  frameBeyondRead: 'its frame is beyond the {shown} shown',
+  frameNotRead: 'not among the {shown} frames shown',
   observationsThrough: '{count} Observations had been registered when this frame was captured.',
   bounded: 'Showing the first {shown} of {total} frames.',
   notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',

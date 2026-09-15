@@ -163,6 +163,7 @@ export default async function RunReplayPage({
         stageNote={REPLAY_COPY.noFrames}
         jumpTargets={replayJumpTargets({
           frames: resolveFrameWorkItems(frames.rows, timeline.stepExecutions.rows),
+          framesTotal: frames.total,
           workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName })),
           exceptions: exceptions.rows.map((row) => ({
             exceptionId: row.exceptionId,

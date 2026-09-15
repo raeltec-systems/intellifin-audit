@@ -49,11 +49,24 @@ the other ten ran now, and the report's whole Medium list — marked `[unverifie
   `REPLAY_FRAME_LIMIT`, printed `digest: null` under a sentence promising the digest, and matched
   Work Item jumps on nullable `run_tool_action.work_item_id` while the same page resolved the
   system name through the Step Execution. `resolveFrameWorkItems` is the one rule; the adapter
-  digest comes from the Evidence read the page already had; a null-frame row says which of two
-  things is true.
+  digest comes from the Evidence read the page already had; a null-frame row says which of
+  THREE things is true, decided by the resolver — see the PR 36 note below.
 - **`docs/contracts/live-view-v1.md` said three gate reasons and that `runEnded` outranks the
   others; the code has four and `viewport` outranks everything.** A contract the story itself
   rewrote, out of date by the story's second commit. Corrected, with the priority stated.
+- **Codex found two things on PR 36, both in code this round wrote, and both the same shape: a
+  fix that stopped one line early.** The `matchMedia` guard that replaced a throw RETURNED before
+  subscribing on a Safari 13 list (`addListener` only), so a rotation across the 1024px floor
+  left the gate at its mount-time verdict; `subscribeViewport` in `live-status.ts` picks the API
+  the list has and is unit-tested over all three shapes, because that branch is one no browser
+  here can reach. And the Replay null-frame sentence INFERRED "beyond the frames shown" from the
+  global frame count — false for a Work Item that captured nothing in a long Run, and for an
+  Escalation raised before the first frame, which is decidable under any bound because the read
+  holds the EARLIEST frames. The resolver carries the REASON now (`none-captured` /
+  `none-before` / `not-read`) as a discriminated union, so a null index with no reason, or a
+  reason beside a frame, does not compile; the bounded sentence claims neither that a frame
+  exists nor that none was captured. **A sentence derived from a count is a guess wearing the
+  count's confidence. Carry the reason from where it is known.**
 
 Four mechanical notes:
 

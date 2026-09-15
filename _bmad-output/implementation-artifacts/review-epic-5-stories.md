@@ -88,10 +88,19 @@ the sibling's defensive shape and said to be that.
 | # | Finding | Fix | Proof |
 |---|---|---|---|
 | F13 | **The jump list printed `choose-candidate` at an auditor**, in a monospace span — the plain-words defect reintroduced on a new surface. `replay.spec.ts:308,361` asserted the key, pinning it. Three layers found this independently. | `ESCALATION_KIND_WORDS` in `plain-words.ts` (typed against the application union; `EscalationPanel` drops its private copy); `escalationKindWord` is `Object.hasOwn`-guarded because the stored kind arrives typed `string` (seventh occurrence). Spec asserts the words. | `plain-words.test.ts`, `replay.test.ts`. Mutations (key printed; guard dropped): killed. |
-| F14 | **"No frame was captured here" for frames the database holds** past `REPLAY_FRAME_LIMIT` — the story's own rule inverted. | A null-frame row says which of two things is true: `frameBeyondRead` when the read bound, `noFrameForTarget` otherwise. | `ReplayViewer.test.ts` two cases. |
+| F14 | **"No frame was captured here" for frames the database holds** past `REPLAY_FRAME_LIMIT` — the story's own rule inverted. | A null-frame row says which of THREE things is true, decided by the resolver and never inferred from a count (see F19): `none-captured` under a complete read, `none-before` for an Escalation raised before the first frame, `not-read` under a bounded read — the last claiming neither that a frame exists nor that none was captured. | `replay.test.ts` four cases, `ReplayViewer.test.ts` three; mutations M2–M4 in Verification. |
 | F15 | **Work Item and Exception jumps matched on nullable `run_tool_action.work_item_id`** while the same page resolved the system name through the Step Execution. | `resolveFrameWorkItems` in `replay.ts`: one rule, applied before the jump list. | `replay.test.ts` two cases. |
 | F16 | **Adapter Session Step rows printed `digest: null`** — "No artifact registered." under a sentence promising the digest, over Evidence the fixture seeds. | `page.tsx` reads `readEvidenceItems` (already on the repository) and maps evidence id → digest. | `replay.spec.ts` asserts a 64-hex digest and the absence of the false sentence (see Verification). |
 | F17 | **`replay.spec.ts` raced its own worker.** It seeds a bare `RUNNING` Run while the worker it spawns for frame grants is up; the population recovery sweep (every 5 s) claimed one as abandoned, reserved a REQUIRED artifact, and generation 21 refused the seal — the Story 5.3 trap, in a spec that copied `live-view.spec.ts`'s columns and not its checkpoints. Found by the run that was meant to observe F16. | The Run row, a `POPULATION_READY` population claim and an `EXECUTING` agent claim commit in ONE transaction (all four sweep predicates read against); the agent phase is set `TERMINAL` after the terminal transition; teardown deletes the population rows a lost race leaves. | Proven by the rows: `population_execution` at `RETRY`, claimed 5 s after the insert, and a `RESERVED` required `population_evidence`. Re-run green (see Verification). |
+
+### After the PR opened — Codex's two findings, both real, both in code this PR wrote
+
+Both have the same shape: a fix that stopped one line early.
+
+| # | Finding | Fix | Proof |
+|---|---|---|---|
+| F18 | **The `matchMedia` guard returned BEFORE subscribing on a Safari 13 list** (`addListener` only, no `addEventListener`), so a tablet rotated across the 1024px floor kept its mount-time verdict and the supervision controls stayed live below the documented read-only floor. The guard this PR added to replace a throw, one line too early. | `subscribeViewport` in `live-status.ts`: `addEventListener` where the list has it, the legacy pair where only that exists, a list with neither observed once and never thrown on; `useDesktopViewport` calls it. Pure, so the branch no browser here can reach is unit-tested. | `live-status.test.ts`, three list shapes. **M1** deletes the legacy branch: the Safari 13 case fails. |
+| F19 | **"Its frame is beyond the frames shown" was INFERRED from the global frame count.** Under a bounded read a Work Item that captured nothing was said to have a frame the page had not read, and an Escalation raised before the first frame — decidable under any bound, because the read holds the EARLIEST frames — got the same false sentence. F14's fix, one inference too far. | The resolver carries the reason: `ReplayJumpTarget` is a discriminated union (a frame with no reason, or a reason with no frame; a null index with no reason does not compile), `replayJumpTargets` takes `framesTotal` and decides `none-captured` / `none-before` / `not-read`, and the viewer's `absenceSentence` is exhaustive over that vocabulary. The bounded sentence is `not among the {shown} frames shown`. | `replay.test.ts` four cases, `ReplayViewer.test.ts` three. **M2** makes every null `not-read`: the complete-read case fails. **M3** infers the Escalation from the bound: the "even when the read bound" case fails. **M4** renders every reason as "no frame was captured here": two viewer cases fail. |
 
 ---
 
@@ -169,7 +178,7 @@ as they were run — a claim about a suite this environment did not run is not m
 | `pnpm -r typecheck` | exit 0 (every workspace package) |
 | `tsc -p tsconfig.root-tests.json` (root tests, after the spec change) | exit 0 |
 | `pnpm boundaries` | exit 0 |
-| `pnpm test` (Vitest, no database) | **206 files, 4201 of 4201 passed**, exit 0 |
+| `pnpm test` (Vitest, no database) | **206 files, 4201 of 4201 passed**, exit 0; re-run after F18/F19: **4209 of 4209**, exit 0 |
 | `pnpm test:integration` | **not run here.** This round adds no repository, migration or worker code — `countOpenFor` already existed for the bell — so the integration suite is CI's to run on the PR. Stated, not assumed. |
 | Full browser suite | **not run here**; the specs over every touched surface were (below). CI runs the full suite. |
 
@@ -185,6 +194,10 @@ as they were run — a claim about a suite this environment did not run is not m
 | F7 `fillTemplate` | chained `String.replace` restored | KILLED (`$&` case) |
 | F6 `resumeRun` expired refusal | old "the Run is Inconclusive" sentence restored | KILLED |
 | F9 inbox bound | `openTotal > open.length` short-circuited to `false` | KILLED (the `1 of 137` case) |
+| F18 Safari 13 fallback | legacy `addListener` branch deleted | KILLED |
+| F19 reason carried | every null index decided `not-read` | KILLED (complete-read case) |
+| F19 reason carried | the Escalation's reason inferred from the bound | KILLED (bounded Escalation case) |
+| F19 sentence | every reason rendered as "no frame was captured here" | KILLED (two viewer cases) |
 
 **Browser, Playwright against the real web server, worker, Northstar and PostgreSQL 18 at generation 49:**
 

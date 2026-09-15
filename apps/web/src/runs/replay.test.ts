@@ -81,6 +81,7 @@ describe('where a Replay jump lands', () => {
 
 describe('the Replay jump list', () => {
   const targets = replayJumpTargets({
+    framesTotal: FRAMES.length,
     frames: FRAMES,
     workItems: [
       { workItemId: WORK_A, displayName: 'Leaver 1' },
@@ -111,6 +112,39 @@ describe('the Replay jump list', () => {
 
   it('labels an Exception by the record it was raised against', () => {
     expect(targets.find((target) => target.kind === 'exception')?.label).toBe('E-000105');
+  });
+});
+
+describe('why a jump target has no frame, said only as far as the read knows (PR 36 review)', () => {
+  const WORK_C = '019823ab-0000-7000-8000-0000000000c1';
+  const targets = (framesTotal: number) => replayJumpTargets({
+    frames: FRAMES,
+    framesTotal,
+    workItems: [{ workItemId: WORK_A, displayName: 'Leaver 1' }, { workItemId: WORK_C, displayName: 'Leaver 3' }],
+    exceptions: [],
+    waits: [wait({ waitId: 'w-early', openedAt: '2026-09-10T08:59:00.000Z' })],
+  });
+  const of = (framesTotal: number, id: string) => targets(framesTotal).find((target) => target.id === id)!;
+
+  it('a target that lands on a frame carries no reason', () => {
+    expect(of(FRAMES.length, WORK_A)).toMatchObject({ frameIndex: 0, absence: null });
+  });
+
+  it('a Work Item with no frame among a COMPLETE read captured none', () => {
+    expect(of(FRAMES.length, WORK_C)).toMatchObject({ frameIndex: null, absence: 'none-captured' });
+  });
+
+  it('a Work Item with no frame among a BOUNDED read is only "not read": the page cannot know more', () => {
+    // Its frames may all lie past the bound, or it may have captured nothing; the read holds
+    // the earliest frames and cannot tell. Inferring "beyond the read" here was the defect.
+    expect(of(FRAMES.length + 1, WORK_C)).toMatchObject({ frameIndex: null, absence: 'not-read' });
+  });
+
+  it('an Escalation raised before the first frame has none before it, even when the read bound', () => {
+    // The frames read are the EARLIEST, so none of them preceding the instant means none
+    // at all does -- decidable under any bound, and never "not read".
+    expect(of(FRAMES.length, 'w-early')).toMatchObject({ frameIndex: null, absence: 'none-before' });
+    expect(of(FRAMES.length + 1, 'w-early')).toMatchObject({ frameIndex: null, absence: 'none-before' });
   });
 });
 
@@ -155,6 +189,7 @@ describe('what a Replay jump row calls an Escalation', () => {
     // auditor asked -- the defect the plain-words pass removed from the authoring screens
     // and Replay reintroduced on a new surface.
     const [target] = replayJumpTargets({
+    framesTotal: FRAMES.length,
       frames: FRAMES,
       workItems: [],
       exceptions: [],
@@ -166,6 +201,7 @@ describe('what a Replay jump row calls an Escalation', () => {
 
   it('names an unrecognised stored kind rather than printing it', () => {
     const [target] = replayJumpTargets({
+    framesTotal: FRAMES.length,
       frames: FRAMES,
       workItems: [],
       exceptions: [],
