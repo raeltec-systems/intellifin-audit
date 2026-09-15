@@ -1,5 +1,6 @@
 import type { ProcedureVersionView } from '@intellifin/application';
 import Link from 'next/link';
+import { initiateRunHref, NO_AUTOMATIC_RUNS_SENTENCE, RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../design/run-start-words';
 
 export function VersionStatus({ version, successorNumber }: { version: ProcedureVersionView; successorNumber?: number | null }): React.JSX.Element {
   const lastRejection = [...version.decisions ?? []].reverse().find(decision => decision.decision === 'reject');
@@ -10,9 +11,12 @@ export function VersionStatus({ version, successorNumber }: { version: Procedure
     {version.state === 'REJECTED' && <p>Rejected: {lastRejection?.rationale ?? 'See the saved decision.'} Edit returns this version to Draft.</p>}
     {version.state === 'APPROVED' && <p>{version.lifecycle?.requiresRegression ? 'Approved; a Regression Run is required before activation. No handover date has been set.' : 'Approved; activation has not been recorded.'}</p>}
     {version.state === 'ACTIVE' && <>
-      <p>Active. Saved Schedule: {version.schedule?.frequency} at {version.schedule?.startTime} UTC.</p>
-      {version.schedule?.frequency === 'once' ? <p>No automatic Schedule boundary. The authored Period {version.period?.from} to {version.period?.to} is preserved for later manual initiation.</p> : <p>First period start after activation: {version.lifecycle?.handoverAt ?? 'Not recorded'}.</p>}
-      <p><Link href={`/procedures/${version.procedureId}#initiate-run`}>Choose a period to initiate a Run</Link>. The period selects its owning Active version. No automatic Run is scheduled.</p>
+      {version.schedule?.frequency === 'once'
+        ? <p>Active. No automatic Schedule boundary: a one-time Procedure runs when you start it.{version.period ? ` The saved dates are ${version.period.from} to ${version.period.to}.` : ''}</p>
+        : <><p>Active. Saved Schedule: {version.schedule?.frequency} at {version.schedule?.startTime} UTC.</p><p>First period start after activation: {version.lifecycle?.handoverAt ?? 'Not recorded'}.</p></>}
+      {/* A one-time version carries its saved dates, so the Initiate Run box opens filled in
+          and the auditor only confirms; a scheduled one chooses the period it wants to test. */}
+      <p><Link href={initiateRunHref(version.procedureId, version.schedule?.frequency === 'once' ? version.period ?? undefined : undefined)}>{START_RUN_LINK_LABEL}</Link>. {RUN_STARTS_ON_CONFIRM_SENTENCE} {NO_AUTOMATIC_RUNS_SENTENCE}</p>
     </>}
     {version.state === 'RETIRED' && <p>Retired; this version is read-only.{successorNumber === undefined ? ' Successor history has not been loaded.' : successorNumber === null ? ' No successor is recorded.' : ` Superseded by v${successorNumber}.`}</p>}
   </div>;

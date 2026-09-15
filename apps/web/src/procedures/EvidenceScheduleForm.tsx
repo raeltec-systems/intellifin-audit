@@ -20,6 +20,8 @@ import type { ProcedureVersionView, UpdateEvidenceDraftResult } from '@intellifi
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
+import { scheduleEdit } from './schedule-edit';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 
@@ -368,6 +370,10 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
   const { frequency, startTime } = section.value;
   const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [touched, setTouched] = useState(false);
+  // Whether the start time is one `scheduleEdit` generated rather than one the person
+  // typed. Typing clears it, a save makes the value the record, and leaving Once takes a
+  // generated time away with it.
+  const [generatedStartTime, setGeneratedStartTime] = useState(false);
   const [result, setResult] = useState<UpdateEvidenceDraftResult | null>(null);
   const [announcement, setAnnouncement] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -391,6 +397,8 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
         edit: { section: 'schedule', frequency, startTime },
       });
       const unchanged = section.finish(outcome.ok ? outcome.rowVersion : undefined);
+      // A saved time is the record now, whoever supplied it.
+      if (outcome.ok) setGeneratedStartTime(false);
       setResult(outcome.ok && !unchanged ? null : outcome);
     } catch {
       section.finish();
@@ -405,8 +413,8 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
 
   return (
     <div className="ls-stack">
-      {section.conflict ? <><Banner tone="warning" title="The Schedule changed in another session. Review the saved values before replacing them." /><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Schedule</Button></> : null}
-      {!section.conflict && section.status().dirty ? <><p>Schedule has unsaved changes.</p><Button type="button" onClick={() => { section.reset(); setResult(null); }}>Use saved Schedule</Button></> : null}
+      {section.conflict ? <><Banner tone="warning" title="The Schedule changed in another session. Review the saved values before replacing them." /><Button type="button" onClick={() => { section.reset(); setGeneratedStartTime(false); setResult(null); }}>Use saved Schedule</Button></> : null}
+      {!section.conflict && section.status().dirty ? <><p>Schedule has unsaved changes.</p><Button type="button" onClick={() => { section.reset(); setGeneratedStartTime(false); setResult(null); }}>Use saved Schedule</Button></> : null}
       {unknownOutcome ? <><Banner tone="warning" title={UNKNOWN_OUTCOME} /><Button type="button" onClick={() => window.location.reload()}>Reload saved version</Button></> : null}
       {result === null ? null : (
         <Banner
@@ -447,7 +455,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             value={frequency}
             aria-describedby={`${id}-derivation ${id}-error`}
             aria-invalid={(touched && frequencyError !== null) || undefined}
-            onChange={(event) => { section.edit({ ...section.value, frequency: event.target.value as Frequency | '' }); setResult(null); }}
+            onChange={(event) => { const next = scheduleEdit(section.value, event.target.value as Frequency | '', generatedStartTime); section.edit(next.fields); setGeneratedStartTime(next.generated); setResult(null); }}
           >
             <option value="">Choose a frequency</option>
             {FREQUENCIES.map((candidate) => (
@@ -464,11 +472,14 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             id={`${id}-start`}
             type="time"
             value={startTime}
-            aria-describedby={`${id}-error`}
+            aria-describedby={`${id}-start-note ${id}-error`}
             aria-invalid={(touched && startError !== null) || undefined}
-            onChange={(event) => { section.edit({ ...section.value, startTime: event.target.value }); setResult(null); }}
+            onChange={(event) => { section.edit({ ...section.value, startTime: event.target.value }); setGeneratedStartTime(false); setResult(null); }}
           />
         </div>
+        {/* The one sentence the owner needed: the time is not when it runs. Choosing Once
+            fills it with 00:00 (`scheduleEdit`) so a one-time Procedure needs no invented time. */}
+        <p id={`${id}-start-note`} className="ls-caption">{NO_AUTOMATIC_RUNS_SENTENCE} {SCHEDULE_TIME_STARTS_NOTHING_SENTENCE}</p>
         <p id={`${id}-derivation`} className="ls-caption">
           {frequency === ''
             ? 'Choose how often it runs to see which dates each run will cover.'

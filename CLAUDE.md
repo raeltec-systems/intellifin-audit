@@ -1,3 +1,43 @@
+## 2026-09-15 — Ad hoc Runs exist, and the Schedule time starts nothing
+
+The owner could not start a Run when they wanted one: *"i have to set a time scheduled to run
+only at that specific time... i need to be able to run adhoc runs"*. Nothing was missing.
+Initiate Run has been on the Procedure page since Story 3.1, takes only the dates the audit
+covers, and queues at once; no scheduler exists, because that is Epic 8. What was wrong was the
+surface: the Schedule step demanded a "Start time (UTC)" even for Once, which reads as "when it
+will run"; nothing in the Builder named the box that starts a Run; and the box never said the
+Run starts on confirmation. **Before building a "missing" capability, find the control that
+already does it and read the words around it.**
+
+- **Choosing Once fills an EMPTY start time with 00:00** (`scheduleEdit`, the value P-1's
+  Template already pins). The domain shape is unchanged — `startTime` stays required and
+  `HH:MM` — because a one-time Schedule's time is kept for the record and starts nothing, so
+  the surface may supply it. Daily, weekly and monthly are left empty: there the time will
+  mean something once a scheduler exists, and a default nobody chose would be the instant it
+  fires at. A time the person typed is never replaced — and a GENERATED midnight leaves with
+  Once: `scheduleEdit` carries a `generated` flag, typing clears it, a save makes the value
+  the record, and switching to a recurring frequency clears a time the flag still marks.
+  Codex found the first version letting Daily inherit the midnight Once had generated.
+- **The words live in `apps/web/src/design/run-start-words.ts`, and four surfaces read them.**
+  Not `copy.ts`: those are quotations from the UX contract, these are the platform's own
+  sentences. `run-start-words.test.ts` refuses a retyped copy on any of the four and pins the
+  `#initiate-run` anchor to the `id` the form renders, so a renamed box cannot leave every
+  link to it landing at the top of the page with nothing saying so.
+- **A one-time Active version's "Start a Run now" carries its saved Period as a QUERY, and a
+  suggestion is not a resume.** `?from&to` WITHOUT a request token fills the fields and nothing
+  else (it used to 404); with a token it is still the read-only retry of a lost acknowledgement.
+  The card and the box share the Procedure page, so the box takes a `key` from the suggestion —
+  a mounted client form keeps its state and its request token until a full navigation, and a
+  link on the same page would otherwise change the URL and nothing else.
+- **The Review step says "once this version is Active", not "after approval".** A
+  configuration-changing revision is APPROVED pending a Regression Run, and Initiate Run
+  selects the ACTIVE owner, so "after approval" would send an auditor to run the
+  predecessor. Codex again; the sentence now names the card that offers the Run.
+- **`immutable-versions.spec.ts` pins "No automatic Schedule boundary" on the once card**, so
+  the rewritten sentence keeps that phrase rather than the spec learning new words for the
+  same fact. And `getByRole('link')` excludes hidden elements: the guided outline hides
+  unselected groups, so the Review-step link is asserted after `openReview`.
+
 ## 2026-09-15 — Twenty of twenty Epic 5 review layers, and a fix applied to one of two siblings
 
 The Epic 5 code review had completed ten of its twenty layers before a rate limit stopped it;

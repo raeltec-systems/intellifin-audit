@@ -237,7 +237,9 @@ test('a fresh Template leads through choices, a precise test-design reply, saved
 
   await chooseSection(page, 'frequency');
   await page.getByLabel('Frequency', { exact: true }).selectOption('once');
-  await page.getByLabel('Start time (UTC)', { exact: true }).fill('00:00');
+  // Choosing Once fills the start time with 00:00: a one-time Procedure has no automatic
+  // boundary, so the time starts nothing and nobody should have to invent one to save.
+  await expect(page.getByLabel('Start time (UTC)', { exact: true })).toHaveValue('00:00');
   await page.getByRole('button', { name: 'Save Schedule', exact: true }).click();
   await expect(page.getByText('Saved. The Schedule is recorded in the audit chain.', { exact: true })).toBeVisible();
   // Invoke the real compiler worker use case and audited PostgreSQL writer. Its

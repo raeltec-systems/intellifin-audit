@@ -60,11 +60,15 @@ export default async function ProcedurePage({
   if (procedure === null) notFound();
 
   const query = await searchParams;
-  const resuming = query.requestToken !== undefined || query.from !== undefined || query.to !== undefined;
-  const retryPeriod = { from: query.from, to: query.to };
-  if (resuming && (typeof query.requestToken !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.requestToken) || !isExplicitPeriod(retryPeriod))) notFound();
+  const resuming = query.requestToken !== undefined;
+  const queryPeriod = { from: query.from, to: query.to };
+  if (resuming && (typeof query.requestToken !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.requestToken) || !isExplicitPeriod(queryPeriod))) notFound();
   const requestToken = resuming ? query.requestToken as string : new CryptoUuidV7Generator().next();
-  const initialPeriod = resuming && isExplicitPeriod(retryPeriod) ? retryPeriod : undefined;
+  const initialPeriod = resuming && isExplicitPeriod(queryPeriod) ? queryPeriod : undefined;
+  // Without a request token the dates are a SUGGESTION: an Active version card links here
+  // with its saved Period so the Initiate Run box opens filled in. They fill the fields and
+  // nothing else, so a malformed pair is ignored rather than refused.
+  const suggestedPeriod = !resuming && isExplicitPeriod(queryPeriod) ? queryPeriod : undefined;
   const beforeText = query.before;
   const before = beforeText === undefined ? undefined : Number(beforeText);
   if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) notFound();
@@ -86,7 +90,9 @@ export default async function ProcedurePage({
         </p>
       </header>
 
-      <InitiateRunForm procedureId={procedure.procedureId} requestToken={requestToken} initialPeriod={initialPeriod} />
+      {/* The card and the box share this page, so a new suggestion has to REMOUNT the box:
+          a mounted form keeps its own state, and a request token, until a full navigation. */}
+      <InitiateRunForm key={suggestedPeriod === undefined ? 'blank' : `${suggestedPeriod.from}:${suggestedPeriod.to}`} procedureId={procedure.procedureId} requestToken={requestToken} initialPeriod={initialPeriod} suggestedPeriod={suggestedPeriod} />
 
       <section className="ls-stack">
         <h2>Versions</h2>

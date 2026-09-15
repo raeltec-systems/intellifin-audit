@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { draftContext, POPULATION_DRAFT_LIMITS, POPULATION_DRAFT_MESSAGES, bindingDigestEnvelope, evidenceBlockersFor, isExplicitPeriod, isScopeStatement, isInclusionRule, type InclusionPredicate } from '@intellifin/domain';
 import type { PopulationSourceBinding, ProcedureVersionView, DraftPopulationEdit, UpdatePopulationDraftResult, TargetSystemRegistration, UpdateTargetDraftResult, UpdateComplianceDraftResult, UpdateEvidenceDraftResult, UpdateContextDraftResult } from '@intellifin/application';
@@ -7,6 +8,7 @@ import type { ReviewSectionFields, ContextDraftFields, PopulationDraftFields, Re
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
+import { initiateRunHref, NO_AUTOMATIC_RUNS_SENTENCE, RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../design/run-start-words';
 import { COUNT_MECHANISM_WORDS, FILTER_COMPARISONS, filterComparisonId } from '../design/plain-words';
 import { ReadinessPanel } from './ReadinessPanel';
 import { TemplateContextForm } from './TemplateContextForm';
@@ -306,7 +308,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       ]} />,
       instructions: auditInstructionsEditor,
       assessment: complianceRuleEditor,
-      frequency: <>{scheduleEditor}<p className="ls-caption">Frequency is saved with the procedure. Automatic scheduled execution is separate work. Unresolved observations remain unresolved; only approved, active versions can run.</p></>,
+      frequency: <>{scheduleEditor}<p className="ls-caption">The frequency is saved with the procedure. A Run needs an approved version that is Active.</p></>,
     }} review={<>
       <dl className="ls-stack" aria-label="Saved procedure context">
         {Object.entries({ Risk: draftContext(draft.sections).risk, Control: draftContext(draft.sections).control, Objective: draftContext(draft.sections).objective, 'Criterion reference': draftContext(draft.sections).criterionReference, 'Scope note': draft.scope }).map(([label, content]) => <div key={label}><dt>{label}</dt><dd className="ls-whitespace">{content || 'Not supplied'}</dd></div>)}
@@ -324,6 +326,12 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
       </details>
     </div>
     <VersionActions procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} beforeConfirm={submissionGuard.check} actions={[{ decision: 'submit', label: 'Submit for approval', reason: submissionGuard.reason ?? submissionUnavailableReason(draft) }]} />
+    {/* Where a Run is started, said where the Builder ends: nothing before this step names
+        the Initiate Run box, and the Schedule step reads as though the time were the start.
+        "Once this version is Active", not "after approval": a configuration-changing revision
+        is APPROVED pending a Regression Run, and Initiate Run selects the ACTIVE owner, so
+        "after approval" would send an auditor to run the predecessor. */}
+    <p className="ls-caption">Once this version is Active, <Link href={initiateRunHref(draft.procedureId)}>start a Run from the Procedure page</Link>: its version card will offer “{START_RUN_LINK_LABEL}”. Approval by an Audit Manager makes it Active, unless a revision first needs a Regression Run. {RUN_STARTS_ON_CONFIRM_SENTENCE} {NO_AUTOMATIC_RUNS_SENTENCE}</p>
     {draft.state === 'DRAFT' && draft.planStatus === 'failed' ? <RetryPlanDerivation draft={draft} rowVersion={token} onRetry={async (fields) => { const outcome = await onRetryPlan(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /> : null}
 
     </>} />

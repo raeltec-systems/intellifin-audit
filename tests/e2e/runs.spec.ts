@@ -5,6 +5,7 @@ import { initiateRun, initialPlanDerivation, planAuthoringDigest, procedureVersi
 import { createDb, createSqlClient, CryptoUuidV7Generator, DrizzleProcedureRepository, DrizzleRoleRepository, PostgresProceduresUnitOfWork, PostgresRunsUnitOfWork, SystemClock, type Sql } from '@intellifin/infrastructure';
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
+import { RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../../apps/web/src/design/run-start-words';
 
 const ids = new CryptoUuidV7Generator();
 const procedureId = ids.next();
@@ -146,6 +147,20 @@ test.describe('Run initiation as an Auditor', () => {
     const savedRuns = await sql`SELECT run_id FROM audit_run WHERE procedure_id=${procedureId}`;
     expect(savedRuns).toHaveLength(1);
     expect(hydrationErrors).toEqual([]);
+  });
+
+  test('the Active version card opens Initiate Run with the saved dates filled in', async ({ page }) => {
+    // The fixture is a one-time version over August 2026, so its card offers a Run over
+    // those dates and the auditor only confirms. Nothing is confirmed here, so no Run is
+    // left behind for the journeys after this one to collide with.
+    await page.goto(`/procedures/${procedureId}`);
+    await page.getByRole('link', { name: START_RUN_LINK_LABEL, exact: true }).click();
+    await expect(page).toHaveURL(/#initiate-run$/);
+    await expect(page.getByLabel('Period from', { exact: true })).toHaveValue('2026-08-01');
+    await expect(page.getByLabel('Period to', { exact: true })).toHaveValue('2026-08-31');
+    // A suggestion is not a lost request: the fields stay editable.
+    await expect(page.getByLabel('Period from', { exact: true })).not.toHaveAttribute('readonly', '');
+    await expect(page.locator('#initiate-run')).toContainText(RUN_STARTS_ON_CONFIRM_SENTENCE);
   });
 
   test('recovers two lost acknowledgements after the original Run becomes terminal', async ({ page }) => {
