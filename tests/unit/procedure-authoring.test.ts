@@ -3,6 +3,7 @@ import { DENIAL_REASONS, deriveExecutablePlan, draftContext, refreshPreparation,
 import { AUTHORING_IDENTITY, AUTHORING_LIMITS, acceptAuthoringSuggestion, authoringContext, authoringCurrentText, generateAuthoringSuggestion, initialPlanDerivation, isAuthoringDraftFields, isAuthoringProposal, planAuthoringDigest, procedureVersionRowVersion, rejectAuthoringSuggestion, reviewSection, transitionVersion, updateContextDraft, updatePopulationDraft, type AuthoringDependencies, type AuthoringDraftFields, type AuthoringRequestRecord, type AuthoringSection, type ProcedureAuthoringModel, type ProcedureVersionRecord } from '@intellifin/application';
 import { executablePlanInputs } from '../fixtures/executable-plan.js';
 import { OpenAIProcedureAuthoringModel, parseAuthoringRecord, createTelemetry } from '@intellifin/infrastructure';
+import { AuthoringProgressError } from '@intellifin/application';
 
 const procedureId = '018f0000-0000-7000-8000-000000000001';
 const versionId = '018f0000-0000-7000-8000-000000000002';
@@ -55,10 +56,15 @@ function pendingModel() {
 }
 
 describe('bounded procedure writing commands (synthetic provider)', () => {
-  it('round-trips a streaming provider refusal through a validated receipt with safe diagnostics and exact recovery', async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'PRIVATE_PROVIDER_BODY', type: 'invalid_request_error' } }), {
-      status: 401, headers: { 'content-type': 'application/json' },
-    }));
+  it.each(['http', 'mid-stream'] as const)('round-trips a %s provider refusal through a validated receipt with safe diagnostics and exact recovery', async transport => {
+    const events = [
+      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_synthetic' } },
+      { type: 'response.output_text.delta', item_id: 'msg_synthetic', delta: JSON.stringify({ explanation: 'Synthetic explanation.', proposedText: 'Inspect every record.', clarifications: [] }) },
+      { type: 'response.failed', sequence_number: 3, response: { error: { code: 'rate_limit_exceeded', message: 'PRIVATE_PROVIDER_BODY' } } },
+    ];
+    const fetcher = vi.fn(async () => transport === 'http'
+      ? new Response(JSON.stringify({ error: { message: 'PRIVATE_PROVIDER_BODY', type: 'invalid_request_error' } }), { status: 401, headers: { 'content-type': 'application/json' } })
+      : new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }));
     vi.stubGlobal('fetch', fetcher);
     try {
       const model = new OpenAIProcedureAuthoringModel('synthetic-key'), h = harness(model.propose.bind(model));
@@ -67,16 +73,27 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
       const before = structuredClone(h.row);
       const deps: AuthoringDependencies = { ...h.deps, observeFailure: (stage, error) => telemetry.captureError('Writing assistance failed', error, { operation: stage }) };
       const result = await generateAuthoringSuggestion(deps, { ...fields, ...actor }, seen);
-      expect(result).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null, message: expect.stringContaining('could not authenticate') } });
+      expect(result).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null, message: expect.stringContaining(transport === 'http' ? 'could not authenticate' : 'usage or rate limit') } });
       expect(parseAuthoringRecord(h.requests.get(fields.requestId))).toMatchObject({ state: 'failed', proposedText: null });
       expect(await generateAuthoringSuggestion(deps, { ...fields, ...actor }, seen)).toEqual(result);
-      expect(fetcher).toHaveBeenCalledTimes(1); expect(seen).not.toHaveBeenCalled(); expect(h.row).toEqual(before);
+      expect(fetcher).toHaveBeenCalledTimes(1); expect(h.row).toEqual(before);
+      if (transport === 'http') expect(seen).not.toHaveBeenCalled();
       expect(await h.accept()).toMatchObject({ ok: false });
       expect(await h.edit('The auditor can still save manual content.')).toMatchObject({ ok: true });
       const logs = chunks.join('');
-      expect(logs).toContain('"operation":"provider"'); expect(logs).toContain('"errorCode":"AUTHENTICATION"');
+      expect(logs).toContain('"operation":"provider"'); expect(logs).toContain(`"errorCode":"${transport === 'http' ? 'AUTHENTICATION' : 'RATE_LIMIT'}"`);
       expect(logs + JSON.stringify(result) + JSON.stringify(h.events)).not.toMatch(/PRIVATE_PROVIDER_BODY|synthetic-key|Suggest to me/);
     } finally { vi.unstubAllGlobals(); }
+  });
+  it('reports progress refusal separately and keeps the failed receipt unapplied', async () => {
+    const failure = new AuthoringProgressError(), h = harness(async () => { throw failure; }), observed = vi.fn();
+    const before = structuredClone(h.row);
+    const result = await generateAuthoringSuggestion({ ...h.deps, observeFailure: observed }, { ...h.fields(), ...actor }, () => {});
+    expect(result).toMatchObject({ ok: true, suggestion: { state: 'failed', proposedText: null } });
+    expect(observed).toHaveBeenCalledExactlyOnceWith('progress', failure);
+    expect(parseAuthoringRecord(h.requests.get(requestId()))).toMatchObject({ state: 'failed', proposedText: null });
+    expect(h.row).toEqual(before);
+    expect(await h.accept()).toMatchObject({ ok: false });
   });
   it.each(['prepare', 'finalize'] as const)('reports a %s failure without turning an uncommitted receipt into a confirmed result', async stage => {
     const h = harness(), observed = vi.fn(), original = h.deps.unitOfWork;

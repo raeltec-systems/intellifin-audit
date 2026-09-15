@@ -37,12 +37,18 @@ export interface AuthoringRevisionContext {
 export const AUTHORING_LIMITS = { notes: 8000, changes: 2000, contextBytes: 64000, outputText: 10000, outputTokens: 6144, timeoutMs: 30000, perMinute: 6, perHour: 30, lifetimeMs: 600000 } as const;
 export interface AuthoringUsage { readonly inputTokens: number | null; readonly outputTokens: number | null }
 /** Closed operational categories: never carry a provider body, prompt or credential. */
-export type AuthoringProviderFailure = 'AUTHENTICATION' | 'ACCESS' | 'REQUEST' | 'RATE_LIMIT' | 'TIMEOUT' | 'UNAVAILABLE' | 'UNCONFIRMED';
+export type AuthoringProviderFailure = 'AUTHENTICATION' | 'ACCESS' | 'REQUEST' | 'RATE_LIMIT' | 'TIMEOUT' | 'UNAVAILABLE' | 'INCOMPLETE' | 'INVALID_RESPONSE' | 'UNCONFIRMED';
 export class AuthoringProviderError extends Error {
   override readonly name = 'AuthoringProviderError';
   constructor(readonly code: AuthoringProviderFailure) {
     super('The writing provider did not return a confirmed response');
   }
+}
+/** A local authority/delivery failure while receiving display-only progress. */
+export class AuthoringProgressError extends Error {
+  override readonly name = 'AuthoringProgressError';
+  readonly code = 'PROGRESS_REFUSED';
+  constructor() { super('Writing progress could not be delivered safely'); }
 }
 export const AUTHORING_FAILURE_MESSAGES: Record<AuthoringProviderFailure, string> = {
   AUTHENTICATION: 'OpenAI could not authenticate writing assistance. Ask the administrator to check the authoring API key. Your procedure is unchanged.',
@@ -51,6 +57,8 @@ export const AUTHORING_FAILURE_MESSAGES: Record<AuthoringProviderFailure, string
   RATE_LIMIT: 'Writing assistance reached an OpenAI usage or rate limit. Try later, or ask the administrator to check the authoring account. Your procedure is unchanged.',
   TIMEOUT: 'Writing assistance took too long to respond. Your procedure is unchanged. Try again or keep writing manually.',
   UNAVAILABLE: 'OpenAI is currently unavailable to writing assistance. Your procedure is unchanged. Try again or keep writing manually.',
+  INCOMPLETE: 'OpenAI stopped before confirming a complete draft. Your procedure is unchanged. Try again or keep writing manually.',
+  INVALID_RESPONSE: 'Writing assistance received a response it could not safely use. Your procedure is unchanged. Try again or keep writing manually.',
   UNCONFIRMED: 'Writing assistance could not produce a confirmed draft. Your procedure is unchanged. Try again or keep writing manually.',
 };
 /** Bounded test preparation, with no tools, executable-plan or autonomous-write capability. */

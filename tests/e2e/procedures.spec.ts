@@ -281,7 +281,7 @@ test.describe('as an Auditor', () => {
       // The context panel explains the scope of adaptation and exposes all four fields.
       await expect(page.getByText(BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE)).toHaveCount(1);
       const context = page.locator('[data-preparation-panel="context"]');
-      await expect(context.locator('textarea')).toHaveCount(4);
+      await expect(context.locator('.ls-template-fact textarea')).toHaveCount(4);
       await expect(context.getByLabel('Risk', { exact: true })).toHaveValue(/^Synthetic example:/);
       await expect(context.getByLabel('Criterion reference', { exact: true })).toHaveValue('');
       // Control-name guidance is stated once, separately from the objective wording.

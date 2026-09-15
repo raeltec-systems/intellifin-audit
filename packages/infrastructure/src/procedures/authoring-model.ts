@@ -1,7 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { APICallError, generateText, streamText, Output, type LanguageModel } from 'ai';
+import { APICallError, StreamProviderError, NoObjectGeneratedError, NoOutputGeneratedError, TypeValidationError, JSONParseError, generateText, streamText, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
-import { AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, isAuthoringProgress, type AuthoringProviderFailure, type ProcedureAuthoringModel } from '@intellifin/application';
+import { AUTHORING_IDENTITY, AUTHORING_LIMITS, AuthoringProviderError, AuthoringProgressError, isAuthoringProgress, type AuthoringProviderFailure, type ProcedureAuthoringModel } from '@intellifin/application';
 import type { AppConfig } from '../config.js';
 
 export const AUTHORING_INSTRUCTIONS = `You are a junior auditor helping a human design an audit test, section by section.
@@ -20,14 +20,17 @@ Return only the structured response: explanation, plus proposedText with an empt
 const proposalSchema = z.strictObject({ explanation: z.string(), proposedText: z.string().nullable(), clarifications: z.array(z.string()) });
 
 function failureCode(error: unknown): AuthoringProviderFailure {
-  if (APICallError.isInstance(error)) {
+  if (error instanceof AuthoringProviderError) return error.code;
+  if (APICallError.isInstance(error) || StreamProviderError.isInstance(error)) {
     if (error.statusCode === 401) return 'AUTHENTICATION';
     if (error.statusCode === 403 || error.statusCode === 404) return 'ACCESS';
-    if (error.statusCode === 400 || error.statusCode === 422) return 'REQUEST';
+    if (error.statusCode === 400 || error.statusCode === 413 || error.statusCode === 422) return 'REQUEST';
     if (error.statusCode === 429) return 'RATE_LIMIT';
     if (error.statusCode !== undefined && error.statusCode >= 500) return 'UNAVAILABLE';
   }
   if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return 'TIMEOUT';
+  if (NoObjectGeneratedError.isInstance(error) || NoOutputGeneratedError.isInstance(error)
+    || TypeValidationError.isInstance(error) || JSONParseError.isInstance(error)) return 'INVALID_RESPONSE';
   return 'UNCONFIRMED';
 }
 
@@ -70,13 +73,19 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
         for await (const partial of stream.partialOutputStream) {
           const progress = { explanation: partial.explanation ?? '', proposedText: partial.proposedText ?? null, clarification: partial.clarifications?.[0] ?? null };
           const serialized = JSON.stringify(progress);
-          if (!isAuthoringProgress(progress) || serialized.includes(this.apiKey)) throw new Error('Invalid partial response');
+          if (!isAuthoringProgress(progress) || serialized.includes(this.apiKey)) throw new AuthoringProviderError('INVALID_RESPONSE');
           // Bounded snapshots, never a fake typing animation or saved draft content.
           if (serialized !== previous && (progress.explanation || progress.proposedText || progress.clarification) && Date.now() - last >= 250) {
             // Keep the unfinished last token private: a credential split across
             // chunks must be identifiable before any of that token is displayed.
             const words = (text: string) => text.replace(/\S+$/u, '').trimEnd();
-            await onProgress({ explanation: words(progress.explanation), proposedText: progress.proposedText === null ? null : words(progress.proposedText), clarification: progress.clarification === null ? null : words(progress.clarification) });
+            try {
+              await onProgress({ explanation: words(progress.explanation), proposedText: progress.proposedText === null ? null : words(progress.proposedText), clarification: progress.clarification === null ? null : words(progress.clarification) });
+            } catch {
+              // The application rechecks authority while delivering progress. Its
+              // failure is not proof that OpenAI failed. Never retain its cause.
+              throw new AuthoringProgressError();
+            }
             last = Date.now(); previous = serialized;
           }
         }
@@ -86,11 +95,12 @@ export class OpenAIProcedureAuthoringModel implements ProcedureAuthoringModel {
       // their original parser; this bound applies only to a fresh provider response.
       // Structured JSON can be valid even after an error, token cutoff or missing
       // provider completion event. It is not a confirmed suggestion in those cases.
-      if (result.finishReason !== 'stop') throw new Error('Unconfirmed provider completion');
-      if (result.output.clarifications.length > 1) throw new Error('Too many clarification questions');
-      if (JSON.stringify(result.output).includes(this.apiKey)) throw new Error('Protected configuration in response');
+      if (result.finishReason !== 'stop') throw new AuthoringProviderError('INCOMPLETE');
+      if (result.output.clarifications.length > 1) throw new AuthoringProviderError('INVALID_RESPONSE');
+      if (JSON.stringify(result.output).includes(this.apiKey)) throw new AuthoringProviderError('INVALID_RESPONSE');
       return { proposal: result.output, usage: { inputTokens: result.usage.inputTokens ?? null, outputTokens: result.usage.outputTokens ?? null } };
     } catch (error) {
+      if (error instanceof AuthoringProgressError) throw error;
       // Only this closed category crosses the port. No raw provider error or cause.
       throw new AuthoringProviderError(failureCode(streamError ?? error));
     } finally { abort.abort(); }

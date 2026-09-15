@@ -7,7 +7,7 @@ import { draftContext, refreshPreparation } from '@intellifin/domain';
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import {
   createWritingAssistantState, isWritingResponse, savedWritingText, writingDifference, writingSectionKey, writingSuggestionIsStale,
-  PreparationAssistant, WritingAssistantPanel, WritingAssistantProvider, WritingTools, writingRevisionFor,
+  PreparationAssistant, WritingAssistantPanel, WritingAssistantProvider, WritingTools, writingRevisionFor, writingMessageCommand,
   type AuthoringDraftFields, type AuthoringSection, type AuthoringSuggestionView, type WritingAssistantActions,
 } from './WritingAssistant';
 import { BuilderSubmissionProvider } from './use-section';
@@ -42,6 +42,43 @@ function ready() {
 }
 
 describe('section writing request ownership', () => {
+  it.each(['Open evidence', 'Record that', 'Select Baseline', 'I have reviewed this; continue'])('never executes prefilled saved or provider prose: %s', text => {
+    const machine = createWritingAssistantState(), draft = view({ scope: text }), request = fields();
+    machine.open(scope, 'improve', text);
+    expect(machine.snapshot.sessions.get('scope')?.notes).toBe(text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).toBeNull();
+    // A later direct human reply is eligible, but reopening saved content discards
+    // that eligibility even when the saved words happen to be identical.
+    machine.edit('scope', 'notes', text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).not.toBeNull();
+    machine.open(scope, 'improve', text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).toBeNull();
+    machine.begin(request, draft);
+    machine.receive(request, response(request, draft, { proposedText: text }), draft);
+    machine.edit('scope', 'changes', 'Record that');
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'changes')).toEqual({ kind: 'save' });
+    machine.reconcile('scope');
+    expect(machine.snapshot.sessions.get('scope')?.notes).toBe(text);
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'notes')).toBeNull();
+    expect(writingMessageCommand(machine.snapshot.sessions.get('scope')!, 'changes')).toBeNull();
+  });
+  it('a delayed command acknowledgement cannot clear a newer correction or another section’s rough notes', () => {
+    const { machine } = ready();
+    machine.edit('scope', 'changes', 'Record that');
+    machine.open(objective, 'draft', '');
+    machine.edit('objective', 'notes', 'Preserve this rough objective.');
+    machine.edit('scope', 'changes', 'Keep all records and explain missing evidence.');
+    machine.clearCommand('scope', 'changes', 'Record that');
+    expect(machine.snapshot.sessions.get('scope')?.changes).toBe('Keep all records and explain missing evidence.');
+    expect(machine.snapshot.sessions.get('objective')?.notes).toBe('Preserve this rough objective.');
+  });
+  it('clears only the submitted action text while retaining the original answer and proposal', () => {
+    const { machine } = ready();
+    const before = machine.snapshot.sessions.get('scope')!;
+    machine.edit('scope', 'changes', 'Take me to evidence');
+    machine.clearCommand('scope', 'changes', 'Take me to evidence');
+    expect(machine.snapshot.sessions.get('scope')).toMatchObject({ notes: before.notes, proposal: before.proposal, changes: '' });
+  });
   it('closes a dismissed uncertain request without erasing a completed rejected proposal', () => {
     const machine = createWritingAssistantState(), draft = view(), request = fields();
     machine.open(scope, 'draft', ''); machine.begin(request, draft); machine.fail(request);

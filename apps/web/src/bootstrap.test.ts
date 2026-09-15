@@ -88,6 +88,13 @@ describe('web bootstrap', () => {
     expect(sql.end).toHaveBeenCalledTimes(1);
   });
 
+  it('passes the configured edge header into the identity runtime', async () => {
+    loadConfig.mockReturnValue(config({ AUTH_TRUSTED_IP_HEADER: 'x-real-ip' }));
+    createSqlClient.mockReturnValue(fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX }));
+    const runtime = await getRuntime();
+    expect(runtime.authConfig.trustedIpHeader).toBe('x-real-ip');
+  });
+
   it('caches a permanent refusal instead of reopening a connection per request', async () => {
     loadConfig.mockReturnValue(config());
     createSqlClient.mockReturnValue(fakeSql({ schemaVersion: SUPPORTED_SCHEMA_MAX + 1 }));

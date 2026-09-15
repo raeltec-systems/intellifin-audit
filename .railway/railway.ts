@@ -52,6 +52,9 @@ export default defineRailway(() => {
       BETTER_AUTH_SECRET: preserve(),
       // The public origin a browser reaches, resolved by Railway at deploy time.
       BETTER_AUTH_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
+      // Public ingress is Railway's HTTP edge, which supplies the remote client IP.
+      // https://docs.railway.com/networking/public-networking/specs-and-limits
+      AUTH_TRUSTED_IP_HEADER: 'x-real-ip',
       // What this deployment has been told about each credential reference: a JSON
       // object mapping an opaque reference to `read-only` or `write-capable`. It holds
       // NO secret and cannot — that is the whole point of Story 1.6 — so it is declared
