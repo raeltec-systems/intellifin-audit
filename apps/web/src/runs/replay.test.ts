@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
+import { ESCALATION_KIND_UNKNOWN } from '../design/plain-words';
+
 import {
   REPLAY_JUMP_KINDS,
   clampReplayIndex,
@@ -125,6 +127,33 @@ describe('the Observation count beside a frame', () => {
 
   it('counts nothing for a frame that is not there', () => {
     expect(replayObservationsThrough(deltas, null)).toBe(0);
+  });
+});
+
+describe('what a Replay jump row calls an Escalation', () => {
+  it('names the question, never the stored key', () => {
+    // The jump row renders its label in a MONOSPACE span, which presents whatever it is
+    // given as an identifier. `choose-candidate` is a database value, not a question an
+    // auditor asked -- the defect the plain-words pass removed from the authoring screens
+    // and Replay reintroduced on a new surface.
+    const [target] = replayJumpTargets({
+      frames: FRAMES,
+      workItems: [],
+      exceptions: [],
+      waits: [wait({ waitId: 'w1', openedAt: '2026-09-10T09:01:30.000Z' })],
+    });
+    expect(target?.label).toBe('Choose candidate');
+    expect(target?.label).not.toBe('choose-candidate');
+  });
+
+  it('names an unrecognised stored kind rather than printing it', () => {
+    const [target] = replayJumpTargets({
+      frames: FRAMES,
+      workItems: [],
+      exceptions: [],
+      waits: [wait({ waitId: 'w1', openedAt: '2026-09-10T09:01:30.000Z', kind: 'constructor' as RunReplayWait['kind'] })],
+    });
+    expect(target?.label).toBe(ESCALATION_KIND_UNKNOWN);
   });
 });
 

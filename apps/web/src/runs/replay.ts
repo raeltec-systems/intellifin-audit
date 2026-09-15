@@ -1,5 +1,7 @@
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
+import { escalationKindWord } from '../design/plain-words';
+
 /**
  * Replay's presentation logic (Story 5.8, FR-30, UX-DR26, addendum §F).
  *
@@ -107,7 +109,11 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'escalation',
       id: wait.waitId,
-      label: wait.kind,
+      // The stored kind is a KEY, and this row renders its label in a monospace span --
+      // which presents whatever it is given as an identifier. `choose-candidate` is not a
+      // question an auditor asked, and the plain-words pass removed exactly this from the
+      // authoring screens; Replay reintroduced it in a new place.
+      label: escalationKindWord(wait.kind),
       frameIndex: replayFrameAt(input.frames, wait.openedAt),
     });
   }

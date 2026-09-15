@@ -68,7 +68,7 @@ interface Replayed {
   readonly frames: readonly string[];
   readonly workItems: readonly string[];
   readonly recordKey: string;
-  readonly waitKind: string;
+  readonly waitLabel: string;
 }
 
 /**
@@ -193,7 +193,9 @@ async function seedReplayRun(): Promise<Replayed> {
     VALUES(${runId},1,'CONTROL_FAILURE','control-failure',true,'COMPLETED',true,now(),NULL,'{}'::jsonb)`;
   await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
 
-  return { runId, frames, workItems, recordKey, waitKind: 'choose-candidate' };
+  // The stored kind is `choose-candidate`; what a reader must SEE is the question it
+  // means. The spec pinned the key, so it pinned the plain-words defect as intended.
+  return { runId, frames, workItems, recordKey, waitLabel: 'Choose candidate' };
 }
 
 test.beforeAll(async () => {
@@ -305,7 +307,7 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     // The jump list names one of each thing EXPERIENCE.md's Replay row lists.
     await expect(page.getByRole('button', { name: /^Work Item · Leaver 1$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: `Exception · ${seeded.recordKey}` })).toBeVisible();
-    await expect(page.getByRole('button', { name: `Escalation · ${seeded.waitKind}` })).toBeVisible();
+    await expect(page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` })).toBeVisible();
 
     // The auditor's own frozen words, verbatim.
     await expect(page.getByRole('heading', { name: 'Audit Instructions', exact: true })).toBeVisible();
@@ -358,7 +360,7 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
 
     // A jump row lands where the asset set says it should: the Escalation was raised
     // between the second and third frames, so it opens the SECOND.
-    await page.getByRole('button', { name: `Escalation · ${seeded.waitKind}` }).press('Enter');
+    await page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` }).press('Enter');
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
   });
 

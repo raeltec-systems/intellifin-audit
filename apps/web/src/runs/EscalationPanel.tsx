@@ -14,13 +14,13 @@ import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useActionGate } from '../design/action-gate';
 import { ESCALATION_PANEL_COPY } from '../design/copy';
+import { ESCALATION_KIND_WORDS } from '../design/plain-words';
 import { UntrustedText } from './UntrustedText';
+// The clock's arithmetic, shared with the Paused banner so the two surfaces cannot
+// disagree about how long a reader has left. The markup stays here because this panel
+// also needs the raw number, for `escalationMilestone`.
+import { countdownText, remainingMilliseconds } from './WaitCountdown';
 
-const KIND_LABELS: Readonly<Record<EscalationKind, string>> = {
-  'choose-candidate': 'Choose candidate',
-  'unnamed-value': 'Unnamed value',
-  'retry-or-skip': 'Retry or skip',
-};
 
 /** Keep the closed answer set's FR-27 order even if a legacy row was stored out of order. */
 /**
@@ -49,15 +49,6 @@ export function platformQuestion(kind: EscalationKind): string {
   return ESCALATION_PANEL_COPY.questions[kind];
 }
 
-/** Format a remaining duration without claiming that a completed wake has run. */
-export function countdownText(remainingMilliseconds: number): string {
-  if (!Number.isFinite(remainingMilliseconds)) return 'Unknown';
-  const totalSeconds = Math.max(0, Math.ceil(remainingMilliseconds / 1000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
-}
 
 /**
  * The rungs a screen reader hears, and the only ones (Story 5.6, UX-DR27, UX-DR37).
@@ -74,19 +65,12 @@ export function countdownText(remainingMilliseconds: number): string {
  */
 export type EscalationMilestone = 'open' | 'ten-minutes' | 'one-minute' | 'expired';
 
-export function escalationMilestone(remainingMilliseconds: number): EscalationMilestone {
-  if (!Number.isFinite(remainingMilliseconds)) return 'open';
-  if (remainingMilliseconds <= 0) return 'expired';
-  if (remainingMilliseconds <= 60_000) return 'one-minute';
-  if (remainingMilliseconds <= 600_000) return 'ten-minutes';
+export function escalationMilestone(remaining: number): EscalationMilestone {
+  if (!Number.isFinite(remaining)) return 'open';
+  if (remaining <= 0) return 'expired';
+  if (remaining <= 60_000) return 'one-minute';
+  if (remaining <= 600_000) return 'ten-minutes';
   return 'open';
-}
-
-function remainingMilliseconds(deadline: string, at: string): number {
-  const end = Date.parse(deadline);
-  const start = Date.parse(at);
-  if (!Number.isFinite(end) || !Number.isFinite(start)) return Number.NaN;
-  return end - start;
 }
 
 export interface EscalationPanelProps {
@@ -194,7 +178,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
   }
 
   const question = platformQuestion(wait.kind);
-  const kindLabel = KIND_LABELS[wait.kind];
+  const kindLabel = ESCALATION_KIND_WORDS[wait.kind];
   const countdown = countdownText(remaining);
   const milestone = escalationMilestone(remaining);
   // Derived, never set from an effect: `remaining` moves every second and `milestone` only

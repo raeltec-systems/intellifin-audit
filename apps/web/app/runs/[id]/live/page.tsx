@@ -170,7 +170,7 @@ export default async function RunLivePage({
             politely, which is what UX-DR27 asks for; taking focus from somebody mid-word
             is a context change nobody asked for. */}
         <OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
-        <PauseBanners run={run} pause={waits?.pause ?? null} />
+        <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} />
         <RunPauseControls
           runId={run.runId}
           procedureName={run.procedureName}

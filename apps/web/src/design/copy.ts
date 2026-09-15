@@ -455,6 +455,22 @@ export const PAUSE_COPY = {
     'This holds the Run for {procedure} at its next Tool Action. It resumes only when you say so, and ends Inconclusive if it is still paused after 30 minutes. The pause is recorded against your name.',
   unknown: 'The pause could not be confirmed. Reload the Run to see whether it was paused.',
   resumeUnknown: 'The resume could not be confirmed. Reload the Run to see whether it restarted.',
+  /**
+   * A `PAUSED` Run whose pause wait could not be read.
+   *
+   * It says the Run IS paused first, because that is the fact a reader needs and the one
+   * the surface would otherwise withhold: a held Run ends Inconclusive when its deadline
+   * passes, and a page that renders nothing tells the reader it is simply busy. Who paused
+   * it and when it ends live on the wait row, so they are the part that is missing here --
+   * never guessed, and never left implied by an empty space.
+   *
+   * The sibling sentence is `ESCALATION_PANEL_COPY.unavailable`, deliberately: the two
+   * surfaces meet the same read failure and a reader who learns one should recognise the
+   * other.
+   */
+  unreadable: 'This Run is paused and the pause could not be read. Reload this Run before resuming.',
+  /** What the countdown says once it runs out. A pause that times out ends the Run. */
+  expired: 'the pause timed out; reload this Run for the recorded outcome.',
 } as const;
 
 /**
