@@ -6,15 +6,23 @@ import { initiateRunFormAction } from '../../app/runs/actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { INITIATE_RUN_ANCHOR, RUN_STARTS_ON_CONFIRM_SENTENCE } from '../design/run-start-words';
 
-interface RunFormProps { readonly procedureId: string; readonly requestToken: string; readonly initialPeriod?: { readonly from: string; readonly to: string } | undefined }
+interface RunFormProps {
+  readonly procedureId: string;
+  readonly requestToken: string;
+  /** The period of a request whose acknowledgement was lost: shown read-only for the retry. */
+  readonly initialPeriod?: { readonly from: string; readonly to: string } | undefined;
+  /** Dates a link brought along (a one-time version's saved Period): they fill the fields and nothing else. */
+  readonly suggestedPeriod?: { readonly from: string; readonly to: string } | undefined;
+}
 export function InitiateRunForm(props: RunFormProps): React.JSX.Element {
   // A Server Action may render a fresh server seed while this request is unresolved.
   // Keep the mounted form's identity until a full navigation starts another request.
   const [requestToken] = useState(props.requestToken);
   const [submittedPeriod, setSubmittedPeriod] = useState(props.initialPeriod ?? { from: '', to: '' });
   const query = new URLSearchParams({ requestToken, ...submittedPeriod });
-  return <RunSubmissionBoundary retryUrl={`/procedures/${props.procedureId}?${query.toString()}#initiate-run`}><RunForm {...props} requestToken={requestToken} onSubmitPeriod={setSubmittedPeriod} /></RunSubmissionBoundary>;
+  return <RunSubmissionBoundary retryUrl={`/procedures/${props.procedureId}?${query.toString()}#${INITIATE_RUN_ANCHOR}`}><RunForm {...props} requestToken={requestToken} onSubmitPeriod={setSubmittedPeriod} /></RunSubmissionBoundary>;
 }
 
 /** A dropped Server Action response is unknown even when the database committed. */
@@ -35,19 +43,19 @@ class RunSubmissionBoundary extends Component<{ retryUrl: string; children: Reac
   }
 }
 
-function RunForm({ procedureId, requestToken, initialPeriod, onSubmitPeriod }: RunFormProps & { onSubmitPeriod: (period: { from: string; to: string }) => void }): React.JSX.Element {
+function RunForm({ procedureId, requestToken, initialPeriod, suggestedPeriod, onSubmitPeriod }: RunFormProps & { onSubmitPeriod: (period: { from: string; to: string }) => void }): React.JSX.Element {
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => { setClientReady(true); }, []);
   const [result, action, pending] = useActionState(initiateRunFormAction, null);
   const [confirming, setConfirming] = useState(false);
-  const [period, setPeriod] = useState(initialPeriod ?? { from: '', to: '' });
+  const [period, setPeriod] = useState(initialPeriod ?? suggestedPeriod ?? { from: '', to: '' });
   const form = useRef<HTMLFormElement>(null);
   const confirmed = useRef(false);
   const id = useId();
   const uncertain = initialPeriod !== undefined || (result !== null && !result.ok && result.unknownOutcome === true);
-  return <section id="initiate-run" data-client-ready={clientReady} className="ls-card ls-stack" aria-labelledby={`${id}-heading`}>
+  return <section id={INITIATE_RUN_ANCHOR} data-client-ready={clientReady} className="ls-card ls-stack" aria-labelledby={`${id}-heading`}>
     <h2 id={`${id}-heading`}>Initiate Run</h2>
-    <p>The period selects the Active version that owns its start date. Both dates are included.</p>
+    <p>Choose the dates the audit covers. Both dates are included. The period selects the Active version that owns its start date. {RUN_STARTS_ON_CONFIRM_SENTENCE}</p>
     {result !== null && !result.ok && <div className="ls-stack">
       <Banner tone="danger" title={result.reason} />
       {result.existingRunId && <Link href={`/runs/${result.existingRunId}`}>Open existing Run</Link>}

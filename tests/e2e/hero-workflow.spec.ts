@@ -313,6 +313,9 @@ test.describe('the hero workflow', () => {
     await openReview(page);
     const submit = page.getByRole('button', { name: 'Submit for approval', exact: true });
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
+    // The Review step says where a Run is started, because nothing before it does: the
+    // Schedule step's time reads as a start, and the Builder never named the box.
+    await expect(page.getByRole('link', { name: 'start a Run from the Procedure page', exact: true })).toHaveAttribute('href', /^\/procedures\/[^/?#]+#initiate-run$/);
 
     await openStep(page, 'Period and scope');
     await page.getByLabel('Period start', { exact: true }).fill('2026-08-01');

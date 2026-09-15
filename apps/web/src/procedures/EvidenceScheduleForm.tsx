@@ -20,6 +20,8 @@ import type { ProcedureVersionView, UpdateEvidenceDraftResult } from '@intellifi
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
+import { scheduleEdit } from './schedule-edit';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { useSection, useSectionSubmissionStatus } from './use-section';
 
@@ -447,7 +449,7 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             value={frequency}
             aria-describedby={`${id}-derivation ${id}-error`}
             aria-invalid={(touched && frequencyError !== null) || undefined}
-            onChange={(event) => { section.edit({ ...section.value, frequency: event.target.value as Frequency | '' }); setResult(null); }}
+            onChange={(event) => { section.edit(scheduleEdit(section.value, event.target.value as Frequency | '')); setResult(null); }}
           >
             <option value="">Choose a frequency</option>
             {FREQUENCIES.map((candidate) => (
@@ -464,11 +466,14 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
             id={`${id}-start`}
             type="time"
             value={startTime}
-            aria-describedby={`${id}-error`}
+            aria-describedby={`${id}-start-note ${id}-error`}
             aria-invalid={(touched && startError !== null) || undefined}
             onChange={(event) => { section.edit({ ...section.value, startTime: event.target.value }); setResult(null); }}
           />
         </div>
+        {/* The one sentence the owner needed: the time is not when it runs. Choosing Once
+            fills it with 00:00 (`scheduleEdit`) so a one-time Procedure needs no invented time. */}
+        <p id={`${id}-start-note`} className="ls-caption">{NO_AUTOMATIC_RUNS_SENTENCE} {SCHEDULE_TIME_STARTS_NOTHING_SENTENCE}</p>
         <p id={`${id}-derivation`} className="ls-caption">
           {frequency === ''
             ? 'Choose how often it runs to see which dates each run will cover.'
