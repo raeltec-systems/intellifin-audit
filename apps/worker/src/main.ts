@@ -146,7 +146,15 @@ async function main(): Promise<void> {
     clock: new SystemClock(),
     ids: new CryptoUuidV7Generator(),
   };
-  telemetry.info('Agent Workspace mode selected', { mode: provider.connection.mode, reason: provider.reason });
+  telemetry.info('Agent Workspace mode selected', {
+    mode: provider.connection.mode,
+    reason: provider.reason,
+    // Recording is decided at `sessions.create()` and can never be turned on afterwards,
+    // so a deployment running with it off produces Runs whose Replay 404s permanently —
+    // and the mode alone cannot say which. `false` for the local mode is the truth rather
+    // than a placeholder: a locally launched browser records nothing at all.
+    recording: provider.connection.mode === 'solari' ? provider.connection.recording : false,
+  });
   // NFR-5: a workspace whose Run has already ended and which nothing gave back. A release
   // is network I/O, so it cannot happen inside the transaction that ends the Run; a worker
   // that dies between the two leaves a browser held by nobody and, under Solari, a pool

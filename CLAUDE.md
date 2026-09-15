@@ -82,6 +82,16 @@ Railway variable is missing**, and before concluding one is present.
   permanently and silently. It is `'true'` now, changed in the same breath as the live value.
   **A declared default whose cost is irreversible must agree with the live state**; for
   anything else, `preserve()` is what "the dashboard owns this" looks like.
+- **The worker named its mode and said nothing about recording, so the deploy could not be
+  checked.** `Agent Workspace mode selected` logged `mode` and `reason`; the one fact an
+  operator cannot recover later — whether these Runs will have a replay — was in no stream
+  at all, and the Railway API redacts variable values over an OAuth connection. It logs
+  `recording` beside `mode` now, `false` for the local mode because a local browser really
+  does record nothing. The allowlist's own note on `mode` already gave the reason ("the two
+  modes are not the same guarantee"); recording is the stronger case, because it is the half
+  nobody can go back and add. The regression test asserts a **`false`** survives
+  sanitization: a sanitizer filtering on truthiness rather than on the key would keep `mode`
+  and lose exactly this, and a dropped key is dropped SILENTLY.
 - **`accept-deploy` timed out at 60 seconds, twice, and committed nothing either time.** A
   timeout is not an outcome: `get-staged-changes` still read `STAGED` with the same
   `updatedAt`, and the worker's latest deployment was unmoved. Check the patch and the

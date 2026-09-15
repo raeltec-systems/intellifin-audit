@@ -41,6 +41,15 @@ export const TELEMETRY_FIELD_KEYS = [
    * repository, and `safeScalar` caps it at 256 characters.
    */
   'reason',
+  /**
+   * Whether an Agent Workspace session is created with replay recording (Story 4.1).
+   *
+   * A build-constant boolean that says nothing about what was read, so it clears the same
+   * NFR-6 bar `mode` does — and it is logged for a stronger reason. Recording can only be
+   * set at `sessions.create()`: a deployment running with it off produces Runs whose
+   * Replay 404s for ever, and nothing else in this stream says which one is running.
+   */
+  'recording',
   'role',
   'route',
   'schemaVersion',
