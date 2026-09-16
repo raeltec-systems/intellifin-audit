@@ -7,7 +7,7 @@ import { EmptyState } from '../../../../src/design/EmptyState';
 import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
 import { ExecutionTimeline } from '../../../../src/runs/Timeline';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
-import { countText } from '../../../../src/runs/labels';
+import { stepExecutionsSentence } from '../../../../src/runs/stage-words';
 
 export const metadata: Metadata = { title: 'Run · Execution Timeline · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -53,11 +53,16 @@ export default async function RunTimelinePage({
       ) : (
         <section className="ls-card ls-stack" aria-labelledby="timeline-heading">
           <h2 id="timeline-heading">Execution Timeline</h2>
+          {/* `0 of 0 Step Executions are listed` is an arithmetic fact that reads as a
+              rendering fault. What it means is that no record was tested, and whether the
+              Run is still preparing its session or ended inside it is a fact about the Run
+              — so the sentence is derived from both. */}
           <p>
-            {countText(timeline.stepExecutions.rows.length)} of{' '}
-            {countText(timeline.stepExecutions.total)} Step Executions are listed. Step
-            Executions are collapsed under the unit that started them; a unit with a failure
-            is expanded.
+            {stepExecutionsSentence(
+              timeline.stepExecutions.rows.length,
+              timeline.stepExecutions.total,
+              run.state,
+            )}
           </p>
           <ExecutionTimeline timeline={timeline} runId={run.runId} />
         </section>

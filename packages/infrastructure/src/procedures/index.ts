@@ -9,3 +9,4 @@ export * from './procedure-repository.js';
 export * from './procedures-unit-of-work.js';
 export { createProceduresQueue, startQueueMaintenance, startProceduresWorker, startProceduresRecovery, reconcileProceduresQueue, PROCEDURES_QUEUE, QUEUE_MAINTENANCE_INTERVAL_MS } from './derivation-queue.js';
 export * from './model-gateway.js';
+export * from './submitted-versions.js';

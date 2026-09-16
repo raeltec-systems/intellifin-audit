@@ -636,6 +636,19 @@ export const REPLAY_COPY = {
    */
   frameNotRead: 'not among the {shown} frames shown',
   observationsThrough: '{count} Observations had been registered when this frame was captured.',
+  /**
+   * No frame, so no moment to count Observations at. `observationsThrough` used to be
+   * filled with a zero here, which reads as "this frame saw none" over a Run that captured
+   * no frame at all — the same defect as an empty checklist a reader takes for a passed
+   * control.
+   */
+  observationsNoFrame: 'This Run captured no frames, so there is no moment in the session to count Observations at.',
+  /**
+   * Where a Run's Observations actually are. The link said "Open the Observations tab" and
+   * pointed at `/runs/<id>/observations`, which is not one of the five Run Detail tabs and
+   * answered Page not found.
+   */
+  observationsLink: 'Open the Evidence tab, where Observations are listed',
   bounded: 'Showing the first {shown} of {total} frames.',
   notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',
   desktopOnly: LIVE_VIEW_DESKTOP_ONLY_SENTENCE,

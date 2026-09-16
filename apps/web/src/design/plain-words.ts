@@ -79,9 +79,13 @@ export const SECTION_WORDS: Readonly<
     title: 'Evidence to capture',
     question: 'What proof do you need kept for every record?',
   },
+  // "How often it runs" and "run on its own" both stated a fact that is not true: no
+  // Run starts by itself in this release, and the Schedule step has no control that
+  // would make one. The saved frequency is the INTENT, which is what the words say now;
+  // `run-start-words.ts` says the rest, in the editor and on three other surfaces.
   Schedule: {
-    title: 'How often it runs',
-    question: 'When should this procedure run on its own?',
+    title: 'How often this is meant to run',
+    question: 'How often should this test happen, and which dates would each one cover?',
   },
 };
 
@@ -282,6 +286,13 @@ export const FROZEN_FIELD_WORDS: Readonly<Record<string, string>> = {
   agentJudgedThreshold: 'How certain the agent must be',
   from: 'Start date',
   to: 'End date',
+  // The frozen review's "Model and tool configuration" section. `model` read as plain
+  // "Model" on the version review, which an auditor who had just used the writing
+  // assistant read as that assistant — two different models, and only this one is
+  // frozen with the version.
+  model: 'Plan-check model',
+  tools: 'How the agent reads the plan',
+  identityMatching: 'How a record is matched',
 };
 
 /** The words for one frozen field, or its own name spaced out when it has none. */
@@ -293,3 +304,42 @@ export function frozenFieldWord(key: string): string {
         .replaceAll('_', ' ')
         .replace(/^./, (character) => character.toUpperCase());
 }
+
+/**
+ * A frozen field whose ABSENCE means something, rather than "nobody filled this in".
+ *
+ * The version review renders a null frozen value as "Not set", which is right for a
+ * field somebody could have filled and wrong for `model`: no plan-check model is
+ * configured until a platform configuration revision publishes one, and until then
+ * derivation is deterministic — a fact about how the plan was produced, not a gap in
+ * the Draft. The owner read "Model: Not set" beside a writing assistant that had just
+ * worked and reasonably concluded the two were the same thing.
+ *
+ * A key with no entry here keeps the generic absence word, which is the safe default:
+ * only a field whose absence has a KNOWN meaning gets a sentence.
+ */
+export const FROZEN_FIELD_ABSENT_WORDS: Readonly<Record<string, string>> = {
+  model:
+    'No plan-check model is configured, so this plan was worked out from your saved sections alone, with no model involved. The assistant that helps you write is a separate model and is not part of what this version freezes.',
+};
+
+/** The sentence for an absent frozen field, or `null` when its absence says nothing. */
+export function frozenFieldAbsentWord(key: string): string | null {
+  // `Object.hasOwn`: the key comes from a stored frozen review, so a plain index would
+  // answer `'constructor'` with a function. The standing rule, met again.
+  return Object.hasOwn(FROZEN_FIELD_ABSENT_WORDS, key) ? FROZEN_FIELD_ABSENT_WORDS[key]! : null;
+}
+
+/**
+ * How identity keys are compared, said once and without the word that reads both ways.
+ *
+ * The frozen canonical plan text says both "exact normalized employee_id" and "never
+ * trim, normalize or parse them as numbers" — a real contradiction to a reader, and one
+ * this surface cannot repair: those bytes are the compiler's own and are what the
+ * version froze (`makePlan`, compiler 1). So the presentation states the rule plainly
+ * beside them and says what the plan's own word means, rather than leaving an auditor to
+ * pick whichever half they read first. Compiler 1's rule is opaque exact strings: case,
+ * whitespace, leading zeros and Unicode composition are all preserved and compared.
+ */
+export const IDENTITY_KEYS_EXACT_SENTENCE =
+  'Identity keys are compared exactly, character for character: upper and lower case, spaces, leading zeros and accents all count, and nothing is trimmed, re-spelled or read as a number. Where a step below says "exact normalized", it means that exact comparison and no other change.';

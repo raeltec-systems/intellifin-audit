@@ -15,6 +15,12 @@ import { RUN_TAB_EMPTY } from '../../../../src/design/copy';
 import { EvidenceCard, GroundingInspector, evidenceCardProps } from '../../../../src/runs/EvidenceCards';
 import { RunDenied, RunDetailFrame, openRun } from '../../../../src/runs/detail';
 import { countText, utcStamp } from '../../../../src/runs/labels';
+import {
+  indeterminateRowsSentence,
+  populationCheckSentence,
+  populationCheckTitle,
+  populationProgressSentence,
+} from '../../../../src/runs/stage-words';
 
 export const metadata: Metadata = { title: 'Run · Evidence · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -101,12 +107,15 @@ export default async function RunEvidencePage({
       {population === null ? null : (
         <section className="ls-card ls-stack" aria-labelledby="population-heading">
           <h2 id="population-heading">Population acquisition</h2>
+          {/* What the stage did AND what became of the Run. Derived from the stage status
+              alone, this said "Target checks are pending" over a Run that had been over
+              for a day — a sentence about a future the Run does not have. */}
           <p>
-            {population.status === 'POPULATION_READY'
-              ? 'Population verified. Target checks are pending.'
-              : population.status === 'TERMINAL'
-                ? 'Population acquisition stopped.'
-                : 'Population acquisition is in progress.'}{' '}
+            {populationProgressSentence({
+              status: population.status,
+              runState: run.state,
+              observations: observations.total,
+            })}{' '}
             Attempts: {population.attempts}.
           </p>
           {/* A population diagnostic is a closed platform constant, never a message a
@@ -157,12 +166,26 @@ export default async function RunEvidencePage({
                   )}
                 </div>
               </dl>
+              {/* Rows the inclusion rule could not place are neither in nor out of the
+                  period, and §H counts every one of them as unaccounted. A number in the
+                  list above says none of that. */}
+              {summary.indeterminate > 0 ? <p>{indeterminateRowsSentence(summary.indeterminate)}</p> : null}
               <ul className="ls-plain-list">
-                {summary.checks.map((check) => (
-                  <li key={check.name}>
-                    {check.name}: {check.passed ? 'Passed' : 'Failed'}
-                  </li>
-                ))}
+                {summary.checks.map((check) => {
+                  // What the check CLAIMS, so the row reads correctly whichever way it
+                  // went; the failure sentence is added only when it failed, because
+                  // `POPULATION_CHECK_WORDS` says what a FAILED check means. The stored
+                  // name stays beside both, in monospace, for an operator who greps.
+                  const title = populationCheckTitle(check.name);
+                  const reason = check.passed ? null : populationCheckSentence(check.name);
+                  return (
+                    <li key={check.name}>
+                      {title ?? check.name}: {check.passed ? 'Passed' : 'Failed'}
+                      {reason === null ? null : <> {reason}</>}{' '}
+                      <code className="ls-mono">{check.name}</code>
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}

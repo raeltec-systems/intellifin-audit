@@ -7,9 +7,13 @@ export type PreparationCommand =
   | { readonly kind: 'navigate'; readonly destination: PreparationDestination }
   | { readonly kind: 'select' | 'discuss'; readonly name: string | null };
 
+/** The displayed step names. They are the guided outline's own titles, said once. */
 export const PREPARATION_NAMES: Readonly<Record<PreparationDestination, string>> = {
   context: 'Risk, control and objective', scope: 'Scope and period', evidence: 'Evidence to review',
-  instructions: 'Audit steps', assessment: 'Assessment criteria', frequency: 'Frequency and handling', review: 'Review and submission',
+  // Not "Frequency and handling": the handling is frozen by the compiler and shown, not
+  // edited here, and a title naming an editor that is not there sends an auditor looking
+  // for it. `GuidedPreparation`'s own words for this step say the same thing.
+  instructions: 'Audit steps', assessment: 'Assessment criteria', frequency: 'How often this is meant to run', review: 'Review and submission',
 };
 
 export function commandWords(value: string): string {
@@ -21,7 +25,10 @@ const destinations: Readonly<Record<string, PreparationDestination>> = {
   scope: 'scope', period: 'scope', 'scope and period': 'scope', evidence: 'evidence', 'evidence to review': 'evidence',
   instructions: 'instructions', steps: 'instructions', 'audit steps': 'instructions',
   criteria: 'assessment', 'assessment criteria': 'assessment', assessment: 'assessment',
-  frequency: 'frequency', 'frequency and handling': 'frequency', review: 'review', 'review and submission': 'review',
+  // The old title stays a navigation alias: a renamed step must not strand somebody who
+  // learned the previous name, and an alias is never rendered at a reader.
+  frequency: 'frequency', 'frequency and handling': 'frequency', 'how often': 'frequency',
+  'how often this is meant to run': 'frequency', review: 'review', 'review and submission': 'review',
 };
 
 /** Only the human's submitted composer message is routed here. This is deliberately
@@ -37,7 +44,9 @@ export function preparationCommand(message: string): PreparationCommand | null {
   if (/^(?:keep my wording|keep the saved wording|discard (?:this|that) draft|(?:don't|do not) use (?:this|that)(?: draft)?)$/.test(text)) return { kind: 'reject' };
   if (/^(?:(?:i have|i've) reviewed (?:this|it|this section)|mark (?:this section|the section|it) reviewed|mark reviewed)(?:[,;]? (?:and )?continue)?$/.test(text)) return { kind: 'review' };
   const navigation = /^(?:take me to|go to|open|show me|return to) (?:the )?(.+?)(?: section)?$/.exec(text);
-  if (navigation && destinations[navigation[1]!]) return { kind: 'navigate', destination: destinations[navigation[1]!]! };
+  // The key is a person's typed words: `Object.hasOwn`, or "go to constructor" navigates
+  // to `Object.prototype.constructor` (the trap this codebase keeps recording).
+  if (navigation && Object.hasOwn(destinations, navigation[1]!)) return { kind: 'navigate', destination: destinations[navigation[1]!]! };
   const selection = /^(select|choose|tell me about|show me) (.+)$/.exec(text);
   if (selection) return { kind: selection[1] === 'select' || selection[1] === 'choose' ? 'select' : 'discuss',
     name: /^(?:that|this|that one|this one|it|the suggested (?:source|system|option))$/.test(selection[2]!) ? null : selection[2]! };

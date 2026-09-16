@@ -314,6 +314,24 @@ describe('bounded procedure writing commands (synthetic provider)', () => {
     expect(encoded).not.toContain('vault://'); expect(encoded).not.toContain('synthetic.invalid');
     expect(encoded).toContain('criterionReference'); expect(encoded).toContain('risk');
   });
+  /**
+   * A Template names default systems, and P-1 names a DESKTOP one this release cannot
+   * execute: a Run that reaches it stops with an unsupported-plan failure. The Builder's
+   * suggestion caption and `procedureReadiness` both tell the auditor to leave it out, so
+   * the assistant has to be told the same thing — otherwise it can propose steps for a
+   * system that is neither selected nor runnable, which is the contradiction the owner
+   * met on the Target Systems panel, restated by the model.
+   */
+  it('tells the assistant that a desktop Target System cannot be executed in this release', () => {
+    const capabilities = (authoringContext(harness().row) as unknown as { preparationCapabilities: { unsupported: readonly string[] } }).preparationCapabilities;
+    const desktop = capabilities.unsupported.filter(entry => entry.toLowerCase().includes('desktop'));
+    expect(desktop).toHaveLength(1);
+    expect(desktop[0]).toContain('web, API and file systems only');
+    expect(desktop[0]).toContain('must not be proposed');
+    // The pre-existing entries are unchanged: this is an addition, not a rewrite.
+    expect(capabilities.unsupported).toContain('Automatic scheduled execution');
+    expect(capabilities.unsupported).toContain('Writing to systems');
+  });
   it.each(['notes', 'changes', 'objective', 'scope', 'instructions'] as const)('refuses credential references in %s before provider use while preserving manual authoring', async field => {
     const h = harness(), prose = 'Use vault://audit/synthetic-credential to inspect every record.';
     if (field === 'objective') expect(await h.edit(prose)).toMatchObject({ ok: true });

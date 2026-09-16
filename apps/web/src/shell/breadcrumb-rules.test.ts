@@ -110,6 +110,11 @@ describe('surfaces that trail themselves', () => {
     expect(crumbsFor(`/procedures/${id}`)).toEqual([]);
     expect(rendersOwnTrail(`/procedures/${id}/builder`)).toBe(true);
     expect(crumbsFor(`/procedures/${id}/builder`)).toEqual([]);
+    // The version review surface too. It stood down here long before the page rendered
+    // a trail of its own, which is why an Audit Manager approving a version had no
+    // breadcrumb at all (UX-13) — and the shell's would have been two raw UUIDs.
+    expect(rendersOwnTrail(`/procedures/${id}/versions/${id}`)).toBe(true);
+    expect(crumbsFor(`/procedures/${id}/versions/${id}`)).toEqual([]);
   });
 
   it('still trails a NAMED route under Procedures, which renders no trail of its own', () => {

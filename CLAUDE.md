@@ -1,3 +1,84 @@
+## 2026-09-16 — A page that asserts an empty state without reading anything is not reporting
+
+The owner's production walkthrough filed thirty findings, and the largest class was one
+defect wearing three faces: **a Story 1.4 placeholder that renders a contract empty state
+UNCONDITIONALLY and reads nothing at all.** The Overview said "Nothing needs attention",
+"none is Inconclusive or Run Failed" and "No Runs yet" while the register two clicks away
+held one Run Failed and two Inconclusive Runs — and said it again after every reload,
+because there was nothing for a reload to change. The Procedures list said "No Runs yet"
+and "No outcome" beside a Procedure with two Runs. The manager's Review page still says no
+Result awaits a decision while a version waits for that manager. **An empty state is a
+STATEMENT ABOUT THE ENVIRONMENT, and the one those pages made is the inference every empty
+state in this product is worded to refuse.** Findings, repairs and what is left for a
+decision: `_bmad-output/implementation-artifacts/owner-walkthrough-2026-09-16.md`.
+
+- **Both contract sentences stay, for the case they were written for, and what decides
+  between them is an EXACT COUNT.** Never `rows.length` of a bounded page: a summary that
+  said "nothing needs attention" because three stopped Runs fell off the end would be the
+  same defect with a database behind it. Each read answers a total beside its bounded list.
+- **An unreadable read is not an absence, on the Overview as on Live View.** Story 5.6
+  landed that rule on `OpenEscalationSection`; the Overview is the same read failure one
+  surface along, so it renders a Banner and the "nothing needs attention" state becomes
+  unreachable. `countOpenFor` throws separately from `openFor`, so an unreadable COUNT loses
+  only the bounded note.
+- **A surface that shows Run facts authorizes like the Runs register.** `/procedures` is not
+  gated on `run.initiate` and `/runs` is, so putting Run outcomes on the Procedure card
+  would have handed a PoC Administrator what `/runs` refuses them. The Run reads are SKIPPED
+  for a role without that action and the cell says so — not reading is the control, never a
+  hidden cell.
+- **`apps/web/app/review/page.tsx` is the third face and is NOT fixed**, named in the report
+  with the reader it should use. A defect class found in three places is fixed in three
+  places or written down in the third.
+
+**The other repairs, one line each.** The Result tab's execution-failure panel reads the
+same stop facts the Runs list does (PR 39's `DrizzleRunStopReader`), so the header, the
+list and the panel cannot disagree. Every Run stage has a WORD (`apps/web/src/runs/stage-words.ts`),
+so "0 of 0 Step Executions" became a sentence naming the stage that stopped. Replay's
+Observations link pointed at a route that does not exist and now points at the Evidence tab.
+A Replay with no frames gets an empty-state sentence rather than one implying a frame. The
+shell names the signed-in person and their role. The Builder's section review record and the
+version review name the auditor through `ActorName` instead of printing a user id. The
+Target System step no longer demands a desktop system four elements under a caption saying
+to leave it out — `targetCoverageMissing` is narrowed at its SIGNATURE, which is what found
+the other four callers. The frequency step is named for what it takes, with the compiler's
+frozen handling facts shown read-only beside it.
+
+- **`Object.hasOwn` for a lookup keyed by a person's typed words — ninth occurrence.**
+  `preparationCommand`'s destination table is a plain object keyed by chat input, so "go to
+  constructor" resolved to `Object.prototype.constructor`, the guide said "Opened undefined."
+  and `setSelected` was handed a function. Found by an agent in passing, in a module its own
+  brief told it not to change; it reported rather than fixed, which is why it got fixed.
+- **A contradiction inside FROZEN compiler bytes is resolved by a sentence beside them, never
+  by an edit.** `makePlan` writes "exact normalized employee_id" and "never trim, normalize"
+  into canonical plan text every ACTIVE version has frozen; editing it would change what
+  those versions say they were testing. `IDENTITY_KEYS_EXACT_SENTENCE` sits directly above
+  the steps that carry both phrases, on the Builder and on the version review.
+- **A new field on a result shape breaks every exact-shape assertion, and only the suite that
+  RUNS can say where.** `ProvisionWorkspaceResult` gained `deferred`; the unit tests were
+  updated with the fix and six `toEqual({ retry, provisioned })` assertions across two
+  integration files were not, so nineteen tests failed on a change whose typecheck was green.
+  The commit that added the field ran one integration FILE and called it verified. Run the
+  suite the changed module is covered by, not the case you wrote.
+- **A stale `audit-manager` row in the test database fails two files that never created
+  one.** `runNotificationRecipients` reads every audit-manager in the database, so one
+  account left behind by an aborted run made `flag-run` count 4 deliveries where it expects
+  2 and `run-waits` count 3 recipients where it expects 2 — both reading as product defects
+  in the notification path. Check `user_role` before believing a recipient count, and clean
+  identity leftovers the way Run leftovers are already cleaned.
+- **The golden P-1 population cannot demonstrate a clean pass, and that is the dataset
+  working.** It seeds a duplicate employee key, an unnamed status value and a two-candidate
+  name search; the first stops the agent stage before it makes a single Work Item, and the
+  other two park the Run `AWAITING_AUDITOR` for thirty minutes. The owner journey therefore
+  binds a declared single-record source and leaves the full export seeded but unbound, so
+  the choice is visible rather than silent. **And the agent path and the adapter path
+  disagree about a duplicate key** — the adapter deduplicates and reports
+  `duplicate-record-keys`, the agent refuses the whole Run — which is named in the report
+  rather than changed inside a test.
+- **P-1's Template default for C1 does not match what LoanCore displays** (`[disabled]`
+  against `Disabled`), and compiler-1 compares named values exactly, so an auditor who
+  accepts the default escalates on every record. The journey types what the system shows and
+  asserts the default first, so the mismatch is pinned.
+
 ## 2026-09-16 — The owner's first Solari Run died five seconds in, and the worker's log said nothing
 
 The owner walked P-1 through production end to end — created, approved by a second account,

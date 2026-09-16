@@ -32,4 +32,23 @@ describe('successor review rendering',()=>{
     expect(plan.current).toContain('Current acquisition instructions'); expect(plan.current).not.toContain('Previous acquisition instructions');
     expect(html).toContain('Control · Unchanged'); expect(html).toContain('Evidence Requirements · Changed');
   });
+
+  /**
+   * "Model: Not set" said nothing true to the owner, who had just used the writing
+   * assistant on the same Procedure. Those are two different models: the assistant is
+   * the authoring one, and this field is the plan-check model a platform configuration
+   * revision publishes — unset here, which is why derivation was deterministic.
+   */
+  it('explains an unconfigured plan-check model rather than calling it unfilled',()=>{
+    const before=definition('Prior saved scope',false,'Previous acquisition instructions');
+    const after=definition('Current submitted scope',true,'Current acquisition instructions');
+    expect(after.modelConfiguration).toBeNull();
+    const html=renderToStaticMarkup(React.createElement(VersionDiff,{diff:diffReviewedDefinitions(before,after),first:false}));
+    const model=columns(html,'Model and tool configuration');
+    expect(model.current).toContain('Plan-check model');
+    expect(model.current).toContain('No plan-check model is configured');
+    expect(model.current).toContain('assistant that helps you write is a separate model');
+    // The generic absence word is gone from THIS field. It stays for every other one.
+    expect(model.current).not.toContain('<dd><span>Not set</span></dd>');
+  });
 });

@@ -7,8 +7,20 @@ import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { Banner } from '../design/Banner';
 import { UnavailableActions } from '../design/UnavailableActions';
+import { decisionConsequence, decisionTitle, type DecisionSubject } from './version-review-words';
 
-export function VersionActions({ procedureId, versionId, rowVersion, actions, beforeConfirm }: { readonly procedureId: string; readonly versionId: string; readonly rowVersion: string; readonly beforeConfirm?: () => string | null; readonly actions: readonly { decision: VersionDecision; label: string; reason: string | null }[] }): React.JSX.Element {
+/**
+ * The version decision controls, and the confirmation each one opens.
+ *
+ * `subject` is what the dialog names. It is OPTIONAL because the Builder and the
+ * Procedure page mount this for a Draft's Submit, where the page around the control
+ * already names the Draft; on the version review surface the confirmation is the last
+ * thing a manager reads before an approval activates a Procedure, so it names the
+ * Control, the version number and what approval will actually do
+ * (`version-review-words.ts`). Without it the wording is exactly what those two
+ * surfaces have always shown.
+ */
+export function VersionActions({ procedureId, versionId, rowVersion, actions, beforeConfirm, subject }: { readonly procedureId: string; readonly versionId: string; readonly rowVersion: string; readonly beforeConfirm?: () => string | null; readonly subject?: DecisionSubject; readonly actions: readonly { decision: VersionDecision; label: string; reason: string | null }[] }): React.JSX.Element {
   const id = useId(), router = useRouter();
   const [confirming, setConfirming] = useState<VersionDecision | null>(null);
   const [busy, setBusy] = useState(false), [reason, setReason] = useState<string | null>(null);
@@ -26,11 +38,13 @@ export function VersionActions({ procedureId, versionId, rowVersion, actions, be
     } catch { setUnknown(true); setConfirming(null); setReason('The decision may have been saved. Reload the page before trying again.'); }
     finally { setBusy(false); }
   }
+  const pending = actions.find(action => action.decision === confirming);
+  const named = subject ?? null;
   return <div className="ls-stack">
     <div className="ls-actions">{actions.map(action => <Button key={action.decision} variant={action.decision === 'submit' || action.decision === 'approve' ? 'primary' : 'secondary'} busy={busy} disabledReason={unknown ? 'Reload to inspect the saved decision.' : action.reason ?? undefined} disabledReasonId={unknown ? `${id}-unknown` : `${id}-${action.decision}`} onClick={() => { setReason(null); setConfirming(action.decision); }}>{action.label}</Button>)}</div>
     {unknown ? <div id={`${id}-unknown`}><p>Reload to inspect the saved decision.</p><Button onClick={() => window.location.reload()}>Reload version</Button>{rationale ? <p>Rationale entered: {rationale}</p> : null}</div> : null}
     <UnavailableActions actions={actions.flatMap(action => action.reason ? [{ id: `${id}-${action.decision}`, label: action.label, reason: action.reason }] : [])} />
     {!confirming && reason ? <Banner tone="danger" title={reason} /> : null}
-    <ConfirmDialog open={confirming !== null} weight={confirming === 'reject' ? 'routine-with-rationale' : 'routine'} title={`${actions.find(a => a.decision === confirming)?.label ?? 'Decide'}?`} consequence={confirming === 'approve' ? 'This freezes the reviewed Procedure Version and records your approval.' : confirming === 'reject' ? 'This records your rationale and returns the Procedure Version to its author.' : 'This changes the Procedure Version state and records the decision against your name.'} confirmLabel={busy ? 'Saving…' : actions.find(a => a.decision === confirming)?.label ?? 'Confirm'} onConfirm={value => { void decide(value); }} onCancel={() => { if (!busy) setConfirming(null); }} initialRationale={rationale} refusal={reason} busy={busy} />
+    <ConfirmDialog open={confirming !== null} weight={confirming === 'reject' ? 'routine-with-rationale' : 'routine'} title={decisionTitle(confirming ?? 'submit', pending?.label ?? 'Decide', confirming === null ? null : named)} consequence={decisionConsequence(confirming ?? 'submit', confirming === null ? null : named)} confirmLabel={busy ? 'Saving…' : pending?.label ?? 'Confirm'} onConfirm={value => { void decide(value); }} onCancel={() => { if (!busy) setConfirming(null); }} initialRationale={rationale} refusal={reason} busy={busy} />
   </div>;
 }

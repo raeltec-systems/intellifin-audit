@@ -1,13 +1,25 @@
 import { ExecutablePlanSchema } from '@intellifin/domain';
 import { ACTION_LABELS } from './plan-step-labels';
-import { frozenFieldWord } from '../design/plain-words';
+import { frozenFieldAbsentWord, frozenFieldWord } from '../design/plain-words';
 import type { JsonValue, VersionSectionDiff } from '@intellifin/domain';
 function Value({ value }: { value: JsonValue }): React.JSX.Element {
   if (value === null) return <span>Not set</span>;
   if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>;
   if (typeof value !== 'object') return <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{value === 'RULE' ? 'Rule-Classified' : value === 'AGENT_JUDGED' ? 'Agent-Judged' : String(value)}</span>;
   if (Array.isArray(value)) return value.length ? <ul className="ls-stack">{value.map((entry,index) => <li key={index}><Value value={entry} /></li>)}</ul> : <span>None</span>;
-  return <dl className="ls-stack">{Object.entries(value).map(([key,entry]) => <div key={key}><dt><strong>{frozenFieldWord(key)}</strong></dt><dd><Value value={entry} /></dd></div>)}</dl>;
+  return <dl className="ls-stack">{Object.entries(value).map(([key,entry]) => <div key={key}><dt><strong>{frozenFieldWord(key)}</strong></dt><dd><FieldValue field={key} value={entry} /></dd></div>)}</dl>;
+}
+/**
+ * One frozen field, with the sentence its ABSENCE deserves when it has one.
+ *
+ * "Not set" is right for a field somebody could have filled. It was wrong for `model`,
+ * which is unset until a platform configuration revision publishes one — the owner read
+ * "Model: Not set" next to a writing assistant that had just worked and took the two for
+ * the same model. The sentence lives in `plain-words.ts`, so this stays the renderer.
+ */
+function FieldValue({ field, value }: { field: string; value: JsonValue }): React.JSX.Element {
+  const absent = value === null ? frozenFieldAbsentWord(field) : null;
+  return absent === null ? <Value value={value} /> : <span data-absent-field={field}>{absent}</span>;
 }
 function PlanSteps({ value }: { value: JsonValue }): React.JSX.Element {
   if (value === null) return <p>No previous executable plan.</p>;

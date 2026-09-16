@@ -31,8 +31,10 @@ import { RetryPlanDerivation, type RetryPlanDerivationFields, type RetryPlanDeri
 import { submissionUnavailableReason } from '@intellifin/application';
 import { VersionActions } from './VersionActions';
 
-function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveContext, onReview, onWriting, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan }: {
+function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave, onSaveContext, onReview, onWriting, onSaveTargets, onSaveCompliance, onSaveEvidence, onRename, onRetryPlan, actorNames }: {
   readonly draft: ProcedureVersionView;
+  /** User id → name for every auditor named on a section review record, plus the signed-in person. */
+  readonly actorNames?: Readonly<Record<string, string>>;
   readonly sources: readonly PopulationSourceBinding[];
   readonly registrations: readonly TargetSystemRegistration[];
   readonly rowVersion: string;
@@ -274,7 +276,7 @@ function DraftBuilderContent({ draft, sources, registrations, rowVersion, onSave
     <PreparationActionFeedback step={activeStep} />
     {activeStep === 'evidence' && guidedNotice?.question === evidenceQuestion ? <Banner tone="success" title={guidedNotice.title} /> : null}
     {result === null ? null : <Banner key={announcement} tone={result.ok ? 'success' : 'danger'} title={result.ok ? result.changed ? 'Saved. The Draft change is recorded in the audit chain.' : 'Saved. Nothing changed, so nothing was recorded.' : result.reason} />}
-    <GuidedPreparation onStepChange={setActiveStep} assistant={step => step === 'scope' ? null : <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
+    <GuidedPreparation actorNames={actorNames} onStepChange={setActiveStep} assistant={step => step === 'scope' ? null : <PreparationAssistant step={step} />} draft={draft} rowVersion={token} onRowVersion={setToken} onReview={onReview} editors={{
       context: <><TemplateContextForm draft={draft} rowVersion={token} onSave={async fields => { const outcome = await onSaveContext(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /><RenameDraftForm savedControlName={draft.controlName} procedureId={draft.procedureId} versionId={draft.versionId} rowVersion={token} onRename={async fields => { const outcome = await onRename(fields); if (outcome.ok) setToken(outcome.rowVersion); return outcome; }} /></>,
       scope: <GuidedQuestions label="Scope questions" selected={scopeQuestion} onSelect={setScopeQuestion} questions={[
         { id: 'intent', label: 'Describe the scope', question: 'Let’s agree what this test should cover.', content: <>

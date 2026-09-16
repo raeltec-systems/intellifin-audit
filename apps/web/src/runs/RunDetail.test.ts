@@ -239,6 +239,49 @@ describe('the Safe next action panel', () => {
     expect(html).toContain(row.humanAction);
     expect(html).toContain('Safe next action');
   });
+
+  it('cites no document and prints no row id at an auditor', () => {
+    // It captioned "Addendum §E.1, row `gate-failed`: …". An auditor has neither the
+    // document nor the row vocabulary; what the caption is FOR is the state the Evidence
+    // is in, which the contract's own first cell already says in words.
+    for (const row of OUTCOME_ROWS) {
+      const html = renderToStaticMarkup(
+        React.createElement(SafeNextActionPanel, { result: result({ outcome: row.outcome, outcomeRow: row.id }) }),
+      );
+      expect(html).toContain(row.evidenceState);
+      expect(html).not.toContain('Addendum');
+      expect(html).not.toContain('§E.1');
+      expect(html).not.toContain(`>${row.id}<`);
+      expect(html).not.toContain('ls-mono');
+    }
+  });
+
+  it('tells a Run-Failed reader where the reason is, and that the Run can be rerun', () => {
+    // "Diagnose and request a new Run" is the contract's own permitted action and says
+    // nothing about WHERE the diagnosis is. The reason is a banner at the top of this very
+    // Run, and a Rerun control is beside it.
+    const failed = renderToStaticMarkup(
+      React.createElement(SafeNextActionPanel, { result: result({ outcome: 'RUN_FAILED', outcomeRow: 'run-failed' }) }),
+    );
+    expect(failed).toContain('Why this Run stopped is stated at the top of the Run.');
+    expect(failed).toContain('this Run can be rerun');
+
+    // Only the Run-Failed row: a Gate failure is diagnosed from the §H rows on the Result
+    // tab, and pointing that reader at the stop banner would send them to a Run that did
+    // not stop for the reason they are looking for.
+    const gate = renderToStaticMarkup(
+      React.createElement(SafeNextActionPanel, { result: result({ outcome: 'INCONCLUSIVE', outcomeRow: 'gate-failed' }) }),
+    );
+    expect(gate).not.toContain('Why this Run stopped');
+    expect(gate).not.toContain('can be rerun');
+  });
+
+  it('renders nothing for a Result whose stored row this build does not hold', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(SafeNextActionPanel, { result: { ...result(), outcomeRow: 'constructor' } as never }),
+    );
+    expect(html).toBe('');
+  });
 });
 
 const evidenceItem = (overrides: Partial<RunEvidenceItem> = {}): RunEvidenceItem => ({
@@ -951,5 +994,85 @@ describe('the sealed Evidence package on the Result', () => {
     const empty = render({ state: 'SEALED', requiredTotal: 0, registered: 0, missingRequired: 0, abandoned: 0, artifacts: [] });
     expect(empty).toContain('registered no Evidence at all');
     expect(empty).not.toContain('published before the artifacts were named');
+  });
+});
+
+describe('the session-preparation rows, when one of them is what stopped the Run', () => {
+  const stopped = (
+    overrides: Partial<RunTimelineRead> = {},
+  ): RunTimelineRead => timeline({ stepExecutions: { total: 0, rows: [] }, sessionSteps: [], workItems: [], ...overrides });
+
+  it('writes a failed Agent Workspace as a word, a sentence, and the code beside them', () => {
+    // The owner's production Run stopped in session preparation, and this row said
+    // `FAILED` in the status column and `workspace-refused` in a monospace span. Neither
+    // is something an auditor can act on; the code stays for an operator who greps.
+    const html = renderTimeline(
+      stopped({
+        workspace: {
+          status: 'FAILED',
+          attempts: 4,
+          diagnostic: 'workspace-refused',
+          stepId: 'session-1',
+          mode: 'solari',
+          workspaceId: 'sess_9',
+          startedAt: '2026-09-16T09:00:00.000Z',
+          releasedAt: null,
+        },
+      }),
+    );
+    expect(html).toContain('Failed');
+    expect(html).toContain('The Agent Workspace provider refused the session.');
+    expect(html).toContain('<code class="ls-mono">workspace-refused</code>');
+    // The raw status is gone from the status column: it is a code word where a word exists.
+    expect(html).not.toContain('>FAILED<');
+  });
+
+  it('does not read a RELEASED workspace as a failure', () => {
+    // The worker gives a healthy workspace back in its `finally`. That is the ordinary end
+    // of a Run that used one, and a row that read as a failure would send an auditor to
+    // diagnose something that worked.
+    const html = renderTimeline(
+      stopped({
+        workspace: {
+          status: 'RELEASED',
+          attempts: 1,
+          diagnostic: 'workspace-released',
+          stepId: 'session-1',
+          mode: 'local',
+          workspaceId: null,
+          startedAt: '2026-09-16T09:00:00.000Z',
+          releasedAt: '2026-09-16T09:00:20.000Z',
+        },
+      }),
+    );
+    expect(html).toContain('Released');
+    expect(html).toContain('The Agent Workspace was released.');
+    expect(html).not.toContain('Failed');
+  });
+
+  it('writes a stopped population acquisition, and its failed §H checks, in words', () => {
+    const html = renderTimeline(
+      stopped({
+        population: {
+          status: 'TERMINAL',
+          attempts: 4,
+          diagnostic: 'freshness, complete-inclusion',
+          stepId: 'population',
+          startedAt: '2026-09-16T09:00:10.000Z',
+          attemptStartedAt: '2026-09-16T09:00:10.000Z',
+        },
+      }),
+    );
+    expect(html).toContain('Stopped');
+    expect(html).toContain('The declaration has no generation time this platform can read.');
+    expect(html).toContain('A record could not be placed inside or outside the Run period.');
+    expect(html).toContain('<code class="ls-mono">freshness, complete-inclusion</code>');
+    expect(html).not.toContain('>TERMINAL<');
+  });
+
+  it('writes an acquired population as a word and says nothing that did not happen', () => {
+    const html = renderTimeline(stopped());
+    expect(html).toContain('Acquired');
+    expect(html).not.toContain('POPULATION_READY');
   });
 });

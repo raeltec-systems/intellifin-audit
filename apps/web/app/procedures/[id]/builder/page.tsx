@@ -5,7 +5,8 @@ import {
   procedureVersionRowVersion,
   PROCEDURE_AUTHOR_ACTION,
 } from '@intellifin/application';
-import { DrizzleProcedureRepository, DrizzleBindingRepository, DrizzleRegistrationRepository } from '@intellifin/infrastructure';
+import { PREPARATION_SECTIONS, sectionReview } from '@intellifin/domain';
+import { DrizzleActorNameReader, DrizzleProcedureRepository, DrizzleBindingRepository, DrizzleRegistrationRepository } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
@@ -65,6 +66,13 @@ export default async function BuilderPage({
   if (draft === null || draft.procedureId !== id || draft.state !== 'DRAFT') notFound();
   const sources = await new DrizzleBindingRepository(runtime.db).listActiveBindings();
   const registrations = await new DrizzleRegistrationRepository(runtime.db).listActiveRegistrations();
+  // Every auditor a section review record names, plus the signed-in person — whose own
+  // review, acknowledged while this page is open, is rendered from the refreshed Draft
+  // without another server read. `ActorNameReader` is the one place an id becomes a name.
+  const actorNames = Object.fromEntries(await new DrizzleActorNameReader(runtime.db).namesFor([
+    decision.session.userId,
+    ...PREPARATION_SECTIONS.flatMap((section) => { const review = sectionReview(draft, section); return review === null ? [] : [review.actorId]; }),
+  ]));
 
   return (
     <div className="ls-stack">
@@ -96,6 +104,7 @@ export default async function BuilderPage({
       <div className="ls-guided-authoring">
         <DraftBuilder
           draft={draft}
+          actorNames={actorNames}
           sources={sources}
           registrations={registrations}
           rowVersion={procedureVersionRowVersion(draft)}

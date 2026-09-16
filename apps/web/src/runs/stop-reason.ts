@@ -225,7 +225,11 @@ export const WORK_WORDS: Readonly<Record<AgentWorkDiagnostic, string>> = {
 };
 
 /** The stage names a fallback sentence uses. In words, never the table name. */
-const STAGE_WORDS: Readonly<Record<RunStopStage, string>> = {
+/**
+ * The stage names, as they read inside "the … stage". Read by `unknownStopSentence` and by
+ * the Result tab's execution-failure panel, which names the stage beside the sentence.
+ */
+export const STAGE_WORDS: Readonly<Record<RunStopStage, string>> = {
   population: 'Population Source acquisition',
   workspace: 'Agent Workspace',
   access: 'Target System sign-in',

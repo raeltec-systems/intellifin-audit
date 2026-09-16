@@ -42,6 +42,9 @@ export const TELEMETRY_MESSAGES = [
   'Rerun failed',
   'Notification delivery failed',
   'Notification count could not be read',
+  // The top bar names the signed-in person (owner walkthrough, 2026-09-16); when the name
+  // read fails the bar shows the id, which is visible, and this is what makes it actionable.
+  'Signed-in name could not be read',
   'Procedure Version decision failed',
   'New Procedure Version failed',
   'Captured failure',

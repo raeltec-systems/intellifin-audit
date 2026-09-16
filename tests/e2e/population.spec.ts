@@ -464,8 +464,16 @@ test.describe('Auditor population acquisition', () => {
     const runId = await start(page, 1);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     await openEvidence(page, runId);
-    await expect(page.getByText('declared-count: Failed', { exact: true })).toBeVisible();
-    await expect(page.getByText('declared-digest: Failed', { exact: true })).toBeVisible();
+    // The §H rows say what each check CLAIMS and, when one failed, why — the stored name
+    // stays beside them in monospace for an operator who greps. This used to assert
+    // `declared-count: Failed`, which pinned a code word as the whole of what an auditor
+    // was told on a surface whose job is words (owner review, 2026-09-16).
+    const failedChecks = page.getByRole('region', { name: 'Population acquisition' });
+    await expect(failedChecks).toContainText('The declared number of records matches the file: Failed');
+    await expect(failedChecks).toContainText('The declaration states a different number of records than the file holds.');
+    await expect(failedChecks).toContainText('The declared fingerprint matches the file: Failed');
+    await expect(failedChecks.getByText('declared-count', { exact: true })).toBeVisible();
+    await expect(failedChecks.getByText('declared-digest', { exact: true })).toBeVisible();
     const [evidence] = await sql`SELECT object_key FROM population_evidence WHERE run_id=${runId}`;
     expect(Buffer.from((storage.objects.get(String(evidence!.object_key)))!)).toEqual(await readFile(join(process.cwd(), 'fixtures/northstar/generated', files[1]!)));
   });

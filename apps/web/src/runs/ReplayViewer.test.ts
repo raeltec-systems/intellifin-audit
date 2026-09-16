@@ -160,3 +160,33 @@ describe('a jump target with no frame to open', () => {
     expect(html).not.toContain(REPLAY_COPY.frameNotRead.replace('{shown}', '3'));
   });
 });
+
+describe('where Replay sends a reader for the Observations', () => {
+  it('links to the Evidence tab, which is the surface that lists them', () => {
+    // It linked to `/runs/<id>/observations`, which is not one of the five Run Detail tabs
+    // and answered Page not found — a dead end on the one control that offers to show the
+    // records this session produced (owner review, 2026-09-16).
+    const html = render();
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence"`);
+    expect(html).not.toContain(`/runs/${RUN_ID}/observations`);
+    expect(html).toContain(REPLAY_COPY.observationsLink);
+    expect(REPLAY_COPY.observationsLink).toContain('Evidence tab');
+  });
+
+  it('counts Observations against a frame only when there IS a frame', () => {
+    // With no frame this said "0 Observations had been registered when this frame was
+    // captured", which describes a frame that does not exist — an absence dressed as a
+    // measurement.
+    const empty = render({ frames: [], framesTotal: 0 });
+    expect(empty).toContain(REPLAY_COPY.observationsNoFrame);
+    expect(empty).not.toContain('when this frame was captured');
+    // The link is still offered: the Run may hold Observations even with no frame at all.
+    expect(empty).toContain(`href="/runs/${RUN_ID}/evidence"`);
+  });
+
+  it('still counts them for the frame the viewer is showing', () => {
+    const html = render({ frames: [frameView(2)], framesTotal: 1 });
+    expect(html).toContain(REPLAY_COPY.observationsThrough.replace('{count}', '2'));
+    expect(html).not.toContain(REPLAY_COPY.observationsNoFrame);
+  });
+});

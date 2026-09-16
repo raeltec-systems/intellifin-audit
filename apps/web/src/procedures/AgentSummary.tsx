@@ -2,7 +2,15 @@ import type { ProcedureVersionView } from '@intellifin/application';
 
 import { ReadinessPanel } from './ReadinessPanel';
 import { ACTION_LABELS } from './plan-step-labels';
-import { countWords, durationWords } from './plan-numbers';
+import {
+  ASKS_A_PERSON_LABEL,
+  HANDLING_HEADING,
+  RETRIES_LABEL,
+  STOPS_AFTER_LABEL,
+  asksAPersonWords,
+  retriesWords,
+  stopsAfterWords,
+} from './handling-words';
 
 /**
  * "Here is what the agent will do", in the order it will do it.
@@ -52,10 +60,10 @@ export function AgentSummary({
   // one is the per-record sequence. Read, never restated.
   const perRecord = plan?.targetSystems[0]?.planSteps ?? [];
   const evidence = plan?.inputs.evidenceRequirements ?? [];
-  // Read as a number, not as the compiler's literal type: the sentence must stay right
-  // if a later compiler version freezes a different bound, and `=== 1` against a
-  // literal `3` does not even compile.
-  const retries: number = plan?.limits.retriesPerStep ?? 0;
+  // The stop, retry and ask facts come from `handling-words.ts`, which the Schedule step
+  // reads too: the step whose title used to promise "handling" now shows the same three
+  // facts, and one home is what stops the two saying slightly different things.
+  const asksAPerson = plan === null ? null : asksAPersonWords(plan);
   return (
     <section className="ls-card ls-stack" aria-labelledby={headingId} data-agent-summary>
       <h2 className="ls-card__title" id={headingId}>
@@ -148,19 +156,19 @@ export function AgentSummary({
 
           <section className="ls-plan-group" aria-labelledby={`${headingId}-limits`}>
             <h3 className="ls-overline" id={`${headingId}-limits`}>
-              When it stops on its own
+              {HANDLING_HEADING}
             </h3>
             <dl className="ls-plan-facts">
-              <dt>Stops after</dt>
-              <dd>
-                {countWords(plan.limits.runStepExecutions)} steps,{' '}
-                {durationWords(plan.limits.runTimeoutSeconds)}, or{' '}
-                {countWords(plan.limits.runTokens)} tokens — whichever comes first
-              </dd>
-              <dt>Retries</dt>
-              <dd>
-                A failed step {countWords(retries)} {retries === 1 ? 'time' : 'times'}
-              </dd>
+              <dt>{STOPS_AFTER_LABEL}</dt>
+              <dd>{stopsAfterWords(plan.limits)}</dd>
+              <dt>{RETRIES_LABEL}</dt>
+              <dd>{retriesWords(plan.limits)}</dd>
+              {asksAPerson === null ? null : (
+                <>
+                  <dt>{ASKS_A_PERSON_LABEL}</dt>
+                  <dd>{asksAPerson}</dd>
+                </>
+              )}
             </dl>
           </section>
         </div>

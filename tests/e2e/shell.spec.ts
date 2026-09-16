@@ -24,6 +24,22 @@ test.describe('as an Auditor', () => {
     await expect(nav.getByRole('link', { name: 'Administration' })).toHaveCount(0);
   });
 
+  test('the top bar names the signed-in person and their authority', async ({ page }) => {
+    // UX-01: the bar offered Sign out and said nothing about whose session it was
+    // ending, on a product where the role printed here decides whether Approve is
+    // yours to press.
+    await page.goto('/');
+    const topbar = page.locator('.ls-topbar');
+    await expect(topbar).toContainText('Signed in as');
+    // The role in words. That the stored value `auditor` is never printed is proved
+    // in `SignedInAs.test.ts`, over every role; a name here could legitimately contain
+    // the word, so this asserts only what is deterministic in a seeded environment.
+    await expect(topbar).toContainText('Auditor');
+    // `ActorName` falls back to a monospace id only when no name is known, so an
+    // identifier here means the name was never resolved.
+    await expect(topbar.locator('.ls-mono')).toHaveCount(0);
+  });
+
   test('typing /administration is refused by the server', async ({ page }) => {
     await page.goto('/administration');
 
@@ -87,6 +103,14 @@ test.describe('as a PoC Administrator', () => {
       'Review',
       'Administration',
     ]);
+  });
+
+  test('the top bar names the PoC Administrator role in words', async ({ page }) => {
+    await page.goto('/');
+    const topbar = page.locator('.ls-topbar');
+    await expect(topbar).toContainText('Signed in as');
+    await expect(topbar).toContainText('PoC Administrator');
+    await expect(topbar.locator('.ls-mono')).toHaveCount(0);
   });
 
   test('the Administration surface is reachable', async ({ page }) => {

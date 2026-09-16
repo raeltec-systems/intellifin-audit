@@ -63,7 +63,8 @@ export interface ProcedureVersionView extends DraftPopulationFields, DraftTarget
   readonly sections: readonly DraftSection[];
   /**
    * Target System completeness diagnostics, derived from the Template and the selection
-   * (missing selection, missing P-1 web/desktop coverage). Not stored — computed on read.
+   * (a missing selection; a Template default is a suggestion and never a blocker since the
+   * owner's 2026-09-07 decision). Not stored — computed on read.
    */
   readonly targetBlockers: readonly TargetBlocker[];
   /**
