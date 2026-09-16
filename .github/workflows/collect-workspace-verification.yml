@@ -20,7 +20,7 @@ jobs:
           import json, re
           from pathlib import Path
           text = Path('/tmp/verification.log').read_text()
-          shas = re.findall(r'::notice::VERIFIED_CANDIDATE_SHA=([0-9a-f]{40})', text)
+          shas = re.findall(r'VERIFIED_CANDIDATE_SHA=([0-9a-f]{40})', text)
           assert len(set(shas)) == 1, 'Expected one verified candidate'
           result = {'candidate': shas[0], 'base': '763cac329fa0599200568fa0a6c3a91579c0267c', 'verification_run': 35151666534, 'verification_job': 104981206174}
           Path('workspace-verification.json').write_text(json.dumps(result, indent=2))
