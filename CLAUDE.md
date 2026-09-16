@@ -22,6 +22,40 @@ are unchanged. Do not rewrite old immutable events to hide an expired handle. Ex
 public event reads project selected fields (the live channel sends sequence numbers),
 not arbitrary historical payloads. Never enable a raw provider-control URL as a viewer.
 
+## 2026-09-16 — The owner's workspace fix, validated by two live Runs on production
+
+The owner widened `run_workspace_identity_shape` to 4,096 characters (generation 50, because a
+Solari session id is longer than 200) and moved the workspace-state save inside the provider-error
+handler, then asked for a real Run against the deployed product rather than a test. Two were started
+through the live UI as a seeded auditor account.
+
+- **The fix holds: a Solari workspace is created, SAVED and then USED.** The P-1 Run's Execution
+  Timeline reads `Create the Agent Workspace — Managed remote browser · 1 attempts · Released` with
+  its Step Execution `Succeeded · 2s`, then `LoanCore — Sign in to the Target System · Acquired`
+  (`Succeeded · 3s`) carrying the Tool Action `navigate · POST · Performed · status 200 ·
+  redirected · Capture suppressed — a credential was presented on this request` against
+  `…/loancore`. Before the fix both of the owner's Runs died about five seconds in, `RUN_FAILED`,
+  with "The Run stopped before it concluded, and no stage recorded why." and two `Fatal worker
+  error` lines. Nothing else in this repository could have shown that: the local mode never produces
+  an identity long enough to violate the CHECK.
+- **A P-4 Procedure Version that freezes a SECOND Target System can never run, and the sentence does
+  not say so.** `publicP4Target` requires `plan.inputs.targets.length === 1`, so the production P-4
+  — ProdConsole (web) **and** ConfigRegistry (published file), the latter already bound as the
+  Population Source — makes `publicContractInvalid` true at the AGENT CLAIM, before any Session Step
+  row is written. The Run therefore shows two Session Steps, NO `sign-in` row, no Tool Action, and
+  the banner "The public page is not the surface this Procedure Version froze." — which names a page
+  the Run never opened. The guard is deliberate ("an extra target would make the public proof
+  ambiguous"); what is missing is a diagnostic of its own and an authoring-time warning. P-4's
+  `defaultTargets` names ProdConsole alone, so this Version was authored that way and not suggested.
+- **Read the TIMELINE before the diagnostic.** Two hypotheses were wrong before the rows settled it:
+  that the frozen origin was the deeper `/prodconsole/configuration` (it is `/prodconsole`, which
+  serves exactly one in-scope link), and that a sorted origin set put the CSV first. An ABSENT
+  Session Step row is the fact that located the failure at the claim rather than in the page proof.
+- **P-1's remaining stop is the golden dataset working.** The full leavers export seeds a duplicate
+  employee key, so the agent stage refuses the whole Run (`population-key-unresolved`) and §H reports
+  `duplicate-primary-key · 1 affected` (E-000107) beside `record-uncovered · 19 affected`. Already
+  recorded above; restated here because it is what a live P-1 Run against the full export looks like.
+
 ## 2026-09-16 — A provider success is not a committed workspace
 
 The provider catch did not enclose the OPEN checkpoint transaction. A database CHECK
