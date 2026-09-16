@@ -1,0 +1,48 @@
+name: Verify deployed auditor journey
+
+# One user-authorized live check. No deployment, migration, model mocks, or Run DB writes.
+# Remove the push trigger after evidence has been collected.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/verify-live-auditor.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: deployed-auditor-verification
+  cancel-in-progress: false
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+      - name: Install pinned workspace tooling
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Validate browser script and build administrative identity dependencies
+        run: |
+          node --check scripts/verify-live-auditor.mjs
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Sign in, start exactly one live Run, observe Watch and Replay
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/verify-live-auditor.mjs
+      - name: Retain synthetic UI evidence without credentials
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-auditor-journey-${{ github.run_id }}
+          path: live-auditor-evidence/
+          if-no-files-found: warn
+          retention-days: 14
