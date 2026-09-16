@@ -1,4 +1,5 @@
 import { RECORDING_COPY_TIMEOUT_MS, canExecuteWithoutAuditCredentials, executeEvaluationReviewCommand, acquirePopulation, executeAgentWorkItem, raiseEscalation, executeAdapterSteps, executeAgentSteps, derivePlan, provisionWorkspace, releaseWorkspace, reconcilePlanDerivation, stopUnexecutableRun, verifySealedPackage, type PopulationJob, type WorkspaceDependencies } from '@intellifin/application';
+import { isActiveRunState } from '@intellifin/domain';
 import { hostname } from 'node:os';
 
 import {
@@ -9,6 +10,7 @@ import {
   PostgresAgentWorkRepository, PostgresPopulationRepository, PostgresAdapterExecutionRepository, PostgresAgentExecutionRepository, PostgresSealedPackageRepository,
   startPopulationWorker, startPopulationRecovery, startEvidenceIntegritySweep, startWorkspaceReaper,
   PostgresWorkspaceRepository, SystemClock,
+  DrizzleRunStopReader,
   DrizzleNotificationRepository, InAppNotificationSender, startNotificationWorker,
   createProceduresQueue, startQueueMaintenance, startProceduresWorker, startProceduresRecovery, createModelGateway, DrizzleProcedureRepository, PostgresProceduresUnitOfWork, CryptoUuidV7Generator,
   createDb,
@@ -294,7 +296,36 @@ async function main(): Promise<void> {
           telemetry.captureError('Fatal worker error', new Error('Workspace release failed'), {}));
       }
     };
+    // One log line per Run that ENDED under this worker: its terminal state, the stage that
+    // stopped it and that stage's closed diagnostic, read from the same stop facts the Runs
+    // list shows. Two production Runs failed on 2026-09-16 with the worker's log stream
+    // holding nothing about them at all; the only record of why was a checkpoint column.
+    // Nothing a Target System said is in the line, and a Run still in flight logs nothing.
+    const stops = new DrizzleRunStopReader(db);
+    const logRunEnd = async (runId: string): Promise<void> => {
+      const facts = await stops.readStop(runId).catch(() => null);
+      if (facts === null || isActiveRunState(facts.state)) return;
+      telemetry.info('Run ended', {
+        runId,
+        state: facts.state,
+        ...(facts.stop === null ? {} : { stage: facts.stop.stage, diagnostic: facts.stop.diagnostic }),
+      });
+    };
+    const logged = <T,>(fn: (job: PopulationJob) => Promise<T>) => async (job: PopulationJob): Promise<T> => {
+      try {
+        return await fn(job);
+      } finally {
+        await logRunEnd(job.runId);
+      }
+    };
     const handle = async (job: PopulationJob): Promise<{ retry: boolean }> => {
+      try {
+        return await pipeline(job);
+      } finally {
+        await logRunEnd(job.runId);
+      }
+    };
+    const pipeline = async (job: PopulationJob): Promise<{ retry: boolean }> => {
       // The FROZEN plan decides whether this Run gets a workspace at all: `create-workspace`
       // is emitted first exactly when a selected Target System is web or desktop, so an
       // adapter-only Run reaches nothing and is unchanged by Story 4.1.
@@ -303,6 +334,11 @@ async function main(): Promise<void> {
       // Run `RUN_FAILED`, and `acquirePopulation` declines a Run in that state, so this
       // returns without a second branch saying the same thing.
       if (provisioned.retry) return { retry: true };
+      // Somebody else holds the workspace lease: the queue's delivery and the population
+      // recovery sweep can both reach a Run while its provider session is being created.
+      // The claimant that holds the lease carries the Run on from here; going on to acquire
+      // the population under its lease is what ended the owner's Runs `workspace-missing`.
+      if (provisioned.deferred) return { retry: false };
       try {
         const acquired = await acquirePopulation(population, job);
         if (acquired.retry) return acquired;
@@ -339,17 +375,18 @@ async function main(): Promise<void> {
       // process restarted without a credential manifest, is selected by nothing else and
       // would stay RUNNING for ever. With extraction off, the sweep stops it instead.
       const recover = adapter === null
-        ? (job: PopulationJob) => stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured')
-        : async (job: PopulationJob) => {
+        ? logged((job: PopulationJob) => stopUnexecutableRun(stoppable, job, 'adapter-extraction-unconfigured'))
+        : logged(async (job: PopulationJob) => {
             // A durable sign-in checkpoint cannot authenticate a replacement browser.
             // Recover provider identity first; only confirmed release/expiry allows a
             // replacement, which must repeat the approved access phase.
             const provisioned = await provisionWorkspace(workspace, job);
             if (provisioned.retry) return { retry: true };
+            if (provisioned.deferred) return { retry: false };
             if (!(await signIn(job, provisioned.workspaceReplaced === true)).proceed) return { retry: false };
             await executeAdapterSteps(adapter, job);
             return inspect(job);
-          };
+          });
       const stopAdapterRecovery = startPopulationRecovery(db,adapterRepository,recover,()=>telemetry.captureError('Fatal worker error',new Error('Adapter recovery failed'),{}));
       // And the agent phase's own, for the same reason one layer earlier: a sign-in that
       // wrote a RETRY checkpoint is deliberately not asking the queue for a redelivery,

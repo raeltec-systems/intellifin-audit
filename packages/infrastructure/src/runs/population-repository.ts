@@ -206,7 +206,14 @@ export class PostgresPopulationRepository
         eq(populationExecution.runId, auditRun.runId),
       )
       .where(
-        sql`${auditRun.state} IN ('QUEUED','RUNNING') AND (${populationExecution.runId} IS NULL OR ${populationExecution.status}='RETRY' OR (${populationExecution.status}='ACQUIRING' AND ${populationExecution.leaseUntil}<=now()))`,
+        // A RUNNING Run with no population row IS abandoned — unless its workspace is being
+        // provisioned right now. The workspace stage runs BEFORE acquisition (Story 4.1) and
+        // a provider session takes seconds to create, so without this clause the sweep
+        // handed a live Run to a second handler every five seconds and that handler ended
+        // it `workspace-missing` (the owner's two production Runs, 2026-09-16). The outer
+        // identifier is written out because Drizzle can strip the qualifier from an
+        // interpolated column inside a correlated subquery (Story 2.8).
+        sql`${auditRun.state} IN ('QUEUED','RUNNING') AND (${populationExecution.runId} IS NULL OR ${populationExecution.status}='RETRY' OR (${populationExecution.status}='ACQUIRING' AND ${populationExecution.leaseUntil}<=now())) AND NOT EXISTS (SELECT 1 FROM run_workspace w WHERE w.run_id = "audit_run"."run_id" AND w.status = 'PROVISIONING' AND w.lease_until > now())`,
       )
       .orderBy(asc(auditRun.initiatedAt))
       .limit(Math.max(1, Math.min(100, limit)));

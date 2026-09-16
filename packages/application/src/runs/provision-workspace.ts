@@ -77,7 +77,19 @@ export interface ProvisionWorkspaceResult {
   readonly retry: boolean;
   readonly provisioned: boolean;
   readonly workspaceReplaced?: true;
+  /**
+   * ANOTHER claimant holds this Run's workspace lease right now, so this caller must go no
+   * further with the Run: the population stage does not look at the workspace, and the
+   * agent claim ends a Run whose workspace is not yet OPEN. The queue's delivery and the
+   * population recovery sweep can both reach a Run inside the seconds a provider session
+   * takes to create (the owner's two production Runs of 2026-09-16 died exactly there), and
+   * the loser of the workspace claim used to carry on as though it had won.
+   */
+  readonly deferred: boolean;
 }
+
+/** The claim's answer when somebody else is provisioning this workspace right now. */
+const DEFERRED = 'deferred' as const;
 
 /** The closed diagnostic vocabulary. Never an error message, never a URL, never a value. */
 export type WorkspaceDiagnostic =
@@ -291,8 +303,10 @@ export async function provisionWorkspace(
     const prior = context.checkpoint;
     if (prior?.status === 'RELEASED' || prior?.status === 'FAILED') return null;
     const now = deps.clock.now();
-    // Somebody else is provisioning this workspace right now.
-    if (prior?.status === 'PROVISIONING' && Date.parse(prior.leaseUntil) > now.getTime()) return null;
+    // Somebody else is provisioning this workspace right now. Said by name rather than as
+    // `null`, because `null` is also "this Run needs no workspace", and a caller that cannot
+    // tell the two apart goes on to acquire the population under a lease it does not hold.
+    if (prior?.status === 'PROVISIONING' && Date.parse(prior.leaseUntil) > now.getTime()) return DEFERRED;
 
     const plan = await context.frozenPlan();
     const requirement = plan === null ? null : workspaceRequirement(plan);
@@ -365,7 +379,8 @@ export async function provisionWorkspace(
     await context.save(checkpoint, 'RUNNING');
     return { checkpoint, run, plan: plan!, requirement, budget };
   });
-  if (claim === null) return { retry: false, provisioned: false };
+  if (claim === DEFERRED) return { retry: false, provisioned: false, deferred: true };
+  if (claim === null) return { retry: false, provisioned: false, deferred: false };
 
   const { checkpoint, run, plan, requirement, budget } = claim;
   const stepTimeoutMs = plan.limits.stepTimeoutSeconds * 1000;
@@ -520,7 +535,7 @@ export async function provisionWorkspace(
         });
       }
     });
-    return { retry: committed && !spent, provisioned: false };
+    return { retry: committed && !spent, provisioned: false, deferred: false };
   }
 
   const denials = handle.takeDenials();
@@ -559,11 +574,11 @@ export async function provisionWorkspace(
   // closing it here would revoke that worker's live session. Its winner/reaper owns it.
   if (!committed) {
     if (createdByThisClaim) await deps.browser.release(handle.ref, stepTimeoutMs).catch(() => undefined);
-    return { retry: false, provisioned: false };
+    return { retry: false, provisioned: false, deferred: false };
   }
   return workspaceReplaced
-    ? { retry: false, provisioned: true, workspaceReplaced: true }
-    : { retry: false, provisioned: true };
+    ? { retry: false, provisioned: true, workspaceReplaced: true, deferred: false }
+    : { retry: false, provisioned: true, deferred: false };
 }
 
 /**

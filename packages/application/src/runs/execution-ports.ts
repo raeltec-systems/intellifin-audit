@@ -1507,6 +1507,12 @@ export interface AgentExecutionContext extends RunPauseContext {
   populationReady: boolean;
   /** The Agent Workspace this Run holds, or `null` when it has none. */
   workspace: { workspaceId: string; mode: string } | null;
+  /**
+   * A workspace row exists but is not OPEN yet — `PROVISIONING` or `RETRY`. Somebody is
+   * provisioning it, or the workspace sweep will; either way this phase must wait rather
+   * than end the Run for a workspace that is on its way (the 2026-09-16 race).
+   */
+  workspacePending: boolean;
   frozenPlan(): Promise<ExecutablePlan | null>;
   sessionSteps: readonly SessionStepRecord[];
   saveCheckpoint(checkpoint: AgentExecutionCheckpoint, state: RunRecord['state']): Promise<void>;

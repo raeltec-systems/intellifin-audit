@@ -88,6 +88,10 @@ export class PostgresAgentExecutionRepository implements AgentExecutionRepositor
           workspace && workspace.status === 'OPEN' && workspace.workspaceId !== null
             ? { workspaceId: workspace.workspaceId, mode: workspace.mode }
             : null,
+        // On its way: provisioning is in flight, or a transient failure left it for the
+        // workspace sweep. Neither is a workspace this Run lacks.
+        workspacePending:
+          workspace !== undefined && (workspace.status === 'PROVISIONING' || workspace.status === 'RETRY'),
         sessionSteps: steps.map(
           (row): SessionStepRecord => ({
             stepId: row.stepId,

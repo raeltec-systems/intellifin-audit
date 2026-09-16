@@ -1,3 +1,51 @@
+## 2026-09-16 — The owner's first Solari Run died five seconds in, and the worker's log said nothing
+
+The owner walked P-1 through production end to end — created, approved by a second account,
+activated, started by hand — and both Runs failed about five seconds after they started:
+after acquiring the population, before any Step Execution, with the Result saying "The Run
+failed before any Session Step recorded a diagnostic" and the worker's Railway log holding
+four boot lines and nothing about either Run. Root-caused by READING, because nothing
+observable said why. Findings, repairs and what the walkthrough report asked for:
+`_bmad-output/implementation-artifacts/owner-walkthrough-2026-09-16.md`.
+
+- **The population recovery sweep hands a live Run to a second handler.** `recoverableRunIds`
+  selects a `RUNNING` Run with no `population_execution` row every five seconds — the Story
+  5.3 note calls that abandoned, and it was, until Story 4.1 put the workspace stage BEFORE
+  acquisition. A provider session takes seconds to create, so for those seconds a healthy
+  Run IS "RUNNING with no population row". The queue's delivery held the workspace lease;
+  the sweep's handler lost the claim, got the same `null` an adapter-only Run gets, carried
+  on to acquire the population, and reached the agent claim — which found a workspace that
+  was not `OPEN` and ended the Run `workspace-missing`, `RUN_FAILED`. The winner's `OPEN`
+  commit was then lost (the Run was no longer `RUNNING`) and its provider session leaked. A
+  local Chromium launches in under a second, so acquisition always finished after `OPEN` and
+  no test could see it; Solari made the window five seconds wide, and the tick fell inside
+  it twice out of two.
+- **Three rules say one thing now, each proven by mutation.** `provisionWorkspace` returns
+  `deferred: true` when another claimant holds a live lease and `handle`/`recover` stop
+  there; the agent claim WAITS on a `PROVISIONING`/`RETRY` row (`workspacePending`) instead
+  of failing it; and the sweep excludes a Run under a live provisioning lease.
+  `workspace-missing` now means what its name says: no row, or a `FAILED`/`RELEASED` one
+  under a `RUNNING` Run. **A `null` that means two things is the defect shape** — `null` was
+  both "needs no workspace" and "somebody else is provisioning it", and only the first is
+  safe to carry past. Say the second by name.
+- **The worker logs `Run ended` for every Run that reaches a terminal state under it**, with
+  the Run id, the state, the stage and the closed diagnostic — the same stop facts the Runs
+  list reads, so the log and the surface cannot disagree. An operator with only the log had
+  NOTHING to read. `runId`, `state`, `stage` and `diagnostic` joined `TELEMETRY_FIELD_KEYS`,
+  and the test asserts the four survive sanitization.
+- **Railway's log API answered an empty array for a window the stream had nothing in**, and
+  the same for a filter naming the Run. Check the query against a window that provably has
+  lines before concluding a service logged nothing — done here; the worker really had not.
+
+Two mechanical notes:
+
+- **`startup.test.ts` scans `main.ts` and anchors on `const handle = async (job` and
+  `const recover = adapter === null`.** A wrapper that renames either breaks a test that is
+  right to exist; wrap INSIDE the names instead (`handle` delegates to `pipeline` under a
+  `finally`, and each arm of `recover` is `logged(...)`).
+- **The provisioning claim is the Run's FIRST boundary, so a deferred claim leaves the Run
+  `QUEUED`.** The first version of the deferred test asserted `RUNNING`.
+
 ## 2026-09-16 — A page of Runs must say why each one stopped, and who started it
 
 The owner sent a screenshot of the production Runs list — *"all the runs failed, also whats
