@@ -60,6 +60,7 @@ const STALE_SNAPSHOT: RunStopFacts = {
   initiatedAt: '2026-09-15T10:00:00.000Z',
   period: { from: '2026-09-01', to: '2026-09-15' },
   stop: { stage: 'population', diagnostic: 'freshness' },
+  timedOutWait: null,
   snapshotGeneratedAt: '2026-09-01T00:00:00.000Z',
   gateChecks: 0,
   gateFailed: 0,

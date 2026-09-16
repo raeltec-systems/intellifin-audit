@@ -26,6 +26,16 @@ shows it as a code, or not at all, has not told the auditor anything.**
   what to do about it; generation 24 added that column for exactly this. A stage stop
   outranks the Gate on purpose: an agent Run at its time limit records every §H row before
   sealing (2026-09-08), so both exist and the limit is what ended it.
+- **A wait whose deadline passed is a stop the wake records on the WAIT row, and nowhere
+  else.** Codex found it on PR 39: `wakeEscalation` closes the `run_wait` with
+  `closure_kind = 'timeout'` and ends the Run `INCONCLUSIVE` through `completeRun`, and no
+  stage checkpoint turns terminal and no §H row is written — so the first version fell
+  through to "no stage recorded why" for the one stop whose record is the most explicit of
+  all. The reader joins the latest timed-out wait (`stage: 'wait'`, `pause-timeout` or
+  `escalation-timeout`, the kind and the deadline beside it) after the stage checkpoints
+  and before the chain's unexecutable event; an ANSWERED or RESUMED wait is not a stop.
+  **A "no stage recorded why" fallback is a claim about every record the platform keeps,
+  and it has to be checked against each of them, not only the checkpoint tables.**
 - **The Initiator is a person.** `ActorName` renders `ActorNameReader`'s answer and the id
   in monospace only when no name is known; the cancellation and rerun banners are the
   siblings `PauseBanners` was repaired for in the Epic 5 review and had the same defect.

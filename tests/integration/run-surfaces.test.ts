@@ -149,6 +149,7 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
         await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
         await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
         await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
         await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
         // The stop-reason case appends one chain for one of these Runs. A whole aggregate
         // goes together — events first, then its head — which is the one shape of
@@ -483,6 +484,28 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
       gateFailed: 0,
       outcomeRow: null,
     });
+    // A wait whose deadline passed is a stop the wake recorded on the WAIT row: no stage
+    // checkpoint turns terminal and no §H row is written (Codex, PR 39). The latest
+    // timed-out wait wins, and its kind and deadline travel with the facts.
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+              VALUES(${ids.next()},${runs.other},'choose-candidate','[{"id":"a","label":"A"}]'::jsonb,
+                '2026-09-04T09:00:00Z',NULL,'2026-09-04T13:00:00Z','2026-09-04T13:00:01Z','timeout',NULL,'wait-wake')`;
+    expect(await reader.readStop(runs.other)).toMatchObject({
+      stop: { stage: 'wait', diagnostic: 'escalation-timeout' },
+      timedOutWait: { kind: 'choose-candidate', deadline: '2026-09-04T13:00:00.000Z' },
+    });
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+              VALUES(${ids.next()},${runs.other},'pause','[{"id":"resume","label":"Resume"}]'::jsonb,
+                '2026-09-04T14:00:00Z',${author},'2026-09-04T14:30:00Z','2026-09-04T14:30:01Z','timeout',NULL,'wait-wake')`;
+    expect(await reader.readStop(runs.other)).toMatchObject({
+      stop: { stage: 'wait', diagnostic: 'pause-timeout' },
+      timedOutWait: { kind: 'pause', deadline: '2026-09-04T14:30:00.000Z' },
+    });
+    // A wait that was ANSWERED is not a stop: only the timeout closure is one.
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+              VALUES(${ids.next()},${runs.first},'retry-or-skip','[{"id":"retry","label":"Retry"}]'::jsonb,
+                '2026-09-01T09:05:00Z',NULL,'2026-09-01T13:05:00Z','2026-09-01T09:10:00Z','answer','retry',${author})`;
+    expect((await reader.readStop(runs.first))?.stop).toBeNull();
     // A Run that is not there is absent, and text that is not a UUID never reaches PostgreSQL.
     expect(stops.size).toBe(3);
     expect(await reader.readStop(ids.next())).toBeNull();

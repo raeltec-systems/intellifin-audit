@@ -25,13 +25,20 @@ import { RUN_LIST_PAGE_SIZE } from './run-list-repository.js';
 /**
  * The stages that can end a Run before the Gate, in the order the Run reaches them.
  *
- * `unexecutable` is not a stage checkpoint at all: `stopUnexecutableRun` writes NO
- * checkpoint, deliberately, and records its reason only in the chain
- * (`lifecycle.run-unexecutable`). It is read from there, so a Run this deployment could
- * not run says so rather than reading as a Run nothing recorded anything about.
+ * Two of these are not stage checkpoints at all. `wait` is a pause or an Escalation whose
+ * deadline passed: `wakeEscalation` closes the `run_wait` row with `closure_kind =
+ * 'timeout'` and ends the Run `INCONCLUSIVE` through `completeRun`, and NO checkpoint
+ * turns terminal and no §H row is written — so without reading the wait row such a Run
+ * reads as one nothing recorded anything about (Codex, PR 39). `unexecutable` is the
+ * other: `stopUnexecutableRun` writes NO checkpoint, deliberately, and records its reason
+ * only in the chain (`lifecycle.run-unexecutable`), so it is read from there.
  */
-export const RUN_STOP_STAGES = ['population', 'workspace', 'access', 'extraction', 'work', 'unexecutable'] as const;
+export const RUN_STOP_STAGES = ['population', 'workspace', 'access', 'extraction', 'work', 'wait', 'unexecutable'] as const;
 export type RunStopStage = (typeof RUN_STOP_STAGES)[number];
+
+/** The two diagnostics the `wait` stage produces, named after the events the wake appends. */
+export const WAIT_TIMEOUT_DIAGNOSTICS = ['pause-timeout', 'escalation-timeout'] as const;
+export type WaitTimeoutDiagnostic = (typeof WAIT_TIMEOUT_DIAGNOSTICS)[number];
 
 export interface RunStop {
   readonly stage: RunStopStage;
@@ -46,6 +53,12 @@ export interface RunStopFacts {
   readonly period: { readonly from: string; readonly to: string };
   /** The first stage whose checkpoint ended the Run, or `null` when none did. */
   readonly stop: RunStop | null;
+  /**
+   * The wait whose deadline passed, when the Run was ended by one: its stored kind
+   * (`pause`, or an Escalation kind) and its deadline, so the sentence can say which
+   * question went unanswered and by when.
+   */
+  readonly timedOutWait: { readonly kind: string; readonly deadline: string } | null;
   /**
    * The population snapshot's declared generation time, verbatim as stored, or `null`.
    *
@@ -81,6 +94,8 @@ interface RawStop extends Record<string, unknown> {
   outcome_row: string | null;
   gate_checks: number;
   gate_failed: number;
+  wait_kind: string | null;
+  wait_deadline: Date | string | null;
   unexecutable: string | null;
 }
 
@@ -110,6 +125,10 @@ function stopOf(row: RawStop): RunStop | null {
   for (const [stage, status, diagnostic, terminal] of candidates) {
     if (status !== terminal || diagnostic === null || diagnostic === '' || diagnostic === 'canceled') continue;
     return { stage, diagnostic };
+  }
+  // A wait that timed out is a stop the wake recorded on the WAIT row, not on a stage.
+  if (row.wait_kind !== null && row.wait_kind !== '') {
+    return { stage: 'wait', diagnostic: row.wait_kind === 'pause' ? 'pause-timeout' : 'escalation-timeout' };
   }
   if (row.unexecutable !== null && row.unexecutable !== '') {
     return { stage: 'unexecutable', diagnostic: row.unexecutable };
@@ -147,6 +166,7 @@ export class DrizzleRunStopReader {
              res.outcome_row,
              coalesce(gate.checks, 0)::int AS gate_checks,
              coalesce(gate.failed, 0)::int AS gate_failed,
+             wait.kind AS wait_kind, wait.deadline AS wait_deadline,
              unex.diagnostic AS unexecutable
       FROM audit_run r
       LEFT JOIN population_execution pe ON pe.run_id = r.run_id
@@ -161,6 +181,12 @@ export class DrizzleRunStopReader {
                count(*) FILTER (WHERE g.outcome = 'FAIL')::int AS failed
         FROM run_gate_check g WHERE g.run_id = r.run_id
       ) gate ON true
+      LEFT JOIN LATERAL (
+        SELECT w.kind, w.deadline
+        FROM run_wait w
+        WHERE w.run_id = r.run_id AND w.closure_kind = 'timeout'
+        ORDER BY w.closed_at DESC LIMIT 1
+      ) wait ON true
       LEFT JOIN LATERAL (
         SELECT e.payload->>'diagnostic' AS diagnostic
         FROM audit_events e
@@ -177,6 +203,10 @@ export class DrizzleRunStopReader {
           initiatedAt: iso(row.initiated_at),
           period: { from: row.period_from, to: row.period_to },
           stop: stopOf(row),
+          timedOutWait:
+            row.wait_kind === null || row.wait_kind === '' || row.wait_deadline === null
+              ? null
+              : { kind: row.wait_kind, deadline: iso(row.wait_deadline) },
           snapshotGeneratedAt: row.generated_at === null ? null : iso(row.generated_at),
           gateChecks: Number(row.gate_checks),
           gateFailed: Number(row.gate_failed),

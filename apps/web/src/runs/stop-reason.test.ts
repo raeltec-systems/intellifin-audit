@@ -36,6 +36,7 @@ function facts(overrides: Partial<RunStopFacts> = {}): RunStopFacts {
     initiatedAt: '2026-09-15T10:00:00.000Z',
     period: { from: '2026-09-01', to: '2026-09-15' },
     stop: null,
+    timedOutWait: null,
     snapshotGeneratedAt: null,
     gateChecks: 0,
     gateFailed: 0,
@@ -140,6 +141,29 @@ describe('the stage sentences', () => {
     expect(stopped('extraction', 'reference-transport-failed')).toBe(EXTRACTION_WORDS['reference-transport-failed']);
     expect(stopped('work', 'model-unavailable')).toBe(WORK_WORDS['model-unavailable']);
     expect(stopped('extraction', 'sign-in-denied')).toBe(unknownStopSentence('extraction', 'sign-in-denied'));
+  });
+
+  it('says a pause nobody resumed, or a question nobody answered, ran out its deadline', () => {
+    // Codex (PR 39): a timed-out wait ends the Run INCONCLUSIVE with no terminal stage
+    // checkpoint and no §H row, so the first version fell through to "nothing recorded why"
+    // for the one stop whose record is the most explicit of all.
+    expect(
+      stopped('wait', 'pause-timeout', { timedOutWait: { kind: 'pause', deadline: '2026-09-16T07:30:00.000Z' } }),
+    ).toBe('The Run was paused and nobody resumed it before its deadline of 2026-09-16T07:30:00.000Z. No conclusion was issued.');
+    const escalation = stopped('wait', 'escalation-timeout', {
+      timedOutWait: { kind: 'choose-candidate', deadline: '2026-09-16T11:00:00.000Z' },
+    });
+    expect(escalation).toBe(
+      'The agent asked a question and nobody answered it before its deadline (Choose candidate) of 2026-09-16T11:00:00.000Z. No conclusion was issued.',
+    );
+    // The stored kind is never printed as its key.
+    expect(escalation).not.toContain('choose-candidate');
+    // A wait row this reader could not fully read still gets the sentence, without a date.
+    expect(stopped('wait', 'escalation-timeout')).toBe(
+      'The agent asked a question and nobody answered it before its deadline. No conclusion was issued.',
+    );
+    expect(stopped('wait', 'something-new')).toBe(unknownStopSentence('wait', 'something-new'));
+    expect(unknownStopSentence('wait', 'x')).toContain('waiting for a person');
   });
 
   it("uses the application's own sentence for a Run this deployment could not run", () => {

@@ -11,7 +11,9 @@ import {
   type AgentWorkDiagnostic,
   type WorkspaceDiagnostic,
 } from '@intellifin/application';
-import type { RunStopFacts, RunStopStage } from '@intellifin/infrastructure';
+import type { RunStopFacts, RunStopStage, WaitTimeoutDiagnostic } from '@intellifin/infrastructure';
+
+import { escalationKindWord } from '../design/plain-words';
 
 /**
  * Why a Run stopped, in the auditor's words (owner correction, 2026-09-15).
@@ -229,8 +231,35 @@ const STAGE_WORDS: Readonly<Record<RunStopStage, string>> = {
   access: 'Target System sign-in',
   extraction: 'Adapter extraction',
   work: 'agent inspection',
+  wait: 'waiting for a person',
   unexecutable: 'dispatch',
 };
+
+/**
+ * A wait whose deadline passed (Codex, PR 39).
+ *
+ * A pause nobody resumed and an Escalation nobody answered both end the Run
+ * `INCONCLUSIVE` through `wakeEscalation`, with no stage checkpoint turning terminal and
+ * no §H row written — so the reason lives on the wait row alone, and this is the one
+ * place it becomes a sentence. The Escalation's own kind is named through the same words
+ * the inbox and the Escalation panel use, never as its stored key.
+ */
+const WAIT_TIMEOUT_WORDS: Readonly<Record<WaitTimeoutDiagnostic, string>> = {
+  'pause-timeout': 'The Run was paused and nobody resumed it before its deadline',
+  'escalation-timeout': 'The agent asked a question and nobody answered it before its deadline',
+};
+
+function waitTimeoutSentence(facts: RunStopFacts, diagnostic: string): string {
+  const opening = word(WAIT_TIMEOUT_WORDS, diagnostic);
+  if (opening === null) return unknownStopSentence('wait', diagnostic);
+  const wait = facts.timedOutWait;
+  const question =
+    diagnostic === 'escalation-timeout' && wait !== null && wait.kind !== 'pause'
+      ? ` (${escalationKindWord(wait.kind)})`
+      : '';
+  const deadline = wait === null ? '' : ` of ${wait.deadline}`;
+  return `${opening}${question}${deadline}. No conclusion was issued.`;
+}
 
 /** The `Object.hasOwn` lookup, so a stored value that spells `constructor` gets the fallback. */
 function word(table: Readonly<Record<string, string>>, key: string): string | null {
@@ -263,7 +292,7 @@ function populationSentence(facts: RunStopFacts, diagnostic: string): string {
   return fixed ?? unknownStopSentence('population', diagnostic);
 }
 
-const STAGE_TABLES: Readonly<Record<Exclude<RunStopStage, 'population' | 'unexecutable'>, Readonly<Record<string, string>>>> = {
+const STAGE_TABLES: Readonly<Record<Exclude<RunStopStage, 'population' | 'wait' | 'unexecutable'>, Readonly<Record<string, string>>>> = {
   workspace: WORKSPACE_WORDS,
   access: ACCESS_WORDS,
   extraction: EXTRACTION_WORDS,
@@ -272,6 +301,7 @@ const STAGE_TABLES: Readonly<Record<Exclude<RunStopStage, 'population' | 'unexec
 
 function stageSentence(facts: RunStopFacts, stage: RunStopStage, diagnostic: string): string {
   if (stage === 'population') return populationSentence(facts, diagnostic);
+  if (stage === 'wait') return waitTimeoutSentence(facts, diagnostic);
   if (stage === 'unexecutable') {
     return word(UNEXECUTABLE_RUN_REASONS, diagnostic) ?? unknownStopSentence(stage, diagnostic);
   }
@@ -301,7 +331,8 @@ export const NO_RECORDED_REASON_SENTENCE =
  * canceled it" would compete with the one that says who. Otherwise, in this order:
  *
  * 1. a stage checkpoint that ended the Run (population, workspace, sign-in, extraction,
- *    inspection, or the chain's "this deployment cannot run it"), in its own words;
+ *    inspection), a wait whose deadline passed, or the chain's "this deployment cannot
+ *    run it", in its own words;
  * 2. a Gate that ran and did not pass — the reason then IS the failed rows;
  * 3. a Gate that passed and a Result sealed Inconclusive by human rejection (§E.1 row 5);
  * 4. an honest sentence that nothing recorded why.
