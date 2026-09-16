@@ -1,16 +1,13 @@
 name: Verify workspace storage hotfix
 
-# One-off incident verification. This runner has no deployment credentials and never
-# updates a branch. It publishes a verified, unreferenced Git commit for review; the
-# owner-authorized connector advances main separately, through the normal release gate.
+# One-off incident verification. No deployment credentials and no branch mutations.
+# A verified, unreferenced candidate is published for explicit connector review.
 on:
   push:
     branches: [main]
     paths: [.github/workflows/verify-workspace-storage-hotfix.yml]
-
 permissions:
   contents: read
-
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -40,6 +37,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24.20.0'
+          package-manager-cache: false
       - name: Install the repository's pinned tooling
         run: |
           corepack enable
@@ -167,7 +165,6 @@ jobs:
             const base = context.sha;
             const current = await github.rest.git.getRef({ owner, repo, ref: 'heads/main' });
             if (current.data.object.sha !== base) throw new Error('main advanced; refusing a stale candidate');
-            // Remove the one-off runner from the candidate, not from the running job.
             fs.unlinkSync('.github/workflows/verify-workspace-storage-hotfix.yml');
             cp.execFileSync('git', ['add', '--all']);
             const paths = cp.execFileSync('git', ['diff', '--cached', '--name-only', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
