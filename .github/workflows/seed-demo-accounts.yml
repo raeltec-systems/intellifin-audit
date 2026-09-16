@@ -146,6 +146,23 @@ jobs:
           # upsert, so nothing changes. Found by Codex on PR 40.
           if [ -n "$EXTRA_EMAIL" ]; then
             seed "$EXTRA_EMAIL" "$EXTRA_NAME" "$EXTRA_ROLE" "$EXTRA_ROLE (extra)" true
+            # The three fixed accounts hand their password over through the run SUMMARY,
+            # which a person reads in the browser. This one is also echoed to the job LOG,
+            # because the summary is reachable through no API at all and an operator or
+            # agent driving the deployment cannot read it. The readership is identical —
+            # both need Actions read on this repository — and the log is the weaker of the
+            # two exposures, because a run's parameters are kept for ever while its logs
+            # can be deleted:
+            #
+            #   DELETE /repos/{owner}/{repo}/actions/runs/{run_id}/logs
+            #
+            # Do that as soon as the password is in hand. It is printed only for the
+            # optional throwaway address and never for the three demo accounts. Reaching
+            # this line means the account was CREATED: `--create-only true` makes
+            # `seed-identity` exit non-zero for an address that already exists, and
+            # `set -e` ends the job there, so this can never print a password that does
+            # not work.
+            echo "::notice title=Extra account::${EXTRA_EMAIL} password ${PASSWORD} - delete this run's logs once you have it" 
           fi
 
           {
