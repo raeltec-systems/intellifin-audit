@@ -109,6 +109,44 @@ Three mechanical notes, and the first is the one a whole batch of red tests hung
   `libnss3-tools` first), NEVER `ignoreHTTPSErrors` — a walkthrough of a production site
   with certificate verification switched off proves less than no walkthrough at all.
 
+**Codex found six on PR 40, two of them in the workflow this batch added, and every one
+reproduced.** The two P1s are one rule with two holes, and the rule is about a GitHub
+Actions `run:` block:
+
+- **`${{ }}` is substituted by GitHub BEFORE bash parses the script, so a dispatch input is
+  part of the PROGRAM, not data.** An input containing a quote and a semicolon runs as a
+  command — here in a job holding the production `DATABASE_URL`. Every input crosses as a
+  quoted environment variable now, the pre-existing `confirm` check included: it had the
+  same shape from the first version of that file and nobody had looked at it since.
+- **A command that UPSERTS is not a command that refuses, and a comment claiming otherwise
+  is worse than no comment.** `seed-identity` finds an existing user and upserts the role,
+  so the "this cannot take an existing account over" note was false, and the path could
+  name an existing auditor with `poc-administrator` — elevating an account whose password
+  is already in an earlier run summary. `--create-only true` refuses BEFORE the role
+  upsert. The three fixed demo addresses keep the upsert on purpose: re-asserting a
+  CONSTANT address is what that path is for, and free text is what needs the flag.
+- **A limit belongs to the cardinality of the READ — third appearance.** `readStops` sliced
+  to `RUN_LIST_PAGE_SIZE + 1` while the Procedures list returns up to `PROCEDURE_LIST_LIMIT`
+  (200), so every card past the twenty-sixth lost its stop reason silently — and a card with
+  no reason reads as a Run that stopped for none. `RUN_STOP_READ_LIMIT` is the max of both
+  callers' own limits, and the test asserts it against THOSE constants rather than a copy of
+  the number, so raising either without raising this fails.
+- **An ordering the contract states is not an ordering time produces.** EXPERIENCE.md lists
+  the Overview's attention items "… Inconclusive · Run Failed …"; ordering by
+  `initiated_at` alone interleaved them and then applied the ten-row bound to the mixture,
+  so ten recent failures could hide every Inconclusive Run. The rank is built from
+  `RUN_STOP_STATES`, which is already in that order, so the contract lives in one place.
+- **Two claims in one sentence is one claim too many when only one of them is always true.**
+  "…a desktop system is left out AND your selection is complete without it" rendered
+  whenever a desktop default was unselected — beside "No Target System is selected yet".
+  The release fact and the claim about THIS selection are two constants now, and the second
+  renders only when `diagnostics` is empty.
+- **"No Step Execution" has more than one cause, so the sentence may not name one.** Both
+  zero-step sentences said the Run was creating its workspace and acquiring its population;
+  a Run that signed in and then stopped has no Step Execution either, and the sentence then
+  contradicted the stage rows directly above it. They say the one thing true of every such
+  Run — it never reached a record — and point at the rows that know.
+
 ## 2026-09-16 — The owner's first Solari Run died five seconds in, and the worker's log said nothing
 
 The owner walked P-1 through production end to end — created, approved by a second account,

@@ -236,4 +236,21 @@ never before reached a sealed Run.** The seal and its three siblings, which refe
 failure: the old order is refused at `run_evidence_capture`, the new order removes all
 twenty-eight tables cleanly.
 
-Then 35/35 in the three affected specs, and a full suite re-run on the fixed tree.
+Then 35/35 in the three affected specs, and a full suite re-run on the fixed tree:
+**210 passed, 0 failed.**
+
+### The Codex review of this branch
+
+Six findings, every one reproduced against the code and fixed in `d1b5a58`, each proven by
+mutation. Two were P1 and both were in the seeding workflow this batch added: a dispatch
+input reaching the shell as part of the program rather than as data, and an extra-account
+path whose comment claimed it refused an existing address while `seed-identity` upserts the
+role — an elevation path against an account whose password is already in an earlier run
+summary. Four were P2: the stop reader bounded below its widest caller, so Procedure cards
+past the twenty-sixth lost their stop reason; the Overview's stopped Runs ordered by time
+instead of by EXPERIENCE.md's Inconclusive-then-Run-Failed order; the Target Systems step
+calling a selection complete beside the list of what was missing; and a Timeline sentence
+naming a preparation stage for every zero-step Run, including Runs that stopped after it.
+
+**A review that finds two security defects in a file added to make a walkthrough possible
+is a review earning its place.** The full reply is on the pull request.
