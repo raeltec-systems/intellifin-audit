@@ -6,6 +6,7 @@ import {
   DrizzleActorNameReader,
   DrizzleProcedureRepository,
   DrizzleRunDetailRepository,
+  DrizzleRunStopReader,
   PostgresAdapterExecutionRepository,
   PostgresPopulationRepository,
 } from '@intellifin/infrastructure';
@@ -27,6 +28,7 @@ import {
 import { ConclusionTriptych } from '../../../src/runs/Triptych';
 import { RunDenied, RunDetailFrame, openRun } from '../../../src/runs/detail';
 import { utcStamp } from '../../../src/runs/labels';
+import { isStoppedState } from '../../../src/runs/stop-reason';
 
 export const metadata: Metadata = { title: 'Run · Result · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -54,13 +56,16 @@ export default async function RunResultPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [result, gate, population, execution, version, names] = await Promise.all([
+  const [result, gate, population, execution, version, names, stop] = await Promise.all([
     detail.readResult(run.runId),
     detail.readGateChecks(run.runId),
     new PostgresPopulationRepository(runtime.db).readPopulation(run.runId),
     new PostgresAdapterExecutionRepository(runtime.db).readExecution(run.runId),
     new DrizzleProcedureRepository(runtime.db).findVersion(run.versionId),
     new DrizzleActorNameReader(runtime.db).namesFor([run.initiatorId]),
+    // The same statement the Runs list and the Run header read, so the failure panel
+    // cannot name a different reason from the banner above it.
+    isStoppedState(run.state) ? new DrizzleRunStopReader(runtime.db).readStop(run.runId) : Promise.resolve(null),
   ]);
 
   const failedGate = gate.filter((row) => row.outcome === 'FAIL').length;
@@ -99,7 +104,7 @@ export default async function RunResultPage({
         gateFailed={failedGate}
       />
       {run.state === 'RUN_FAILED' ? (
-        <ExecutionFailurePanel steps={failedSteps} sealedAt={result?.sealedAt ?? null} />
+        <ExecutionFailurePanel steps={failedSteps} stop={stop} sealedAt={result?.sealedAt ?? null} />
       ) : null}
       {terminalStop && result !== null ? <SafeNextActionPanel result={result} /> : null}
       <GateChecklist

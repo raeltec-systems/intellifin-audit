@@ -47,6 +47,7 @@ import {
   SESSION_ISOLATION_NOTE,
   PAUSE_COPY,
 } from './copy';
+import { NEXT_RUN_MANUAL, NO_RUN_YET } from '../procedures/last-run-words';
 
 /**
  * Verbatim copy, checked against the UX handoff on disk.
@@ -181,17 +182,20 @@ describe('the read-only credential refusal', () => {
   });
 });
 
-describe('the Procedure card absent-cells', () => {
-  it('are the four UX-DR7 sentences, in words, never a dash', () => {
+describe('the Procedure card cells', () => {
+  it('state all four UX-DR7 cells in words, never a dash', () => {
     // UX-DR7 (epics.md): the card shows Active version, Schedule, next Run, last
-    // outcome. The spec fixes these four sentences because an empty cell reads as
-    // "fine". Each is pinned here as a worded sentence: one that ends in a dash, an
-    // empty string, or a bare "—" fails this test.
+    // outcome. The rule is that an empty cell reads as "fine", so every one of the four
+    // is a worded sentence: one that ends in a dash, an empty string, or a bare "—"
+    // fails this test. Two of the four are absent by nature and live in `copy.ts`; the
+    // other two are filled from facts (owner finding RUN-05) and live in
+    // `procedures/last-run-words.ts`. The rule is asserted over all four together, so
+    // moving a cell's home cannot quietly move it out of the rule's reach.
     expect(PROCEDURE_CARD_ABSENT.activeVersion).toBe('No active version');
     expect(PROCEDURE_CARD_ABSENT.schedule).toBe('Not scheduled');
-    expect(PROCEDURE_CARD_ABSENT.nextRun).toBe('No Runs yet');
-    expect(PROCEDURE_CARD_ABSENT.lastOutcome).toBe('No outcome');
-    for (const sentence of Object.values(PROCEDURE_CARD_ABSENT)) {
+    expect(NEXT_RUN_MANUAL).toBe('Runs start by hand in this release; no Run is scheduled.');
+    expect(NO_RUN_YET).toBe('No Run has been started.');
+    for (const sentence of [...Object.values(PROCEDURE_CARD_ABSENT), NEXT_RUN_MANUAL, NO_RUN_YET]) {
       expect(sentence.length).toBeGreaterThan(3);
       expect(sentence).not.toMatch(/^[-—\s]*$/);
     }
@@ -203,7 +207,9 @@ describe('the Procedure card absent-cells', () => {
       'utf8',
     );
     expect(source).toContain('PROCEDURE_CARD_ABSENT');
+    expect(source).toContain('NEXT_RUN_MANUAL');
     expect(source).not.toContain('No active version');
+    expect(source).not.toContain('Runs start by hand');
   });
 });
 

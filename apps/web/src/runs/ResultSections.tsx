@@ -1,5 +1,5 @@
 import { OUTCOME_ROWS, type RunResultPublication } from '@intellifin/domain';
-import type { RunResultRow } from '@intellifin/infrastructure';
+import type { RunResultRow, RunStopFacts } from '@intellifin/infrastructure';
 
 import { Digest } from '../design/Digest';
 import { Icon } from '../design/Icon';
@@ -10,6 +10,7 @@ import {
 } from '../design/copy';
 import { UntrustedList } from './UntrustedText';
 import { countText, evaluationOriginWord, evaluationValueWord, utcStamp } from './labels';
+import { STAGE_WORDS, stopReason } from './stop-reason';
 
 /**
  * The Result tab's sections beneath the triptych.
@@ -490,8 +491,16 @@ export function SafeNextActionPanel({ result }: { readonly result: RunResultRow 
         {SAFE_NEXT_ACTION_HEADING}
       </h2>
       <p>{row.humanAction}</p>
+      {/* The caption used to cite the addendum and print the row's stored id at an
+          auditor, who has neither document nor row vocabulary. The BODY is still the
+          contract's own permitted-action cell; the caption is what the contract says
+          about the Evidence, in the contract's own first cell, plus — for a Run that
+          failed — where the reason is and what can be done about it. */}
       <p className="ls-caption">
-        Addendum §E.1, row <span className="ls-mono">{row.id}</span>: {row.evidenceState}.
+        {row.evidenceState}.
+        {row.id === 'run-failed'
+          ? ' Why this Run stopped is stated at the top of the Run. Once the cause is fixed, this Run can be rerun.'
+          : ''}
       </p>
     </section>
   );
@@ -506,6 +515,15 @@ export function SafeNextActionPanel({ result }: { readonly result: RunResultRow 
  *
  * The error class is the stored diagnostic — a closed constant, never a message from a
  * Target System — and is rendered in monospace as the identifier it is.
+ *
+ * The REASON comes from the same stop facts the Runs list and the Run header read
+ * (`DrizzleRunStopReader` → `stopReason`), so the three surfaces cannot disagree. The
+ * first version read three checkpoints — population, Reference Source steps, adapter
+ * extraction — and there are seven: a stop on the workspace, the sign-in or the agent
+ * work checkpoint, a timed-out wait or an unexecutable Run all fell through to "The Run
+ * failed before any Session Step recorded a diagnostic", which was the honest sentence for
+ * a state that was not the case (the owner's two production Runs, 2026-09-16). That
+ * sentence is kept for the one case it is true of: no stop facts at all.
  */
 export interface FailedStep {
   readonly name: string;
@@ -515,19 +533,30 @@ export interface FailedStep {
 
 export function ExecutionFailurePanel({
   steps,
+  stop,
   sealedAt,
 }: {
   readonly steps: readonly FailedStep[];
+  /** The stop facts the list and the header read, or `null` when none were read. */
+  readonly stop: RunStopFacts | null;
   readonly sealedAt: string | null;
 }): React.JSX.Element {
+  const reason = stop === null ? null : stopReason(stop);
   return (
     <section className="ls-execution-failure ls-stack" aria-labelledby="execution-failure-heading">
       <h2 className="ls-panel__heading" id="execution-failure-heading">
         <Icon name="cloud-off" size={16} />
         {EXECUTION_FAILURE_HEADING}
       </h2>
+      {reason === null ? null : <p>{reason}</p>}
+      {stop?.stop == null ? null : (
+        <p className="ls-caption">
+          The {STAGE_WORDS[stop.stop.stage]} stage recorded the code{' '}
+          <code className="ls-mono">{stop.stop.diagnostic}</code>.
+        </p>
+      )}
       {steps.length === 0 ? (
-        <p>The Run failed before any Session Step recorded a diagnostic.</p>
+        reason === null ? <p>The Run failed before any Session Step recorded a diagnostic.</p> : null
       ) : (
         <ul className="ls-plain-list">
           {steps.map((step) => (

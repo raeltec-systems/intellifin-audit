@@ -26,6 +26,10 @@ export const TELEMETRY_MESSAGES = [
   // `local` isolates browser state per Run and does not isolate the worker process at all —
   // so an operator must be able to read which one a deployment is actually running.
   'Agent Workspace mode selected',
+  // One line per Run that reached a terminal state under this worker, with the stage that
+  // stopped it and the closed diagnostic — read from the same stop facts the Runs list
+  // shows, so the log and the surface cannot disagree (2026-09-16).
+  'Run ended',
   'Fatal worker error',
   'Plan derivation queue failed',
   'Queue maintenance failed',
@@ -38,6 +42,9 @@ export const TELEMETRY_MESSAGES = [
   'Rerun failed',
   'Notification delivery failed',
   'Notification count could not be read',
+  // The top bar names the signed-in person (owner walkthrough, 2026-09-16); when the name
+  // read fails the bar shows the id, which is visible, and this is what makes it actionable.
+  'Signed-in name could not be read',
   'Procedure Version decision failed',
   'New Procedure Version failed',
   'Captured failure',

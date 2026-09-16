@@ -418,6 +418,19 @@ describe('agentWorkspace', () => {
     );
     // Released at the Run's end, in a `finally`, so a stage that threw still gives it back.
     expect(main).toContain('await releaseWorkspace(workspace, job.runId)');
+    // The loser of the workspace claim goes no further: the queue's delivery and the
+    // population recovery sweep can both reach a Run while its provider session is being
+    // created, and carrying on under somebody else's lease ended two production Runs
+    // `workspace-missing` (2026-09-16). Both the queue handler and the recovery handler.
+    expect(main.match(/if \(provisioned\.deferred\) return \{ retry: false \};/g)).toHaveLength(2);
+    // Every handled Run that ended logs which stage stopped it, from the same stop facts the
+    // Runs list reads — the queue consumer and every recovery sweep go through the wrapper.
+    expect(main).toContain("telemetry.info('Run ended'");
+    // The queue consumer and the population sweep share `handle`, which logs in a `finally`;
+    // the three later sweeps share `recover`, whose both arms are wrapped the same way.
+    expect(main).toContain('return await pipeline(job);');
+    expect(main.match(/await logRunEnd\(job\.runId\);/g)).toHaveLength(2);
+    expect(main.match(/logged\(/g)).toHaveLength(2);
     // `solari.close()` is REQUIRED in Node: the client keeps a loopback proxy server open
     // for its connection-retry path and that handle keeps the event loop alive, so a worker
     // that closes only its browsers never exits.

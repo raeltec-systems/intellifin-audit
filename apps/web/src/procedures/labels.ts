@@ -41,15 +41,51 @@ export function kindLabel(kind: TargetSystemKind): string {
  * The Target System completeness diagnostics (FR-7).
  *
  * Authored advisory wording, distinct from the FR-8 scope warnings and from the UX-quoted
- * copy in `copy.ts`: a missing selection, or a P-1 Draft not covering the web or desktop
- * system its Template names, is a gap surfaced so the auditor can fill it. Each names the
- * object it concerns, the same rule every guard sentence follows.
+ * copy in `copy.ts`: a missing selection, or a P-1 Draft not covering the web system its
+ * Template names, is a gap surfaced so the auditor can fill it. Each names the object it
+ * concerns, the same rule every guard sentence follows.
+ *
+ * The DESKTOP half of this was a live contradiction the owner met while authoring P-1:
+ * the suggestion caption said LedgerDesk cannot be run by this release and to leave it
+ * out, and a warning Banner four elements below said "Add the registered desktop system"
+ * — two sentences on ONE panel, telling an auditor opposite things about one system. The
+ * caption is the one that agrees with what this release can execute, and with the domain:
+ * `targetBlockersFor` has returned `targets-missing` alone since the owner's 2026-09-07
+ * decision that a Template's defaults are suggestions rather than a mandate, and
+ * `procedureReadiness` reports a SELECTED desktop system as unsupported. So the kind is
+ * narrowed to `'web'` at the signature rather than at the one call site — a caller that
+ * asks for the desktop sentence does not compile, which is how this one was found.
  */
 export const TARGET_SELECTION_MISSING = 'No Target System is selected. Choose one or more registered systems.';
 
-export function targetCoverageMissing(kind: 'web' | 'desktop'): string {
+export function targetCoverageMissing(kind: 'web'): string {
   return `This Template names a ${kind} Target System, and none is selected. Add the registered ${kind} system.`;
 }
+
+/**
+ * What a Template's desktop default means for a selection that leaves it out.
+ *
+ * Said where an auditor decides whether they are finished, because the per-suggestion
+ * note says what to DO ("Leave it out.") and not whether doing it leaves a gap. It does
+ * not: this release executes web, API and file systems, and a P-1 Draft holding LoanCore
+ * alone is a complete selection.
+ */
+export const DESKTOP_DEFAULT_LEFT_OUT =
+  'This Template also names a desktop system. This release runs web, API and file systems only, so a desktop system is left out.';
+
+/**
+ * The completeness half of the desktop note, which is NOT always true.
+ *
+ * `[SPLIT 2026-09-16]` It used to be one sentence ending "…and your selection is complete
+ * without it", rendered whenever a desktop default was unselected — so it appeared beside
+ * "No Target System is selected yet" and beside the missing-web-coverage warning, telling
+ * the auditor their selection was complete in the same breath as telling them what was
+ * missing. Found by Codex on PR 40. The first half is a fact about this release and is
+ * always true; this half is a claim about THIS selection and is shown only when nothing
+ * else is outstanding.
+ */
+export const DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP =
+  'Your selection is complete without it.';
 
 /** Shown in the Audit Instructions section when no agent-driven system is selected yet. */
 export const AUDIT_INSTRUCTIONS_NO_AGENT =

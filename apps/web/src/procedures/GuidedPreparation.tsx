@@ -6,6 +6,8 @@ import { PREPARATION_SECTIONS, draftContext, preparationStatus, preparationRevie
 
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
+import { ActorName } from '../runs/ActorName';
+import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
 import { UNKNOWN_SAVE_OUTCOME, UnknownSaveOutcome } from './UnknownSaveOutcome';
 import { useSectionSubmissionStatus, useSubmissionGuard } from './use-section';
 import { usePreparationGuide, type PreparationActionResult } from './PreparationActions';
@@ -30,6 +32,13 @@ export interface GuidedPreparationProps {
   readonly help?: ReactNode;
   readonly assistant?: (step: PreparationStep) => ReactNode;
   readonly onStepChange?: (step: PreparationStep) => void;
+  /**
+   * User id → person's name, for the auditor named on each section's review record. The
+   * server page reads it through `ActorNameReader` (a client component cannot), and an id
+   * with no name here is printed as itself in monospace — never blank, never a UUID
+   * dressed as a name. Owner finding UX-11: the record printed the raw id.
+   */
+  readonly actorNames?: Readonly<Record<string, string>>;
 }
 
 const SECTION_WORDS: Readonly<Record<PreparationStep, {
@@ -82,13 +91,18 @@ const SECTION_WORDS: Readonly<Record<PreparationStep, {
       'Check how missing or ambiguous evidence leaves an item unresolved.',
     ],
   },
+  // "Frequency and handling" named an editor half of which is not here: the section
+  // takes a frequency and a time, and the handling — when the agent stops, retries or
+  // asks — is frozen by the compiler and only shown. The title says what the section
+  // does, and the step itself reads the handling facts out of the plan.
   frequency: {
-    title: 'Frequency and handling',
-    question: 'When should this repeat, and when should the agent stop or ask?',
+    title: 'How often this is meant to run',
+    question: 'How often should this test happen, and which dates would each one cover?',
     help: [
-      'Set how often the assignment repeats and check the period that each run would cover.',
+      'Set how often the assignment is meant to repeat and check the period that each run would cover.',
       'Check that the evidence can be obtained at that frequency.',
-      'Review the full plan for operating limits and how the agent handles uncertainty before submission.',
+      `${NO_AUTOMATIC_RUNS_SENTENCE} ${SCHEDULE_TIME_STARTS_NOTHING_SENTENCE}`,
+      'When the agent stops, retries or asks a person is decided by the plan, not here. The section shows those settings; the full plan below repeats them with their exact numbers.',
     ],
   },
   review: {
@@ -119,8 +133,9 @@ const REVIEW_DATE = new Intl.DateTimeFormat('en-GB', {
  * stay mounted: removing one would discard useSection's unsaved state and unregister
  * its submission guard, making an unfinished section look safe to review or submit.
  */
-export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant, onStepChange }: GuidedPreparationProps): React.JSX.Element {
+export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, editors, review, help, assistant, onStepChange, actorNames }: GuidedPreparationProps): React.JSX.Element {
   const id = useId();
+  const names = new Map(Object.entries(actorNames ?? {}));
   const [selected, setSelected] = useState<PreparationStep>('context');
   const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -308,7 +323,7 @@ export function GuidedPreparation({ draft, rowVersion, onRowVersion, onReview, e
                 <p>Reviewed by auditor on <time dateTime={acknowledgement.at}>{REVIEW_DATE.format(new Date(acknowledgement.at))} UTC</time>.</p>
                 <p className="ls-caption">This review covers the saved section. Changes to it need another review.</p>
                 <details className="ls-disclosure"><summary>Review record</summary><dl className="ls-guided__review-facts ls-disclosure__body">
-                  <div><dt>Auditor</dt><dd>{acknowledgement.actorId}</dd></div>
+                  <div><dt>Auditor</dt><dd><ActorName id={acknowledgement.actorId} names={names} /></dd></div>
                   <div><dt>Saved section revision</dt><dd>{acknowledgement.revision}</dd></div>
                   <div><dt>Saved section reference</dt><dd>{acknowledgement.basis}</dd></div>
                 </dl></details>

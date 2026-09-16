@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ProcedureVersionView } from '@intellifin/application';
 import { deriveExecutablePlan } from '@intellifin/domain';
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
+import { IDENTITY_KEYS_EXACT_SENTENCE } from '../design/plain-words';
 import { ExecutablePlanPreview } from './ExecutablePlanPreview';
 import { RetryPlanDerivation } from './RetryPlanDerivation';
 
@@ -78,4 +79,20 @@ it('shows the latest publisher when authoring returns to an earlier successful d
   ] });
   expect(html).toContain('2026-09-04T03:00:00Z');
   expect(html).not.toContain('2026-09-04T01:00:00Z');
+});
+
+/**
+ * The plan steps below are the compiler's own frozen bytes, and they say BOTH
+ * "exact normalized <key>" and "never trim, normalize or parse them as numbers". That
+ * contradiction cannot be repaired here: changing `makePlan`'s text would change what
+ * every version froze. So the surface states the rule plainly beside the steps and says
+ * what the plan's own word means there.
+ */
+it('states once that identity keys are compared exactly, beside the steps that say "normalized"', () => {
+  const html = render(view());
+  // The contradiction is real and still on the page — this is the sentence that resolves
+  // it, not a claim that the frozen text changed.
+  expect(html).toContain('normalized');
+  expect(html).toContain('data-identity-matching');
+  expect(html).toContain(IDENTITY_KEYS_EXACT_SENTENCE.slice(0, 60));
 });

@@ -107,21 +107,24 @@ export const MANUAL_UPLOAD_SENTENCE =
   POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD;
 
 /**
- * The four UX-DR7 cells of a Procedure card, stated in words when absent.
+ * The UX-DR7 cells of a Procedure card that really are absent, stated in words.
  *
- * The spec fixes these four sentences because a dash or an empty cell is something a
- * reader takes for "fine": a Procedure with no Active version yet, no Schedule yet, no
- * Run yet and no outcome yet must SAY so, exactly as Story 1.6's "Never probed" says
- * what a registration that has never been probed is. In this story every one of the
- * four is always absent — no version can leave DRAFT and no Run exists — so every card
- * renders all four sentences; they are data here so the day a cell can be filled, the
- * fill and the fallback live in the same place.
+ * The rule is UX-DR7's and is unchanged: a dash or an empty cell is something a reader
+ * takes for "fine", so a Procedure with no Active version yet and no Schedule yet must
+ * SAY so, exactly as Story 1.6's "Never probed" says what a registration that has never
+ * been probed is.
+ *
+ * `[REVISED 2026-09-16]` It held four sentences and holds two. `nextRun: 'No Runs yet'`
+ * and `lastOutcome: 'No outcome'` were written when no Run could exist, and they became
+ * FALSE the day one could — the card went on saying both beside a Procedure with Runs on
+ * the register (owner finding RUN-05). Their cells are filled from facts now, by
+ * `procedures/last-run-words.ts` and `LastRunSummary`, which is where their sentences and
+ * the `LastRunSummary.test.ts` pin live. Two sentences kept here that nothing renders
+ * would be a pinned claim about a product that no longer makes it.
  */
 export const PROCEDURE_CARD_ABSENT = {
   activeVersion: 'No active version',
   schedule: 'Not scheduled',
-  nextRun: 'No Runs yet',
-  lastOutcome: 'No outcome',
 } as const;
 
 /**
@@ -636,6 +639,19 @@ export const REPLAY_COPY = {
    */
   frameNotRead: 'not among the {shown} frames shown',
   observationsThrough: '{count} Observations had been registered when this frame was captured.',
+  /**
+   * No frame, so no moment to count Observations at. `observationsThrough` used to be
+   * filled with a zero here, which reads as "this frame saw none" over a Run that captured
+   * no frame at all — the same defect as an empty checklist a reader takes for a passed
+   * control.
+   */
+  observationsNoFrame: 'This Run captured no frames, so there is no moment in the session to count Observations at.',
+  /**
+   * Where a Run's Observations actually are. The link said "Open the Observations tab" and
+   * pointed at `/runs/<id>/observations`, which is not one of the five Run Detail tabs and
+   * answered Page not found.
+   */
+  observationsLink: 'Open the Evidence tab, where Observations are listed',
   bounded: 'Showing the first {shown} of {total} frames.',
   notTerminal: 'This Run has not finished, so it has no Replay yet. Watch it in Live View.',
   desktopOnly: LIVE_VIEW_DESKTOP_ONLY_SENTENCE,

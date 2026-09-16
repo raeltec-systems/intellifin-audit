@@ -2,7 +2,8 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BUILDER_CONTROL_NAME_EDITABLE_SENTENCE, BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
-import { TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
+import { NEXT_RUN_MANUAL, NO_RUN_YET } from '../../apps/web/src/procedures/last-run-words';
+import { DESKTOP_DEFAULT_LEFT_OUT, TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
 import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
 
@@ -812,9 +813,14 @@ test.describe('as an Auditor', () => {
     expect(unavailableSaveDescription).toBeTruthy();
     await expect(page.locator(`[id="${unavailableSaveDescription}"]`)).toContainText(TARGET_SELECTION_MISSING);
 
-    // P-1 names web AND desktop coverage; with nothing selected, both diagnostics show.
+    // P-1 names a web system AND a desktop one, and only the web system is asked for.
+    // This spec used to require the opposite — "Add the registered desktop system" — four
+    // elements below a caption saying this release cannot run one and to leave it out.
+    // That contradiction was on the panel the owner authored P-1 on, held in place by
+    // this green assertion.
     await expect(page.getByText(targetCoverageMissing('web'))).toBeVisible();
-    await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
+    await expect(page.getByText(DESKTOP_DEFAULT_LEFT_OUT)).toBeVisible();
+    await expect(page.getByText('Add the registered desktop system')).toHaveCount(0);
 
     // Select LoanCore (web); the section shows its credential reference and frozen digest.
     await page.getByLabel('Add a system').selectOption(webId);
@@ -825,13 +831,16 @@ test.describe('as an Auditor', () => {
     const loancoreCard = page.locator('li.ls-card').filter({ hasText: `E2E LoanCore ${stamp}` });
     await expect(loancoreCard).toContainText('vault://audit/loancore');
     await expect(loancoreCard.locator('.ls-digest')).toContainText(registrationDigest(web));
-    // Web coverage is now met; desktop is still missing.
+    // Web coverage is now met, and nothing asks for the desktop system.
     await expect(page.getByText(targetCoverageMissing('web'))).toHaveCount(0);
-    await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
+    await expect(page.getByText(DESKTOP_DEFAULT_LEFT_OUT)).toBeVisible();
 
+    // Selecting one anyway is allowed — scope is the auditor's — and the panel stops
+    // saying it was left out, because that would no longer be true. What it IS is
+    // unsupported, which the suggestion note and readiness both say.
     await page.getByLabel('Add a system').selectOption(desktopId);
     await page.getByRole('button', { name: 'Add Target System' }).click();
-    await expect(page.getByText(targetCoverageMissing('desktop'))).toHaveCount(0);
+    await expect(page.getByText(DESKTOP_DEFAULT_LEFT_OUT)).toHaveCount(0);
 
     const pendingName = `E2E targets control ${stamp} pending`;
     await page.getByLabel('New Control name').fill(pendingName);
@@ -909,7 +918,7 @@ test.describe('as an Auditor', () => {
     await expect(page.getByText('The Target System selection is recorded in the audit chain.')).toBeVisible();
     await page.reload();
     await expect(page.locator('li.ls-card').filter({ hasText: `E2E LedgerDesk ${stamp}` })).toHaveCount(0);
-    await expect(page.getByText(targetCoverageMissing('desktop'))).toBeVisible();
+    await expect(page.getByText(DESKTOP_DEFAULT_LEFT_OUT)).toBeVisible();
     await page.setViewportSize({ width: 900, height: 900 });
     await expect(instruction).toBeVisible();
   });
@@ -936,7 +945,7 @@ test.describe('as an Auditor', () => {
     expect(objectives.size).toBe(4);
   });
 
-  test('the card shows the four absent cells in words, never a dash', async ({ page }) => {
+  test('the card states all four cells in words, never a dash', async ({ page }) => {
     await page.goto('/procedures');
     const card = page
       .locator('.ls-card')
@@ -948,8 +957,11 @@ test.describe('as an Auditor', () => {
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.activeVersion);
     await expect(card).not.toContainText('Draft');
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.schedule);
-    await expect(card).toContainText(PROCEDURE_CARD_ABSENT.nextRun);
-    await expect(card).toContainText(PROCEDURE_CARD_ABSENT.lastOutcome);
+    // Next Run and Last outcome are no longer absent sentences (owner finding RUN-05):
+    // there is no scheduler, so the future cell says who starts a Run, and the history
+    // cell distinguishes "nothing has run" from "a Run concluded nothing".
+    await expect(card).toContainText(NEXT_RUN_MANUAL);
+    await expect(card).toContainText(NO_RUN_YET);
     // The Control name and Template identity are on the card (UX-DR7).
     await expect(card).toContainText(nameFor('P-1'));
     await expect(card).toContainText('P-1');

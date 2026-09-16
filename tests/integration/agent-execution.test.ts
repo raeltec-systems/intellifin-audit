@@ -286,7 +286,7 @@ describe.skipIf(!url)('the agent sign-in phase', () => {
       clock: new SystemClock(),
       ids,
     };
-    expect(await provisionWorkspace(workspace, job)).toEqual({ retry: false, provisioned: true });
+    expect(await provisionWorkspace(workspace, job)).toEqual({ retry: false, provisioned: true, deferred: false });
     await sql`INSERT INTO population_execution(run_id,revision,status,attempts,step_id,attempt_id,started_at,attempt_started_at,lease_until)
               VALUES(${job.runId},1,'POPULATION_READY',1,'session-2',${ids.next()},now(),now(),now()+interval '1 hour')
               ON CONFLICT (run_id) DO UPDATE SET status='POPULATION_READY'`;

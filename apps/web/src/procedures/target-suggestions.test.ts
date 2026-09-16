@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { defaultTargetsFor, PROCEDURE_TEMPLATES } from '@intellifin/domain';
 
-import { suggestedTargetNote, suggestedTargets } from './labels';
+import {
+  DESKTOP_DEFAULT_LEFT_OUT,
+  DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP,
+  suggestedTargetNote,
+  suggestedTargets,
+  targetCoverageMissing,
+} from './labels';
 
 /**
  * What the Builder says about a Template's suggested systems.
@@ -65,5 +71,55 @@ describe('suggestedTargetNote', () => {
       expect(suggestedTargetNote({ name: 'LedgerDesk', kind: 'desktop', registered }))
         .toContain('cannot run a desktop system');
     }
+  });
+});
+
+/**
+ * The two sentences an auditor meets about a Template's desktop default, and the defect
+ * they used to form together.
+ *
+ * On ONE panel, while choosing Target Systems for P-1: the suggestion caption said
+ * LedgerDesk cannot be run by this release and to leave it out, and a warning Banner a
+ * few elements below said "This Template names a desktop Target System, and none is
+ * selected. Add the registered desktop system." The owner read both and could not tell
+ * which was true. The caption is the one that agrees with what this release executes and
+ * with the domain — `targetBlockersFor` has raised `targets-missing` alone since the
+ * owner's 2026-09-07 decision — so the completeness sentence is narrowed to `'web'` and
+ * a new one says what leaving the desktop system out actually means.
+ */
+describe('a Template default this release cannot run', () => {
+  const note = suggestedTargetNote({ name: 'LedgerDesk', kind: 'desktop', registered: false });
+
+  it('never asks for a desktop system to be added, in either sentence', () => {
+    for (const sentence of [note, DESKTOP_DEFAULT_LEFT_OUT]) {
+      expect(sentence.toLowerCase()).not.toContain('add the registered');
+      expect(sentence.toLowerCase()).not.toContain('add a desktop');
+    }
+  });
+
+  it('says leaving it out still leaves a complete selection, in two parts', () => {
+    expect(note).toContain('Leave it out.');
+    expect(DESKTOP_DEFAULT_LEFT_OUT).toContain('left out');
+    // And it names what this release does run, so "complete" is checkable rather than
+    // something the reader has to take on trust.
+    expect(DESKTOP_DEFAULT_LEFT_OUT).toContain('web, API and file systems');
+    // The completeness half is its OWN sentence (Codex, PR 40). As one string it was
+    // rendered whenever a desktop default was unselected — including beside "No Target
+    // System is selected yet" — so the page answered "is my selection complete?" with
+    // "yes" while listing what was missing. The release fact is always true; the claim
+    // about this selection is shown only when nothing else is outstanding.
+    expect(DESKTOP_DEFAULT_LEFT_OUT).not.toContain('complete without it');
+    expect(DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP).toContain('complete without it');
+  });
+
+  it('keeps the completeness diagnostic to a kind this release runs', () => {
+    expect(targetCoverageMissing('web')).toContain('web Target System');
+    expect(targetCoverageMissing('web')).not.toContain('desktop');
+    // The mechanism, not just the wording: the desktop sentence cannot be produced at
+    // all, so the Builder's old `for (const kind of ['web', 'desktop'])` no longer
+    // compiles. `pnpm --filter @intellifin/web typecheck` covers this file, so the
+    // expectation below fails the build if the parameter is ever widened again.
+    // @ts-expect-error a desktop coverage sentence is not expressible
+    expect(() => targetCoverageMissing('desktop')).toBeDefined();
   });
 });

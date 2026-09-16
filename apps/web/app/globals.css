@@ -2406,3 +2406,45 @@ a {
   padding-top: var(--spacing-5);
   border-top: 1px solid var(--color-border-default);
 }
+
+/* ---------------------------------------------- Overview attention (RUN-04) ---
+ * The Overview's attention list: one row per thing waiting, each naming the Run or the
+ * Procedure, its state, the person accountable, and one way onward.
+ *
+ * It is a list rather than a table because the four kinds carry different facts — a wait
+ * has a countdown, a flag has who raised it, a stopped Run has the stage that stopped it
+ * — and a table of four shapes is a table of mostly empty cells. */
+.ls-attention {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ls-attention__item {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3) 0;
+  border-top: 1px solid var(--color-border-default);
+}
+
+/* The badge and the row's one link on one line, wrapping together rather than leaving a
+   badge stranded above a name. */
+.ls-attention__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin: 0;
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+}
+
+/* -------------------------------------------- Procedure card last Run (RUN-05) ---
+ * The card's cells were four absent sentences with nothing behind them. The last Run's
+ * facts sit under its cell as a caption, so a card states what happened and when rather
+ * than "No Runs yet" beside a Run the register is showing. */
+.ls-last-run {
+  display: grid;
+  gap: var(--spacing-1);
+}

@@ -1,5 +1,12 @@
 import { inArray, sql } from 'drizzle-orm';
-import { ACTIVE_RUN_STATES, type RunKind, type RunState, type SystemOutcome } from '@intellifin/domain';
+import {
+  ACTIVE_RUN_STATES,
+  RUN_STOP_STATES,
+  type RunKind,
+  type RunState,
+  type RunStopState,
+  type SystemOutcome,
+} from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { runException } from '../db/schema.js';
@@ -238,4 +245,217 @@ function changeFor(row: RawRow, fingerprints: ReadonlyMap<string, ReadonlySet<st
   let resolved = 0;
   for (const value of before) if (!now.has(value)) resolved += 1;
   return { kind: 'compared', added, resolved };
+}
+
+/* --------------------------------------------- the Overview's two extra reads --- */
+
+/**
+ * How many stopped Runs the Overview names at once, and how many Procedures one page of
+ * the Procedures list may ask about.
+ *
+ * Both are bounds on a SURFACE's read rather than on the table: the counts beside them are
+ * EXACT, so a list that cannot show everything says how many there are instead of leaving
+ * the reader to infer a total from the rows it happened to fit (`run_gate_check`'s
+ * total-beside-a-sample shape, and the inbox's "Showing the first N of M").
+ */
+export const RUN_ATTENTION_LIMIT = 10;
+export const PROCEDURE_LAST_RUN_LIMIT = 200;
+
+/**
+ * The two states that mean a Run stopped without issuing a conclusion, as a SQL list.
+ *
+ * Interpolated rather than bound, for the reason `ACTIVE_LIST` above is: a bound JS array
+ * becomes a record — `($1,$2,…)` — which PostgreSQL will not cast to `text[]`. The
+ * assertion is what keeps the interpolation safe, and the vocabulary is the domain's own
+ * `RUN_STOP_STATES` rather than two literals typed here, so a state added there reaches
+ * this read instead of silently falling out of the Overview.
+ */
+const STOPPED = [...RUN_STOP_STATES];
+for (const state of STOPPED) {
+  if (!/^[A-Z_]+$/.test(state)) throw new Error(`Unsafe Run stop state constant: ${state}`);
+}
+const STOPPED_LIST = sql.raw(STOPPED.map((state) => `'${state}'`).join(', '));
+
+/**
+ * The contract's order WITHIN the stopped group, as a SQL rank.
+ *
+ * EXPERIENCE.md orders the Overview's attention items "… Inconclusive · Run Failed …", and
+ * `RUN_STOP_STATES` is already in that order, so the rank is built from the array's own
+ * index rather than from two literals typed here. Ordering by time alone interleaved the
+ * two states and then applied the ten-row bound to the mixture, so ten recent failures
+ * could hide every Inconclusive Run — a Run that produced Evidence and could not conclude
+ * is the one an auditor acts on first, and it is the one that fell off. Found by Codex on
+ * PR 40.
+ */
+const STOPPED_RANK = sql.raw(
+  `CASE r.state ${STOPPED.map((state, index) => `WHEN '${state}' THEN ${index}`).join(' ')} ELSE ${STOPPED.length} END`,
+);
+
+/** One Run that stopped before it concluded, as the Overview's attention list names it. */
+export interface StoppedRunRow {
+  readonly runId: string;
+  readonly procedureId: string;
+  readonly procedureName: string;
+  readonly versionNumber: number;
+  readonly period: { readonly from: string; readonly to: string };
+  readonly state: RunStopState;
+  readonly initiatorId: string;
+  readonly initiatedAt: string;
+  /** When the Run concluded, from the sealed Result. `null` while it has not. */
+  readonly endedAt: string | null;
+}
+
+export interface StoppedRunPage {
+  readonly rows: readonly StoppedRunRow[];
+  /** Every stopped Run, counted, not only the ones this page holds. */
+  readonly total: number;
+}
+
+/** The last Run of one Procedure, whatever state it is in. */
+export interface ProcedureLastRun {
+  readonly procedureId: string;
+  readonly runId: string;
+  readonly state: RunState;
+  readonly kind: RunKind;
+  readonly initiatedAt: string;
+  readonly endedAt: string | null;
+  /** `null` while no Result has been published — which is not the same as no conclusion. */
+  readonly outcome: SystemOutcome | null;
+  /** §H rows written for this Run, and how many of them failed. Zero means never run. */
+  readonly gateChecks: number;
+  readonly gateFailed: number;
+}
+
+interface RawStoppedRow extends Record<string, unknown> {
+  run_id: string;
+  procedure_id: string;
+  procedure_name: string;
+  version_number: number;
+  period_from: string;
+  period_to: string;
+  state: string;
+  initiator_id: string;
+  initiated_at: Date | string;
+  ended_at: Date | string | null;
+}
+
+interface RawLastRunRow extends Record<string, unknown> {
+  procedure_id: string;
+  run_id: string;
+  state: string;
+  kind: string;
+  initiated_at: Date | string;
+  ended_at: Date | string | null;
+  outcome: string | null;
+  gate_checks: number;
+  gate_failed: number;
+}
+
+/**
+ * The two reads the Overview and the Procedures list need, which no existing read answers.
+ *
+ * Neither is a filter applied to a page of {@link DrizzleRunListRepository.listRuns}. That
+ * read is a keyset page over EVERY Run newest first, so filtering one page of it for
+ * stopped Runs answers "the stopped Runs among the newest 25" — and a summary that says
+ * "nothing needs attention" because three Run Failed Runs fell off the end of a page is
+ * exactly the defect the owner found (RUN-04). The state filter and the count belong in
+ * SQL, and the same rule sends the per-Procedure last Run here rather than into a query
+ * per card.
+ */
+export class DrizzleRunOverviewRepository {
+  constructor(private readonly db: Database | Transaction) {}
+
+  /**
+   * The Runs that stopped without a conclusion, newest first, bounded — and the exact
+   * number of them.
+   *
+   * The caller reads the REASON each one stopped through `DrizzleRunStopReader`, which is
+   * the same statement the Runs list uses, so the Overview and the register cannot say
+   * different things about one Run.
+   */
+  async listStoppedRuns(limit = RUN_ATTENTION_LIMIT): Promise<StoppedRunPage> {
+    const size =
+      Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, RUN_ATTENTION_LIMIT) : RUN_ATTENTION_LIMIT;
+    const rows = await this.db.execute<RawStoppedRow>(sql`
+      SELECT r.run_id::text AS run_id, r.procedure_id::text AS procedure_id, r.procedure_name,
+             r.version_number, r.period_from::text AS period_from, r.period_to::text AS period_to,
+             r.state, r.initiator_id, r.initiated_at, res.sealed_at AS ended_at
+      FROM audit_run r
+      LEFT JOIN run_result res ON res.run_id = r.run_id
+      WHERE r.state IN (${STOPPED_LIST})
+      ORDER BY ${STOPPED_RANK}, r.initiated_at DESC, r.run_id DESC
+      LIMIT ${size}`);
+    // A separate statement, because a `LIMIT`ed read cannot also answer how many there
+    // are: `rows.length` after a bound is the bound, not a count.
+    const counted = await this.db.execute<{ total: number }>(sql`
+      SELECT count(*)::int AS total FROM audit_run r WHERE r.state IN (${STOPPED_LIST})`);
+    return {
+      rows: rows.map((row): StoppedRunRow => ({
+        runId: row.run_id,
+        procedureId: row.procedure_id,
+        procedureName: row.procedure_name,
+        versionNumber: row.version_number,
+        period: { from: row.period_from, to: row.period_to },
+        state: row.state as RunStopState,
+        initiatorId: row.initiator_id,
+        initiatedAt: iso(row.initiated_at),
+        endedAt: row.ended_at === null ? null : iso(row.ended_at),
+      })),
+      total: Number(counted[0]?.total ?? 0),
+    };
+  }
+
+  /**
+   * The latest Run of each named Procedure, keyed by Procedure id, in ONE statement.
+   *
+   * `DISTINCT ON` over the same total order the Runs list pages by, so "the latest" means
+   * the same Run on both surfaces. A Procedure with no Run is simply absent from the map —
+   * the card then says so in words, which is a different statement from a Procedure whose
+   * Run issued no conclusion, and telling those two apart is the whole of RUN-05.
+   *
+   * ACTIVE as well as terminal: a Run that is still running is the last thing that
+   * happened to that Procedure, and hiding it would make the card claim a Procedure has
+   * never run while its Run is on the register.
+   */
+  async latestRunPerProcedure(
+    procedureIds: readonly string[],
+  ): Promise<ReadonlyMap<string, ProcedureLastRun>> {
+    const ids = [...new Set(procedureIds.filter((id) => isUuidText(id)))].slice(0, PROCEDURE_LAST_RUN_LIMIT);
+    if (ids.length === 0) return new Map();
+    // `sql.join`, not a bound array: a bound JS array becomes a record — `($1,$2,…)` —
+    // which PostgreSQL will not cast to `uuid[]`.
+    const idList = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
+    const rows = await this.db.execute<RawLastRunRow>(sql`
+      SELECT DISTINCT ON (r.procedure_id)
+             r.procedure_id::text AS procedure_id, r.run_id::text AS run_id,
+             r.state, r.kind, r.initiated_at,
+             res.outcome, res.sealed_at AS ended_at,
+             coalesce(gate.checks, 0)::int AS gate_checks,
+             coalesce(gate.failed, 0)::int AS gate_failed
+      FROM audit_run r
+      LEFT JOIN run_result res ON res.run_id = r.run_id
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int AS checks,
+               count(*) FILTER (WHERE g.outcome = 'FAIL')::int AS failed
+        FROM run_gate_check g WHERE g.run_id = r.run_id
+      ) gate ON true
+      WHERE r.procedure_id IN (${idList})
+      ORDER BY r.procedure_id, r.initiated_at DESC, r.run_id DESC`);
+    return new Map(
+      rows.map((row): [string, ProcedureLastRun] => [
+        row.procedure_id,
+        {
+          procedureId: row.procedure_id,
+          runId: row.run_id,
+          state: row.state as RunState,
+          kind: row.kind as RunKind,
+          initiatedAt: iso(row.initiated_at),
+          endedAt: row.ended_at === null ? null : iso(row.ended_at),
+          outcome: (row.outcome as SystemOutcome | null) ?? null,
+          gateChecks: Number(row.gate_checks),
+          gateFailed: Number(row.gate_failed),
+        },
+      ]),
+    );
+  }
 }

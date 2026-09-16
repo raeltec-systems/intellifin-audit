@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { DrizzleNotificationRepository } from '@intellifin/infrastructure';
+import { DrizzleActorNameReader, DrizzleNotificationRepository } from '@intellifin/infrastructure';
 
 import { AppShell } from '../src/shell/AppShell';
 import { EnvironmentRibbon } from '../src/design/EnvironmentRibbon';
@@ -49,8 +49,24 @@ export default async function RootLayout({
 }): Promise<React.JSX.Element> {
   const identity = await currentIdentity();
   let unreadNotifications: number | undefined;
+  let signedIn: { userId: string; names: ReadonlyMap<string, string> } | undefined;
   if (identity.kind === 'identified') {
     const runtime = await getRuntime();
+    // The id alone is what the session carries — an address cannot enter the audit chain
+    // — so the name is read here, through the one port that turns an id into a name.
+    // An empty map is not a failure: `ActorName` then shows the id, which says what is
+    // known rather than leaving the top bar blank.
+    signedIn = { userId: identity.session.userId, names: new Map() };
+    try {
+      signedIn = {
+        userId: identity.session.userId,
+        names: await new DrizzleActorNameReader(runtime.db).namesFor([identity.session.userId]),
+      };
+    } catch (error) {
+      // Visible without this line — the top bar shows the id — but a failure nobody
+      // records is one nobody can act on.
+      runtime.telemetry.captureError('Signed-in name could not be read', error, { outcome: 'failure' });
+    }
     try {
       unreadNotifications = await new DrizzleNotificationRepository(runtime.db).countOpenFor(identity.session);
     } catch {
@@ -69,7 +85,7 @@ export default async function RootLayout({
             {children}
           </>
         ) : (
-          <AppShell role={identity.kind === 'identified' ? identity.role : null} unreadNotifications={unreadNotifications}>
+          <AppShell role={identity.kind === 'identified' ? identity.role : null} signedIn={signedIn} unreadNotifications={unreadNotifications}>
             {children}
           </AppShell>
         )}

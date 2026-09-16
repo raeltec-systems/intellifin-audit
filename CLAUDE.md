@@ -1,3 +1,200 @@
+## 2026-09-16 — A page that asserts an empty state without reading anything is not reporting
+
+The owner's production walkthrough filed thirty findings, and the largest class was one
+defect wearing three faces: **a Story 1.4 placeholder that renders a contract empty state
+UNCONDITIONALLY and reads nothing at all.** The Overview said "Nothing needs attention",
+"none is Inconclusive or Run Failed" and "No Runs yet" while the register two clicks away
+held one Run Failed and two Inconclusive Runs — and said it again after every reload,
+because there was nothing for a reload to change. The Procedures list said "No Runs yet"
+and "No outcome" beside a Procedure with two Runs. The manager's Review page still says no
+Result awaits a decision while a version waits for that manager. **An empty state is a
+STATEMENT ABOUT THE ENVIRONMENT, and the one those pages made is the inference every empty
+state in this product is worded to refuse.** Findings, repairs and what is left for a
+decision: `_bmad-output/implementation-artifacts/owner-walkthrough-2026-09-16.md`.
+
+- **Both contract sentences stay, for the case they were written for, and what decides
+  between them is an EXACT COUNT.** Never `rows.length` of a bounded page: a summary that
+  said "nothing needs attention" because three stopped Runs fell off the end would be the
+  same defect with a database behind it. Each read answers a total beside its bounded list.
+- **An unreadable read is not an absence, on the Overview as on Live View.** Story 5.6
+  landed that rule on `OpenEscalationSection`; the Overview is the same read failure one
+  surface along, so it renders a Banner and the "nothing needs attention" state becomes
+  unreachable. `countOpenFor` throws separately from `openFor`, so an unreadable COUNT loses
+  only the bounded note.
+- **A surface that shows Run facts authorizes like the Runs register.** `/procedures` is not
+  gated on `run.initiate` and `/runs` is, so putting Run outcomes on the Procedure card
+  would have handed a PoC Administrator what `/runs` refuses them. The Run reads are SKIPPED
+  for a role without that action and the cell says so — not reading is the control, never a
+  hidden cell.
+- **`apps/web/app/review/page.tsx` is the third face and is NOT fixed**, named in the report
+  with the reader it should use. A defect class found in three places is fixed in three
+  places or written down in the third.
+
+**The other repairs, one line each.** The Result tab's execution-failure panel reads the
+same stop facts the Runs list does (PR 39's `DrizzleRunStopReader`), so the header, the
+list and the panel cannot disagree. Every Run stage has a WORD (`apps/web/src/runs/stage-words.ts`),
+so "0 of 0 Step Executions" became a sentence naming the stage that stopped. Replay's
+Observations link pointed at a route that does not exist and now points at the Evidence tab.
+A Replay with no frames gets an empty-state sentence rather than one implying a frame. The
+shell names the signed-in person and their role. The Builder's section review record and the
+version review name the auditor through `ActorName` instead of printing a user id. The
+Target System step no longer demands a desktop system four elements under a caption saying
+to leave it out — `targetCoverageMissing` is narrowed at its SIGNATURE, which is what found
+the other four callers. The frequency step is named for what it takes, with the compiler's
+frozen handling facts shown read-only beside it.
+
+- **`Object.hasOwn` for a lookup keyed by a person's typed words — ninth occurrence.**
+  `preparationCommand`'s destination table is a plain object keyed by chat input, so "go to
+  constructor" resolved to `Object.prototype.constructor`, the guide said "Opened undefined."
+  and `setSelected` was handed a function. Found by an agent in passing, in a module its own
+  brief told it not to change; it reported rather than fixed, which is why it got fixed.
+- **A contradiction inside FROZEN compiler bytes is resolved by a sentence beside them, never
+  by an edit.** `makePlan` writes "exact normalized employee_id" and "never trim, normalize"
+  into canonical plan text every ACTIVE version has frozen; editing it would change what
+  those versions say they were testing. `IDENTITY_KEYS_EXACT_SENTENCE` sits directly above
+  the steps that carry both phrases, on the Builder and on the version review.
+- **A new field on a result shape breaks every exact-shape assertion, and only the suite that
+  RUNS can say where.** `ProvisionWorkspaceResult` gained `deferred`; the unit tests were
+  updated with the fix and six `toEqual({ retry, provisioned })` assertions across two
+  integration files were not, so nineteen tests failed on a change whose typecheck was green.
+  The commit that added the field ran one integration FILE and called it verified. Run the
+  suite the changed module is covered by, not the case you wrote.
+- **A stale `audit-manager` row in the test database fails two files that never created
+  one.** `runNotificationRecipients` reads every audit-manager in the database, so one
+  account left behind by an aborted run made `flag-run` count 4 deliveries where it expects
+  2 and `run-waits` count 3 recipients where it expects 2 — both reading as product defects
+  in the notification path. Check `user_role` before believing a recipient count, and clean
+  identity leftovers the way Run leftovers are already cleaned.
+- **The golden P-1 population cannot demonstrate a clean pass, and that is the dataset
+  working.** It seeds a duplicate employee key, an unnamed status value and a two-candidate
+  name search; the first stops the agent stage before it makes a single Work Item, and the
+  other two park the Run `AWAITING_AUDITOR` for thirty minutes. The owner journey therefore
+  binds a declared single-record source and leaves the full export seeded but unbound, so
+  the choice is visible rather than silent. **And the agent path and the adapter path
+  disagree about a duplicate key** — the adapter deduplicates and reports
+  `duplicate-record-keys`, the agent refuses the whole Run — which is named in the report
+  rather than changed inside a test.
+- **P-1's Template default for C1 does not match what LoanCore displays** (`[disabled]`
+  against `Disabled`), and compiler-1 compares named values exactly, so an auditor who
+  accepts the default escalates on every record. The journey types what the system shows and
+  asserts the default first, so the mismatch is pinned.
+
+Three mechanical notes, and the first is the one a whole batch of red tests hung on:
+
+- **A teardown can only be wrong once the test in front of it starts passing.**
+  `owner-walkthrough-p1.spec.ts` deleted `run_evidence_capture` with the other Tool Action
+  rows, and generation 32 puts the same `run_evidence_frozen_after_seal` trigger on that
+  table that generation 27 put on `run_evidence` and `population_evidence` — so the first
+  time the journey reached a SEALED Run, the delete was refused, the whole `afterAll` threw,
+  and every row the file created survived to fail an unrelated file's empty-list assertion.
+  The seal and its three siblings (`run_gate_check`, `run_evidence_integrity`, `run_result`)
+  reference only `audit_run`, so they go FIRST. **`pg_constraint` is not the whole answer**:
+  the refusal came from a trigger, not a foreign key, so the search that found it was
+  `pg_trigger` joined to `pg_proc`, and it named a third table nobody had listed.
+- **A constant two of whose four members nothing renders is a pin on a product that no
+  longer makes that claim.** RUN-05 filled the card's Next Run and Last outcome cells from
+  facts and left `PROCEDURE_CARD_ABSENT.nextRun` and `.lastOutcome` behind, still asserted
+  by `copy.test.ts`. Deleting the two pins would have moved the "never a dash" rule out of
+  those cells' reach, so the rule is now asserted over all four sentences TOGETHER, with the
+  moved pair imported from `last-run-words.ts`.
+- **`getByText(word, { exact: true })` inside a region is a locator whose uniqueness a
+  product change can take away.** `populationStatusWord` began rendering `POPULATION_READY`
+  as "Acquired" — the word the Reference Source step already produced — so two Timeline rows
+  matched and Playwright's strict mode refused. Both rows are correct; the assertion is
+  scoped to its own `.ls-timeline__row`, filtered by the row's title.
+- **Chromium does not read the system CA bundle; it reads NSS at `~/.pki/nssdb`.** Driving
+  the DEPLOYED application from this environment goes through the agent proxy, whose CA
+  Chromium rejected as `ERR_CERT_AUTHORITY_INVALID` although curl was fine. The repair is
+  `certutil -A -t "C,,"` for each certificate in `/root/.ccr/ca-bundle.crt` (install
+  `libnss3-tools` first), NEVER `ignoreHTTPSErrors` — a walkthrough of a production site
+  with certificate verification switched off proves less than no walkthrough at all.
+
+**Codex found six on PR 40, two of them in the workflow this batch added, and every one
+reproduced.** The two P1s are one rule with two holes, and the rule is about a GitHub
+Actions `run:` block:
+
+- **`${{ }}` is substituted by GitHub BEFORE bash parses the script, so a dispatch input is
+  part of the PROGRAM, not data.** An input containing a quote and a semicolon runs as a
+  command — here in a job holding the production `DATABASE_URL`. Every input crosses as a
+  quoted environment variable now, the pre-existing `confirm` check included: it had the
+  same shape from the first version of that file and nobody had looked at it since.
+- **A command that UPSERTS is not a command that refuses, and a comment claiming otherwise
+  is worse than no comment.** `seed-identity` finds an existing user and upserts the role,
+  so the "this cannot take an existing account over" note was false, and the path could
+  name an existing auditor with `poc-administrator` — elevating an account whose password
+  is already in an earlier run summary. `--create-only true` refuses BEFORE the role
+  upsert. The three fixed demo addresses keep the upsert on purpose: re-asserting a
+  CONSTANT address is what that path is for, and free text is what needs the flag.
+- **A limit belongs to the cardinality of the READ — third appearance.** `readStops` sliced
+  to `RUN_LIST_PAGE_SIZE + 1` while the Procedures list returns up to `PROCEDURE_LIST_LIMIT`
+  (200), so every card past the twenty-sixth lost its stop reason silently — and a card with
+  no reason reads as a Run that stopped for none. `RUN_STOP_READ_LIMIT` is the max of both
+  callers' own limits, and the test asserts it against THOSE constants rather than a copy of
+  the number, so raising either without raising this fails.
+- **An ordering the contract states is not an ordering time produces.** EXPERIENCE.md lists
+  the Overview's attention items "… Inconclusive · Run Failed …"; ordering by
+  `initiated_at` alone interleaved them and then applied the ten-row bound to the mixture,
+  so ten recent failures could hide every Inconclusive Run. The rank is built from
+  `RUN_STOP_STATES`, which is already in that order, so the contract lives in one place.
+- **Two claims in one sentence is one claim too many when only one of them is always true.**
+  "…a desktop system is left out AND your selection is complete without it" rendered
+  whenever a desktop default was unselected — beside "No Target System is selected yet".
+  The release fact and the claim about THIS selection are two constants now, and the second
+  renders only when `diagnostics` is empty.
+- **"No Step Execution" has more than one cause, so the sentence may not name one.** Both
+  zero-step sentences said the Run was creating its workspace and acquiring its population;
+  a Run that signed in and then stopped has no Step Execution either, and the sentence then
+  contradicted the stage rows directly above it. They say the one thing true of every such
+  Run — it never reached a record — and point at the rows that know.
+
+## 2026-09-16 — The owner's first Solari Run died five seconds in, and the worker's log said nothing
+
+The owner walked P-1 through production end to end — created, approved by a second account,
+activated, started by hand — and both Runs failed about five seconds after they started:
+after acquiring the population, before any Step Execution, with the Result saying "The Run
+failed before any Session Step recorded a diagnostic" and the worker's Railway log holding
+four boot lines and nothing about either Run. Root-caused by READING, because nothing
+observable said why. Findings, repairs and what the walkthrough report asked for:
+`_bmad-output/implementation-artifacts/owner-walkthrough-2026-09-16.md`.
+
+- **The population recovery sweep hands a live Run to a second handler.** `recoverableRunIds`
+  selects a `RUNNING` Run with no `population_execution` row every five seconds — the Story
+  5.3 note calls that abandoned, and it was, until Story 4.1 put the workspace stage BEFORE
+  acquisition. A provider session takes seconds to create, so for those seconds a healthy
+  Run IS "RUNNING with no population row". The queue's delivery held the workspace lease;
+  the sweep's handler lost the claim, got the same `null` an adapter-only Run gets, carried
+  on to acquire the population, and reached the agent claim — which found a workspace that
+  was not `OPEN` and ended the Run `workspace-missing`, `RUN_FAILED`. The winner's `OPEN`
+  commit was then lost (the Run was no longer `RUNNING`) and its provider session leaked. A
+  local Chromium launches in under a second, so acquisition always finished after `OPEN` and
+  no test could see it; Solari made the window five seconds wide, and the tick fell inside
+  it twice out of two.
+- **Three rules say one thing now, each proven by mutation.** `provisionWorkspace` returns
+  `deferred: true` when another claimant holds a live lease and `handle`/`recover` stop
+  there; the agent claim WAITS on a `PROVISIONING`/`RETRY` row (`workspacePending`) instead
+  of failing it; and the sweep excludes a Run under a live provisioning lease.
+  `workspace-missing` now means what its name says: no row, or a `FAILED`/`RELEASED` one
+  under a `RUNNING` Run. **A `null` that means two things is the defect shape** — `null` was
+  both "needs no workspace" and "somebody else is provisioning it", and only the first is
+  safe to carry past. Say the second by name.
+- **The worker logs `Run ended` for every Run that reaches a terminal state under it**, with
+  the Run id, the state, the stage and the closed diagnostic — the same stop facts the Runs
+  list reads, so the log and the surface cannot disagree. An operator with only the log had
+  NOTHING to read. `runId`, `state`, `stage` and `diagnostic` joined `TELEMETRY_FIELD_KEYS`,
+  and the test asserts the four survive sanitization.
+- **Railway's log API answered an empty array for a window the stream had nothing in**, and
+  the same for a filter naming the Run. Check the query against a window that provably has
+  lines before concluding a service logged nothing — done here; the worker really had not.
+
+Two mechanical notes:
+
+- **`startup.test.ts` scans `main.ts` and anchors on `const handle = async (job` and
+  `const recover = adapter === null`.** A wrapper that renames either breaks a test that is
+  right to exist; wrap INSIDE the names instead (`handle` delegates to `pipeline` under a
+  `finally`, and each arm of `recover` is `logged(...)`).
+- **The provisioning claim is the Run's FIRST boundary, so a deferred claim leaves the Run
+  `QUEUED`.** The first version of the deferred test asserted `RUNNING`.
+
 ## 2026-09-16 — A page of Runs must say why each one stopped, and who started it
 
 The owner sent a screenshot of the production Runs list — *"all the runs failed, also whats

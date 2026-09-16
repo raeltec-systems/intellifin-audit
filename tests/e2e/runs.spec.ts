@@ -7,6 +7,8 @@ import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../../apps/web/src/design/run-start-words';
 import { FRESHNESS_ADVICE, STOP_REASON_TITLE } from '../../apps/web/src/runs/stop-reason';
+import { EMPTY_STATES } from '../../apps/web/src/design/copy';
+import { NEXT_RUN_MANUAL, NO_RUN_YET, OPEN_LAST_RUN } from '../../apps/web/src/procedures/last-run-words';
 
 const ids = new CryptoUuidV7Generator();
 const procedureId = ids.next();
@@ -221,6 +223,46 @@ test.describe('Run initiation as an Auditor', () => {
     await expect(details.getByText(auditorId, { exact: true })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
+  });
+
+  test('the Overview and the Procedure card say what the Runs register says', async ({ page }) => {
+    // Owner findings RUN-04 and RUN-05. The Overview rendered its two empty states
+    // UNCONDITIONALLY — "Nothing needs attention", "none is Inconclusive or Run Failed",
+    // "No Runs yet" — beside a register holding stopped Runs, and every Procedure card
+    // said "No Runs yet" and "No outcome" beside a Procedure that had run. Both surfaces
+    // read facts now, and this is the assertion that the three of them agree.
+    const runId = ids.next();
+    await stoppedAtAcquisition(runId, { from: '2026-09-01', to: '2026-09-15' }, '2026-09-01T00:00:00Z');
+
+    await page.goto('/');
+    const attention = page.getByRole('region', { name: 'Needs attention' });
+    await expect(attention).toContainText(controlName);
+    // The reason, in the auditor's words, from the same `stopReason` the register reads.
+    await expect(attention).toContainText('The source snapshot was generated on 2026-09-01, before the period ended on 2026-09-15.');
+    await expect(attention).toContainText(FRESHNESS_ADVICE);
+    await expect(attention).not.toContainText('freshness');
+    // An empty state is a statement about the environment, and this one would be false.
+    await expect(page.getByText(EMPTY_STATES.overviewNothingNeedsAttention.headline)).toHaveCount(0);
+    await expect(page.getByText(EMPTY_STATES.overviewNoRuns.sentence)).toHaveCount(0);
+
+    const recent = page.getByRole('region', { name: 'Recent Runs' });
+    await expect(recent.getByRole('link', { name: runId, exact: true })).toBeVisible();
+    await expect(recent).toContainText(auditorName);
+
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
+
+    await page.goto('/procedures');
+    const card = page.locator('li.ls-card').filter({ hasText: controlName });
+    await expect(card).toBeVisible();
+    // The Next Run cell answers a question about the FUTURE, and nothing schedules a Run.
+    await expect(card).toContainText(NEXT_RUN_MANUAL);
+    // A Run that issued no conclusion is not a Procedure that never ran.
+    await expect(card).toContainText('No conclusion issued');
+    await expect(card).toContainText(FRESHNESS_ADVICE);
+    await expect(card).not.toContainText(NO_RUN_YET);
+    await expect(card).not.toContainText('No outcome');
+    await expect(card.getByRole('link', { name: OPEN_LAST_RUN, exact: true })).toBeVisible();
   });
 
   test('recovers two lost acknowledgements after the original Run becomes terminal', async ({ page }) => {

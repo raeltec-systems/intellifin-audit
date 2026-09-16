@@ -132,6 +132,18 @@ latency.
 
 1. **Claim.** Read the Run and the frozen plan under the `audit_run` row lock. No
    requirement means no row is written at all. A cancellation is honoured here.
+   **A live `PROVISIONING` lease held by another claimant defers this one BY NAME**
+   (`deferred: true`, distinct from "this Run needs no workspace"), and a deferred caller
+   goes no further with the Run: the population stage does not read the workspace, and the
+   agent claim would otherwise meet a workspace that is not yet `OPEN`. The queue's
+   delivery and the population recovery sweep can both reach a Run inside the seconds a
+   provider session takes to create; until 2026-09-16 the loser carried on, acquired the
+   population, and the agent claim ended a healthy Run `workspace-missing` — two
+   production Runs, five seconds after they started. Three rules now say the same thing:
+   the loser stops at the claim, the agent claim WAITS on a `PROVISIONING` or `RETRY` row
+   (`workspacePending`) rather than failing it, and the population sweep does not select
+   a Run under a live provisioning lease. Only a row that is absent, `FAILED` or
+   `RELEASED` while the Run is `RUNNING` is `workspace-missing`, which is a defect.
 2. **Provider I/O.** Reattach by the stored identity if there is one; otherwise create.
    A reattach that is impossible RELEASES the stale identity before making a replacement,
    so "never a second workspace" holds across the failure too. **A release that FAILS

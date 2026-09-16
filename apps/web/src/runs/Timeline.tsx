@@ -21,6 +21,12 @@ import {
   workItemWord,
   workspaceModeWord,
 } from './labels';
+import {
+  populationDiagnosticSentence,
+  populationStatusWord,
+  workspaceDiagnosticSentence,
+  workspaceStatusWord,
+} from './stage-words';
 
 /**
  * The Execution Timeline (DESIGN.md → Execution Timeline row; EXPERIENCE.md → Execution
@@ -77,16 +83,25 @@ export function ExecutionTimeline({
     <ol className="ls-timeline">
       {timeline.workspace === null ? null : (
         <>
+          {/*
+            The unit that stopped the Run has to read as one. A workspace whose provider
+            refused had `FAILED` in the status column and `workspace-refused` in a
+            monospace span, and neither is a sentence — so the status is a word and the
+            diagnostic is the stage's own sentence, with the stored code kept beside it.
+            A RELEASED workspace is NOT a failure: the worker gives a healthy one back in
+            its `finally`, and that is the ordinary end of a Run that used one.
+          */}
           <TimelineRow
             level={0}
             marker="Session Step"
             name="Create the Agent Workspace"
             detail={`${workspaceModeWord(timeline.workspace.mode)} · ${countText(timeline.workspace.attempts)} attempts`}
             call={timeline.workspace.stepId}
-            status={timeline.workspace.status}
+            status={workspaceStatusWord(timeline.workspace.status)}
             duration={null}
             startedAt={timeline.workspace.startedAt}
             diagnostic={timeline.workspace.diagnostic}
+            diagnosticSentence={workspaceDiagnosticSentence(timeline.workspace.diagnostic)}
           />
           <StepExecutions
             executions={byPlanStep.get(timeline.workspace.stepId) ?? []}
@@ -102,10 +117,14 @@ export function ExecutionTimeline({
           name="Acquire the population"
           detail={`${countText(timeline.population.attempts)} attempts`}
           call={timeline.population.stepId}
-          status={timeline.population.status}
+          status={populationStatusWord(timeline.population.status)}
           duration={null}
           startedAt={timeline.population.startedAt}
           diagnostic={timeline.population.diagnostic}
+          /* The population diagnostic is failed §H CHECK NAMES joined by `, `, or an
+             acquisition failure code, or a Run limit — all three in words, none of them a
+             sentence this module writes. */
+          diagnosticSentence={populationDiagnosticSentence(timeline.population.diagnostic)}
         />
       )}
       {timeline.sessionSteps.map((step) => (
@@ -339,7 +358,9 @@ function ToolActionRow({ action }: { readonly action: RunTimelineToolAction }): 
  * One row of the four-column grid.
  *
  * The status word is always written; a duration is shown when one was recorded. A
- * diagnostic is a closed platform constant, rendered as the identifier it is.
+ * diagnostic is a closed platform constant, so it is rendered as the identifier it is —
+ * and, where this build holds words for it, the sentence comes FIRST and the code stays
+ * in monospace beside it. A code word alone tells an auditor nothing it can act on.
  */
 function TimelineRow({
   level,
@@ -351,6 +372,7 @@ function TimelineRow({
   duration,
   startedAt,
   diagnostic,
+  diagnosticSentence = null,
 }: {
   readonly level: number;
   readonly marker: string;
@@ -361,6 +383,8 @@ function TimelineRow({
   readonly duration: string | null;
   readonly startedAt: string | null;
   readonly diagnostic: string | null;
+  /** The diagnostic in words, when the caller has them. Never instead of the code. */
+  readonly diagnosticSentence?: string | null;
 }): React.JSX.Element {
   return (
     <li className="ls-timeline__row" style={{ '--ls-timeline-level': level } as React.CSSProperties}>
@@ -370,6 +394,7 @@ function TimelineRow({
         <span className="ls-timeline__detail">
           {detail}
           {startedAt === null ? null : <> · {utcStamp(startedAt)}</>}
+          {diagnosticSentence === null ? null : <> · {diagnosticSentence}</>}
           {diagnostic === null ? null : (
             <>
               {' '}

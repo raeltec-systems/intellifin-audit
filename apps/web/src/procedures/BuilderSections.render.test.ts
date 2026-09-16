@@ -76,7 +76,7 @@ describe('the Builder an auditor opens', () => {
       'Instructions for the agent',
       'What counts as a finding',
       'Evidence to capture',
-      'How often it runs',
+      'How often this is meant to run',
     ]) {
       expect(html, title).toContain(title);
     }
@@ -84,6 +84,22 @@ describe('the Builder an auditor opens', () => {
     for (const jargon of ['Population Source binding<', 'Compliance Rule conditions<']) {
       expect(html, jargon).not.toContain(jargon);
     }
+  });
+
+  /**
+   * The Schedule step does not claim a Run happens on its own.
+   *
+   * "How often it runs" and "When should this procedure run on its own?" both stated a
+   * fact that is false in this release: nothing starts a Run by itself, and the step has
+   * no control that would make one. The step says the INTENT instead, and the editor
+   * inside it carries `run-start-words.ts`'s sentences about where a Run is really
+   * started.
+   */
+  it('does not promise the Schedule step runs anything by itself', () => {
+    const html = render(draft());
+    expect(html).toContain('How often this is meant to run');
+    expect(html).not.toContain('How often it runs');
+    expect(html).not.toContain('run on its own');
   });
 
   it('reads Control and Objective once, together, under the pinned sentence', () => {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { ProcedureVersionView } from '@intellifin/application';
 import { Banner } from '../design/Banner';
 import { StatusBadge } from '../design/StatusBadge';
+import { IDENTITY_KEYS_EXACT_SENTENCE } from '../design/plain-words';
 import { policyText, predicateText, ruleText } from './plan-condition-text';
 import { startPlanPolling } from './plan-polling';
 import { countWords, durationWords } from './plan-numbers';
@@ -69,6 +70,11 @@ export function ExecutablePlanPreview({
 
       <section className="ls-plan-group" aria-labelledby={`${id}-per-target`}>
         <h3 className="ls-overline" id={`${id}-per-target`}>Ordered Plan Steps per Target System</h3>
+        {/* The steps below are the compiler's own frozen bytes and say both "exact
+            normalized <key>" and "never trim, normalize or parse them as numbers". That
+            contradiction cannot be repaired here without changing what the version
+            froze, so the surface states the rule plainly instead. */}
+        <p className="ls-caption" data-identity-matching>{IDENTITY_KEYS_EXACT_SENTENCE}</p>
         {plan.targetSystems.map((system) => {
           const target = plan.inputs.targets.find((entry) => entry.registrationId === system.registrationId)!;
           const instruction = plan.inputs.instructions.find((entry) => entry.registrationId === system.registrationId);

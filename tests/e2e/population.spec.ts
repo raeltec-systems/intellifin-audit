@@ -452,10 +452,18 @@ test.describe('Auditor population acquisition', () => {
     // in what order, with what state — and the address and the shape are the contract's.
     await page.goto(`/runs/${firstRunId}/timeline`);
     const section = page.getByRole('region', { name: 'Execution Timeline' });
+    // Scoped to the ROW, not to the word. Two rows on this Timeline are legitimately
+    // "Acquired" — the population stage and the RoleMatrix Reference Source — since the
+    // population status became a word rather than the stored `POPULATION_READY`
+    // (2026-09-16). A bare `getByText('Acquired')` is then ambiguous, and asserting the
+    // word appears SOMEWHERE never said which unit it belonged to anyway.
+    const row = (title: string) =>
+      section.locator('.ls-timeline__row').filter({ has: page.locator('.ls-timeline__title', { hasText: title }) });
     await expect(section.getByText('RoleMatrix', { exact: true })).toBeVisible();
-    await expect(section.getByText('Acquired', { exact: true })).toBeVisible();
+    await expect(row('RoleMatrix').getByText('Acquired', { exact: true })).toBeVisible();
+    await expect(row('Acquire the population').getByText('Acquired', { exact: true })).toBeVisible();
     await expect(section.getByText('AccessGate', { exact: true })).toBeVisible();
-    await expect(section.getByText('Observed', { exact: true })).toBeVisible();
+    await expect(row('AccessGate').getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
 
@@ -464,8 +472,16 @@ test.describe('Auditor population acquisition', () => {
     const runId = await start(page, 1);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     await openEvidence(page, runId);
-    await expect(page.getByText('declared-count: Failed', { exact: true })).toBeVisible();
-    await expect(page.getByText('declared-digest: Failed', { exact: true })).toBeVisible();
+    // The §H rows say what each check CLAIMS and, when one failed, why — the stored name
+    // stays beside them in monospace for an operator who greps. This used to assert
+    // `declared-count: Failed`, which pinned a code word as the whole of what an auditor
+    // was told on a surface whose job is words (owner review, 2026-09-16).
+    const failedChecks = page.getByRole('region', { name: 'Population acquisition' });
+    await expect(failedChecks).toContainText('The declared number of records matches the file: Failed');
+    await expect(failedChecks).toContainText('The declaration states a different number of records than the file holds.');
+    await expect(failedChecks).toContainText('The declared fingerprint matches the file: Failed');
+    await expect(failedChecks.getByText('declared-count', { exact: true })).toBeVisible();
+    await expect(failedChecks.getByText('declared-digest', { exact: true })).toBeVisible();
     const [evidence] = await sql`SELECT object_key FROM population_evidence WHERE run_id=${runId}`;
     expect(Buffer.from((storage.objects.get(String(evidence!.object_key)))!)).toEqual(await readFile(join(process.cwd(), 'fixtures/northstar/generated', files[1]!)));
   });
@@ -634,7 +650,10 @@ test.describe('Auditor population acquisition', () => {
     await page.goto(`/runs/${p3RunId}/timeline`);
     const section = page.getByRole('region', { name: 'Execution Timeline' });
     await expect(section.getByText('ApproveNow', { exact: true })).toBeVisible();
-    await expect(section.getByText('Observed', { exact: true })).toBeVisible();
+    // The row, not the word: see the note on the AccessGate Timeline assertion above.
+    await expect(section.locator('.ls-timeline__row')
+      .filter({ has: page.locator('.ls-timeline__title', { hasText: 'ApproveNow' }) })
+      .getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
   test('a killed worker resumes the stored acquisition envelope without replacing Evidence', async ({ page }) => {

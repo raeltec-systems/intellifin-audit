@@ -30,6 +30,12 @@ describe('explicit human preparation commands', () => {
   ])('routes %s without saving or review', (text, destination) => {
     expect(preparationCommand(text)).toEqual({ kind: 'navigate', destination });
   });
+  // The destination table is a plain object keyed by a person's typed words. Unguarded,
+  // "go to constructor" navigated to `Object.prototype.constructor` and the guide said
+  // "Opened undefined." — the `Object.hasOwn` trap, met on a chat composer.
+  it.each(['Go to constructor', 'Open the constructor section', 'Take me to __proto__'])('never navigates to a prototype member: %s', text => {
+    expect(preparationCommand(text)).toBeNull();
+  });
   it.each(['Keep steps 1 and 2 exactly. Drop step 3.', 'Check all records, not a sample.', 'Do not disable any accounts.',
     'Record why a value could not be read', 'Save evidence from every record', 'Accept only records with a valid approval',
     'Change the proposed threshold from 10 to 20.', 'Keep this a one-off test, not recurring.',

@@ -30,6 +30,21 @@ on:
         description: 'Type "seed" to confirm creating demo accounts in production'
         required: true
         type: string
+      extra_email:
+        description: 'Optional: one more throwaway address to seed beside the three'
+        required: false
+        type: string
+      extra_name:
+        description: 'The display name for that address (shown as the Initiator on Runs)'
+        required: false
+        default: 'Extra demo account'
+        type: string
+      extra_role:
+        description: 'The role for that address'
+        required: false
+        default: auditor
+        type: choice
+        options: [auditor, audit-manager, poc-administrator]
 
 concurrency: seed-demo-accounts
 
@@ -39,10 +54,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Every dispatch input crosses into the shell as an ENVIRONMENT VARIABLE, never as
+      # `${{ }}` inside a `run:` block. GitHub substitutes `${{ }}` before bash parses the
+      # script, so an input containing a quote and a semicolon would run as a command —
+      # here with the production DATABASE_URL in scope. Found by Codex on PR 40; the
+      # `confirm` check had the same shape from the beginning.
       - name: Refuse unless explicitly confirmed
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          test "${{ inputs.confirm }}" = "seed" || {
+          test "$CONFIRM" = "seed" || {
             echo 'Refusing: type "seed" to confirm.'
             exit 1
           }
@@ -79,6 +101,10 @@ jobs:
           # Only needs to be a valid https origin. Nothing here signs in, and the host
           # is never resolved.
           BETTER_AUTH_URL: https://seed.invalid
+          # Quoted shell variables, never `${{ }}` inside the script — see the note above.
+          EXTRA_EMAIL: ${{ inputs.extra_email }}
+          EXTRA_NAME: ${{ inputs.extra_name }}
+          EXTRA_ROLE: ${{ inputs.extra_role }}
         run: |
           set -euo pipefail
           # Generated here rather than typed anywhere: a password in an input box is a
@@ -93,7 +119,7 @@ jobs:
           rows=''
           seed() {
             local email="$1" name="$2" role="$3" label="$4" out
-            out="$(pnpm seed:identity --email "$email" --name "$name" --role "$role")"
+            out="$(pnpm seed:identity --email "$email" --name "$name" --role "$role" ${5:+--create-only "$5"})"
             echo "$out"
             if grep -q '^created user ' <<<"$out"; then
               rows="${rows}| ${label} | ${email} | \`${PASSWORD}\` | created now |"$'\n'
@@ -105,6 +131,39 @@ jobs:
           seed administrator@example.test 'Demo PoC Administrator' poc-administrator 'PoC Administrator'
           seed auditor@example.test       'Demo Auditor'           auditor           'Auditor'
           seed manager@example.test       'Demo Audit Manager'     audit-manager     'Audit Manager'
+
+          # One optional extra throwaway account, for walking the deployment without
+          # touching the three above — whose passwords were set in the run that created
+          # them and can never be reset. Same accepted risk as the three: the password is
+          # printed to the run summary, which is the only way anybody gets it, and these
+          # accounts are throwaway by construction.
+          #
+          # CREATE-ONLY, unlike the three. Their addresses are constants in this file, so
+          # re-asserting a role is harmless; this one is free text, and this command can
+          # assign `poc-administrator`. Without the flag a dispatcher could name an
+          # existing auditor and elevate that account in place — and its password is
+          # already in an earlier run summary. `seed-identity` refuses before the role
+          # upsert, so nothing changes. Found by Codex on PR 40.
+          if [ -n "$EXTRA_EMAIL" ]; then
+            seed "$EXTRA_EMAIL" "$EXTRA_NAME" "$EXTRA_ROLE" "$EXTRA_ROLE (extra)" true
+            # The three fixed accounts hand their password over through the run SUMMARY,
+            # which a person reads in the browser. This one is also echoed to the job LOG,
+            # because the summary is reachable through no API at all and an operator or
+            # agent driving the deployment cannot read it. The readership is identical —
+            # both need Actions read on this repository — and the log is the weaker of the
+            # two exposures, because a run's parameters are kept for ever while its logs
+            # can be deleted:
+            #
+            #   DELETE /repos/{owner}/{repo}/actions/runs/{run_id}/logs
+            #
+            # Do that as soon as the password is in hand. It is printed only for the
+            # optional throwaway address and never for the three demo accounts. Reaching
+            # this line means the account was CREATED: `--create-only true` makes
+            # `seed-identity` exit non-zero for an address that already exists, and
+            # `set -e` ends the job there, so this can never print a password that does
+            # not work.
+            echo "::notice title=Extra account::${EXTRA_EMAIL} password ${PASSWORD} - delete this run's logs once you have it" 
+          fi
 
           {
             echo '## Demo accounts'

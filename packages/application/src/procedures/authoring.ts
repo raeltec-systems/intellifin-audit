@@ -68,10 +68,15 @@ export function authoringContext(row: ProcedureVersionRecord): JsonValue {
       permittedReadActions: t.contract.permitted_actions, attributeLabels: t.contract.attribute_label_patterns, secondaryKey: t.contract.secondary_key })),
     instructions: row.instructions, criteria: row.complianceConditions, confidenceThreshold: row.agentJudgedThreshold,
     evidence: row.evidenceRequirements, frequency: row.schedule,
+    // A Template names its default systems, and this release cannot execute a desktop
+    // one: a Run that reaches it stops with an unsupported-plan failure. Saying so here
+    // is what stops the assistant proposing steps for a Template default that is not
+    // selected and cannot be run — the same fact the Builder's suggestion caption and
+    // `procedureReadiness` already tell the auditor.
     preparationCapabilities: {
       instructionPurpose: 'Read-only navigation and inspection within the selected system. The Template compiler owns matching, coverage and evaluation.',
       structuredChanges: 'The auditor selects scope, evidence, systems, criteria and frequency in their preparation sections before requesting matching instructions.',
-      unsupported: ['Uploading or ingesting new documents', 'Selecting connections or accessing credentials', 'Writing to systems', 'Approving, activating or running a procedure', 'Automatic scheduled execution'],
+      unsupported: ['Uploading or ingesting new documents', 'Selecting connections or accessing credentials', 'Writing to systems', 'Approving, activating or running a procedure', 'Automatic scheduled execution', 'Executing against a desktop application: this release runs web, API and file systems only, so a Template default of that kind is left out of the selection and must not be proposed as a step or asked for'],
     },
   } as unknown as JsonValue;
 }

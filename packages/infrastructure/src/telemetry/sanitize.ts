@@ -54,6 +54,17 @@ export const TELEMETRY_FIELD_KEYS = [
   'recording',
   'role',
   'route',
+  /**
+   * How a handled Run ended (2026-09-16). The Run id, its terminal state, the stage that
+   * stopped it and that stage's closed diagnostic — every value a build constant or an
+   * identifier, nothing a Target System said. Two production Runs failed with the worker's
+   * log stream holding nothing at all about them, so the only record of WHY was a checkpoint
+   * column no surface read; this is the line an operator reads first.
+   */
+  'runId',
+  'stage',
+  'state',
+  'diagnostic',
   'schemaVersion',
   'sessionId',
   'signal',

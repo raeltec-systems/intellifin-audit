@@ -258,7 +258,7 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
   it('provisions one workspace, bound to the Run, and records it on the Timeline', async () => {
     const job = await seed('web');
     const execution = browser();
-    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: true });
+    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: true, deferred: false });
     const stored = await row(job.runId);
     expect(stored).toMatchObject({ status: 'OPEN', mode: 'local', attempts: 1, released_at: null });
     expect(stored?.workspace_id).toMatch(/^[0-9a-f-]{36}$/);
@@ -287,9 +287,42 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
   it('provisions nothing at all for an adapter-only Run', async () => {
     const job = await seed('api');
     const execution = browser();
-    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: false });
+    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: false, deferred: false });
     expect(await row(job.runId)).toBeNull();
     expect((await events(job.runId)).filter((e) => e.event_type === 'lifecycle.agent-workspace')).toEqual([]);
+  }, 60_000);
+
+  /**
+   * The owner's first two Solari Runs died five seconds in, and this is the claim half of
+   * the repair (2026-09-16). A provider session takes seconds to create, and for those
+   * seconds the Run is `RUNNING` with a `PROVISIONING` row under a live lease — which the
+   * queue's delivery and the population recovery sweep can both reach. The loser used to
+   * carry on with `provisioned: false`, which is what an ADAPTER-ONLY Run also receives, so
+   * it acquired the population and the agent claim then ended a healthy Run
+   * `workspace-missing`. A `null` that means two things is the defect; the loser now stops
+   * at the claim and says `deferred` by name.
+   */
+  it('defers to the claimant holding a live provisioning lease, and makes no second workspace', async () => {
+    const job = await seed('web');
+    const execution = browser();
+    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: true, deferred: false });
+    const held = await row(job.runId);
+    // Exactly the state a claimant is in while its provider call is in flight: the claim is
+    // committed `PROVISIONING` under a lease that has not run out.
+    await sql`UPDATE run_workspace SET status='PROVISIONING', lease_until=now()+interval '1 hour' WHERE run_id=${job.runId}`;
+
+    // The SAME execution: a deferral is decided under the row lock, BEFORE any provider
+    // call, so a second browser would only prove that this test launched one.
+    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: false, deferred: true });
+    // Nothing was created, nothing was released and the first claimant's identity stands.
+    const after = await row(job.runId);
+    expect(after).toMatchObject({ status: 'PROVISIONING', attempts: held?.attempts, workspace_id: held?.workspace_id });
+    // And no second Timeline event: a deferral is not a provisioning attempt.
+    expect((await events(job.runId)).filter((e) => e.event_type === 'lifecycle.agent-workspace')).toHaveLength(1);
+
+    // Once the lease has run out the Run is abandoned again and the next claim takes it.
+    await sql`UPDATE run_workspace SET lease_until=now()-interval '1 second' WHERE run_id=${job.runId}`;
+    expect((await provisionWorkspace(deps(execution), job)).deferred).toBe(false);
   }, 60_000);
 
   it('reattaches by the stored identity rather than creating a second workspace', async () => {
@@ -446,7 +479,7 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
     // The claim was lost once; every attempt after that fails on its own and leaves RETRY.
     await sql`UPDATE run_workspace SET status='RETRY' WHERE run_id=${job.runId}`;
     for (const attempt of [2, 3]) {
-      expect(await provisionWorkspace(deps(holding), job)).toEqual({ retry: true, provisioned: false });
+      expect(await provisionWorkspace(deps(holding), job)).toEqual({ retry: true, provisioned: false, deferred: false });
       expect(await row(job.runId)).toMatchObject({
         status: 'RETRY',
         attempts: attempt,
@@ -500,10 +533,10 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
       perform: () => Promise.reject(new BrowserActionError('unavailable')),
     };
     for (const attempt of [1, 2, 3]) {
-      expect(await provisionWorkspace(deps(failing), job)).toEqual({ retry: true, provisioned: false });
+      expect(await provisionWorkspace(deps(failing), job)).toEqual({ retry: true, provisioned: false, deferred: false });
       expect(await row(job.runId)).toMatchObject({ status: 'RETRY', attempts: attempt });
     }
-    expect(await provisionWorkspace(deps(failing), job)).toEqual({ retry: false, provisioned: false });
+    expect(await provisionWorkspace(deps(failing), job)).toEqual({ retry: false, provisioned: false, deferred: false });
     expect(await row(job.runId)).toMatchObject({
       status: 'FAILED',
       attempts: 4,

@@ -889,6 +889,26 @@ describe.skipIf(!url)('durable population execution', () => {
     expect(await restarted.recoverableRunIds(100)).not.toContain(job.runId);
   });
 
+  it('leaves a Run whose workspace is being provisioned to the claimant that holds the lease', async () => {
+    // The workspace stage runs BEFORE acquisition and a provider session takes seconds to
+    // create, so a RUNNING Run with no population row and a live PROVISIONING lease is a
+    // Run somebody is working on, not an abandoned one. The sweep used to hand it to a
+    // second handler every five seconds, and that handler ended it `workspace-missing`
+    // (the owner's two production Runs, 2026-09-16).
+    const job = await seed();
+    const started = new Date().toISOString();
+    const live = new Date(Date.now() + 120_000).toISOString();
+    await sql`UPDATE audit_run SET state='RUNNING' WHERE run_id=${job.runId}`;
+    expect(await new PostgresPopulationRepository(db).recoverableRunIds(100)).toContain(job.runId);
+    await sql`INSERT INTO run_workspace(run_id,revision,status,attempts,step_id,workspace_id,mode,expires_at,started_at,attempt_started_at,lease_until,released_at,diagnostic)
+              VALUES (${job.runId},1,'PROVISIONING',1,'session-1',NULL,'local',NULL,${started}::timestamptz,${started}::timestamptz,${live}::timestamptz,NULL,NULL)`;
+    expect(await new PostgresPopulationRepository(db).recoverableRunIds(100)).not.toContain(job.runId);
+    // The lease has run out: nobody is provisioning it any more, so it IS abandoned again.
+    await sql`UPDATE run_workspace SET lease_until=${started}::timestamptz WHERE run_id=${job.runId}`;
+    expect(await new PostgresPopulationRepository(db).recoverableRunIds(100)).toContain(job.runId);
+    await sql`DELETE FROM run_workspace WHERE run_id=${job.runId}`;
+  });
+
   it('exhausts four durable attempts when registered-evidence verification keeps failing', async () => {
     const job = await seed(), deps = dependencies();
     await acquirePopulation(deps, job);

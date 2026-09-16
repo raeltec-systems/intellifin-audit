@@ -356,7 +356,12 @@ jobs:
   e2e:
     name: Accessibility and shell (Playwright, WCAG 2.1 AA)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 40, not 25: the suite now carries several journeys that spawn the real worker and
+    # drive a real browser end to end, and `owner-walkthrough-p1` walks the whole P-1 path
+    # from creation to a sealed Result. A job killed by its own clock reports a red gate for
+    # a reason that is not a product defect, which is the one failure a gate must never
+    # invent.
+    timeout-minutes: 40
     # NFR-11: core web workflows must stay keyboard accessible and pass automated
     # WCAG 2.1 AA checks. axe runs against a real browser here, so a violation fails
     # the pull request rather than being noticed in review or not at all.

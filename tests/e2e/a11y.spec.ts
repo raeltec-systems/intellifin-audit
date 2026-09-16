@@ -41,11 +41,17 @@ test.describe('WCAG 2.1 AA — signed out', () => {
 test.describe('WCAG 2.1 AA — signed in', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('the shell and the empty Overview have no violations', async ({ page }) => {
+  test('the shell and the Overview have no violations', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
-    // Both verbatim empty-state sentences are on the page being scanned.
-    await expect(page.getByText('An empty Overview does not mean a control passed.')).toBeVisible();
+    // The Overview reads the register now (owner finding RUN-04, 2026-09-16), so what is on
+    // the page depends on the database: a fresh one — CI, where this file runs first — shows
+    // both verbatim empty states, and one that already holds Runs shows the Recent Runs
+    // table. Both are real states of this surface. Wait for whichever it is, because the
+    // sections stream in behind a Suspense boundary and a scan of the fallback scans nothing.
+    const recent = page.getByRole('region', { name: 'Recent Runs' });
+    await expect(recent).toBeVisible();
+    await expect(recent.getByRole('table').or(recent.getByText('An empty Overview does not mean a control passed.'))).toBeVisible();
     await scan(page);
   });
 

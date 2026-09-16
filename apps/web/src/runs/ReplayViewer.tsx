@@ -173,8 +173,17 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
 
           <section aria-labelledby="replay-observations-heading" className="ls-stack">
             <h3 id="replay-observations-heading">Observations</h3>
-            <p>{REPLAY_COPY.observationsThrough.replace('{count}', String(frame?.observations ?? 0))}</p>
-            <p><Link href={`/runs/${props.runId}/observations`}>Open the Observations tab</Link></p>
+            {/* A count needs a frame to be counted AT. With no frame this said "0
+                Observations had been registered when this frame was captured", which
+                describes a frame that does not exist. */}
+            <p>
+              {frame === null
+                ? REPLAY_COPY.observationsNoFrame
+                : REPLAY_COPY.observationsThrough.replace('{count}', String(frame.observations))}
+            </p>
+            {/* Observations are listed on the Evidence tab, with their grounding; there is
+                no Observations tab and a link to one is a Page not found. */}
+            <p><Link href={`/runs/${props.runId}/evidence`}>{REPLAY_COPY.observationsLink}</Link></p>
           </section>
         </div>
       </div>

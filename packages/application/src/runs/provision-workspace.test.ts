@@ -358,12 +358,12 @@ describe('provisionWorkspace', () => {
     // no test assignment manufactures the winning checkpoint or changes its identity.
     now = Date.parse(state.checkpoint!.leaseUntil) + 1;
     expect(now).toBeLessThan(Date.parse(original.expiresAt!));
-    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true });
+    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true, deferred: false });
     expect(state.checkpoint).toMatchObject({ status: 'OPEN', workspaceId: original.workspaceId, mode: 'solari', expiresAt: original.expiresAt });
     const winner = JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved });
 
     finishOldAttach.resolve();
-    expect(await older).toEqual({ retry: false, provisioned: false });
+    expect(await older).toEqual({ retry: false, provisioned: false, deferred: false });
     expect(JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved })).toBe(winner);
     expect(state.run?.state).toBe('RUNNING');
     expect(browser.created).toEqual([original.workspaceId]);
@@ -396,12 +396,12 @@ describe('provisionWorkspace', () => {
     await createStarted.promise;
     expect(state.checkpoint).toMatchObject({ status: 'PROVISIONING', workspaceId: null });
     now = Date.parse(state.checkpoint!.leaseUntil) + 1;
-    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true });
+    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true, deferred: false });
     expect(state.checkpoint).toMatchObject({ status: 'OPEN', workspaceId: 'ws-2', mode: 'solari' });
     const winner = JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved });
 
     finishOldCreate.resolve();
-    expect(await older).toEqual({ retry: false, provisioned: false });
+    expect(await older).toEqual({ retry: false, provisioned: false, deferred: false });
     expect(JSON.stringify({ checkpoint: state.checkpoint, events: state.events, executions: state.executions, saved: state.saved })).toBe(winner);
     expect(state.run?.state).toBe('RUNNING');
     expect(browser.created).toEqual(['ws-1', 'ws-2']);
@@ -417,7 +417,7 @@ describe('provisionWorkspace', () => {
       await provisionWorkspace(DEPS(state, original), JOB);
       const identity = state.checkpoint!.workspaceId;
       const restarted = new FakeBrowser({ mode: configuredMode });
-      expect(await provisionWorkspace(DEPS(state, restarted), JOB)).toEqual({ retry: false, provisioned: false });
+      expect(await provisionWorkspace(DEPS(state, restarted), JOB)).toEqual({ retry: false, provisioned: false, deferred: false });
       expect(restarted.created).toEqual([]);
       expect(restarted.attached).toEqual([]);
       expect(restarted.released).toEqual([]);
@@ -438,6 +438,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: false,
+      deferred: false,
     });
     expect(browser.created).toEqual([]);
     // No row is written at all: an adapter-only Run must be unchanged by this story.
@@ -451,6 +452,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: true,
+      deferred: false,
     });
     expect(browser.created).toEqual(['ws-1']);
     expect(state.checkpoint).toMatchObject({
@@ -499,6 +501,7 @@ describe('provisionWorkspace', () => {
       expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
         retry: false,
         provisioned: true,
+        deferred: false,
       });
     }
     expect(browser.created).toEqual(['ws-1']);
@@ -514,6 +517,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: true,
+      deferred: false,
       workspaceReplaced: true,
     });
     // Never a second workspace held at once: the stale one is given back first.
@@ -539,6 +543,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: true,
       provisioned: false,
+      deferred: false,
     });
     // The release was ATTEMPTED, and it failed. The adapter resolves an identity the
     // provider no longer knows about as success, so a throw is an outage or a refusal and
@@ -572,6 +577,7 @@ describe('provisionWorkspace', () => {
       expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
         retry: true,
         provisioned: false,
+        deferred: false,
       });
       expect(state.checkpoint).toMatchObject({ status: 'RETRY', attempts: attempt, workspaceId: 'ws-1' });
     }
@@ -579,6 +585,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: false,
+      deferred: false,
     });
     // §E: a Run-level Session Step failing after bounded retries is RUN_FAILED — and the
     // row STILL names the workspace nothing could give back. That is the property that
@@ -608,6 +615,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: true,
+      deferred: false,
       workspaceReplaced: true,
     });
     // Nothing is attached to past the deadline, and the replacement is made regardless.
@@ -624,6 +632,7 @@ describe('provisionWorkspace', () => {
       expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
         retry: true,
         provisioned: false,
+        deferred: false,
       });
       expect(state.checkpoint).toMatchObject({
         status: 'RETRY',
@@ -635,6 +644,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: false,
+      deferred: false,
     });
     // §E: a Run-level Session Step failing after bounded retries is RUN_FAILED.
     expect(state.checkpoint).toMatchObject({ status: 'FAILED', attempts: 4 });
@@ -650,6 +660,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: false,
+      deferred: false,
     });
     expect(state.checkpoint).toMatchObject({
       status: 'FAILED',
@@ -680,6 +691,7 @@ describe('provisionWorkspace', () => {
     expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({
       retry: false,
       provisioned: false,
+      deferred: false,
     });
     expect(state.checkpoint).toMatchObject({
       status: 'FAILED',
@@ -779,6 +791,35 @@ describe('releaseWorkspace', () => {
       diagnostic: 'workspace-expired',
       workspaceId: 'ws-1',
     });
+  });
+
+  it('defers, by name, while another claimant holds a live provisioning lease', async () => {
+    // The queue's delivery and the population recovery sweep can both reach a Run inside
+    // the seconds a provider session takes to create. The loser used to get the same
+    // `null` an adapter-only Run gets, carried on to acquire the population, and the agent
+    // claim then ended the Run `workspace-missing` (2026-09-16, production). It is told
+    // by name now, creates nothing, and writes nothing: the lease holder carries the Run.
+    const state = store(agentPlan());
+    state.checkpoint = {
+      revision: 1,
+      status: 'PROVISIONING',
+      attempts: 1,
+      stepId: 'session-1',
+      workspaceId: null,
+      expiresAt: null,
+      mode: 'local',
+      startedAt: '2026-09-06T00:00:00.000Z',
+      attemptStartedAt: '2026-09-06T00:00:00.000Z',
+      leaseUntil: '2026-09-06T00:02:00.000Z',
+      releasedAt: null,
+      diagnostic: null,
+    };
+    const browser = new FakeBrowser();
+    expect(await provisionWorkspace(DEPS(state, browser), JOB)).toEqual({ retry: false, provisioned: false, deferred: true });
+    expect(browser.created).toEqual([]);
+    expect(state.checkpoint).toMatchObject({ status: 'PROVISIONING', revision: 1 });
+    // Unchanged: the claim is the Run's first boundary and this caller never took it.
+    expect(state.run?.state).toBe('QUEUED');
   });
 
   it('closes a row that names no workspace rather than sweeping it forever', async () => {

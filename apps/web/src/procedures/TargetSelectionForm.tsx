@@ -20,6 +20,8 @@ import { ConfirmDialog } from '../design/ConfirmDialog';
 import { Digest } from '../design/Digest';
 import { UnavailableActions } from '../design/UnavailableActions';
 import {
+  DESKTOP_DEFAULT_LEFT_OUT,
+  DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP,
   TARGET_SELECTION_MISSING,
   targetCoverageMissing,
   kindLabel,
@@ -38,8 +40,10 @@ import { usePreparationChoices, type PreparationActionResult } from './Preparati
  * one, so the auditor selects explicitly from what a PoC Administrator registered. Each
  * selected system shows its kind, its credential reference and its expected field labels,
  * and the frozen registration digest — the six-field contract the version freezes. The
- * completeness diagnostics (missing selection, missing P-1 web/desktop coverage) are shown
- * live and distinct from the advisory scope warnings on the Audit Instructions.
+ * completeness diagnostics (missing selection, and a Template's WEB default not yet
+ * selected) are shown live and distinct from the advisory scope warnings on the Audit
+ * Instructions. A Template's desktop default is not one of them: this release cannot
+ * execute a desktop system, so the panel says the selection is complete without it.
  *
  * The row-version token is shared with every other Builder editor: this form is rendered
  * with the token the server computed for this load and adopts the token the command
@@ -135,9 +139,15 @@ export function TargetSelectionForm({
   const added = addedSystems(selected);
   const diagnostics: string[] = [];
   if (selected.length === 0) diagnostics.push(TARGET_SELECTION_MISSING);
-  for (const kind of ['web', 'desktop'] as const) {
-    if (requiredKinds.has(kind) && !selectedKinds.has(kind)) diagnostics.push(targetCoverageMissing(kind));
-  }
+  // WEB only. A Template's desktop default is a suggestion this release cannot execute,
+  // so asking for it here contradicted the caption above that says to leave it out.
+  // `DESKTOP_DEFAULT_LEFT_OUT` answers the same question — "is my selection complete?" —
+  // in the direction that is true, and it is a caption rather than a warning because
+  // leaving it out is the correct outcome and not a gap.
+  if (requiredKinds.has('web') && !selectedKinds.has('web')) diagnostics.push(targetCoverageMissing('web'));
+  // Only while the desktop default really is left out. Once one is selected the sentence
+  // would be false, and `procedureReadiness` names the selected system as unsupported.
+  const desktopLeftOut = suggestions.some((suggestion) => suggestion.kind === 'desktop') && !selectedKinds.has('desktop');
 
   function add(): void {
     const registration = registrations.find((candidate) => candidate.registrationId === pick);
@@ -276,6 +286,15 @@ export function TargetSelectionForm({
             </li>
           ))}
         </ul>
+        {desktopLeftOut ? (
+          <p className="ls-caption" data-desktop-default-note>
+            {DESKTOP_DEFAULT_LEFT_OUT}
+            {/* Only once nothing else is outstanding. Saying the selection is complete
+                beside "No Target System is selected yet" answers the auditor's question
+                with the opposite of the truth (Codex, PR 40). */}
+            {diagnostics.length === 0 ? ` ${DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP}` : ''}
+          </p>
+        ) : null}
       </div>
 
       {selected.length === 0 ? (

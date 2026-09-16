@@ -59,6 +59,24 @@ describe('telemetry sanitizer', () => {
     });
   });
 
+  it('keeps the four fields a Run-ended line carries', () => {
+    // A dropped key is dropped SILENTLY, and these are the only record in the log stream
+    // of why a Run ended (2026-09-16: two production Runs failed with the stream empty).
+    expect(
+      sanitizeTelemetryFields({
+        runId: '019823ab-0000-7000-8000-000000000001',
+        state: 'RUN_FAILED',
+        stage: 'access',
+        diagnostic: 'workspace-missing',
+      }),
+    ).toEqual({
+      runId: '019823ab-0000-7000-8000-000000000001',
+      state: 'RUN_FAILED',
+      stage: 'access',
+      diagnostic: 'workspace-missing',
+    });
+  });
+
   it('keeps the Agent Workspace guarantee fields, including a FALSE recording flag', () => {
     /**
      * `mode` and `recording` are the two facts that say what guarantee a deployment is

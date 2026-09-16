@@ -24,10 +24,10 @@ function view(overrides: Partial<ProcedureVersionView> = {}): ProcedureVersionVi
 
 const editor = (name: string) => React.createElement('input', { 'aria-label': `${name} editor`, defaultValue: `retained-${name}` });
 
-function render(draft: ProcedureVersionView, onReview = vi.fn()): string {
+function render(draft: ProcedureVersionView, onReview = vi.fn(), actorNames?: Readonly<Record<string, string>>): string {
   return renderToStaticMarkup(React.createElement(BuilderSubmissionProvider, {
     children: React.createElement(GuidedPreparation, {
-      draft, rowVersion: 'row-1', onRowVersion: vi.fn(), onReview,
+      draft, rowVersion: 'row-1', onRowVersion: vi.fn(), onReview, actorNames,
       editors: {
         context: editor('context'), scope: editor('scope'), evidence: editor('evidence'),
         instructions: editor('instructions'), assessment: editor('assessment'), frequency: editor('frequency'),
@@ -57,6 +57,26 @@ function reviewedContext(): ProcedureVersionView {
 }
 
 describe('guided procedure preparation', () => {
+  /**
+   * The frequency step was titled "Frequency and handling" and offered a frequency and a
+   * time: half the title named an editor that is not there, and an auditor went looking
+   * for the stop-and-ask controls. The handling is frozen by the compiler and shown by
+   * the Schedule editor; the step's own words say what the step actually takes.
+   */
+  it('names the frequency step for what it takes, not for an editor it does not have', () => {
+    const html = render(view());
+    // The outline entry, the panel heading and the review-step link all read the one
+    // title, so renaming it once renames it everywhere.
+    expect(html).toContain('>How often this is meant to run</span>');
+    expect(panel(html, 'frequency').body).toContain('>How often this is meant to run</h2>');
+    expect(html).not.toContain('Frequency and handling');
+    // The question no longer offers a stop-or-ask control. Those facts are frozen by the
+    // compiler, and the Schedule editor shows them read-only (`handling-words.test.ts`).
+    const step = panel(html, 'frequency');
+    expect(step.body).toContain('How often should this test happen');
+    expect(step.body).not.toContain('when should the agent stop or ask');
+  });
+
   it('renders readable sections and native outline links before hydration', () => {
     const html = render(view());
     expect(panel(html, 'context').attributes).not.toContain('hidden');
@@ -130,6 +150,19 @@ describe('guided procedure preparation', () => {
     expect(context).toContain('Saved section revision');
     expect(context).toContain(draft.sectionPreparation!.sections.context.basis);
     expect(panel(html, 'scope').body).not.toContain('<time');
+  });
+
+  /**
+   * The review record printed the auditor's user id (owner finding UX-11). A person is
+   * named the way every Run surface names one: `ActorName` — the name when the server page
+   * read one, and the id itself in monospace when it did not. Never blank.
+   */
+  it('names the auditor who reviewed a section, and prints the id only when no name is known', () => {
+    const named = panel(render(reviewedContext(), vi.fn(), { 'auditor-42': 'Dana Auditor' }), 'context').body;
+    expect(named).toContain('<dt>Auditor</dt><dd>Dana Auditor</dd>');
+    expect(named).not.toContain('auditor-42');
+    const unnamed = panel(render(reviewedContext()), 'context').body;
+    expect(unnamed).toContain('<dt>Auditor</dt><dd><span class="ls-mono">auditor-42</span></dd>');
   });
 
   it('stops showing an acknowledgement when its saved content no longer matches', () => {

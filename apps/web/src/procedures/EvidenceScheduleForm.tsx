@@ -21,6 +21,15 @@ import type { ProcedureVersionView, UpdateEvidenceDraftResult } from '@intellifi
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { NO_AUTOMATIC_RUNS_SENTENCE, SCHEDULE_TIME_STARTS_NOTHING_SENTENCE } from '../design/run-start-words';
+import {
+  ASKS_A_PERSON_LABEL,
+  HANDLING_HEADING,
+  RETRIES_LABEL,
+  STOPS_AFTER_LABEL,
+  asksAPersonWords,
+  retriesWords,
+  stopsAfterWords,
+} from './handling-words';
 import { scheduleEdit } from './schedule-edit';
 import { MANUAL_UPLOAD_SENTENCE } from '../design/copy';
 import { useSection, useSectionSubmissionStatus } from './use-section';
@@ -493,6 +502,44 @@ export function ScheduleForm({ draft, rowVersion, onSave }: ScheduleFormProps): 
           {busy ? 'Saving…' : 'Save Schedule'}
         </Button>
       </form>
+      <PlanHandlingFacts draft={draft} headingId={`${id}-handling`} />
     </div>
+  );
+}
+
+/**
+ * The handling this section used to promise, read out of the plan rather than edited.
+ *
+ * "Frequency and handling" offered a frequency and a time and nothing else, so an
+ * auditor went looking for the stop-and-ask controls the title named. They are not
+ * authored here: the compiler freezes them with the version. So the section SHOWS them,
+ * read-only, from the plan this Draft has already derived — and shows nothing at all
+ * when there is no plan yet, because the compiler's current defaults are not this
+ * version's facts until this version has frozen them.
+ */
+function PlanHandlingFacts({ draft, headingId }: { readonly draft: ProcedureVersionView; readonly headingId: string }): React.JSX.Element | null {
+  const plan = draft.planStatus === 'succeeded' ? draft.compiledPlan : null;
+  if (plan === null) return null;
+  const asksAPerson = asksAPersonWords(plan);
+  return (
+    <section className="ls-plan-group" aria-labelledby={headingId} data-schedule-handling>
+      <h3 className="ls-overline" id={headingId}>{HANDLING_HEADING}</h3>
+      <p className="ls-caption">
+        Frozen with this version by the platform, not set here. It is the same list the
+        plan below carries.
+      </p>
+      <dl className="ls-plan-facts">
+        <dt>{STOPS_AFTER_LABEL}</dt>
+        <dd>{stopsAfterWords(plan.limits)}</dd>
+        <dt>{RETRIES_LABEL}</dt>
+        <dd>{retriesWords(plan.limits)}</dd>
+        {asksAPerson === null ? null : (
+          <>
+            <dt>{ASKS_A_PERSON_LABEL}</dt>
+            <dd>{asksAPerson}</dd>
+          </>
+        )}
+      </dl>
+    </section>
   );
 }

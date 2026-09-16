@@ -615,6 +615,15 @@ export async function executeAgentSteps(
     // form-authentication path below instead of trusting the old checkpoint.
     if (prior?.status === 'SIGNED_IN' && !forceReauthentication) return { proceed: true } as const;
 
+    // The workspace is being provisioned by ANOTHER claimant right now. The queue's
+    // delivery and the population recovery sweep can both reach a Run inside the seconds a
+    // provider session takes to create, and the one that lost the workspace claim still
+    // acquired the population and arrived here first. Ending the Run `workspace-missing`
+    // for a workspace that is on its way is what killed the owner's two production Runs on
+    // 2026-09-16; deferring leaves it to the claimant that holds the lease — or to the
+    // workspace sweep, if that claimant dies — and this phase's own sweep resumes it after.
+    if (context.workspace === null && context.workspacePending) return null;
+
     const checkpoint: AgentExecutionCheckpoint = {
       revision: (prior?.revision ?? 0) + 1,
       status: 'EXECUTING',

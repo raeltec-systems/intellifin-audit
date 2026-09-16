@@ -224,7 +224,11 @@ The overall execution deadline starts with the first population claim, persists 
 restart, bounds external I/O and is rechecked before the completion transaction commits.
 Each Timeline check records its own success/failure independently of the Run's outcome.
 Recovery isolates individual Run failures and, during shutdown, waits only for its active
-bounded handler instead of starting the remaining selected batch.
+bounded handler instead of starting the remaining selected batch. A `RUNNING` Run with no
+population row is abandoned — unless its Agent Workspace is `PROVISIONING` under a live
+lease: the workspace stage runs before acquisition and a provider session takes seconds
+to create, so that Run is being worked on, and the sweep leaves it to the claimant that
+holds the lease (2026-09-16). Once the lease has run out it is abandoned again.
 
 Redelivery of a population-ready job verifies both registered raw and acquisition-envelope
 digests before acknowledging it. Integrity failure terminates the Run without overwriting

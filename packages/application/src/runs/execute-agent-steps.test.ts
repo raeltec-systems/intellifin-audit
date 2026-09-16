@@ -267,6 +267,7 @@ interface Store {
   plan: ExecutablePlan | null;
   populationReady: boolean;
   workspace: { workspaceId: string; mode: string } | null;
+  workspacePending: boolean;
   steps: SessionStepRecord[];
   executions: StepExecutionRecord[];
   actions: SanitizedToolAction[];
@@ -285,6 +286,7 @@ function store(plan: ExecutablePlan | null, overrides: Partial<Store> = {}): Sto
     plan,
     populationReady: true,
     workspace: { workspaceId: 'ws-1', mode: 'local' },
+    workspacePending: false,
     steps: [],
     executions: [],
     actions: [],
@@ -320,6 +322,7 @@ class FakeContext implements AgentExecutionContext {
   populationStartedAt: string | null;
   populationReady: boolean;
   workspace: { workspaceId: string; mode: string } | null;
+  workspacePending: boolean;
   sessionSteps: readonly SessionStepRecord[];
   private sequence = 0;
 
@@ -329,6 +332,7 @@ class FakeContext implements AgentExecutionContext {
     this.populationStartedAt = '2026-09-06T00:00:00.000Z';
     this.populationReady = state.populationReady;
     this.workspace = state.workspace;
+    this.workspacePending = state.workspacePending;
     this.sessionSteps = state.steps.map((step) => ({ ...step }));
   }
 
@@ -898,6 +902,22 @@ describe('a plan this build cannot sign in to', () => {
     await executeAgentSteps(DEPS(state, new FakeBrowser()), JOB);
     expect(state.checkpoint).toMatchObject({ status: 'TERMINAL', diagnostic: 'workspace-missing' });
     expect(state.run?.state).toBe('RUN_FAILED');
+  });
+
+  it('waits, rather than failing, while another claimant is still provisioning the workspace', async () => {
+    // The queue's delivery and the population recovery sweep can both reach a Run inside
+    // the seconds a provider session takes to create; the one that LOST the workspace claim
+    // acquired the population and arrived here first, and this phase then ended a healthy
+    // Run `workspace-missing` — the owner's two production Runs of 2026-09-16. A workspace
+    // that is on its way is not one the Run lacks: nothing is written, and the claimant
+    // holding the lease (or the workspace sweep, if it dies) carries the Run on.
+    const state = store(planFor('web'), { workspace: null, workspacePending: true });
+    const browser = new FakeBrowser();
+    expect(await executeAgentSteps(DEPS(state, browser), JOB)).toEqual({ retry: false, proceed: false });
+    expect(state.checkpoint).toBeNull();
+    expect(state.run?.state).toBe('RUNNING');
+    expect(state.events).toEqual([]);
+    expect(browser.performed).toEqual([]);
   });
 
   it('waits for the population, which the frozen order puts first', async () => {

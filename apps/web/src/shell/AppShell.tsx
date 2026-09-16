@@ -7,6 +7,7 @@ import { Sidebar, type SidebarCounts } from '../design/Sidebar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { BellLive } from './BellLive';
 import { NotificationBell } from './NotificationBell';
+import { SignedInAs } from './SignedInAs';
 import { SignOutButton } from './SignOutButton';
 
 interface AppShellProps {
@@ -17,6 +18,18 @@ interface AppShellProps {
    */
   readonly role: Role | null;
   /**
+   * Who is signed in, for the top bar's identity line. Absent when the identity could
+   * not be resolved — the `degraded` arm, which keeps the shell and names nobody.
+   *
+   * `names` is `ActorNameReader`'s answer, not a name: an id with no row, or a name the
+   * server could not read, comes back absent and `ActorName` then shows the id, which is
+   * honest about what is known.
+   */
+  readonly signedIn?: {
+    readonly userId: string;
+    readonly names: ReadonlyMap<string, string>;
+  };
+  /**
    * Active Runs and Results awaiting a decision. Nothing supplies them yet: counting
    * them means querying Runs and Results, which Epics 2 and 4 create. Until then the
    * sidebar shows no count rather than a fabricated zero.
@@ -26,6 +39,9 @@ interface AppShellProps {
   readonly unreadNotifications?: number | undefined;
   readonly children: ReactNode;
 }
+
+/** One frozen empty map, so an unresolved identity allocates nothing per render. */
+const EMPTY_NAMES: ReadonlyMap<string, string> = new Map();
 
 /**
  * The Ledger Signal shell: ribbon, top bar, sidebar, content.
@@ -39,6 +55,7 @@ interface AppShellProps {
  */
 export function AppShell({
   role,
+  signedIn,
   counts,
   unreadNotifications,
   children,
@@ -58,8 +75,18 @@ export function AppShell({
             beside it because Epic 1 otherwise ships a product for a shared workstation
             with no way to end a session — see `sign-out-route.ts`. If the bar must stay
             bell-only, this one line and those two files are the whole of it.
+
+            The identity line sits beside them for the same reason it sits beside Sign
+            out on every product with a shared workstation: the control that ends a
+            session has to say whose session it is ending, and every gated control on
+            every page below is decided by the role printed here.
           */}
           <div className="ls-topbar">
+            <SignedInAs
+              userId={signedIn?.userId ?? null}
+              names={signedIn?.names ?? EMPTY_NAMES}
+              role={role}
+            />
             <NotificationBell unread={unreadNotifications} />
             {unreadNotifications === undefined ? null : <BellLive />}
             <SignOutButton />
