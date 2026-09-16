@@ -28,6 +28,20 @@ const hostile = {
 };
 
 describe('telemetry sanitizer', () => {
+
+  it('keeps workspace stage and closed database diagnostics without exposing the exception', () => {
+    const chunks: string[] = [];
+    const captures: unknown[] = [];
+    const telemetry = createTelemetry({ serviceName: 'worker', destination: { write: (chunk: string) => chunks.push(chunk) }, sentrySink: { capture: (message, fields) => { captures.push({ message, fields }); } } });
+    telemetry.captureError('Run stage failed', new Error('password-and-provider-secret'), { runId: '019823ab-0000-7000-8000-000000000001', stage: 'workspace', diagnostic: 'workspace-persistence-failed', errorCode: '23514' });
+    for (const output of [chunks.join(''), JSON.stringify(captures)]) {
+      expect(output).toContain('Run stage failed');
+      expect(output).toContain('workspace-persistence-failed');
+      expect(output).toContain('23514');
+      expect(output).not.toContain('password-and-provider-secret');
+    }
+  });
+
   it('recursively removes hostile keys and keeps only documented top-level scalars', () => {
     const recursivelyCleaned = JSON.stringify(stripHostileTelemetry(hostile));
     expect(recursivelyCleaned).not.toMatch(/hunter2|tok-secret|evidence-secret|credential-secret/);

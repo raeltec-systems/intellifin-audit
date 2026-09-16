@@ -1,3 +1,23 @@
+## 2026-09-16 — A provider success is not a committed workspace
+
+The provider catch did not enclose the OPEN checkpoint transaction. A database CHECK
+failure escaped after a browser existed, leaving PROVISIONING and no failed Step
+Execution. Provisioning now seals a named workspace-persistence-failed stop in a fresh
+transaction, retains the valid session identity for cleanup/reaping, and releases it
+outside that transaction. Reconcile a lost COMMIT acknowledgement under the Run lock
+before any release: never revoke a committed or newer claimant's session. When ownership
+cannot be read, report workspace-persistence-unconfirmed; do not guess that COMMIT failed
+or claim cleanup succeeded. Provider lifetime remains the backstop during database outage.
+
+Diagnostics carry only Run/stage/closed codes. A bounded, getter-free cause walk admits
+known SQLSTATE/transport codes, never messages, SQL parameters, provider identities, URLs
+or arbitrary properties. Telemetry cannot break sealing. Invalid provider IDs fail explicitly.
+Cleanup changes FAILED to RELEASED; the reader recovers the FIRST terminal workspace
+failure from the immutable chain, so UI surfaces and Run-ended logs retain the cause.
+Tests cover rollback, unavailable cleanup, lost acknowledgement, database outage, invalid
+IDs and hostile diagnostics; PostgreSQL proves a real CHECK rollback and the retained
+Step Execution/stop reason after release. This does not certify live Watch or Replay.
+
 ## 2026-09-16 — Solari workspace identities are opaque, not short IDs
 
 Production Run 01a0abec-17dc-735c-a924-8cd077f31da9 reached the OPEN

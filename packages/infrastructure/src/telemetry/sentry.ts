@@ -30,6 +30,7 @@ export const TELEMETRY_MESSAGES = [
   // stopped it and the closed diagnostic — read from the same stop facts the Runs list
   // shows, so the log and the surface cannot disagree (2026-09-16).
   'Run ended',
+  'Run stage failed',
   'Fatal worker error',
   'Plan derivation queue failed',
   'Queue maintenance failed',

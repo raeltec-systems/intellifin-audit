@@ -147,6 +147,18 @@ async function main(): Promise<void> {
     browser,
     clock: new SystemClock(),
     ids: new CryptoUuidV7Generator(),
+    reportFailure: (failure) => telemetry.captureError('Run stage failed', new Error('Workspace operation failed'), { ...failure }),
+  };
+  const provision = async (job: PopulationJob) => {
+    try {
+      return await provisionWorkspace(workspace, job);
+    } catch (error) {
+      telemetry.captureError('Run stage failed', new Error('Workspace stage failed'), {
+        runId: job.runId, correlationId: job.correlationId,
+        stage: 'workspace', diagnostic: 'workspace-persistence-unconfirmed',
+      });
+      throw error;
+    }
   };
   telemetry.info('Agent Workspace mode selected', {
     mode: provider.connection.mode,
@@ -329,7 +341,7 @@ async function main(): Promise<void> {
       // The FROZEN plan decides whether this Run gets a workspace at all: `create-workspace`
       // is emitted first exactly when a selected Target System is web or desktop, so an
       // adapter-only Run reaches nothing and is unchanged by Story 4.1.
-      const provisioned = await provisionWorkspace(workspace, job);
+      const provisioned = await provision(job);
       // A provisioning failure that has already exhausted the Session Step budget left the
       // Run `RUN_FAILED`, and `acquirePopulation` declines a Run in that state, so this
       // returns without a second branch saying the same thing.
@@ -380,7 +392,7 @@ async function main(): Promise<void> {
             // A durable sign-in checkpoint cannot authenticate a replacement browser.
             // Recover provider identity first; only confirmed release/expiry allows a
             // replacement, which must repeat the approved access phase.
-            const provisioned = await provisionWorkspace(workspace, job);
+            const provisioned = await provision(job);
             if (provisioned.retry) return { retry: true };
             if (provisioned.deferred) return { retry: false };
             if (!(await signIn(job, provisioned.workspaceReplaced === true)).proceed) return { retry: false };

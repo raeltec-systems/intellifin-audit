@@ -178,7 +178,8 @@ export class DrizzleRunStopReader {
              r.period_from::text AS period_from, r.period_to::text AS period_to,
              pe.status AS population_status, pe.diagnostic AS population_diagnostic,
              ps.generated_at,
-             rw.status AS workspace_status, rw.diagnostic AS workspace_diagnostic,
+             CASE WHEN workspace_stop.diagnostic IS NOT NULL THEN 'FAILED' ELSE rw.status END AS workspace_status,
+             coalesce(workspace_stop.diagnostic, rw.diagnostic) AS workspace_diagnostic,
              ra.status AS access_status, ra.diagnostic AS access_diagnostic,
              re.status AS extraction_status, re.diagnostic AS extraction_diagnostic,
              aw.status AS work_status, aw.diagnostic AS work_diagnostic,
@@ -191,6 +192,15 @@ export class DrizzleRunStopReader {
       LEFT JOIN population_execution pe ON pe.run_id = r.run_id
       LEFT JOIN population_snapshot ps ON ps.run_id = r.run_id
       LEFT JOIN run_workspace rw ON rw.run_id = r.run_id
+      -- Cleanup can clear the mutable failure. Preserve the original terminal cause.
+      LEFT JOIN LATERAL (
+        SELECT e.payload->>'diagnostic' AS diagnostic
+        FROM audit_events e
+        WHERE e.aggregate_id = r.run_id::text
+          AND e.event_type = 'lifecycle.agent-workspace'
+          AND e.outcome = 'failure' AND e.payload->>'state' = 'RUN_FAILED'
+        ORDER BY e.sequence ASC LIMIT 1
+      ) workspace_stop ON true
       LEFT JOIN run_agent_execution ra ON ra.run_id = r.run_id
       LEFT JOIN run_execution re ON re.run_id = r.run_id
       LEFT JOIN run_agent_work aw ON aw.run_id = r.run_id

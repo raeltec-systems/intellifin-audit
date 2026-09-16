@@ -148,6 +148,8 @@ export const WORKSPACE_WORDS: Readonly<Record<WorkspaceDiagnostic, string>> = {
   'workspace-entitlement': 'The Agent Workspace provider refused: the plan does not allow this session.',
   'workspace-refused': 'The Agent Workspace provider refused the session.',
   'workspace-policy': 'A frozen origin could not be turned into a workspace policy.',
+  'workspace-persistence-failed': 'The Agent Workspace opened, but the platform could not save its execution state. No audit conclusion was issued. Ask an administrator to check the worker and database before retrying.',
+  'workspace-identity-invalid': 'The Agent Workspace provider returned an identity this platform cannot retain. Ask an administrator to check the provider integration before retrying.',
 };
 
 export const ACCESS_WORDS: Readonly<Record<AgentExecutionDiagnostic, string>> = {

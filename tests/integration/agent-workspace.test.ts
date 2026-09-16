@@ -8,6 +8,7 @@ import {
   type BrowserExecution,
   type WorkspaceHandle,
   type WorkspaceRef,
+  type WorkspaceExecutionContext,
 } from '@intellifin/application';
 import {
   bindingDigest,
@@ -25,6 +26,7 @@ import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
   DrizzleRunRepository,
+  DrizzleRunStopReader,
   PostgresProceduresUnitOfWork,
   PostgresRunsUnitOfWork,
   PostgresWorkspaceRepository,
@@ -281,6 +283,61 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
     expect(await releaseWorkspace(deps(execution), job.runId)).toEqual({ released: true });
     expect(released).toBe(true);
     expect(await row(job.runId)).toMatchObject({ status: 'RELEASED', workspace_id: workspaceId });
+  });
+
+  it('preserves a real rolled-back OPEN failure after cleanup and on the Run stop reader', async () => {
+    const job = await seed('web');
+    const workspaceId = 'B'.repeat(768);
+    const ref: WorkspaceRef = { runId: job.runId, workspaceId, mode: 'solari' };
+    let releases = 0;
+    const execution: BrowserExecution = {
+      mode: 'solari',
+      create: async () => ({ ref, expiresAt: null, takeDenials: () => [], denied: () => 0 }),
+      attach: async () => null,
+      release: async () => { releases += 1; },
+      downloadRecording: async () => null,
+      perform: async () => { throw new BrowserActionError('unavailable'); },
+    };
+    const actual = new PostgresWorkspaceRepository(db);
+    const repository = {
+      reapableRunIds: (after: string | null, limit: number) => actual.reapableRunIds(after, limit),
+      transaction: <T>(runId: string, work: (context: WorkspaceExecutionContext) => Promise<T>): Promise<T> =>
+        actual.transaction(runId, async (context) => {
+          const save = context.save;
+          context.save = async (checkpoint, runState) => {
+            // A genuine CHECK violation: PostgreSQL rolls this OPEN transaction back.
+            await save(checkpoint.status === 'OPEN' ? { ...checkpoint, attempts: 0 } : checkpoint, runState);
+          };
+          return work(context);
+        }),
+    };
+    const notices: unknown[] = [];
+    expect(await provisionWorkspace({ ...deps(execution), repository, reportFailure: (notice) => { notices.push(notice); } }, job)).toMatchObject({ retry: false, provisioned: false });
+    expect((await new DrizzleRunRepository(db).findRun(job.runId))?.state).toBe('RUN_FAILED');
+    expect(await row(job.runId)).toMatchObject({ status: 'RELEASED', workspace_id: workspaceId });
+    expect(releases).toBe(1);
+    const stop = await new DrizzleRunStopReader(db).readStop(job.runId);
+    expect(stop?.stop).toEqual({ stage: 'workspace', diagnostic: 'workspace-persistence-failed' });
+    const executions = await sql<{ state: string; diagnostic: string }[]>`SELECT state,diagnostic FROM run_step_execution WHERE run_id=${job.runId}`;
+    expect(executions).toEqual([{ state: 'FAILED', diagnostic: 'workspace-persistence-failed' }]);
+    expect(notices).toEqual([expect.objectContaining({ errorCode: '23514', stage: 'workspace' })]);
+    expect(JSON.stringify(notices)).not.toContain(workspaceId);
+  });
+
+  it('continues to report a terminal provider refusal after its empty workspace row is released', async () => {
+    const job = await seed('web');
+    const execution: BrowserExecution = {
+      mode: 'solari',
+      create: async () => { throw new WorkspaceProvisionError('entitlement'); },
+      attach: async () => null,
+      release: async () => undefined,
+      downloadRecording: async () => null,
+      perform: async () => { throw new BrowserActionError('unavailable'); },
+    };
+    await provisionWorkspace(deps(execution), job);
+    await releaseWorkspace(deps(execution), job.runId);
+    expect(await row(job.runId)).toMatchObject({ status: 'RELEASED' });
+    expect((await new DrizzleRunStopReader(db).readStop(job.runId))?.stop).toEqual({ stage: 'workspace', diagnostic: 'workspace-entitlement' });
   });
 
   it('provisions one workspace, bound to the Run, and records it on the Timeline', async () => {

@@ -64,6 +64,47 @@ export interface WorkspaceDependencies {
    * was configured for (the PR 23 lesson).
    */
   recording?: RecordingCopy;
+  /** Closed operational facts only; never a raw error, provider ID or endpoint. */
+  reportFailure?: (failure: WorkspaceFailureNotice) => void;
+}
+
+export interface WorkspaceFailureNotice {
+  readonly runId: string;
+  readonly stage: 'workspace';
+  readonly diagnostic: 'workspace-persistence-failed' | 'workspace-persistence-unconfirmed' | 'workspace-cleanup-failed' | 'workspace-identity-invalid';
+  readonly errorCode?: string;
+}
+
+/** The generation-50 storage budget. Provider identifiers must never be shortened. */
+export const WORKSPACE_ID_MAX_LENGTH = 4096;
+
+class WorkspaceIdentityInvalid extends Error {
+  override readonly name = 'WorkspaceIdentityInvalid';
+}
+
+// Read DATA properties only, never messages, SQL, parameters, URLs, arbitrary codes
+// or getters. Bound the walk and ignore cycles and hostile objects.
+const WORKSPACE_ERROR_CODES = new Set(['23514', '23502', '23503', '23505', '40001', '40P01', '08001', '08003', '08006', '08007', '53300', '57P01', '57P02', '57P03', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT']);
+function workspaceErrorCode(error: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let current = error;
+  try {
+    for (let depth = 0; depth < 5; depth += 1) {
+      if (current === null || typeof current !== 'object' || seen.has(current)) break;
+      seen.add(current);
+      const code = Object.getOwnPropertyDescriptor(current, 'code')?.value as unknown;
+      if (typeof code === 'string' && WORKSPACE_ERROR_CODES.has(code)) return code;
+      current = Object.getOwnPropertyDescriptor(current, 'cause')?.value as unknown;
+    }
+  } catch { /* Unknown shapes contribute no diagnostic fields. */ }
+  return undefined;
+}
+
+function reportWorkspaceFailure(deps: WorkspaceDependencies, runId: string, diagnostic: WorkspaceFailureNotice['diagnostic'], error?: unknown): void {
+  const errorCode = workspaceErrorCode(error);
+  try {
+    deps.reportFailure?.({ runId, stage: 'workspace', diagnostic, ...(errorCode === undefined ? {} : { errorCode }) });
+  } catch { /* Telemetry must not prevent cleanup or failure sealing. */ }
 }
 
 /**
@@ -111,6 +152,8 @@ export type WorkspaceDiagnostic =
   | 'workspace-entitlement'
   | 'workspace-refused'
   | 'workspace-policy'
+  | 'workspace-persistence-failed'
+  | 'workspace-identity-invalid'
   | 'attempt-limit'
   | 'canceled';
 
@@ -490,18 +533,32 @@ export async function provisionWorkspace(
       });
       createdByThisClaim = true;
     }
+    if (typeof handle.ref.workspaceId !== 'string' || handle.ref.workspaceId.length === 0 || handle.ref.workspaceId.length > WORKSPACE_ID_MAX_LENGTH) {
+      throw new WorkspaceIdentityInvalid();
+    }
   } catch (error) {
     const code = failureCode(error);
+    const invalidIdentity = error instanceof WorkspaceIdentityInvalid;
+    if (invalidIdentity) {
+      reportWorkspaceFailure(deps, job.runId, 'workspace-identity-invalid');
+      // Give back only a session THIS claim made; a reattached session may now
+      // be held by another claimant. Its invalid identity cannot be persisted.
+      if (createdByThisClaim && handle !== null) {
+        await deps.browser.release(handle.ref, WORKSPACE_RELEASE_TIMEOUT_MS).catch((cleanupError: unknown) => {
+          reportWorkspaceFailure(deps, job.runId, 'workspace-cleanup-failed', cleanupError);
+        });
+      }
+    }
     // A failed release of the stale identity is its own outcome and never a provision
     // code: nothing was created, so `TERMINAL_CODES` — which answers "will CREATING refuse
     // identically again?" — has no bearing on it. It is retryable under the same budget,
     // because a retry costs one reattach and one release against a session that may still
     // be alive, and that is exactly the case worth spending an attempt on.
     const releaseFailed = error instanceof StaleReleaseFailed;
-    const failure: WorkspaceDiagnostic = releaseFailed
-      ? 'workspace-release-failed'
-      : diagnosticOf(code);
-    const spent = (releaseFailed ? false : terminalCode(code)) || checkpoint.attempts >= budget;
+    const failure: WorkspaceDiagnostic = invalidIdentity
+      ? 'workspace-identity-invalid'
+      : releaseFailed ? 'workspace-release-failed' : diagnosticOf(code);
+    const spent = invalidIdentity || (releaseFailed ? false : terminalCode(code)) || checkpoint.attempts >= budget;
     const { state } = runStopFor('session-step-failed');
     // `...checkpoint` carries `workspaceId` and `expiresAt` forward UNCHANGED, which is
     // what keeps a workspace nothing could give back nameable — by the next claim, and by
@@ -550,25 +607,84 @@ export async function provisionWorkspace(
     leaseUntil: new Date(deps.clock.now().getTime() + stepTimeoutMs).toISOString(),
     diagnostic: null,
   };
-  const committed = await guarded(async (context) => {
-    await context.save(open, 'RUNNING');
-    await context.saveStepExecution({
-      stepExecutionId,
-      planStepId: checkpoint.stepId,
-      workItemId: null,
-      action: WORKSPACE_ACTION,
-      state: 'SUCCEEDED',
-      attempt: checkpoint.attempts,
-      startedAt,
-      completedAt: deps.clock.now().toISOString(),
-      diagnostic: null,
+  let committed: boolean;
+  try {
+    committed = await guarded(async (context) => {
+      await context.save(open, 'RUNNING');
+      await context.saveStepExecution({
+        stepExecutionId,
+        planStepId: checkpoint.stepId,
+        workItemId: null,
+        action: WORKSPACE_ACTION,
+        state: 'SUCCEEDED',
+        attempt: checkpoint.attempts,
+        startedAt,
+        completedAt: deps.clock.now().toISOString(),
+        diagnostic: null,
+      });
+      await event(context, diagnostic, 'RUNNING', open, {
+        attempt: checkpoint.attempts,
+        ...(deniedTotal > 0 ? { deniedTotal } : {}),
+      });
+      await recordDenials(context, denials);
     });
-    await event(context, diagnostic, 'RUNNING', open, {
-      attempt: checkpoint.attempts,
-      ...(deniedTotal > 0 ? { deniedTotal } : {}),
-    });
-    await recordDenials(context, denials);
-  });
+  } catch (error) {
+    let recovered: 'committed' | 'failed' | 'retained' | 'lost';
+    try {
+      // A lost COMMIT acknowledgement is not proof of a rollback. Re-read under
+      // the Run lock before ending a Run or releasing a possibly committed browser.
+      recovered = await deps.repository.transaction(job.runId, async (context) => {
+        const current = context.checkpoint;
+        if (current?.status === 'OPEN' && current.revision === open.revision &&
+            current.workspaceId === open.workspaceId && context.run?.state === 'RUNNING') {
+          return 'committed';
+        }
+        if (context.run?.state !== 'RUNNING' || current?.status !== 'PROVISIONING' ||
+            current.revision !== checkpoint.revision) {
+          return current?.workspaceId === open.workspaceId ? 'retained' : 'lost';
+        }
+        // OPEN rolled back and this is still our lease. Retain the valid identity
+        // on FAILED so the reaper can finish an unavailable cleanup.
+        const failed: WorkspaceCheckpoint = { ...open, status: 'FAILED', diagnostic: 'workspace-persistence-failed' };
+        await context.save(failed, 'RUN_FAILED');
+        await context.saveStepExecution({
+          stepExecutionId,
+          planStepId: checkpoint.stepId,
+          workItemId: null,
+          action: WORKSPACE_ACTION,
+          state: 'FAILED',
+          attempt: checkpoint.attempts,
+          startedAt,
+          completedAt: deps.clock.now().toISOString(),
+          diagnostic: 'workspace-persistence-failed',
+        });
+        await event(context, 'workspace-persistence-failed', 'RUN_FAILED', failed, { attempt: checkpoint.attempts }, 'failure');
+        await completeRun(context, { run, state: 'RUN_FAILED', at: deps.clock.now().toISOString(), plan });
+        return 'failed';
+      });
+    } catch (confirmationError) {
+      // Ownership is unknown. Do not revoke a session that might have committed.
+      // A persisted identity is reaped; otherwise provider lifetime is the backstop.
+      reportWorkspaceFailure(deps, job.runId, 'workspace-persistence-unconfirmed', confirmationError);
+      throw new Error('Workspace persistence could not be confirmed');
+    }
+    if (recovered === 'committed') {
+      return workspaceReplaced
+        ? { retry: false, provisioned: true, workspaceReplaced: true, deferred: false }
+        : { retry: false, provisioned: true, deferred: false };
+    }
+    reportWorkspaceFailure(deps, job.runId, 'workspace-persistence-failed', error);
+    if (recovered === 'failed') {
+      await releaseWorkspace(deps, job.runId).catch((cleanupError: unknown) => {
+        reportWorkspaceFailure(deps, job.runId, 'workspace-cleanup-failed', cleanupError);
+      });
+    } else if (recovered === 'lost' && createdByThisClaim) {
+      await deps.browser.release(handle.ref, WORKSPACE_RELEASE_TIMEOUT_MS).catch((cleanupError: unknown) => {
+        reportWorkspaceFailure(deps, job.runId, 'workspace-cleanup-failed', cleanupError);
+      });
+    }
+    return { retry: false, provisioned: false, deferred: recovered !== 'failed' };
+  }
   // Only a newly created, uncommitted handle belongs to this losing claim. An attached
   // identity is still named by the durable row and may now belong to the winning lease;
   // closing it here would revoke that worker's live session. Its winner/reaper owns it.

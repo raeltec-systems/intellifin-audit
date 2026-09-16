@@ -331,6 +331,151 @@ function barrier() {
 }
 
 describe('provisionWorkspace', () => {
+
+  it('seals a named failure and releases a newly opened browser when OPEN persistence rolls back', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari', attachable: true });
+    const notices: unknown[] = [];
+    const deps = {
+      ...DEPS(state, browser),
+      reportFailure: (notice: unknown) => { notices.push(notice); },
+      repository: {
+        ...repository(state),
+        transaction: async <T>(runId: string, work: (context: WorkspaceExecutionContext) => Promise<T>): Promise<T> =>
+          repository(state).transaction(runId, async (context) => {
+            const save = context.save;
+            context.save = async (checkpoint, runState) => {
+              if (checkpoint.status === 'OPEN') throw new Error('SQL and password MUST NOT ESCAPE', { cause: { code: '23514', detail: 'provider-secret', constraint_name: 'raw-secret' } });
+              await save(checkpoint, runState);
+            };
+            return work(context);
+          }),
+      },
+    };
+    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: false, deferred: false });
+    expect(state.run?.state).toBe('RUN_FAILED');
+    expect(state.result).not.toBeNull();
+    expect(state.seal).not.toBeNull();
+    expect(state.executions).toMatchObject([{ state: 'FAILED', action: 'create-workspace', diagnostic: 'workspace-persistence-failed' }]);
+    expect(state.events).toEqual(expect.arrayContaining([expect.objectContaining({ outcome: 'failure', payload: expect.objectContaining({ diagnostic: 'workspace-persistence-failed', state: 'RUN_FAILED' }) })]));
+    expect(browser.created).toEqual(['ws-1']);
+    expect(browser.released).toEqual([{ runId: RUN.runId, workspaceId: 'ws-1', mode: 'solari' }]);
+    expect(state.checkpoint?.status).toBe('RELEASED');
+    expect(notices).toEqual([{ runId: RUN.runId, stage: 'workspace', diagnostic: 'workspace-persistence-failed', errorCode: '23514' }]);
+    expect(JSON.stringify({ notices, events: state.events, executions: state.executions })).not.toMatch(/MUST NOT ESCAPE|provider-secret|raw-secret/);
+  });
+
+  it('retains the failed session for the reaper when cleanup is unavailable', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari', failRelease: new Error('cleanup-secret') });
+    const notices: unknown[] = [];
+    const deps = {
+      ...DEPS(state, browser),
+      reportFailure: (notice: unknown) => { notices.push(notice); },
+      repository: {
+        ...repository(state),
+        transaction: async <T>(runId: string, work: (context: WorkspaceExecutionContext) => Promise<T>): Promise<T> =>
+          repository(state).transaction(runId, async (context) => {
+            const save = context.save;
+            context.save = async (checkpoint, runState) => {
+              if (checkpoint.status === 'OPEN') throw new Error('save-secret');
+              await save(checkpoint, runState);
+            };
+            return work(context);
+          }),
+      },
+    };
+    expect(await provisionWorkspace(deps, JOB)).toMatchObject({ retry: false, provisioned: false });
+    expect(state.checkpoint).toMatchObject({ status: 'FAILED', workspaceId: 'ws-1', diagnostic: 'workspace-persistence-failed' });
+    expect(notices).toEqual(expect.arrayContaining([expect.objectContaining({ diagnostic: 'workspace-cleanup-failed' })]));
+    expect(JSON.stringify(notices)).not.toMatch(/cleanup-secret|save-secret/);
+  });
+
+  it('does not release a committed workspace when only its commit acknowledgement was lost', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari' });
+    let injected = false;
+    const deps = {
+      ...DEPS(state, browser),
+      repository: {
+        ...repository(state),
+        transaction: async <T>(runId: string, work: (context: WorkspaceExecutionContext) => Promise<T>): Promise<T> => {
+          const result = await repository(state).transaction(runId, work);
+          if (!injected && state.checkpoint?.status === 'OPEN') { injected = true; throw new Error('lost acknowledgement'); }
+          return result;
+        },
+      },
+    };
+    expect(await provisionWorkspace(deps, JOB)).toEqual({ retry: false, provisioned: true, deferred: false });
+    expect(state.run?.state).toBe('RUNNING');
+    expect(state.checkpoint?.status).toBe('OPEN');
+    expect(state.executions).toHaveLength(1);
+    expect(state.executions[0]?.state).toBe('SUCCEEDED');
+    expect(browser.released).toEqual([]);
+    expect(browser.created).toEqual(['ws-1']);
+  });
+
+  it('reports uncertainty without revoking a browser when the database cannot confirm ownership', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari' });
+    const notices: unknown[] = [];
+    let calls = 0;
+    const deps = {
+      ...DEPS(state, browser),
+      reportFailure: (notice: unknown) => { notices.push(notice); },
+      repository: {
+        ...repository(state),
+        transaction: async <T>(runId: string, work: (context: WorkspaceExecutionContext) => Promise<T>): Promise<T> => {
+          calls += 1;
+          if (calls > 1) throw new Error('database-secret', { cause: { code: '08006' } });
+          return repository(state).transaction(runId, work);
+        },
+      },
+    };
+    await expect(provisionWorkspace(deps, JOB)).rejects.toThrow('Workspace persistence could not be confirmed');
+    expect(notices).toEqual(expect.arrayContaining([expect.objectContaining({ stage: 'workspace', diagnostic: 'workspace-persistence-unconfirmed', errorCode: '08006' })]));
+    expect(JSON.stringify(notices)).not.toContain('database-secret');
+    expect(browser.released).toEqual([]);
+    expect(browser.created).toEqual(['ws-1']);
+  });
+
+  it.each(['', 'x'.repeat(4097)])('refuses an unpersistable provider identity without logging or retaining it', async (workspaceId) => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser({ mode: 'solari' });
+    browser.create = async ({ runId }) => ({ ref: { runId, workspaceId, mode: 'solari' }, expiresAt: null, takeDenials: () => [], denied: () => 0 });
+    expect(await provisionWorkspace(DEPS(state, browser), JOB)).toMatchObject({ retry: false, provisioned: false });
+    expect(state.run?.state).toBe('RUN_FAILED');
+    expect(state.checkpoint).toMatchObject({ workspaceId: null, diagnostic: 'workspace-identity-invalid' });
+    expect(browser.released).toHaveLength(1);
+    expect(state.executions[0]?.diagnostic).toBe('workspace-identity-invalid');
+    expect(JSON.stringify(state.events)).not.toContain('x'.repeat(4097));
+  });
+
+  it('cannot let a diagnostic observer or hostile error getter prevent failure sealing', async () => {
+    const state = store(agentPlan());
+    const browser = new FakeBrowser();
+    const hostile = Object.create(null, { code: { get: () => { throw new Error('getter-secret'); } }, cause: { value: null } });
+    const deps = {
+      ...DEPS(state, browser),
+      reportFailure: () => { throw new Error('sink-secret'); },
+      repository: {
+        ...repository(state),
+        transaction: async <T>(runId: string, work: (context: WorkspaceExecutionContext) => Promise<T>): Promise<T> =>
+          repository(state).transaction(runId, async (context) => {
+            const save = context.save;
+            context.save = async (checkpoint, runState) => {
+              if (checkpoint.status === 'OPEN') throw hostile;
+              await save(checkpoint, runState);
+            };
+            return work(context);
+          }),
+      },
+    };
+    await expect(provisionWorkspace(deps, JOB)).resolves.toMatchObject({ retry: false, provisioned: false });
+    expect(state.run?.state).toBe('RUN_FAILED');
+    expect(browser.released).toHaveLength(1);
+  });
+
   it('does not release the winning existing workspace when an older attach loses its lease', async () => {
     const state = store(agentPlan());
     const browser = new FakeBrowser({ mode: 'solari', attachable: true, expiresAt: '2026-09-07T00:00:00.000Z' });
