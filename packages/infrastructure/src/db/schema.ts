@@ -1095,7 +1095,9 @@ export const runWorkspace = pgTable('run_workspace', {
   // this CHECK cannot pass by evaluating to NULL -- the trap `array_length` set in
   // generation 5 and `<> ALL` set in generation 7.
   check('run_workspace_released_at',sql`(${t.releasedAt} IS NULL) = (${t.status} <> 'RELEASED')`),
-  check('run_workspace_identity_shape',sql`${t.workspaceId} IS NULL OR (length(${t.workspaceId}) BETWEEN 1 AND 200)`),
+  // Opaque provider identity, not a UUID: Solari identifiers can exceed 200 characters.
+  // Keep the complete identity for reattach/release, with a bounded storage budget.
+  check('run_workspace_identity_shape',sql`${t.workspaceId} IS NULL OR (length(${t.workspaceId}) BETWEEN 1 AND 4096)`),
 ]);
 
 export const runEvidence = pgTable('run_evidence', {

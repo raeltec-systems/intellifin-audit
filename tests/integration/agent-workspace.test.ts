@@ -255,6 +255,34 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
       SELECT event_type, payload FROM audit_events WHERE aggregate_id=${runId} ORDER BY sequence`;
   }
 
+  // Provider identities are opaque, not UUIDs. The production Solari identity
+  // exceeded the old 200-character CHECK after the browser had already opened.
+  it.each([201, 768, 4096])('persists a full opaque provider identity of %i characters through reattach and release', async (length) => {
+    const job = await seed('web');
+    const workspaceId = 'A'.repeat(length - 2) + '_-';
+    const ref: WorkspaceRef = { runId: job.runId, workspaceId, mode: 'solari' };
+    const handle: WorkspaceHandle = { ref, expiresAt: new Date(Date.now() + 3_600_000).toISOString(), takeDenials: () => [], denied: () => 0 };
+    let creates = 0;
+    let released = false;
+    const execution: BrowserExecution = {
+      mode: 'solari',
+      create: async () => { creates += 1; return handle; },
+      attach: async (requested) => { expect(requested).toEqual(ref); return handle; },
+      release: async (requested) => { expect(requested).toEqual(ref); released = true; },
+      downloadRecording: async () => null,
+      perform: async () => { throw new BrowserActionError('unavailable'); },
+    };
+    expect(await provisionWorkspace(deps(execution), job)).toEqual({ retry: false, provisioned: true, deferred: false });
+    expect(await row(job.runId)).toMatchObject({ status: 'OPEN', mode: 'solari', workspace_id: workspaceId, attempts: 1 });
+    expect(await provisionWorkspace(deps(execution), job)).toMatchObject({ provisioned: true });
+    expect(creates).toBe(1);
+    expect(await row(job.runId)).toMatchObject({ workspace_id: workspaceId, attempts: 1 });
+    await terminate(job.runId, 'RUN_FAILED');
+    expect(await releaseWorkspace(deps(execution), job.runId)).toEqual({ released: true });
+    expect(released).toBe(true);
+    expect(await row(job.runId)).toMatchObject({ status: 'RELEASED', workspace_id: workspaceId });
+  });
+
   it('provisions one workspace, bound to the Run, and records it on the Timeline', async () => {
     const job = await seed('web');
     const execution = browser();

@@ -1,3 +1,20 @@
+## 2026-09-16 — Solari workspace identities are opaque, not short IDs
+
+Production Run 01a0abec-17dc-735c-a924-8cd077f31da9 reached the OPEN
+checkpoint, but PostgreSQL rejected it with run_workspace_identity_shape.
+The original CHECK capped provider identities at 200 characters. Solari had
+already returned a browser; this was a persistence failure, not proof of a
+provider outage. Generation 50 expands the bounded storage budget to 4096
+characters without truncating, hashing or rewriting the identity. The full
+value is needed to reattach and release the same session. Historical migrations
+are unchanged. The PostgreSQL regression covers 201, 768 and 4096-character
+synthetic identities through provision, reattach and terminal release.
+
+Never put real provider identities, protocol URLs, database parameters or
+exception messages into incident reports. Failed checkpoint persistence must
+also have a named failure path and safe cleanup; the schema repair alone does
+not prove live viewing, replay or an end-to-end audit execution.
+
 ## 2026-09-16 — A page that asserts an empty state without reading anything is not reporting
 
 The owner's production walkthrough filed thirty findings, and the largest class was one

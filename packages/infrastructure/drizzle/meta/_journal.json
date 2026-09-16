@@ -351,6 +351,13 @@
       "when": 1789125325392,
       "tag": "0049_uneven_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789593585941,
+      "tag": "0050_freezing_gladiator",
+      "breakpoints": true
     }
   ]
 }
