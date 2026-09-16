@@ -11,7 +11,9 @@ import {
   PostgresProceduresUnitOfWork,
   REPLAY_PAGE_SIZE,
   RUN_DETAIL_PAGE_SIZE,
+  PROCEDURE_LIST_LIMIT,
   RUN_LIST_PAGE_SIZE,
+  RUN_STOP_READ_LIMIT,
   type Database,
   type Sql,
 } from '@intellifin/infrastructure';
@@ -510,5 +512,26 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     expect(stops.size).toBe(3);
     expect(await reader.readStop(ids.next())).toBeNull();
     expect((await reader.readStops(['not-a-uuid'])).size).toBe(0);
+  });
+
+  it('answers for as many Runs as its widest caller can ask about', async () => {
+    // The bound belongs to the CARDINALITY OF THE READ, not to the table the caller
+    // started from. Two callers ask: the Runs list, one page plus the has-more probe; and
+    // the Procedures list, at most one last Run per Procedure. Bounded at the first, the
+    // Procedures page silently lost the stop reason from every card past the twenty-sixth
+    // (Codex, PR 40). Asserted against BOTH callers' own limits, never against a copy of
+    // the number, so raising either one without raising this fails here.
+    expect(RUN_STOP_READ_LIMIT).toBeGreaterThanOrEqual(RUN_LIST_PAGE_SIZE + 1);
+    expect(RUN_STOP_READ_LIMIT).toBeGreaterThanOrEqual(PROCEDURE_LIST_LIMIT);
+    // And the slice really is that wide. The ask is padded to EXACTLY the Procedures
+    // page's own limit with unknown-but-valid ids, with the three real Runs last, so the
+    // old bound of one Runs page would have sliced all three away and answered about
+    // nothing. Padding past the limit would drop them under the new bound too, which
+    // would be the bound working rather than a defect.
+    const padding = Array.from({ length: PROCEDURE_LIST_LIMIT - 3 }, () => ids.next());
+    const wide = await new DrizzleRunStopReader(db).readStops([
+      ...padding, runs.first, runs.second, runs.third,
+    ]);
+    expect(wide.size).toBe(3);
   });
 });

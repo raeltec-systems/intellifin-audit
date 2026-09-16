@@ -21,6 +21,7 @@ import { Digest } from '../design/Digest';
 import { UnavailableActions } from '../design/UnavailableActions';
 import {
   DESKTOP_DEFAULT_LEFT_OUT,
+  DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP,
   TARGET_SELECTION_MISSING,
   targetCoverageMissing,
   kindLabel,
@@ -286,7 +287,13 @@ export function TargetSelectionForm({
           ))}
         </ul>
         {desktopLeftOut ? (
-          <p className="ls-caption" data-desktop-default-note>{DESKTOP_DEFAULT_LEFT_OUT}</p>
+          <p className="ls-caption" data-desktop-default-note>
+            {DESKTOP_DEFAULT_LEFT_OUT}
+            {/* Only once nothing else is outstanding. Saying the selection is complete
+                beside "No Target System is selected yet" answers the auditor's question
+                with the opposite of the truth (Codex, PR 40). */}
+            {diagnostics.length === 0 ? ` ${DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP}` : ''}
+          </p>
         ) : null}
       </div>
 

@@ -276,6 +276,21 @@ for (const state of STOPPED) {
 }
 const STOPPED_LIST = sql.raw(STOPPED.map((state) => `'${state}'`).join(', '));
 
+/**
+ * The contract's order WITHIN the stopped group, as a SQL rank.
+ *
+ * EXPERIENCE.md orders the Overview's attention items "… Inconclusive · Run Failed …", and
+ * `RUN_STOP_STATES` is already in that order, so the rank is built from the array's own
+ * index rather than from two literals typed here. Ordering by time alone interleaved the
+ * two states and then applied the ten-row bound to the mixture, so ten recent failures
+ * could hide every Inconclusive Run — a Run that produced Evidence and could not conclude
+ * is the one an auditor acts on first, and it is the one that fell off. Found by Codex on
+ * PR 40.
+ */
+const STOPPED_RANK = sql.raw(
+  `CASE r.state ${STOPPED.map((state, index) => `WHEN '${state}' THEN ${index}`).join(' ')} ELSE ${STOPPED.length} END`,
+);
+
 /** One Run that stopped before it concluded, as the Overview's attention list names it. */
 export interface StoppedRunRow {
   readonly runId: string;
@@ -368,7 +383,7 @@ export class DrizzleRunOverviewRepository {
       FROM audit_run r
       LEFT JOIN run_result res ON res.run_id = r.run_id
       WHERE r.state IN (${STOPPED_LIST})
-      ORDER BY r.initiated_at DESC, r.run_id DESC
+      ORDER BY ${STOPPED_RANK}, r.initiated_at DESC, r.run_id DESC
       LIMIT ${size}`);
     // A separate statement, because a `LIMIT`ed read cannot also answer how many there
     // are: `rows.length` after a bound is the bound, not a count.

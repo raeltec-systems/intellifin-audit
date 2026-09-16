@@ -4,6 +4,7 @@ import { defaultTargetsFor, PROCEDURE_TEMPLATES } from '@intellifin/domain';
 
 import {
   DESKTOP_DEFAULT_LEFT_OUT,
+  DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP,
   suggestedTargetNote,
   suggestedTargets,
   targetCoverageMissing,
@@ -96,13 +97,19 @@ describe('a Template default this release cannot run', () => {
     }
   });
 
-  it('says leaving it out still leaves a complete selection', () => {
+  it('says leaving it out still leaves a complete selection, in two parts', () => {
     expect(note).toContain('Leave it out.');
     expect(DESKTOP_DEFAULT_LEFT_OUT).toContain('left out');
-    expect(DESKTOP_DEFAULT_LEFT_OUT).toContain('complete without it');
     // And it names what this release does run, so "complete" is checkable rather than
     // something the reader has to take on trust.
     expect(DESKTOP_DEFAULT_LEFT_OUT).toContain('web, API and file systems');
+    // The completeness half is its OWN sentence (Codex, PR 40). As one string it was
+    // rendered whenever a desktop default was unselected — including beside "No Target
+    // System is selected yet" — so the page answered "is my selection complete?" with
+    // "yes" while listing what was missing. The release fact is always true; the claim
+    // about this selection is shown only when nothing else is outstanding.
+    expect(DESKTOP_DEFAULT_LEFT_OUT).not.toContain('complete without it');
+    expect(DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP).toContain('complete without it');
   });
 
   it('keeps the completeness diagnostic to a kind this release runs', () => {

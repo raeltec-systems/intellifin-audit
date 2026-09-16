@@ -71,7 +71,21 @@ export function targetCoverageMissing(kind: 'web'): string {
  * alone is a complete selection.
  */
 export const DESKTOP_DEFAULT_LEFT_OUT =
-  'This Template also names a desktop system. This release runs web, API and file systems only, so a desktop system is left out and your selection is complete without it.';
+  'This Template also names a desktop system. This release runs web, API and file systems only, so a desktop system is left out.';
+
+/**
+ * The completeness half of the desktop note, which is NOT always true.
+ *
+ * `[SPLIT 2026-09-16]` It used to be one sentence ending "…and your selection is complete
+ * without it", rendered whenever a desktop default was unselected — so it appeared beside
+ * "No Target System is selected yet" and beside the missing-web-coverage warning, telling
+ * the auditor their selection was complete in the same breath as telling them what was
+ * missing. Found by Codex on PR 40. The first half is a fact about this release and is
+ * always true; this half is a claim about THIS selection and is shown only when nothing
+ * else is outstanding.
+ */
+export const DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP =
+  'Your selection is complete without it.';
 
 /** Shown in the Audit Instructions section when no agent-driven system is selected yet. */
 export const AUDIT_INSTRUCTIONS_NO_AGENT =

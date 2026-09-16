@@ -171,8 +171,12 @@ describe('the Execution Timeline’s headline', () => {
       expect(sentence).not.toContain('0 of 0');
     }
     expect(NO_STEP_EXECUTIONS_ENDED_SENTENCE).toContain('no record was tested');
-    expect(NO_STEP_EXECUTIONS_ENDED_SENTENCE).toContain('Agent Workspace');
-    expect(NO_STEP_EXECUTIONS_ENDED_SENTENCE).toContain('population');
+    // It must NOT name a preparation stage. A Run that signed in and then stopped has no
+    // Step Execution either, and a sentence claiming it ended while creating its workspace
+    // contradicts the stage rows directly above it (Codex, PR 40). The rows own that fact.
+    expect(NO_STEP_EXECUTIONS_ENDED_SENTENCE).not.toContain('Agent Workspace');
+    expect(NO_STEP_EXECUTIONS_ENDED_SENTENCE).not.toContain('acquiring the population');
+    expect(NO_STEP_EXECUTIONS_ENDED_SENTENCE).toContain('stage rows above');
   });
 
   it('does not tell an active Run that it ended', () => {
@@ -180,6 +184,8 @@ describe('the Execution Timeline’s headline', () => {
       expect(stepExecutionsSentence(0, 0, state)).toBe(NO_STEP_EXECUTIONS_PENDING_SENTENCE);
     }
     expect(NO_STEP_EXECUTIONS_PENDING_SENTENCE).not.toContain('ended');
+    expect(NO_STEP_EXECUTIONS_PENDING_SENTENCE).not.toContain('Agent Workspace');
+    expect(NO_STEP_EXECUTIONS_PENDING_SENTENCE).toContain('stage rows above');
   });
 
   it('counts the listed Step Executions when there are any, whatever the Run state', () => {

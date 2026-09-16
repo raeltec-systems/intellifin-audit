@@ -162,23 +162,33 @@ describe.skipIf(!url)('the Overview and Procedure card reads', () => {
   const overview = (): DrizzleRunOverviewRepository => new DrizzleRunOverviewRepository(db);
 
   describe('the stopped Runs the Overview names', () => {
-    it('returns only the Runs that stopped, newest first', async () => {
+    it('returns only the Runs that stopped, Inconclusive first and then newest first', async () => {
       const page = await overview().listStoppedRuns();
       const mine = page.rows.filter((row) => row.procedureId === procedureId);
-      // The two that stopped, in the order they were started, newest first. The COMPLETED
-      // Run and the QUEUED one are not attention items and must not be here: a summary
-      // that listed a Run that concluded would be crying wolf, and one that listed a Run
-      // still in flight would be reporting work in progress as a failure.
-      expect(mine.map((row) => row.runId)).toEqual([runs.failed, runs.inconclusive]);
-      expect(mine.map((row) => row.state)).toEqual(['RUN_FAILED', 'INCONCLUSIVE']);
-      expect(mine[0]).toMatchObject({
+      // EXPERIENCE.md orders the attention items "… Inconclusive · Run Failed …", so the
+      // STATE decides first and time decides within a state. This fixture's RUN_FAILED is
+      // the NEWER of the two, so ordering by time alone put it first — and with the
+      // ten-row bound that let recent failures push every Inconclusive Run off the list
+      // (Codex, PR 40). The COMPLETED Run and the QUEUED one are not attention items and
+      // must not be here: a summary that listed a Run that concluded would be crying wolf,
+      // and one that listed a Run still in flight would report work in progress as a
+      // failure.
+      expect(mine.map((row) => row.runId)).toEqual([runs.inconclusive, runs.failed]);
+      expect(mine.map((row) => row.state)).toEqual(['INCONCLUSIVE', 'RUN_FAILED']);
+      // The order is total over the whole table, so it holds on any subset of it: no
+      // RUN_FAILED may appear before an INCONCLUSIVE anywhere on the page.
+      const lastInconclusive = page.rows.map((row) => row.state).lastIndexOf('INCONCLUSIVE');
+      const firstFailed = page.rows.map((row) => row.state).indexOf('RUN_FAILED');
+      if (lastInconclusive >= 0 && firstFailed >= 0) expect(firstFailed).toBeGreaterThan(lastInconclusive);
+      const failed = mine.find((row) => row.state === 'RUN_FAILED');
+      expect(failed).toMatchObject({
         procedureName: 'Overview reads fixture',
         versionNumber: 1,
         initiatorId: author,
         period: { from: '2026-06-01', to: '2026-06-30' },
       });
       // Sealed, so it has an end; the Overview measures nothing to it, but the card does.
-      expect(mine[0]!.endedAt).toBe('2026-12-31T10:00:00.000Z');
+      expect(failed!.endedAt).toBe('2026-12-31T10:00:00.000Z');
     });
 
     it('counts every stopped Run, not only the page it returned', async () => {

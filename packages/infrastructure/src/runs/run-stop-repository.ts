@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { isOutcomeRowId, type OutcomeRowId, type RunState } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
+import { PROCEDURE_LIST_LIMIT } from '../procedures/procedure-repository.js';
 import { RUN_LIST_PAGE_SIZE } from './run-list-repository.js';
 
 /**
@@ -33,6 +34,21 @@ import { RUN_LIST_PAGE_SIZE } from './run-list-repository.js';
  * other: `stopUnexecutableRun` writes NO checkpoint, deliberately, and records its reason
  * only in the chain (`lifecycle.run-unexecutable`), so it is read from there.
  */
+/**
+ * The most Run ids one `readStops` call may be asked about.
+ *
+ * It belongs to the CARDINALITY OF THE READ, not to the table the caller started from —
+ * the rule this codebase learned on `readGateObservations` and again on Replay's joins.
+ * Two callers ask: the Runs list, one page of `RUN_LIST_PAGE_SIZE` plus the has-more
+ * probe; and the Procedures list, at most one last Run per Procedure, so
+ * `PROCEDURE_LIST_LIMIT`. Bounded at the smaller of the two, the Procedures page silently
+ * dropped the stop reason from every card past the twenty-sixth — and a card with no stop
+ * reason reads as a Run that stopped for no reason anybody recorded. Found by Codex on
+ * PR 40; `run-stop-repository.test.ts` pins the bound against both callers' own limits,
+ * never against a copy of this number.
+ */
+export const RUN_STOP_READ_LIMIT = Math.max(RUN_LIST_PAGE_SIZE + 1, PROCEDURE_LIST_LIMIT);
+
 export const RUN_STOP_STAGES = ['population', 'workspace', 'access', 'extraction', 'work', 'wait', 'unexecutable'] as const;
 export type RunStopStage = (typeof RUN_STOP_STAGES)[number];
 
@@ -147,9 +163,12 @@ export class DrizzleRunStopReader {
    * compare a `uuid` column against them (`22P02`), and a Run that is not there is simply
    * absent from the map — a caller that asks about a Run it did not read has nothing to
    * say about it either way.
+   *
+   * `RUN_STOP_READ_LIMIT` covers every caller's own page size, so in practice it never
+   * binds; it is here so a malformed call cannot build an unbounded statement.
    */
   async readStops(runIds: readonly string[]): Promise<ReadonlyMap<string, RunStopFacts>> {
-    const ids = [...new Set(runIds.filter((id) => isUuidText(id)))].slice(0, RUN_LIST_PAGE_SIZE + 1);
+    const ids = [...new Set(runIds.filter((id) => isUuidText(id)))].slice(0, RUN_STOP_READ_LIMIT);
     if (ids.length === 0) return new Map();
     // `sql.join`, not a bound array: a bound JS array becomes a record — `($1,$2,…)` —
     // which PostgreSQL will not cast to `uuid[]` (the Runs list learned this first).

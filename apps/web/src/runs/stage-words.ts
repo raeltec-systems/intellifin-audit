@@ -182,11 +182,25 @@ export function stepExecutionsListedSentence(listed: number, total: number): str
   return `${countText(listed)} of ${countText(total)} Step Executions are listed. Step Executions are collapsed under the unit that started them; a unit with a failure is expanded.`;
 }
 
+/**
+ * What a Timeline with no Step Execution says.
+ *
+ * `[REVISED 2026-09-16]` Both sentences named the two preparation stages — "creating the
+ * Agent Workspace and acquiring the population" — and that is only one of the ways to
+ * have no Step Execution. A Run that created its workspace, acquired its population and
+ * then stopped at sign-in, at an unsupported frozen plan, or at its own time limit has
+ * none either, and the sentence then contradicted the stage rows directly above it, which
+ * showed both preparation stages complete. Found by Codex on PR 40.
+ *
+ * They say the one thing that is true of every such Run — it never reached a record — and
+ * send the reader to the rows that DO know which stage it was in. Naming a stage here
+ * would be a second answer to a question those rows already answer from the checkpoints.
+ */
 export const NO_STEP_EXECUTIONS_ENDED_SENTENCE =
-  'No Step Execution started, so no record was tested. The Run ended while it was still preparing the session — creating the Agent Workspace and acquiring the population.';
+  'No Step Execution started, so no record was tested. The Run ended before it reached its first record; the stage rows above say how far it got.';
 
 export const NO_STEP_EXECUTIONS_PENDING_SENTENCE =
-  'No Step Execution has started yet. The Run is still preparing the session — creating the Agent Workspace and acquiring the population.';
+  'No Step Execution has started yet. The Run has not reached its first record; the stage rows above say where it is.';
 
 /**
  * The Timeline's own headline. `0 of 0 Step Executions are listed` is an arithmetic fact

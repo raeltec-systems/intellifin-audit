@@ -54,10 +54,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Every dispatch input crosses into the shell as an ENVIRONMENT VARIABLE, never as
+      # `${{ }}` inside a `run:` block. GitHub substitutes `${{ }}` before bash parses the
+      # script, so an input containing a quote and a semicolon would run as a command —
+      # here with the production DATABASE_URL in scope. Found by Codex on PR 40; the
+      # `confirm` check had the same shape from the beginning.
       - name: Refuse unless explicitly confirmed
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          test "${{ inputs.confirm }}" = "seed" || {
+          test "$CONFIRM" = "seed" || {
             echo 'Refusing: type "seed" to confirm.'
             exit 1
           }
@@ -94,6 +101,10 @@ jobs:
           # Only needs to be a valid https origin. Nothing here signs in, and the host
           # is never resolved.
           BETTER_AUTH_URL: https://seed.invalid
+          # Quoted shell variables, never `${{ }}` inside the script — see the note above.
+          EXTRA_EMAIL: ${{ inputs.extra_email }}
+          EXTRA_NAME: ${{ inputs.extra_name }}
+          EXTRA_ROLE: ${{ inputs.extra_role }}
         run: |
           set -euo pipefail
           # Generated here rather than typed anywhere: a password in an input box is a
@@ -108,7 +119,7 @@ jobs:
           rows=''
           seed() {
             local email="$1" name="$2" role="$3" label="$4" out
-            out="$(pnpm seed:identity --email "$email" --name "$name" --role "$role")"
+            out="$(pnpm seed:identity --email "$email" --name "$name" --role "$role" ${5:+--create-only "$5"})"
             echo "$out"
             if grep -q '^created user ' <<<"$out"; then
               rows="${rows}| ${label} | ${email} | \`${PASSWORD}\` | created now |"$'\n'
@@ -125,10 +136,16 @@ jobs:
           # touching the three above — whose passwords were set in the run that created
           # them and can never be reset. Same accepted risk as the three: the password is
           # printed to the run summary, which is the only way anybody gets it, and these
-          # accounts are throwaway by construction. `seed-identity` refuses an address it
-          # already knows, so this cannot take an existing account over.
-          if [ -n "${{ inputs.extra_email }}" ]; then
-            seed "${{ inputs.extra_email }}" "${{ inputs.extra_name }}" "${{ inputs.extra_role }}" "${{ inputs.extra_role }} (extra)"
+          # accounts are throwaway by construction.
+          #
+          # CREATE-ONLY, unlike the three. Their addresses are constants in this file, so
+          # re-asserting a role is harmless; this one is free text, and this command can
+          # assign `poc-administrator`. Without the flag a dispatcher could name an
+          # existing auditor and elevate that account in place — and its password is
+          # already in an earlier run summary. `seed-identity` refuses before the role
+          # upsert, so nothing changes. Found by Codex on PR 40.
+          if [ -n "$EXTRA_EMAIL" ]; then
+            seed "$EXTRA_EMAIL" "$EXTRA_NAME" "$EXTRA_ROLE" "$EXTRA_ROLE (extra)" true
           fi
 
           {

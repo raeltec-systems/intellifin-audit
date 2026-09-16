@@ -7,7 +7,12 @@ import { registrationDigest, snapshotFromRegistration } from '@intellifin/domain
 
 import { executablePlanInputs } from '../../../../tests/fixtures/executable-plan';
 import { TargetSelectionForm } from './TargetSelectionForm';
-import { DESKTOP_DEFAULT_LEFT_OUT, targetCoverageMissing } from './labels';
+import {
+  DESKTOP_DEFAULT_LEFT_OUT,
+  DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP,
+  TARGET_SELECTION_MISSING,
+  targetCoverageMissing,
+} from './labels';
 
 /**
  * What the Target Systems panel says about a Template default this release cannot run.
@@ -29,6 +34,16 @@ const DESKTOP: TargetSystemRegistration = (() => {
     registrationId: '018f0000-0000-7000-8000-0000000000d1', displayName: 'LedgerDesk', kind: 'desktop' as const,
     allowedOrigins: ['com.northstar.ledgerdesk'], applicationIdentity: 'com.northstar.ledgerdesk',
     credentialRef: 'vault://audit/ledgerdesk', permittedActions: ['read-attribute'] as const,
+    attributeLabelPatterns: ['Account status'], secondaryKey: '',
+  };
+  return { ...registration, digest: registrationDigest(registration) } as unknown as TargetSystemRegistration;
+})();
+
+const WEB: TargetSystemRegistration = (() => {
+  const registration = {
+    registrationId: '018f0000-0000-7000-8000-0000000000w1', displayName: 'LoanCore', kind: 'web' as const,
+    allowedOrigins: ['https://loancore.example.test'], applicationIdentity: '',
+    credentialRef: 'vault://audit/loancore', permittedActions: ['read-attribute'] as const,
     attributeLabelPatterns: ['Account status'], secondaryKey: '',
   };
   return { ...registration, digest: registrationDigest(registration) } as unknown as TargetSystemRegistration;
@@ -69,6 +84,25 @@ describe('the Target Systems panel and a desktop Template default', () => {
 
   it('still asks for the web system, which this release does run', () => {
     expect(render(draft([]))).toContain(targetCoverageMissing('web'));
+  });
+
+  it('does not call a selection complete while something else is missing', () => {
+    // The first half is a fact about this RELEASE and is always true; the second is a
+    // claim about THIS selection. Rendered together whenever a desktop default was
+    // unselected, the page told the auditor their selection was complete in the same
+    // breath as telling them no Target System was selected at all (Codex, PR 40).
+    const empty = render(draft([]));
+    expect(empty).toContain(DESKTOP_DEFAULT_LEFT_OUT);
+    expect(empty).toContain(TARGET_SELECTION_MISSING);
+    expect(empty).not.toContain(DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP);
+  });
+
+  it('calls the selection complete once the web system this release runs is selected', () => {
+    const complete = render(draft([snapshotFromRegistration(WEB as never)]));
+    expect(complete).toContain(DESKTOP_DEFAULT_LEFT_OUT);
+    expect(complete).toContain(DESKTOP_SELECTION_COMPLETE_WITHOUT_DESKTOP);
+    expect(complete).not.toContain(TARGET_SELECTION_MISSING);
+    expect(complete).not.toContain(targetCoverageMissing('web'));
   });
 
   it('stops saying the desktop system is left out once one is selected', () => {

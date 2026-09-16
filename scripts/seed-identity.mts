@@ -22,7 +22,8 @@
  * argument lands in the shell history and in the process table.
  *
  * Re-running for an existing address only re-assigns the role; it never resets a
- * password.
+ * password. Pass `--create-only true` to refuse an existing address instead, which is
+ * what any caller taking the address from free text must do.
  */
 import { ROLES, isRole, type Role } from '@intellifin/domain';
 import {
@@ -36,6 +37,18 @@ interface Args {
   readonly email: string;
   readonly name: string;
   readonly role: Role;
+  /**
+   * Refuse an address that already has an account, instead of re-asserting its role.
+   *
+   * The default is the original behaviour and is what the three fixed demo addresses
+   * want: re-running must not lock anybody out, and re-asserting a role is harmless when
+   * the address is a constant in the script that seeds it. It is NOT harmless when the
+   * address is free text somebody types: this command can assign `poc-administrator`, so
+   * without this flag a dispatcher could name an existing account and elevate it in place
+   * — an account whose password was printed to a workflow summary when it was created.
+   * Found by Codex on PR 40.
+   */
+  readonly createOnly: boolean;
 }
 
 function fail(message: string): never {
@@ -56,10 +69,16 @@ function parseArgs(argv: readonly string[]): Args {
   const email = values.get('email');
   const name = values.get('name');
   const role = values.get('role');
+  // A pair, not a bare flag: the parser above walks `--key value` two at a time, and a
+  // valueless flag would silently consume the next option as its value.
+  const createOnly = values.get('create-only');
   if (!email) fail('--email is required');
   if (!name) fail('--name is required');
   if (!isRole(role)) fail(`--role must be one of ${ROLES.join(', ')}`);
-  return { email, name, role };
+  if (createOnly !== undefined && createOnly !== 'true' && createOnly !== 'false') {
+    fail('--create-only must be true or false');
+  }
+  return { email, name, role, createOnly: createOnly === 'true' };
 }
 
 /** Named so the failure says what to do, instead of a bare module-resolution stack. */
@@ -94,6 +113,10 @@ async function main(): Promise<void> {
       });
       userId = created.user.id;
       process.stdout.write(`created user ${userId}\n`);
+    } else if (args.createOnly) {
+      // Refused BEFORE the role upsert below, which is the whole point: the role must not
+      // move for an account this command did not create.
+      fail(`--create-only was given and ${args.email} already has an account; nothing was changed`);
     } else {
       process.stdout.write(`user ${userId} already exists; leaving the password alone\n`);
     }
