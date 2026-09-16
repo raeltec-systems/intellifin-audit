@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { isActiveRunState } from '@intellifin/domain';
 import {
+  DrizzleActorNameReader,
   DrizzleProcedureRepository,
   DrizzleRunDetailRepository,
   PostgresAdapterExecutionRepository,
@@ -53,12 +54,13 @@ export default async function RunResultPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
-  const [result, gate, population, execution, version] = await Promise.all([
+  const [result, gate, population, execution, version, names] = await Promise.all([
     detail.readResult(run.runId),
     detail.readGateChecks(run.runId),
     new PostgresPopulationRepository(runtime.db).readPopulation(run.runId),
     new PostgresAdapterExecutionRepository(runtime.db).readExecution(run.runId),
     new DrizzleProcedureRepository(runtime.db).findVersion(run.versionId),
+    new DrizzleActorNameReader(runtime.db).namesFor([run.initiatorId]),
   ]);
 
   const failedGate = gate.filter((row) => row.outcome === 'FAIL').length;
@@ -163,7 +165,12 @@ export default async function RunResultPage({
           </div>
           <div>
             <dt>Initiator</dt>
-            <dd>{run.initiatorId}</dd>
+            {/* The person's name, and the id beside it: this section is the record's own
+                facts, and the id is what an auditor matches against the chain. */}
+            <dd>
+              {names.has(run.initiatorId) ? <>{names.get(run.initiatorId)} · </> : null}
+              <span className="ls-mono">{run.initiatorId}</span>
+            </dd>
           </div>
           <div>
             <dt>Initiated at</dt>

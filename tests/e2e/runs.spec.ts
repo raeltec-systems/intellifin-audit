@@ -6,6 +6,7 @@ import { createDb, createSqlClient, CryptoUuidV7Generator, DrizzleProcedureRepos
 import { executablePlanInputs } from '../fixtures/executable-plan';
 import { ACCOUNTS, AUTH_STATE, assertThrowawayDatabase } from './accounts';
 import { RUN_STARTS_ON_CONFIRM_SENTENCE, START_RUN_LINK_LABEL } from '../../apps/web/src/design/run-start-words';
+import { FRESHNESS_ADVICE, STOP_REASON_TITLE } from '../../apps/web/src/runs/stop-reason';
 
 const ids = new CryptoUuidV7Generator();
 const procedureId = ids.next();
@@ -14,6 +15,7 @@ const managerId = `runs-e2e-${ids.next()}`;
 const controlName = `E2E Run initiation ${procedureId}`;
 let sql: Sql;
 let auditorId: string;
+let auditorName: string;
 
 test.beforeAll(async () => {
   const databaseUrl = process.env['DATABASE_URL'];
@@ -21,9 +23,10 @@ test.beforeAll(async () => {
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 2 });
   const db = createDb(sql);
-  const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+  const [auditor] = await sql`SELECT id, name FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Run journey.');
   auditorId = auditor.id as string;
+  auditorName = auditor.name as string;
   await sql`INSERT INTO auth_user(id,name,email) VALUES (${managerId},'Synthetic Run fixture approver',${`${managerId}@example.test`})`;
   await sql`INSERT INTO user_role(user_id,role) VALUES (${managerId},'audit-manager')`;
   const inputs = { ...executablePlanInputs(), controlName };
@@ -61,6 +64,8 @@ test.afterAll(async () => {
     await sql`DELETE FROM pgboss.job WHERE data->>'runId' IN (SELECT run_id::text FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_result WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_evidence_package WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
+    await sql`DELETE FROM population_snapshot WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
+    await sql`DELETE FROM population_execution WHERE run_id IN (SELECT run_id FROM audit_run WHERE procedure_id=${procedureId})`;
     await sql`DELETE FROM run_initiation_request WHERE procedure_id=${procedureId}`;
     // A rerun link is a self-referencing foreign key, so a successor goes first.
     await sql`DELETE FROM audit_run WHERE procedure_id=${procedureId} AND predecessor_run_id IS NOT NULL`;
@@ -85,6 +90,30 @@ async function terminate(runId: string): Promise<void> {
   await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
             VALUES(${runId},1,'PASS','pass',true,'COMPLETED',true,now(),NULL,'{}'::jsonb) ON CONFLICT DO NOTHING`;
   await sql`UPDATE audit_run SET state='COMPLETED' WHERE run_id=${runId}`;
+}
+
+/**
+ * A Run that stopped at acquisition because its snapshot was stale, seeded the way the
+ * population stage leaves one: the checkpoint TERMINAL with the failed check's name, the
+ * snapshot carrying the declared generation time, the package sealed over nothing and the
+ * Result Inconclusive (generations 21 and 25 refuse a terminal Run without those two).
+ * This is the production shape of 2026-09-15, when a page of such Runs read as "all the
+ * runs failed" with the reason only on the Timeline tab.
+ */
+async function stoppedAtAcquisition(runId: string, period: { from: string; to: string }, generatedAt: string): Promise<void> {
+  await sql`INSERT INTO audit_run(request_token,run_id,correlation_id,procedure_id,version_id,version_number,procedure_name,
+              period_from,period_to,state,kind,initiator_id,session_id,authorization_role,initiated_at)
+            VALUES(${ids.next()},${runId},${ids.next()},${procedureId},${versionId},1,${controlName},
+              ${period.from},${period.to},'QUEUED','STANDARD',${auditorId},'stop-reason-fixture','auditor',now())`;
+  await sql`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,diagnostic,step_id,attempt_id)
+            VALUES(${runId},1,'TERMINAL',1,now(),now(),now(),'freshness','population',${ids.next()})`;
+  await sql`INSERT INTO population_snapshot(run_id,included,excluded,indeterminate,rows_digest,checks,generated_at,declared_count,retrieved_count)
+            VALUES(${runId},0,0,0,NULL,'[{"name":"freshness","passed":false}]'::jsonb,${generatedAt}::timestamptz,0,0)`;
+  await sql`INSERT INTO run_evidence_package(run_id,state,run_state,sealed_at,required_total,registered,missing_required,abandoned)
+            VALUES(${runId},'SEALED','INCONCLUSIVE',now(),0,0,'[]'::jsonb,'[]'::jsonb)`;
+  await sql`INSERT INTO run_result(run_id,version,outcome,outcome_row,sealed,run_state,gate_passed,sealed_at,scope,publication)
+            VALUES(${runId},1,'INCONCLUSIVE','gate-failed',true,'INCONCLUSIVE',false,now(),NULL,'{}'::jsonb)`;
+  await sql`UPDATE audit_run SET state='INCONCLUSIVE' WHERE run_id=${runId}`;
 }
 
 test.describe('Run initiation as an Auditor', () => {
@@ -161,6 +190,37 @@ test.describe('Run initiation as an Auditor', () => {
     // A suggestion is not a lost request: the fields stay editable.
     await expect(page.getByLabel('Period from', { exact: true })).not.toHaveAttribute('readonly', '');
     await expect(page.locator('#initiate-run')).toContainText(RUN_STARTS_ON_CONFIRM_SENTENCE);
+  });
+
+  test('the Runs list names the initiator and says why a stopped Run stopped, on the list and on the Run', async ({ page }) => {
+    const runId = ids.next();
+    await stoppedAtAcquisition(runId, { from: '2026-09-01', to: '2026-09-15' }, '2026-09-01T00:00:00Z');
+    await page.goto('/runs');
+    const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: runId, exact: true }) });
+    await expect(row).toBeVisible();
+    // The person, never the id: a user id is what the row holds because an address cannot
+    // enter the chain, and printing it here was the platform speaking its own language.
+    await expect(row).toContainText(auditorName);
+    await expect(row).not.toContainText(auditorId);
+    // The reason, in words, with both dates and what to do. The code word stays on the
+    // Timeline tab, where it is data.
+    await expect(row).toContainText('The source snapshot was generated on 2026-09-01, before the period ended on 2026-09-15.');
+    await expect(row).toContainText(FRESHNESS_ADVICE);
+    await expect(row).not.toContainText('freshness');
+    // The id wraps only at its hyphens, so it is never a strip of four-character lines:
+    // four explicit break opportunities, and the whole id still selects as one string.
+    const link = row.getByRole('link', { name: runId, exact: true });
+    expect(await link.locator('wbr').count()).toBe(4);
+    await expect(link).toHaveText(runId);
+
+    await page.goto(`/runs/${runId}`);
+    await expect(page.getByText(STOP_REASON_TITLE, { exact: true })).toBeVisible();
+    await expect(page.getByText(/generated on 2026-09-01, before the period ended on 2026-09-15/)).toBeVisible();
+    const details = page.getByRole('region', { name: 'Run details' });
+    await expect(details).toContainText(auditorName);
+    await expect(details.getByText(auditorId, { exact: true })).toBeVisible();
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help }))).toEqual([]);
   });
 
   test('recovers two lost acknowledgements after the original Run becomes terminal', async ({ page }) => {
@@ -245,7 +305,10 @@ test.describe('Run initiation as an Auditor', () => {
 
     await page.reload();
     await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(new RegExp(`Canceled by ${auditorId} at `))).toBeVisible();
+    // The PERSON, not their id: this spec used to pin the id as the expected text, which
+    // is how `pause-resume.spec.ts` once required "Paused by 019a3c…" of a green test.
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorName} at `))).toBeVisible();
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorId} at `))).toHaveCount(0);
     // A queued Run has no process holding it, so the web finished the job: the dispatch
     // job is gone in the same transaction that wrote CANCELED.
     expect(await sql`SELECT id FROM pgboss.job WHERE data->>'runId'=${runId}`).toHaveLength(0);

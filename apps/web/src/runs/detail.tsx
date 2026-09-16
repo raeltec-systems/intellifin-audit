@@ -8,6 +8,7 @@ import {
   DrizzleActorNameReader,
   DrizzleRunDetailRepository,
   DrizzleRunRepository,
+  DrizzleRunStopReader,
   PostgresEvaluationReviewRepository,
   type RunEvaluationRow,
   type RunResultRow,
@@ -29,6 +30,9 @@ import { LiveBanner } from './LiveBanner';
 import { RunLifecycleActions } from './RunLifecycleActions';
 import { WaitCountdown } from './WaitCountdown';
 import { runLifecycleWord, utcStamp } from './labels';
+import { ActorName } from './ActorName';
+import { StopReasonBanner } from './StopReason';
+import { isStoppedState } from './stop-reason';
 
 /**
  * The five Run Detail tabs, in EXPERIENCE.md's order.
@@ -197,12 +201,20 @@ export async function RunDetailFrame({
   const liveCursor = isActiveRunState(run.state)
     ? await readTimelineHead((await getRuntime()).db, run.runId)
     : null;
-  // A user id printed at a reader is the platform speaking its own language, and the two
-  // pause banners are the surfaces whose job is to name the person accountable.
-  const pauseNames = await new DrizzleActorNameReader((await getRuntime()).db).namesFor([
+  // A user id printed at a reader is the platform speaking its own language, and the
+  // pause and cancellation banners are the surfaces whose job is to name the person
+  // accountable.
+  const names = await new DrizzleActorNameReader((await getRuntime()).db).namesFor([
     ...(escalation?.pause?.openedBy === undefined || escalation.pause.openedBy === null ? [] : [escalation.pause.openedBy]),
     ...(run.pauseRequest === null ? [] : [run.pauseRequest.requestedBy]),
+    ...(run.cancellation === null ? [] : [run.cancellation.requestedBy]),
   ]);
+  // Why a stopped Run stopped, on EVERY tab (owner correction 2026-09-15). The reason a
+  // Run ended before its Gate was recorded by the stage that ended it and shown only on
+  // the Timeline tab, as a code word; the header said "Inconclusive" and nothing else.
+  const stop = isStoppedState(run.state)
+    ? await new DrizzleRunStopReader((await getRuntime()).db).readStop(run.runId)
+    : null;
   const trail = [
     { href: '/runs', label: 'Runs' },
     { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
@@ -232,8 +244,9 @@ export async function RunDetailFrame({
         ? <RefreshBanner readAt={readAt} href={here} />
         : <LiveBanner url={`/api/runs/${run.runId}/events`} cursor={liveCursor} readAt={readAt.toISOString()} href={here} />}
       <Tabs label="Run Detail" tabs={RUN_TABS.map((entry) => ({ href: runTabHref(run.runId, entry.slug), label: entry.label }))} current={here} />
-      <CancellationBanners run={run} />
-      <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={pauseNames} />
+      {stop === null ? null : <StopReasonBanner facts={stop} />}
+      <CancellationBanners run={run} names={names} />
+      <PauseBanners run={run} pause={escalation?.pause ?? null} readAt={readAt} names={names} />
       <RerunLinks runId={run.runId} />
       {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
           is its own surface, not a sixth tab, so it is reached from here and from a
@@ -286,6 +299,15 @@ export async function RerunLinks({ runId }: { readonly runId: string }): Promise
   const runtime = await getRuntime();
   const successors = await new DrizzleRunRepository(runtime.db).findSuccessors(runId);
   if (successors.length === 0) return <></>;
+  const names = await new DrizzleActorNameReader(runtime.db).namesFor(successors.map((successor) => successor.initiatorId));
+  return <RerunLinksBanner successors={successors} names={names} />;
+}
+
+/** The rerun banner's markup, with the person who started each successor NAMED. */
+export function RerunLinksBanner({ successors, names }: {
+  readonly successors: readonly Pick<RunRecord, 'runId' | 'initiatedAt' | 'initiatorId'>[];
+  readonly names: ReadonlyMap<string, string>;
+}): React.JSX.Element {
   return (
     <Banner tone="info" title={successors.length === 1 ? 'This Run has been rerun.' : 'This Run has been rerun more than once.'}>
       <ul>
@@ -294,7 +316,7 @@ export async function RerunLinks({ runId }: { readonly runId: string }): Promise
             <Link className="ls-mono" href={runTabHref(successor.runId, '')}>
               {successor.runId}
             </Link>{' '}
-            · started {utcStamp(successor.initiatedAt)} by {successor.initiatorId}
+            · started {utcStamp(successor.initiatedAt)} by <ActorName id={successor.initiatorId} names={names} />
           </li>
         ))}
       </ul>
@@ -426,13 +448,18 @@ export function PauseBanners({ run, pause, readAt, names }: {
  * preserved. The actor and the time come from the durable marker, never from a guess:
  * `CANCELED` is reserved for a person and the row says which one.
  */
-export function CancellationBanners({ run }: { readonly run: RunRecord }): React.JSX.Element {
+export function CancellationBanners({ run, names }: {
+  readonly run: RunRecord;
+  /** User id to person's name. The marker holds an id; the sentence names a person. */
+  readonly names: ReadonlyMap<string, string>;
+}): React.JSX.Element {
   if (run.cancellation === null) return <></>;
+  const actor = names.get(run.cancellation.requestedBy) ?? run.cancellation.requestedBy;
   if (run.state === 'CANCELED') {
     return (
       <Banner
         tone="warning"
-        title={runCanceledBy(run.cancellation.requestedBy, utcStamp(run.cancellation.requestedAt))}
+        title={runCanceledBy(actor, utcStamp(run.cancellation.requestedAt))}
       >
         <p>{run.cancellation.reason}</p>
         <p>Evidence already collected is preserved. No conclusion was issued.</p>
@@ -442,7 +469,7 @@ export function CancellationBanners({ run }: { readonly run: RunRecord }): React
   return (
     <Banner
       tone="warning"
-      title={`Cancellation requested by ${run.cancellation.requestedBy} at ${utcStamp(run.cancellation.requestedAt)}`}
+      title={`Cancellation requested by ${actor} at ${utcStamp(run.cancellation.requestedAt)}`}
     >
       {isActiveRunState(run.state) ? (
         <p>The Run stops at its next checkpoint, before any further Target System work.</p>

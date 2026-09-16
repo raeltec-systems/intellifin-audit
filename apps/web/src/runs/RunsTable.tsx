@@ -1,11 +1,13 @@
 import Link from 'next/link';
 
-import type { RunListChange, RunListRow } from '@intellifin/infrastructure';
+import type { RunListChange, RunListRow, RunStopFacts } from '@intellifin/infrastructure';
 
 import { Absent } from '../design/Absent';
 import { DataTable } from '../design/DataTable';
 import { StatusBadge } from '../design/StatusBadge';
 import { NOT_COMPARABLE_SENTENCE, RUNS_EMPTY_STATE, runChangeSummary } from '../design/copy';
+import { ActorName } from './ActorName';
+import { StopReasonNote } from './StopReason';
 import {
   elapsedText,
   gateWord,
@@ -26,14 +28,28 @@ import {
  * outside a family's vocabulary is WRITTEN IN WORDS rather than guessed into a badge:
  * `StatusBadge` throws on an unknown state, and on a server-rendered list that is a 500
  * for every Run on the page rather than one odd cell.
+ *
+ * Two things the owner could not read off this table (2026-09-15) are on it now. A Run
+ * that stopped before its Gate says WHY under its outcome badge, in words, from the stage
+ * checkpoint that ended it — a page of "Inconclusive · No conclusion issued" read as "all
+ * the runs failed" with the reason (a stale snapshot) only on the Timeline tab as a code
+ * word. And the Initiator is a person's name: a user id is what the row holds, because an
+ * address cannot enter the chain, and printing it here was the platform speaking its own
+ * language on the one column that names who is accountable.
  */
 export function RunsTable({
   rows,
   readAt,
+  stops,
+  names,
 }: {
   readonly rows: readonly RunListRow[];
   /** When the page was read. Every elapsed time on it is measured to this one instant. */
   readonly readAt: Date;
+  /** Why each stopped Run stopped, keyed by Run id (`DrizzleRunStopReader`). */
+  readonly stops: ReadonlyMap<string, RunStopFacts>;
+  /** User id to person's name (`ActorNameReader`). An id with no name is shown as the id. */
+  readonly names: ReadonlyMap<string, string>;
 }): React.JSX.Element {
   return (
     <DataTable
@@ -49,7 +65,8 @@ export function RunsTable({
         {
           key: 'period',
           header: 'Effective period',
-          render: (row) => <span className="ls-mono">{periodText(row.period)}</span>,
+          // One line: `2026-08-01 → 2026-08-31` broken after the arrow reads as two dates.
+          render: (row) => <span className="ls-mono ls-nowrap">{periodText(row.period)}</span>,
         },
         {
           key: 'lifecycle',
@@ -64,7 +81,13 @@ export function RunsTable({
           header: 'Result outcome',
           render: (row) => {
             const word = resultOutcomeWord(row.outcome);
-            return word === null ? <>{row.outcome}</> : <StatusBadge family="result-outcome" state={word} />;
+            const facts = stops.get(row.runId) ?? null;
+            return (
+              <>
+                {word === null ? <>{row.outcome}</> : <StatusBadge family="result-outcome" state={word} />}
+                {facts === null ? null : <StopReasonNote facts={facts} />}
+              </>
+            );
           },
         },
         {
@@ -86,7 +109,11 @@ export function RunsTable({
           */
           render: () => <Absent what="No Auditor Review has started." />,
         },
-        { key: 'initiator', header: 'Initiator', render: (row) => row.initiatorId },
+        {
+          key: 'initiator',
+          header: 'Initiator',
+          render: (row) => <ActorName id={row.initiatorId} names={names} />,
+        },
         {
           key: 'elapsed',
           header: 'Elapsed',

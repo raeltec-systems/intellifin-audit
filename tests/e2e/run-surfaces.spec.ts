@@ -48,6 +48,7 @@ const evidenceId = ids.next();
 const observationId = ids.next();
 let sql: Sql;
 let auditorId: string;
+let auditorName: string;
 
 test.beforeAll(async () => {
   const databaseUrl = process.env['DATABASE_URL'];
@@ -55,9 +56,10 @@ test.beforeAll(async () => {
   assertThrowawayDatabase(databaseUrl);
   sql = createSqlClient(databaseUrl, { max: 4 });
   const db = createDb(sql);
-  const [auditor] = await sql`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+  const [auditor] = await sql`SELECT id, name FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
   if (!auditor) throw new Error('Seed the E2E Auditor before the Run surfaces journey.');
   auditorId = auditor.id as string;
+  auditorName = auditor.name as string;
   const row = { ...activeRunVersion(procedureId, versionId, auditorId), controlName };
   await new PostgresProceduresUnitOfWork(db).execute(async (context) => {
     await context.procedures.insertProcedure(row);
@@ -257,7 +259,9 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
   test('states that a Run canceled while queued never reached the Gate', async ({ page }) => {
     await page.goto(`/runs/${runs.canceled}`);
     await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(new RegExp(`Canceled by ${auditorId} at `))).toBeVisible();
+    // The PERSON who canceled it, never their id (owner correction 2026-09-15).
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorName} at `))).toBeVisible();
+    await expect(page.getByText(new RegExp(`Canceled by ${auditorId} at `))).toHaveCount(0);
     await expect(page.getByText('Evidence already collected is preserved.')).toBeVisible();
     // NOT an empty checklist: no §H row was ever written, and that is not a pass.
     await expect(

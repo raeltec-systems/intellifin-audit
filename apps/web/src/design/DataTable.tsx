@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { EmptyState } from './EmptyState';
+import { Identifier } from './Identifier';
 
 export interface DataTableColumn<Row> {
   readonly key: string;
@@ -35,7 +36,10 @@ interface DataTableProps<Row> {
      */
     readonly href?: (row: Row) => string;
     readonly label: (row: Row) => string;
-    /** Identifiers are monospace. */
+    /**
+     * Identifiers are monospace, and wrap only at their hyphens (`Identifier`): a UUID in
+     * a narrow first column used to break into a strip of four-character lines.
+     */
     readonly mono?: boolean;
   };
   readonly columns: readonly DataTableColumn<Row>[];
@@ -102,10 +106,12 @@ export function DataTable<Row>({
               <th scope="row" role="rowheader" data-label={first.header}>
                 {first.href ? (
                   <Link className={first.mono ? 'ls-mono' : undefined} href={first.href(row)}>
-                    {first.label(row)}
+                    {first.mono ? <Identifier value={first.label(row)} /> : first.label(row)}
                   </Link>
                 ) : (
-                  <span className={first.mono ? 'ls-mono' : undefined}>{first.label(row)}</span>
+                  <span className={first.mono ? 'ls-mono' : undefined}>
+                    {first.mono ? <Identifier value={first.label(row)} /> : first.label(row)}
+                  </span>
                 )}
               </th>
               {columns.map((column) => (

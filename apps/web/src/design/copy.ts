@@ -180,7 +180,10 @@ export const RUN_UNCHANGED_SENTENCE = 'This Run remains unchanged.';
 export const RUN_CANCELED_BY_TEMPLATE = 'Canceled by {actor} at {elapsed}';
 
 export function runCanceledBy(actor: string, at: string): string {
-  return RUN_CANCELED_BY_TEMPLATE.replace('{actor}', actor).replace('{elapsed}', at);
+  // Through `fillTemplate`, never `String.prototype.replace` with a string pattern: the
+  // actor is a person's NAME now, and a name spelled `Fee $& review` would rewrite the
+  // sentence around it (the Epic 5 review's `$&` finding, met on a third template).
+  return fillTemplate(RUN_CANCELED_BY_TEMPLATE, { actor, elapsed: at });
 }
 
 /**
