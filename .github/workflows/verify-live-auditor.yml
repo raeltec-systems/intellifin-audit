@@ -29,7 +29,7 @@ jobs:
           package-manager-cache: false
       - name: Install pinned workspace tooling
         run: pnpm install --frozen-lockfile
-      - name: Retain safe preflight categories and mask provider identity in screenshots
+      - name: Read the frozen contract and retain safe preflight diagnostics
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -38,6 +38,8 @@ jobs:
           old = "  if (!original || !['INCONCLUSIVE', 'RUN_FAILED', 'CANCELED'].includes(original.state))"
           assert old in s
           s = s.replace(old, "  emit('predecessor-read', { found: !!original, state: original?.state ?? null });\n" + old)
+          assert "key === 'allowedOrigins'" in s
+          s = s.replace("key === 'allowedOrigins'", "key === 'allowed_origins'")
           old = "  walk(version?.compiledPlan);"
           assert old in s
           s = s.replace(old, old + "\n  emit('target-preflight-read', { versionFound: !!version, planFound: !!version?.compiledPlan, targetHosts: origins.map(origin => new URL(origin).hostname) });")
