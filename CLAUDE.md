@@ -79,6 +79,36 @@ frozen handling facts shown read-only beside it.
   accepts the default escalates on every record. The journey types what the system shows and
   asserts the default first, so the mismatch is pinned.
 
+Three mechanical notes, and the first is the one a whole batch of red tests hung on:
+
+- **A teardown can only be wrong once the test in front of it starts passing.**
+  `owner-walkthrough-p1.spec.ts` deleted `run_evidence_capture` with the other Tool Action
+  rows, and generation 32 puts the same `run_evidence_frozen_after_seal` trigger on that
+  table that generation 27 put on `run_evidence` and `population_evidence` — so the first
+  time the journey reached a SEALED Run, the delete was refused, the whole `afterAll` threw,
+  and every row the file created survived to fail an unrelated file's empty-list assertion.
+  The seal and its three siblings (`run_gate_check`, `run_evidence_integrity`, `run_result`)
+  reference only `audit_run`, so they go FIRST. **`pg_constraint` is not the whole answer**:
+  the refusal came from a trigger, not a foreign key, so the search that found it was
+  `pg_trigger` joined to `pg_proc`, and it named a third table nobody had listed.
+- **A constant two of whose four members nothing renders is a pin on a product that no
+  longer makes that claim.** RUN-05 filled the card's Next Run and Last outcome cells from
+  facts and left `PROCEDURE_CARD_ABSENT.nextRun` and `.lastOutcome` behind, still asserted
+  by `copy.test.ts`. Deleting the two pins would have moved the "never a dash" rule out of
+  those cells' reach, so the rule is now asserted over all four sentences TOGETHER, with the
+  moved pair imported from `last-run-words.ts`.
+- **`getByText(word, { exact: true })` inside a region is a locator whose uniqueness a
+  product change can take away.** `populationStatusWord` began rendering `POPULATION_READY`
+  as "Acquired" — the word the Reference Source step already produced — so two Timeline rows
+  matched and Playwright's strict mode refused. Both rows are correct; the assertion is
+  scoped to its own `.ls-timeline__row`, filtered by the row's title.
+- **Chromium does not read the system CA bundle; it reads NSS at `~/.pki/nssdb`.** Driving
+  the DEPLOYED application from this environment goes through the agent proxy, whose CA
+  Chromium rejected as `ERR_CERT_AUTHORITY_INVALID` although curl was fine. The repair is
+  `certutil -A -t "C,,"` for each certificate in `/root/.ccr/ca-bundle.crt` (install
+  `libnss3-tools` first), NEVER `ignoreHTTPSErrors` — a walkthrough of a production site
+  with certificate verification switched off proves less than no walkthrough at all.
+
 ## 2026-09-16 — The owner's first Solari Run died five seconds in, and the worker's log said nothing
 
 The owner walked P-1 through production end to end — created, approved by a second account,

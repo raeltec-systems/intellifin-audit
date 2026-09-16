@@ -190,4 +190,50 @@ is a comment in `tests/e2e/owner-walkthrough-p1.spec.ts` beside the code it expl
 
 ## Verification record
 
-_(completed at the end of the batch)_
+Run on this machine against PostgreSQL 18 at schema generation 49, Node 24.20.0,
+pnpm 11.25.0. Two database-backed suites are never run at once.
+
+| Gate | Result |
+|---|---|
+| `pnpm -r typecheck` | green (4 packages) |
+| `tsc -p tsconfig.root-tests.json` | green |
+| `pnpm boundaries` | green |
+| `pnpm test` (unit) | green |
+| `pnpm test:integration` | 47 files, 565 tests, green |
+| `pnpm exec playwright test` | see below |
+| Migration chain | fresh install and upgrade both reach 49 |
+
+**Every new guard is proven by mutation.** The source line is removed, the named test is
+required to FAIL, and the file is restored from a copy taken with `cp` — never
+`git checkout --`, which has twice reverted an uncommitted fix along with the mutation.
+The deferral rule's proof: deleting
+`if (prior?.status === 'PROVISIONING' && Date.parse(prior.leaseUntil) > now.getTime())`
+fails `agent-workspace.test.ts`'s new case, and only that case.
+
+### What the first full browser run found
+
+202 passed, 7 failed. Two of the seven were specs this batch had already repaired after
+that run started, so the run read the old files. Of the remaining five, **one was a real
+defect and four were its shadow** — a failed test restarts the Playwright worker, which
+runs `afterAll` early, and every later test in the file then meets an empty list.
+
+The one real finding was mine: RUN-05 fills the Procedure card's Next Run and Last outcome
+cells from facts, so two members of `PROCEDURE_CARD_ABSENT` were left rendering nowhere
+while `copy.test.ts` went on pinning them and `procedures.spec.ts` went on waiting for
+them. The constant now holds the two cells that really are absent, and the "never a dash"
+rule is asserted over all four together — the two here and the two in `last-run-words.ts`
+— so moving a cell's home cannot move it out of the rule's reach.
+
+### What the rerun found, which nothing else could
+
+With the journey passing, `owner-walkthrough-p1.spec.ts`'s TEARDOWN failed for the first
+time: `Evidence for Run … is frozen: its package is sealed`. Generation 32 puts the same
+`run_evidence_frozen_after_seal` trigger on `run_evidence_capture` that generation 27 put
+on `run_evidence` and `population_evidence`, and the teardown deleted captures with the
+other Tool Action rows — before the seal. **Unreachable until now, because the journey had
+never before reached a sealed Run.** The seal and its three siblings, which reference only
+`audit_run`, are deleted first. Replayed against the real sealed Run left behind by the
+failure: the old order is refused at `run_evidence_capture`, the new order removes all
+twenty-eight tables cleanly.
+
+Then 35/35 in the three affected specs, and a full suite re-run on the fixed tree.
