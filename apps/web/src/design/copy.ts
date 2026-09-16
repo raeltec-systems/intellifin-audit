@@ -107,21 +107,24 @@ export const MANUAL_UPLOAD_SENTENCE =
   POPULATION_DRAFT_MESSAGES.MANUAL_UPLOAD;
 
 /**
- * The four UX-DR7 cells of a Procedure card, stated in words when absent.
+ * The UX-DR7 cells of a Procedure card that really are absent, stated in words.
  *
- * The spec fixes these four sentences because a dash or an empty cell is something a
- * reader takes for "fine": a Procedure with no Active version yet, no Schedule yet, no
- * Run yet and no outcome yet must SAY so, exactly as Story 1.6's "Never probed" says
- * what a registration that has never been probed is. In this story every one of the
- * four is always absent — no version can leave DRAFT and no Run exists — so every card
- * renders all four sentences; they are data here so the day a cell can be filled, the
- * fill and the fallback live in the same place.
+ * The rule is UX-DR7's and is unchanged: a dash or an empty cell is something a reader
+ * takes for "fine", so a Procedure with no Active version yet and no Schedule yet must
+ * SAY so, exactly as Story 1.6's "Never probed" says what a registration that has never
+ * been probed is.
+ *
+ * `[REVISED 2026-09-16]` It held four sentences and holds two. `nextRun: 'No Runs yet'`
+ * and `lastOutcome: 'No outcome'` were written when no Run could exist, and they became
+ * FALSE the day one could — the card went on saying both beside a Procedure with Runs on
+ * the register (owner finding RUN-05). Their cells are filled from facts now, by
+ * `procedures/last-run-words.ts` and `LastRunSummary`, which is where their sentences and
+ * the `LastRunSummary.test.ts` pin live. Two sentences kept here that nothing renders
+ * would be a pinned claim about a product that no longer makes it.
  */
 export const PROCEDURE_CARD_ABSENT = {
   activeVersion: 'No active version',
   schedule: 'Not scheduled',
-  nextRun: 'No Runs yet',
-  lastOutcome: 'No outcome',
 } as const;
 
 /**

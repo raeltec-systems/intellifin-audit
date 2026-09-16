@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 import { BUILDER_CONTROL_NAME_EDITABLE_SENTENCE, BUILDER_SECTION_TEMPLATE_ONLY_SENTENCE, PROCEDURE_CARD_ABSENT, DECLARED_COUNT_MISSING_SENTENCE, MANUAL_UPLOAD_SENTENCE } from '../../apps/web/src/design/copy';
+import { NEXT_RUN_MANUAL, NO_RUN_YET } from '../../apps/web/src/procedures/last-run-words';
 import { DESKTOP_DEFAULT_LEFT_OUT, TARGET_SELECTION_MISSING, targetCoverageMissing } from '../../apps/web/src/procedures/labels';
 
 import { DENIAL_REASONS, COMPLIANCE_MESSAGES, POPULATION_DRAFT_MESSAGES, bindingDigest, registrationDigest } from '@intellifin/domain';
@@ -944,7 +945,7 @@ test.describe('as an Auditor', () => {
     expect(objectives.size).toBe(4);
   });
 
-  test('the card shows the four absent cells in words, never a dash', async ({ page }) => {
+  test('the card states all four cells in words, never a dash', async ({ page }) => {
     await page.goto('/procedures');
     const card = page
       .locator('.ls-card')
@@ -956,8 +957,11 @@ test.describe('as an Auditor', () => {
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.activeVersion);
     await expect(card).not.toContainText('Draft');
     await expect(card).toContainText(PROCEDURE_CARD_ABSENT.schedule);
-    await expect(card).toContainText(PROCEDURE_CARD_ABSENT.nextRun);
-    await expect(card).toContainText(PROCEDURE_CARD_ABSENT.lastOutcome);
+    // Next Run and Last outcome are no longer absent sentences (owner finding RUN-05):
+    // there is no scheduler, so the future cell says who starts a Run, and the history
+    // cell distinguishes "nothing has run" from "a Run concluded nothing".
+    await expect(card).toContainText(NEXT_RUN_MANUAL);
+    await expect(card).toContainText(NO_RUN_YET);
     // The Control name and Template identity are on the card (UX-DR7).
     await expect(card).toContainText(nameFor('P-1'));
     await expect(card).toContainText('P-1');

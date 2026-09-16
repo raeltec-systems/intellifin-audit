@@ -30,6 +30,21 @@ on:
         description: 'Type "seed" to confirm creating demo accounts in production'
         required: true
         type: string
+      extra_email:
+        description: 'Optional: one more throwaway address to seed beside the three'
+        required: false
+        type: string
+      extra_name:
+        description: 'The display name for that address (shown as the Initiator on Runs)'
+        required: false
+        default: 'Extra demo account'
+        type: string
+      extra_role:
+        description: 'The role for that address'
+        required: false
+        default: auditor
+        type: choice
+        options: [auditor, audit-manager, poc-administrator]
 
 concurrency: seed-demo-accounts
 
@@ -105,6 +120,16 @@ jobs:
           seed administrator@example.test 'Demo PoC Administrator' poc-administrator 'PoC Administrator'
           seed auditor@example.test       'Demo Auditor'           auditor           'Auditor'
           seed manager@example.test       'Demo Audit Manager'     audit-manager     'Audit Manager'
+
+          # One optional extra throwaway account, for walking the deployment without
+          # touching the three above — whose passwords were set in the run that created
+          # them and can never be reset. Same accepted risk as the three: the password is
+          # printed to the run summary, which is the only way anybody gets it, and these
+          # accounts are throwaway by construction. `seed-identity` refuses an address it
+          # already knows, so this cannot take an existing account over.
+          if [ -n "${{ inputs.extra_email }}" ]; then
+            seed "${{ inputs.extra_email }}" "${{ inputs.extra_name }}" "${{ inputs.extra_role }}" "${{ inputs.extra_role }} (extra)"
+          fi
 
           {
             echo '## Demo accounts'

@@ -452,10 +452,18 @@ test.describe('Auditor population acquisition', () => {
     // in what order, with what state — and the address and the shape are the contract's.
     await page.goto(`/runs/${firstRunId}/timeline`);
     const section = page.getByRole('region', { name: 'Execution Timeline' });
+    // Scoped to the ROW, not to the word. Two rows on this Timeline are legitimately
+    // "Acquired" — the population stage and the RoleMatrix Reference Source — since the
+    // population status became a word rather than the stored `POPULATION_READY`
+    // (2026-09-16). A bare `getByText('Acquired')` is then ambiguous, and asserting the
+    // word appears SOMEWHERE never said which unit it belonged to anyway.
+    const row = (title: string) =>
+      section.locator('.ls-timeline__row').filter({ has: page.locator('.ls-timeline__title', { hasText: title }) });
     await expect(section.getByText('RoleMatrix', { exact: true })).toBeVisible();
-    await expect(section.getByText('Acquired', { exact: true })).toBeVisible();
+    await expect(row('RoleMatrix').getByText('Acquired', { exact: true })).toBeVisible();
+    await expect(row('Acquire the population').getByText('Acquired', { exact: true })).toBeVisible();
     await expect(section.getByText('AccessGate', { exact: true })).toBeVisible();
-    await expect(section.getByText('Observed', { exact: true })).toBeVisible();
+    await expect(row('AccessGate').getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
 
@@ -642,7 +650,10 @@ test.describe('Auditor population acquisition', () => {
     await page.goto(`/runs/${p3RunId}/timeline`);
     const section = page.getByRole('region', { name: 'Execution Timeline' });
     await expect(section.getByText('ApproveNow', { exact: true })).toBeVisible();
-    await expect(section.getByText('Observed', { exact: true })).toBeVisible();
+    // The row, not the word: see the note on the AccessGate Timeline assertion above.
+    await expect(section.locator('.ls-timeline__row')
+      .filter({ has: page.locator('.ls-timeline__title', { hasText: 'ApproveNow' }) })
+      .getByText('Observed', { exact: true })).toBeVisible();
     expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()).violations).toEqual([]);
   });
   test('a killed worker resumes the stored acquisition envelope without replacing Evidence', async ({ page }) => {

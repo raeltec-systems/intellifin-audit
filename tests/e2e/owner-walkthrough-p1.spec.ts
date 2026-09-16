@@ -394,21 +394,27 @@ test.afterAll(async () => {
         // A Run still queued when the journey failed must not be left for the next file's
         // worker to pick up.
         await sql`DELETE FROM pgboss.job WHERE data->>'runId' = ANY(${runIds})`;
-        // Children first, deepest first — the `owner-walkthrough.spec.ts` list. Only eight
-        // of `audit_run`'s children cascade (`run_workspace`, `run_agent_execution` and
-        // `run_replay_recording` among them); the rest record an OUTCOME and refuse to be
-        // removed silently. A teardown that does not know about one table throws, and then
-        // EVERY row this file created survives and some unrelated file's empty-list
-        // assertion fails for a reason that is not its own. `run_evidence_package` goes
-        // before `run_evidence`: generation 27 refuses to delete a metadata row while the
-        // seal that names it still exists.
+        // The SEAL goes first, then children deepest-first — the `owner-walkthrough.spec.ts`
+        // list. Only eight of `audit_run`'s children cascade (`run_workspace`,
+        // `run_agent_execution` and `run_replay_recording` among them); the rest record an
+        // OUTCOME and refuse to be removed silently. A teardown that does not know about one
+        // table throws, and then EVERY row this file created survives and some unrelated
+        // file's empty-list assertion fails for a reason that is not its own.
+        //
+        // `run_evidence_package` is deleted BEFORE the three tables generation 27 and
+        // generation 32 freeze behind it — `run_evidence`, `population_evidence` AND
+        // `run_evidence_capture`. The third is the one that is easy to miss: the agent
+        // capture carries the same `run_evidence_frozen_after_seal` trigger, so a list that
+        // puts captures near the other Tool Action rows deletes them while the seal still
+        // stands and is refused. Its four siblings here reference only `audit_run`, so
+        // moving them to the front costs nothing.
         for (const table of [
+          'run_gate_check', 'run_evidence_integrity', 'run_result', 'run_evidence_package',
           'run_observation_absence', 'run_observation_check', 'run_observation_evaluation', 'run_observation',
           'run_agent_work', 'run_agent_turn', 'run_agent_execution',
           'run_evidence_capture', 'run_tool_action', 'run_step_execution', 'run_work_item', 'run_session_step',
           'run_evaluation_review_command', 'run_evaluation_review',
           'notification', 'run_wait', 'run_flag',
-          'run_gate_check', 'run_evidence_integrity', 'run_result', 'run_evidence_package',
           'run_evidence', 'population_evidence', 'population_row', 'population_snapshot',
           'population_execution', 'run_execution', 'run_initiation_request',
         ]) {
