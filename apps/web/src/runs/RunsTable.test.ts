@@ -3,9 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { GATE_CHECKS } from '@intellifin/domain';
-import type { RunListRow } from '@intellifin/infrastructure';
+import type { RunListRow, RunStopFacts } from '@intellifin/infrastructure';
 
 import { RunsPagination, RunsTable, RunsTableSkeleton } from './RunsTable';
+import { FRESHNESS_ADVICE } from './stop-reason';
 
 /**
  * The Runs table's projection of the read model onto EXPERIENCE.md's ten columns.
@@ -39,8 +40,32 @@ function row(overrides: Partial<RunListRow> = {}): RunListRow {
   };
 }
 
-const render = (rows: readonly RunListRow[]): string =>
-  renderToStaticMarkup(React.createElement(RunsTable, { rows, readAt: READ_AT }));
+const render = (
+  rows: readonly RunListRow[],
+  extra: { stops?: ReadonlyMap<string, RunStopFacts>; names?: ReadonlyMap<string, string> } = {},
+): string =>
+  renderToStaticMarkup(
+    React.createElement(RunsTable, {
+      rows,
+      readAt: READ_AT,
+      stops: extra.stops ?? new Map(),
+      names: extra.names ?? new Map(),
+    }),
+  );
+
+/** The production case: a snapshot generated on the first, a period ending two weeks later. */
+const STALE_SNAPSHOT: RunStopFacts = {
+  runId: '019823ab-0000-7000-8000-000000000001',
+  state: 'INCONCLUSIVE',
+  initiatedAt: '2026-09-15T10:00:00.000Z',
+  period: { from: '2026-09-01', to: '2026-09-15' },
+  stop: { stage: 'population', diagnostic: 'freshness' },
+  timedOutWait: null,
+  snapshotGeneratedAt: '2026-09-01T00:00:00.000Z',
+  gateChecks: 0,
+  gateFailed: 0,
+  outcomeRow: 'gate-failed',
+};
 
 describe('the Runs table', () => {
   it("shows the contract's ten columns, in the contract's order", () => {
@@ -109,6 +134,41 @@ describe('the Runs table', () => {
     expect(render([row({ change: { kind: 'incomparable' } })])).toContain('Not comparable — versions differ');
     const absent = render([row({ change: { kind: 'absent' } })]);
     expect(absent).toContain('No comparable previous Run.');
+  });
+
+  it('says under the outcome badge why a stopped Run stopped, and nothing under one that concluded', () => {
+    // A page of "Inconclusive · No conclusion issued" read as "all the runs failed" with
+    // the reason only on the Timeline tab, as the code word `freshness`.
+    const stopped = row({ state: 'INCONCLUSIVE', outcome: 'INCONCLUSIVE', gateChecks: 0, period: STALE_SNAPSHOT.period });
+    const html = render([stopped], { stops: new Map([[stopped.runId, STALE_SNAPSHOT]]) });
+    expect(html).toContain('No conclusion issued');
+    expect(html).toContain('The source snapshot was generated on 2026-09-01, before the period ended on 2026-09-15.');
+    expect(html).toContain(FRESHNESS_ADVICE);
+    expect(html).not.toContain('>freshness<');
+    // The facts of a Run that concluded produce no sentence even when they are supplied.
+    const concluded = row();
+    expect(render([concluded], { stops: new Map([[concluded.runId, { ...STALE_SNAPSHOT, state: 'COMPLETED' }]]) })).not.toContain('ls-stop-reason');
+    // And a stopped Run whose facts were not read says nothing rather than something wrong.
+    expect(render([stopped])).not.toContain('ls-stop-reason');
+  });
+
+  it("names the initiator, and shows the id in monospace only when no name is known", () => {
+    const named = render([row()], { names: new Map([['auditor-1', 'Daniel Okonjo']]) });
+    expect(named).toContain('Daniel Okonjo');
+    expect(named).not.toContain('>auditor-1<');
+    const unnamed = render([row()]);
+    expect(unnamed).toContain('<span class="ls-mono">auditor-1</span>');
+  });
+
+  it('wraps the Run id only at its hyphens, and keeps the period on one line', () => {
+    const html = render([row()]);
+    // Four hyphens, four break opportunities, inside the row header's link and nowhere
+    // else — a hyphen followed by a digit is not one on its own in any browser.
+    const header = /<th scope="row"[\s\S]*?<\/th>/.exec(html)![0];
+    expect(header.match(/<wbr\/>/g) ?? []).toHaveLength(4);
+    expect(header).toContain('class="ls-identifier"');
+    expect(header).toContain('019823ab-<wbr/>0000-<wbr/>7000-<wbr/>8000-<wbr/>000000000001');
+    expect(html).toContain('<span class="ls-mono ls-nowrap">2026-08-01 → 2026-08-31</span>');
   });
 
   it('refuses to present an empty list as anything but an empty list', () => {

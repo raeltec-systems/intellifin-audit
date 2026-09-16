@@ -123,6 +123,17 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* An identifier that wraps only at its hyphens (`Identifier.tsx`). The `<wbr>`s it renders
+ * are the only break opportunities, so `.ls-mono`'s wrap-anywhere is turned off for exactly
+ * that span; a digest with no hyphens still wraps anywhere, as the contract says. */
+.ls-identifier {
+  overflow-wrap: normal;
+}
+
+.ls-nowrap {
+  white-space: nowrap;
+}
+
 .ls-caption {
   font-size: var(--type-caption-font-size);
   line-height: var(--type-caption-line-height);
@@ -921,6 +932,22 @@ a {
   font-size: var(--type-row-title-font-size);
   line-height: var(--type-row-title-line-height);
   font-weight: var(--type-row-title-font-weight);
+}
+
+/* The identifier column never collapses. Ten columns share the width, the browser gave
+ * the first whatever was left, and every Run id broke into a strip of four-character
+ * lines (owner screenshot, 2026-09-15). Twenty monospace characters is a UUID's first two
+ * segments with their hyphens, so an id takes at most two lines, each ending at a hyphen. */
+.ls-table tbody th .ls-identifier {
+  display: inline-block;
+  min-width: 20ch;
+}
+
+/* Why a stopped Run stopped, under its Result outcome badge (`stop-reason.ts`). Bounded,
+ * so one long reason does not widen the column past the other nine. */
+.ls-stop-reason {
+  margin-top: var(--spacing-1);
+  max-width: 36ch;
 }
 
 .ls-table .ls-numeric {

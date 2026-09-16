@@ -13,6 +13,7 @@ export * from './telemetry/index.js';
 export * from './notifications/notification-repository.js';
 export * from './runs/run-repository.js';
 export * from './runs/run-list-repository.js';
+export * from './runs/run-stop-repository.js';
 export * from './runs/run-detail-repository.js';
 export * from './runs/runs-unit-of-work.js';
 export * from './runs/population-repository.js';

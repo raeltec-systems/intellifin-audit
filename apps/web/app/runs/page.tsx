@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
-import { DrizzleRunListRepository } from '@intellifin/infrastructure';
+import { DrizzleActorNameReader, DrizzleRunListRepository, DrizzleRunStopReader } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../src/bootstrap';
 import { LiveBanner } from '../../src/runs/LiveBanner';
 import { RunsPagination, RunsTable, RunsTableSkeleton } from '../../src/runs/RunsTable';
+import { isStoppedState } from '../../src/runs/stop-reason';
 import { Banner } from '../../src/design/Banner';
 import { requireServerAction } from '../../src/server-session';
 
@@ -56,10 +57,19 @@ async function RunsList({ after }: { readonly after: string | null }): Promise<R
   const runtime = await getRuntime();
   const page = await new DrizzleRunListRepository(runtime.db).listRuns(after);
   const readAt = new Date();
+  // Two bounded reads over this page's own ids: why each stopped Run stopped, and the
+  // name of each person who started one. Neither is a column of the list read, because
+  // that read is the ten columns and nothing else; both are what the columns MEAN.
+  const [stops, names] = await Promise.all([
+    new DrizzleRunStopReader(runtime.db).readStops(
+      page.rows.filter((row) => isStoppedState(row.state)).map((row) => row.runId),
+    ),
+    new DrizzleActorNameReader(runtime.db).namesFor(page.rows.map((row) => row.initiatorId)),
+  ]);
   return (
     <>
       <LiveBanner url="/api/runs/events" cursor={null} readAt={readAt.toISOString()} href={after === null ? '/runs' : `/runs?after=${after}`} />
-      <RunsTable rows={page.rows} readAt={readAt} />
+      <RunsTable rows={page.rows} readAt={readAt} stops={stops} names={names} />
       <RunsPagination next={page.next} firstHref="/runs" onFirstPage={after === null} />
     </>
   );

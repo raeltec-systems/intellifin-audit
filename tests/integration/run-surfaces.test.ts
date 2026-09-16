@@ -6,6 +6,8 @@ import {
   CryptoUuidV7Generator,
   DrizzleRunDetailRepository,
   DrizzleRunListRepository,
+  DrizzleRunStopReader,
+  PostgresAuditUnitOfWork,
   PostgresProceduresUnitOfWork,
   REPLAY_PAGE_SIZE,
   RUN_DETAIL_PAGE_SIZE,
@@ -146,7 +148,14 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
         await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
         await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
         await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
+        await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
         await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+        // The stop-reason case appends one chain for one of these Runs. A whole aggregate
+        // goes together — events first, then its head — which is the one shape of
+        // `audit_events` delete that leaves no head pointing past the rows that remain.
+        await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+        await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
       }
       await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
       await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
@@ -419,5 +428,87 @@ describe.skipIf(!url)('the Run surfaces read models', () => {
     expect(REPLAY_PAGE_SIZE).toBeGreaterThan(RUN_DETAIL_PAGE_SIZE);
     // And the Timeline forwards that size rather than capping its own lookups.
     expect((await detail().readTimeline(runs.first, REPLAY_PAGE_SIZE)).toolActions.rows).toHaveLength(rows);
+  });
+
+  it('reads why a stopped Run stopped from the checkpoint that ended it, and the Gate tally beside it', async () => {
+    // The second Run is INCONCLUSIVE and by now carries twenty §H rows with one failure
+    // (the Gate case above). A stage stop on the same Run is read beside that tally, not
+    // instead of it: the web decides which wins, and an agent Run that reaches its time
+    // limit records every §H row before sealing, so both really do exist together.
+    await sql`INSERT INTO population_execution(run_id,revision,status,attempts,started_at,attempt_started_at,lease_until,diagnostic,step_id,attempt_id)
+              VALUES(${runs.second},1,'TERMINAL',1,'2026-09-02T09:00:10Z','2026-09-02T09:00:10Z','2026-09-02T09:10:00Z','freshness','population',${ids.next()})`;
+    await sql`INSERT INTO population_snapshot(run_id,included,excluded,indeterminate,rows_digest,checks,generated_at,declared_count,retrieved_count)
+              VALUES(${runs.second},0,0,0,NULL,'[{"name":"freshness","passed":false}]'::jsonb,'2026-06-01T00:00:00Z'::timestamptz,0,0)`;
+    // A Run this deployment could not run writes NO checkpoint, deliberately, and records
+    // its reason in the chain alone. The read must find it there or such a Run reads as
+    // one nothing recorded anything about.
+    await new PostgresAuditUnitOfWork(db).execute(async ({ auditEvents }) => {
+      await auditEvents.append({
+        actor: { type: 'system', id: 'population-worker' },
+        eventType: 'lifecycle.run-unexecutable',
+        source: 'worker',
+        outcome: 'failure',
+        aggregateId: runs.third,
+        correlationId: ids.next(),
+        sessionId: 'run-surfaces',
+        payload: { priorState: 'QUEUED', state: 'RUN_FAILED', diagnostic: 'evidence-store-unconfigured', reason: 'x', occurredAt: '2026-09-03T09:00:00Z' },
+      });
+    });
+    const reader = new DrizzleRunStopReader(db);
+    const stops = await reader.readStops([runs.first, runs.second, runs.third, ids.next(), 'not-a-uuid']);
+    expect(stops.get(runs.second)).toMatchObject({
+      state: 'INCONCLUSIVE',
+      period: { from: '2026-07-01', to: '2026-07-31' },
+      stop: { stage: 'population', diagnostic: 'freshness' },
+      snapshotGeneratedAt: '2026-06-01T00:00:00.000Z',
+      gateChecks: GATE_CHECKS.length,
+      gateFailed: 1,
+      outcomeRow: 'gate-failed',
+    });
+    // The first Run's population checkpoint is POPULATION_READY (the Timeline case), which
+    // is not a stop whatever its diagnostic column says — and a `canceled` checkpoint is
+    // never one either: the cancellation banner names the person, and a Run that outran
+    // its cancellation has the Timeline's superseded event as the record.
+    await sql`INSERT INTO run_execution(run_id,revision,status,attempts,run_started_at,started_at,attempt_started_at,lease_until,attempt_id,diagnostic)
+              VALUES(${runs.first},1,'TERMINAL',1,'2026-09-01T09:00:10Z','2026-09-01T09:00:10Z','2026-09-01T09:00:10Z','2026-09-01T09:10:00Z',${ids.next()},'canceled')`;
+    expect(await reader.readStop(runs.first)).toMatchObject({ state: 'COMPLETED', stop: null, snapshotGeneratedAt: null, outcomeRow: 'pass' });
+    // A RETRY checkpoint carries the reason for the NEXT attempt, and a Run in that state
+    // is still running: a diagnostic beside a non-terminal status is not a stop either.
+    await sql`UPDATE population_execution SET status='RETRY', diagnostic='population-retry-pending' WHERE run_id=${runs.first}`;
+    expect((await reader.readStop(runs.first))?.stop).toBeNull();
+    expect(stops.get(runs.first)).toMatchObject({ state: 'COMPLETED', stop: null, snapshotGeneratedAt: null, outcomeRow: 'pass' });
+    expect(stops.get(runs.third)).toMatchObject({
+      state: 'QUEUED',
+      stop: { stage: 'unexecutable', diagnostic: 'evidence-store-unconfigured' },
+      gateChecks: 0,
+      gateFailed: 0,
+      outcomeRow: null,
+    });
+    // A wait whose deadline passed is a stop the wake recorded on the WAIT row: no stage
+    // checkpoint turns terminal and no §H row is written (Codex, PR 39). The latest
+    // timed-out wait wins, and its kind and deadline travel with the facts.
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+              VALUES(${ids.next()},${runs.other},'choose-candidate','[{"id":"a","label":"A"}]'::jsonb,
+                '2026-09-04T09:00:00Z',NULL,'2026-09-04T13:00:00Z','2026-09-04T13:00:01Z','timeout',NULL,'wait-wake')`;
+    expect(await reader.readStop(runs.other)).toMatchObject({
+      stop: { stage: 'wait', diagnostic: 'escalation-timeout' },
+      timedOutWait: { kind: 'choose-candidate', deadline: '2026-09-04T13:00:00.000Z' },
+    });
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+              VALUES(${ids.next()},${runs.other},'pause','[{"id":"resume","label":"Resume"}]'::jsonb,
+                '2026-09-04T14:00:00Z',${author},'2026-09-04T14:30:00Z','2026-09-04T14:30:01Z','timeout',NULL,'wait-wake')`;
+    expect(await reader.readStop(runs.other)).toMatchObject({
+      stop: { stage: 'wait', diagnostic: 'pause-timeout' },
+      timedOutWait: { kind: 'pause', deadline: '2026-09-04T14:30:00.000Z' },
+    });
+    // A wait that was ANSWERED is not a stop: only the timeout closure is one.
+    await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,opened_by,deadline,closed_at,closure_kind,answer_option_id,actor)
+              VALUES(${ids.next()},${runs.first},'retry-or-skip','[{"id":"retry","label":"Retry"}]'::jsonb,
+                '2026-09-01T09:05:00Z',NULL,'2026-09-01T13:05:00Z','2026-09-01T09:10:00Z','answer','retry',${author})`;
+    expect((await reader.readStop(runs.first))?.stop).toBeNull();
+    // A Run that is not there is absent, and text that is not a UUID never reaches PostgreSQL.
+    expect(stops.size).toBe(3);
+    expect(await reader.readStop(ids.next())).toBeNull();
+    expect((await reader.readStops(['not-a-uuid'])).size).toBe(0);
   });
 });

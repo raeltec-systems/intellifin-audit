@@ -1,3 +1,75 @@
+## 2026-09-16 — A page of Runs must say why each one stopped, and who started it
+
+The owner sent a screenshot of the production Runs list — *"all the runs failed, also whats
+wrong with this picture?"* — and nothing on that page could answer either question. Every
+Run had stopped at acquisition because the synthetic snapshot (generated 2026-09-01) was
+older than the period the owner chose (to 2026-09-15): the `freshness` check, recorded by
+the population stage as a code word and shown ONLY on the Execution Timeline tab, in
+monospace, under a row nobody opened. The list said "Inconclusive · No conclusion issued",
+the Initiator column printed UUIDs, and the Run id column had collapsed into a strip of
+four-character lines. **A closed diagnostic is a fact the platform knows; a surface that
+shows it as a code, or not at all, has not told the auditor anything.**
+
+- **`DrizzleRunStopReader` reads the stop facts for a page of Runs in one statement**, and
+  the same statement answers for one Run, so the list and the header cannot disagree. The
+  first TERMINAL checkpoint in execution order wins (population, workspace, sign-in,
+  extraction, inspection); `canceled` is never a stop (the cancellation banner names the
+  person); and a Run this deployment could not run is read from the chain's
+  `lifecycle.run-unexecutable` event, because `stopUnexecutableRun` writes NO checkpoint —
+  without that read it would look like a Run nothing recorded anything about.
+- **`apps/web/src/runs/stop-reason.ts` is the one place a diagnostic becomes a sentence**,
+  typed against each stage's own union (`Record<AgentWorkDiagnostic, string>` and its
+  siblings), so a diagnostic added to a stage without words here does not COMPILE. A value
+  the tables do not hold still gets a sentence — the stage and the code, in quotes — never
+  a blank. `freshness` reads `population_snapshot.generated_at` to say WHICH way the
+  snapshot was unfit (before the period ended / after the Run started / undeclared) and
+  what to do about it; generation 24 added that column for exactly this. A stage stop
+  outranks the Gate on purpose: an agent Run at its time limit records every §H row before
+  sealing (2026-09-08), so both exist and the limit is what ended it.
+- **A wait whose deadline passed is a stop the wake records on the WAIT row, and nowhere
+  else.** Codex found it on PR 39: `wakeEscalation` closes the `run_wait` with
+  `closure_kind = 'timeout'` and ends the Run `INCONCLUSIVE` through `completeRun`, and no
+  stage checkpoint turns terminal and no §H row is written — so the first version fell
+  through to "no stage recorded why" for the one stop whose record is the most explicit of
+  all. The reader joins the latest timed-out wait (`stage: 'wait'`, `pause-timeout` or
+  `escalation-timeout`, the kind and the deadline beside it) after the stage checkpoints
+  and before the chain's unexecutable event; an ANSWERED or RESUMED wait is not a stop.
+  **A "no stage recorded why" fallback is a claim about every record the platform keeps,
+  and it has to be checked against each of them, not only the checkpoint tables.**
+- **The Initiator is a person.** `ActorName` renders `ActorNameReader`'s answer and the id
+  in monospace only when no name is known; the cancellation and rerun banners are the
+  siblings `PauseBanners` was repaired for in the Epic 5 review and had the same defect.
+  Two browser specs PINNED the id (`Canceled by ${auditorId}`), the `pause-resume.spec.ts`
+  shape again; both assert the name now and that the id is gone. `runCanceledBy` fills
+  through `fillTemplate`: the actor is a NAME now and `String.prototype.replace` expands
+  `$&` in a string replacement — the third template this has reached.
+- **A hyphen followed by a digit is not a line-break opportunity in any browser** (UAX #14
+  keeps `-7000` together), so "wrap the id at its hyphens" needs `<wbr>` after each one:
+  `Identifier.tsx`, used by `DataTable` for every monospace first cell, plus a 20-character
+  minimum on the span. `<wbr>` has no text content, so copy, accessible names and
+  `getByText` still see the whole id. EXPERIENCE.md's "long identifiers wrap
+  (`overflow-wrap: anywhere`)" is refined for UUIDs in a ten-column table, not replaced:
+  `.ls-identifier` turns it off only inside that span, and a digest still wraps anywhere.
+- **The live feed is clean in production mode, and the server is not what the owner saw.**
+  `next start`'s standalone server, signed in with curl and asked for gzip: heartbeats at
+  +10.04 s, +20.04 s and +30.04 s, no `content-encoding`, `cache-control: no-store,
+  no-transform`, `x-accel-buffering: no`, chunked. Railway's docs say SSE is passed through
+  unbuffered, and earlier production streams ran their full fourteen minutes. So "No update
+  for 24 seconds" was a real gap on the owner's own connection, reported honestly by the
+  banner, which reconnects by itself at sixty seconds. Nothing to change; the check is
+  `scratchpad`-only and is described here so the next reader does not repeat it.
+
+Two mechanical notes:
+
+- **A test that says a code word must not appear has to allow the words that are English.**
+  `not.toContain(name)` over every population check failed on `declaration`, because the
+  sentence for it says "declaration". Only a hyphenated name is ever a code.
+- **`freshness` fails on THREE legs, and only two are about the dates.** A snapshot dated
+  after the period end and before the Run started can still fail it when the declaration
+  and the response disagree about the time, so the "plain sentence" case needs dates the
+  reconciler would have passed — the first version of that test built a date that was
+  really the second leg and expected the third.
+
 ## 2026-09-15 — Ad hoc Runs exist, and the Schedule time starts nothing
 
 The owner could not start a Run when they wanted one: *"i have to set a time scheduled to run
