@@ -439,7 +439,12 @@ try {
   });
   await watch.goto(BASE + watchHref, { waitUntil: 'domcontentloaded' });
   await facts(report.runId); await shot(watch, '03-watch-start');
-  const deadline = Date.now() + 9 * 60000;
+  // A Solari Run drives a REMOTE browser with a model in the loop, so each record costs
+  // several seconds of page work plus model latency; three records is minutes, not the
+  // seconds a local Chromium and a synthetic provider take. The window is bounded so a
+  // stuck Run cannot hold the job for its full hour, and the loop leaves the moment the
+  // Run reaches any state that is not QUEUED, RUNNING or PAUSED.
+  const deadline = Date.now() + 20 * 60000;
   let lastState = '', lastFrame = '', captures = 0;
   while (Date.now() < deadline) {
     report.facts = await facts(report.runId);
