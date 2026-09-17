@@ -50,6 +50,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONFIRM: ${{ github.event_name == 'push' && 'revoke-acceptance-identities' || inputs.confirm }}
           KEEP_RUN_ID: ${{ github.event_name == 'push' && '' || inputs.keep_run_id }}
+          # Close-out pass: no acceptance is in flight, so every temporary identity this
+          # validation created is stale and must have its session and role removed.
+          RECENT_MINUTES: '2'
         run: |
           set -euo pipefail
           # Inputs cross as quoted environment variables. A GitHub expression is substituted
@@ -79,7 +82,12 @@ jobs:
             // configuration server-side and the Audit Manager has no session until it
             // approves — so a session-based guard reads them as leftovers and revokes a live
             // run's roles, which is exactly what happened to run 35272648301.
-            const recent = new Date(Date.now() - 120 * 60000);
+            // Default two hours: an acceptance run with a negative case is a long journey
+            // and revoking a live one costs the whole run, while skipping a stale account
+            // costs one more invocation. The close-out pass narrows it once no acceptance
+            // is in flight, which is the only time a short window is safe.
+            const minutes = Number(process.env.RECENT_MINUTES ?? '120');
+            const recent = new Date(Date.now() - (Number.isFinite(minutes) && minutes > 0 ? minutes : 120) * 60000);
             const live = new Set((await sql`
               SELECT email FROM auth_user
               WHERE email LIKE 'acceptance-%@example.test' AND created_at > ${recent.toISOString()}::timestamptz
