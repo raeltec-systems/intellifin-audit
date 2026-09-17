@@ -1,7 +1,7 @@
 name: Deployed LoanCore acceptance
 
-# One explicitly authorized execution. Product changes are on main; this isolated
-# verification branch does not interrupt main's CI/release. Retire after this check.
+# Explicitly authorized execution. Product changes are on main; verification-only
+# commits do not interrupt the released candidate. Retire the trigger after acceptance.
 on:
   push:
     branches: [verify/deployed-loancore-20260917]
@@ -25,6 +25,30 @@ jobs:
         with:
           node-version: '24.20.0'
           cache: pnpm
+      - name: Await visible Template context before using the client-driven create form
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/live-loancore-acceptance.mjs')
+          s=p.read_text()
+          old="""    await page.goto(APP+'/procedures/new',{waitUntil:'domcontentloaded'});
+              await page.getByLabel('Template').selectOption('P-1');
+              await page.getByLabel('Control name',{exact:true}).fill(CONTROL);
+              await confirm(page,'Create Procedure');"""
+          new="""    await page.goto(APP+'/procedures/new',{waitUntil:'load'});
+              await expect(async()=>{
+                await page.getByLabel('Template').selectOption('P-1');
+                await expect(page.locator('[data-template-preview]')).toBeVisible({timeout:3000});
+              }).toPass({timeout:30000,intervals:[500,1000]});
+              emit('template-preview-visible');
+              await page.getByLabel('Control name',{exact:true}).fill(CONTROL);
+              await expect(page.getByLabel('Control name',{exact:true})).toHaveValue(CONTROL);
+              emit('control-name-entered');
+              await capture(page,'new-procedure-ready');
+              await confirm(page,'Create Procedure');"""
+          assert s.count(old)==1, 'Create form adapter drift'
+          p.write_text(s.replace(old,new))
+          PY
       - name: Build the pinned acceptance client and browser
         run: |
           pnpm install --frozen-lockfile
@@ -47,7 +71,6 @@ jobs:
               const runs=await github.rest.actions.listWorkflowRunsForRepo({owner,repo,head_sha:sha,event:'workflow_run',per_page:30});
               selected=runs.data.workflow_runs.find(r=>r.name==='Release'&&r.head_sha===sha&&r.status==='completed'&&r.conclusion==='success');
               if(selected) break;
-              console.log('Waiting for the authorized exact release; no production credentials in this step.');
               await new Promise(resolve=>setTimeout(resolve,30000));
             }
             if(!selected) throw new Error('Exact successful release unavailable; no live audit was started.');
@@ -79,6 +102,11 @@ jobs:
             console.log('Temporary acceptance identities have no role or active session. Named history preserved.');
           } finally { await sql.end({timeout:5}); }
           JS
+      - name: Retain the exact executed client and synthetic evidence
+        if: always()
+        run: |
+          mkdir -p live-loancore-evidence
+          cp scripts/live-loancore-acceptance.mjs live-loancore-evidence/executed-client.mjs
       - name: Retain the synthetic verification evidence
         if: always()
         uses: actions/upload-artifact@v4
