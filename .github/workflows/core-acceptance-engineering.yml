@@ -1,0 +1,31 @@
+name: Core acceptance engineering
+
+# Temporary, incident-scoped verification. No deployment or production credentials.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/core-acceptance-engineering.yml]
+permissions:
+  contents: read
+concurrency:
+  group: core-acceptance-engineering
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Archive tracked source only
+        run: |
+          mkdir -p /tmp/core-source
+          git archive --format=tar.gz HEAD -o /tmp/core-source/source.tar.gz
+          git rev-parse HEAD > /tmp/core-source/base.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-acceptance-source
+          path: /tmp/core-source/
+          retention-days: 2
+          if-no-files-found: error
