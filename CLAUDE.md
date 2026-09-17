@@ -1,3 +1,105 @@
+## 2026-09-17 — Driving the acceptance journey end to end, and the checks that could not fail
+
+The owner's remaining gate is one unbroken journey: create a Procedure in the browser,
+configure it, submit it, have a SECOND person approve it, activate it, start the Run, watch
+it inspect records. Driving that journey locally against the real build — a copy of
+`scripts/verify-deployed-loancore.mjs` pointed at a local web server — found two defects no
+suite had. Neither is in the domain; both are in the surface, and both stop the journey dead.
+
+- **A controlled input discards what was typed before React attached, and the one place that
+  costs a CREDENTIAL is the sign-in form.** `7efb284` fixed this for the Procedure form and
+  the same shape was still live one page earlier: fill the fields while the bundle is still
+  loading, and React's initial empty state replaces them on hydrate — so the POST carries
+  `{"email":"","password":""}`, Better Auth answers **400**, and the person is told **"Check
+  your email address and password."** about a credential they typed correctly. It is
+  intermittent by construction: it depends on whether the person types faster than the bundle
+  loads, which is exactly the case a fast operator and a cold deploy both reach. The repair is
+  the Procedure form's: a native `<fieldset disabled>` (the only guard that holds BEFORE
+  handlers exist), `data-signin-ready`, and the two sentences in ordinary markup — never
+  `<noscript>`, for the reason the note below this one gives.
+- **The decisive assertion is what was SENT, not that the submit worked.**
+  `tests/e2e/sign-in-readiness.spec.ts` blocks the scripts, types, releases them, submits, and
+  then reads the request body: `sent.email` and `sent.password` must be what was typed. An
+  assertion that the sign-in succeeded passes on a build with no guard at all, because the
+  browser that is quick enough to be tested is usually quick enough to hydrate first.
+- **A normalising compiler and a section machine that records the raw edit declare a conflict
+  after a save that SUCCEEDED.** `compileComplianceDraft` trims, deduplicates and SORTS a
+  role-privilege policy's lists; `useSection.begin()` recorded the edit as typed, so the next
+  server snapshot differed from it and `observe()` flagged `conflict`. Every "Mark reviewed"
+  control then refused with **"Resolve the saved-value conflict in Compliance Rule before
+  submitting."** — naming a conflict with nothing on screen to resolve — and submission was
+  blocked until the page was reloaded. `storedComplianceInput` ASKS the compiler what will be
+  stored rather than restating its rules, and feeds it to both `useSection`'s
+  `normalizeBaseline` (which already existed, for `EvidenceScheduleForm`) and `begin`.
+  **A second copy of a normalisation diverges on the first edge nobody tried**, which is why
+  this is a call into the compiler and not a `sort()` in the form.
+- **An input the compiler REFUSES is returned unchanged, deliberately.** The command refuses
+  that save too, so the section reports the refusal; normalising a refused input would compare
+  the server's snapshot against something no save could ever produce.
+- **The journey is the test that finds this class.** Six saves and six section reviews pass
+  individually in `procedures.spec.ts`; what fails is saving one section and then reviewing
+  ANOTHER, which only a journey does. Both defects were invisible to every unit, integration
+  and browser suite in the repository and visible within one run of the acceptance harness.
+
+**And the acceptance itself was checking the wrong things, in four places.** The harness is
+what produces the proof, so a check that cannot fail is a proof that is not one:
+
+- **An aggregate count of Exceptions is true of a build that flagged the WRONG leaver.**
+  `expectedEvaluations` asserted six evaluations, one C1 Exception and three C2 Compliant —
+  all of which hold if E-000102 were reported as retaining access and E-000103 as disabled.
+  `scripts/acceptance-truth.mjs` compares PER RECORD and PER CONDITION against
+  `p-1-live-acceptance.json` read off disk, and it has its own tests
+  (`tests/unit/acceptance-truth.test.ts`) precisely because nothing inside
+  `verify-deployed-loancore.mjs` can be tested: that file refuses to load without a live
+  database and an explicit authorization. The swap case asserts the totals are IDENTICAL
+  before asserting the comparison catches it.
+- **`report.checks.providerHandleContained = true` was a literal.** The containment is real
+  — `shot()` throws if any scanned page carries the provider's session identity — but the
+  check could not fail, including for a Run whose identity nothing had ever seen. It now
+  requires a known identity and a counted number of scans taken AFTER it became known.
+- **The Execution Timeline could not say WHICH record a Work Item inspected.**
+  `displayName` is the TARGET SYSTEM's name and is identical on every Work Item of a Run,
+  so a three-leaver agent Run rendered as three rows called "LoanCore" — on the one surface
+  an auditor follows from record to conclusion. The Runs list and Live View both name the
+  subject; `RunTimelineWorkItem` carries `subjectKey` now and the row leads with it, with
+  the system name beside the counts. A Work Item with no subject of its own (P-4 inspects a
+  page, not a population) keeps the system name as its title rather than gaining a dash.
+- **The acceptance workflow's `push` trigger RACED the release.** A push to `main` started
+  it at once, while CI was still running and Release had therefore not deployed the commit
+  — so it drove the PREVIOUS build, which is exactly how the 2026-09-17 run came to stop at
+  `create-procedure` against a build without the fix it was testing. The trigger is gone;
+  the workflow now refuses to start at all unless `/sign-in` server-renders the hydration
+  marker, which one public request settles before any identity is created.
+- **The workflow also patched the harness's source at run time** to add the cancellation
+  repository — a second copy of the command shape that only the workflow could break, and
+  that any edit to those exact lines would have broken silently. Folded into the script.
+- **The negative case is the same journey, not a second copy of it.** The authoring flow is
+  one function now, called with the clean population and (behind `negative_case`) with the
+  defective 27-row export. It asserts the Run stopped, that no conclusion exists about any
+  record, and that the Gate names E-000107 — a "the Run failed" assertion alone would pass
+  for a Run that failed for any other reason.
+
+Three mechanical notes:
+
+- **The Builder polls only while a plan derivation is PENDING** (`ExecutablePlanPreview`:
+  `if (draft.planStatus !== 'pending') return;`), so `procedures.spec.ts`'s *"a pending plan
+  refresh preserves dirty Period edits"* needs the derivation still to be in flight when the
+  second tab saves. A worker fast enough to settle it first leaves the edited tab with
+  nothing to re-read, no conflict banner, and — because a failing Playwright test restarts
+  the worker and runs `afterAll` early — a dozen later failures that are its shadow. It is
+  green in CI and red on a fast machine. **Read the FIRST failure, and check whether a
+  browser test's scene depends on something finishing SLOWLY.**
+- **`seed-identity` never resets a password, so `E2E_PASSWORD` must match the accounts that
+  are actually there.** A local database seeded in an earlier session answers a correct-
+  looking sign-in with *"Sign-in failed. Check your email address and password."* — which is
+  the product working, and reads exactly like the hydration defect above it. Seed fresh
+  addresses (the rule is already recorded; it was met again here) and check the page snapshot
+  in `test-results/**/error-context.md` before suspecting the code.
+- **`deployed-loancore-evidence/` is now ignored.** The harness writes
+screenshots and a report there; CI uploads it as an artifact and a local dry-run leaves it in
+the tree, where a `git add -A` would sweep it in — the class `.claude/worktrees/` and
+`**/__boundary_violation__/` are already ignored for.
+
 ## 2026-09-17 — `<noscript>` is invisible to the test that exists to read it
 
 The procedure-form hydration repair (`7efb284`) put its requirement sentence inside

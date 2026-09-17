@@ -598,6 +598,8 @@ const timeline = (overrides: Partial<RunTimelineRead> = {}): RunTimelineRead => 
   workItems: [
     {
       workItemId: '019823ab-0000-7000-8000-0000000000c1',
+      // The adapter path's Work Item is one per Target System, not one per record.
+      subjectKey: null,
       stepId: 'step-1',
       ordinal: 1,
       displayName: 'AccessGate',
@@ -700,6 +702,34 @@ describe('the Execution Timeline', () => {
     expect(html).toContain('AccessGate');
     // The Work Item is the anchor a failed Gate row links to.
     expect(html).toContain('id="work-item-019823ab-0000-7000-8000-0000000000c1"');
+  });
+
+  it('names the record each Work Item inspected, and the system beside it', () => {
+    // `displayName` is the TARGET SYSTEM's name and is identical on every Work Item of a
+    // Run, so a three-record agent Run rendered as three rows called "LoanCore" with
+    // nothing saying which leaver each one was about — on the one surface an auditor
+    // follows from record to conclusion. Found by the deployed acceptance, which asserts
+    // the Timeline names every leaver in its population.
+    const html = renderTimeline(
+      timeline({
+        workItems: [
+          { ...timeline().workItems[0]!, subjectKey: 'E-000103', displayName: 'LoanCore' },
+          { ...timeline().workItems[0]!, workItemId: '019823ab-0000-7000-8000-0000000000c2', ordinal: 2, subjectKey: 'E-000105', displayName: 'LoanCore' },
+        ],
+      }),
+    );
+    expect(html).toContain('E-000103');
+    expect(html).toContain('E-000105');
+    // The system is still named, once per row, beside the counts rather than as the title.
+    expect(html.match(/LoanCore/g)).toHaveLength(2);
+  });
+
+  it('keeps the system name as the title for a Work Item with no record of its own', () => {
+    // P-4 inspects one page, not a population, so its Work Item has no subject. A dash
+    // would be the "never a dash" defect; the system name is what that row is about.
+    const html = renderTimeline(timeline());
+    expect(html).toContain('AccessGate');
+    expect(html).not.toContain('>—<');
   });
 
   it('says in words that an adapter Step Execution records no Tool Actions, and stays silent for an agent one', () => {

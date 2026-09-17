@@ -9,11 +9,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, expect } from '@playwright/test';
+// The record-by-record comparison with the oracle, in its own tested module: nothing
+// inside this file can be tested, because it refuses to load without a live database.
+import { disagreementsWithTruth } from './acceptance-truth.mjs';
 import { registerPopulationSource, registerTargetSystem, cancelRun } from '@intellifin/application';
 import {
   createSqlClient, createDb, findUserIdByEmail, CryptoUuidV7Generator,
   DrizzleRoleRepository, DrizzleRegistrationRepository, PostgresSourcesUnitOfWork,
-  PostgresRegistrationsUnitOfWork, PostgresRunsUnitOfWork, ManifestCredentialProvider,
+  PostgresRegistrationsUnitOfWork, PostgresRunsUnitOfWork, PostgresRunCancellationRepository,
+  ManifestCredentialProvider,
   TimerDeadline, SystemClock, DrizzleRunRepository, DrizzleRunDetailRepository,
 } from '@intellifin/infrastructure';
 
@@ -28,9 +32,20 @@ const SOURCE_NAME = `Live acceptance leavers ${STAMP}`;
 const TARGET_NAME = `Live acceptance LoanCore ${STAMP}`;
 const SCOPE = 'The three canonical synthetic leavers in the separately declared August 2026 acceptance export, checked in LoanCore only.';
 const OUT = 'deployed-loancore-evidence';
+/**
+ * The predetermined truth about the three synthetic leavers, read OFF DISK.
+ * The audit agent never sees this file; the harness compares what IntelliFin concluded
+ * against it AFTER the Run, per record and per condition. Aggregate counts are not that
+ * comparison: a build that flagged the wrong leaver still produces one C1 Exception.
+ */
+const TRUTH = JSON.parse(readFileSync('fixtures/northstar/expectations/p-1-live-acceptance.json', 'utf8'));
+const TRUTH_RECORDS = Object.keys(TRUTH.expected_c1).sort();
 mkdirSync(OUT, { recursive: true });
 const report = { startedAt: new Date().toISOString(), harnessSha: process.env.GITHUB_SHA, application: BASE, procedureId: null, runId: null, observations: [], frames: [], checks: {}, failures: [] };
 const secrets = new Set();
+/** The provider's own session identity, once the Run has one. A capability, never shown. */
+let providerHandle = null;
+let containmentScans = 0;
 const emit = (event, facts = {}) => {
   const entry = { at: new Date().toISOString(), event, ...facts };
   report.observations.push(entry);
@@ -44,6 +59,8 @@ const sql = createSqlClient(process.env.DATABASE_URL, { max: 3 });
 const db = createDb(sql), ids = new CryptoUuidV7Generator(), roles = new DrizzleRoleRepository(db);
 const runs = new DrizzleRunRepository(db), detail = new DrizzleRunDetailRepository(db);
 const created = [];
+/** Every Run this invocation started, so the cleanup can reach each one. */
+const started = [];
 let browser, auditorContext, auditor, manager, managerContext, watch;
 let phase = 'preflight';
 async function poll(read, accept, milliseconds = 90000) {
@@ -56,6 +73,10 @@ async function shot(page, name) {
   if (url.origin !== BASE || /sign-in|login/.test(url.pathname)) return;
   checkSecretFree(await page.content());
   const text = await page.locator('body').innerText(); checkSecretFree(text);
+  // Counted only once the provider identity is KNOWN. A scan taken before the workspace
+  // row exists proves nothing about containment, and a check that cannot fail is worse
+  // than no check: it reads as coverage.
+  if (providerHandle !== null) containmentScans += 1;
   writeFileSync(`${OUT}/${name}.txt`, text);
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false, mask: [page.locator('input[type=password]')] });
 }
@@ -71,6 +92,9 @@ async function identity(kind, name) {
 }
 async function signIn(page, account) {
   await page.goto(`${BASE}/sign-in`, { waitUntil: 'domcontentloaded' });
+  // The fields sit in a native disabled fieldset until their handlers attach: typing
+  // earlier is discarded by React's initial state and posts an empty credential.
+  await expect(page.locator('[data-signin-ready]')).toHaveAttribute('data-signin-ready', 'true');
   await page.locator('input[type=email]').fill(account.email);
   await page.locator('input[type=password]').fill(account.password);
   await page.getByRole('button', { name: /sign in/i }).click();
@@ -126,68 +150,32 @@ async function selectContaining(select, label) {
   const matches = options.filter(o => o.value && o.label.includes(label)); assert.equal(matches.length, 1);
   await select.selectOption(matches[0].value);
 }
-async function facts(runId) {
-  const one = async query => (await query)[0] ?? null;
-  const workspace = await one(sql`SELECT status,mode,workspace_id,attempts,diagnostic FROM run_workspace WHERE run_id=${runId}::uuid`);
-  if (workspace?.workspace_id) secrets.add(workspace.workspace_id);
-  return {
-    run: await one(sql`SELECT state,initiator_id,version_id FROM audit_run WHERE run_id=${runId}::uuid`),
-    workspace: workspace ? { status: workspace.status, mode: workspace.mode, attempts: workspace.attempts, identityLength: workspace.workspace_id?.length ?? 0, diagnostic: workspace.diagnostic } : null,
-    population: await one(sql`SELECT included,excluded,indeterminate,declared_count,retrieved_count,generated_at FROM population_snapshot WHERE run_id=${runId}::uuid`),
-    inspection: await one(sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${runId}::uuid`),
-    result: await one(sql`SELECT outcome,sealed,gate_passed FROM run_result WHERE run_id=${runId}::uuid`),
-    workItems: await sql`SELECT subject_key,state,observations,diagnostic FROM run_work_item WHERE run_id=${runId}::uuid ORDER BY ordinal`,
-    evaluations: await sql`SELECT condition_id,origin,value,confirmation,observation_id FROM run_observation_evaluation WHERE run_id=${runId}::uuid ORDER BY observation_id,condition_id`,
-    counts: await one(sql`SELECT (SELECT count(*)::int FROM run_observation WHERE run_id=${runId}::uuid) AS observations,(SELECT count(*)::int FROM run_evidence WHERE run_id=${runId}::uuid AND kind='screenshot' AND state='REGISTERED') AS frames,(SELECT count(*)::int FROM run_tool_action WHERE run_id=${runId}::uuid) AS tool_actions`),
-    failedGate: await sql`SELECT check_name,total,diagnostics FROM run_gate_check WHERE run_id=${runId}::uuid AND outcome<>'PASS'`,
-  };
-}
-try {
-  const catalog = JSON.parse(readFileSync('fixtures/northstar/datasets/systems.json', 'utf8'));
-  const target = catalog.target_systems.find(s => s.id === 'loancore');
-  const source = catalog.population_source_bindings.find(s => s.id === 'leavers-live-acceptance');
-  assert.ok(target && source);
-  const sourceResponse = await fetch(TARGET + source.location_path, { signal: AbortSignal.timeout(20000), redirect: 'error' });
-  assert.equal(sourceResponse.status, 200);
-  const sourceBytes = Buffer.from(await sourceResponse.arrayBuffer());
-  const expectedBytes = readFileSync('fixtures/northstar/generated/leavers-live-acceptance.csv');
-  assert.equal(createHash('sha256').update(sourceBytes).digest('hex'), createHash('sha256').update(expectedBytes).digest('hex'));
-  emit('deployed-fixture-verified', { records: 3, sourceDigest: createHash('sha256').update(sourceBytes).digest('hex') });
-  const adminAccount = await identity('poc-administrator', 'Acceptance Configuration Administrator');
-  const auditorAccount = await identity('auditor', 'Live Acceptance Auditor');
-  const managerAccount = await identity('audit-manager', 'Live Acceptance Audit Manager');
-  report.actors = created.map(({ userId, role }) => ({ userId, role }));
-  const session = { userId: adminAccount.userId, sessionId: `acceptance-setup-${STAMP}` };
-  const binding = await registerPopulationSource({ roles, unitOfWork: new PostgresSourcesUnitOfWork(db), ids }, {
-    session, source: 'platform', correlationId: ids.next(), displayName: SOURCE_NAME, kind: 'versioned-file', location: TARGET + source.location_path,
-    declaredSchema: source.declared_schema, declaredCountMechanism: 'cover-sheet', sensitiveFields: source.sensitive_fields, note: 'Explicit synthetic live acceptance; original negative population unchanged.', status: 'active',
-  }); assert.equal(binding.ok, true);
-  const registration = await registerTargetSystem({ roles, unitOfWork: new PostgresRegistrationsUnitOfWork(db), ids,
-    credentials: new ManifestCredentialProvider(new Map([[target.credential_ref, 'read-only']])), deadlines: new TimerDeadline() }, {
-    session, source: 'platform', correlationId: ids.next(), displayName: TARGET_NAME, kind: 'web', allowedOrigins: [TARGET + target.origin_path], applicationIdentity: '',
-    credentialRef: target.credential_ref, permittedActions: target.permitted_actions, attributeLabelPatterns: target.attribute_label_patterns, secondaryKey: target.secondary_key,
-    authenticationDestination: TARGET + target.authentication_destination_path, note: 'Separate synthetic live acceptance registration.', status: 'active',
-  }); assert.equal(registration.ok, true);
-  report.bindingId = binding.bindingId; report.registrationId = registration.registrationId;
-  emit('audited-acceptance-configuration-created');
-  browser = await chromium.launch({ headless: true, env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !/secret|password|token|api.?key|database/i.test(key))) });
-  auditorContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  auditor = await auditorContext.newPage(); auditor.setDefaultTimeout(40000);
-  await signIn(auditor, auditorAccount); emit('auditor-signed-in');
-  phase = 'create-procedure';
+/**
+ * The whole authoring journey through the real UI, for ONE population: create the
+ * Procedure, fill and save the six sections, review all six, submit, have a DIFFERENT
+ * person approve it, then start a Run over the audited period.
+ *
+ * Factored rather than copied, so the defective-population case runs exactly the journey
+ * the clean case ran. Two copies would agree on everything anybody tried and diverge on
+ * the first thing nobody did — which is what would make a negative case pass for a reason
+ * that has nothing to do with the population.
+ */
+async function authorApproveAndRun({ control, sourceName, prefix, accounts }) {
+  phase = `${prefix}create-procedure`;
   await auditor.goto(`${BASE}/procedures/new`, { waitUntil: 'domcontentloaded' });
+  await expect(auditor.locator('[data-new-procedure-ready]')).toHaveAttribute('data-new-procedure-ready', 'true');
   await auditor.getByLabel('Template').selectOption('P-1');
-  await auditor.getByLabel('Control name', { exact: true }).fill(CONTROL);
+  await auditor.getByLabel('Control name', { exact: true }).fill(control);
   await confirmed(auditor, 'Create Procedure');
-  await expect(auditor.getByRole('heading', { level: 1, name: CONTROL })).toBeVisible();
-  report.procedureId = new URL(auditor.url()).pathname.split('/')[2];
-  emit('procedure-created-through-ui', { procedureId: report.procedureId });
+  await expect(auditor.getByRole('heading', { level: 1, name: control })).toBeVisible();
+  const procedureId = new URL(auditor.url()).pathname.split('/')[2];
+  emit('procedure-created-through-ui', { procedureId, control });
   await step('Period and scope', async () => {
     await auditor.getByLabel('Period start', { exact: true }).fill(PERIOD.from);
     await auditor.getByLabel('Period end', { exact: true }).fill(PERIOD.to);
     await auditor.getByLabel('Scope statement').fill(SCOPE);
   }, () => auditor.getByRole('button', { name: 'Save Period and scope', exact: true }).click(), 'Saved. The Draft change is recorded in the audit chain.');
-  await step('Population Source binding', () => selectContaining(auditor.getByLabel('Where the records come from'), SOURCE_NAME),
+  await step('Population Source binding', () => selectContaining(auditor.getByLabel('Where the records come from'), sourceName),
     () => auditor.getByRole('button', { name: 'Save records to test', exact: true }).click(), 'Saved. The Draft change is recorded in the audit chain.');
   await step('Target System selection', async () => {
     await selectContaining(auditor.getByLabel('Add a system'), TARGET_NAME);
@@ -207,7 +195,7 @@ try {
   }, () => auditor.getByRole('button', { name: 'Save Compliance Rule', exact: true }).click(), 'Saved. The Compliance Rule is recorded in the audit chain.');
   await step('Schedule', () => auditor.getByLabel('Frequency', { exact: true }).selectOption('once'),
     () => auditor.getByRole('button', { name: 'Save Schedule', exact: true }).click(), 'Saved. The Schedule is recorded in the audit chain.');
-  phase = 'review-sections';
+  phase = `${prefix}review-sections`;
   for (const [section, title] of [['context','Risk, control and objective'],['scope','Scope and period'],['evidence','Evidence to review'],['instructions','Audit steps'],['assessment','Assessment criteria'],['frequency','How often this is meant to run']]) {
     let reviewed = false;
     for (let attempt = 0; attempt < 3 && !reviewed; attempt++) {
@@ -220,29 +208,158 @@ try {
     }
     assert.equal(reviewed, true); emit('section-reviewed-through-ui', { section });
   }
-  await planSettled(auditor); await shot(auditor, '01-reviewed-draft');
-  phase = 'submit-and-independent-approval';
+  await planSettled(auditor); await shot(auditor, `${prefix}01-reviewed-draft`);
+  phase = `${prefix}submit-and-independent-approval`;
   await confirmed(auditor, 'Submit for approval');
   await expect(auditor.getByText('Submitted', { exact: true }).first()).toBeVisible();
   await expect(auditor.getByRole('button', { name: 'Approve', exact: true })).toHaveAccessibleDescription(/You cannot approve a version you authored/);
   report.checks.selfApprovalRefused = true;
-  managerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  manager = await managerContext.newPage(); manager.setDefaultTimeout(40000);
-  await signIn(manager, managerAccount); await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });
+  if (!manager) {
+    managerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    manager = await managerContext.newPage(); manager.setDefaultTimeout(40000);
+    await signIn(manager, accounts.manager);
+  }
+  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });
   await confirmed(manager, 'Approve');
   await expect(manager.getByText('Active', { exact: true }).first()).toBeVisible();
-  await shot(manager, '02-independent-approval'); report.checks.independentApproval = true;
-  emit('procedure-independently-approved-through-ui');
-  phase = 'initiate-run';
-  await auditor.goto(`${BASE}/procedures/${report.procedureId}`, { waitUntil: 'domcontentloaded' });
+  await shot(manager, `${prefix}02-independent-approval`); report.checks.independentApproval = true;
+  emit('procedure-independently-approved-through-ui', { procedureId });
+  phase = `${prefix}initiate-run`;
+  await auditor.goto(`${BASE}/procedures/${procedureId}`, { waitUntil: 'domcontentloaded' });
   await expect(auditor.locator('#initiate-run')).toHaveAttribute('data-client-ready', 'true');
   await auditor.getByLabel('Period from', { exact: true }).fill(PERIOD.from);
   await auditor.getByLabel('Period to', { exact: true }).fill(PERIOD.to);
   await confirmed(auditor, 'Initiate Run');
   await auditor.waitForURL(/\/runs\/[0-9a-f-]{36}/, { timeout: 45000 });
-  report.runId = new URL(auditor.url()).pathname.split('/')[2];
-  const first = await runs.findRun(report.runId); assert.equal(first.initiatorId, auditorAccount.userId);
-  emit('live-run-started-through-ui', { runId: report.runId });
+  const runId = new URL(auditor.url()).pathname.split('/')[2];
+  started.push(runId);
+  const first = await runs.findRun(runId); assert.equal(first.initiatorId, accounts.auditor.userId);
+  emit('live-run-started-through-ui', { runId, procedureId });
+  return { procedureId, runId };
+}
+/**
+ * The defective population, run again. The full 27-row leavers export declares one
+ * employee key twice (E-000107); the platform must refuse to conclude about ANY record
+ * rather than pick one of the two rows, and must say which key it could not resolve.
+ *
+ * The journey is the same function the clean case used, so what differs between the two
+ * Runs is the bound population and nothing else.
+ */
+async function negativeCase() {
+  phase = 'negative-population';
+  const catalog = JSON.parse(readFileSync('fixtures/northstar/datasets/systems.json', 'utf8'));
+  const defective = catalog.population_source_bindings.find(entry => entry.id === 'leavers-export-versioned');
+  assert.ok(defective);
+  const defectiveName = `Defective acceptance leavers ${STAMP}`;
+  const admin = created.find(account => account.role === 'poc-administrator');
+  const auditorAccount = created.find(account => account.role === 'auditor');
+  const managerAccount = created.find(account => account.role === 'audit-manager');
+  assert.ok(admin && auditorAccount && managerAccount, 'the negative case reuses this run\'s own identities');
+  const binding = await registerPopulationSource({ roles, unitOfWork: new PostgresSourcesUnitOfWork(db), ids }, {
+    session: { userId: admin.userId, sessionId: `acceptance-negative-${STAMP}` }, source: 'platform', correlationId: ids.next(),
+    displayName: defectiveName, kind: 'versioned-file', location: TARGET + defective.location_path,
+    declaredSchema: defective.declared_schema, declaredCountMechanism: 'cover-sheet', sensitiveFields: defective.sensitive_fields,
+    note: 'The unchanged defective synthetic export, bound for the negative acceptance case.', status: 'active',
+  }); assert.equal(binding.ok, true);
+  const negative = await authorApproveAndRun({
+    control: `Negative LoanCore acceptance ${STAMP}`, sourceName: defectiveName, prefix: '10-',
+    accounts: { auditor: auditorAccount, manager: managerAccount },
+  });
+  report.negative = { procedureId: negative.procedureId, runId: negative.runId };
+  const terminal = await poll(() => facts(negative.runId),
+    f => f.run && !['QUEUED','RUNNING','PAUSED'].includes(f.run.state), 6 * 60000);
+  await auditor.goto(`${BASE}/runs/${negative.runId}`, { waitUntil: 'domcontentloaded' });
+  await shot(auditor, '11-negative-result');
+  const duplicate = terminal.failedGate.find(row => row.check_name === 'duplicate-primary-keys');
+  report.negative.state = terminal.run.state;
+  report.negative.outcome = terminal.result?.outcome ?? null;
+  report.negative.inspection = terminal.inspection?.diagnostic ?? null;
+  report.negative.observations = terminal.counts.observations;
+  report.negative.conclusions = terminal.conclusions.length;
+  report.negative.failedGate = terminal.failedGate.map(row => ({ check: row.check_name, total: row.total, records: row.records }));
+  // Stopped, and stopped for the duplicate key it was seeded to stop on; and no audit
+  // conclusion about any record, which is the half a "the Run failed" assertion misses.
+  report.checks.defectivePopulationRefused =
+    terminal.run.state !== 'COMPLETED'
+    && !['PASS','CONTROL_FAILURE','PENDING_CONFIRMATION'].includes(terminal.result?.outcome)
+    && terminal.counts.observations === 0
+    && terminal.conclusions.length === 0
+    && duplicate !== undefined
+    && duplicate.total >= 1
+    && (duplicate.records ?? []).some(record => String(record).includes('E-000107'));
+  emit('defective-population-refused', report.negative);
+}
+async function facts(runId) {
+  const one = async query => (await query)[0] ?? null;
+  const workspace = await one(sql`SELECT status,mode,workspace_id,attempts,diagnostic FROM run_workspace WHERE run_id=${runId}::uuid`);
+  if (workspace?.workspace_id) { secrets.add(workspace.workspace_id); providerHandle = workspace.workspace_id; }
+  return {
+    run: await one(sql`SELECT state,initiator_id,version_id FROM audit_run WHERE run_id=${runId}::uuid`),
+    workspace: workspace ? { status: workspace.status, mode: workspace.mode, attempts: workspace.attempts, identityLength: workspace.workspace_id?.length ?? 0, diagnostic: workspace.diagnostic } : null,
+    population: await one(sql`SELECT included,excluded,indeterminate,declared_count,retrieved_count,generated_at FROM population_snapshot WHERE run_id=${runId}::uuid`),
+    inspection: await one(sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${runId}::uuid`),
+    result: await one(sql`SELECT outcome,sealed,gate_passed FROM run_result WHERE run_id=${runId}::uuid`),
+    workItems: await sql`SELECT subject_key,state,observations,diagnostic FROM run_work_item WHERE run_id=${runId}::uuid ORDER BY ordinal`,
+    evaluations: await sql`SELECT condition_id,origin,value,confirmation,observation_id FROM run_observation_evaluation WHERE run_id=${runId}::uuid ORDER BY observation_id,condition_id`,
+    counts: await one(sql`SELECT (SELECT count(*)::int FROM run_observation WHERE run_id=${runId}::uuid) AS observations,(SELECT count(*)::int FROM run_evidence WHERE run_id=${runId}::uuid AND kind='screenshot' AND state='REGISTERED') AS frames,(SELECT count(*)::int FROM run_tool_action WHERE run_id=${runId}::uuid) AS tool_actions`),
+    failedGate: await sql`SELECT check_name,total,diagnostics,records FROM run_gate_check WHERE run_id=${runId}::uuid AND outcome<>'PASS'`,
+    openWait: await one(sql`SELECT kind,opened_at,deadline FROM run_wait WHERE run_id=${runId}::uuid AND closed_at IS NULL`),
+    // Per RECORD, not per Run: the aggregate "one C1 Exception" is also true of a build
+    // that flagged the wrong leaver, which is the one thing this acceptance exists to
+    // rule out.
+    conclusions: await sql`
+      SELECT o.population_record_key AS record, e.condition_id, e.value, e.origin, e.confirmation
+      FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id = e.observation_id
+      WHERE e.run_id = ${runId}::uuid ORDER BY o.population_record_key, e.condition_id`,
+    // The Evidence each conclusion stands on, counted by kind through the Observation's
+    // own `evidence_ids`, so a conclusion with nothing registered behind it is visible.
+    grounded: await sql`
+      SELECT o.population_record_key AS record, o.found, o.coverage, o.corroboration,
+        (SELECT count(*)::int FROM run_evidence e WHERE e.run_id = o.run_id AND e.state = 'REGISTERED'
+           AND e.kind = 'screenshot' AND e.evidence_id::text IN (SELECT jsonb_array_elements_text(o.evidence_ids))) AS screenshots,
+        (SELECT count(*)::int FROM run_evidence e WHERE e.run_id = o.run_id AND e.state = 'REGISTERED'
+           AND e.kind = 'structural-snapshot' AND e.evidence_id::text IN (SELECT jsonb_array_elements_text(o.evidence_ids))) AS snapshots
+      FROM run_observation o WHERE o.run_id = ${runId}::uuid ORDER BY o.population_record_key`,
+  };
+}
+try {
+  const catalog = JSON.parse(readFileSync('fixtures/northstar/datasets/systems.json', 'utf8'));
+  const target = catalog.target_systems.find(s => s.id === 'loancore');
+  const source = catalog.population_source_bindings.find(s => s.id === 'leavers-live-acceptance');
+  assert.ok(target && source);
+  const sourceResponse = await fetch(TARGET + source.location_path, { signal: AbortSignal.timeout(20000), redirect: 'error' });
+  assert.equal(sourceResponse.status, 200);
+  const sourceBytes = Buffer.from(await sourceResponse.arrayBuffer());
+  const expectedBytes = readFileSync('fixtures/northstar/generated/leavers-live-acceptance.csv');
+  assert.equal(createHash('sha256').update(sourceBytes).digest('hex'), createHash('sha256').update(expectedBytes).digest('hex'));
+  const servedIds = sourceBytes.toString('utf8').split(/\r?\n/)
+    .filter(line => line && !line.startsWith('#')).slice(1).map(line => line.split(',')[0]).filter(Boolean).sort();
+  assert.deepEqual(servedIds, TRUTH_RECORDS);
+  emit('deployed-fixture-verified', { records: servedIds.length, leavers: servedIds, sourceDigest: createHash('sha256').update(sourceBytes).digest('hex') });
+  const adminAccount = await identity('poc-administrator', 'Acceptance Configuration Administrator');
+  const auditorAccount = await identity('auditor', 'Live Acceptance Auditor');
+  const managerAccount = await identity('audit-manager', 'Live Acceptance Audit Manager');
+  const accounts = { auditor: auditorAccount, manager: managerAccount, admin: adminAccount };
+  report.actors = created.map(({ userId, role }) => ({ userId, role }));
+  const session = { userId: adminAccount.userId, sessionId: `acceptance-setup-${STAMP}` };
+  const binding = await registerPopulationSource({ roles, unitOfWork: new PostgresSourcesUnitOfWork(db), ids }, {
+    session, source: 'platform', correlationId: ids.next(), displayName: SOURCE_NAME, kind: 'versioned-file', location: TARGET + source.location_path,
+    declaredSchema: source.declared_schema, declaredCountMechanism: 'cover-sheet', sensitiveFields: source.sensitive_fields, note: 'Explicit synthetic live acceptance; original negative population unchanged.', status: 'active',
+  }); assert.equal(binding.ok, true);
+  const registration = await registerTargetSystem({ roles, unitOfWork: new PostgresRegistrationsUnitOfWork(db), ids,
+    credentials: new ManifestCredentialProvider(new Map([[target.credential_ref, 'read-only']])), deadlines: new TimerDeadline() }, {
+    session, source: 'platform', correlationId: ids.next(), displayName: TARGET_NAME, kind: 'web', allowedOrigins: [TARGET + target.origin_path], applicationIdentity: '',
+    credentialRef: target.credential_ref, permittedActions: target.permitted_actions, attributeLabelPatterns: target.attribute_label_patterns, secondaryKey: target.secondary_key,
+    authenticationDestination: TARGET + target.authentication_destination_path, note: 'Separate synthetic live acceptance registration.', status: 'active',
+  }); assert.equal(registration.ok, true);
+  report.bindingId = binding.bindingId; report.registrationId = registration.registrationId;
+  emit('audited-acceptance-configuration-created');
+  browser = await chromium.launch({ headless: true, env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !/secret|password|token|api.?key|database/i.test(key))) });
+  auditorContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  auditor = await auditorContext.newPage(); auditor.setDefaultTimeout(40000);
+  await signIn(auditor, auditorAccount); emit('auditor-signed-in');
+  const clean = await authorApproveAndRun({ control: CONTROL, sourceName: SOURCE_NAME, prefix: '', accounts });
+  report.procedureId = clean.procedureId; report.runId = clean.runId;
   phase = 'watch-inspection';
   await poll(() => runs.findRun(report.runId), row => row?.state !== 'QUEUED');
   await auditor.reload({ waitUntil: 'domcontentloaded' });
@@ -284,19 +401,85 @@ try {
     if (!['QUEUED','RUNNING','PAUSED'].includes(state)) break;
     await delay(2000);
   }
+  // What Watch actually showed, in numbers the owner can act on: how many distinct screens
+  // arrived, over how long, and the longest gap between two of them. The frames are the
+  // platform-owned Replay asset set (AD-17), so this is a screen per captured Tool Action
+  // rather than a video of the browser; the decision about whether that is enough belongs
+  // to the owner, and it needs a measurement rather than an impression.
+  const frameTimes = report.frames.map(frame => Date.parse(frame.at)).sort((a, b) => a - b);
+  const gaps = frameTimes.slice(1).map((at, index) => at - frameTimes[index]);
+  report.watch = {
+    framesDelivered: report.frames.length,
+    distinctScreens: new Set(report.frames.map(frame => frame.digest)).size,
+    screensShownToTheViewer: captures,
+    spanSeconds: frameTimes.length > 1 ? Math.round((frameTimes.at(-1) - frameTimes[0]) / 1000) : 0,
+    longestGapSeconds: gaps.length > 0 ? Math.round(Math.max(...gaps) / 1000) : null,
+    medianGapSeconds: gaps.length > 0 ? Math.round(gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] / 1000) : null,
+  };
+  emit('watch-observed', report.watch);
+  // A Run that stopped to ask a human is not a Run that concluded, and the checks below
+  // would read as a pile of false facts rather than as the one thing that happened. The
+  // KIND is a closed vocabulary; the question and its candidates are retrieved content and
+  // never enter a report this workflow uploads.
+  if (report.facts.run.state === 'AWAITING_AUDITOR') {
+    report.awaitingAuditor = report.facts.openWait === null
+      ? { kind: null, note: 'The Run is AWAITING_AUDITOR and no open wait could be read.' }
+      : { kind: report.facts.openWait.kind, openedAt: report.facts.openWait.opened_at, deadline: report.facts.openWait.deadline };
+    emit('run-stopped-to-ask-a-human', report.awaitingAuditor);
+  }
   await auditor.goto(`${BASE}/runs/${report.runId}`, { waitUntil: 'domcontentloaded' });
   await shot(auditor, '05-result');
+  const tabText = {};
   for (const [label, slug] of [['Execution Timeline','timeline'],['Evidence','evidence']]) {
     await auditor.getByRole('link', { name: label, exact: true }).click();
     await auditor.waitForURL(`${BASE}/runs/${report.runId}/${slug}`);
     await shot(auditor, `06-${slug}`);
+    tabText[slug] = await auditor.locator('body').innerText();
   }
+  // Every leaver the Run inspected is named on the Timeline, beside the Tool Actions that
+  // inspected it. A Timeline that shows the Run but not the records is not an audit trail.
+  report.checks.timelineNamesEveryRecord = TRUTH_RECORDS.every(record => tabText.timeline.includes(record));
+  // An Evidence link that 404s or refuses is an audit trail with a dead end. The grounding
+  // links go through the worker-signed read grant, so opening one exercises the whole path.
+  phase = 'evidence-links';
+  const groundingLinks = await auditor.locator(`a[href^="/runs/${report.runId}/evidence/"]`)
+    .evaluateAll(nodes => [...new Set(nodes.map(node => node.getAttribute('href')))]);
+  report.evidenceLinks = [];
+  for (const href of groundingLinks.slice(0, 6)) {
+    await auditor.goto(BASE + href, { waitUntil: 'domcontentloaded' });
+    const body = await auditor.locator('body').innerText();
+    // The inspector states EVERY read failure under one banner title, and the route
+    // boundary has EXPERIENCE.md's own sentence. Both are exact strings taken from the
+    // pages themselves: a loose phrase nobody renders would make this check unable to
+    // fail, which is the defect this whole pass is about.
+    const failed = body.includes('Snapshot cell unavailable')
+      || body.includes("Couldn't load this page. Nothing was changed.");
+    const opened = !failed && await auditor.getByRole('heading', { level: 1 }).count() > 0;
+    report.evidenceLinks.push({ href, opened });
+  }
+  report.checks.evidenceLinksOpen = report.evidenceLinks.length > 0 && report.evidenceLinks.every(link => link.opened);
+  await shot(auditor, '06-evidence-opened');
+  // Back to the Run before the Replay tab: a refused inspector page would otherwise leave
+  // the browser somewhere the remaining checks cannot navigate from, and one failed link
+  // would cost the checks after it rather than only its own.
+  await auditor.goto(`${BASE}/runs/${report.runId}`, { waitUntil: 'domcontentloaded' });
   report.facts = await facts(report.runId);
   const final = report.facts;
   report.checks.threeRecordsInspected = final.counts.observations === 3 && final.workItems.length === 3 && final.workItems.every(item => item.observations > 0);
   report.checks.populationValid = final.population?.included === 3 && final.population.indeterminate === 0;
   report.checks.gatePassed = final.result?.gate_passed === true;
   report.checks.expectedEvaluations = final.evaluations.length === 6 && final.evaluations.filter(e => e.condition_id === 'C1' && e.value === 'EXCEPTION').length === 1 && final.evaluations.filter(e => e.condition_id === 'C2' && e.value === 'COMPLIANT').length === 3;
+  // WHICH leaver, not how many. A disabled leaver must not become an Exception and a
+  // leaver retaining access must.
+  report.conclusions = final.conclusions.map(row => ({ record: row.record, condition: row.condition_id, value: row.value, origin: row.origin, confirmation: row.confirmation }));
+  report.disagreements = disagreementsWithTruth(TRUTH, final.conclusions);
+  report.checks.conclusionsMatchTruth = report.disagreements.length === 0;
+  emit('conclusions-compared-with-truth', { disagreements: report.disagreements.length, conclusions: report.conclusions });
+  // Every conclusion stands on Evidence the platform froze and registered: the page the
+  // agent read, and the structural snapshot the attributes are grounded in.
+  report.grounding = final.grounded.map(row => ({ record: row.record, found: row.found, coverage: row.coverage, corroboration: row.corroboration, screenshots: row.screenshots, snapshots: row.snapshots }));
+  report.checks.evidencePerConclusion = report.grounding.length === TRUTH_RECORDS.length
+    && report.grounding.every(row => row.screenshots > 0 && row.snapshots > 0 && row.coverage === 'COVERED' && row.corroboration === 'MATCHED');
   if (['COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED'].includes(final.run.state)) {
     phase = 'replay';
     await auditor.getByRole('link', { name: 'Replay', exact: true }).click();
@@ -313,9 +496,16 @@ try {
     } else { await shot(auditor, '07-replay-empty'); report.checks.replayPlayback = false; }
   }
   report.checks.workspaceReleased = (await poll(() => facts(report.runId), f => f.workspace?.status === 'RELEASED', 60000)).workspace.status === 'RELEASED';
-  report.checks.providerHandleContained = true;
+  // `shot()` throws if any scanned page carries the provider's session identity, so the
+  // containment is enforced by the scans themselves. What the check adds is that the
+  // scans HAPPENED and that there was a real identity to look for: a hard-coded `true`
+  // read as coverage for an identity nothing had ever seen.
+  report.checks.providerHandleContained = providerHandle !== null && providerHandle.length > 0 && containmentScans >= 3;
+  report.containment = { identityKnown: providerHandle !== null, identityLength: providerHandle?.length ?? 0, pagesScanned: containmentScans };
   report.checks.expectedPendingReview = final.result?.outcome === 'PENDING_CONFIRMATION' && final.result.sealed === false;
-  report.accepted = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','replayPlayback','workspaceReleased','providerHandleContained','expectedPendingReview'].every(name => report.checks[name] === true);
+  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','workspaceReleased','providerHandleContained','expectedPendingReview'];
+  if (process.env.ACCEPTANCE_NEGATIVE_CASE === 'true') { await negativeCase(); report.required.push('defectivePopulationRefused'); }
+  report.accepted = report.required.every(name => report.checks[name] === true);
   if (!report.accepted) process.exitCode = 1;
   emit('acceptance-result', { accepted: report.accepted, checks: report.checks });
 } catch (error) {
@@ -327,17 +517,19 @@ try {
   process.exitCode = 1;
 } finally {
   // Only the synthetic Run this invocation acknowledged can be cancelled here.
-  if (report.runId) {
-    const current = await runs.findRun(report.runId).catch(() => null);
+  report.cancelCleanup = [];
+  for (const runId of started) {
+    const current = await runs.findRun(runId).catch(() => null);
     const actor = created.find(account => account.role === 'auditor');
-    if (actor && current && ['QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR'].includes(current.state)) {
-      try {
-        await cancelRun({ roles, unitOfWork: new PostgresRunsUnitOfWork(db), ids, clock: new SystemClock() }, {
-          session: { userId: actor.userId, sessionId: `acceptance-cleanup-${STAMP}` }, request: { runId: report.runId },
-        });
-        report.cancelCleanup = true;
-      } catch { report.cancelCleanup = false; }
-    }
+    if (!actor || !current || !['QUEUED','RUNNING','PAUSED','AWAITING_AUDITOR'].includes(current.state)) continue;
+    try {
+      const canceled = await cancelRun({ roles, unitOfWork: new PostgresRunsUnitOfWork(db), repository: new PostgresRunCancellationRepository(db), ids, clock: new SystemClock() }, {
+        session: { userId: actor.userId, sessionId: `acceptance-cleanup-${STAMP}` },
+        request: { runId, reason: 'Bounded synthetic acceptance observer cleanup' },
+      });
+      report.cancelCleanup.push({ runId, canceled: canceled.ok });
+      if (canceled.ok) await poll(() => facts(runId), f => f.workspace?.status === 'RELEASED' || (f.workspace === null && ['CANCELED','INCONCLUSIVE','RUN_FAILED','COMPLETED'].includes(f.run?.state)), 90000);
+    } catch { report.cancelCleanup.push({ runId, canceled: false }); }
   }
   await browser?.close().catch(() => {});
   report.identityCleanup = [];

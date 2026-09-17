@@ -34,3 +34,9 @@ playwright/.auth/
 # lesson already recorded about staging while a subagent is planting and
 # reverting violations. Stage explicit paths; keep this ignored either way.
 .claude/worktrees/
+
+# Evidence written by the deployed-LoanCore acceptance harness
+# (`scripts/verify-deployed-loancore.mjs`). Screenshots and a report of one
+# synthetic Run; CI uploads it as an artifact. A local dry-run leaves it in the
+# tree, where a `git add -A` would sweep it in.
+deployed-loancore-evidence/

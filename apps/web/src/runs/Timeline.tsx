@@ -200,8 +200,21 @@ function WorkItemRow({
       >
         <span className="ls-timeline__marker">Work Item</span>
         <span className="ls-timeline__name">
-          <span className="ls-timeline__title">{item.displayName}</span>
+          {/*
+            The record, then the system it was inspected in. `displayName` is the TARGET
+            SYSTEM's name and is identical on every Work Item of a Run, so a three-record
+            Run read as three rows called "LoanCore" with no way to tell which leaver each
+            one was about — on the one surface an auditor follows from record to
+            conclusion. A Work Item with no subject (P-4 inspects a page, not a
+            population) keeps the system name as its title rather than gaining a dash.
+          */}
+          <span className="ls-timeline__title">
+            {item.subjectKey === null
+              ? item.displayName
+              : <span className="ls-mono">{item.subjectKey}</span>}
+          </span>
           <span className="ls-timeline__detail">
+            {item.subjectKey === null ? null : <>{item.displayName} · </>}
             {countText(item.observations)} Observations · {countText(item.attempts)} attempts ·{' '}
             {countText(item.cycles)} cycles
             {item.diagnostic === null ? null : (
