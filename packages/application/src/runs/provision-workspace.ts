@@ -2,6 +2,7 @@ import {
   runStopFor,
   sessionStepAttemptBudget,
   workspaceRequirement,
+  workspaceReference,
   type RunRecord,
 } from '@intellifin/domain';
 import type { Clock, UuidV7Generator } from '../audit/clock.js';
@@ -43,10 +44,9 @@ import { SECURITY_DENIED_EVENT } from './run-gate.js';
  * `RUN_FAILED` with its workspace released. **Story 4.2 takes over here**: it is what
  * signs in through this workspace, and what makes the plan executable past this point.
  *
- * Nothing in this file can carry a secret. `WorkspaceRef` holds a Run id, an opaque
- * provider session identifier and the mode; there is no field for an API key, a session
- * token or a wire-protocol endpoint, so no checkpoint, audit payload, Timeline event, log
- * field or error message here has anywhere to pick one up from.
+ * `WorkspaceRef.workspaceId` is secret operational state: Solari signs session IDs
+ * used as connection capabilities. Keep it on the worker checkpoint for reattach and
+ * release, never in audit payloads, telemetry, public read models or viewer props.
  */
 
 export interface WorkspaceDependencies {
@@ -237,7 +237,7 @@ class StaleReleaseFailed extends Error {
 
 interface EventFields {
   readonly stepId?: string;
-  readonly workspaceId?: string;
+  readonly workspaceReference?: string;
   readonly mode?: string;
   readonly attempt?: number;
   /**
@@ -275,10 +275,9 @@ async function event(
       attempts: checkpoint.attempts,
       stepId: checkpoint.stepId,
       mode: checkpoint.mode,
-      // The provider session identifier, so a provider-side session is correlatable with
-      // this Run. Opaque and not a capability — releasing a Solari session still needs the
-      // deployment's API key — and the endpoint that WOULD be one is never recorded.
-      ...(checkpoint.workspaceId === null ? {} : { workspaceId: checkpoint.workspaceId }),
+      // Solari signed session IDs are capabilities. Only the platform reference may
+      // enter the immutable chain; the provider handle stays on the worker checkpoint.
+      workspaceReference: workspaceReference(run.runId),
       // The provider's hard deadline, so the chain says WHY a workspace was replaced.
       ...(checkpoint.expiresAt === null ? {} : { expiresAt: checkpoint.expiresAt }),
       ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),

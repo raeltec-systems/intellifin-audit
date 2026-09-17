@@ -2,6 +2,7 @@ import {
   RECORDING_COPIED_EVENT,
   REPLAY_RECORDING_MEDIA_TYPE,
   replayRecordingObjectKey,
+  workspaceReference,
   type ExecutablePlan,
   type ReplayRecording,
   type ReplayRecordingDiagnostic,
@@ -183,7 +184,7 @@ export async function copyRecording(
     payload: {
       // Identities, a size and a digest. No endpoint, no signed URL, no provider message:
       // the chain is immutable, so what enters it can never be taken out.
-      workspaceId: input.ref.workspaceId,
+      workspaceReference: workspaceReference(input.run.runId),
       state: recording.state,
       size: recording.size,
       digest: recording.digest,

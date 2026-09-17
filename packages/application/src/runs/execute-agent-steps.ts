@@ -10,6 +10,7 @@ import {
   WEB_TREE_MEDIA_TYPE,
   withinFrozenOrigin,
   workspaceRequirement,
+  workspaceReference,
   type ClassifiedTarget,
   type ExecutablePlan,
   type RunLimitCause,
@@ -332,7 +333,7 @@ interface EventFields {
   readonly parameter?: string;
   readonly status?: number;
   readonly attempt?: number;
-  readonly workspaceId?: string;
+  readonly workspaceReference?: string;
 }
 
 function fieldsOf(fields: EventFields): Record<string, unknown> {
@@ -689,7 +690,7 @@ export async function executeAgentSteps(
     await context.saveCheckpoint(checkpoint, 'RUNNING');
     for (const step of steps) await context.saveSessionStep(step);
     await event(context, 'agent-execution-started', 'RUNNING', checkpoint, {
-      workspaceId: context.workspace!.workspaceId,
+      workspaceReference: workspaceReference(run.runId),
     });
     return {
       proceed: false as const,

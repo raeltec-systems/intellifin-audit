@@ -12,6 +12,7 @@ import type {
 } from '@intellifin/application';
 import {
   ZERO_HASH,
+  assertNoWorkspaceCapabilities,
   assertAuditHash,
   canonicalizeAuditEvent,
   createCanonicalAuditEvent,
@@ -62,6 +63,7 @@ async function appendAuditEvent(
   draft: AuditEventDraft,
 ): Promise<AuditEventRecord> {
   validateAuditEventDraft(draft);
+  assertNoWorkspaceCapabilities(draft.payload);
   const aggregateId = draft.aggregateId ?? 'platform';
 
   await transaction

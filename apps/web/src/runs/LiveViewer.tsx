@@ -52,7 +52,7 @@ export interface LiveViewerProps {
   readonly chrome: LiveViewChrome | null;
   /** What the chrome says out loud when a screen reader reaches it. */
   readonly stateSentence: string;
-  readonly workspace: { readonly mode: string; readonly workspaceId: string | null; readonly status: string } | null;
+  readonly workspace: { readonly mode: string; readonly reference: string | null; readonly status: string } | null;
   readonly stepsStarted: number;
   readonly plannedSteps: number | null;
   readonly frame: LiveViewerFrame | null;
@@ -78,7 +78,7 @@ export interface LiveViewerProps {
 export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
   readonly chrome: LiveViewChrome | null;
   readonly stateSentence: string;
-  readonly workspace: { readonly mode: string; readonly workspaceId: string | null } | null;
+  readonly workspace: { readonly mode: string; readonly reference: string | null } | null;
   readonly counter: string;
 }): React.JSX.Element {
   return (
@@ -93,7 +93,7 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
       <span className="ls-session__workspace">
         {workspace === null
           ? 'No Agent Workspace'
-          : `${workspaceModeWord(workspace.mode)}${workspace.workspaceId === null ? '' : ` · ${workspace.workspaceId}`}`}
+          : `${workspaceModeWord(workspace.mode)}${workspace.reference === null ? '' : ` · ${workspace.reference}`}`}
       </span>
       <span className="ls-session__note">{SESSION_ISOLATION_NOTE}</span>
       <span className="ls-session__counter">{counter}</span>

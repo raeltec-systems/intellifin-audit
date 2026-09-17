@@ -155,7 +155,7 @@ export default async function RunReplayPage({
         workspace={
           timeline.workspace === null
             ? null
-            : { mode: timeline.workspace.mode, workspaceId: timeline.workspace.workspaceId }
+            : { mode: timeline.workspace.mode, reference: timeline.workspace.reference }
         }
         frames={views}
         framesTotal={frames.total}

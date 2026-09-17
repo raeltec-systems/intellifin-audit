@@ -48,7 +48,7 @@ function render(input: Partial<React.ComponentProps<typeof ReplayViewer>> = {}):
   return renderToStaticMarkup(React.createElement(ReplayViewer, {
     runId: RUN_ID,
     stateSentence: 'Session REPLAY. This Run ended: COMPLETED.',
-    workspace: { mode: 'solari', workspaceId: 'ws-1' },
+    workspace: { mode: 'solari', reference: 'workspace-test-run' },
     frames: [frameView(1), frameView(2), frameView(3)],
     framesTotal: 3,
     plannedSteps: 4,

@@ -26,6 +26,8 @@ import {
   CryptoUuidV7Generator,
   DrizzleRoleRepository,
   DrizzleRunRepository,
+  DrizzleRunDetailRepository,
+  PostgresAuditChainReader,
   DrizzleRunStopReader,
   PostgresProceduresUnitOfWork,
   PostgresRunsUnitOfWork,
@@ -283,6 +285,11 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
     expect(await releaseWorkspace(deps(execution), job.runId)).toEqual({ released: true });
     expect(released).toBe(true);
     expect(await row(job.runId)).toMatchObject({ status: 'RELEASED', workspace_id: workspaceId });
+    const publicTimeline = await new DrizzleRunDetailRepository(db).readTimeline(job.runId);
+    expect(publicTimeline.workspace).toMatchObject({ reference: `workspace-${job.runId}`, status: 'RELEASED' });
+    expect(JSON.stringify(publicTimeline)).not.toContain(workspaceId);
+    expect(JSON.stringify(await events(job.runId))).not.toContain(workspaceId);
+    expect((await new PostgresAuditChainReader(db).verify(job.runId)).valid).toBe(true);
   });
 
   it('preserves a real rolled-back OPEN failure after cleanup and on the Run stop reader', async () => {
@@ -363,7 +370,7 @@ describe.skipIf(!url)('the isolated Agent Workspace', () => {
     expect(workspace[0]?.payload).toMatchObject({
       diagnostic: 'workspace-created',
       mode: 'local',
-      workspaceId: stored?.workspace_id,
+      workspaceReference: `workspace-${job.runId}`,
     });
     // Nothing credential-shaped, and no wire-protocol endpoint, can be in the chain.
     expect(JSON.stringify(workspace[0]?.payload)).not.toMatch(/ws:\/\/|wss:\/\/|apiKey|token/i);

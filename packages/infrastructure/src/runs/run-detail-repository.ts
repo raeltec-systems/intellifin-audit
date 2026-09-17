@@ -17,7 +17,7 @@ import type {
   SystemOutcome,
 } from '@intellifin/domain';
 import { observationAbsenceDigest } from '@intellifin/application';
-import { isObservationAbsenceProof, isObservationQueryKey, isRunResultPublication } from '@intellifin/domain';
+import { isObservationAbsenceProof, isObservationQueryKey, isRunResultPublication, workspaceReference } from '@intellifin/domain';
 import type { Database, Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import {
@@ -316,8 +316,8 @@ export interface RunTimelineRead {
     | (RunTimelineStage & {
         readonly stepId: string;
         readonly mode: string;
-        /** The provider's opaque session identity (Story 4.1): correlatable, never a capability. */
-        readonly workspaceId: string | null;
+        /** Public platform reference. Provider handles never leave the worker-side store. */
+        readonly reference: string;
         readonly releasedAt: string | null;
       })
     | null;
@@ -890,7 +890,12 @@ export class DrizzleRunDetailRepository {
   async readTimeline(runId: string, limit = RUN_DETAIL_PAGE_SIZE): Promise<RunTimelineRead> {
     const empty: RunTimelineRead = { workspace: null, population: null, execution: null, sessionSteps: [], workItems: [], stepExecutions: { rows: [], total: 0 }, toolActions: { rows: [], total: 0 } };
     if (!isUuidText(runId)) return empty;
-    const [workspace] = await this.db.select().from(runWorkspace).where(eq(runWorkspace.runId, runId));
+    // Explicit projection: do not even read the provider capability for an auditor surface.
+    const [workspace] = await this.db.select({
+      status: runWorkspace.status, attempts: runWorkspace.attempts, diagnostic: runWorkspace.diagnostic,
+      stepId: runWorkspace.stepId, mode: runWorkspace.mode,
+      startedAt: runWorkspace.startedAt, releasedAt: runWorkspace.releasedAt,
+    }).from(runWorkspace).where(eq(runWorkspace.runId, runId));
     const [population] = await this.db.select().from(populationExecution).where(eq(populationExecution.runId, runId));
     const [execution] = await this.db.select().from(runExecution).where(eq(runExecution.runId, runId));
     const sessionSteps = await this.db
@@ -912,7 +917,7 @@ export class DrizzleRunDetailRepository {
             diagnostic: workspace.diagnostic,
             stepId: workspace.stepId,
             mode: workspace.mode,
-            workspaceId: workspace.workspaceId,
+            reference: workspaceReference(runId),
             startedAt: workspace.startedAt.toISOString(),
             releasedAt: workspace.releasedAt === null ? null : workspace.releasedAt.toISOString(),
           }

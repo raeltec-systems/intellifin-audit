@@ -27,7 +27,7 @@ function props(overrides: Partial<LiveViewerProps> = {}): LiveViewerProps {
     runId: RUN_ID,
     chrome: 'LIVE',
     stateSentence: 'Session LIVE.',
-    workspace: { mode: 'solari', workspaceId: 'sess_5f2a', status: 'OPEN' },
+    workspace: { mode: 'solari', reference: 'workspace-test-run', status: 'OPEN' },
     stepsStarted: 3,
     plannedSteps: 8,
     frame: null,
@@ -62,7 +62,7 @@ describe('the session viewer chrome', () => {
 
   it('states the workspace mode, its identity and the isolation note', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props()));
-    expect(html).toContain('sess_5f2a');
+    expect(html).toContain('workspace-test-run');
     expect(html).toContain(SESSION_ISOLATION_NOTE);
   });
 

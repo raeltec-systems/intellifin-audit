@@ -616,7 +616,7 @@ describe('provisionWorkspace', () => {
     expect(event?.eventType).toBe('lifecycle.agent-workspace');
     expect(event?.payload).toMatchObject({
       diagnostic: 'workspace-created',
-      workspaceId: 'ws-1',
+      workspaceReference: `workspace-${RUN.runId}`,
       mode: 'solari',
       stepId: 'session-1',
     });
@@ -706,7 +706,7 @@ describe('provisionWorkspace', () => {
     expect(state.run?.state).toBe('RUNNING');
     expect(state.events.at(-1)?.payload).toMatchObject({
       diagnostic: 'workspace-release-failed',
-      workspaceId: 'ws-1',
+      workspaceReference: `workspace-${RUN.runId}`,
     });
   });
 
@@ -934,7 +934,7 @@ describe('releaseWorkspace', () => {
     });
     expect(state.events.at(-1)?.payload).toMatchObject({
       diagnostic: 'workspace-expired',
-      workspaceId: 'ws-1',
+      workspaceReference: `workspace-${RUN.runId}`,
     });
   });
 

@@ -1,3 +1,15 @@
+## 2026-09-17 — Provider workspace handles are capabilities, not display IDs
+
+Solari's browser connection URLs use the signed session ID as their capability. Keep
+`WorkspaceRef.workspaceId` only in operational worker state for reattach/release.
+Public Timeline reads explicitly exclude that column and expose `workspace-<run-id>`;
+Live and Replay receive only that platform reference. New workspace/access/recording
+events carry the reference, and the append writer rejects capability-shaped payload
+keys. This policy is append-only: canonicalization and historical chain verification
+are unchanged. Do not rewrite old immutable events to hide an expired handle. Existing
+public event reads project selected fields (the live channel sends sequence numbers),
+not arbitrary historical payloads. Never enable a raw provider-control URL as a viewer.
+
 ## 2026-09-16 — A provider success is not a committed workspace
 
 The provider catch did not enclose the OPEN checkpoint transaction. A database CHECK

@@ -206,7 +206,7 @@ export default async function RunLivePage({
               ? null
               : {
                   mode: timeline.workspace.mode,
-                  workspaceId: timeline.workspace.workspaceId,
+                  reference: timeline.workspace.reference,
                   status: timeline.workspace.status,
                 }
           }

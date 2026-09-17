@@ -33,7 +33,7 @@ export interface ReplayFrameView extends LiveViewerFrame {
 export interface ReplayViewerProps {
   readonly runId: string;
   readonly stateSentence: string;
-  readonly workspace: { readonly mode: string; readonly workspaceId: string | null } | null;
+  readonly workspace: { readonly mode: string; readonly reference: string | null } | null;
   readonly frames: readonly ReplayFrameView[];
   /** The exact number of frames this Run holds; larger than `frames` when the read bound. */
   readonly framesTotal: number;

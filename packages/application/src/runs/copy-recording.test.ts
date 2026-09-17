@@ -133,7 +133,7 @@ describe('copying the provider recording at Run end', () => {
     expect(event?.outcome).toBe('success');
     // Identities, a size and a digest. No endpoint, no signed URL, no provider message.
     expect(Object.keys(event?.payload ?? {}).sort()).toEqual(
-      ['diagnostic', 'digest', 'size', 'state', 'workspaceId'].sort(),
+      ['diagnostic', 'digest', 'size', 'state', 'workspaceReference'].sort(),
     );
   });
 
