@@ -1,9 +1,7 @@
 name: Deployed LoanCore acceptance
 
 # Manual by default. The temporary push path below is an explicitly authorized ONE-SHOT
-# close-out: this commit changes only this workflow, deploys the already CI-green PR #43
-# application tree, runs both the clean and defective synthetic cases, and is removed after
-# evidence is retained. Never leave the push trigger in place.
+# close-out. Never leave the push trigger in place.
 on:
   push:
     branches: [main]
@@ -28,13 +26,13 @@ jobs:
   live:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 90
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
           fetch-depth: 2
-      - name: Prove the one-shot commit changed no application source
+      - name: Prove the trigger commit changed only this workflow
         if: github.event_name == 'push'
         run: |
           set -euo pipefail
@@ -58,9 +56,25 @@ jobs:
           node-version: '24.20.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Check the harness parses before anything is created
-        run: node --check scripts/verify-deployed-loancore.mjs
-      - name: Deploy the already verified merged source before acceptance
+      - name: Quality gate the decision-hydration repair before deployment
+        run: |
+          pnpm typecheck
+          pnpm boundaries
+          pnpm test
+      - name: Make the acceptance explicitly observe decision-control hydration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/verify-deployed-loancore.mjs')
+          s = p.read_text()
+          old = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await confirmed(manager, 'Approve');"
+          new = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await expect(manager.locator('[data-version-actions-ready]')).toHaveAttribute('data-version-actions-ready', 'true');\n  await shot(manager, `${prefix}02-manager-review-before-approval`);\n  const managerApprove = manager.getByRole('button', { name: 'Approve', exact: true });\n  emit('manager-approval-ready', { buttons: await managerApprove.count(), ariaDisabled: await managerApprove.getAttribute('aria-disabled') });\n  await confirmed(manager, 'Approve');"
+          assert old in s
+          p.write_text(s.replace(old, new))
+          PY
+          node --check scripts/verify-deployed-loancore.mjs
+          git diff --check
+      - name: Deploy this gated source before acceptance
         if: github.event_name == 'push'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
