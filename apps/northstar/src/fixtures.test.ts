@@ -452,3 +452,34 @@ describe('the published artifact map', () => {
     }
   });
 });
+
+
+describe('the separate live LoanCore population', () => {
+  const live = JSON.parse(readFileSync(join(FIXTURES_ROOT, 'datasets', 'leavers-live-acceptance.json'), 'utf8')) as {
+    rows: { employee_id: string; employment_status: string; termination_effective_date: string }[];
+  };
+  it('contains three unique, complete canonical rows and preserves the negative source', () => {
+    expect(live.rows.map(row => row.employee_id)).toEqual(['E-000102', 'E-000103', 'E-000105']);
+    expect(new Set(live.rows.map(row => row.employee_id)).size).toBe(3);
+    for (const row of live.rows) {
+      expect(datasets.leavers().rows.filter(source => source.employee_id === row.employee_id)).toEqual([row]);
+      expect(row.employment_status).toBe('Terminated');
+      expect(row.termination_effective_date).toMatch(/^2026-08-\d{2}$/);
+      expect(datasets.loancore().accounts.filter(account => account.employee_id === row.employee_id)).toHaveLength(1);
+    }
+    expect(datasets.leavers().rows.filter(row => row.employee_id === 'E-000107')).toHaveLength(2);
+  });
+  it('has disabled and active accounts without adversarial page behavior', () => {
+    const accounts = live.rows.map(row => datasets.loancore().accounts.find(account => account.employee_id === row.employee_id)!);
+    expect(accounts.map(account => account.status)).toEqual(['Disabled', 'Active', 'Disabled']);
+    expect(accounts.every(account => account.page_behaviour === 'normal')).toBe(true);
+  });
+  it('publishes only the HR source and its declaration, never the answer oracle', () => {
+    expect(ARTIFACTS.has('leavers-live-acceptance.csv')).toBe(true);
+    expect(ARTIFACTS.has('leavers-live-acceptance.cover-sheet.json')).toBe(true);
+    expect(ARTIFACTS.has('p-1-live-acceptance.json')).toBe(false);
+    expect(readFileSync(join(GENERATED, 'leavers-live-acceptance.csv'), 'utf8'))
+      .not.toMatch(/COMPLIANT|EXCEPTION|CONTROL_FAILURE|PENDING_CONFIRMATION/);
+    expect(readSheet('leavers-live-acceptance.cover-sheet.json').row_count).toBe(3);
+  });
+});

@@ -1,0 +1,49 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "dataset_id": "leavers-live-acceptance",
+  "title": "Leaver access — separate live acceptance population",
+  "generation": "2026-09-01.live-acceptance-1",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "declared_schema": [
+    "employee_id",
+    "full_name",
+    "department",
+    "employment_status",
+    "termination_effective_date",
+    "manager"
+  ],
+  "note": "Separate canonical HR rows. The full adversarial export is unchanged. No target findings in this source.",
+  "rows": [
+    {
+      "employee_id": "E-000102",
+      "full_name": "Bwalya Tembo",
+      "department": "Servicing",
+      "employment_status": "Terminated",
+      "termination_effective_date": "2026-08-04",
+      "manager": "Bright Chanda"
+    },
+    {
+      "employee_id": "E-000103",
+      "full_name": "Chipo Zulu",
+      "department": "Originations",
+      "employment_status": "Terminated",
+      "termination_effective_date": "2026-08-05",
+      "manager": "Dalitso Phiri"
+    },
+    {
+      "employee_id": "E-000105",
+      "full_name": "Esther Kabwe",
+      "department": "Collections",
+      "employment_status": "Terminated",
+      "termination_effective_date": "2026-08-07",
+      "manager": "Fiona Mulenga"
+    }
+  ]
+}

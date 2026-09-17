@@ -1,0 +1,5 @@
+# SYNTHETIC-NORTHSTAR-FIXTURE | Northstar Financial Group | Leaver access — separate live acceptance population | generation 2026-09-01.live-acceptance-1
+employee_id,full_name,department,employment_status,termination_effective_date,manager
+E-000102,Bwalya Tembo,Servicing,Terminated,2026-08-04,Bright Chanda
+E-000103,Chipo Zulu,Originations,Terminated,2026-08-05,Dalitso Phiri
+E-000105,Esther Kabwe,Collections,Terminated,2026-08-07,Fiona Mulenga

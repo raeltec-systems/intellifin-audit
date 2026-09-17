@@ -201,6 +201,25 @@
       "declared_count_mechanism": "cover-sheet",
       "sensitive_fields": [],
       "note": "The P-4 population."
+    },
+    {
+      "id": "leavers-live-acceptance",
+      "display_name": "Leavers — live acceptance (three canonical records)",
+      "kind": "versioned-file",
+      "location_path": "/files/leavers-live-acceptance.csv",
+      "declared_schema": [
+        "employee_id",
+        "full_name",
+        "department",
+        "employment_status",
+        "termination_effective_date",
+        "manager"
+      ],
+      "declared_count_mechanism": "cover-sheet",
+      "sensitive_fields": [
+        "full_name"
+      ],
+      "note": "Separate complete population for LoanCore browser acceptance. Full export preserved for negative tests."
     }
   ]
 }

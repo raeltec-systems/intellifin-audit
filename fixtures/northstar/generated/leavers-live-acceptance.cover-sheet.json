@@ -1,0 +1,44 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "title": "Leaver access — separate live acceptance population",
+  "source": "leavers-live-acceptance",
+  "covers": "leavers-live-acceptance.csv",
+  "generation": "2026-09-01.live-acceptance-1",
+  "generated_at": "2026-09-01T00:00:00Z",
+  "effective_period": {
+    "from": "2026-08-01",
+    "to": "2026-08-31"
+  },
+  "complete": true,
+  "row_count": 3,
+  "declared_schema": [
+    "employee_id",
+    "full_name",
+    "department",
+    "employment_status",
+    "termination_effective_date",
+    "manager"
+  ],
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "8545e1932953b4fe05240e2b4a06f51c31adcf3344be9f89c1c48b27be28ba56"
+  },
+  "format": {
+    "media_type": "text/csv",
+    "encoding": "utf-8",
+    "comment_prefix": "#",
+    "header_line": 2,
+    "line_terminator": "\\n"
+  },
+  "signature": {
+    "scheme": "synthetic-hmac-sha256",
+    "key_id": "northstar-cover-sheet-2026",
+    "key_is_published": true,
+    "value": "61723f060c9b94f70451b5c302fdd6639655e8d54922e2f1ef845e106fc31e7f"
+  },
+  "produced_by": "Python fixtures/northstar/generate.py (standard library only)"
+}

@@ -1,0 +1,21 @@
+{
+  "synthetic": {
+    "marker": "SYNTHETIC-NORTHSTAR-FIXTURE",
+    "organization": "Northstar Financial Group",
+    "statement": "Every value in this file is invented. No production data, no personal data, no real person, no real address and no real domain. Every origin is .synthetic.invalid or a loopback port."
+  },
+  "scope": "Separate three-record population, LoanCore, August 2026. C1 exact Disabled/Active; C2 explicit canonical privilege policy. No 24-hour condition is asserted.",
+  "expected_c1": {
+    "E-000102": "COMPLIANT",
+    "E-000103": "EXCEPTION",
+    "E-000105": "COMPLIANT"
+  },
+  "expected_c2_with_canonical_policy": {
+    "E-000102": "COMPLIANT",
+    "E-000103": "COMPLIANT",
+    "E-000105": "COMPLIANT"
+  },
+  "expected_outcome_after_required_human_confirmation": "CONTROL_FAILURE",
+  "inspection_count": 3,
+  "note": "Independent oracle. Never serve to, import into, or quote to the audit agent."
+}

@@ -276,6 +276,20 @@ def main() -> int:
         ),
     )
 
+    # Distinct acceptance source; no repair of the negative fixture.
+    live = read_dataset("leavers-live-acceptance.json")
+    live_schema = live["declared_schema"]
+    live_rows = [[row[field] for field in live_schema] for row in live["rows"]]
+    live_payload = csv_bytes(live_schema, live_rows, live["title"], live["generation"])
+    write_bytes("leavers-live-acceptance.csv", live_payload)
+    write_json("leavers-live-acceptance.cover-sheet.json", cover_sheet(
+        source=live["dataset_id"], covers="leavers-live-acceptance.csv",
+        title=live["title"], generation=live["generation"],
+        effective_period=live["effective_period"], row_count=len(live_rows),
+        payload=live_payload, declared_schema=live_schema,
+        generated_at=CURRENT_FILE_GENERATED_AT,
+    ))
+
     # The seeded INCOMPLETE population: the full export's cover sheet over a short file.
     truncated_rows = all_rows[:24]
     truncated = csv_bytes(schema, truncated_rows, leavers["title"], leavers["generation"])

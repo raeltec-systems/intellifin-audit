@@ -25,6 +25,14 @@ const CSV = 'text/csv; charset=utf-8';
 const JSON_TYPE = 'application/json; charset=utf-8';
 
 export const ARTIFACTS: ReadonlyMap<string, Artifact> = new Map([
+  ['leavers-live-acceptance.csv', {
+    file: 'leavers-live-acceptance.csv', contentType: CSV,
+    description: 'Separate three-record leaver population for live browser acceptance.',
+  }],
+  ['leavers-live-acceptance.cover-sheet.json', {
+    file: 'leavers-live-acceptance.cover-sheet.json', contentType: JSON_TYPE,
+    description: 'Independent count, digest and effective period for the acceptance population.',
+  }],
   [
     'leavers-export.csv',
     { file: 'leavers-export.csv', contentType: CSV, description: 'The current leavers export.' },

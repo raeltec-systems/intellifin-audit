@@ -1,3 +1,15 @@
+## 2026-09-17 — Verify the public reference, not the provider capability
+
+The Live View browser test still expected the provider handle after redaction.
+Require the platform workspace reference, reject the handle anywhere in HTML/RSC,
+and prove that the operational row still retains it for the worker. Never restore a
+capability to satisfy an obsolete display assertion.
+
+The separate three-record live acceptance population preserves canonical HR rows and
+leaves the defective full export unchanged. Expected findings are test-only data,
+never source CSV fields or agent prompts. A valid source is not an all-compliant source:
+E-000103 deliberately retains Active access.
+
 ## 2026-09-17 — Provider workspace handles are capabilities, not display IDs
 
 Solari's browser connection URLs use the signed session ID as their capability. Keep
