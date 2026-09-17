@@ -1,10 +1,10 @@
 name: Deployed LoanCore acceptance
 
-# Manual by default. The temporary push path below is an explicitly authorized ONE-SHOT
-# close-out. Never leave the push trigger in place.
+# Manual by default. The temporary validation branch path below is an explicitly authorized
+# ONE-SHOT acceptance against the already released production build. It MUST NOT deploy.
 on:
   push:
-    branches: [main]
+    branches: [validation/final-loancore-20260917]
     paths: [.github/workflows/deployed-loancore-acceptance.yml]
   workflow_dispatch:
     inputs:
@@ -56,7 +56,7 @@ jobs:
           node-version: '24.20.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Quality gate the decision-hydration repair before deployment
+      - name: Quality gate the released source before acceptance
         run: |
           pnpm typecheck
           pnpm boundaries
@@ -74,16 +74,6 @@ jobs:
           PY
           node --check scripts/verify-deployed-loancore.mjs
           git diff --check
-      - name: Deploy this gated source before acceptance
-        if: github.event_name == 'push'
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          set -euo pipefail
-          npm install --global '@railway/cli@5.47.2'
-          railway up --service web --ci
-          railway up --service worker --ci
-          railway up --service northstar --ci
       - name: Refuse to run against an unhealthy or pre-repair web build
         run: |
           set -euo pipefail
@@ -92,6 +82,8 @@ jobs:
           curl -fsS --max-time 30 https://web-production-edded.up.railway.app/sign-in > /tmp/sign-in.html
           grep -q 'data-signin-ready' /tmp/sign-in.html \
             || { echo 'The deployed build predates the sign-in hydration repair.'; exit 1; }
+          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/procedures >/dev/null \
+            || { echo 'The released web application is unavailable.'; exit 1; }
       - name: Build pinned administrative dependencies and observer browser
         run: |
           pnpm --filter '@intellifin/infrastructure...' build
