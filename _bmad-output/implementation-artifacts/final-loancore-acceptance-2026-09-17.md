@@ -74,6 +74,20 @@ protected read route returns 502, which in this codebase means a store disagreem
 Consequence: **Watch shows nothing and Replay would show nothing.** This is almost certainly
 the same cause as the "Replay: No frames" in the original brief.
 
+**And the route cannot say which of eight failures it met.** `FRAME_FAILURE_STATUS` maps
+`capability-mismatch`, `download-failed`, `download-object-missing`, `download-redirected`,
+`download-media-type-mismatch`, `download-too-large`, `download-size-mismatch` and
+`download-digest-mismatch` all to 502, and the route emits no telemetry at all on the failure
+path — the web service logged nothing across the whole window in which four frame reads
+failed. An operator meeting "Watch shows no frames" has one status code and eight candidates.
+
+Root-causing this from outside is therefore blocked, and the first change should be to log
+the diagnostic. It is a closed vocabulary, so it names the cause without carrying an object
+key, a signed URL or a store message into a log — which is what `TELEMETRY_FIELD_KEYS` exists
+to make safe. The likely candidates, given the worker wrote the bytes successfully, are about
+the WEB's reach to the store rather than the store itself: `download-failed` or
+`download-redirected` on a signed URL the web container cannot follow.
+
 ## Defect C — the agent never reaches a record
 
 The acceptance's core gate, and the reason this is not accepted.
@@ -199,7 +213,10 @@ within six minutes and the guard now reads `auth_user.created_at`.
 
 1. Root-cause Defect A. Start with the Next standalone server and the Railway edge; the row
    commits, so it is the response, not the write.
-2. Root-cause Defect B. The bytes are registered; the protected read route returns 502.
+2. Root-cause Defect B. The bytes are registered; the protected read route returns 502 and
+   logs nothing. Add the read failure's diagnostic to that route's telemetry first — eight
+   causes behind one status, with no log line, is why this one cannot be narrowed from
+   outside.
 3. Defect C is root-caused. Verify the production worker's Anthropic credential and its
    access to `claude-sonnet-5`, and set `AGENT_ANTHROPIC_MODEL` explicitly. No code change
    is implied. Re-probe `run_agent_turn` after the change: a turn that reaches the provider
