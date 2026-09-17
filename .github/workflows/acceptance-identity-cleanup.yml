@@ -50,9 +50,11 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONFIRM: ${{ github.event_name == 'push' && 'revoke-acceptance-identities' || inputs.confirm }}
           KEEP_RUN_ID: ${{ github.event_name == 'push' && '' || inputs.keep_run_id }}
-          # Close-out pass: no acceptance is in flight, so every temporary identity this
-          # validation created is stale and must have its session and role removed.
-          RECENT_MINUTES: '2'
+          # The close-out pass ran at '2' on 2026-09-17 with no acceptance in flight and
+          # revoked all 43. It is back to the default: a short window is only ever safe
+          # when nothing is running, and leaving one armed is how a live run loses its
+          # roles mid-journey, which has already happened once.
+          RECENT_MINUTES: '120'
         run: |
           set -euo pipefail
           # Inputs cross as quoted environment variables. A GitHub expression is substituted
