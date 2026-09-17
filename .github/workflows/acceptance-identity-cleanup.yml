@@ -52,8 +52,11 @@ jobs:
           KEEP_RUN_ID: ${{ github.event_name == 'push' && '' || inputs.keep_run_id }}
         run: |
           set -euo pipefail
-          # Inputs cross as quoted environment variables. `${{ }}` is substituted by GitHub
-          # BEFORE bash parses this script, so an input spelled inline would be program text.
+          # Inputs cross as quoted environment variables. A GitHub expression is substituted
+          # BEFORE bash parses this script, so an input spelled inline would be program text
+          # rather than data — which is also why this comment does not spell one out: GitHub
+          # evaluates the expression syntax wherever it appears, comments included, and an
+          # empty one makes the whole workflow file invalid.
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { createSqlClient } from '@intellifin/infrastructure';
