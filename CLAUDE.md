@@ -1,3 +1,36 @@
+## 2026-09-17 — `<noscript>` is invisible to the test that exists to read it
+
+The procedure-form hydration repair (`7efb284`) put its requirement sentence inside
+`<noscript>`, and `new-procedure-readiness.spec.ts` then asserted that sentence in a
+`javaScriptEnabled: false` context. It failed with "element(s) not found", which held main's
+CI red — so Release was SKIPPED and the repair never reached production, and the deployed
+LoanCore acceptance stopped at `create-procedure` against the OLD build. One test, one job,
+the whole delivery.
+
+- **Chromium's `javaScriptEnabled: false` disables script EXECUTION and leaves the HTML
+  parser's scripting flag ON.** So `<noscript>` children stay RAW TEXT — no elements, nothing
+  a locator matches, and the user-agent rule hides them. The SSR unit test passed because
+  `renderToStaticMarkup` really does emit `<noscript><p>…</p></noscript>`; the markup was
+  never the problem. **A sentence only a real browser preference can reveal cannot be pinned
+  by this suite, so it must not be the only place the product says it.**
+- **`<noscript>` also answers the wrong question.** It covers exactly one failure — scripting
+  off at parse time — and none of the ones that actually happen: a chunk that 404s after a
+  deploy, a proxy that blocks the bundle, an exception during hydration. In every one of those
+  the form sits for ever under "Preparing the form. Choices will be available when loading
+  finishes." — a sentence that is then the opposite of true. `NEW_PROCEDURE_REQUIRES_JAVASCRIPT`
+  is rendered by the server EVERY time and removed by hydration, so whatever stopped the
+  handlers attaching, the reader is told what to do.
+- **Both sentences live in `apps/web/src/procedures/new-procedure-words.ts`**, free of React
+  and `next/navigation`, because the browser spec imports them — the `run-start-words.ts` rule:
+  a sentence retyped in a test is a sentence pinned against nothing. Proven by mutation: put
+  the sentence back inside `<noscript>` and the spec fails.
+- **A killed background browser run leaves its rows behind**, and `procedures.spec.ts`'s
+  empty-list test is what finds them. `afterAll` never ran, so the next foreground run met
+  four leftover Procedures and failed an assertion that had nothing to do with the change.
+  The database read `0` by the time it was checked, because that run's own teardown had since
+  cleaned up — check the leftovers WHILE the failure is fresh, or re-run against a clean
+  database before believing it.
+
 ## 2026-09-17 — Verify the public reference, not the provider capability
 
 The Live View browser test still expected the provider handle after redaction.
@@ -21,6 +54,40 @@ keys. This policy is append-only: canonicalization and historical chain verifica
 are unchanged. Do not rewrite old immutable events to hide an expired handle. Existing
 public event reads project selected fields (the live channel sends sequence numbers),
 not arbitrary historical payloads. Never enable a raw provider-control URL as a viewer.
+
+## 2026-09-16 — The owner's workspace fix, validated by two live Runs on production
+
+The owner widened `run_workspace_identity_shape` to 4,096 characters (generation 50, because a
+Solari session id is longer than 200) and moved the workspace-state save inside the provider-error
+handler, then asked for a real Run against the deployed product rather than a test. Two were started
+through the live UI as a seeded auditor account.
+
+- **The fix holds: a Solari workspace is created, SAVED and then USED.** The P-1 Run's Execution
+  Timeline reads `Create the Agent Workspace — Managed remote browser · 1 attempts · Released` with
+  its Step Execution `Succeeded · 2s`, then `LoanCore — Sign in to the Target System · Acquired`
+  (`Succeeded · 3s`) carrying the Tool Action `navigate · POST · Performed · status 200 ·
+  redirected · Capture suppressed — a credential was presented on this request` against
+  `…/loancore`. Before the fix both of the owner's Runs died about five seconds in, `RUN_FAILED`,
+  with "The Run stopped before it concluded, and no stage recorded why." and two `Fatal worker
+  error` lines. Nothing else in this repository could have shown that: the local mode never produces
+  an identity long enough to violate the CHECK.
+- **A P-4 Procedure Version that freezes a SECOND Target System can never run, and the sentence does
+  not say so.** `publicP4Target` requires `plan.inputs.targets.length === 1`, so the production P-4
+  — ProdConsole (web) **and** ConfigRegistry (published file), the latter already bound as the
+  Population Source — makes `publicContractInvalid` true at the AGENT CLAIM, before any Session Step
+  row is written. The Run therefore shows two Session Steps, NO `sign-in` row, no Tool Action, and
+  the banner "The public page is not the surface this Procedure Version froze." — which names a page
+  the Run never opened. The guard is deliberate ("an extra target would make the public proof
+  ambiguous"); what is missing is a diagnostic of its own and an authoring-time warning. P-4's
+  `defaultTargets` names ProdConsole alone, so this Version was authored that way and not suggested.
+- **Read the TIMELINE before the diagnostic.** Two hypotheses were wrong before the rows settled it:
+  that the frozen origin was the deeper `/prodconsole/configuration` (it is `/prodconsole`, which
+  serves exactly one in-scope link), and that a sorted origin set put the CSV first. An ABSENT
+  Session Step row is the fact that located the failure at the claim rather than in the page proof.
+- **P-1's remaining stop is the golden dataset working.** The full leavers export seeds a duplicate
+  employee key, so the agent stage refuses the whole Run (`population-key-unresolved`) and §H reports
+  `duplicate-primary-key · 1 affected` (E-000107) beside `record-uncovered · 19 affected`. Already
+  recorded above; restated here because it is what a live P-1 Run against the full export looks like.
 
 ## 2026-09-16 — A provider success is not a committed workspace
 
