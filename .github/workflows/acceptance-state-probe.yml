@@ -76,19 +76,26 @@ jobs:
               WHERE procedure_id = ANY(${procedures.map(row => String(row.procedure_id))}::uuid[])
               ORDER BY version_number`;
             console.log('PROBE', JSON.stringify({ now: new Date().toISOString(), procedures, versions, runs, items }, null, 2));
-            const actions = runs.length === 0 ? [] : await sql`
+            // Each query catches its own failure and says so in place. A probe that loses
+            // its findings to one wrong column name costs a cycle and reports nothing —
+            // which this one already did twice, on `observed_at` and then on `stage`.
+            const ids = runs.map(r => String(r.run_id));
+            const safely = (promise) => promise.then(rows => rows, error => [{ unavailable: String(error?.code ?? 'error'), detail: String(error?.message ?? '').slice(0, 120) }]);
+            const actions = ids.length === 0 ? [] : await safely(sql`
               SELECT run_id, action, method, outcome, status, redirected, capture, denial, diagnostic,
                      regexp_replace(destination, '^(https?://[^/]+).*$', '\\1') AS origin
-              FROM run_tool_action WHERE run_id = ANY(${runs.map(r => String(r.run_id))}::uuid[])
-              ORDER BY started_at`;
-            const waits = runs.length === 0 ? [] : await sql`
-              SELECT run_id, kind, stage, opened_at, closed_at, closure_kind FROM run_wait
-              WHERE run_id = ANY(${runs.map(r => String(r.run_id))}::uuid[]) ORDER BY opened_at`;
-            const evidence = runs.length === 0 ? [] : await sql`
-              SELECT run_id, kind, state, count(*)::int AS count FROM run_evidence
-              WHERE run_id = ANY(${runs.map(r => String(r.run_id))}::uuid[])
-              GROUP BY run_id, kind, state ORDER BY run_id, kind`;
-            console.log('PROBE_RUN', JSON.stringify({ actions, waits, evidence }, null, 2));
+              FROM run_tool_action WHERE run_id = ANY(${ids}::uuid[]) ORDER BY started_at`);
+            const waits = ids.length === 0 ? [] : await safely(sql`
+              SELECT run_id, kind, opened_at, closed_at, closure_kind, options FROM run_wait
+              WHERE run_id = ANY(${ids}::uuid[]) ORDER BY opened_at`);
+            const evidence = ids.length === 0 ? [] : await safely(sql`
+              SELECT run_id, kind, state, count(*)::int AS count, min(size) AS min_size, max(size) AS max_size
+              FROM run_evidence WHERE run_id = ANY(${ids}::uuid[])
+              GROUP BY run_id, kind, state ORDER BY run_id, kind`);
+            const steps = ids.length === 0 ? [] : await safely(sql`
+              SELECT run_id, action, state, attempts, diagnostic FROM run_session_step
+              WHERE run_id = ANY(${ids}::uuid[]) ORDER BY run_id`);
+            console.log('PROBE_RUN', JSON.stringify({ actions, waits, evidence, steps }, null, 2));
             const beat = await sql`SELECT hostname, seen_at FROM worker_heartbeat ORDER BY seen_at DESC LIMIT 3`
               .catch(error => [{ unavailable: String(error?.code ?? 'error') }]);
             const jobs = await sql`
