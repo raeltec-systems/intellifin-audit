@@ -1,14 +1,13 @@
 name: Deployed LoanCore acceptance
 
-# Manual only. This drives a REAL synthetic audit against the deployed PoC: it creates
-# identities and configuration, authors a Procedure through the browser, has a second
-# person approve it, and starts a Run on the production worker, Solari and storage.
-#
-# There is deliberately NO push trigger. One existed and it raced the release: a push to
-# main starts this immediately while CI is still running, so Release has not deployed the
-# commit yet and the acceptance drives the PREVIOUS build. That is how the 2026-09-17 run
-# came to stop at create-procedure against a build without the fix it was testing.
+# Manual by default. The temporary push path below is an explicitly authorized ONE-SHOT
+# close-out: this commit changes only this workflow, deploys the already CI-green PR #43
+# application tree, runs both the clean and defective synthetic cases, and is removed after
+# evidence is retained. Never leave the push trigger in place.
 on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/deployed-loancore-acceptance.yml]
   workflow_dispatch:
     inputs:
       confirm:
@@ -28,15 +27,21 @@ concurrency:
 jobs:
   live:
     runs-on: ubuntu-latest
-    # The clean Run's observation window is bounded at twenty minutes — a Solari Run
-    # drives a remote browser with a model in the loop — and the negative case adds a
-    # second authoring journey and a Run that stops at acquisition.
-    timeout-minutes: 75
+    environment: production
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Archive exact tracked source for the active repair workspace
+          fetch-depth: 2
+      - name: Prove the one-shot commit changed no application source
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          printf '%s\n' "$changed"
+          test "$changed" = '.github/workflows/deployed-loancore-acceptance.yml'
+      - name: Archive exact tracked source for the acceptance
         run: |
           git archive --format=tar.gz HEAD > /tmp/acceptance-source.tar.gz
           git rev-parse HEAD > /tmp/acceptance-source-sha.txt
@@ -55,27 +60,33 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check the harness parses before anything is created
         run: node --check scripts/verify-deployed-loancore.mjs
-      # The last acceptance drove a build that did not carry the fix it was testing and
-      # only found out nine steps in. `/sign-in` is public and server-renders the hydration
-      # marker, so one request settles whether the deployment is the one under test before
-      # any identity or configuration is created.
-      - name: Refuse to run against a build without the hydration repair
+      - name: Deploy the already verified merged source before acceptance
+        if: github.event_name == 'push'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           set -euo pipefail
-          curl -fsS --max-time 20 https://web-production-edded.up.railway.app/api/health
+          npm install --global '@railway/cli@5.47.2'
+          railway up --service web --ci
+          railway up --service worker --ci
+          railway up --service northstar --ci
+      - name: Refuse to run against an unhealthy or pre-repair web build
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/api/health
           echo
-          curl -fsS --max-time 20 https://web-production-edded.up.railway.app/sign-in > /tmp/sign-in.html
+          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/sign-in > /tmp/sign-in.html
           grep -q 'data-signin-ready' /tmp/sign-in.html \
-            || { echo 'The deployed build predates the sign-in hydration repair. Wait for Release.'; exit 1; }
+            || { echo 'The deployed build predates the sign-in hydration repair.'; exit 1; }
       - name: Build pinned administrative dependencies and observer browser
         run: |
           pnpm --filter '@intellifin/infrastructure...' build
           pnpm exec playwright install --with-deps chromium
-      - name: Author approve inspect and observe the real deployed audit
+      - name: Author approve inspect observe conclude and prove the negative case
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          CONFIRM_DEPLOYED_AUDIT: ${{ inputs.confirm }}
-          ACCEPTANCE_NEGATIVE_CASE: ${{ inputs.negative_case }}
+          CONFIRM_DEPLOYED_AUDIT: ${{ github.event_name == 'push' && 'synthetic-loancore' || inputs.confirm }}
+          ACCEPTANCE_NEGATIVE_CASE: ${{ github.event_name == 'push' && 'true' || inputs.negative_case }}
         run: node scripts/verify-deployed-loancore.mjs
       - name: Retain secret-free acceptance observations
         if: always()
