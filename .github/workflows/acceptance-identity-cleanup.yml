@@ -6,7 +6,14 @@ name: Acceptance identity cleanup
 # account stays live. This removes the session rows and the role grant; the accounts and
 # every authored artefact they produced are left exactly as they are, because deleting
 # audit history to tidy an environment is the one thing this must not do.
+#
+# `workflow_dispatch` only fires for a workflow file on the DEFAULT branch, so this one
+# also carries a push trigger scoped to its own path: that is how it is invoked from the
+# validation branch.
 on:
+  push:
+    branches: [claude/relaxed-rubin-stwsfu]
+    paths: [.github/workflows/acceptance-identity-cleanup.yml]
   workflow_dispatch:
     inputs:
       confirm:
@@ -41,8 +48,8 @@ jobs:
       - name: Revoke stale acceptance identities
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          CONFIRM: ${{ inputs.confirm }}
-          KEEP_RUN_ID: ${{ inputs.keep_run_id }}
+          CONFIRM: ${{ github.event_name == 'push' && 'revoke-acceptance-identities' || inputs.confirm }}
+          KEEP_RUN_ID: ${{ github.event_name == 'push' && '' || inputs.keep_run_id }}
         run: |
           set -euo pipefail
           # Inputs cross as quoted environment variables. `${{ }}` is substituted by GitHub
@@ -61,7 +68,18 @@ jobs:
               WHERE u.email LIKE 'acceptance-%@example.test'
                  OR u.email LIKE 'source-save-diagnostic-%@example.test'
               ORDER BY u.email`;
-            const stale = candidates.filter(row => keep === '' || !String(row.email).includes(`-${keep}-`));
+            // An acceptance run revokes its OWN identities in its `finally`, so anything left
+            // here belongs to a run that was cancelled — with one exception this cannot see:
+            // a run still in flight. A session created in the last 45 minutes is therefore
+            // left alone and REPORTED, rather than revoked out from under a live journey.
+            const recent = new Date(Date.now() - 45 * 60000);
+            const live = new Set((await sql`
+              SELECT DISTINCT u.email FROM auth_session s JOIN auth_user u ON u.id = s.user_id
+              WHERE u.email LIKE 'acceptance-%@example.test' AND s.created_at > ${recent.toISOString()}::timestamptz
+            `).map(row => String(row.email)));
+            const named = keep === '' ? [] : candidates.filter(row => String(row.email).includes(`-${keep}-`)).map(row => String(row.email));
+            const skipped = candidates.filter(row => live.has(String(row.email)) || named.includes(String(row.email))).map(row => String(row.email));
+            const stale = candidates.filter(row => !skipped.includes(String(row.email)));
             const report = [];
             for (const account of stale) {
               const result = await sql.begin(async tx => {
@@ -71,7 +89,7 @@ jobs:
               });
               report.push({ email: account.email, ...result });
             }
-            console.log('CLEANUP', JSON.stringify({ considered: candidates.length, revoked: report.length, keptRunId: keep || null, report }, null, 2));
+            console.log('CLEANUP', JSON.stringify({ considered: candidates.length, revoked: report.length, skippedAsLiveOrNamed: skipped, keptRunId: keep || null, report }, null, 2));
             const remaining = await sql`
               SELECT count(*)::int AS sessions FROM auth_session s
               JOIN auth_user u ON u.id = s.user_id
