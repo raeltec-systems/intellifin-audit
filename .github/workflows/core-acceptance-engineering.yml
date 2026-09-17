@@ -1,6 +1,6 @@
 name: Core acceptance engineering
 
-# Temporary, incident-scoped verification. No deployment or production credentials.
+# Temporary engineering runner. No production secrets, migrations or live audits.
 on:
   push:
     branches: [main]
@@ -11,21 +11,106 @@ concurrency:
   group: core-acceptance-engineering
   cancel-in-progress: false
 jobs:
-  snapshot:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: ghcr.io/railwayapp-templates/postgres-ssl:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: intellifin_core_ci
+          PGDATA: /var/lib/postgresql/data/pgdata
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/intellifin_core_ci?sslmode=require
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Archive tracked source only
+      - name: Apply reviewed capability containment patch
+        run: python3 .github/scripts/core-security.py
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck and dependency boundaries
+        run: pnpm typecheck && pnpm boundaries
+      - name: Full unit suite
+        run: pnpm test
+      - name: Migrate disposable database and install integration browser
         run: |
-          mkdir -p /tmp/core-source
-          git archive --format=tar.gz HEAD -o /tmp/core-source/source.tar.gz
-          git rev-parse HEAD > /tmp/core-source/base.txt
+          pnpm db:migrate
+          pnpm --filter @intellifin/infrastructure exec playwright-core install --with-deps chromium
+      - name: Full PostgreSQL integration suite
+        run: pnpm test:integration
+      - name: Retain exact tested changes
+        run: |
+          mkdir -p /tmp/core-verified
+          rm .github/scripts/core-security.py
+          git add --all
+          git diff --cached --check
+          git diff --cached --binary > /tmp/core-verified/verified.patch
+          git rev-parse HEAD > /tmp/core-verified/base.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: core-acceptance-source
-          path: /tmp/core-source/
-          retention-days: 2
+          name: core-security-verified
+          path: /tmp/core-verified/
+          retention-days: 7
+          if-no-files-found: error
+  candidate:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-security-verified
+          path: /tmp/verified
+      - name: Restore only the tested patch
+        run: |
+          test "$(cat /tmp/verified/base.txt)" = "$GITHUB_SHA"
+          git apply --check /tmp/verified/verified.patch
+          git apply /tmp/verified/verified.patch
+          git add --all
+          git diff --cached --check
+      - name: Publish candidate Git objects without changing a branch
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const cp = require('node:child_process');
+            const {owner, repo} = context.repo;
+            const current = await github.rest.git.getRef({owner, repo, ref:'heads/main'});
+            if (current.data.object.sha !== context.sha) throw new Error('main advanced; candidate must be reconciled');
+            const paths = cp.execFileSync('git',['diff','--cached','--name-only','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
+            const tree = [];
+            for (const path of paths) {
+              if (!fs.existsSync(path)) { tree.push({path,mode:'100644',type:'blob',sha:null}); continue; }
+              const b = await github.rest.git.createBlob({owner,repo,content:fs.readFileSync(path).toString('base64'),encoding:'base64'});
+              tree.push({path,mode:'100644',type:'blob',sha:b.data.sha});
+            }
+            const parent = await github.rest.git.getCommit({owner,repo,commit_sha:context.sha});
+            const t = await github.rest.git.createTree({owner,repo,base_tree:parent.data.tree.sha,tree});
+            const c = await github.rest.git.createCommit({owner,repo,tree:t.data.sha,parents:[context.sha],message:'fix: keep provider workspace capabilities out of public views and audit events\n\nUse a platform workspace reference and explicit public projections. Add an\nappend-only capability guard without invalidating historical chain verification.\nTypecheck, boundaries, full unit and PostgreSQL integration suites passed.'});
+            const receipt={candidate:c.data.sha,base:context.sha,verificationRun:context.runId,changedPaths:paths};
+            console.log(JSON.stringify(receipt));
+            fs.writeFileSync('/tmp/core-security-receipt.json',JSON.stringify(receipt,null,2));
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-security-receipt
+          path: /tmp/core-security-receipt.json
+          retention-days: 7
           if-no-files-found: error
