@@ -234,7 +234,11 @@ test.describe('Live View', () => {
 
     // The chrome: state word, workspace identity and the isolation note (UX-DR24).
     await expect(page.getByText('LIVE', { exact: true })).toBeVisible();
-    await expect(page.getByText('sess_live_view')).toBeVisible();
+    await expect(page.locator('.ls-session__workspace')).toContainText(`workspace-${seeded.runId}`);
+    // The worker keeps its operational handle, but HTML/RSC must not expose it.
+    expect(await page.content()).not.toContain('sess_live_view');
+    const [workspace] = await sql`SELECT workspace_id FROM run_workspace WHERE run_id=${seeded.runId}`;
+    expect(workspace?.workspace_id).toBe('sess_live_view');
     await expect(page.getByText(SESSION_ISOLATION_NOTE)).toBeVisible();
 
     // NFR-7: the frame is on screen within five seconds of the page opening. It is served
