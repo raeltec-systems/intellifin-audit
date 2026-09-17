@@ -610,6 +610,22 @@ try {
   report.grounding = final.grounded.map(row => ({ record: row.record, found: row.found, coverage: row.coverage, corroboration: row.corroboration, screenshots: row.screenshots, snapshots: row.snapshots }));
   report.checks.evidencePerConclusion = report.grounding.length === TRUTH_RECORDS.length
     && report.grounding.every(row => row.screenshots > 0 && row.snapshots > 0 && row.coverage === 'COVERED' && row.corroboration === 'MATCHED');
+  // The provider session goes back BEFORE Replay is opened, deliberately. Replay's claim
+  // is that the agent's work survives the workspace that produced it, and a Replay read
+  // while the session is still alive is not that claim: it would pass for a build that
+  // reached back to the provider for its frames. The release is polled first, so what
+  // follows is a Run whose Solari session no longer exists.
+  // A release that does not arrive is a finding, not a reason to stop: the Replay checks
+  // below are the ones this phase exists for, and losing them to a poll deadline would
+  // report a workspace problem as an unknown Replay.
+  const released = await poll(() => facts(report.runId), f => f.workspace?.status === 'RELEASED', 60000).catch(() => null);
+  report.checks.workspaceReleased = released?.workspace?.status === 'RELEASED';
+  emit('workspace-released-before-replay', { released: report.checks.workspaceReleased });
+  const replayFrames = [];
+  auditor.on('response', response => {
+    const url = new URL(response.url());
+    if (url.origin === BASE && url.pathname.startsWith(`/api/runs/${report.runId}/frames/`) && response.status() === 200) replayFrames.push(url.pathname);
+  });
   if (['COMPLETED','INCONCLUSIVE','RUN_FAILED','CANCELED'].includes(final.run.state)) {
     phase = 'replay';
     await auditor.getByRole('link', { name: 'Replay', exact: true }).click();
@@ -630,8 +646,12 @@ try {
     // Work Item of a Run, so a three-leaver Run offered three pills reading "LoanCore".
     const replayText = await auditor.locator('body').innerText();
     report.checks.replayNamesEveryRecord = TRUTH_RECORDS.every(record => replayText.includes(record));
+    // Every frame Replay served, in the order it served them, read out of the protected
+    // route the page itself used: the reader's own evidence that the session is replayed
+    // rather than summarised, and that the platform owns the assets.
+    report.replay = { framesServed: replayFrames.length, distinctFrames: new Set(replayFrames).size };
+    emit('replay-observed', report.replay);
   }
-  report.checks.workspaceReleased = (await poll(() => facts(report.runId), f => f.workspace?.status === 'RELEASED', 60000)).workspace.status === 'RELEASED';
   // `shot()` throws if any scanned page carries the provider's session identity, so the
   // containment is enforced by the scans themselves. What the check adds is that the
   // scans HAPPENED and that there was a real identity to look for: a hard-coded `true`
