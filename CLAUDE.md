@@ -1,3 +1,28 @@
+## 2026-09-17 — A Result that waits for a person is not a conclusion
+
+The acceptance stopped at `expectedPendingReview` — outcome `PENDING_CONFIRMATION`, `sealed`
+false — and called the journey proven. It is not: C2 is Agent-Judged, so Story 4.9 holds the
+Result open until a person confirms or rejects each machine proposal, and the owner's gate asks
+for "a sensible overall control conclusion". A Run that produced findings and no conclusion had
+completed the agent's half of the journey and none of the auditor's.
+
+- **`confirmAgentJudged()` walks the real control.** One row per page load, because the
+  component calls `router.refresh()` and the list re-renders under the button that was just
+  used. A control with a reason is `aria-disabled` and never `disabled` — it has to stay
+  focusable so its reason is reachable — so "can this be used" is read off the ATTRIBUTE, not
+  from Playwright's enabled check, which would click a guard that is doing its job.
+- **The decision is queued to the WORKER, so the banner is not the outcome.** "Review
+  submitted." means the command was accepted; the Result seals a moment later. Every assertion
+  is against the stored `run_result`, and the expected value is the oracle's own
+  `expected_outcome_after_required_human_confirmation` rather than a literal typed beside it.
+- **The conclusions are compared with the truth AGAIN after sealing.** Confirming a proposal
+  is a WRITE. An acceptance that compared only the pre-confirmation rows would have checked
+  values the sealed Result does not necessarily stand on.
+- **It runs only when the Run really is waiting on a person.** Guarded on
+  `expectedPendingReview`; on any other Result it would spend five minutes proving nothing,
+  and the two new checks stay absent, which leaves `accepted` false — the honest answer for a
+  journey that did not get there.
+
 ## 2026-09-17 — Driving the acceptance journey end to end, and the checks that could not fail
 
 The owner's remaining gate is one unbroken journey: create a Procedure in the browser,
