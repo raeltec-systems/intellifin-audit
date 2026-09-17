@@ -38,6 +38,23 @@ that was working. Two harness defects, and the second is a rule this file alread
   did between the screens. The page is never reloaded in that loop: a reader who has to
   reload is not watching, and reloading would make the gate unfailable.
 
+- **A cleanup that asks "is anyone signed in?" misses the identities that never sign in.**
+  The acceptance identity sweep skipped an account whose SESSION was created in the last
+  forty-five minutes, on the reasoning that a live run's identities are signed in. Two of
+  an acceptance run's three are not: the PoC Administrator registers the Population Source
+  and the Target System server-side, and the Audit Manager has no session until the moment
+  it approves. Both had zero session rows, were read as leftovers from a cancelled run,
+  and lost their role grants while run 35272648301 was still executing — taking with them
+  the manager approval and the configuration registration its negative case still needed.
+  Recency is `auth_user.created_at` now, which every identity has from the moment the run
+  seeds it. **Ask when the thing was MADE, not when it was last used**: the second is a
+  property of how it happens to be exercised, and the exercise is exactly what varies.
+- **An empty GitHub expression written inside a workflow COMMENT invalidates the file.** GitHub
+  evaluates its expression syntax wherever it appears, comments included, and an empty
+  expression is a parse error — so every push produced a run with zero jobs whose display
+  title was the file path rather than the workflow name, and the workflow never executed.
+  A run with no jobs is a file GitHub could not read; do not debug it as a failing step.
+
 Three mechanical notes:
 
 - **`pkill -f <pattern>` matched this shell's own command line, for the fourth time**
