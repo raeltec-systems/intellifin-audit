@@ -79,6 +79,19 @@ what produces the proof, so a check that cannot fail is a proof that is not one:
   record, and that the Gate names E-000107 — a "the Run failed" assertion alone would pass
   for a Run that failed for any other reason.
 
+**And the repair for one of those four was itself a check that could not fail.** The
+Evidence-link check looked for `could not be read` and `no longer available` — phrases NO
+page in this product renders. The evidence inspector states every one of its thirteen
+`EvidenceSnapshotReadFailure` cases under one banner title, `Snapshot cell unavailable`, and
+the route boundary has EXPERIENCE.md's own `Couldn't load this page. Nothing was changed.`
+So a link showing the inspector's own failure banner was reported as OPENED. **A sentence a
+checker looks for is pinned against nothing unless it is read back out of the page that
+renders it** — `copy.test.ts`'s discipline, which had never been applied to the harness.
+`tests/unit/acceptance-sentences.test.ts` reads both pages off disk, and its fourth case
+proves every check the harness COMPUTES is in the list it REQUIRES before accepting: a check
+computed and left out of `report.required` is a check whose failure nobody would ever see.
+Proven by mutation — removing one name fails it and names the check.
+
 Three mechanical notes:
 
 - **The Builder polls only while a plan derivation is PENDING** (`ExecutablePlanPreview`:
