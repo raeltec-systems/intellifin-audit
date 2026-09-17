@@ -53,8 +53,9 @@ try{
   requireFact(proposals.length===6,'unexpected-evaluation-count');
   for(const o of rows){
     const wanted=expected.get(o.population_record_key);requireFact(wanted&&o.found==='true','unexpected-or-absent-record');
-    const status=o.attributes.find(x=>x.name==='status');const roles=o.attributes.find(x=>x.name==='roles');
-    requireFact(status?.normalizedValue===wanted.status&&JSON.stringify(roles?.normalizedValue)===JSON.stringify(wanted.roles),'captured-values-differ-from-independent-test-expectation');
+    const status=o.attributes.find(x=>x.name==='account_status');const roles=o.attributes.find(x=>x.name==='roles');
+    // LoanCore renders Roles as comma-separated page text. No conversion of stored evidence.
+    requireFact(status?.normalizedValue===wanted.status&&roles?.normalizedValue===wanted.roles.join(', '),'captured-values-differ-from-independent-test-expectation');
     const c1=proposals.find(x=>x.observation_id===o.observation_id&&x.condition_id==='C1');
     const c2=proposals.find(x=>x.observation_id===o.observation_id&&x.condition_id==='C2');
     requireFact(c1?.origin==='RULE'&&c1.value===wanted.c1,'deterministic-evaluation-incorrect');
@@ -72,7 +73,7 @@ try{
   for(const observation of rows){
     phase='inspect-snapshot-cells-'+observation.population_record_key;
     await inspectCell(observation,observation.identity);
-    await inspectCell(observation,observation.attributes.find(a=>a.name==='status'));
+    await inspectCell(observation,observation.attributes.find(a=>a.name==='account_status'));
     await inspectCell(observation,observation.attributes.find(a=>a.name==='roles'));
     phase='confirm-supported-proposal-'+observation.population_record_key;
     await page.goto(APP+`/runs/${RUN}/review`,{waitUntil:'domcontentloaded'});
