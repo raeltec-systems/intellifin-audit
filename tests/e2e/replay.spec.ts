@@ -122,10 +122,15 @@ async function seedReplayRun(): Promise<Replayed> {
   // One Work Item per SUBJECT: `run_work_item_run_step` is unique on
   // `(run_id, step_id, coalesce(subject_key, ''))`, which is the shape a real agent Run has
   // — one Work Item per population record inside one plan step.
+  //
+  // Both carry the SAME `display_name`, because that column is the Target System's name and
+  // both name registration `loancore`. The fixture used to give each one its own, which is
+  // a row no Run can produce — and is why the suite could not see that the jump list was
+  // labelling every Work Item with it.
   for (const [index, workItemId] of workItems.entries()) {
     await sql`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,registration_id,display_name,
       subject_key,state,attempts,cycles,diagnostic,evidence_id,observations)
-      VALUES(${workItemId},${runId},'target-1-1',${index + 1},'loancore',${`Leaver ${index + 1}`},
+      VALUES(${workItemId},${runId},'target-1-1',${index + 1},'loancore','LoanCore',
       ${`E-00010${index + 5}`},'OBSERVED',1,0,NULL,NULL,1)`;
   }
 
@@ -332,7 +337,12 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await expect(page.getByText(alt!, { exact: true }).first()).toBeVisible();
 
     // The jump list names one of each thing EXPERIENCE.md's Replay row lists.
-    await expect(page.getByRole('button', { name: /^Work Item · Leaver 1$/ })).toBeVisible();
+    // The record FIRST, the system beside it. `display_name` is identical on both Work
+    // Items, so a pill labelled with it alone offered a reader two targets with one name.
+    await expect(page.getByRole('button', { name: 'Work Item · E-000105 · LoanCore' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Work Item · E-000106 · LoanCore' })).toBeVisible();
+    // The rail names the record the shown frame belongs to, not the system alone.
+    await expect(page.getByText('Work Item: E-000105 · LoanCore', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: `Exception · ${seeded.recordKey}` })).toBeVisible();
     await expect(page.getByRole('button', { name: `Escalation · ${seeded.waitLabel}` })).toBeVisible();
 

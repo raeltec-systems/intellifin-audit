@@ -1,4 +1,46 @@
-## 2026-09-17 — Replay was the sibling nobody grepped for
+## 2026-09-17 — The Work Item label, on all four surfaces this time
+
+The Timeline was repaired so a Work Item row names the RECORD rather than the Target System,
+whose `display_name` is IDENTICAL on every Work Item of a Run. The finding was closed there,
+and an agent sweep then found the same line on **three** more surfaces — which is the Epic 5
+review's rule, unlearned: *when a review lands a rule on one component, grep for its siblings
+before closing the finding.*
+
+- **Replay's jump list** labelled a Work Item pill `item.displayName`, so a three-leaver Run
+  offered three pills reading "LoanCore" — beside an **Exception** pill that already named its
+  record, so two kinds of target on one list disagreed about what a target is.
+- **Replay's frame rail** said `Work Item: LoanCore` under every frame, and resolved its owner
+  from the RAW nullable `run_tool_action.work_item_id` while the system name two lines above
+  resolved it through the Step Execution — the PR 36 finding, still live on the next line.
+- **Live View's rail hard-coded `subjectKey: null`**, so Watch — the surface a person uses to
+  follow the Agent record by record — read "LoanCore · RUNNING · 1 Observations" whichever
+  leaver was being inspected. `LiveViewer` had the branch and the page starved it, so the
+  component's own test could not see it.
+- **The narration could not name the record at all.** UX-DR37 makes the frame's `alt` the Step
+  narration and Replay labels each scrubber pill with it, so a sentence naming only the system
+  gave a screen-reader user three indistinguishable "…on LoanCore…" pills while the sighted
+  reader saw the record on the jump list beside them. `stepNarration` and `frameNarration` take
+  a `subject` and say "for E-000103 on LoanCore"; a Work Item with no record of its own (P-4
+  inspects a page, not a population) says only where, never a dangling "for".
+
+**`workItemLabel` lives in `labels.ts`**, not in `replay.ts`, because three surfaces say it and
+`labels.ts` is already the one place a stored value becomes a word. The Timeline keeps its
+two-span layout — title and detail — and implements the same rule, which is why the shared
+function returns a STRING rather than being forced onto a surface whose layout differs.
+
+- **`subjectKey` is REQUIRED on `ReplayWorkItem`**, which is what found both Replay call sites.
+  An optional field would have let the page pass `undefined` for ever.
+- **The replay browser fixture gave each Work Item its OWN `display_name`**, a row no Run can
+  produce — that column is the Target System's name and both items named `loancore`. That is
+  why the suite could not see the defect. Both are `LoanCore` now, and the spec asserts two
+  distinct pills.
+- **`[NAMED]` No browser fixture seeds a Work Item on Live View**, so the rail's Work Item line
+  is covered by nothing in CI: `live-view.spec.ts` seeds neither `run_work_item` nor
+  `run_agent_work`, and the page reads the second for the position. The deployed acceptance
+  requires `watchNamesTheRecord` instead, which is a real check on the real surface and not a
+  substitute for the fixture a later story should add.
+
+## 2026-09-17 — Replay was the sibling nobody grepped for `[EXTENDED by the note above]`
 
 The Execution Timeline was repaired the same day so a Work Item row names the RECORD it
 inspected rather than the Target System, whose name is identical on every Work Item of a Run.

@@ -10,10 +10,10 @@ import { REPLAY_COPY } from '../../../../src/design/copy';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { ReplayViewer, type ReplayFrameView } from '../../../../src/runs/ReplayViewer';
 import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
-import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
+import { planActionWord, runLifecycleWord, utcStamp, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { replayJumpTargets, replayObservationsThrough, replayWorkItemLabel, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -119,9 +119,13 @@ export default async function RunReplayPage({
   const views: readonly ReplayFrameView[] = frames.rows.map((frame) => {
     const step = timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId) ?? null;
     const system = systemOf(step?.workItemId ?? frame.workItemId);
+    // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
+    // Items of the same Run apart. `system` is identical on both.
+    const subject = timeline.workItems
+      .find((item) => item.workItemId === (step?.workItemId ?? frame.workItemId))?.subjectKey ?? null;
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
-    const narration = frameNarration(frame, step, system);
+    const narration = frameNarration(frame, step, system, subject);
     const action = actionsById.get(frame.toolActionId) ?? null;
     return {
       evidenceId: frame.evidenceId,
@@ -129,13 +133,13 @@ export default async function RunReplayPage({
       sourceLocation: frame.sourceLocation,
       digest: frame.digest,
       capturedAt: frame.capturedAt,
-      stepNarration: step === null ? narration : stepNarration(step, system),
+      stepNarration: step === null ? narration : stepNarration(step, system, subject),
       // Resolved the SAME way the system name two lines up is: `run_tool_action.work_item_id`
       // is nullable, so a frame whose Work Item is known only through its Step Execution
       // reported no Work Item at all while the narration beside it named the system.
       workItemLabel: (() => {
         const owner = timeline.workItems.find((item) => item.workItemId === (step?.workItemId ?? frame.workItemId));
-        return owner === undefined ? null : replayWorkItemLabel(owner);
+        return owner === undefined ? null : workItemLabel(owner);
       })(),
       action: action === null ? null : {
         action: action.action,

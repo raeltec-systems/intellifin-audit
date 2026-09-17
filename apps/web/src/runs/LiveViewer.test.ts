@@ -136,6 +136,24 @@ describe('the narration rail', () => {
     expect(html).toContain('No Evidence has been registered yet.');
   });
 
+  // Watch is where a person follows the Agent record by record. `displayName` is the
+  // TARGET SYSTEM's name and is identical on every Work Item of a Run, so this rail read
+  // "LoanCore · RUNNING · 1 Observations" whichever leaver was being inspected — and the
+  // page hard-coded `subjectKey: null`, so the component's own branch was unreachable.
+  it('names the record the Agent is inspecting, then the system', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      workItem: { displayName: 'LoanCore', state: 'RUNNING', subjectKey: 'E-000103', observations: 1 },
+    })));
+    expect(html).toContain('E-000103 · LoanCore · RUNNING · 1 Observations');
+  });
+
+  it('keeps the system name alone for a Work Item that inspects no record', () => {
+    const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
+      workItem: { displayName: 'ProdConsole', state: 'RUNNING', subjectKey: null, observations: 4 },
+    })));
+    expect(html).toContain('ProdConsole · RUNNING · 4 Observations');
+  });
+
   it('renders a Step Execution diagnostic as untrusted content', () => {
     const html = renderToStaticMarkup(React.createElement(LiveViewer, props({
       step: { narration: 'Search on LoanCore, plan step target-1-1, started 2026-09-09T06:12:00.000Z.', state: 'FAILED', attempt: 2, diagnostic: 'extraction-incomplete' },

@@ -69,9 +69,24 @@ export function plannedStepCount(plan: ExecutablePlan | null): number | null {
 export function stepNarration(
   execution: Pick<RunStepExecutionRow, 'action' | 'planStepId' | 'startedAt'>,
   targetName: string | null,
+  subject: string | null = null,
 ): string {
+  return `${planActionWord(execution.action)}${about(subject, targetName)}, plan step ${execution.planStepId}, started ${utcStamp(execution.startedAt)}.`;
+}
+
+/**
+ * Which RECORD, in which system — the half of the sentence a screen reader hears.
+ *
+ * UX-DR37 makes the frame's `alt` and the Step narration the same string, and the Replay
+ * scrubber's pills are labelled with it, so a narration that named only the Target System
+ * gave a three-leaver Run three pills a screen-reader user could not tell apart while the
+ * sighted reader saw the record on the jump list beside them. A Work Item with no subject
+ * of its own (P-4 inspects a page, not a population) says only where.
+ */
+function about(subject: string | null, targetName: string | null): string {
+  const who = subject === null ? '' : ` for ${subject}`;
   const where = targetName === null ? '' : ` on ${targetName}`;
-  return `${planActionWord(execution.action)}${where}, plan step ${execution.planStepId}, started ${utcStamp(execution.startedAt)}.`;
+  return `${who}${where}`;
 }
 
 /**
@@ -106,10 +121,10 @@ export function frameNarration(
   frame: RunFrameRow,
   execution: Pick<RunStepExecutionRow, 'action' | 'planStepId' | 'startedAt'> | null,
   targetName: string | null,
+  subject: string | null = null,
 ): string {
-  if (execution !== null) return stepNarration(execution, targetName);
+  if (execution !== null) return stepNarration(execution, targetName, subject);
   // The Step Execution could not be resolved. Narrate the ACTION that captured the frame
   // rather than inventing a Step: what is said is still true of the picture.
-  const where = targetName === null ? '' : ` on ${targetName}`;
-  return `${toolActionNameWord(frame.action)}${where}, captured ${utcStamp(frame.actionStartedAt)}.`;
+  return `${toolActionNameWord(frame.action)}${about(subject, targetName)}, captured ${utcStamp(frame.actionStartedAt)}.`;
 }

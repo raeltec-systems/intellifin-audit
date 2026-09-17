@@ -12,7 +12,6 @@ import {
   replayJumpTargets,
   resolveFrameWorkItems,
   replayObservationsThrough,
-  replayWorkItemLabel,
 } from './replay';
 
 /**
@@ -125,10 +124,6 @@ describe('the Replay jump list', () => {
     expect(new Set(items).size).toBe(items.length);
   });
 
-  it('keeps the system name alone for a Work Item that inspected no record', () => {
-    expect(replayWorkItemLabel({ displayName: 'ProdConsole', subjectKey: null })).toBe('ProdConsole');
-    expect(replayWorkItemLabel({ displayName: 'LoanCore', subjectKey: 'E-000103' })).toBe('E-000103 · LoanCore');
-  });
 });
 
 describe('why a jump target has no frame, said only as far as the read knows (PR 36 review)', () => {
