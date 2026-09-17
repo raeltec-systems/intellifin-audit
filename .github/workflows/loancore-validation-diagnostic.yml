@@ -31,12 +31,12 @@ jobs:
           node --input-type=module <<'NODE'
           import { createSqlClient } from '@intellifin/infrastructure';
           const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
-          const procedureId = '01a0b0de-d119-71e7-85da-6abb2869318f';
+          const procedureId = '01a0b0e8-4214-7621-bd5e-e3b6822d83bc';
           try {
             const versions = await sql`
               SELECT version_id, version_number, state, plan_status, plan_failure_reason,
-                     plan_attempts,
-                     to_jsonb(procedure_version) - 'compiled_plan' - 'submitted_review' - 'frozen_review' AS persisted
+                     plan_attempts, source_snapshot, targets, instructions, schedule,
+                     period, scope, inclusion_rule
               FROM procedure_version
               WHERE procedure_id = ${procedureId}::uuid
               ORDER BY version_number DESC
