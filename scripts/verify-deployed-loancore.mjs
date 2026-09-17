@@ -338,6 +338,13 @@ async function confirmAgentJudged() {
   while (Date.now() < deadline) {
     if ((await facts(report.runId)).result?.sealed === true) break;
     await auditor.goto(`${BASE}/runs/${report.runId}`, { waitUntil: 'domcontentloaded' });
+    // Confirm opens a focus-trapping dialog, which cannot exist before the page's handlers
+    // attach, so a click made earlier is swallowed in silence. `EvaluationReview` names no
+    // readiness of its own — every other control on this page does — so what is waited on
+    // is the page's own client marker: hydration is per React root, not per component. A
+    // page that never reports ready is not a reason to stop; the click below is retried.
+    await expect(auditor.locator('[data-client-ready]').first())
+      .toHaveAttribute('data-client-ready', 'true', { timeout: 20000 }).catch(() => undefined);
     const rows = auditor.locator('li.ls-evaluation');
     const total = await rows.count();
     let acted = false;
@@ -348,7 +355,11 @@ async function confirmAgentJudged() {
       // rather than Playwright's enabled check.
       if (await control.count() === 0 || await control.getAttribute('aria-disabled') === 'true') continue;
       await control.click();
-      await expect(auditor.getByRole('dialog')).toBeVisible();
+      // A click the page could not answer yet leaves no dialog and no trace. That is a
+      // race to survive rather than a phase to end on: record it, and let the loop
+      // re-navigate and try again inside its own deadline.
+      const opened = await expect(auditor.getByRole('dialog')).toBeVisible({ timeout: 20000 }).then(() => true, () => false);
+      if (!opened) { emit('confirm-control-did-not-respond', { index, total }); break; }
       await auditor.getByRole('dialog').getByRole('button', { name: 'Confirm evaluation', exact: true }).click();
       await expect(auditor.getByRole('dialog')).toHaveCount(0, { timeout: 40000 });
       await expect(auditor.getByText('Review submitted.', { exact: true })).toBeVisible();
