@@ -79,7 +79,23 @@ what produces the proof, so a check that cannot fail is a proof that is not one:
   record, and that the Gate names E-000107 — a "the Run failed" assertion alone would pass
   for a Run that failed for any other reason.
 
-One mechanical note: **`deployed-loancore-evidence/` is now ignored.** The harness writes
+Three mechanical notes:
+
+- **The Builder polls only while a plan derivation is PENDING** (`ExecutablePlanPreview`:
+  `if (draft.planStatus !== 'pending') return;`), so `procedures.spec.ts`'s *"a pending plan
+  refresh preserves dirty Period edits"* needs the derivation still to be in flight when the
+  second tab saves. A worker fast enough to settle it first leaves the edited tab with
+  nothing to re-read, no conflict banner, and — because a failing Playwright test restarts
+  the worker and runs `afterAll` early — a dozen later failures that are its shadow. It is
+  green in CI and red on a fast machine. **Read the FIRST failure, and check whether a
+  browser test's scene depends on something finishing SLOWLY.**
+- **`seed-identity` never resets a password, so `E2E_PASSWORD` must match the accounts that
+  are actually there.** A local database seeded in an earlier session answers a correct-
+  looking sign-in with *"Sign-in failed. Check your email address and password."* — which is
+  the product working, and reads exactly like the hydration defect above it. Seed fresh
+  addresses (the rule is already recorded; it was met again here) and check the page snapshot
+  in `test-results/**/error-context.md` before suspecting the code.
+- **`deployed-loancore-evidence/` is now ignored.** The harness writes
 screenshots and a report there; CI uploads it as an artifact and a local dry-run leaves it in
 the tree, where a `git add -A` would sweep it in — the class `.claude/worktrees/` and
 `**/__boundary_violation__/` are already ignored for.
