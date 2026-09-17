@@ -73,12 +73,16 @@ jobs:
               ORDER BY u.email`;
             // An acceptance run revokes its OWN identities in its `finally`, so anything left
             // here belongs to a run that was cancelled — with one exception this cannot see:
-            // a run still in flight. A session created in the last 45 minutes is therefore
-            // left alone and REPORTED, rather than revoked out from under a live journey.
-            const recent = new Date(Date.now() - 45 * 60000);
+            // a run still in flight. Recency is read from when the ACCOUNT was created, not
+            // from when it last signed in. Two of an acceptance run's three identities never
+            // sign in through a browser at all — the PoC Administrator registers the
+            // configuration server-side and the Audit Manager has no session until it
+            // approves — so a session-based guard reads them as leftovers and revokes a live
+            // run's roles, which is exactly what happened to run 35272648301.
+            const recent = new Date(Date.now() - 120 * 60000);
             const live = new Set((await sql`
-              SELECT DISTINCT u.email FROM auth_session s JOIN auth_user u ON u.id = s.user_id
-              WHERE u.email LIKE 'acceptance-%@example.test' AND s.created_at > ${recent.toISOString()}::timestamptz
+              SELECT email FROM auth_user
+              WHERE email LIKE 'acceptance-%@example.test' AND created_at > ${recent.toISOString()}::timestamptz
             `).map(row => String(row.email)));
             const named = keep === '' ? [] : candidates.filter(row => String(row.email).includes(`-${keep}-`)).map(row => String(row.email));
             const skipped = candidates.filter(row => live.has(String(row.email)) || named.includes(String(row.email))).map(row => String(row.email));
