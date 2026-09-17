@@ -1,0 +1,84 @@
+name: Deployed LoanCore acceptance
+
+# One explicitly authorized kickoff. Remove the push trigger after this invocation.
+# Subsequent use is manual only; never call from ordinary CI or deploy hooks.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/deployed-loancore-acceptance.yml]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type synthetic-loancore to authorize a new synthetic live audit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: deployed-loancore-acceptance
+  cancel-in-progress: false
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Archive exact tracked source for the active repair workspace
+        run: |
+          git archive --format=tar.gz HEAD > /tmp/acceptance-source.tar.gz
+          git rev-parse HEAD > /tmp/acceptance-source-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-source
+          path: |
+            /tmp/acceptance-source.tar.gz
+            /tmp/acceptance-source-sha.txt
+          retention-days: 2
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify the cancellation adapter and exact command shape
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/verify-deployed-loancore.mjs')
+          s = p.read_text()
+          old = 'PostgresRunsUnitOfWork, ManifestCredentialProvider'
+          assert s.count(old) == 1
+          s = s.replace(old, 'PostgresRunsUnitOfWork, PostgresRunCancellationRepository, ManifestCredentialProvider')
+          old = 'await cancelRun({ roles, unitOfWork: new PostgresRunsUnitOfWork(db), ids, clock: new SystemClock() }'
+          assert s.count(old) == 1
+          s = s.replace(old, 'const canceled = await cancelRun({ roles, unitOfWork: new PostgresRunsUnitOfWork(db), repository: new PostgresRunCancellationRepository(db), ids, clock: new SystemClock() }')
+          old = 'request: { runId: report.runId },'
+          assert s.count(old) == 1
+          s = s.replace(old, "request: { runId: report.runId, reason: 'Bounded synthetic acceptance observer cleanup' },")
+          s = s.replace('report.cancelCleanup = true;', "report.cancelCleanup = canceled.ok;\n        if (canceled.ok) await poll(() => facts(report.runId), f => f.workspace?.status === 'RELEASED' || f.workspace === null && ['CANCELED','INCONCLUSIVE','RUN_FAILED','COMPLETED'].includes(f.run?.state), 90000);")
+          p.write_text(s)
+          PY
+          node --check scripts/verify-deployed-loancore.mjs
+          git diff --check
+          git diff --binary > /tmp/acceptance-harness.patch
+      - name: Build pinned administrative dependencies and observer browser
+        run: |
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Author approve inspect and observe the real deployed audit
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM_DEPLOYED_AUDIT: ${{ github.event_name == 'push' && 'synthetic-loancore' || inputs.confirm }}
+        run: node scripts/verify-deployed-loancore.mjs
+      - name: Retain secret-free acceptance observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-loancore-acceptance-${{ github.run_id }}
+          path: |
+            deployed-loancore-evidence/
+            /tmp/acceptance-harness.patch
+          if-no-files-found: error
+          retention-days: 14
