@@ -1,0 +1,65 @@
+name: Acceptance state probe
+
+# Read-only. Reports what the in-flight acceptance has actually written, so a long
+# acceptance step can be diagnosed from facts rather than from its silence. It writes
+# nothing and takes no lock.
+on:
+  push:
+    branches: [claude/relaxed-rubin-stwsfu]
+    paths: [.github/workflows/acceptance-state-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - name: Report the acceptance Runs and their stages
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createSqlClient } from '@intellifin/infrastructure';
+          const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          try {
+            const procedures = await sql`
+              SELECT procedure_id, control_name, created_at FROM procedure
+              WHERE control_name LIKE '%35272648301%' ORDER BY created_at`;
+            const runs = await sql`
+              SELECT r.run_id, r.state, r.initiated_at, p.control_name,
+                (SELECT status FROM population_execution x WHERE x.run_id = r.run_id) AS pop_status,
+                (SELECT diagnostic FROM population_execution x WHERE x.run_id = r.run_id) AS pop_diag,
+                (SELECT status FROM run_agent_execution a WHERE a.run_id = r.run_id) AS agent_status,
+                (SELECT diagnostic FROM run_agent_execution a WHERE a.run_id = r.run_id) AS agent_diag,
+                (SELECT status FROM run_workspace w WHERE w.run_id = r.run_id) AS ws_status,
+                (SELECT mode FROM run_workspace w WHERE w.run_id = r.run_id) AS ws_mode,
+                (SELECT count(*)::int FROM run_work_item i WHERE i.run_id = r.run_id) AS work_items,
+                (SELECT count(*)::int FROM run_observation o WHERE o.run_id = r.run_id) AS observations,
+                (SELECT count(*)::int FROM run_tool_action t WHERE t.run_id = r.run_id) AS tool_actions,
+                (SELECT count(*)::int FROM run_evidence e WHERE e.run_id = r.run_id AND e.kind='screenshot' AND e.state='REGISTERED') AS frames,
+                (SELECT outcome FROM run_result s WHERE s.run_id = r.run_id) AS outcome
+              FROM audit_run r JOIN procedure p ON p.procedure_id = r.procedure_id
+              WHERE p.control_name LIKE '%35272648301%' ORDER BY r.initiated_at`;
+            const items = runs.length === 0 ? [] : await sql`
+              SELECT run_id, subject_key, state, observations, diagnostic, attempts
+              FROM run_work_item WHERE run_id = ANY(${runs.map(r => String(r.run_id))}::uuid[])
+              ORDER BY run_id, ordinal`;
+            const beat = await sql`SELECT hostname, observed_at FROM worker_heartbeat ORDER BY observed_at DESC LIMIT 1`;
+            const jobs = await sql`
+              SELECT name, state, count(*)::int FROM pgboss.job
+              WHERE created_on > now() - interval '90 minutes' GROUP BY name, state ORDER BY name, state`;
+            console.log('PROBE', JSON.stringify({ now: new Date().toISOString(), procedures, runs, items, heartbeat: beat[0] ?? null, jobs }, null, 2));
+          } finally { await sql.end({ timeout: 5 }); }
+          NODE
