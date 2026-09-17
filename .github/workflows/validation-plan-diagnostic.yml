@@ -1,0 +1,37 @@
+name: Final acceptance plan diagnostic
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/validation-plan-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - name: Read only the acceptance Procedure Version state
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createSqlClient } from '@intellifin/infrastructure';
+          const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          const rows = await sql`
+            SELECT version_id::text, state, plan_status, plan_failure_reason, created_at, updated_at
+            FROM procedure_version
+            WHERE procedure_id = '01a0b0ae-1dc0-7bfb-8177-cd8e0a3f51ce'::uuid
+            ORDER BY created_at DESC
+          `;
+          console.log('PLAN_DIAGNOSTIC', JSON.stringify(rows));
+          await sql.end({ timeout: 5 });
+          NODE
