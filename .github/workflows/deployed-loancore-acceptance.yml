@@ -1,6 +1,6 @@
 name: Deployed LoanCore acceptance
 
-# One explicitly authorized kickoff. Remove the push trigger after this invocation.
+# One explicitly authorized kickoff. This rerun is authorized after the procedure-form hydration repair.
 # Subsequent use is manual only; never call from ordinary CI or deploy hooks.
 on:
   push:
