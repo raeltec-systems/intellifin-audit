@@ -1,7 +1,7 @@
 name: Deployed LoanCore acceptance
 
-# Manual by default. The temporary validation branch path below is an explicitly authorized
-# ONE-SHOT acceptance against the already released production build. It MUST NOT deploy.
+# One-shot validation branch workflow against the already released production build.
+# This workflow MUST NOT deploy application source.
 on:
   push:
     branches: [validation/final-loancore-20260917]
@@ -20,9 +20,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Separate from the wedged diagnostic-era runner: that runner is waiting on a harness
-  # condition we have now proved was wrong, and must not block this corrected acceptance.
-  group: deployed-loancore-acceptance-final-v2
+  group: deployed-loancore-acceptance-final-v3
   cancel-in-progress: false
 jobs:
   live:
@@ -63,32 +61,45 @@ jobs:
           node-version: '24.20.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Patch only the validation harness for correct Builder sequencing
+      - name: Patch only the validation harness for settled Builder sequencing
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('scripts/verify-deployed-loancore.mjs')
           s = p.read_text()
-          # Ordinary section saves must not wait for a successful executable plan while
-          # the draft is intentionally incomplete. The worker correctly reports blockers
-          # such as "Choose a Population Source" at those intermediate states. Fill all
-          # six sections first; only the review/submit phase requires a successful plan.
+
+          # The procedure worker updates the same version row after every section save.
+          # Wait for that pending job to settle, then reload so the Builder adopts the
+          # newest optimistic-concurrency token before editing the next section. A failed
+          # plan is expected while the draft is incomplete and is NOT an acceptance failure.
+          marker = "const STALE = 'That procedure changed since this page was loaded. Reload the page and try again.';\n"
+          helper = marker + "async function settleDraftBeforeEdit(page) {\n  const procedureId = new URL(page.url()).pathname.split('/')[2];\n  assert.ok(procedureId);\n  await poll(async () => (await sql`SELECT plan_status FROM procedure_version WHERE procedure_id=${procedureId}::uuid ORDER BY version_number DESC LIMIT 1`)[0] ?? null, row => row !== null && row.plan_status !== 'pending', 90000);\n  await page.reload({ waitUntil: 'domcontentloaded' });\n  await expect(page.locator('[data-guided-ready=true]')).toBeVisible();\n}\nasync function savedSourceSnapshot(procedureId) {\n  return (await sql`SELECT source_snapshot FROM procedure_version WHERE procedure_id=${procedureId}::uuid ORDER BY version_number DESC LIMIT 1`)[0]?.source_snapshot ?? null;\n}\nasync function savePopulationSourceThroughUi(procedureId, sourceName) {\n  for (let attempt = 0; attempt < 3; attempt++) {\n    await settleDraftBeforeEdit(auditor);\n    await openStep(auditor, 'Population Source binding');\n    const select = auditor.getByLabel('Where the records come from');\n    await selectContaining(select, sourceName);\n    const chosen = await select.inputValue();\n    assert.notEqual(chosen, '');\n    await auditor.getByRole('button', { name: 'Save records to test', exact: true }).click();\n    try {\n      const saved = await poll(() => savedSourceSnapshot(procedureId), row => row !== null && row.bindingId === chosen, 20000);\n      emit('population-source-bound-through-ui', { attempt: attempt + 1, bindingId: saved.bindingId });\n      return;\n    } catch {\n      const banners = await auditor.locator('.ls-banner').allInnerTexts().catch(() => []);\n      emit('population-source-save-not-bound', { attempt: attempt + 1, banners: banners.map(text => text.slice(0, 180)) });\n    }\n  }\n  throw new Error('Population Source save did not persist after three settled UI attempts');\n}\n"
+          assert marker in s
+          s = s.replace(marker, helper, 1)
+
           old_step = "    await planSettled(auditor); await openStep(auditor, heading); await fill();"
-          new_step = "    await expect(auditor.locator('[data-guided-ready=true]')).toBeVisible(); await openStep(auditor, heading); await fill();"
+          new_step = "    await settleDraftBeforeEdit(auditor); await openStep(auditor, heading); await fill();"
           assert old_step in s
           s = s.replace(old_step, new_step)
-          # Once all six sections exist, acceptance requires an actually derived plan,
-          # not merely a displayed blocker.
+
+          old_population = "  await step('Population Source binding', () => selectContaining(auditor.getByLabel('Where the records come from'), sourceName),\n    () => auditor.getByRole('button', { name: 'Save records to test', exact: true }).click(), 'Saved. The Draft change is recorded in the audit chain.');"
+          new_population = "  phase = `${prefix}Population Source binding`;\n  await savePopulationSourceThroughUi(procedureId, sourceName);"
+          assert old_population in s
+          s = s.replace(old_population, new_population)
+
+          # Only after every authored section is present do we require an actually
+          # successful executable plan.
           old_plan = "toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 })"
           new_plan = "toContainText(/Re-derived/, { timeout: 150000 })"
           assert old_plan in s
           s = s.replace(old_plan, new_plan)
-          # Approval controls are intentionally inert until hydration; observe the marker
-          # before the manager acts so a fast click cannot disappear.
+
+          # A manager's irreversible decision control is inert until hydration.
           old_approve = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await confirmed(manager, 'Approve');"
           new_approve = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await expect(manager.locator('[data-version-actions-ready]')).toHaveAttribute('data-version-actions-ready', 'true');\n  await shot(manager, `${prefix}02-manager-review-before-approval`);\n  const managerApprove = manager.getByRole('button', { name: 'Approve', exact: true });\n  emit('manager-approval-ready', { buttons: await managerApprove.count(), ariaDisabled: await managerApprove.getAttribute('aria-disabled') });\n  await confirmed(manager, 'Approve');"
           assert old_approve in s
           s = s.replace(old_approve, new_approve)
+
           p.write_text(s)
           PY
           node --check scripts/verify-deployed-loancore.mjs
