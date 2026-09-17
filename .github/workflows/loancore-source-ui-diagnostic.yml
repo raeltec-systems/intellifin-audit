@@ -12,7 +12,7 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,81 +26,70 @@ jobs:
       - run: |
           pnpm --filter '@intellifin/infrastructure...' build
           pnpm exec playwright install --with-deps chromium
-      - name: Inspect selected-source client state without saving
+      - name: Reproduce population source save on an isolated synthetic Procedure
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
           import { randomBytes } from 'node:crypto';
           import { execFileSync } from 'node:child_process';
+          import { setTimeout as delay } from 'node:timers/promises';
           import { chromium, expect } from '@playwright/test';
           import { createSqlClient, createDb, findUserIdByEmail } from '@intellifin/infrastructure';
           const BASE = 'https://web-production-edded.up.railway.app';
-          const procedureId = '01a0b0e8-4214-7621-bd5e-e3b6822d83bc';
           const sourceName = 'Live acceptance leavers 35266786707-1';
-          const email = `source-ui-diagnostic-${process.env.GITHUB_RUN_ID}@example.test`;
+          const email = `source-save-diagnostic-${process.env.GITHUB_RUN_ID}@example.test`;
           const password = `Diagnostic-${randomBytes(32).toString('hex')}`;
+          const control = `Source save diagnostic ${process.env.GITHUB_RUN_ID}`;
           console.log(`::add-mask::${password}`);
           const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
           const db = createDb(sql);
-          let browser;
-          let userId;
+          let browser, userId, procedureId;
+          const poll = async (read, accept, ms=30000) => { const end=Date.now()+ms; do { const v=await read(); if(accept(v)) return v; await delay(500); } while(Date.now()<end); throw new Error('diagnostic poll deadline'); };
           try {
-            execFileSync(process.execPath, ['scripts/seed-identity.mts', '--email', email, '--name', 'Source UI Diagnostic Auditor', '--role', 'auditor', '--create-only', 'true'], {
-              env: { ...process.env, SEED_PASSWORD: password, BETTER_AUTH_SECRET: randomBytes(32).toString('hex'), BETTER_AUTH_URL: 'https://seed.invalid' },
-              stdio: 'pipe', timeout: 60000,
+            execFileSync(process.execPath, ['scripts/seed-identity.mts', '--email', email, '--name', 'Source Save Diagnostic Auditor', '--role', 'auditor', '--create-only', 'true'], {
+              env: { ...process.env, SEED_PASSWORD: password, BETTER_AUTH_SECRET: randomBytes(32).toString('hex'), BETTER_AUTH_URL: 'https://seed.invalid' }, stdio: 'pipe', timeout: 60000,
             });
             userId = await findUserIdByEmail(db, email);
             browser = await chromium.launch({ headless: true });
-            const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-            page.setDefaultTimeout(40000);
+            const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(40000);
+            page.on('request', r => { if (r.method()==='POST' && r.url().includes('/procedures/')) console.log('DIAGNOSTIC_POST', new URL(r.url()).pathname); });
             await page.goto(`${BASE}/sign-in`, { waitUntil: 'domcontentloaded' });
-            await expect(page.locator('[data-signin-ready]')).toHaveAttribute('data-signin-ready', 'true');
-            await page.getByLabel('Email address').fill(email);
-            await page.getByLabel('Password').fill(password);
-            await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-            await page.waitForURL(url => url.origin === BASE && !url.pathname.includes('sign-in'));
-            await page.goto(`${BASE}/procedures/${procedureId}/builder`, { waitUntil: 'domcontentloaded' });
+            await expect(page.locator('[data-signin-ready]')).toHaveAttribute('data-signin-ready','true');
+            await page.getByLabel('Email address').fill(email); await page.getByLabel('Password').fill(password); await page.getByRole('button',{name:'Sign in',exact:true}).click();
+            await page.waitForURL(u => u.origin===BASE && !u.pathname.includes('sign-in'));
+            await page.goto(`${BASE}/procedures/new`, { waitUntil:'domcontentloaded' });
+            await expect(page.locator('[data-new-procedure-ready]')).toHaveAttribute('data-new-procedure-ready','true');
+            await page.getByLabel('Template').selectOption('P-1'); await page.getByLabel('Control name',{exact:true}).fill(control);
+            await page.getByRole('button',{name:'Create Procedure',exact:true}).click(); await expect(page.getByRole('dialog')).toBeVisible(); await page.getByRole('dialog').getByRole('button',{name:'Create Procedure',exact:true}).click();
+            await page.waitForURL(/\/procedures\/[0-9a-f-]+\/builder/); procedureId = new URL(page.url()).pathname.split('/')[2];
             await expect(page.locator('[data-guided-ready=true]')).toBeVisible();
-            await page.locator('[data-preparation-nav="evidence"]').click();
-            const panel = page.locator('[data-preparation-panel="evidence"]');
-            await expect(panel).toBeVisible();
-            const sourceQuestion = panel.locator('.ls-guide-questions__nav button[aria-controls$="-source"]');
-            if (await sourceQuestion.count()) await sourceQuestion.click();
-            const select = page.getByLabel('Where the records come from');
-            const options = await select.locator('option').evaluateAll(nodes => nodes.map(n => ({ label: n.textContent ?? '', value: n.value })));
-            const matches = options.filter(o => o.value && o.label.includes(sourceName));
-            if (matches.length !== 1) throw new Error(`Expected one source option, got ${matches.length}`);
-            await select.selectOption(matches[0].value);
-            await page.waitForTimeout(750);
-            const bindingError = page.locator('[id$="-binding-error"]');
-            const save = page.getByRole('button', { name: 'Save records to test', exact: true });
-            const result = {
-              selectedValue: await select.inputValue(),
-              selectedLabel: await select.locator('option:checked').textContent(),
-              bindingError: (await bindingError.innerText()).trim(),
-              bindingErrorHtml: (await bindingError.innerHTML()).slice(0, 1000),
-              saveCount: await save.count(),
-              saveAriaDisabled: await save.getAttribute('aria-disabled'),
-              saveDisabled: await save.isDisabled(),
-            };
-            console.log('SOURCE_UI_DIAGNOSTIC', JSON.stringify(result));
-            await page.screenshot({ path: '/tmp/source-ui.png', fullPage: false });
+            await page.locator('[data-preparation-nav="scope"]').click();
+            await page.getByLabel('Period start',{exact:true}).fill('2026-08-01'); await page.getByLabel('Period end',{exact:true}).fill('2026-08-31'); await page.getByLabel('Scope statement').fill('Three canonical synthetic leavers for source-save diagnostic.');
+            const periodPost = page.waitForResponse(r => r.request().method()==='POST' && new URL(r.url()).pathname===`/procedures/${procedureId}/builder`);
+            await page.getByRole('button',{name:'Save Period and scope',exact:true}).click(); await (await periodPost).finished();
+            await poll(async()=> (await sql`SELECT plan_status FROM procedure_version WHERE procedure_id=${procedureId}::uuid ORDER BY version_number DESC LIMIT 1`)[0], r=>r && r.plan_status!=='pending');
+            await page.reload({waitUntil:'domcontentloaded'}); await expect(page.locator('[data-guided-ready=true]')).toBeVisible();
+            await page.locator('[data-preparation-nav="evidence"]').click(); const panel=page.locator('[data-preparation-panel="evidence"]'); await expect(panel).toBeVisible(); const q=panel.locator('.ls-guide-questions__nav button[aria-controls$="-source"]'); if(await q.count()) await q.click();
+            const select=page.getByLabel('Where the records come from'); const options=await select.locator('option').evaluateAll(ns=>ns.map(n=>({label:n.textContent??'',value:n.value}))); const matches=options.filter(o=>o.value&&o.label.includes(sourceName)); assert.equal(matches.length,1); await select.selectOption(matches[0].value);
+            const error=page.locator('[id$="-binding-error"]'); await expect(error).toHaveText('',{timeout:10000}); const save=page.getByRole('button',{name:'Save records to test',exact:true}); await expect(save).toBeEnabled();
+            console.log('SOURCE_SAVE_BEFORE', JSON.stringify({procedureId, selected:await select.inputValue(), label:await select.locator('option:checked').textContent(), error:(await error.innerText()).trim(), ariaDisabled:await save.getAttribute('aria-disabled')}));
+            const post = page.waitForResponse(r => r.request().method()==='POST' && new URL(r.url()).pathname===`/procedures/${procedureId}/builder`, {timeout:15000});
+            await save.click(); const response=await post; await response.finished(); console.log('SOURCE_SAVE_HTTP', response.status());
+            const persisted=await poll(async()=> (await sql`SELECT source_snapshot FROM procedure_version WHERE procedure_id=${procedureId}::uuid ORDER BY version_number DESC LIMIT 1`)[0]?.source_snapshot??null, s=>s?.bindingId===matches[0].value, 20000);
+            console.log('SOURCE_SAVE_PERSISTED', JSON.stringify({procedureId,bindingId:persisted.bindingId,displayName:persisted.displayName}));
+            await page.screenshot({path:'/tmp/source-save.png',fullPage:false});
           } finally {
-            await browser?.close().catch(() => {});
-            if (userId) {
-              await sql.begin(async tx => {
-                await tx`DELETE FROM auth_session WHERE user_id=${userId}`;
-                await tx`DELETE FROM user_role WHERE user_id=${userId}`;
-              });
-            }
-            await sql.end({ timeout: 5 }).catch(() => {});
+            await browser?.close().catch(()=>{});
+            if(userId) await sql.begin(async tx=>{ await tx`DELETE FROM auth_session WHERE user_id=${userId}`; await tx`DELETE FROM user_role WHERE user_id=${userId}`; });
+            await sql.end({timeout:5}).catch(()=>{});
           }
           NODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-ui-diagnostic-${{ github.run_id }}
-          path: /tmp/source-ui.png
+          name: source-save-diagnostic-${{ github.run_id }}
+          path: /tmp/source-save.png
           if-no-files-found: ignore
           retention-days: 2
