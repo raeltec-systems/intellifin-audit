@@ -18,6 +18,7 @@ import {
   sessionStepWord,
   utcStamp,
   wordFor,
+  workItemLabel,
   workItemWord,
 } from './labels';
 
@@ -186,5 +187,26 @@ describe('the Tool Action name vocabulary (Story 5.3)', () => {
   it('shows an unknown action as it was stored rather than guessing a word for it', () => {
     expect(toolActionNameWord('write-everything')).toBe('write-everything');
     expect(toolActionNameWord('constructor')).toBe('constructor');
+  });
+});
+
+describe('what a Work Item is called on a session surface', () => {
+  // `displayName` is the TARGET SYSTEM's name and is identical on every Work Item of a
+  // Run, so a label built from it alone gave a three-leaver Run three Replay jump pills
+  // reading "LoanCore" and a Live View rail that never said which leaver was in front of
+  // the reader.
+  it('leads with the record and names the system beside it', () => {
+    expect(workItemLabel({ displayName: 'LoanCore', subjectKey: 'E-000103' })).toBe('E-000103 · LoanCore');
+  });
+
+  it('keeps the system name alone when the Work Item inspected no record', () => {
+    expect(workItemLabel({ displayName: 'ProdConsole', subjectKey: null })).toBe('ProdConsole');
+  });
+
+  it('tells two Work Items of one Run apart, which is the whole point', () => {
+    const system = 'LoanCore';
+    const labels = ['E-000102', 'E-000103', 'E-000105']
+      .map((subjectKey) => workItemLabel({ displayName: system, subjectKey }));
+    expect(new Set(labels).size).toBe(3);
   });
 });

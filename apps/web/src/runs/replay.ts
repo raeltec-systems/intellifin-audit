@@ -1,6 +1,7 @@
 import type { RunFrameRow, RunReplayObservationDelta, RunReplayWait } from '@intellifin/infrastructure';
 
 import { escalationKindWord } from '../design/plain-words';
+import { workItemLabel } from './labels';
 
 /**
  * Replay's presentation logic (Story 5.8, FR-30, UX-DR26, addendum §F).
@@ -54,7 +55,10 @@ function landing(frameIndex: number | null, whenMissing: ReplayFrameAbsence):
 export interface ReplayWorkItem {
   readonly workItemId: string;
   readonly displayName: string;
+  /** The record this Work Item inspected, or null when it inspected no population. */
+  readonly subjectKey: string | null;
 }
+
 
 export interface ReplayException {
   readonly exceptionId: string;
@@ -144,7 +148,7 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'work-item',
       id: item.workItemId,
-      label: item.displayName,
+      label: workItemLabel(item),
       ...landing(replayFrameForWorkItem(input.frames, item.workItemId), whenNoFrame),
     });
   }

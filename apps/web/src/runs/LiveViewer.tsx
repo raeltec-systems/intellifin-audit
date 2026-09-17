@@ -6,7 +6,7 @@ import { CAPTURE_TIME_UNRECORDED, LIVE_VIEW_DESKTOP_ONLY_SENTENCE, SESSION_ISOLA
 import { EvidenceKindBadge } from './MinorBadge';
 import { UntrustedText } from './UntrustedText';
 import { chromeDotClass, type LiveViewChrome } from './live-view';
-import { evidenceKindWord, utcStamp, workspaceModeWord } from './labels';
+import { evidenceKindWord, utcStamp, workItemLabel, workspaceModeWord } from './labels';
 
 export interface LiveViewerFrame {
   readonly evidenceId: string;
@@ -197,8 +197,10 @@ export function LiveViewer(props: LiveViewerProps): React.JSX.Element {
               <p>No Work Item is being worked yet.</p>
             ) : (
               <p>
-                {props.workItem.displayName}
-                {props.workItem.subjectKey === null ? '' : ` · ${props.workItem.subjectKey}`} · {props.workItem.state} ·{' '}
+                {/* The record, then the system: `displayName` alone is the same on every
+                    Work Item of a Run, so this rail could not say which leaver was being
+                    inspected. One rule, shared with the Replay jump list. */}
+                {workItemLabel(props.workItem)} · {props.workItem.state} ·{' '}
                 {props.workItem.observations} Observations
               </p>
             )}

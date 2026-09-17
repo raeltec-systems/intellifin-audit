@@ -289,6 +289,67 @@ async function negativeCase() {
     && (duplicate.records ?? []).some(record => String(record).includes('E-000107'));
   emit('defective-population-refused', report.negative);
 }
+/**
+ * The overall control conclusion, which a person has to reach.
+ *
+ * C2 is Agent-Judged, so the Run seals nothing on its own: the Result sits at
+ * PENDING_CONFIRMATION with `sealed` false until an auditor confirms or rejects each
+ * machine proposal (Story 4.9). `p-1-live-acceptance.json` names what it must become once
+ * they confirm — CONTROL_FAILURE, because E-000103 kept access — so a Run that stops at
+ * PENDING_CONFIRMATION has produced findings and NOT a conclusion, and an acceptance that
+ * stopped there would be reporting half the journey.
+ *
+ * The decision is queued to the WORKER, so the page acknowledges and the Result seals a
+ * moment later. Every assertion here is against the STORED Result; the banner is what the
+ * person sees, never what the acceptance believes. One row is confirmed per page load
+ * because `router.refresh()` re-renders the list under the control that was just used.
+ */
+async function confirmAgentJudged() {
+  phase = 'confirm-agent-judged';
+  const deadline = Date.now() + 5 * 60000;
+  let confirmations = 0;
+  while (Date.now() < deadline) {
+    if ((await facts(report.runId)).result?.sealed === true) break;
+    await auditor.goto(`${BASE}/runs/${report.runId}`, { waitUntil: 'domcontentloaded' });
+    const rows = auditor.locator('li.ls-evaluation');
+    const total = await rows.count();
+    let acted = false;
+    for (let index = 0; index < total && !acted; index += 1) {
+      const control = rows.nth(index).getByRole('button', { name: 'Confirm evaluation', exact: true });
+      // A control with a reason is `aria-disabled`, never `disabled` (it must stay
+      // focusable so its reason is reachable), so "can this be used" is the attribute
+      // rather than Playwright's enabled check.
+      if (await control.count() === 0 || await control.getAttribute('aria-disabled') === 'true') continue;
+      await control.click();
+      await expect(auditor.getByRole('dialog')).toBeVisible();
+      await auditor.getByRole('dialog').getByRole('button', { name: 'Confirm evaluation', exact: true }).click();
+      await expect(auditor.getByRole('dialog')).toHaveCount(0, { timeout: 40000 });
+      await expect(auditor.getByText('Review submitted.', { exact: true })).toBeVisible();
+      confirmations += 1; acted = true;
+      emit('agent-judged-confirmed-through-ui', { confirmations });
+    }
+    if (!acted) await delay(3000);
+  }
+  let sealed = null;
+  try { sealed = await poll(() => facts(report.runId), row => row.result?.sealed === true, 180000); }
+  catch { sealed = await facts(report.runId); }
+  report.confirmation = {
+    confirmations,
+    outcome: sealed.result?.outcome ?? null,
+    sealed: sealed.result?.sealed === true,
+    expected: TRUTH.expected_outcome_after_required_human_confirmation,
+  };
+  report.checks.humanConfirmationSeals = confirmations > 0 && sealed.result?.sealed === true
+    && sealed.result.outcome === TRUTH.expected_outcome_after_required_human_confirmation;
+  // The conclusions are read AGAIN after sealing: confirming a proposal is a write, and
+  // an acceptance that compared only the pre-confirmation rows would not have checked the
+  // values the sealed Result actually stands on.
+  report.confirmedConclusions = sealed.conclusions.map(row => ({ record: row.record, condition: row.condition_id, value: row.value, origin: row.origin, confirmation: row.confirmation }));
+  report.confirmedDisagreements = disagreementsWithTruth(TRUTH, sealed.conclusions);
+  report.checks.sealedConclusionsMatchTruth = report.confirmedDisagreements.length === 0;
+  await shot(auditor, '09-sealed-conclusion');
+  emit('control-conclusion-sealed', report.confirmation);
+}
 async function facts(runId) {
   const one = async query => (await query)[0] ?? null;
   const workspace = await one(sql`SELECT status,mode,workspace_id,attempts,diagnostic FROM run_workspace WHERE run_id=${runId}::uuid`);
@@ -378,7 +439,12 @@ try {
   });
   await watch.goto(BASE + watchHref, { waitUntil: 'domcontentloaded' });
   await facts(report.runId); await shot(watch, '03-watch-start');
-  const deadline = Date.now() + 9 * 60000;
+  // A Solari Run drives a REMOTE browser with a model in the loop, so each record costs
+  // several seconds of page work plus model latency; three records is minutes, not the
+  // seconds a local Chromium and a synthetic provider take. The window is bounded so a
+  // stuck Run cannot hold the job for its full hour, and the loop leaves the moment the
+  // Run reaches any state that is not QUEUED, RUNNING or PAUSED.
+  const deadline = Date.now() + 20 * 60000;
   let lastState = '', lastFrame = '', captures = 0;
   while (Date.now() < deadline) {
     report.facts = await facts(report.runId);
@@ -396,6 +462,18 @@ try {
         report.checks.visibleInspection = true;
         await shot(watch, `04-watch-frame-${String(captures++).padStart(2,'0')}`); lastFrame = src;
         emit('workspace-screen-visible', { capture: captures, state });
+      }
+    }
+    // Watch has to say WHICH leaver is in front of the reader. The rail's Work Item line
+    // was built from the Target System's display name — identical on every Work Item — so
+    // it read "LoanCore · RUNNING · 1 Observations" whichever record the Agent was on, and
+    // the frame's own narration said "on LoanCore" with nothing to tell three frames apart.
+    // No browser fixture seeds a Work Item on this surface, so this is where it is checked.
+    if (report.checks.watchNamesTheRecord !== true) {
+      const railText = await watch.locator('body').innerText();
+      if (TRUTH_RECORDS.some(record => railText.includes(record))) {
+        report.checks.watchNamesTheRecord = true;
+        emit('watch-named-the-record', { records: TRUTH_RECORDS.filter(record => railText.includes(record)) });
       }
     }
     if (!['QUEUED','RUNNING','PAUSED'].includes(state)) break;
@@ -494,6 +572,12 @@ try {
       await expect.poll(() => image.getAttribute('src'), { timeout: 30000 }).not.toBe(firstSrc);
       await shot(auditor, '08-replay-playing'); report.checks.replayPlayback = true;
     } else { await shot(auditor, '07-replay-empty'); report.checks.replayPlayback = false; }
+    // Replay is where a reader follows one record from the captured screen to the
+    // conclusion, so its jump list has to say WHICH record each target opens. The Work
+    // Item pills were labelled with the Target System's name, which is identical on every
+    // Work Item of a Run, so a three-leaver Run offered three pills reading "LoanCore".
+    const replayText = await auditor.locator('body').innerText();
+    report.checks.replayNamesEveryRecord = TRUTH_RECORDS.every(record => replayText.includes(record));
   }
   report.checks.workspaceReleased = (await poll(() => facts(report.runId), f => f.workspace?.status === 'RELEASED', 60000)).workspace.status === 'RELEASED';
   // `shot()` throws if any scanned page carries the provider's session identity, so the
@@ -503,7 +587,10 @@ try {
   report.checks.providerHandleContained = providerHandle !== null && providerHandle.length > 0 && containmentScans >= 3;
   report.containment = { identityKnown: providerHandle !== null, identityLength: providerHandle?.length ?? 0, pagesScanned: containmentScans };
   report.checks.expectedPendingReview = final.result?.outcome === 'PENDING_CONFIRMATION' && final.result.sealed === false;
-  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','workspaceReleased','providerHandleContained','expectedPendingReview'];
+  // Only a Run that really is waiting on a person can be carried through the person's
+  // decision; calling this on any other Result would spend five minutes proving nothing.
+  if (report.checks.expectedPendingReview) await confirmAgentJudged();
+  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','watchNamesTheRecord','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','replayNamesEveryRecord','workspaceReleased','providerHandleContained','expectedPendingReview','humanConfirmationSeals','sealedConclusionsMatchTruth'];
   if (process.env.ACCEPTANCE_NEGATIVE_CASE === 'true') { await negativeCase(); report.required.push('defectivePopulationRefused'); }
   report.accepted = report.required.every(name => report.checks[name] === true);
   if (!report.accepted) process.exitCode = 1;

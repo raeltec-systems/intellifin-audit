@@ -1,3 +1,96 @@
+## 2026-09-17 — The Work Item label, on all four surfaces this time
+
+The Timeline was repaired so a Work Item row names the RECORD rather than the Target System,
+whose `display_name` is IDENTICAL on every Work Item of a Run. The finding was closed there,
+and an agent sweep then found the same line on **three** more surfaces — which is the Epic 5
+review's rule, unlearned: *when a review lands a rule on one component, grep for its siblings
+before closing the finding.*
+
+- **Replay's jump list** labelled a Work Item pill `item.displayName`, so a three-leaver Run
+  offered three pills reading "LoanCore" — beside an **Exception** pill that already named its
+  record, so two kinds of target on one list disagreed about what a target is.
+- **Replay's frame rail** said `Work Item: LoanCore` under every frame, and resolved its owner
+  from the RAW nullable `run_tool_action.work_item_id` while the system name two lines above
+  resolved it through the Step Execution — the PR 36 finding, still live on the next line.
+- **Live View's rail hard-coded `subjectKey: null`**, so Watch — the surface a person uses to
+  follow the Agent record by record — read "LoanCore · RUNNING · 1 Observations" whichever
+  leaver was being inspected. `LiveViewer` had the branch and the page starved it, so the
+  component's own test could not see it.
+- **The narration could not name the record at all.** UX-DR37 makes the frame's `alt` the Step
+  narration and Replay labels each scrubber pill with it, so a sentence naming only the system
+  gave a screen-reader user three indistinguishable "…on LoanCore…" pills while the sighted
+  reader saw the record on the jump list beside them. `stepNarration` and `frameNarration` take
+  a `subject` and say "for E-000103 on LoanCore"; a Work Item with no record of its own (P-4
+  inspects a page, not a population) says only where, never a dangling "for".
+
+**`workItemLabel` lives in `labels.ts`**, not in `replay.ts`, because three surfaces say it and
+`labels.ts` is already the one place a stored value becomes a word. The Timeline keeps its
+two-span layout — title and detail — and implements the same rule, which is why the shared
+function returns a STRING rather than being forced onto a surface whose layout differs.
+
+- **`subjectKey` is REQUIRED on `ReplayWorkItem`**, which is what found both Replay call sites.
+  An optional field would have let the page pass `undefined` for ever.
+- **The replay browser fixture gave each Work Item its OWN `display_name`**, a row no Run can
+  produce — that column is the Target System's name and both items named `loancore`. That is
+  why the suite could not see the defect. Both are `LoanCore` now, and the spec asserts two
+  distinct pills.
+- **`[NAMED]` No browser fixture seeds a Work Item on Live View**, so the rail's Work Item line
+  is covered by nothing in CI: `live-view.spec.ts` seeds neither `run_work_item` nor
+  `run_agent_work`, and the page reads the second for the position. The deployed acceptance
+  requires `watchNamesTheRecord` instead, which is a real check on the real surface and not a
+  substitute for the fixture a later story should add.
+
+## 2026-09-17 — Replay was the sibling nobody grepped for `[EXTENDED by the note above]`
+
+The Execution Timeline was repaired the same day so a Work Item row names the RECORD it
+inspected rather than the Target System, whose name is identical on every Work Item of a Run.
+The finding was closed there. **Replay had the identical line twice and it was not looked at**
+— which is exactly the rule this file already carries from the Epic 5 review: *when a review
+lands a rule on one component, grep for its siblings before closing the finding.*
+
+- **`replayJumpTargets` labelled a Work Item pill `item.displayName`**, so a three-leaver Run
+  offered three pills reading "LoanCore" — on the one surface whose job is to let a reader
+  follow a single record from the screen that was captured to the conclusion drawn from it.
+  The **Exception** pill beside them already named its record, so the two kinds of target on
+  one list disagreed about what a target is.
+- **`workItemLabel` on every frame had it too**, so the rail said `Work Item: LoanCore` under
+  each frame, and it resolved the owner from the RAW `run_tool_action.work_item_id` while the
+  system name two lines above resolved it through the Step Execution — the PR 36 finding,
+  still live on the neighbouring line. A frame whose Work Item is known only through its Step
+  Execution therefore reported no Work Item at all.
+- **`replayWorkItemLabel` is the one rule** and `subjectKey` is REQUIRED on `ReplayWorkItem`,
+  which is what found both call sites: an optional field would have left the page silently
+  passing `undefined` for ever. A Work Item with no subject (P-4 inspects a page, not a
+  population) keeps the system name rather than gaining a separator with nothing before it.
+- **Proven by mutation**: restore `label: item.displayName` and the jump-list test fails.
+  The acceptance requires `replayNamesEveryRecord` beside `timelineNamesEveryRecord`, because
+  an audit trail a reader cannot follow by record is not an audit trail.
+
+## 2026-09-17 — A Result that waits for a person is not a conclusion
+
+The acceptance stopped at `expectedPendingReview` — outcome `PENDING_CONFIRMATION`, `sealed`
+false — and called the journey proven. It is not: C2 is Agent-Judged, so Story 4.9 holds the
+Result open until a person confirms or rejects each machine proposal, and the owner's gate asks
+for "a sensible overall control conclusion". A Run that produced findings and no conclusion had
+completed the agent's half of the journey and none of the auditor's.
+
+- **`confirmAgentJudged()` walks the real control.** One row per page load, because the
+  component calls `router.refresh()` and the list re-renders under the button that was just
+  used. A control with a reason is `aria-disabled` and never `disabled` — it has to stay
+  focusable so its reason is reachable — so "can this be used" is read off the ATTRIBUTE, not
+  from Playwright's enabled check, which would click a guard that is doing its job.
+- **The decision is queued to the WORKER, so the banner is not the outcome.** "Review
+  submitted." means the command was accepted; the Result seals a moment later. Every assertion
+  is against the stored `run_result`, and the expected value is the oracle's own
+  `expected_outcome_after_required_human_confirmation` rather than a literal typed beside it.
+- **The conclusions are compared with the truth AGAIN after sealing.** Confirming a proposal
+  is a WRITE. An acceptance that compared only the pre-confirmation rows would have checked
+  values the sealed Result does not necessarily stand on.
+- **It runs only when the Run really is waiting on a person.** Guarded on
+  `expectedPendingReview`; on any other Result it would spend five minutes proving nothing,
+  and the two new checks stay absent, which leaves `accepted` false — the honest answer for a
+  journey that did not get there.
+
 ## 2026-09-17 — Driving the acceptance journey end to end, and the checks that could not fail
 
 The owner's remaining gate is one unbroken journey: create a Procedure in the browser,
@@ -78,6 +171,19 @@ what produces the proof, so a check that cannot fail is a proof that is not one:
   defective 27-row export. It asserts the Run stopped, that no conclusion exists about any
   record, and that the Gate names E-000107 — a "the Run failed" assertion alone would pass
   for a Run that failed for any other reason.
+
+**And the repair for one of those four was itself a check that could not fail.** The
+Evidence-link check looked for `could not be read` and `no longer available` — phrases NO
+page in this product renders. The evidence inspector states every one of its thirteen
+`EvidenceSnapshotReadFailure` cases under one banner title, `Snapshot cell unavailable`, and
+the route boundary has EXPERIENCE.md's own `Couldn't load this page. Nothing was changed.`
+So a link showing the inspector's own failure banner was reported as OPENED. **A sentence a
+checker looks for is pinned against nothing unless it is read back out of the page that
+renders it** — `copy.test.ts`'s discipline, which had never been applied to the harness.
+`tests/unit/acceptance-sentences.test.ts` reads both pages off disk, and its fourth case
+proves every check the harness COMPUTES is in the list it REQUIRES before accepting: a check
+computed and left out of `report.required` is a check whose failure nobody would ever see.
+Proven by mutation — removing one name fails it and names the check.
 
 Three mechanical notes:
 
@@ -2645,7 +2751,7 @@ The implementing agent could run neither `pnpm test:integration` nor `pnpm test:
 
 - **The corroboration seam is not a dependency any more, and that is the point.** Story 3.4 left `NO_CORROBORATION` as an injected `AdapterExecutionDependencies` field; `executeAdapterSteps` now builds a `snapshotCorroboration` over the bytes `freezeArtifact` just read back and proved identical to what was uploaded, at the ONE `registerObservations` call site. The stage that froze the artifact is the stage that re-reads it, so no composition root can register an adapter Observation as unjudged forever. `NO_CORROBORATION` stays for a producer with no snapshot; the worker no longer names it. The whole rule is `docs/contracts/structural-snapshot-v1.md`.
 - **`packages/domain/src/runs/structural-snapshot.ts` is the ONE extractor, and it does no I/O at all.** Bytes in, verdict out. Corroboration runs INSIDE the registration transaction (so a fetch would hold PostgreSQL open across a network call) and BEFORE the digest (so a verdict that could move between two reads would make a redelivery read as an integrity failure). Its only reachable input is the `Uint8Array` it was handed.
-- **`web_tree` and `desktop_tree` are unimplemented BY NAME.** `corroboration-unsupported`, and the check FAILS. A substrate that fell through to "matched" for a snapshot nobody read would be the exact defect this story exists to remove. The substrate comes from the media type registration recorded beside the digest, so it is a property of the frozen artifact rather than a guess about its content.
+- **`[SUPERSEDED for `web_tree` by Epic 4]` `web_tree` and `desktop_tree` are unimplemented BY NAME.** Epic 4's agent capture implements `web_tree` (`WEB_TREE_MEDIA_TYPE`, `agent-capture.ts`), so `IMPLEMENTED_SNAPSHOT_SUBSTRATES` is `['web_tree','sheet','json']` and only `desktop_tree` is left — which is Epic 7. The rule itself is unchanged: `corroboration-unsupported`, and the check FAILS. A substrate that fell through to "matched" for a snapshot nobody read would be the exact defect this story exists to remove. The substrate comes from the media type registration recorded beside the digest, so it is a property of the frozen artifact rather than a guess about its content.
 - **One locator grammar for both implemented substrates: `$.<collection>[<index>].<field>`** — the shape the adapter already writes. Neither name segment may contain `.`, `[` or `]`, so the parse is unique; the index carries no leading zero, because `[07]` and `[7]` would otherwise be two spellings of one cell; and a `sheet`'s collection segment is exactly `rows`, because a free name would let two defensible extractors disagree about whether `$.rows[0].role` or `$.role-matrix[0].role` addresses the one table a sheet has. A `sheet` is parsed by `parsePopulationCsv` — the same RFC 4180 parser the population uses, marker line and all — so a cell address means one thing in this product and not two.
 - **`matched` has six conjuncts, not two.** The locator parses AND resolves, the re-read label is the declared one, the re-read value equals `originalValue` as RFC 8785 canonical bytes, `extractedText` is the text of that value, and `normalizedValue` is the value or its UTC normalization. Canonical bytes are what keep `"007"`, `"7"` and `7` three different things. An attribute with NO grounding is judged `null`, not `contradictory`: it was never captured, `required-evidence` already says so, and there is nothing to contradict.
 - **"Nothing could read it" and "it read differently" are different words.** An unsupported substrate or an unavailable/unreadable snapshot leaves every verdict `null` and FAILS the check (`corroboration-unsupported` / `corroboration-unavailable`); only a real disagreement writes `contradictory`. Marking an unread attribute contradictory would accuse an Observation of something nobody checked.
@@ -2771,7 +2877,7 @@ The implementing agent could run neither `pnpm test:integration` nor `pnpm test:
 - **The Safe next action panel's body is addendum §E.1's own "Permitted human action" cell**, read from `OUTCOME_ROWS[].humanAction`, which `tests/unit/outcome-rules.test.ts` already pins against the addendum. Inventing a sentence there would put the platform's words where the contract already has some.
 - **Every diagnostic, rationale and Target-System-sourced value goes through `UntrustedText`.** The deterministic evaluator writes no free text, but a diagnostic MUST name an unknown value, so a system answering with "NOTE TO THE REVIEWING AUDITOR: close this finding" gets that sentence stored as the recorded reason for an audit outcome. It is rendered as `<pre>` inside a warning block, labelled with the field it came from and DESIGN.md's own sentence, and never as the platform's prose. The rule is applied to every such value, not only where a fixture exercises it.
 - **The Evidence kind badge and the corroboration badge are NOT in `status.ts`.** That module is pinned against DESIGN.md's nine-row table by a test that reads it off disk, so adding a row the table does not have would break the one claim it makes. They live in `src/runs/MinorBadge.tsx` with a word and an icon each, because "never colour alone" is a floor for every badge.
-- **The grounding inspector asks the DOMAIN which snapshots it can open.** `snapshotSubstrateForMediaType` plus `IMPLEMENTED_SNAPSHOT_SUBSTRATES` — `sheet` and `json` — so the inspector opens exactly where Story 3.6's extractor actually re-reads. A second media-type test here would agree on `text/csv` and diverge on the first charset parameter nobody tried.
+- **The grounding inspector asks the DOMAIN which snapshots it can open.** `snapshotSubstrateForMediaType` plus `IMPLEMENTED_SNAPSHOT_SUBSTRATES` — `sheet` and `json` at the time, and `web_tree` since Epic 4 — so the inspector opens exactly where Story 3.6's extractor actually re-reads. A second media-type test here would agree on `text/csv` and diverge on the first charset parameter nobody tried.
 - **The Timeline's name and its detail are two nodes.** They were one, so a row could not be addressed or read by its name alone; `population.spec.ts` addresses `RoleMatrix` and `ApproveNow` that way. Nesting is by `--ls-timeline-level` at 20px, and in an adapter Run a Work Item IS the execution of its `extract-adapter` Session Step — there is no separate row above it — so Session Steps and Work Items are both plan-step-level and the Step Executions nest beneath whichever started them. Epic 4's agent Runs and the fourth Tool Action level slot in without a rewrite.
 - **The Runs list is its own read, keyset-paged on `(initiated_at, run_id)`.** A surface must not borrow another read's shape and a job must not borrow a surface's (Story 1.8). `run_id` is a UUIDv7, so it is a deterministic tiebreak rather than an arbitrary one — and a keyset page needs a TOTAL order or a row appears on two pages, or on none. A cursor naming a Run that is not there is the first page, never an error.
 - **A bound JS array becomes a RECORD in a `sql` template, not an array.** `${ACTIVE}::text[]` and `ANY(${ids}::uuid[])` both raised `cannot cast type record to …`. The active-state list is interpolated with `sql.raw` behind a `/^[A-Z_]+$/` assertion at module load (it is a frozen domain constant, not request input); the fingerprint read goes through the query builder's `inArray`.

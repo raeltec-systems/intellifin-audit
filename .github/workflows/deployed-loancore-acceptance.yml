@@ -28,9 +28,10 @@ concurrency:
 jobs:
   live:
     runs-on: ubuntu-latest
-    # The clean Run's observation window is bounded at nine minutes and the negative case
-    # adds a second authoring journey and a Run that stops at acquisition.
-    timeout-minutes: 50
+    # The clean Run's observation window is bounded at twenty minutes — a Solari Run
+    # drives a remote browser with a model in the loop — and the negative case adds a
+    # second authoring journey and a Run that stops at acquisition.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
         with:

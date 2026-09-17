@@ -106,6 +106,28 @@ describe('the Step counter and narration', () => {
     expect(frameNarration(FRAME, null, null)).toBe('Read an attribute, captured 2026-09-09T06:12:02.000Z.');
   });
 
+  // UX-DR37 makes the frame's `alt` the Step narration, and Replay labels each scrubber
+  // pill with it — so a narration naming only the Target System gave a three-leaver Run
+  // three pills a screen-reader user could not tell apart, while the sighted reader saw
+  // the record on the jump list beside them.
+  it('names the RECORD as well as the system, so two Work Items of one Run differ', () => {
+    expect(stepNarration(EXECUTION, 'LoanCore', 'E-000103'))
+      .toBe('Inspect the record for E-000103 on LoanCore, plan step loancore-2, started 2026-09-09T06:12:00.000Z.');
+    const said = ['E-000102', 'E-000103', 'E-000105']
+      .map((record) => stepNarration(EXECUTION, 'LoanCore', record));
+    expect(new Set(said).size).toBe(3);
+    expect(frameNarration(FRAME, EXECUTION, 'LoanCore', 'E-000103')).toBe(stepNarration(EXECUTION, 'LoanCore', 'E-000103'));
+  });
+
+  it('says only where when the Work Item inspected no record of its own', () => {
+    // P-4 inspects a page, not a population, so there is no record to name and the
+    // sentence must not gain a dangling "for".
+    expect(stepNarration(EXECUTION, 'ProdConsole', null))
+      .toBe('Inspect the record on ProdConsole, plan step loancore-2, started 2026-09-09T06:12:00.000Z.');
+    expect(frameNarration(FRAME, null, 'LoanCore', 'E-000103'))
+      .toBe('Read an attribute for E-000103 on LoanCore, captured 2026-09-09T06:12:02.000Z.');
+  });
+
   it('narrates without a Target System when the Step names none', () => {
     expect(stepNarration({ ...EXECUTION, action: 'create-workspace', planStepId: 'session-1' }, null))
       .toBe('Create the Agent Workspace, plan step session-1, started 2026-09-09T06:12:00.000Z.');

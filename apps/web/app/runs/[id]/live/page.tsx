@@ -95,6 +95,15 @@ export default async function RunLivePage({
     workItemId === null
       ? null
       : targetName(timeline.workItems.find((item) => item.workItemId === workItemId)?.registrationId ?? null);
+  /**
+   * The RECORD a Step Execution is working, so the narration a screen reader hears can
+   * tell two Work Items of the same Run apart. `displayName` cannot: it is the Target
+   * System's name and is identical on every Work Item.
+   */
+  const subjectOf = (workItemId: string | null): string | null =>
+    workItemId === null
+      ? null
+      : timeline.workItems.find((item) => item.workItemId === workItemId)?.subjectKey ?? null;
   const current = currentStepExecution(timeline.stepExecutions.rows);
   const workItem = agentWork?.workItemId === undefined || agentWork.workItemId === null
     ? null
@@ -217,7 +226,9 @@ export default async function RunLivePage({
               ? null
               : {
                   evidenceId: frame.evidenceId,
-                  narration: frameNarration(frame, frameStep, systemOf(frameStep?.workItemId ?? frame.workItemId)),
+                  narration: frameNarration(frame, frameStep,
+                    systemOf(frameStep?.workItemId ?? frame.workItemId),
+                    subjectOf(frameStep?.workItemId ?? frame.workItemId)),
                   sourceLocation: frame.sourceLocation,
                   digest: frame.digest,
                   capturedAt: frame.capturedAt,
@@ -228,7 +239,7 @@ export default async function RunLivePage({
             current === null
               ? null
               : {
-                  narration: stepNarration(current, systemOf(current.workItemId)),
+                  narration: stepNarration(current, systemOf(current.workItemId), subjectOf(current.workItemId)),
                   state: current.state,
                   attempt: current.attempt,
                   diagnostic: current.diagnostic,
@@ -240,7 +251,10 @@ export default async function RunLivePage({
               : {
                   displayName: workItem.displayName,
                   state: workItem.state,
-                  subjectKey: null,
+                  // The record, which the rail renders in front of the system name. It was
+                  // hard-coded `null` here, so Watch said "LoanCore · RUNNING · 1
+                  // Observations" whichever leaver the Agent was inspecting.
+                  subjectKey: workItem.subjectKey,
                   observations: workItem.observations,
                 }
           }

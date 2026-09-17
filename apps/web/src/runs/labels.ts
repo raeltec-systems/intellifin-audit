@@ -422,3 +422,25 @@ export const observationCorroborationWord = (value: string): string =>
 
 /** Whether a Run is still in flight, from the domain's own list. */
 export const runIsActive = (state: RunState): boolean => isActiveRunState(state);
+
+/**
+ * What a Work Item is called on a session surface: the RECORD, then the system it was
+ * inspected in.
+ *
+ * `displayName` is the TARGET SYSTEM's name and is identical on every Work Item of a Run,
+ * so a three-leaver Run rendered three Replay jump pills reading "LoanCore" and a Live
+ * View rail that said "LoanCore · RUNNING · 1 Observations" whichever leaver was being
+ * inspected — on the two surfaces whose whole job is to let a person follow ONE record
+ * from the screen that was captured to the conclusion drawn from it.
+ *
+ * One rule, because three surfaces say it: the Timeline row (which splits it across a
+ * title and a detail line), the Replay jump list and the Live View rail. A Work Item with
+ * no subject of its own — P-4 inspects a page, not a population — keeps the system name
+ * rather than gaining a separator with nothing before it.
+ */
+export function workItemLabel(item: {
+  readonly displayName: string;
+  readonly subjectKey: string | null;
+}): string {
+  return item.subjectKey === null ? item.displayName : `${item.subjectKey} · ${item.displayName}`;
+}

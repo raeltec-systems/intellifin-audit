@@ -84,9 +84,9 @@ describe('the Replay jump list', () => {
     framesTotal: FRAMES.length,
     frames: FRAMES,
     workItems: [
-      { workItemId: WORK_A, displayName: 'Leaver 1' },
-      { workItemId: WORK_B, displayName: 'Leaver 2' },
-      { workItemId: '019823ab-0000-7000-8000-0000000000c1', displayName: 'Adapter read' },
+      { workItemId: WORK_A, displayName: 'LoanCore', subjectKey: 'E-000102' },
+      { workItemId: WORK_B, displayName: 'LoanCore', subjectKey: 'E-000105' },
+      { workItemId: '019823ab-0000-7000-8000-0000000000c1', displayName: 'ProdConsole', subjectKey: null },
     ],
     exceptions: [{ exceptionId: 'e1', workItemId: WORK_B, populationRecordKey: 'E-000105' }],
     waits: [
@@ -113,6 +113,17 @@ describe('the Replay jump list', () => {
   it('labels an Exception by the record it was raised against', () => {
     expect(targets.find((target) => target.kind === 'exception')?.label).toBe('E-000105');
   });
+
+  // `displayName` is the TARGET SYSTEM's name and is the SAME on every Work Item of a
+  // Run, so labelling a jump with it gave a three-leaver Run three pills reading
+  // "LoanCore" — on the surface a reader follows from a captured screen to a conclusion,
+  // and beside an Exception pill that already named its record.
+  it('leads a Work Item jump with the record, and names the system beside it', () => {
+    const items = targets.filter((target) => target.kind === 'work-item').map((target) => target.label);
+    expect(items).toEqual(['E-000102 · LoanCore', 'E-000105 · LoanCore', 'ProdConsole']);
+    expect(new Set(items).size).toBe(items.length);
+  });
+
 });
 
 describe('why a jump target has no frame, said only as far as the read knows (PR 36 review)', () => {
@@ -120,7 +131,7 @@ describe('why a jump target has no frame, said only as far as the read knows (PR
   const targets = (framesTotal: number) => replayJumpTargets({
     frames: FRAMES,
     framesTotal,
-    workItems: [{ workItemId: WORK_A, displayName: 'Leaver 1' }, { workItemId: WORK_C, displayName: 'Leaver 3' }],
+    workItems: [{ workItemId: WORK_A, displayName: 'LoanCore', subjectKey: 'E-000102' }, { workItemId: WORK_C, displayName: 'LoanCore', subjectKey: 'E-000107' }],
     exceptions: [],
     waits: [wait({ waitId: 'w-early', openedAt: '2026-09-10T08:59:00.000Z' })],
   });
