@@ -4,7 +4,7 @@ name: Core acceptance engineering
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/core-acceptance-engineering.yml]
+    paths: [.github/workflows/core-acceptance-engineering.yml, .github/scripts/core-security-fixes.py]
 permissions:
   contents: read
 concurrency:
@@ -33,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Apply reviewed capability containment patch
-        run: python3 .github/scripts/core-security.py
+        run: python3 .github/scripts/core-security.py && python3 .github/scripts/core-security-fixes.py
       - name: Enable pinned pnpm
         run: corepack enable && corepack prepare pnpm@11.25.0 --activate
       - uses: actions/setup-node@v5
@@ -41,6 +41,20 @@ jobs:
           node-version: '24.20.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Package public dependencies for offline local checks
+        run: |
+          mkdir -p /tmp/portable/.toolchain/bin /tmp/portable-output
+          cp "$(command -v node)" /tmp/portable/.toolchain/bin/node
+          pnpm_file="$(find "$HOME/.cache/node/corepack" -path '*/pnpm/11.25.0/bin/pnpm.cjs' -print -quit)"
+          if [ -n "$pnpm_file" ]; then cp -a "$(dirname "$(dirname "$pnpm_file")")" /tmp/portable/.toolchain/pnpm; fi
+          tar -czf /tmp/portable-output/dependencies.tar.gz node_modules apps/*/node_modules packages/*/node_modules -C /tmp/portable .toolchain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-portable-tooling
+          path: /tmp/portable-output/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
       - name: Typecheck and dependency boundaries
         run: pnpm typecheck && pnpm boundaries
       - name: Full unit suite
@@ -48,13 +62,13 @@ jobs:
       - name: Migrate disposable database and install integration browser
         run: |
           pnpm db:migrate
-          pnpm --filter @intellifin/infrastructure exec playwright-core install --with-deps chromium
+          pnpm exec playwright install --with-deps chromium
       - name: Full PostgreSQL integration suite
         run: pnpm test:integration
       - name: Retain exact tested changes
         run: |
           mkdir -p /tmp/core-verified
-          rm .github/scripts/core-security.py
+          rm .github/scripts/core-security.py .github/scripts/core-security-fixes.py
           git add --all
           git diff --cached --check
           git diff --cached --binary > /tmp/core-verified/verified.patch
