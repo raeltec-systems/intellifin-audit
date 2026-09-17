@@ -1,0 +1,17 @@
+name: Cancel wedged browser validation
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/validation-cancel-current.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only run 35261690230
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel 35261690230 --repo raeltec-systems/intellifin-audit
