@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
+import { NEW_PROCEDURE_PREPARING, NEW_PROCEDURE_REQUIRES_JAVASCRIPT } from './new-procedure-words';
 import type { NewProcedureActionResult, NewProcedureFormFields } from '../../app/procedures/new/actions';
 
 /**
@@ -50,7 +51,7 @@ const TEMPLATE_OPTIONS = PROCEDURE_TEMPLATES.map((template) => ({
 }));
 
 const UNCHOSEN = '';
-export const NEW_PROCEDURE_PREPARING = 'Preparing the form. Choices will be available when loading finishes.';
+export { NEW_PROCEDURE_PREPARING, NEW_PROCEDURE_REQUIRES_JAVASCRIPT } from './new-procedure-words';
 
 export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX.Element {
   const router = useRouter();
@@ -153,7 +154,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
           evidence and systems, then design the test with assistance.
         </p>
         {!clientReady ? <p role="status">{NEW_PROCEDURE_PREPARING}</p> : null}
-        <noscript><p>Enable JavaScript to create a Procedure.</p></noscript>
+        {!clientReady ? <p>{NEW_PROCEDURE_REQUIRES_JAVASCRIPT}</p> : null}
         {/* Native disabling also works BEFORE handlers exist. The reason stays
             outside the fieldset, readable while the fields cannot receive input. */}
         <fieldset disabled={!clientReady} className="ls-stack" style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>

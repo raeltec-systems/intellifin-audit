@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { AUTH_STATE } from './accounts';
+import { NEW_PROCEDURE_PREPARING, NEW_PROCEDURE_REQUIRES_JAVASCRIPT } from '../../apps/web/src/procedures/new-procedure-words';
 
 test.use({ storageState: AUTH_STATE.auditor });
 
@@ -20,7 +21,7 @@ test('slow hydration cannot discard the first Template choice', async ({ page })
     await expect(page.getByLabel('Template', { exact: true })).toBeDisabled();
     await expect(page.getByLabel('Control name', { exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Create Procedure', exact: true })).toBeDisabled();
-    await expect(page.getByText('Preparing the form. Choices will be available when loading finishes.')).toBeVisible();
+    await expect(page.getByText(NEW_PROCEDURE_PREPARING)).toBeVisible();
     expect(creates).toEqual([]);
     release();
     await expect(page.locator('[data-new-procedure-ready]')).toHaveAttribute('data-new-procedure-ready', 'true');
@@ -46,7 +47,11 @@ test('without JavaScript the form remains unavailable and states the requirement
   try {
     const page = await context.newPage();
     await page.goto('/procedures/new');
-    await expect(page.getByText('Enable JavaScript to create a Procedure.')).toBeVisible();
+    // Chromium's javaScriptEnabled:false stops script EXECUTION and leaves the parser's
+    // scripting flag on, so `<noscript>` children stay raw text no locator can see. The
+    // form therefore states the requirement in ordinary markup, which is also what a
+    // reader whose scripts failed to load gets.
+    await expect(page.getByText(NEW_PROCEDURE_REQUIRES_JAVASCRIPT)).toBeVisible();
     await expect(page.getByLabel('Template', { exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Create Procedure', exact: true })).toBeDisabled();
   } finally { await context.close(); }

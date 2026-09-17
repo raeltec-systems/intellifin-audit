@@ -1,3 +1,36 @@
+## 2026-09-17 — `<noscript>` is invisible to the test that exists to read it
+
+The procedure-form hydration repair (`7efb284`) put its requirement sentence inside
+`<noscript>`, and `new-procedure-readiness.spec.ts` then asserted that sentence in a
+`javaScriptEnabled: false` context. It failed with "element(s) not found", which held main's
+CI red — so Release was SKIPPED and the repair never reached production, and the deployed
+LoanCore acceptance stopped at `create-procedure` against the OLD build. One test, one job,
+the whole delivery.
+
+- **Chromium's `javaScriptEnabled: false` disables script EXECUTION and leaves the HTML
+  parser's scripting flag ON.** So `<noscript>` children stay RAW TEXT — no elements, nothing
+  a locator matches, and the user-agent rule hides them. The SSR unit test passed because
+  `renderToStaticMarkup` really does emit `<noscript><p>…</p></noscript>`; the markup was
+  never the problem. **A sentence only a real browser preference can reveal cannot be pinned
+  by this suite, so it must not be the only place the product says it.**
+- **`<noscript>` also answers the wrong question.** It covers exactly one failure — scripting
+  off at parse time — and none of the ones that actually happen: a chunk that 404s after a
+  deploy, a proxy that blocks the bundle, an exception during hydration. In every one of those
+  the form sits for ever under "Preparing the form. Choices will be available when loading
+  finishes." — a sentence that is then the opposite of true. `NEW_PROCEDURE_REQUIRES_JAVASCRIPT`
+  is rendered by the server EVERY time and removed by hydration, so whatever stopped the
+  handlers attaching, the reader is told what to do.
+- **Both sentences live in `apps/web/src/procedures/new-procedure-words.ts`**, free of React
+  and `next/navigation`, because the browser spec imports them — the `run-start-words.ts` rule:
+  a sentence retyped in a test is a sentence pinned against nothing. Proven by mutation: put
+  the sentence back inside `<noscript>` and the spec fails.
+- **A killed background browser run leaves its rows behind**, and `procedures.spec.ts`'s
+  empty-list test is what finds them. `afterAll` never ran, so the next foreground run met
+  four leftover Procedures and failed an assertion that had nothing to do with the change.
+  The database read `0` by the time it was checked, because that run's own teardown had since
+  cleaned up — check the leftovers WHILE the failure is fresh, or re-run against a clean
+  database before believing it.
+
 ## 2026-09-17 — Verify the public reference, not the provider capability
 
 The Live View browser test still expected the provider handle after redaction.
