@@ -1,0 +1,89 @@
+name: Deployed LoanCore acceptance
+
+# One explicitly authorized execution. Product changes are on main; this isolated
+# verification branch does not interrupt main's CI/release. Retire after this check.
+on:
+  push:
+    branches: [verify/deployed-loancore-20260917]
+    paths: [.github/workflows/deployed-loancore-acceptance.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: deployed-loancore-acceptance
+  cancel-in-progress: false
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - name: Build the pinned acceptance client and browser
+        run: |
+          pnpm install --frozen-lockfile
+          node --check scripts/live-loancore-acceptance.mjs
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Require the successful exact main release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const {owner,repo}=context.repo;
+            const sha='27fae468f844136822fdbab49e979aa0a3a6b948';
+            const until=Date.now()+30*60*1000;
+            let selected;
+            while(Date.now()<until) {
+              const ci=await github.rest.actions.getWorkflowRun({owner,repo,run_id:35183195640});
+              if(ci.data.head_sha!==sha) throw new Error('CI identity mismatch');
+              if(ci.data.status==='completed' && ci.data.conclusion!=='success') throw new Error('Main CI did not pass; no live audit was started.');
+              const runs=await github.rest.actions.listWorkflowRunsForRepo({owner,repo,head_sha:sha,event:'workflow_run',per_page:30});
+              selected=runs.data.workflow_runs.find(r=>r.name==='Release'&&r.head_sha===sha&&r.status==='completed'&&r.conclusion==='success');
+              if(selected) break;
+              console.log('Waiting for the authorized exact release; no production credentials in this step.');
+              await new Promise(resolve=>setTimeout(resolve,30000));
+            }
+            if(!selected) throw new Error('Exact successful release unavailable; no live audit was started.');
+            fs.mkdirSync('live-loancore-evidence',{recursive:true});
+            fs.writeFileSync('live-loancore-evidence/deployment-receipt.json',JSON.stringify({sha,ciRun:35183195640,releaseRun:selected.id,releaseCompleted:selected.updated_at,verificationWorkflow:context.runId},null,2));
+      - name: Deployed auditor authoring, independent-role approval, inspection and viewer verification
+        timeout-minutes: 25
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/live-loancore-acceptance.mjs
+      - name: Remove only this workflow's temporary identity access
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'JS'
+          import {createSqlClient} from '@intellifin/infrastructure';
+          const sql=createSqlClient(process.env.DATABASE_URL,{max:1});
+          try {
+            const tag=process.env.GITHUB_RUN_ID+'-'+process.env.GITHUB_RUN_ATTEMPT;
+            for(const [role,name] of [['poc-administrator','Acceptance Setup Administrator'],['auditor','Live Acceptance Auditor'],['audit-manager','Live Acceptance Manager']]) {
+              const email=`acceptance-${role}-${tag}@example.test`;
+              const users=await sql`SELECT id FROM auth_user WHERE email=${email} AND name=${name}`;
+              if(users.length===1) {
+                await sql`DELETE FROM auth_session WHERE user_id=${users[0].id}`;
+                await sql`DELETE FROM user_role WHERE user_id=${users[0].id} AND role=${role}`;
+              }
+            }
+            console.log('Temporary acceptance identities have no role or active session. Named history preserved.');
+          } finally { await sql.end({timeout:5}); }
+          JS
+      - name: Retain the synthetic verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-loancore-acceptance-${{ github.run_id }}
+          path: live-loancore-evidence/
+          if-no-files-found: warn
+          retention-days: 14
