@@ -473,6 +473,13 @@ try {
   // Run reaches any state that is not QUEUED, RUNNING or PAUSED.
   const deadline = Date.now() + 20 * 60000;
   let lastState = '', lastFrame = '', captures = 0;
+  // Watch is a claim about what a person sees CHANGE while the Run is still going, so the
+  // screens are counted against the Run's state at the moment each one arrived, and a
+  // progression record is kept rather than one end-of-loop snapshot. The page is never
+  // reloaded here: a reader who has to reload is not watching, and papering over a lost
+  // channel would make the gate unfailable.
+  let screensDuringRun = 0, shape = '';
+  const progression = [], liveStatuses = new Set();
   while (Date.now() < deadline) {
     report.facts = await facts(report.runId);
     const state = report.facts.run.state;
@@ -480,6 +487,7 @@ try {
     const live = watch.locator('[data-live-status]');
     if (await live.count()) {
       const status = await live.getAttribute('data-live-status');
+      if (status !== null) liveStatuses.add(status);
       if (status === 'live') report.checks.liveConnected = true;
     }
     const image = watch.locator('img.ls-session__frame');
@@ -487,10 +495,14 @@ try {
       const src = await image.getAttribute('src');
       if (src !== lastFrame) {
         report.checks.visibleInspection = true;
+        if (state === 'RUNNING') screensDuringRun += 1;
         await shot(watch, `04-watch-frame-${String(captures++).padStart(2,'0')}`); lastFrame = src;
-        emit('workspace-screen-visible', { capture: captures, state });
+        emit('workspace-screen-visible', { capture: captures, state, duringRun: screensDuringRun });
       }
     }
+    const next = JSON.stringify({ state, toolActions: report.facts.counts.tool_actions, frames: report.facts.counts.frames,
+      items: report.facts.workItems.map(item => `${item.subject_key ?? '-'}:${item.state}:${item.observations}`) });
+    if (next !== shape) { shape = next; progression.push({ at: new Date().toISOString(), screensShownToTheViewer: captures, ...JSON.parse(next) }); }
     // Watch has to say WHICH leaver is in front of the reader. The rail's Work Item line
     // was built from the Target System's display name — identical on every Work Item — so
     // it read "LoanCore · RUNNING · 1 Observations" whichever record the Agent was on, and
@@ -520,7 +532,20 @@ try {
     spanSeconds: frameTimes.length > 1 ? Math.round((frameTimes.at(-1) - frameTimes[0]) / 1000) : 0,
     longestGapSeconds: gaps.length > 0 ? Math.round(Math.max(...gaps) / 1000) : null,
     medianGapSeconds: gaps.length > 0 ? Math.round(gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] / 1000) : null,
+    screensDuringRun,
+    liveStatuses: [...liveStatuses].sort(),
+    progression,
+    // The agent's OWN record of what it did, so the screens a viewer saw can be read
+    // against the actions that produced them: the sign-in, the navigation, the search,
+    // opening a record, reading its fields, and moving on to the next record.
+    actions: (await sql`SELECT action, outcome, capture FROM run_tool_action WHERE run_id=${report.runId}::uuid ORDER BY started_at`)
+      .map(row => ({ action: row.action, outcome: row.outcome, capture: row.capture })),
   };
+  report.watch.actionKinds = [...new Set(report.watch.actions.map(action => action.action))].sort();
+  // A placeholder that never changes is not Watch, and one screen read after the Run has
+  // already ended is not watching it work. Two distinct screens delivered to the viewer
+  // WHILE the Run was RUNNING is the weakest statement neither of those can satisfy.
+  report.checks.watchDuringRun = screensDuringRun >= 2;
   emit('watch-observed', report.watch);
   // A Run that stopped to ask a human is not a Run that concluded, and the checks below
   // would read as a pile of false facts rather than as the one thing that happened. The
@@ -617,7 +642,7 @@ try {
   // Only a Run that really is waiting on a person can be carried through the person's
   // decision; calling this on any other Result would spend five minutes proving nothing.
   if (report.checks.expectedPendingReview) await confirmAgentJudged();
-  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','watchNamesTheRecord','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','replayNamesEveryRecord','workspaceReleased','providerHandleContained','expectedPendingReview','humanConfirmationSeals','sealedConclusionsMatchTruth'];
+  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','watchDuringRun','watchNamesTheRecord','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','replayNamesEveryRecord','workspaceReleased','providerHandleContained','expectedPendingReview','humanConfirmationSeals','sealedConclusionsMatchTruth'];
   if (process.env.ACCEPTANCE_NEGATIVE_CASE === 'true') { await negativeCase(); report.required.push('defectivePopulationRefused'); }
   report.accepted = report.required.every(name => report.checks[name] === true);
   if (!report.accepted) process.exitCode = 1;
