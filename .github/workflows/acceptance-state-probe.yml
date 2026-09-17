@@ -95,7 +95,19 @@ jobs:
             const steps = ids.length === 0 ? [] : await safely(sql`
               SELECT run_id, action, state, attempts, diagnostic FROM run_session_step
               WHERE run_id = ANY(${ids}::uuid[]) ORDER BY run_id`);
-            console.log('PROBE_RUN', JSON.stringify({ actions, waits, evidence, steps }, null, 2));
+            // Closed-vocabulary fields only. `response` holds model output and retrieved
+            // content and is NEVER printed; what is reported is the turn's status, its
+            // diagnostic — a closed suffix — and whether the stored response names any
+            // action at all. A diagnostic log is not a place to quote a provider.
+            const turns = ids.length === 0 ? [] : await safely(sql`
+              SELECT run_id, sequence, status, diagnostic,
+                     (response IS NOT NULL) AS has_response,
+                     jsonb_typeof(response) AS response_shape
+              FROM run_agent_turn WHERE run_id = ANY(${ids}::uuid[]) ORDER BY run_id, sequence`);
+            const work = ids.length === 0 ? [] : await safely(sql`
+              SELECT run_id, status, diagnostic, next_turn, tokens, model
+              FROM run_agent_work WHERE run_id = ANY(${ids}::uuid[])`);
+            console.log('PROBE_RUN', JSON.stringify({ actions, waits, evidence, steps, turns, work }, null, 2));
             const beat = await sql`SELECT hostname, seen_at FROM worker_heartbeat ORDER BY seen_at DESC LIMIT 3`
               .catch(error => [{ unavailable: String(error?.code ?? 'error') }]);
             const jobs = await sql`
