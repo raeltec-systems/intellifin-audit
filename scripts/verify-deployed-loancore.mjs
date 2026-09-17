@@ -448,8 +448,13 @@ try {
   for (const href of groundingLinks.slice(0, 6)) {
     await auditor.goto(BASE + href, { waitUntil: 'domcontentloaded' });
     const body = await auditor.locator('body').innerText();
-    const opened = !/Couldn't load this page|could not be read|no longer available/i.test(body)
-      && await auditor.getByRole('heading', { level: 1 }).count() > 0;
+    // The inspector states EVERY read failure under one banner title, and the route
+    // boundary has EXPERIENCE.md's own sentence. Both are exact strings taken from the
+    // pages themselves: a loose phrase nobody renders would make this check unable to
+    // fail, which is the defect this whole pass is about.
+    const failed = body.includes('Snapshot cell unavailable')
+      || body.includes("Couldn't load this page. Nothing was changed.");
+    const opened = !failed && await auditor.getByRole('heading', { level: 1 }).count() > 0;
     report.evidenceLinks.push({ href, opened });
   }
   report.checks.evidenceLinksOpen = report.evidenceLinks.length > 0 && report.evidenceLinks.every(link => link.opened);
