@@ -1,0 +1,47 @@
+name: Cancel stuck final acceptance
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/validation-cancel-stuck.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel-and-clean:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - name: Cancel only the stuck acceptance run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel 35260178509 --repo raeltec-systems/intellifin-audit
+      - uses: actions/checkout@v5
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - name: Revoke temporary validation sessions and roles
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createSqlClient } from '@intellifin/infrastructure';
+          const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          const emails = [
+            'acceptance-auditor-35260178509-1@example.test',
+            'acceptance-audit-manager-35260178509-1@example.test',
+            'acceptance-poc-administrator-35260178509-1@example.test',
+          ];
+          const users = await sql`SELECT id, email FROM auth_user WHERE email = ANY(${emails})`;
+          const ids = users.map(row => row.id);
+          if (ids.length > 0) {
+            await sql`DELETE FROM auth_session WHERE user_id = ANY(${ids})`;
+            await sql`DELETE FROM user_role WHERE user_id = ANY(${ids})`;
+          }
+          console.log('CLEANUP', JSON.stringify({ accountsFound: users.length, sessionsAndRolesRevoked: true }));
+          await sql.end({ timeout: 5 });
+          NODE
