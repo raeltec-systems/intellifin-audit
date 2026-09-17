@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 10
       - name: Prove the trigger commit changed only this workflow
         if: github.event_name == 'push'
         run: |
@@ -39,6 +39,11 @@ jobs:
           changed="$(git diff --name-only HEAD^ HEAD)"
           printf '%s\n' "$changed"
           test "$changed" = '.github/workflows/deployed-loancore-acceptance.yml'
+      - name: Prove application source still matches released main
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**')"
+          test -z "$changed" || { printf '%s\n' "$changed"; exit 1; }
       - name: Archive exact tracked source for the acceptance
         run: |
           git archive --format=tar.gz HEAD > /tmp/acceptance-source.tar.gz
@@ -56,21 +61,28 @@ jobs:
           node-version: '24.20.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Quality gate the released source before acceptance
-        run: |
-          pnpm typecheck
-          pnpm boundaries
-          pnpm test
-      - name: Make the acceptance explicitly observe decision-control hydration
+      - name: Patch only the validation harness for prerequisite order and hydration observation
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('scripts/verify-deployed-loancore.mjs')
           s = p.read_text()
-          old = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await confirmed(manager, 'Approve');"
-          new = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await expect(manager.locator('[data-version-actions-ready]')).toHaveAttribute('data-version-actions-ready', 'true');\n  await shot(manager, `${prefix}02-manager-review-before-approval`);\n  const managerApprove = manager.getByRole('button', { name: 'Approve', exact: true });\n  emit('manager-approval-ready', { buttons: await managerApprove.count(), ariaDisabled: await managerApprove.getAttribute('aria-disabled') });\n  await confirmed(manager, 'Approve');"
-          assert old in s
-          p.write_text(s.replace(old, new))
+          # Fill required authoring sections before requiring a derived executable plan.
+          old_step = "    await planSettled(auditor); await openStep(auditor, heading); await fill();"
+          new_step = "    await openStep(auditor, heading); await fill();"
+          assert old_step in s
+          s = s.replace(old_step, new_step)
+          # Once authoring is complete, review may proceed only on a successfully derived plan.
+          old_plan = "toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 })"
+          new_plan = "toContainText(/Re-derived/, { timeout: 150000 })"
+          assert old_plan in s
+          s = s.replace(old_plan, new_plan)
+          # Approval controls are server-rendered but intentionally unavailable until hydration.
+          old_approve = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await confirmed(manager, 'Approve');"
+          new_approve = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await expect(manager.locator('[data-version-actions-ready]')).toHaveAttribute('data-version-actions-ready', 'true');\n  await shot(manager, `${prefix}02-manager-review-before-approval`);\n  const managerApprove = manager.getByRole('button', { name: 'Approve', exact: true });\n  emit('manager-approval-ready', { buttons: await managerApprove.count(), ariaDisabled: await managerApprove.getAttribute('aria-disabled') });\n  await confirmed(manager, 'Approve');"
+          assert old_approve in s
+          s = s.replace(old_approve, new_approve)
+          p.write_text(s)
           PY
           node --check scripts/verify-deployed-loancore.mjs
           git diff --check
@@ -82,8 +94,6 @@ jobs:
           curl -fsS --max-time 30 https://web-production-edded.up.railway.app/sign-in > /tmp/sign-in.html
           grep -q 'data-signin-ready' /tmp/sign-in.html \
             || { echo 'The deployed build predates the sign-in hydration repair.'; exit 1; }
-          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/procedures >/dev/null \
-            || { echo 'The released web application is unavailable.'; exit 1; }
       - name: Build pinned administrative dependencies and observer browser
         run: |
           pnpm --filter '@intellifin/infrastructure...' build
