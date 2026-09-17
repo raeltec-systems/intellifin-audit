@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { heroProcedureTemplate, PROCEDURE_TEMPLATES, type TemplateId } from '@intellifin/domain';
@@ -50,11 +50,17 @@ const TEMPLATE_OPTIONS = PROCEDURE_TEMPLATES.map((template) => ({
 }));
 
 const UNCHOSEN = '';
+export const NEW_PROCEDURE_PREPARING = 'Preparing the form. Choices will be available when loading finishes.';
 
 export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX.Element {
   const router = useRouter();
   const templateId = useId();
   const controlNameId = useId();
+  // The server can display the form before its controlled inputs have handlers.
+  // Keep native controls unavailable until hydration, rather than discarding an
+  // auditor's early Template choice when React attaches its initial empty state.
+  const [clientReady, setClientReady] = useState(false);
+  useEffect(() => { setClientReady(true); }, []);
 
   const [template, setTemplate] = useState(UNCHOSEN);
   const [controlName, setControlName] = useState('');
@@ -68,7 +74,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
   const [unknownOutcome, setUnknownOutcome] = useState(false);
 
   async function submit(): Promise<void> {
-    if (submittingRef.current || unknownOutcome) return;
+    if (!clientReady || submittingRef.current || unknownOutcome) return;
     submittingRef.current = true;
     setConfirming(false);
     setBusy(true);
@@ -100,7 +106,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
 
   function onRequestSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (submittingRef.current || unknownOutcome) return;
+    if (!clientReady || submittingRef.current || unknownOutcome) return;
     if (template === UNCHOSEN) {
       // The refusal the spec asks for: no sentence, no stored row — and a refusal the
       // person can act on, stated where the choice is. Read from the command's own
@@ -139,13 +145,19 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
         submission: with no method a form submits as a GET, putting every field in the
         URL. See `apps/web/src/form-method.test.ts`.
       */}
-      <form method="post" onSubmit={onRequestSubmit} className="ls-admin__form">
+      <form method="post" onSubmit={onRequestSubmit} className="ls-admin__form" data-new-procedure-ready={clientReady} aria-busy={!clientReady}>
         <h2>Start a new procedure</h2>
         <p className="ls-caption">
           Choose the control you want to test. These Templates contain synthetic
           Northstar examples for the demo. Review the populated context, choose your
           evidence and systems, then design the test with assistance.
         </p>
+        {!clientReady ? <p role="status">{NEW_PROCEDURE_PREPARING}</p> : null}
+        <noscript><p>Enable JavaScript to create a Procedure.</p></noscript>
+        {/* Native disabling also works BEFORE handlers exist. The reason stays
+            outside the fieldset, readable while the fields cannot receive input. */}
+        <fieldset disabled={!clientReady} className="ls-stack" style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+          <legend className="ls-visually-hidden">Procedure details</legend>
         <div className="ls-admin__fields">
           <div className="ls-dialog__field">
             <label htmlFor={templateId}>Template</label>
@@ -217,6 +229,7 @@ export function NewProcedureForm({ onCreate }: NewProcedureFormProps): React.JSX
             {busy ? 'Creating…' : 'Create Procedure'}
           </Button>
         </div>
+        </fieldset>
       </form>
 
       <ConfirmDialog
