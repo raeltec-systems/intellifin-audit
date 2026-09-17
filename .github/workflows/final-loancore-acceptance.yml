@@ -2,6 +2,12 @@ name: Final LoanCore acceptance
 
 # The close-out acceptance against the ALREADY RELEASED production build.
 #
+# Known deployed behaviour this harness now survives: a Builder section's Server Action
+# COMMITS and its response body never completes. The row is written — two plan-derivation
+# attempts with two different input digests, and a digest moves only when authored inputs
+# do — while `Response.finished()` never resolves. The harness treats that as the
+# product's own lost-acknowledgement case and reads the stored row instead of waiting.
+#
 # This workflow never deploys. It proves the deployed application source is byte-identical
 # to the released revision, then drives the real UI as a real auditor and a real Audit
 # Manager. The harness is `scripts/verify-deployed-loancore.mjs` exactly as committed:

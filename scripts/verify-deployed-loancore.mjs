@@ -185,10 +185,24 @@ async function planSettled(page) {
   await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role=status]')).toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 });
   emit('plan-settled-done');
 }
+/**
+ * Performs the action and waits for its Server Action response, bounded.
+ *
+ * `waitForResponse` resolves on HEADERS. `Response.finished()` resolves when the BODY
+ * completes and takes no timeout at all, so a response whose body never completes waited
+ * for ever: the 2026-09-17 close-out sat eight minutes on a Period-and-scope save whose
+ * row had already been written. Returns whether the acknowledgement actually arrived; a
+ * stalled one is the product's own "the save response was lost" case, where the outcome
+ * is unknown from here and only the stored row settles it.
+ */
 async function acknowledged(page, action) {
   const url = page.url();
   const response = page.waitForResponse(r => r.url() === url && r.request().method() === 'POST', { timeout: 45000 });
-  await action(); await (await response).finished();
+  await action();
+  const settled = await bounded(() => response.then(reply => reply.finished()), 60000, 'server action response body')
+    .then(() => true, () => false);
+  if (!settled) emit('server-action-response-did-not-complete', { phase });
+  return settled;
 }
 const STALE = 'That procedure changed since this page was loaded. Reload the page and try again.';
 /** The Draft row this journey is authoring, read back to prove each section landed. */
@@ -213,15 +227,20 @@ async function step(procedureId, heading, fill, save, saved, persisted) {
     emit('draft-section-opened', { section: heading });
     await fill();
     emit('draft-section-filled', { section: heading });
-    await acknowledged(auditor, save);
-    emit('draft-section-acknowledged', { section: heading });
-    const ok = auditor.getByText(saved).first(), stale = auditor.getByText(STALE).first();
-    await expect(ok.or(stale).first()).toBeVisible({ timeout: 40000 });
-    if (await ok.isVisible()) {
-      const stored = await poll(() => draftRow(procedureId), row => row !== null && persisted(row), 30000).catch(() => null);
-      if (stored !== null) { emit('draft-section-saved', { section: heading }); return; }
-      emit('draft-section-acknowledged-but-not-stored', { section: heading, attempt: attempt + 1 });
+    const settled = await acknowledged(auditor, save);
+    emit('draft-section-acknowledged', { section: heading, settled });
+    // A stalled acknowledgement leaves the form busy for ever, so the page is reloaded
+    // before the row is read: the stored value is what says whether the save landed, and
+    // an unacknowledged save that COMMITTED is still a saved section.
+    if (settled) {
+      const ok = auditor.getByText(saved).first(), stale = auditor.getByText(STALE).first();
+      await expect(ok.or(stale).first()).toBeVisible({ timeout: 40000 });
+    } else {
+      await auditor.reload({ waitUntil: 'domcontentloaded' });
     }
+    const stored = await poll(() => draftRow(procedureId), row => row !== null && persisted(row), 30000).catch(() => null);
+    if (stored !== null) { emit('draft-section-saved', { section: heading, settled }); return; }
+    emit('draft-section-acknowledged-but-not-stored', { section: heading, attempt: attempt + 1, settled });
     await auditor.reload({ waitUntil: 'domcontentloaded' });
   }
   throw new Error(`Draft section was acknowledged but never stored: ${heading}`);
