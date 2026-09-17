@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { Button } from './design/Button';
+import { SIGN_IN_PREPARING, SIGN_IN_REQUIRES_JAVASCRIPT } from './sign-in-words';
 
 /**
  * The sign-in form (FR-1).
@@ -23,9 +24,24 @@ import { Button } from './design/Button';
  *
  * The form still shows exactly what the server said. It never distinguishes an unknown
  * email address from a wrong password, because the server does not either.
+ *
+ * **The fields are unavailable until the handlers attach, and that is a credential
+ * defect rather than a nicety.** `email` and `password` are CONTROLLED inputs whose
+ * initial state is empty, so anything typed into the server-rendered page before
+ * hydration is discarded the moment React attaches — and the submit that follows posts
+ * two empty strings. Better Auth answers 400 and `sign-in-route.ts` rewrites every
+ * failure to one sentence, so the person is told "Check your email address and
+ * password" for a page defect they cannot see, on a fast connection or a fast typist.
+ * It was found driving the deployed acceptance, where the same sign-in failed three
+ * times in four with a password that was provably correct. Native `disabled` works
+ * before any handler exists, which is what makes it the guard; the reason sits outside
+ * the fieldset so it can be read while the fields cannot be used.
  */
 export function SignInForm(): React.JSX.Element {
   const errorId = useId();
+  // The server can display this form before its controlled inputs have handlers.
+  const [clientReady, setClientReady] = useState(false);
+  useEffect(() => { setClientReady(true); }, []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +72,7 @@ export function SignInForm(): React.JSX.Element {
     // Holding Enter in a text field fires submit repeatedly. Without this guard each
     // repeat is another POST, and ten of them exhaust the real per-minute sign-in rate
     // limit. The button's `aria-disabled` cannot stop implicit submission.
-    if (submittingRef.current) return;
+    if (!clientReady || submittingRef.current) return;
     submittingRef.current = true;
     setBusy(true);
     setAttempt((current) => current + 1);
@@ -103,7 +119,12 @@ export function SignInForm(): React.JSX.Element {
         every server access log. A POST to this path has no handler and answers 405,
         which discloses nothing.
       */}
-      <form className="ls-signin__form" method="post" onSubmit={onSubmit}>
+      <form className="ls-signin__form" method="post" onSubmit={onSubmit} data-signin-ready={clientReady} aria-busy={!clientReady}>
+        {!clientReady ? <p role="status">{SIGN_IN_PREPARING}</p> : null}
+        {!clientReady ? <p>{SIGN_IN_REQUIRES_JAVASCRIPT}</p> : null}
+        {/* Native disabling holds BEFORE handlers exist, which is the whole point. */}
+        <fieldset disabled={!clientReady} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+          <legend className="ls-visually-hidden">Sign-in details</legend>
         <div className="ls-dialog__field">
           <label htmlFor="email">Email address</label>
           <input
@@ -135,6 +156,7 @@ export function SignInForm(): React.JSX.Element {
         <Button type="submit" variant="primary" size="md" busy={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>
+        </fieldset>
       </form>
     </>
   );

@@ -83,9 +83,35 @@ function LineListField({ id, label, help, values, invalid, onChange }: {
 
 const EMPTY_POLICY: RolePrivilegePolicy = { kind: 'role-privilege', rolesField: 'roles', privileged: [], nonPrivileged: [] };
 
+/**
+ * What the server will store for this authored input.
+ *
+ * The compiler NORMALISES what it accepts — a role-privilege policy's lists are trimmed,
+ * deduplicated and SORTED, a blank applicability becomes `found = true` — and the section
+ * machine compares what it sent with the snapshot that comes back. Recording the raw edit
+ * therefore declared a saved-value conflict after a save that had SUCCEEDED: type the
+ * privileged roles in any order but alphabetical, save, and every "Mark reviewed" control
+ * refused with "Resolve the saved-value conflict in Compliance Rule before submitting." —
+ * naming a conflict with nothing on screen to resolve, and blocking submission until the
+ * page was reloaded. Found driving the deployed acceptance journey end to end.
+ *
+ * The compiler is the one authority on what it stores, so this ASKS it rather than
+ * restating its rules; a second copy of the normalisation would diverge on the first edge
+ * nobody tried. An input the compiler refuses is returned unchanged: the command refuses
+ * that save too, so the section reports the refusal and never a conflict.
+ */
+export function storedComplianceInput(
+  draft: Pick<ProcedureVersionView, 'templateId' | 'complianceCompilerVersion'>,
+  edit: ComplianceDraftInput,
+): ComplianceDraftInput {
+  const compiled = compileComplianceDraft(draft.templateId, edit, draft.complianceCompilerVersion);
+  return compiled.ok ? complianceInputFromFields(compiled.value) : edit;
+}
+
 export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRuleFormProps): React.JSX.Element {
   const id = useId();
-  const section = useSection(complianceInputFromFields(draft), rowVersion);
+  const section = useSection(complianceInputFromFields(draft), rowVersion,
+    (value) => storedComplianceInput(draft, value));
   const input = section.value;
   const inputRef = { get current() { return section.current.current.value; } };
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
@@ -137,7 +163,7 @@ export function ComplianceRuleForm({ draft, rowVersion, onSave }: ComplianceRule
     if (saving.current || unknownOutcome || section.current.current.conflict) return;
     saving.current = true;
     setBusy(true);
-    section.begin(edit);
+    section.begin(storedComplianceInput(draft, edit));
     try {
       const outcome = await onSave({ procedureId: draft.procedureId, versionId: draft.versionId, expectedRowVersion: section.current.current.token, edit });
       section.finish(outcome.ok ? outcome.rowVersion : undefined);

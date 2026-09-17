@@ -1,3 +1,51 @@
+## 2026-09-17 — Two defects the deployed acceptance journey found by being driven end to end
+
+The owner's remaining gate is one unbroken journey: create a Procedure in the browser,
+configure it, submit it, have a SECOND person approve it, activate it, start the Run, watch
+it inspect records. Driving that journey locally against the real build — a copy of
+`scripts/verify-deployed-loancore.mjs` pointed at a local web server — found two defects no
+suite had. Neither is in the domain; both are in the surface, and both stop the journey dead.
+
+- **A controlled input discards what was typed before React attached, and the one place that
+  costs a CREDENTIAL is the sign-in form.** `7efb284` fixed this for the Procedure form and
+  the same shape was still live one page earlier: fill the fields while the bundle is still
+  loading, and React's initial empty state replaces them on hydrate — so the POST carries
+  `{"email":"","password":""}`, Better Auth answers **400**, and the person is told **"Check
+  your email address and password."** about a credential they typed correctly. It is
+  intermittent by construction: it depends on whether the person types faster than the bundle
+  loads, which is exactly the case a fast operator and a cold deploy both reach. The repair is
+  the Procedure form's: a native `<fieldset disabled>` (the only guard that holds BEFORE
+  handlers exist), `data-signin-ready`, and the two sentences in ordinary markup — never
+  `<noscript>`, for the reason the note below this one gives.
+- **The decisive assertion is what was SENT, not that the submit worked.**
+  `tests/e2e/sign-in-readiness.spec.ts` blocks the scripts, types, releases them, submits, and
+  then reads the request body: `sent.email` and `sent.password` must be what was typed. An
+  assertion that the sign-in succeeded passes on a build with no guard at all, because the
+  browser that is quick enough to be tested is usually quick enough to hydrate first.
+- **A normalising compiler and a section machine that records the raw edit declare a conflict
+  after a save that SUCCEEDED.** `compileComplianceDraft` trims, deduplicates and SORTS a
+  role-privilege policy's lists; `useSection.begin()` recorded the edit as typed, so the next
+  server snapshot differed from it and `observe()` flagged `conflict`. Every "Mark reviewed"
+  control then refused with **"Resolve the saved-value conflict in Compliance Rule before
+  submitting."** — naming a conflict with nothing on screen to resolve — and submission was
+  blocked until the page was reloaded. `storedComplianceInput` ASKS the compiler what will be
+  stored rather than restating its rules, and feeds it to both `useSection`'s
+  `normalizeBaseline` (which already existed, for `EvidenceScheduleForm`) and `begin`.
+  **A second copy of a normalisation diverges on the first edge nobody tried**, which is why
+  this is a call into the compiler and not a `sort()` in the form.
+- **An input the compiler REFUSES is returned unchanged, deliberately.** The command refuses
+  that save too, so the section reports the refusal; normalising a refused input would compare
+  the server's snapshot against something no save could ever produce.
+- **The journey is the test that finds this class.** Six saves and six section reviews pass
+  individually in `procedures.spec.ts`; what fails is saving one section and then reviewing
+  ANOTHER, which only a journey does. Both defects were invisible to every unit, integration
+  and browser suite in the repository and visible within one run of the acceptance harness.
+
+One mechanical note: **`deployed-loancore-evidence/` is now ignored.** The harness writes
+screenshots and a report there; CI uploads it as an artifact and a local dry-run leaves it in
+the tree, where a `git add -A` would sweep it in — the class `.claude/worktrees/` and
+`**/__boundary_violation__/` are already ignored for.
+
 ## 2026-09-17 — `<noscript>` is invisible to the test that exists to read it
 
 The procedure-form hydration repair (`7efb284`) put its requirement sentence inside
