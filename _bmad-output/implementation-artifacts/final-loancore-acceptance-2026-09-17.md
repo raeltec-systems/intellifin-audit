@@ -47,8 +47,16 @@ described last so it is not mistaken for one.
 
 ## Defect A — a Server Action commits and never finishes replying
 
-Seven occurrences in one journey, each costing exactly the harness's 60-second bound:
-the Period-and-scope save and all six section reviews.
+**Intermittent, roughly half the time**, each occurrence costing exactly the harness's
+60-second bound. In the clean journey one of six section saves stalled (Period and scope)
+and three of six section reviews (context, scope, evidence) — while instructions, assessment
+and frequency answered in under a second each. The negative journey then stalled on four
+reviews in a row.
+
+That it is intermittent rather than deterministic is itself diagnostic: a code path that
+never terminates would stall every time. Half of them completing in milliseconds points at
+the transport — Railway's edge is `x-railway-edge: iad1` — or at the standalone server's
+handling of a chunked response, rather than at the action's own logic.
 
 `page.waitForResponse` resolves on **headers**; `Response.finished()` resolves when the
 **body** completes. The body never completes. The row is written regardless — the stuck
