@@ -19,7 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter '@intellifin/infrastructure...' build
-      - name: Read only the acceptance Procedure and queue state
+      - name: Read only the corrected acceptance draft progress
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -27,24 +27,21 @@ jobs:
           import { createSqlClient } from '@intellifin/infrastructure';
           const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
           const versions = await sql`
-            SELECT version_id::text, state, plan_status, plan_failure_reason, created_at, updated_at
+            SELECT version_id::text, state, period, scope,
+                   source_snapshot IS NOT NULL AS has_source,
+                   jsonb_array_length(targets) AS targets,
+                   jsonb_array_length(instructions) AS instructions,
+                   schedule IS NOT NULL AS has_schedule,
+                   plan_status, plan_failure_reason, plan_derivable,
+                   section_preparation, updated_at
             FROM procedure_version
-            WHERE procedure_id = '01a0b0ae-1dc0-7bfb-8177-cd8e0a3f51ce'::uuid
+            WHERE procedure_id = '01a0b0ba-49e6-70b0-8cbc-dbaa91d5b313'::uuid
             ORDER BY created_at DESC
           `;
-          const versionIds = versions.map(row => row.version_id);
-          const runs = versionIds.length === 0 ? [] : await sql`
-            SELECT run_id::text, state, version_id::text
-            FROM audit_run
-            WHERE version_id::text = ANY(${versionIds})
+          const ids = versions.map(row => row.version_id);
+          const runs = ids.length === 0 ? [] : await sql`
+            SELECT run_id::text, state, version_id::text FROM audit_run WHERE version_id::text = ANY(${ids})
           `;
-          const jobs = versionIds.length === 0 ? [] : await sql`
-            SELECT name, state, started_on, completed_on, data->>'versionId' AS version_id
-            FROM pgboss.job
-            WHERE name = 'procedures' AND data->>'versionId' = ANY(${versionIds})
-            ORDER BY created_on DESC
-            LIMIT 20
-          `;
-          console.log('PLAN_DIAGNOSTIC', JSON.stringify({ versions, runs, jobs }));
+          console.log('PLAN_DIAGNOSTIC', JSON.stringify({ versions, runs }));
           await sql.end({ timeout: 5 });
           NODE
