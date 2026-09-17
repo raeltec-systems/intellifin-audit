@@ -1,4 +1,4 @@
-## 2026-09-17 — Two defects the deployed acceptance journey found by being driven end to end
+## 2026-09-17 — Driving the acceptance journey end to end, and the checks that could not fail
 
 The owner's remaining gate is one unbroken journey: create a Procedure in the browser,
 configure it, submit it, have a SECOND person approve it, activate it, start the Run, watch
@@ -40,6 +40,44 @@ suite had. Neither is in the domain; both are in the surface, and both stop the 
   individually in `procedures.spec.ts`; what fails is saving one section and then reviewing
   ANOTHER, which only a journey does. Both defects were invisible to every unit, integration
   and browser suite in the repository and visible within one run of the acceptance harness.
+
+**And the acceptance itself was checking the wrong things, in four places.** The harness is
+what produces the proof, so a check that cannot fail is a proof that is not one:
+
+- **An aggregate count of Exceptions is true of a build that flagged the WRONG leaver.**
+  `expectedEvaluations` asserted six evaluations, one C1 Exception and three C2 Compliant —
+  all of which hold if E-000102 were reported as retaining access and E-000103 as disabled.
+  `scripts/acceptance-truth.mjs` compares PER RECORD and PER CONDITION against
+  `p-1-live-acceptance.json` read off disk, and it has its own tests
+  (`tests/unit/acceptance-truth.test.ts`) precisely because nothing inside
+  `verify-deployed-loancore.mjs` can be tested: that file refuses to load without a live
+  database and an explicit authorization. The swap case asserts the totals are IDENTICAL
+  before asserting the comparison catches it.
+- **`report.checks.providerHandleContained = true` was a literal.** The containment is real
+  — `shot()` throws if any scanned page carries the provider's session identity — but the
+  check could not fail, including for a Run whose identity nothing had ever seen. It now
+  requires a known identity and a counted number of scans taken AFTER it became known.
+- **The Execution Timeline could not say WHICH record a Work Item inspected.**
+  `displayName` is the TARGET SYSTEM's name and is identical on every Work Item of a Run,
+  so a three-leaver agent Run rendered as three rows called "LoanCore" — on the one surface
+  an auditor follows from record to conclusion. The Runs list and Live View both name the
+  subject; `RunTimelineWorkItem` carries `subjectKey` now and the row leads with it, with
+  the system name beside the counts. A Work Item with no subject of its own (P-4 inspects a
+  page, not a population) keeps the system name as its title rather than gaining a dash.
+- **The acceptance workflow's `push` trigger RACED the release.** A push to `main` started
+  it at once, while CI was still running and Release had therefore not deployed the commit
+  — so it drove the PREVIOUS build, which is exactly how the 2026-09-17 run came to stop at
+  `create-procedure` against a build without the fix it was testing. The trigger is gone;
+  the workflow now refuses to start at all unless `/sign-in` server-renders the hydration
+  marker, which one public request settles before any identity is created.
+- **The workflow also patched the harness's source at run time** to add the cancellation
+  repository — a second copy of the command shape that only the workflow could break, and
+  that any edit to those exact lines would have broken silently. Folded into the script.
+- **The negative case is the same journey, not a second copy of it.** The authoring flow is
+  one function now, called with the clean population and (behind `negative_case`) with the
+  defective 27-row export. It asserts the Run stopped, that no conclusion exists about any
+  record, and that the Gate names E-000107 — a "the Run failed" assertion alone would pass
+  for a Run that failed for any other reason.
 
 One mechanical note: **`deployed-loancore-evidence/` is now ignored.** The harness writes
 screenshots and a report there; CI uploads it as an artifact and a local dry-run leaves it in

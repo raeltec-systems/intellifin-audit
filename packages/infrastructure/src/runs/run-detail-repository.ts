@@ -302,6 +302,19 @@ export interface RunTimelineWorkItem extends Omit<RunTimelineSessionStep, 'ordin
   readonly ordinal: number;
   readonly cycles: number;
   readonly observations: number;
+  /**
+   * WHICH record this Work Item inspected — the population's own primary key.
+   *
+   * `displayName` is the TARGET SYSTEM's name and is the same on every Work Item of a
+   * Run, so without this the Execution Timeline of a three-record Run reads as three
+   * identical rows called "LoanCore" and cannot say which leaver each one was about.
+   * The Runs list and Live View both name the subject; the Timeline is the surface an
+   * auditor follows from record to conclusion, and it is where it matters most.
+   *
+   * `null` for a Work Item that is not per-record: P-4 inspects one page, not a
+   * population, so the row has a page and no subject.
+   */
+  readonly subjectKey: string | null;
 }
 
 export interface RunTimelineRead {
@@ -954,6 +967,7 @@ export class DrizzleRunDetailRepository {
       })),
       workItems: workItems.map((row) => ({
         workItemId: row.workItemId,
+        subjectKey: row.subjectKey,
         stepId: row.stepId,
         ordinal: row.ordinal,
         displayName: row.displayName,
