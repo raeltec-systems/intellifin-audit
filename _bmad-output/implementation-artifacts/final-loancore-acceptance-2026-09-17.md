@@ -89,15 +89,31 @@ Work Items        E-000102 IN_PROGRESS → AWAITING; E-000103 and E-000105 never
 Wait              retry-or-skip, opened 22:24:45
 ```
 
-No `search`, no `open-record`, no `read-attribute`. Identical evidence sizes mean the same
-page was captured four times: the agent signs in, walks the landing page, gets nowhere, and
-stops to ask a human.
+**Root cause: every model turn was refused, and no tokens were ever consumed.**
 
-Locally the same Procedure inspects all three records correctly, so the domain logic and the
-frozen plan are sound. The difference is the live model in the loop against the deployed
-LoanCore. Whether the model is failing to select `search` from the offered catalogue, or the
-planner is not offering it on that page, needs an investigation this close-out did not carry
-out — it is named rather than guessed.
+```
+turns 1-4   status FAILED   diagnostic "model-provider-refused"   no response stored
+work        WAITING         diagnostic "model-provider-refused"   next_turn 5   tokens 0
+model       claude-sonnet-5 / anthropic / promptVersion 4 / maxOutputTokens 16000
+```
+
+`ANTHROPIC_API_KEY` is set on the production worker. `AGENT_ANTHROPIC_MODEL` is **not**, so
+the worker fell back to its default model id, `claude-sonnet-5`. Zero tokens across four
+turns means no request was ever billed, which points at an authorization or model-access
+refusal rather than a content one: an invalid or expired key, an account without access to
+that model id, or exhausted credit.
+
+The five navigations are the platform's own landing navigation, which happens before the
+model chooses a link. With no model response the agent had nothing to choose with, spent its
+bounded retries, and raised `retry-or-skip`. The identical evidence sizes are the same
+landing page captured four times.
+
+So this is a **deployment configuration** matter, not agent quality and not a planner defect.
+The domain logic and the frozen plan are sound: the same Procedure inspects all three records
+correctly against a local stack running this revision. It is an owner action, because the key
+cannot be read back through an OAuth connection and must not be: verify the Anthropic
+credential and its access to the model the worker resolves, and set `AGENT_ANTHROPIC_MODEL`
+explicitly rather than leaving the deployed agent on a default nobody chose.
 
 ## What IS proven, against the released code
 
@@ -184,7 +200,8 @@ within six minutes and the guard now reads `auth_user.created_at`.
 1. Root-cause Defect A. Start with the Next standalone server and the Railway edge; the row
    commits, so it is the response, not the write.
 2. Root-cause Defect B. The bytes are registered; the protected read route returns 502.
-3. Root-cause Defect C. Capture the model's offered tool catalogue and its proposals on the
-   deployed LoanCore landing page, and establish whether `search` is offered and not chosen,
-   or not offered.
+3. Defect C is root-caused. Verify the production worker's Anthropic credential and its
+   access to `claude-sonnet-5`, and set `AGENT_ANTHROPIC_MODEL` explicitly. No code change
+   is implied. Re-probe `run_agent_turn` after the change: a turn that reaches the provider
+   records tokens, and `tokens: 0` across every turn is what says it never did.
 4. Fix, regression-test, run full CI, deploy, and re-run this acceptance against that revision.
