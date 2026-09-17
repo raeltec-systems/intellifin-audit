@@ -59,7 +59,20 @@ jobs:
             // Print what is already known before asking anything else. A later query that
             // names a column wrongly must not take the whole report with it — which is
             // exactly what happened to the first version of this probe.
-            console.log('PROBE', JSON.stringify({ now: new Date().toISOString(), procedures, runs, items }, null, 2));
+            const versions = procedures.length === 0 ? [] : await sql`
+              SELECT version_id, version_number, state, plan_status, plan_failure_reason,
+                     updated_at,
+                     (period IS NOT NULL) AS has_period, (scope <> '') AS has_scope,
+                     (source_snapshot IS NOT NULL) AS has_source,
+                     jsonb_array_length(targets) AS targets,
+                     jsonb_array_length(instructions) AS instructions,
+                     (schedule IS NOT NULL) AS has_schedule,
+                     jsonb_array_length(plan_attempts) AS attempts,
+                     (section_preparation IS NOT NULL) AS has_preparation
+              FROM procedure_version
+              WHERE procedure_id = ANY(${procedures.map(row => String(row.procedure_id))}::uuid[])
+              ORDER BY version_number`;
+            console.log('PROBE', JSON.stringify({ now: new Date().toISOString(), procedures, versions, runs, items }, null, 2));
             const beat = await sql`SELECT hostname, seen_at FROM worker_heartbeat ORDER BY seen_at DESC LIMIT 3`
               .catch(error => [{ unavailable: String(error?.code ?? 'error') }]);
             const jobs = await sql`
