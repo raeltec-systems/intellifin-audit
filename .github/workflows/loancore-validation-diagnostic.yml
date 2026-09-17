@@ -1,0 +1,73 @@
+name: LoanCore validation diagnostic
+
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/loancore-validation-diagnostic.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - name: Inspect current acceptance and revoke cancelled-attempt access
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createSqlClient } from '@intellifin/infrastructure';
+          const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          const procedureId = '01a0b0c1-ab1b-7552-a1cd-3d340c9936bd';
+          const cancelledUsers = [
+            '5qtW3adHHjjMEGdES0mimLN6ffcJTqZk',
+            'EGVGxk5xN4Slt1gw0yUZoBHuSX4HqyfS',
+            '3unQiGk95rxZ7U6a1nbV8NaRlnTnYF0Q',
+          ];
+          try {
+            const versions = await sql`
+              SELECT version_id, version_number, state, plan_status, plan_failure_reason, plan_attempts
+              FROM procedure_version
+              WHERE procedure_id = ${procedureId}::uuid
+              ORDER BY version_number DESC
+            `;
+            const versionIds = versions.map(v => String(v.version_id));
+            const jobs = versionIds.length === 0 ? [] : await sql`
+              SELECT id, state, started_on, completed_on, output, data
+              FROM pgboss.job
+              WHERE name = 'procedures'
+                AND data->>'versionId' = ANY(${versionIds})
+              ORDER BY created_on DESC
+            `;
+            const rolesBefore = await sql`
+              SELECT user_id, role FROM user_role WHERE user_id = ANY(${cancelledUsers}) ORDER BY user_id, role
+            `;
+            await sql.begin(async tx => {
+              await tx`DELETE FROM auth_session WHERE user_id = ANY(${cancelledUsers})`;
+              await tx`DELETE FROM user_role WHERE user_id = ANY(${cancelledUsers})`;
+            });
+            const rolesAfter = await sql`
+              SELECT user_id, role FROM user_role WHERE user_id = ANY(${cancelledUsers}) ORDER BY user_id, role
+            `;
+            const safeJobs = jobs.map(j => ({
+              id: String(j.id), state: j.state, started_on: j.started_on, completed_on: j.completed_on,
+              output: j.output, versionId: j.data?.versionId ?? null,
+            }));
+            console.log('DIAGNOSTIC', JSON.stringify({ procedureId, versions, jobs: safeJobs, cancelledIdentityRolesBefore: rolesBefore, cancelledIdentityRolesAfter: rolesAfter }, null, 2));
+          } finally {
+            await sql.end({ timeout: 5 });
+          }
+          NODE
