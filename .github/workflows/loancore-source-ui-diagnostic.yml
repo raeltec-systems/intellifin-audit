@@ -34,7 +34,7 @@ jobs:
           import { randomBytes } from 'node:crypto';
           import { execFileSync } from 'node:child_process';
           import { chromium, expect } from '@playwright/test';
-          import { createSqlClient, findUserIdByEmail } from '@intellifin/infrastructure';
+          import { createSqlClient, createDb, findUserIdByEmail } from '@intellifin/infrastructure';
           const BASE = 'https://web-production-edded.up.railway.app';
           const procedureId = '01a0b0e8-4214-7621-bd5e-e3b6822d83bc';
           const sourceName = 'Live acceptance leavers 35266786707-1';
@@ -42,6 +42,7 @@ jobs:
           const password = `Diagnostic-${randomBytes(32).toString('hex')}`;
           console.log(`::add-mask::${password}`);
           const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          const db = createDb(sql);
           let browser;
           let userId;
           try {
@@ -49,7 +50,7 @@ jobs:
               env: { ...process.env, SEED_PASSWORD: password, BETTER_AUTH_SECRET: randomBytes(32).toString('hex'), BETTER_AUTH_URL: 'https://seed.invalid' },
               stdio: 'pipe', timeout: 60000,
             });
-            userId = await findUserIdByEmail(sql, email);
+            userId = await findUserIdByEmail(db, email);
             browser = await chromium.launch({ headless: true });
             const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
             page.setDefaultTimeout(40000);
