@@ -36,7 +36,9 @@ jobs:
           try {
             const procedures = await sql`
               SELECT procedure_id, control_name, created_at FROM procedure
-              WHERE control_name LIKE '%35272648301%' ORDER BY created_at`;
+              WHERE control_name LIKE 'Live LoanCore acceptance %'
+                 OR control_name LIKE 'Negative LoanCore acceptance %'
+              ORDER BY created_at DESC LIMIT 3`;
             const runs = await sql`
               SELECT r.run_id, r.state, r.initiated_at, p.control_name,
                 (SELECT status FROM population_execution x WHERE x.run_id = r.run_id) AS pop_status,
@@ -51,7 +53,8 @@ jobs:
                 (SELECT count(*)::int FROM run_evidence e WHERE e.run_id = r.run_id AND e.kind='screenshot' AND e.state='REGISTERED') AS frames,
                 (SELECT outcome FROM run_result s WHERE s.run_id = r.run_id) AS outcome
               FROM audit_run r JOIN procedure p ON p.procedure_id = r.procedure_id
-              WHERE p.control_name LIKE '%35272648301%' ORDER BY r.initiated_at`;
+              WHERE p.procedure_id = ANY(${procedures.map(row => String(row.procedure_id))}::uuid[])
+              ORDER BY r.initiated_at`;
             const items = runs.length === 0 ? [] : await sql`
               SELECT run_id, subject_key, state, observations, diagnostic, attempts
               FROM run_work_item WHERE run_id = ANY(${runs.map(r => String(r.run_id))}::uuid[])
