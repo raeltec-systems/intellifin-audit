@@ -54,6 +54,24 @@ function landing(frameIndex: number | null, whenMissing: ReplayFrameAbsence):
 export interface ReplayWorkItem {
   readonly workItemId: string;
   readonly displayName: string;
+  /** The record this Work Item inspected, or null when it inspected no population. */
+  readonly subjectKey: string | null;
+}
+
+/**
+ * What a Work Item is called on Replay: the RECORD, then the system it was inspected in.
+ *
+ * `displayName` is the TARGET SYSTEM's name and is identical on every Work Item of a Run,
+ * so a three-leaver Run rendered three jump pills called "LoanCore" and every frame said
+ * "Work Item: LoanCore" — on the surface whose whole job is to let a reader follow one
+ * record from the screen that was captured to the conclusion drawn from it. The Exception
+ * pill beside them already named its record, so the two disagreed about what a target is.
+ *
+ * A Work Item with no subject of its own (P-4 inspects a page, not a population) keeps the
+ * system name rather than gaining a separator with nothing before it.
+ */
+export function replayWorkItemLabel(item: Pick<ReplayWorkItem, 'displayName' | 'subjectKey'>): string {
+  return item.subjectKey === null ? item.displayName : `${item.subjectKey} · ${item.displayName}`;
 }
 
 export interface ReplayException {
@@ -144,7 +162,7 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'work-item',
       id: item.workItemId,
-      label: item.displayName,
+      label: replayWorkItemLabel(item),
       ...landing(replayFrameForWorkItem(input.frames, item.workItemId), whenNoFrame),
     });
   }

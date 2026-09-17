@@ -1,3 +1,29 @@
+## 2026-09-17 — Replay was the sibling nobody grepped for
+
+The Execution Timeline was repaired the same day so a Work Item row names the RECORD it
+inspected rather than the Target System, whose name is identical on every Work Item of a Run.
+The finding was closed there. **Replay had the identical line twice and it was not looked at**
+— which is exactly the rule this file already carries from the Epic 5 review: *when a review
+lands a rule on one component, grep for its siblings before closing the finding.*
+
+- **`replayJumpTargets` labelled a Work Item pill `item.displayName`**, so a three-leaver Run
+  offered three pills reading "LoanCore" — on the one surface whose job is to let a reader
+  follow a single record from the screen that was captured to the conclusion drawn from it.
+  The **Exception** pill beside them already named its record, so the two kinds of target on
+  one list disagreed about what a target is.
+- **`workItemLabel` on every frame had it too**, so the rail said `Work Item: LoanCore` under
+  each frame, and it resolved the owner from the RAW `run_tool_action.work_item_id` while the
+  system name two lines above resolved it through the Step Execution — the PR 36 finding,
+  still live on the neighbouring line. A frame whose Work Item is known only through its Step
+  Execution therefore reported no Work Item at all.
+- **`replayWorkItemLabel` is the one rule** and `subjectKey` is REQUIRED on `ReplayWorkItem`,
+  which is what found both call sites: an optional field would have left the page silently
+  passing `undefined` for ever. A Work Item with no subject (P-4 inspects a page, not a
+  population) keeps the system name rather than gaining a separator with nothing before it.
+- **Proven by mutation**: restore `label: item.displayName` and the jump-list test fails.
+  The acceptance requires `replayNamesEveryRecord` beside `timelineNamesEveryRecord`, because
+  an audit trail a reader cannot follow by record is not an audit trail.
+
 ## 2026-09-17 — A Result that waits for a person is not a conclusion
 
 The acceptance stopped at `expectedPendingReview` — outcome `PENDING_CONFIRMATION`, `sealed`

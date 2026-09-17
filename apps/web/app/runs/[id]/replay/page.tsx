@@ -13,7 +13,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { replayJumpTargets, replayObservationsThrough, replayWorkItemLabel, resolveFrameWorkItems } from '../../../../src/runs/replay';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -130,7 +130,13 @@ export default async function RunReplayPage({
       digest: frame.digest,
       capturedAt: frame.capturedAt,
       stepNarration: step === null ? narration : stepNarration(step, system),
-      workItemLabel: timeline.workItems.find((item) => item.workItemId === frame.workItemId)?.displayName ?? null,
+      // Resolved the SAME way the system name two lines up is: `run_tool_action.work_item_id`
+      // is nullable, so a frame whose Work Item is known only through its Step Execution
+      // reported no Work Item at all while the narration beside it named the system.
+      workItemLabel: (() => {
+        const owner = timeline.workItems.find((item) => item.workItemId === (step?.workItemId ?? frame.workItemId));
+        return owner === undefined ? null : replayWorkItemLabel(owner);
+      })(),
       action: action === null ? null : {
         action: action.action,
         method: action.method,
@@ -164,7 +170,7 @@ export default async function RunReplayPage({
         jumpTargets={replayJumpTargets({
           frames: resolveFrameWorkItems(frames.rows, timeline.stepExecutions.rows),
           framesTotal: frames.total,
-          workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName })),
+          workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName, subjectKey: item.subjectKey })),
           exceptions: exceptions.rows.map((row) => ({
             exceptionId: row.exceptionId,
             workItemId: row.workItemId,

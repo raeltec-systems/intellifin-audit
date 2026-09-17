@@ -560,6 +560,12 @@ try {
       await expect.poll(() => image.getAttribute('src'), { timeout: 30000 }).not.toBe(firstSrc);
       await shot(auditor, '08-replay-playing'); report.checks.replayPlayback = true;
     } else { await shot(auditor, '07-replay-empty'); report.checks.replayPlayback = false; }
+    // Replay is where a reader follows one record from the captured screen to the
+    // conclusion, so its jump list has to say WHICH record each target opens. The Work
+    // Item pills were labelled with the Target System's name, which is identical on every
+    // Work Item of a Run, so a three-leaver Run offered three pills reading "LoanCore".
+    const replayText = await auditor.locator('body').innerText();
+    report.checks.replayNamesEveryRecord = TRUTH_RECORDS.every(record => replayText.includes(record));
   }
   report.checks.workspaceReleased = (await poll(() => facts(report.runId), f => f.workspace?.status === 'RELEASED', 60000)).workspace.status === 'RELEASED';
   // `shot()` throws if any scanned page carries the provider's session identity, so the
@@ -572,7 +578,7 @@ try {
   // Only a Run that really is waiting on a person can be carried through the person's
   // decision; calling this on any other Result would spend five minutes proving nothing.
   if (report.checks.expectedPendingReview) await confirmAgentJudged();
-  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','workspaceReleased','providerHandleContained','expectedPendingReview','humanConfirmationSeals','sealedConclusionsMatchTruth'];
+  report.required = ['selfApprovalRefused','independentApproval','liveConnected','visibleInspection','threeRecordsInspected','populationValid','gatePassed','expectedEvaluations','conclusionsMatchTruth','evidencePerConclusion','timelineNamesEveryRecord','evidenceLinksOpen','replayPlayback','replayNamesEveryRecord','workspaceReleased','providerHandleContained','expectedPendingReview','humanConfirmationSeals','sealedConclusionsMatchTruth'];
   if (process.env.ACCEPTANCE_NEGATIVE_CASE === 'true') { await negativeCase(); report.required.push('defectivePopulationRefused'); }
   report.accepted = report.required.every(name => report.checks[name] === true);
   if (!report.accepted) process.exitCode = 1;
