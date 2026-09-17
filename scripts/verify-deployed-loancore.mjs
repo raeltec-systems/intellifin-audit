@@ -303,6 +303,7 @@ async function facts(runId) {
     evaluations: await sql`SELECT condition_id,origin,value,confirmation,observation_id FROM run_observation_evaluation WHERE run_id=${runId}::uuid ORDER BY observation_id,condition_id`,
     counts: await one(sql`SELECT (SELECT count(*)::int FROM run_observation WHERE run_id=${runId}::uuid) AS observations,(SELECT count(*)::int FROM run_evidence WHERE run_id=${runId}::uuid AND kind='screenshot' AND state='REGISTERED') AS frames,(SELECT count(*)::int FROM run_tool_action WHERE run_id=${runId}::uuid) AS tool_actions`),
     failedGate: await sql`SELECT check_name,total,diagnostics,records FROM run_gate_check WHERE run_id=${runId}::uuid AND outcome<>'PASS'`,
+    openWait: await one(sql`SELECT kind,opened_at,deadline FROM run_wait WHERE run_id=${runId}::uuid AND closed_at IS NULL`),
     // Per RECORD, not per Run: the aggregate "one C1 Exception" is also true of a build
     // that flagged the wrong leaver, which is the one thing this acceptance exists to
     // rule out.
@@ -416,6 +417,16 @@ try {
     medianGapSeconds: gaps.length > 0 ? Math.round(gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] / 1000) : null,
   };
   emit('watch-observed', report.watch);
+  // A Run that stopped to ask a human is not a Run that concluded, and the checks below
+  // would read as a pile of false facts rather than as the one thing that happened. The
+  // KIND is a closed vocabulary; the question and its candidates are retrieved content and
+  // never enter a report this workflow uploads.
+  if (report.facts.run.state === 'AWAITING_AUDITOR') {
+    report.awaitingAuditor = report.facts.openWait === null
+      ? { kind: null, note: 'The Run is AWAITING_AUDITOR and no open wait could be read.' }
+      : { kind: report.facts.openWait.kind, openedAt: report.facts.openWait.opened_at, deadline: report.facts.openWait.deadline };
+    emit('run-stopped-to-ask-a-human', report.awaitingAuditor);
+  }
   await auditor.goto(`${BASE}/runs/${report.runId}`, { waitUntil: 'domcontentloaded' });
   await shot(auditor, '05-result');
   const tabText = {};
