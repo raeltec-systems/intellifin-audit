@@ -56,10 +56,16 @@ jobs:
               SELECT run_id, subject_key, state, observations, diagnostic, attempts
               FROM run_work_item WHERE run_id = ANY(${runs.map(r => String(r.run_id))}::uuid[])
               ORDER BY run_id, ordinal`;
-            const beat = await sql`SELECT hostname, observed_at FROM worker_heartbeat ORDER BY observed_at DESC LIMIT 1`;
+            // Print what is already known before asking anything else. A later query that
+            // names a column wrongly must not take the whole report with it — which is
+            // exactly what happened to the first version of this probe.
+            console.log('PROBE', JSON.stringify({ now: new Date().toISOString(), procedures, runs, items }, null, 2));
+            const beat = await sql`SELECT hostname, seen_at FROM worker_heartbeat ORDER BY seen_at DESC LIMIT 3`
+              .catch(error => [{ unavailable: String(error?.code ?? 'error') }]);
             const jobs = await sql`
-              SELECT name, state, count(*)::int FROM pgboss.job
-              WHERE created_on > now() - interval '90 minutes' GROUP BY name, state ORDER BY name, state`;
-            console.log('PROBE', JSON.stringify({ now: new Date().toISOString(), procedures, runs, items, heartbeat: beat[0] ?? null, jobs }, null, 2));
+              SELECT name, state, count(*)::int AS count FROM pgboss.job
+              WHERE created_on > now() - interval '90 minutes' GROUP BY name, state ORDER BY name, state`
+              .catch(error => [{ unavailable: String(error?.code ?? 'error') }]);
+            console.log('PROBE_WORKER', JSON.stringify({ heartbeat: beat, jobs }, null, 2));
           } finally { await sql.end({ timeout: 5 }); }
           NODE
