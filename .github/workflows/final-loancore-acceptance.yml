@@ -76,6 +76,10 @@ jobs:
           pnpm --filter '@intellifin/infrastructure...' build
           pnpm exec playwright install --with-deps chromium
       - name: Author approve inspect observe conclude and prove the negative case
+        # Bounded below the job so the evidence upload below still runs. A job-level
+        # cancellation kills the step AND its `always()` siblings, which is how the first
+        # attempt at this close-out lost its own report.
+        timeout-minutes: 75
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONFIRM_DEPLOYED_AUDIT: ${{ github.event_name == 'push' && 'synthetic-loancore' || inputs.confirm }}

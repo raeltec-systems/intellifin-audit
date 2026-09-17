@@ -47,6 +47,7 @@ const secrets = new Set();
 let providerHandle = null;
 let containmentScans = 0;
 const emit = (event, facts = {}) => {
+  lastEmit = Date.now();
   const entry = { at: new Date().toISOString(), event, ...facts };
   report.observations.push(entry);
   writeFileSync(`${OUT}/progress.json`, JSON.stringify(report, null, 2));
@@ -63,11 +64,56 @@ const created = [];
 const started = [];
 let browser, auditorContext, auditor, manager, managerContext, watch;
 let phase = 'preflight';
+/**
+ * Every read is bounded, including the read itself.
+ *
+ * `poll` checked its deadline BETWEEN reads, so a single call that never settled — a
+ * database connection dropped without a reset is the ordinary way that happens from a
+ * hosted runner — hung the whole acceptance with the deadline never consulted again.
+ */
+const bounded = async (read, milliseconds, what) => {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(read),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Acceptance read did not settle: ${what}`)), milliseconds); }),
+    ]);
+  } finally { clearTimeout(timer); }
+};
 async function poll(read, accept, milliseconds = 90000) {
   const deadline = Date.now() + milliseconds;
-  do { const value = await read(); if (accept(value)) return value; await delay(1000); } while (Date.now() < deadline);
+  do {
+    const value = await bounded(read, Math.max(5000, Math.min(milliseconds, 60000)), 'poll');
+    if (accept(value)) return value;
+    await delay(1000);
+  } while (Date.now() < deadline);
   throw new Error('Acceptance observation deadline reached');
 }
+/**
+ * A silent hang is not an outcome, and the 2026-09-17 close-out spent an hour proving it:
+ * the log stopped at `procedure-created-through-ui` and nothing followed for sixty
+ * minutes — no error, no timeout, no report. Every path in this file is individually
+ * bounded, which is exactly why a hang outside all of them was invisible. This watches the
+ * EMIT STREAM rather than any one call: if nothing is emitted for long enough, the report
+ * is written naming the last phase reached, and the process ends non-zero.
+ */
+let lastEmit = Date.now();
+const SILENCE_LIMIT = 8 * 60000;
+const watchdog = setInterval(() => {
+  if (Date.now() - lastEmit < SILENCE_LIMIT) return;
+  clearInterval(watchdog);
+  const seconds = Math.round((Date.now() - lastEmit) / 1000);
+  report.accepted = false;
+  report.failures.push({ phase, kind: 'SilentStall', secondsWithoutProgress: seconds });
+  try {
+    const json = JSON.stringify(report, null, 2); checkSecretFree(json);
+    writeFileSync(`${OUT}/report.json`, json);
+  } catch { /* the console line below is the report of last resort */ }
+  console.log(`ACCEPTANCE_REPORT ${JSON.stringify({ accepted: false, procedureId: report.procedureId, runId: report.runId, checks: report.checks, failures: report.failures })}`);
+  console.log(`ACCEPTANCE STALLED phase=${phase} secondsWithoutProgress=${seconds}`);
+  process.exit(1);
+}, 30000);
+watchdog.unref?.();
 async function shot(page, name) {
   const url = new URL(page.url());
   if (url.origin !== BASE || /sign-in|login/.test(url.pathname)) return;
@@ -120,12 +166,24 @@ async function openStep(page, heading) {
     if (!await manual.evaluate(node => node.open)) await manual.locator('summary').first().click();
   }
 }
+/**
+ * Each leg emits before it runs.
+ *
+ * The 2026-09-17 close-out hung for an hour between `procedure-created-through-ui` and
+ * the next event, and every call in this path is individually bounded — so the emit
+ * stream, not the code, was what could not say where it stopped. A step that emits only
+ * on success reports nothing at all about the attempt that failed to finish.
+ */
 async function planSettled(page) {
-  await expect(page.locator('[data-guided-ready=true]')).toBeVisible();
+  emit('plan-settled-begin', { phase });
+  await expect(page.locator('[data-guided-ready=true]')).toBeVisible({ timeout: 60000 });
+  emit('plan-settled-builder-ready');
   await page.locator('[data-preparation-nav=review]').click();
   const fold = page.locator('[data-plan-detail]');
   if (!await fold.evaluate(node => node.open)) await fold.locator('summary').first().click();
+  emit('plan-settled-fold-open');
   await expect(page.getByTestId('executable-plan-preview').locator(':scope > [role=status]')).toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 });
+  emit('plan-settled-done');
 }
 async function acknowledged(page, action) {
   const url = page.url();
@@ -149,8 +207,14 @@ const draftRow = (procedureId) => sql`
 async function step(procedureId, heading, fill, save, saved, persisted) {
   phase = heading;
   for (let attempt = 0; attempt < 3; attempt++) {
-    await planSettled(auditor); await openStep(auditor, heading); await fill();
+    emit('draft-section-attempt', { section: heading, attempt: attempt + 1 });
+    await planSettled(auditor);
+    await openStep(auditor, heading);
+    emit('draft-section-opened', { section: heading });
+    await fill();
+    emit('draft-section-filled', { section: heading });
     await acknowledged(auditor, save);
+    emit('draft-section-acknowledged', { section: heading });
     const ok = auditor.getByText(saved).first(), stale = auditor.getByText(STALE).first();
     await expect(ok.or(stale).first()).toBeVisible({ timeout: 40000 });
     if (await ok.isVisible()) {
