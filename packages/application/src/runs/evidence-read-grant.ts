@@ -136,6 +136,12 @@ export interface EvidenceReadGrantSigner {
   signGet(input: {
     readonly bucketKey: string;
     readonly expiresAt: string;
+    /**
+     * The media type already validated from immutable registered Evidence metadata.
+     * Infrastructure binds this to the signed GET response; it is not inferred from the
+     * object-store metadata and does not weaken the byte/digest/size checks at consumption.
+     */
+    readonly responseMediaType: string;
   }): Promise<{ readonly signedUrl: string; readonly signedUrlExpiresAt: string }>;
 }
 
@@ -384,7 +390,11 @@ export async function issueEvidenceReadGrant(
         !nonEmptyText(mediaType, 512)) return denyGrant(context, 'invalid-evidence-metadata');
     if (grant.locator !== ABSENCE_SNAPSHOT_LOCATOR && grant.locator !== FRAME_LOCATOR && parseSnapshotLocator(grant.locator) === null) return denyGrant(context, 'scope-mismatch');
 
-    const signed = await dependencies.signer.signGet({ bucketKey: objectKey, expiresAt: grant.expiresAt });
+    const signed = await dependencies.signer.signGet({
+      bucketKey: objectKey,
+      expiresAt: grant.expiresAt,
+      responseMediaType: mediaType,
+    });
     if (!validCapabilityUrl(signed.signedUrl) || !validInstant(signed.signedUrlExpiresAt) ||
         Date.parse(signed.signedUrlExpiresAt) > Date.parse(grant.expiresAt) ||
         Date.parse(signed.signedUrlExpiresAt) <= Date.parse(now)) {
