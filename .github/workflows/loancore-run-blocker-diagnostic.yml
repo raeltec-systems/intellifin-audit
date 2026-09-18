@@ -1,0 +1,51 @@
+name: LoanCore clean run blocker diagnostic
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/loancore-run-blocker-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify released application source
+        run: git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
+      - name: Read only allowlisted fields for this exact synthetic run
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p /tmp/run-blocker
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA <<'SQL' > /tmp/run-blocker/report.json
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout='10s';
+          WITH r AS (SELECT run_id,state,version_id FROM audit_run WHERE run_id='01a0b364-0bd1-7a0e-9257-d78f4cb51834')
+          SELECT jsonb_pretty(jsonb_build_object(
+            'at',clock_timestamp(),'run',(SELECT to_jsonb(r) FROM r),
+            'waits',(SELECT coalesce(jsonb_agg(jsonb_build_object('kind',kind,'openedAt',opened_at,'deadline',deadline,'closedAt',closed_at,'closure',closure_kind)),'[]'::jsonb) FROM run_wait WHERE run_id IN(SELECT run_id FROM r)),
+            'agentWork',(SELECT jsonb_build_object('status',status,'diagnostic',diagnostic,'nextTurn',next_turn,'tokens',tokens,'workItemId',work_item_id) FROM run_agent_work WHERE run_id IN(SELECT run_id FROM r)),
+            'items',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',work_item_id,'subject',subject_key,'state',state,'observations',observations,'diagnostic',diagnostic)),'[]'::jsonb) FROM run_work_item WHERE run_id IN(SELECT run_id FROM r)),
+            'actions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',tool_action_id,'workItemId',work_item_id,'action',action,'method',method,'outcome',outcome,'status',status,'startedAt',started_at,'completedAt',completed_at,'capture',capture,'captureSuppression',capture_suppression,'diagnostic',diagnostic) ORDER BY started_at),'[]'::jsonb) FROM run_tool_action WHERE run_id IN(SELECT run_id FROM r)),
+            'modelTurns',(SELECT coalesce(jsonb_agg(jsonb_build_object('sequence',sequence,'status',status,'diagnostic',diagnostic) ORDER BY sequence),'[]'::jsonb) FROM run_agent_turn WHERE run_id IN(SELECT run_id FROM r)),
+            'artifacts',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',evidence_id,'kind',kind,'role',role,'state',state,'sha256',digest,'bytes',size,'capturedAt',captured_at) ORDER BY captured_at),'[]'::jsonb) FROM run_evidence WHERE run_id IN(SELECT run_id FROM r)),
+            'workspace',(SELECT jsonb_build_object('status',status,'mode',mode,'identityLength',length(workspace_id),'releasedAt',released_at,'diagnostic',diagnostic) FROM run_workspace WHERE run_id IN(SELECT run_id FROM r))
+          ));
+          COMMIT;
+          SQL
+          sed -i '/^BEGIN$/d; /^SET$/d; /^COMMIT$/d' /tmp/run-blocker/report.json
+          python3 -m json.tool /tmp/run-blocker/report.json
+          sha256sum /tmp/run-blocker/report.json > /tmp/run-blocker/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loancore-run-blocker-${{ github.run_id }}
+          path: /tmp/run-blocker/
+          if-no-files-found: error
+          retention-days: 14
