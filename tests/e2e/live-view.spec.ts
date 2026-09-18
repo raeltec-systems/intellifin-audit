@@ -281,6 +281,62 @@ test.describe('Live View', () => {
     expect(scan.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(' ')) }))).toEqual([]);
   });
 
+  test('keeps the decoded workspace screen at the top when the activity rail grows', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.name));
+    const seeded = await seedRun({ workspace: true, frame: true });
+    await page.goto(`/runs/${seeded.runId}/live`);
+    await expect(page).toHaveURL(new RegExp(`/runs/${seeded.runId}/live$`));
+    await expect(page.getByText('LIVE', { exact: true })).toBeVisible();
+    const stage = page.locator('.ls-session__stage');
+    const rail = page.locator('.ls-session__rail');
+    const frame = page.locator('img.ls-session__frame');
+    await expect.poll(() => frame.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+    const measure = () => frame.evaluate((image) => {
+      const body = image.closest('.ls-session__body')!;
+      const stage = image.closest('.ls-session__stage')!;
+      const rail = body.querySelector('.ls-session__rail')!;
+      return {
+        frameOffset: image.getBoundingClientRect().top - body.getBoundingClientRect().top,
+        stageOffset: stage.getBoundingClientRect().top - body.getBoundingClientRect().top,
+        stageHeight: stage.getBoundingClientRect().height,
+        railHeight: rail.getBoundingClientRect().height,
+      };
+    });
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await rail.evaluate((node) => { node.style.minHeight = ''; });
+      const before = await measure();
+      // A test-only geometry stressor models many Evidence rows without fabricating
+      // production artifacts. Rendering, CSS, image decoding and the protected read
+      // still use the real application and worker. No such mutation is used in the
+      // deployed acceptance, which observes naturally growing real Evidence rows.
+      await rail.evaluate((node) => { node.style.minHeight = '2400px'; });
+      const after = await measure();
+      expect(after.railHeight).toBeGreaterThanOrEqual(2400);
+      expect(Math.abs(after.stageOffset)).toBeLessThan(1);
+      expect(Math.abs(after.frameOffset - before.frameOffset)).toBeLessThan(1);
+      expect(after.stageHeight).toBeLessThan(after.railHeight);
+      // Demonstrate that this assertion distinguishes the old, stretching behavior.
+      await stage.evaluate((node) => { node.style.alignSelf = 'stretch'; });
+      const oldBehavior = await measure();
+      expect(oldBehavior.frameOffset - after.frameOffset).toBeGreaterThan(100);
+      await stage.evaluate((node) => { node.style.removeProperty('align-self'); });
+      // Reload, rather than styling the fix back in: the final assertion reads the
+      // actual server-rendered component again, not a test-invented repaired value.
+      await page.reload();
+      await expect.poll(() => frame.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+      await rail.evaluate((node) => { node.style.minHeight = '2400px'; });
+      expect(Math.abs((await measure()).frameOffset - before.frameOffset)).toBeLessThan(1);
+      await testInfo.attach(`workspace-alignment-${width}`, {
+        body: await page.screenshot({ fullPage: false }), contentType: 'image/png',
+      });
+    }
+    expect(errors).toEqual([]);
+    expect(await page.content()).not.toContain('sess_live_view');
+  });
+
   test('says why there is no screen on an adapter-only Run, and lists its Session Steps', async ({ page }) => {
     const seeded = await seedRun({ workspace: false, frame: false });
     await page.goto(`/runs/${seeded.runId}/live`);
