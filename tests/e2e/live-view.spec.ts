@@ -292,7 +292,7 @@ test.describe('Live View', () => {
     const stage = page.locator('.ls-session__stage');
     const rail = page.locator('.ls-session__rail');
     const frame = page.locator('img.ls-session__frame');
-    await expect.poll(() => frame.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+    await expect.poll(() => frame.evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
     const measure = () => frame.evaluate((image) => {
       const body = image.closest('.ls-session__body')!;
       const stage = image.closest('.ls-session__stage')!;
@@ -326,7 +326,7 @@ test.describe('Live View', () => {
       // Reload, rather than styling the fix back in: the final assertion reads the
       // actual server-rendered component again, not a test-invented repaired value.
       await page.reload();
-      await expect.poll(() => frame.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+      await expect.poll(() => frame.evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
       await rail.evaluate((node) => { node.style.minHeight = '2400px'; });
       expect(Math.abs((await measure()).frameOffset - before.frameOffset)).toBeLessThan(1);
       await testInfo.attach(`workspace-alignment-${width}`, {
