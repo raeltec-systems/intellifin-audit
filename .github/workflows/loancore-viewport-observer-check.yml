@@ -1,0 +1,39 @@
+name: LoanCore viewport observer check
+on:
+  push:
+    branches: [validation/loancore-evidence-closeout-20260918]
+    paths: [.github/workflows/loancore-viewport-observer-check.yml]
+permissions:
+  contents: read
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          package-manager-cache: false
+      - name: Assemble the exact observer without touching application source
+        env:
+          HARNESS_SOURCE_SHA: ab78abb457c37fddcb8006cda7e2f4a24dd58b78
+        run: |
+          git diff --exit-code 816d6b521a53011fd956582b361fafa1c60654d7 HEAD -- . ':(exclude).github/workflows/**'
+          for file in strict-loancore-patch.py final-loancore-observer-patch.py final-loancore-observation-proof.py final-loancore-secrecy-proof.py; do
+            git show "$HARNESS_SOURCE_SHA:.github/workflows/$file" > "/tmp/$file"
+            python3 "/tmp/$file"
+          done
+          python3 .github/workflows/final-loancore-viewport-proof.py
+          node --check strict-loancore-acceptance.mjs
+          sha256sum strict-loancore-acceptance.mjs > deployed-loancore-evidence/harness-SHA256SUMS.txt
+          git diff --exit-code 816d6b521a53011fd956582b361fafa1c60654d7 -- . ':(exclude).github/workflows/**'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viewport-loancore-harness-${{ github.run_id }}
+          path: deployed-loancore-evidence/
+          if-no-files-found: error
+          retention-days: 14
