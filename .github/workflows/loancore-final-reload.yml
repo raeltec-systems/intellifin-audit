@@ -1,0 +1,89 @@
+name: LoanCore final read-only UI reload
+on:
+  push:
+    branches: [validation/loancore-watch-closeout-20260918]
+    paths: [.github/workflows/loancore-final-reload.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reload:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require the exact successful acceptance and unchanged application
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --exit-code 44fb5966dd085f53625d5f9ac77a466a9c18805f HEAD -- . ':(exclude).github/workflows/**'
+          python3 - <<'PY'
+          import json,os,urllib.request
+          for run_id,sha in [(35340181283,'1b9ee9610e665076a61f3697898bf995fc2e4269'),(35340470537,'c099e90d799928bece7e935a29687955ae1888ab')]:
+              url=f'https://api.github.com/repos/raeltec-systems/intellifin-audit/actions/runs/{run_id}'
+              request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=20) as response: run=json.load(response)
+              assert run['head_sha']==sha and run['run_attempt']==1 and run['status']=='completed' and run['conclusion']=='success'
+              print(json.dumps({'verifiedWorkflow':run_id,'headSha':sha,'conclusion':'success'}))
+          PY
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build verification dependencies and browser
+        run: |
+          node --check .github/workflows/loancore-final-reload.mjs
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Read existing results and exercise Replay without starting new audit Runs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM_DEPLOYED_AUDIT: synthetic-loancore
+        run: timeout --signal=TERM --kill-after=15s 300s node .github/workflows/loancore-final-reload.mjs
+      - name: Independently revoke only this probe identity
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p final-reload-evidence
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -tA -v email="final-reload-auditor-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" <<'SQL' > final-reload-evidence/independent-cleanup.jsonl
+          BEGIN;
+          SET LOCAL statement_timeout='15s';
+          DELETE FROM auth_session WHERE user_id IN (SELECT id FROM auth_user WHERE email=:'email');
+          DELETE FROM user_role WHERE user_id IN (SELECT id FROM auth_user WHERE email=:'email');
+          SELECT jsonb_build_object('userId',id,'sessions',(SELECT count(*) FROM auth_session WHERE user_id=u.id),'roles',(SELECT count(*) FROM user_role WHERE user_id=u.id)) FROM auth_user u WHERE email=:'email';
+          COMMIT;
+          SQL
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(line) for line in Path('final-reload-evidence/independent-cleanup.jsonl').read_text().splitlines() if line.strip()]
+          assert all(row['sessions']==0 and row['roles']==0 for row in rows)
+          print(json.dumps({'cleanup':rows}))
+          PY
+      - name: Retain exact provenance and content hashes
+        if: always()
+        run: |
+          git diff --exit-code 44fb5966dd085f53625d5f9ac77a466a9c18805f -- . ':(exclude).github/workflows/**'
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path('final-reload-evidence');out.mkdir(exist_ok=True)
+          (out/'provenance.json').write_text(json.dumps({'releasedSha':'44fb5966dd085f53625d5f9ac77a466a9c18805f','workflowSha':os.environ['GITHUB_SHA'],'workflowId':os.environ['GITHUB_RUN_ID'],'attempt':os.environ['GITHUB_RUN_ATTEMPT'],'applicationSourceUnchanged':True},indent=2))
+          rows=[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for p in sorted(out.iterdir()) if p.is_file() and p.name!='manifest.json']
+          (out/'manifest.json').write_text(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loancore-final-reload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: final-reload-evidence/
+          if-no-files-found: error
+          retention-days: 14
