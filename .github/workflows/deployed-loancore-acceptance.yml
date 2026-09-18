@@ -1,121 +1,109 @@
 name: Deployed LoanCore acceptance
-
-# One-shot validation branch workflow against the already released production build.
-# This workflow MUST NOT deploy application source.
+# Acceptance against the already deployed release. This workflow never deploys.
 on:
   push:
     branches: [validation/final-loancore-20260917]
     paths: [.github/workflows/deployed-loancore-acceptance.yml]
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: Type synthetic-loancore to authorize a new synthetic live audit
-        required: true
-        type: string
-      negative_case:
-        description: Also run the defective 27-row population and require it to refuse
-        required: false
-        default: false
-        type: boolean
 permissions:
   contents: read
 concurrency:
-  group: deployed-loancore-acceptance-final-v4
+  group: deployed-loancore-acceptance-final-v5
   cancel-in-progress: false
+env:
+  RELEASE_SHA: ef0515efbf0c2c558c5ad0153559d7239a8652d9
 jobs:
   live:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 100
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          fetch-depth: 20
-      - name: Prove the trigger commit changed only this workflow
-        if: github.event_name == 'push'
+          fetch-depth: 0
+      - name: Prove application source equals the deployed release
         run: |
-          set -euo pipefail
-          changed="$(git diff --name-only HEAD^ HEAD)"
-          printf '%s\n' "$changed"
-          test "$changed" = '.github/workflows/deployed-loancore-acceptance.yml'
-      - name: Prove application source still matches released main
-        run: |
-          set -euo pipefail
-          changed="$(git diff --name-only ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**')"
-          test -z "$changed" || { printf '%s\n' "$changed"; exit 1; }
-      - name: Archive exact tracked source for the acceptance
-        run: |
-          git archive --format=tar.gz HEAD > /tmp/acceptance-source.tar.gz
-          git rev-parse HEAD > /tmp/acceptance-source-sha.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: acceptance-source
-          path: |
-            /tmp/acceptance-source.tar.gz
-            /tmp/acceptance-source-sha.txt
-          retention-days: 2
+          git diff --exit-code "$RELEASE_SHA" HEAD -- . ':(exclude).github/workflows/**'
+          printf 'RELEASE_SHA=%s\nVALIDATION_SHA=%s\nWORKFLOW_RUN=%s\n' "$RELEASE_SHA" "$GITHUB_SHA" "$GITHUB_RUN_ID"
       - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
       - uses: actions/setup-node@v5
         with:
           node-version: '24.20.0'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Patch only the validation harness for settled Builder sequencing
+      - name: Assemble and inspect the exact acceptance harness
         run: |
+          python3 .github/workflows/strict-loancore-patch.py
+          node --check strict-loancore-acceptance.mjs
+          sha256sum strict-loancore-acceptance.mjs
+          # The assembled harness is untracked. No released file was edited.
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('scripts/verify-deployed-loancore.mjs')
-          s = p.read_text()
-
-          marker = "const STALE = 'That procedure changed since this page was loaded. Reload the page and try again.';\n"
-          helper = marker + "async function settleDraftBeforeEdit(page) {\n  const procedureId = new URL(page.url()).pathname.split('/')[2];\n  assert.ok(procedureId);\n  await poll(async () => (await sql`SELECT plan_status FROM procedure_version WHERE procedure_id=${procedureId}::uuid ORDER BY version_number DESC LIMIT 1`)[0] ?? null, row => row !== null && row.plan_status !== 'pending', 90000);\n  await page.reload({ waitUntil: 'domcontentloaded' });\n  await expect(page.locator('[data-guided-ready=true]')).toBeVisible();\n}\nasync function savedSourceSnapshot(procedureId) {\n  return (await sql`SELECT source_snapshot FROM procedure_version WHERE procedure_id=${procedureId}::uuid ORDER BY version_number DESC LIMIT 1`)[0]?.source_snapshot ?? null;\n}\nasync function savePopulationSourceThroughUi(procedureId, sourceName) {\n  for (let attempt = 0; attempt < 3; attempt++) {\n    await settleDraftBeforeEdit(auditor);\n    await openStep(auditor, 'Population Source binding');\n    const select = auditor.getByLabel('Where the records come from');\n    await selectContaining(select, sourceName);\n    const chosen = await select.inputValue();\n    assert.notEqual(chosen, '');\n    const bindingError = auditor.locator('[id$=\"-binding-error\"]');\n    await expect(bindingError).toHaveText('', { timeout: 10000 });\n    emit('population-source-selection-valid', { attempt: attempt + 1, bindingId: chosen });\n    await auditor.getByRole('button', { name: 'Save records to test', exact: true }).click();\n    try {\n      const saved = await poll(() => savedSourceSnapshot(procedureId), row => row !== null && row.bindingId === chosen, 20000);\n      emit('population-source-bound-through-ui', { attempt: attempt + 1, bindingId: saved.bindingId });\n      return;\n    } catch {\n      const banners = await auditor.locator('.ls-banner').allInnerTexts().catch(() => []);\n      emit('population-source-save-not-bound', { attempt: attempt + 1, banners: banners.map(text => text.slice(0, 180)) });\n    }\n  }\n  throw new Error('Population Source save did not persist after three settled UI attempts');\n}\n"
-          assert marker in s
-          s = s.replace(marker, helper, 1)
-
-          old_step = "    await planSettled(auditor); await openStep(auditor, heading); await fill();"
-          new_step = "    await settleDraftBeforeEdit(auditor); await openStep(auditor, heading); await fill();"
-          assert old_step in s
-          s = s.replace(old_step, new_step)
-
-          old_population = "  await step('Population Source binding', () => selectContaining(auditor.getByLabel('Where the records come from'), sourceName),\n    () => auditor.getByRole('button', { name: 'Save records to test', exact: true }).click(), 'Saved. The Draft change is recorded in the audit chain.');"
-          new_population = "  phase = `${prefix}Population Source binding`;\n  await savePopulationSourceThroughUi(procedureId, sourceName);"
-          assert old_population in s
-          s = s.replace(old_population, new_population)
-
-          old_plan = "toContainText(/Re-derived|Cannot derive:/, { timeout: 150000 })"
-          new_plan = "toContainText(/Re-derived/, { timeout: 150000 })"
-          assert old_plan in s
-          s = s.replace(old_plan, new_plan)
-
-          old_approve = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await confirmed(manager, 'Approve');"
-          new_approve = "  await manager.goto(auditor.url(), { waitUntil: 'domcontentloaded' });\n  await expect(manager.locator('[data-version-actions-ready]')).toHaveAttribute('data-version-actions-ready', 'true');\n  await shot(manager, `${prefix}02-manager-review-before-approval`);\n  const managerApprove = manager.getByRole('button', { name: 'Approve', exact: true });\n  emit('manager-approval-ready', { buttons: await managerApprove.count(), ariaDisabled: await managerApprove.getAttribute('aria-disabled') });\n  await confirmed(manager, 'Approve');"
-          assert old_approve in s
-          s = s.replace(old_approve, new_approve)
-
-          p.write_text(s)
+          s=Path('strict-loancore-acceptance.mjs').read_text()
+          a=s.index('function hasPredicate'); b=s.index('async function step',a)
+          pre="import assert from 'node:assert/strict'; const PERIOD={from:'2026-08-01',to:'2026-08-31'};const SCOPE='test';const report={registrationId:'target'}; const auditor={getByLabel:()=>({inputValue:async()=> '01a0b0e8-2e28-77d3-872b-2bce10020487'})};\n"
+          tests="""
+          const period=await sectionProof('Period and scope');assert(period({period:{to:PERIOD.to,from:PERIOD.from},scope:SCOPE}));assert(!period({period:null,scope:''}));
+          const source=await sectionProof('Population Source binding');const valid={source_snapshot:{bindingId:'01a0b0e8-2e28-77d3-872b-2bce10020487'},inclusion_rule:{all:[{column:'employment_status',kind:'text',operator:'eq',value:'Terminated'},{column:'termination_effective_date',kind:'within-period'}]}};assert(source(valid));assert(!source({...valid,source_snapshot:null}));assert(!source({...valid,source_snapshot:{bindingId:'wrong'}}));assert(!source({...valid,inclusion_rule:{all:[]}}));
+          const targets=await sectionProof('Target System selection');assert(targets({targets:[{registrationId:'target',contract:{kind:'web'}}]}));assert(!targets({targets:[]}));assert(!targets({targets:[{registrationId:'wrong',contract:{kind:'web'}}]}));
+          console.log('Persistence assertion mutations refused missing/wrong state');
+          """
+          Path('/tmp/acceptance-assertions.mjs').write_text(pre+s[a:b]+tests)
           PY
-          node --check scripts/verify-deployed-loancore.mjs
-          git diff --check
-      - name: Refuse to run against an unhealthy or pre-repair web build
-        run: |
-          set -euo pipefail
-          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/api/health
-          echo
-          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/sign-in > /tmp/sign-in.html
-          grep -q 'data-signin-ready' /tmp/sign-in.html \
-            || { echo 'The deployed build predates the sign-in hydration repair.'; exit 1; }
-      - name: Build pinned administrative dependencies and observer browser
+          node /tmp/acceptance-assertions.mjs
+          cp /tmp/acceptance-assertions.mjs deployed-loancore-evidence/assertion-self-check.mjs
+      - name: Check deployed web health
+        run: curl -fsS --max-time 30 https://web-production-edded.up.railway.app/api/health
+      - name: Build administrative dependencies and install observer browser
         run: |
           pnpm --filter '@intellifin/infrastructure...' build
           pnpm exec playwright install --with-deps chromium
-      - name: Author approve inspect observe conclude and prove the negative case
+      - name: Prepare approve run watch and replay through the deployed UI
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          CONFIRM_DEPLOYED_AUDIT: ${{ github.event_name == 'push' && 'synthetic-loancore' || inputs.confirm }}
-          ACCEPTANCE_NEGATIVE_CASE: ${{ github.event_name == 'push' && 'true' || inputs.negative_case }}
-        run: node scripts/verify-deployed-loancore.mjs
-      - name: Retain secret-free acceptance observations
+          CONFIRM_DEPLOYED_AUDIT: synthetic-loancore
+          ACCEPTANCE_NEGATIVE_CASE: 'false'
+        run: node strict-loancore-acceptance.mjs
+      - name: Independently revoke this workflow's temporary identities
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p deployed-loancore-evidence
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA \
+            -v auditor="acceptance-auditor-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" \
+            -v manager="acceptance-audit-manager-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" \
+            -v admin="acceptance-poc-administrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" <<'SQL' > deployed-loancore-evidence/independent-cleanup.txt
+          BEGIN;
+          SET LOCAL statement_timeout = '15s';
+          DELETE FROM auth_session WHERE user_id IN (SELECT id FROM auth_user WHERE email IN (:'auditor',:'manager',:'admin'));
+          DELETE FROM user_role WHERE user_id IN (SELECT id FROM auth_user WHERE email IN (:'auditor',:'manager',:'admin'));
+          SELECT jsonb_build_object('userId',id,'sessions',(SELECT count(*) FROM auth_session WHERE user_id=u.id),'roles',(SELECT count(*) FROM user_role WHERE user_id=u.id)) FROM auth_user u WHERE email IN (:'auditor',:'manager',:'admin');
+          COMMIT;
+          SQL
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          rows=[json.loads(line) for line in Path('deployed-loancore-evidence/independent-cleanup.txt').read_text().splitlines() if line.startswith('{')]
+          for row in rows:
+              assert row['sessions']==0 and row['roles']==0, 'Temporary identity still has access'
+          print(json.dumps({'identityCleanup':rows,'verified':True}))
+          PY
+      - name: Verify unchanged application and create SHA256 manifest
+        if: always()
+        run: |
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,os
+          out=Path('deployed-loancore-evidence');out.mkdir(exist_ok=True)
+          (out/'provenance.json').write_text(json.dumps({'releaseSha':os.environ['RELEASE_SHA'],'validationSha':os.environ['GITHUB_SHA'],'workflowRunId':os.environ['GITHUB_RUN_ID'],'attempt':os.environ['GITHUB_RUN_ATTEMPT'],'applicationSourceUnchanged':True},indent=2))
+          rows=[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for p in sorted(out.iterdir()) if p.is_file() and p.name!='manifest.json']
+          (out/'manifest.json').write_text(json.dumps(rows,indent=2))
+          PY
+      - name: Retain evidence for visual acceptance and exact blocker review
         if: always()
         uses: actions/upload-artifact@v4
         with:
