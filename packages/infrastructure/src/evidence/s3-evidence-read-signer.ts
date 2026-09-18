@@ -52,15 +52,30 @@ export class S3EvidenceReadSigner implements EvidenceReadGrantSigner {
     this.now = options.now ?? (() => new Date());
   }
 
-  async signGet(input: { readonly bucketKey: string; readonly expiresAt: string }): Promise<{ readonly signedUrl: string; readonly signedUrlExpiresAt: string }> {
+  async signGet(input: { readonly bucketKey: string; readonly expiresAt: string; readonly responseMediaType: string }): Promise<{ readonly signedUrl: string; readonly signedUrlExpiresAt: string }> {
     if (typeof input.bucketKey !== 'string' || input.bucketKey.length === 0 || input.bucketKey.length > 1024 || input.bucketKey.startsWith('/') || input.bucketKey.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
       throw new Error('Evidence read signer received an invalid object key');
+    }
+    const responseMediaType = input.responseMediaType.split(';', 1)[0]!.trim().toLowerCase();
+    if (responseMediaType.length === 0 || responseMediaType.length > 512 ||
+        !/^[a-z0-9!#    const now = this.now();
+    const expiresIn = secondsUntil(input.expiresAt, now);^_.+-]+\/[a-z0-9!#    const now = this.now();
+    const expiresIn = secondsUntil(input.expiresAt, now);^_.+-]+$/.test(responseMediaType)) {
+      throw new Error('Evidence read signer received an invalid response media type');
     }
     const now = this.now();
     const expiresIn = secondsUntil(input.expiresAt, now);
     const signedUrl = await this.options.presigner.getSignedUrl(
       this.options.client,
-      new GetObjectCommand({ Bucket: this.options.bucket, Key: input.bucketKey }),
+      new GetObjectCommand({
+        Bucket: this.options.bucket,
+        Key: input.bucketKey,
+        // The object is immutable and may predate Content-Type metadata. The registered
+        // Evidence row is the canonical declaration already validated by the application.
+        // S3 signs this response override, so historical artifacts remain untouched while
+        // the server-side reader can still require MIME + size + digest to agree.
+        ResponseContentType: responseMediaType,
+      }),
       { expiresIn },
     );
     if (typeof signedUrl !== 'string' || signedUrl.length === 0 || signedUrl.length > 4096) throw new Error('Evidence read signer returned an invalid URL');
