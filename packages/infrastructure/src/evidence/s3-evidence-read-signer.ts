@@ -57,8 +57,19 @@ export class S3EvidenceReadSigner implements EvidenceReadGrantSigner {
       throw new Error('Evidence read signer received an invalid object key');
     }
     const responseMediaType = input.responseMediaType.split(';', 1)[0]!.trim().toLowerCase();
-    if (responseMediaType.length === 0 || responseMediaType.length > 512 ||
-        !/^[a-z0-9!#    const now = this.now();
+    // Registered Evidence is the authority for the response declaration, but keep the
+    // value inside a conservative HTTP media-type vocabulary before putting it into a
+    // signed response override. Parameters are deliberately discarded above.
+    const mediaTypeParts = responseMediaType.split('/');
+    const safeToken = (value: string): boolean =>
+      value.length > 0 && [...value].every((character) =>
+        /[a-z0-9!#$&^_.+-]/.test(character),
+      );
+    if (responseMediaType.length > 512 || mediaTypeParts.length !== 2 ||
+        !safeToken(mediaTypeParts[0]!) || !safeToken(mediaTypeParts[1]!)) {
+      throw new Error('Evidence read signer received an invalid response media type');
+    }
+    const now = this.now();
     const expiresIn = secondsUntil(input.expiresAt, now);^_.+-]+\/[a-z0-9!#    const now = this.now();
     const expiresIn = secondsUntil(input.expiresAt, now);^_.+-]+$/.test(responseMediaType)) {
       throw new Error('Evidence read signer received an invalid response media type');
