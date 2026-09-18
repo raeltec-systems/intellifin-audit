@@ -51,7 +51,11 @@ try {
  await conclusion.scrollIntoViewIfNeeded();
  const sealedText=await capture(page,'01-sealed-result-reloaded');
  assert(sealedText.includes('Control Failure')&&sealedText.includes('Result version 2')&&sealedText.includes('Sealed'));
- assert.equal((sealedText.match(/Agent-Judged \(confirmed\)/g)||[]).length,3);
+ // Count review cards, not the vocabulary legend elsewhere on the Run page.
+ const review=page.getByRole('region',{name:'Evaluation review',exact:true});
+ await expect(review.locator(':scope > ul > li.ls-evaluation')).toHaveCount(3);
+ await expect(review.getByText('Agent-Judged (confirmed)',{exact:true})).toHaveCount(3);
+ report.reviewCardsConfirmed=3;
  report.checks.sealedResultSurvivesReload=true;
  report.checks.threeConfirmationsRendered=true;
  report.checks.noStaleQueuedCopyAfterReload=!sealedText.includes('Review queued.');
