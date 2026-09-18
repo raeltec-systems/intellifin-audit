@@ -31,5 +31,25 @@ proof=r'''
 '''
 s=s.replace(anchor,proof+'\n'+anchor,1)
 s=s.replace('  // A person must inspect captured Watch and Replay evidence before the negative phase.','  // Final sign-off still requires inspection of the captured visual evidence.',1)
+helper=r'''
+async function assertSnapshotValue(href,runId) {
+  const expectedURL=new URL(href,BASE),actualURL=new URL(auditor.url());
+  assert.equal(actualURL.pathname,expectedURL.pathname);
+  const evidenceId=expectedURL.pathname.split('/').at(-1),locator=expectedURL.searchParams.get('locator');assert(locator);
+  const recorded=await detail.readObservationGrounding(runId,evidenceId,locator);assert(recorded?.grounding);
+  await expect(auditor.getByRole('heading',{name:'Stored Structural Snapshot',exact:true})).toBeVisible();
+  const value=auditor.locator('[aria-labelledby="stored-snapshot-heading"] > .ls-untrusted > pre');
+  await expect(value).toHaveCount(1);await expect(value).toHaveText(JSON.stringify(recorded.originalValue));
+  return {evidenceId,locator,field:recorded.name,value:recorded.originalValue};
+}
+'''
+assert s.count('async function verifyReplayAssets(runId, prefix) {')==1
+s=s.replace('async function verifyReplayAssets(runId, prefix) {',helper+'\nasync function verifyReplayAssets(runId, prefix) {',1)
+before='    report.evidenceLinks.push({ href, opened });'
+after='    const rendered=opened?await assertSnapshotValue(href,report.runId):null;\n    report.evidenceLinks.push({ href, opened, rendered });'
+assert s.count(before)==1;s=s.replace(before,after,1)
+before="    assert(await auditor.getByRole('heading',{level:1}).count()>0);result.snapshotLinks.push({href,opened:true});"
+after="    const rendered=await assertSnapshotValue(href,runId);result.snapshotLinks.push({href,opened:true,rendered});"
+assert s.count(before)==1;s=s.replace(before,after,1)
 p.write_text(s)
 Path('deployed-loancore-evidence/executed-harness.mjs').write_text(s)
