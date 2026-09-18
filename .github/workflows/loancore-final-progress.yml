@@ -1,0 +1,67 @@
+name: LoanCore final progress
+on:
+  push:
+    branches: [validation/loancore-watch-closeout-20260918]
+    paths: [.github/workflows/loancore-final-progress.yml]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require unchanged released application
+        run: git diff --exit-code 44fb5966dd085f53625d5f9ac77a466a9c18805f HEAD -- . ':(exclude).github/workflows/**'
+      - name: Read only allowlisted progress of the exact acceptance invocation
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          mkdir -p final-progress
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -tA <<'SQL' > final-progress/facts.jsonl
+          BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+          SET LOCAL statement_timeout='10s';
+          SELECT jsonb_build_object('kind','meta','at',clock_timestamp(),'readOnly',current_setting('transaction_read_only'),'workflowRunId',35340181283);
+          SELECT to_jsonb(q) FROM (
+            SELECT 'progress' AS kind,v.control_name,v.procedure_id,v.version_id,v.state AS procedure_state,v.plan_status,
+              a.run_id,a.state AS run_state,p.included,p.indeterminate,
+              w.status AS workspace_state,
+              g.status AS agent_state,g.diagnostic AS agent_diagnostic,g.next_turn,
+              g.model->>'provider' AS provider,g.model->>'modelId' AS model,
+              rr.outcome,rr.sealed,rr.gate_passed,
+              (SELECT count(*) FROM run_observation o WHERE o.run_id=a.run_id) AS observations,
+              (SELECT count(*) FROM run_evidence e WHERE e.run_id=a.run_id AND e.kind='screenshot' AND e.state='REGISTERED') AS registered_screenshots,
+              (SELECT count(DISTINCT digest) FROM run_evidence e WHERE e.run_id=a.run_id AND e.kind='screenshot' AND e.state='REGISTERED') AS distinct_screenshots,
+              (SELECT count(*) FROM run_evaluation_review d WHERE d.run_id=a.run_id) AS human_decisions
+            FROM procedure_version v
+            LEFT JOIN audit_run a ON a.version_id=v.version_id
+            LEFT JOIN population_snapshot p ON p.run_id=a.run_id
+            LEFT JOIN run_workspace w ON w.run_id=a.run_id
+            LEFT JOIN run_agent_work g ON g.run_id=a.run_id
+            LEFT JOIN run_result rr ON rr.run_id=a.run_id
+            WHERE v.control_name IN ('Live LoanCore acceptance 35340181283-1','Negative LoanCore acceptance 35340181283-1')
+          ) q;
+          COMMIT;
+          SQL
+          python3 - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          p=Path('final-progress/facts.jsonl')
+          rows=[json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+          assert rows[0]['kind']=='meta' and rows[0]['readOnly']=='on'
+          print(json.dumps(rows,indent=2))
+          Path('final-progress/SHA256SUMS.txt').write_text(hashlib.sha256(p.read_bytes()).hexdigest()+'  facts.jsonl\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-progress-${{ github.run_id }}-${{ github.run_attempt }}
+          path: final-progress/
+          if-no-files-found: error
+          retention-days: 14
