@@ -70,11 +70,6 @@ export class S3EvidenceReadSigner implements EvidenceReadGrantSigner {
       throw new Error('Evidence read signer received an invalid response media type');
     }
     const now = this.now();
-    const expiresIn = secondsUntil(input.expiresAt, now);^_.+-]+\/[a-z0-9!#    const now = this.now();
-    const expiresIn = secondsUntil(input.expiresAt, now);^_.+-]+$/.test(responseMediaType)) {
-      throw new Error('Evidence read signer received an invalid response media type');
-    }
-    const now = this.now();
     const expiresIn = secondsUntil(input.expiresAt, now);
     const signedUrl = await this.options.presigner.getSignedUrl(
       this.options.client,
