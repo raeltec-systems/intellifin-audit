@@ -1,0 +1,33 @@
+name: LoanCore close-out harness check
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/loancore-closeout-harness-check.yml]
+permissions:
+  contents: read
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+      - name: Assemble only the validation harness
+        run: |
+          git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
+          python3 .github/workflows/strict-loancore-patch.py
+          python3 .github/workflows/final-loancore-observer-patch.py
+          node --check strict-loancore-acceptance.mjs
+          sha256sum strict-loancore-acceptance.mjs > deployed-loancore-evidence/harness-SHA256SUMS.txt
+          git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 -- . ':(exclude).github/workflows/**'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-loancore-harness-${{ github.run_id }}
+          path: deployed-loancore-evidence/
+          if-no-files-found: error
+          retention-days: 14
