@@ -28,6 +28,8 @@ jobs:
             python3 "/tmp/$file"
           done
           python3 .github/workflows/final-loancore-viewport-proof.py
+          python3 .github/workflows/final-loancore-negative-scope.py
+          python3 .github/workflows/final-loancore-decision-proof.py
           node --check strict-loancore-acceptance.mjs
           sha256sum strict-loancore-acceptance.mjs > deployed-loancore-evidence/harness-SHA256SUMS.txt
           git diff --exit-code 816d6b521a53011fd956582b361fafa1c60654d7 -- . ':(exclude).github/workflows/**'
