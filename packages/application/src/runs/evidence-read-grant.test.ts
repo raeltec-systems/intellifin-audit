@@ -165,10 +165,19 @@ describe('Evidence read grant contract', () => {
       grant: grant({ locator: FRAME_LOCATOR }),
       evidence: registered({ kind: 'screenshot', mediaType: 'image/png' }),
     });
+    let signedInput: { bucketKey: string; expiresAt: string; responseMediaType: string } | null = null;
     const result = await issueEvidenceReadGrant({ repository: fake.repository, clock: clock(),
-      signer: { signGet: async ({ expiresAt }) => ({ signedUrl: 'https://objects.invalid/frame', signedUrlExpiresAt: expiresAt }) },
+      signer: { signGet: async (input) => {
+        signedInput = input;
+        return { signedUrl: 'https://objects.invalid/frame', signedUrlExpiresAt: input.expiresAt };
+      } },
     }, { schemaVersion: 1, grantId: GRANT_ID });
     expect(result).toEqual({ status: 'issued', grantId: GRANT_ID });
+    expect(signedInput).toEqual({
+      bucketKey: `runs/${RUN_ID}/evidence/${EVIDENCE_ID}`,
+      expiresAt: '2026-09-07T00:05:00.000Z',
+      responseMediaType: 'image/png',
+    });
     expect(fake.current()?.capability).toMatchObject({ locator: FRAME_LOCATOR, mediaType: 'image/png' });
   });
 

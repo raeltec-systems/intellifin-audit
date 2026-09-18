@@ -163,7 +163,11 @@ S3 credentials. The request and the capability are two transactions, in two proc
    valid metadata (`invalid-evidence-metadata`), and requires the locator to parse or to be
    the reserved `ABSENCE_SNAPSHOT_LOCATOR` (`absence-result`).
 3. `S3EvidenceReadSigner.signGet` presigns a `GetObjectCommand` through the official AWS
-   SDK presigner — never a hand-rolled SigV4 — for between 1 and 300 seconds, and refuses
+   SDK presigner — never a hand-rolled SigV4 — and binds the already-validated registered
+   Evidence media type as the signed GET response `Content-Type`. This does not trust or
+   rewrite historical object metadata: the server-side consumer still verifies MIME, size
+   and digest against the immutable Evidence row. The capability lasts between 1 and 300
+   seconds, and refuses
    an object key that is empty, over 1024 characters, absolute, or containing an empty,
    `.` or `..` segment.
 4. `readSnapshotCellWithGrant` (`apps/web/src/runs/evidence-snapshot-reader.ts`) fetches
