@@ -38,10 +38,8 @@ jobs:
       - run: |
           pnpm --filter '@intellifin/infrastructure...' build
           pnpm exec playwright install --with-deps chromium
-      - name: Assemble the exact diagnostic harness with observed selector corrections
+      - name: Assemble and archive the exact diagnostic harness
         run: |
-          # Reuse the immutable diagnostic, not application source. Archive the exact
-          # executed harness so this transformation cannot disappear from the evidence.
           git show 18e2959e425f949e3e425f2702a9e68651aa129e:.github/workflows/loancore-source-ui-diagnostic.yml > /tmp/source-diagnostic-definition.yml
           python3 - <<'PY'
           from pathlib import Path
@@ -52,6 +50,22 @@ jobs:
               'SELECT id, period, scope, source_snapshot, targets, plan_status': 'SELECT version_id AS id, period, scope, source_snapshot, targets, plan_status',
               "scopePanel.getByRole('button',{name:'Choose dates',exact:true})": '''scopePanel.locator('.ls-guide-questions__nav button[aria-controls$="-period"]')''',
               "panel.getByRole('button',{name:'Choose records',exact:true})": '''panel.locator('.ls-guide-questions__nav button[aria-controls$="-source"]')''',
+              "stage('period-scope');": """stage('settle-new-draft');
+              await poll(version,row=>row && row.plan_status!=='pending','new draft initial plan derivation settled');
+              await page.reload({waitUntil:'domcontentloaded'}); await expect(page.locator('[data-guided-ready=true]')).toBeVisible();
+              report.initialSettledVersion=safeVersion(await version());
+              stage('period-scope');""",
+              "await page.getByRole('button',{name:'Save Period and scope',exact:true}).click();": """const periodResponsePromise=page.waitForResponse(response=>response.request().method()==='POST' && new URL(response.url()).pathname===`/procedures/${procedureId}/builder`,{timeout:15000}).then(response=>response,()=>null);
+              await page.getByRole('button',{name:'Save Period and scope',exact:true}).click();
+              const periodResponse=await periodResponsePromise;
+              report.periodSaveHttpStatus=periodResponse?.status()??null;
+              if(periodResponse) { await periodResponse.finished(); const text=await periodResponse.text(); report.periodResponse={sha256:sha(text), staleRefusal:text.includes('That procedure changed since this page was loaded'), conflict:text.includes('Resolve the saved-value conflict'), okTrue:text.includes('\\"ok\\":true'), okFalse:text.includes('\\"ok\\":false')}; }
+              report.periodSaveBanners=await page.locator('.ls-banner').allInnerTexts();""",
+              "if(response) await response.finished();": """if(response) { await response.finished(); const text=await response.text(); report.sourceResponse={sha256:sha(text), staleRefusal:text.includes('That procedure changed since this page was loaded'), conflict:text.includes('Resolve the saved-value conflict'), okTrue:text.includes('\\"ok\\":true'), okFalse:text.includes('\\"ok\\":false')}; }
+              report.sourceSaveBanners=await page.locator('.ls-banner').allInnerTexts();""",
+              "if(procedureId) report.persistedAtFailure=safeVersion(await version().catch(()=>null));": """if(procedureId) report.persistedAtFailure=safeVersion(await version().catch(()=>null));
+              if(page && procedureId) { report.failureBanners=(await page.locator('.ls-banner').allInnerTexts().catch(()=>[])).map(redact); report.failureVisibleText=redact((await page.locator('body').innerText().catch(()=>''))); }""",
+              'fullPage: false': 'fullPage: true',
           }
           for before, after in replacements.items():
               assert script.count(before) == 1, f'Diagnostic replacement did not match exactly once: {before}'
