@@ -1,0 +1,61 @@
+name: LoanCore source persistence observer
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/loancore-source-persistence-observer.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify released application source
+        run: git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
+      - name: Read only the named synthetic diagnostic and database waits
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p /tmp/source-observer
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA <<'SQL' > /tmp/source-observer/report.json
+          BEGIN TRANSACTION READ ONLY;
+          SET LOCAL statement_timeout = '10s';
+          SELECT jsonb_pretty(jsonb_build_object(
+            'observedAt', clock_timestamp(),
+            'diagnosticRunId', '35317361449',
+            'versions', (SELECT coalesce(jsonb_agg(jsonb_build_object(
+              'procedureId', procedure_id, 'versionId', version_id, 'state', state,
+              'period', period, 'scope', scope,
+              'sourceBindingId', source_snapshot->>'bindingId',
+              'planStatus', plan_status, 'planFailureReason', plan_failure_reason,
+              'createdAt', created_at, 'updatedAt', updated_at
+            )), '[]'::jsonb) FROM procedure_version WHERE control_name='Source save diagnostic 35317361449-1'),
+            'events', (SELECT coalesce(jsonb_agg(jsonb_build_object(
+              'type', event_type, 'at', occurred_at, 'outcome', outcome,
+              'section', payload->>'section', 'sequence', sequence
+            ) ORDER BY sequence), '[]'::jsonb) FROM audit_events WHERE aggregate_id IN
+              (SELECT procedure_id::text FROM procedure_version WHERE control_name='Source save diagnostic 35317361449-1')),
+            'activeDatabaseWaits', (SELECT coalesce(jsonb_agg(jsonb_build_object(
+              'pid', pid, 'state', state, 'waitType', wait_event_type, 'waitEvent', wait_event,
+              'queryStarted', query_start, 'blockingPids', pg_blocking_pids(pid)
+            )), '[]'::jsonb) FROM pg_stat_activity WHERE datname=current_database() AND state<>'idle' AND pid<>pg_backend_pid())
+          ));
+          COMMIT;
+          SQL
+          # psql command tags are not evidence JSON.
+          sed -i '/^BEGIN$/d; /^SET$/d; /^COMMIT$/d' /tmp/source-observer/report.json
+          python3 -m json.tool /tmp/source-observer/report.json
+          sha256sum /tmp/source-observer/report.json > /tmp/source-observer/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-persistence-observer-${{ github.run_id }}
+          path: /tmp/source-observer/
+          if-no-files-found: error
+          retention-days: 7
