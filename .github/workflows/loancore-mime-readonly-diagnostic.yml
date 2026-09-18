@@ -1,0 +1,91 @@
+name: LoanCore evidence MIME read-only diagnostic
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/loancore-mime-readonly-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify unchanged released application
+        run: git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - run: npm install --global @railway/cli@5.47.2
+      - name: Compare ordinary and MIME-bound GETs for two historical artifacts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { createRequire } from 'node:module';
+          import { createHash } from 'node:crypto';
+          import { mkdirSync,writeFileSync } from 'node:fs';
+          import { createSqlClient } from '@intellifin/infrastructure';
+          const require=createRequire(new URL('./packages/infrastructure/package.json',`file://${process.cwd()}/`));
+          const {S3Client,GetObjectCommand}=require('@aws-sdk/client-s3');
+          const {getSignedUrl}=require('@aws-sdk/s3-request-presigner');
+          const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+          const out='/tmp/mime-proof';mkdirSync(out,{recursive:true});
+          const runId='01a0b39a-9c62-7671-a424-994f989f6880';
+          const report={runId,workflowRunId:process.env.GITHUB_RUN_ID,validationSha:process.env.GITHUB_SHA,at:new Date().toISOString(),applicationRelease:'ef0515efbf0c2c558c5ad0153559d7239a8652d9',readOnly:true,artifacts:[],proven:false};
+          const forbidden=new Set([process.env.DATABASE_URL,process.env.RAILWAY_TOKEN].filter(Boolean));
+          let sql,client;
+          try {
+            sql=createSqlClient(process.env.DATABASE_URL,{max:1});
+            const rows=await sql`SELECT DISTINCT ON(kind) evidence_id,kind,object_key,media_type,digest,size FROM run_evidence WHERE run_id=${runId}::uuid AND state='REGISTERED' AND kind IN('screenshot','structural-snapshot') ORDER BY kind,captured_at,evidence_id`;
+            assert.equal(rows.length,2);
+            let cfg;
+            try {cfg=JSON.parse(execFileSync('railway',['variables','--service','worker','--environment','production','--json'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000,maxBuffer:1048576}));} catch {throw new Error('configuration-unavailable');}
+            for(const [name,value] of Object.entries(cfg)){if(typeof value==='string'&&/KEY|TOKEN|SECRET|PASSWORD|DATABASE_URL/.test(name)&&value.length>0)forbidden.add(value);}
+            client=new S3Client({region:cfg.EVIDENCE_S3_REGION,endpoint:cfg.EVIDENCE_S3_ENDPOINT,forcePathStyle:cfg.EVIDENCE_S3_FORCE_PATH_STYLE!=='false',credentials:{accessKeyId:cfg.EVIDENCE_S3_ACCESS_KEY_ID,secretAccessKey:cfg.EVIDENCE_S3_SECRET_ACCESS_KEY},maxAttempts:1});
+            for(const row of rows){
+              const expectedType=row.media_type.split(';',1)[0].trim().toLowerCase();
+              assert(/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(expectedType));
+              assert(Number(row.size)<=4194304);
+              const evidence={evidenceId:row.evidence_id,kind:row.kind,registeredMediaType:row.media_type,registeredDigest:row.digest,registeredBytes:Number(row.size),reads:[]};
+              for(const override of [false,true]){
+                const command=new GetObjectCommand({Bucket:cfg.EVIDENCE_S3_BUCKET,Key:row.object_key,...(override?{ResponseContentType:expectedType}:{})});
+                const signed=await getSignedUrl(client,command,{expiresIn:60});forbidden.add(signed);
+                const response=await fetch(signed,{redirect:'error',signal:AbortSignal.timeout(20000)});
+                const type=response.headers.get('content-type');
+                assert(response.ok,'object-read-failed');
+                const length=response.headers.get('content-length');assert(length===null||Number(length)<=4194304);
+                const bytes=new Uint8Array(await response.arrayBuffer());assert(bytes.length<=4194304);
+                const digest=sha(bytes);
+                evidence.reads.push({override,status:response.status,responseMediaType:type,bytes:bytes.length,digest,matchesDigest:digest===row.digest,matchesSize:bytes.length===Number(row.size),matchesMediaType:type!==null&&type.split(';',1)[0].trim().toLowerCase()===expectedType});
+                assert.equal(digest,row.digest);assert.equal(bytes.length,Number(row.size));
+              }
+              report.artifacts.push(evidence);
+            }
+            report.proven=report.artifacts.length===2&&report.artifacts.every(a=>a.reads[0].matchesMediaType===false&&a.reads[1].matchesMediaType===true&&a.reads.every(r=>r.matchesDigest&&r.matchesSize));
+            if(!report.proven)process.exitCode=1;
+          }catch{report.failure='Bounded diagnostic did not prove expected contract; raw error suppressed';process.exitCode=1;}
+          finally{
+            client?.destroy();await sql?.end({timeout:5}).catch(()=>{});report.finishedAt=new Date().toISOString();
+            const text=JSON.stringify(report,null,2);for(const value of forbidden)assert(!text.includes(value),'unsafe-output-refused');
+            writeFileSync(`${out}/report.json`,text);writeFileSync(`${out}/SHA256SUMS.txt`,`${sha(text)}  report.json\n`);console.log(text);
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-mime-proof-${{ github.run_id }}
+          path: /tmp/mime-proof/
+          if-no-files-found: error
+          retention-days: 14
