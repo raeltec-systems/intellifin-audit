@@ -1,0 +1,112 @@
+name: LoanCore model transport diagnostic
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/loancore-model-transport-diagnostic.yml]
+permissions:
+  contents: read
+env:
+  RELEASE_SHA: ef0515efbf0c2c558c5ad0153559d7239a8652d9
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify released application source
+        run: git diff --exit-code "$RELEASE_SHA" HEAD -- . ':(exclude).github/workflows/**'
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - run: npm install --global @railway/cli@5.47.2
+      - name: Probe the deployed provider configuration without recording credentials
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { createSqlClient } from '@intellifin/infrastructure';
+          import { AnthropicAgentModelGateway, OpenAIAgentModelGateway, AGENT_PROMPT_VERSION, DEFAULT_AGENT_ANTHROPIC_MODEL, DEFAULT_AGENT_OPENAI_MODEL } from '@intellifin/infrastructure/agent-model';
+          const out='/tmp/model-transport'; mkdirSync(out,{recursive:true});
+          const report={at:new Date().toISOString(),workflowRunId:process.env.GITHUB_RUN_ID,validationSha:process.env.GITHUB_SHA,releasedApplicationSha:process.env.RELEASE_SHA,purpose:'one bounded diagnostic; no Run or application mutation',attempts:[],configurationChanged:false};
+          const forbidden=new Set([process.env.RAILWAY_TOKEN,process.env.DATABASE_URL].filter(Boolean));
+          let sql;
+          try {
+            sql=createSqlClient(process.env.DATABASE_URL,{max:1});
+            const [work]=await sql`SELECT model FROM run_agent_work WHERE run_id='01a0b364-0bd1-7a0e-9257-d78f4cb51834'::uuid`;
+            report.runModelIdentity=work?.model??null;
+            await sql.end({timeout:5}); sql=null;
+            // Read only this service's variables into process memory. stdout/stderr never
+            // reach the job log, and no environment dump or secret file is produced.
+            let config;
+            try { config=JSON.parse(execFileSync('railway',['variables','--service','worker','--environment','production','--json'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000,maxBuffer:1048576})); }
+            catch { throw new Error('Railway configuration could not be read safely'); }
+            const keyName=config.ANTHROPIC_API_KEY?'ANTHROPIC_API_KEY':'OPENAI_API_KEY';
+            const provider=keyName==='ANTHROPIC_API_KEY'?'anthropic':'openai';
+            const key=config[keyName]; assert.equal(typeof key,'string');assert(key.length>0);
+            forbidden.add(key);console.log(`::add-mask::${key}`);
+            const modelId=provider==='anthropic'?(config.AGENT_ANTHROPIC_MODEL??DEFAULT_AGENT_ANTHROPIC_MODEL):(config.AGENT_OPENAI_MODEL??DEFAULT_AGENT_OPENAI_MODEL);
+            assert.match(modelId,/^[A-Za-z0-9_.:-]{1,150}$/);
+            report.provider=provider;report.modelId=modelId;
+            report.keyPresent=true;
+            report.overridePresent=provider==='anthropic'?Boolean(config.AGENT_ANTHROPIC_MODEL):Boolean(config.AGENT_OPENAI_MODEL);
+            report.sameProviderAndModelAsRun=work?.model?.provider===provider&&work?.model?.modelId===modelId;
+            const errorTypes=new Set(['invalid_request_error','authentication_error','permission_error','not_found_error','rate_limit_error','api_error','overloaded_error','billing_error']);
+            const categories=message=>{
+              if(/credit balance|billing|payment|insufficient_quota|quota exceeded/i.test(message))return 'billing-or-quota';
+              if(/model.*not found|not found.*model|unknown model|model.*does not exist/i.test(message))return 'model-not-found';
+              if(/invalid.*api.?key|api.?key.*invalid|authentication/i.test(message))return 'authentication';
+              if(/permission|not.*access|access.*denied/i.test(message))return 'permission';
+              if(/temperature/i.test(message))return 'temperature-parameter';
+              if(/max_tokens|max_output_tokens/i.test(message))return 'output-token-parameter';
+              return 'unclassified';
+            };
+            const nativeFetch=globalThis.fetch;
+            const safeFetch=async(input,init)=>{
+              const response=await nativeFetch(input,init);
+              const row={at:new Date().toISOString(),httpStatus:response.status,ok:response.ok};
+              if(!response.ok){const body=await response.clone().json().catch(()=>null);const err=body?.error;row.errorType=errorTypes.has(err?.type)?err.type:'unclassified';row.category=categories(String(err?.message??''));}
+              report.attempts.push(row);return response;
+            };
+            const options={apiKey:key,modelId,promptVersion:AGENT_PROMPT_VERSION,buildVersion:process.env.RELEASE_SHA,maxOutputTokens:1024,fetch:safeFetch};
+            const gateway=provider==='anthropic'?new AnthropicAgentModelGateway(options):new OpenAIAgentModelGateway(options);
+            try {
+              await gateway.propose({schemaVersion:1,objective:'Return one action to search the synthetic employee EMP-DIAGNOSTIC using the only approved tool.',retrieved:[],tools:[{toolId:'search-account',action:'search',destination:'https://loancore.synthetic.invalid/accounts',locator:{substrate:'web_tree',path:'$.nodes[2].value'},description:'Search the synthetic account form by employee ID.',parameterNames:['employee_id']}],timeoutMs:45000});
+              report.gatewayAcceptedResponse=true;
+            } catch(error) { report.gatewayAcceptedResponse=false;report.gatewayError=['configuration','provider-refused','unavailable','timeout','invalid-response','canceled'].includes(error?.code)?error.code:'unclassified'; }
+            assert(report.attempts.length<=1,'Unexpected extra model requests');
+            if(provider==='anthropic'&&report.attempts.some(a=>a.httpStatus===404)) {
+              const response=await nativeFetch('https://api.anthropic.com/v1/models?limit=100',{headers:{'x-api-key':key,'anthropic-version':'2023-06-01'},signal:AbortSignal.timeout(20000)});
+              report.modelsLookupStatus=response.status;
+              if(response.ok){const body=await response.json();report.accessibleModels=(body.data??[]).map(m=>m.id).filter(id=>typeof id==='string'&&/^[A-Za-z0-9_.:-]{1,150}$/.test(id));}
+            }
+          } catch(error) { report.diagnosticFailure=error?.message==='Railway configuration could not be read safely'?error.message:'Diagnostic could not complete; raw error suppressed';process.exitCode=1; }
+          finally {
+            if(sql)await sql.end({timeout:5}).catch(()=>{});
+            const text=JSON.stringify(report,null,2);for(const token of forbidden)assert(!text.includes(token),'Refusing unsafe report');
+            writeFileSync(`${out}/report.json`,text);writeFileSync(`${out}/SHA256SUMS.txt`,`${createHash('sha256').update(text).digest('hex')}  report.json\n`);
+            console.log(text);
+          }
+          NODE
+      - name: Verify unchanged application source
+        if: always()
+        run: git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: model-transport-diagnostic-${{ github.run_id }}
+          path: /tmp/model-transport/
+          if-no-files-found: error
+          retention-days: 14
