@@ -24,6 +24,7 @@ jobs:
           python3 .github/workflows/strict-loancore-patch.py
           python3 .github/workflows/final-loancore-observer-patch.py
           python3 .github/workflows/final-loancore-observation-proof.py
+          python3 .github/workflows/final-loancore-secrecy-proof.py
           node --check strict-loancore-acceptance.mjs
           sha256sum strict-loancore-acceptance.mjs > deployed-loancore-evidence/harness-SHA256SUMS.txt
           git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 -- . ':(exclude).github/workflows/**'
