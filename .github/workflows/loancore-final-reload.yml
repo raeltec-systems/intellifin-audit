@@ -2,7 +2,9 @@ name: LoanCore final read-only UI reload
 on:
   push:
     branches: [validation/loancore-watch-closeout-20260918]
-    paths: [.github/workflows/loancore-final-reload.yml]
+    paths:
+      - .github/workflows/loancore-final-reload.yml
+      - .github/workflows/loancore-final-reload.mjs
 permissions:
   contents: read
   actions: read
