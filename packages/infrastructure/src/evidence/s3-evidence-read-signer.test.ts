@@ -41,7 +41,7 @@ describe('S3EvidenceReadSigner', () => {
     await expect(signer.signGet({ bucketKey, expiresAt: '2026-09-07T00:05:00.000Z', responseMediaType: 'image/png' })).rejects.toThrow('invalid object key');
   });
 
-  it.each(['', 'not-a-type', 'image', 'image/png;evil=1'])('refuses unsafe response media type %s', async (responseMediaType) => {
+  it.each(['', 'not-a-type', 'image', 'image / png'])('refuses unsafe response media type %s', async (responseMediaType) => {
     const presigner: S3GetUrlPresigner = { getSignedUrl: async () => 'https://objects.invalid' };
     const signer = new S3EvidenceReadSigner({ bucket: 'evidence', client: {} as S3Client, presigner, now: () => NOW });
     await expect(signer.signGet({
