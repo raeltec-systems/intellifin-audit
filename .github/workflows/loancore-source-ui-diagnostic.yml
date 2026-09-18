@@ -1,34 +1,27 @@
 name: LoanCore source UI diagnostic
-
 on:
   push:
     branches: [validation/final-loancore-20260917]
     paths: [.github/workflows/loancore-source-ui-diagnostic.yml]
-
 permissions:
   contents: read
-
 concurrency:
   group: loancore-source-ui-diagnostic
   cancel-in-progress: false
-
 env:
   RELEASE_SHA: ef0515efbf0c2c558c5ad0153559d7239a8652d9
-
 jobs:
   inspect:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Prove application source is the released source
-        run: |
-          git diff --exit-code "$RELEASE_SHA" HEAD -- . ':(exclude).github/workflows/**'
-          echo "APPLICATION_SOURCE_MATCH=$RELEASE_SHA"
+      - name: Prove application source is released
+        run: git diff --exit-code "$RELEASE_SHA" HEAD -- . ':(exclude).github/workflows/**'
       - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
       - uses: actions/setup-node@v5
         with:
@@ -38,7 +31,7 @@ jobs:
       - run: |
           pnpm --filter '@intellifin/infrastructure...' build
           pnpm exec playwright install --with-deps chromium
-      - name: Assemble and archive the exact diagnostic harness
+      - name: Assemble bounded diagnostic, not application source
         run: |
           git show 18e2959e425f949e3e425f2702a9e68651aa129e:.github/workflows/loancore-source-ui-diagnostic.yml > /tmp/source-diagnostic-definition.yml
           python3 - <<'PY'
@@ -55,17 +48,13 @@ jobs:
               await page.reload({waitUntil:'domcontentloaded'}); await expect(page.locator('[data-guided-ready=true]')).toBeVisible();
               report.initialSettledVersion=safeVersion(await version());
               stage('period-scope');""",
-              "await page.getByRole('button',{name:'Save Period and scope',exact:true}).click();": """const periodResponsePromise=page.waitForResponse(response=>response.request().method()==='POST' && new URL(response.url()).pathname===`/procedures/${procedureId}/builder`,{timeout:15000}).then(response=>response,()=>null);
-              await page.getByRole('button',{name:'Save Period and scope',exact:true}).click();
-              const periodResponse=await periodResponsePromise;
-              report.periodSaveHttpStatus=periodResponse?.status()??null;
-              if(periodResponse) { await periodResponse.finished(); const text=await periodResponse.text(); report.periodResponse={sha256:sha(text), staleRefusal:text.includes('That procedure changed since this page was loaded'), conflict:text.includes('Resolve the saved-value conflict'), okTrue:text.includes('\\"ok\\":true'), okFalse:text.includes('\\"ok\\":false')}; }
-              report.periodSaveBanners=await page.locator('.ls-banner').allInnerTexts();""",
-              "if(response) await response.finished();": """if(response) { await response.finished(); const text=await response.text(); report.sourceResponse={sha256:sha(text), staleRefusal:text.includes('That procedure changed since this page was loaded'), conflict:text.includes('Resolve the saved-value conflict'), okTrue:text.includes('\\"ok\\":true'), okFalse:text.includes('\\"ok\\":false')}; }
-              report.sourceSaveBanners=await page.locator('.ls-banner').allInnerTexts();""",
+              'if(response) await response.finished();': """// A streaming server-action response need not finish with the mutation.
+              // Its status is diagnostic only. The persisted section is authoritative.
+              report.sourceSaveResponseSeenAt=new Date().toISOString();""",
               "if(procedureId) report.persistedAtFailure=safeVersion(await version().catch(()=>null));": """if(procedureId) report.persistedAtFailure=safeVersion(await version().catch(()=>null));
               if(page && procedureId) { report.failureBanners=(await page.locator('.ls-banner').allInnerTexts().catch(()=>[])).map(redact); report.failureVisibleText=redact((await page.locator('body').innerText().catch(()=>''))); }""",
               'fullPage: false': 'fullPage: true',
+              "console.log('DIAGNOSTIC_STAGE', name);": "console.log('DIAGNOSTIC_STAGE', name); writeFileSync(`${out}/progress.json`,JSON.stringify(report,null,2));",
           }
           for before, after in replacements.items():
               assert script.count(before) == 1, f'Diagnostic replacement did not match exactly once: {before}'
@@ -76,13 +65,32 @@ jobs:
           PY
           node --check source-save-diagnostic.mjs
           sha256sum source-save-diagnostic.mjs
-      - name: Reproduce source save through visible UI and verify persistence
+      - name: Exercise normal authoring controls and require persisted source
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: node source-save-diagnostic.mjs
-      - name: Recheck source invariance
+        run: timeout --signal=TERM --kill-after=10s 180s node source-save-diagnostic.mjs
+      - name: Verify cleanup independently even after interruption
         if: always()
-        run: git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p /tmp/source-save-proof
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -v email="source-save-diagnostic-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" -tA <<'SQL' > /tmp/source-save-proof/independent-cleanup.txt
+          BEGIN;
+          SET LOCAL statement_timeout = '10s';
+          DELETE FROM auth_session WHERE user_id IN (SELECT id FROM auth_user WHERE email=:'email');
+          DELETE FROM user_role WHERE user_id IN (SELECT id FROM auth_user WHERE email=:'email');
+          SELECT jsonb_build_object('userId',id,'sessions',(SELECT count(*) FROM auth_session WHERE user_id=u.id),'roles',(SELECT count(*) FROM user_role WHERE user_id=u.id)) FROM auth_user u WHERE email=:'email';
+          COMMIT;
+          SQL
+          cat /tmp/source-save-proof/independent-cleanup.txt
+      - name: Verify source invariant and archive checksums
+        if: always()
+        run: |
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+          cd /tmp/source-save-proof
+          sha256sum * > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
