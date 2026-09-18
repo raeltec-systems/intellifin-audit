@@ -1,0 +1,148 @@
+name: LoanCore final persisted readback
+on:
+  push:
+    branches: [validation/loancore-watch-closeout-20260918]
+    paths: [.github/workflows/loancore-final-persisted-readback.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  readback:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - name: Require the exact visible acceptance to finish successfully
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,time,urllib.request
+          url='https://api.github.com/repos/raeltec-systems/intellifin-audit/actions/runs/35340181283'
+          request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          for attempt in range(240):
+              with urllib.request.urlopen(request,timeout=20) as response: run=json.load(response)
+              assert run['head_sha']=='1b9ee9610e665076a61f3697898bf995fc2e4269' and run['run_attempt']==1
+              if run['status']=='completed':
+                  assert run['conclusion']=='success','Visible acceptance failed; do not claim final readback'
+                  print(json.dumps({key:run[key] for key in ['id','head_sha','status','conclusion']}));break
+              time.sleep(5)
+          else: raise RuntimeError('Visible acceptance did not finish within the bounded window')
+          PY
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require unchanged released application
+        run: git diff --exit-code 44fb5966dd085f53625d5f9ac77a466a9c18805f HEAD -- . ':(exclude).github/workflows/**'
+      - name: Read only the exact acceptance runs and identities
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          mkdir -p final-persisted-readback
+          psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -tA \
+            -v positive='Live LoanCore acceptance 35340181283-1' \
+            -v negative='Negative LoanCore acceptance 35340181283-1' \
+            -v auditor='acceptance-auditor-35340181283-1@example.test' \
+            -v manager='acceptance-audit-manager-35340181283-1@example.test' \
+            -v admin='acceptance-poc-administrator-35340181283-1@example.test' <<'SQL' > final-persisted-readback/facts.jsonl
+          BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+          SET LOCAL statement_timeout='15s';
+          SELECT jsonb_build_object('kind','meta','observedAt',clock_timestamp(),'readOnly',current_setting('transaction_read_only'),'acceptanceWorkflow',35340181283);
+          SELECT to_jsonb(q) FROM (
+            SELECT 'run' AS kind,v.control_name,a.run_id,a.version_id,a.state,a.initiator_id,
+              rr.outcome,rr.sealed,rr.gate_passed,rr.version AS result_version,
+              w.status AS workspace_status,w.mode AS workspace_mode,
+              (SELECT count(*) FROM run_observation o WHERE o.run_id=a.run_id) AS observation_count,
+              (SELECT count(*) FROM run_observation_evaluation e WHERE e.run_id=a.run_id) AS evaluation_count
+            FROM audit_run a JOIN procedure_version v ON v.version_id=a.version_id
+            JOIN run_result rr ON rr.run_id=a.run_id LEFT JOIN run_workspace w ON w.run_id=a.run_id
+            WHERE v.control_name IN (:'positive',:'negative')
+          ) q;
+          SELECT to_jsonb(q) FROM (
+            SELECT 'effective_evaluation' AS kind,o.population_record_key AS record,e.condition_id,
+              e.origin AS original_origin,e.value AS original_value,e.confirmation AS original_confirmation,
+              coalesce(d.effective_origin,e.origin) AS effective_origin,
+              coalesce(d.effective_value,e.value) AS effective_value,
+              CASE WHEN d.decision_id IS NULL THEN e.confirmation ELSE d.effective_confirmation END AS effective_confirmation
+            FROM run_observation_evaluation e JOIN run_observation o ON o.observation_id=e.observation_id AND o.run_id=e.run_id
+            JOIN audit_run a ON a.run_id=e.run_id JOIN procedure_version v ON v.version_id=a.version_id
+            LEFT JOIN run_evaluation_review d ON d.run_id=e.run_id AND d.observation_id=e.observation_id AND d.condition_id=e.condition_id
+            WHERE v.control_name=:'positive'
+          ) q;
+          SELECT to_jsonb(q) FROM (
+            SELECT 'decision' AS kind,d.decision_id,d.run_id,o.population_record_key AS record,d.condition_id,
+              d.review_revision,d.action,d.original_origin,d.original_value,d.original_confirmation,
+              d.effective_origin,d.effective_value,d.effective_confirmation,d.actor_id,d.decided_at
+            FROM run_evaluation_review d JOIN run_observation o ON o.observation_id=d.observation_id AND o.run_id=d.run_id
+            JOIN audit_run a ON a.run_id=d.run_id JOIN procedure_version v ON v.version_id=a.version_id
+            WHERE v.control_name=:'positive'
+          ) q;
+          SELECT to_jsonb(q) FROM (
+            SELECT 'procedure' AS kind,v.control_name,v.procedure_id,v.version_id,v.state,v.scope,v.decisions,v.lifecycle
+            FROM procedure_version v WHERE v.control_name IN (:'positive',:'negative')
+          ) q;
+          SELECT to_jsonb(q) FROM (
+            SELECT 'identity' AS kind,u.id AS user_id,
+              CASE u.email WHEN :'auditor' THEN 'auditor' WHEN :'manager' THEN 'audit-manager' ELSE 'poc-administrator' END AS role_requested,
+              (SELECT count(*) FROM auth_session s WHERE s.user_id=u.id) AS sessions,
+              (SELECT count(*) FROM user_role r WHERE r.user_id=u.id) AS roles
+            FROM auth_user u WHERE u.email IN (:'auditor',:'manager',:'admin')
+          ) q;
+          COMMIT;
+          SQL
+      - name: Verify effective decisions rather than rewriting immutable proposals
+        run: |
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          out=Path('final-persisted-readback')
+          rows=[json.loads(line) for line in (out/'facts.jsonl').read_text().splitlines() if line.strip()]
+          group=lambda kind:[row for row in rows if row['kind']==kind]
+          assert len(group('meta'))==1 and group('meta')[0]['readOnly']=='on'
+          identities=group('identity');assert len(identities)==3
+          assert all(row['sessions']==0 and row['roles']==0 for row in identities)
+          actors={row['role_requested']:row['user_id'] for row in identities}
+          assert len(set(actors.values()))==3
+          runs=group('run');assert len(runs)==2 and len({row['run_id'] for row in runs})==2
+          positive=next(row for row in runs if row['control_name']=='Live LoanCore acceptance 35340181283-1')
+          negative=next(row for row in runs if row['control_name']=='Negative LoanCore acceptance 35340181283-1')
+          assert positive['state']=='COMPLETED' and positive['outcome']=='CONTROL_FAILURE' and positive['sealed'] is True
+          assert positive['gate_passed'] is True and positive['result_version']==2
+          assert positive['observation_count']==3 and positive['evaluation_count']==6 and positive['workspace_status']=='RELEASED'
+          assert negative['state']=='INCONCLUSIVE' and negative['outcome']=='INCONCLUSIVE' and negative['sealed'] is True
+          assert negative['gate_passed'] is False and negative['observation_count']==0 and negative['evaluation_count']==0
+          assert negative['workspace_status'] in (None,'RELEASED')
+          truth=json.loads(Path('fixtures/northstar/expectations/p-1-live-acceptance.json').read_text())
+          expected={(record,'C1'):value for record,value in truth['expected_c1'].items()}
+          expected.update({(record,'C2'):value for record,value in truth['expected_c2_with_canonical_policy'].items()})
+          effective=group('effective_evaluation');assert len(effective)==6
+          actual={(row['record'],row['condition_id']):row['effective_value'] for row in effective}
+          assert actual==expected
+          assert all(row['effective_confirmation']=='confirmed' for row in effective if row['condition_id']=='C2')
+          decisions=group('decision');assert len(decisions)==3 and sorted(row['review_revision'] for row in decisions)==[1,2,3]
+          assert {row['record'] for row in decisions}==set(truth['expected_c1'])
+          assert all(row['condition_id']=='C2' and row['action']=='confirm' and row['actor_id']==actors['auditor'] and row['effective_confirmation']=='confirmed' and row['original_confirmation']=='pending' and row['run_id']==positive['run_id'] for row in decisions)
+          procedures=group('procedure');assert len(procedures)==2
+          for procedure in procedures:
+              assert procedure['state']=='ACTIVE' and procedure['lifecycle']['activatedAt']
+              submitted=[row for row in procedure['decisions'] if row['decision']=='submit']
+              approved=[row for row in procedure['decisions'] if row['decision']=='approve']
+              assert len(submitted)==1 and len(approved)==1
+              assert submitted[0]['actorId']==actors['auditor'] and approved[0]['actorId']==actors['audit-manager']
+              if procedure['control_name'].startswith('Negative '): assert '27 records' in procedure['scope']
+          result={'verified':True,'acceptanceWorkflow':35340181283,'runId':positive['run_id'],'negativeRunId':negative['run_id'],'checks':{'sealedEffectiveValuesMatchOracle':True,'threeAuditorConfirmationsPersisted':True,'originalProposalsPreserved':True,'independentProcedureApprovalsPersisted':True,'negativeHasNoManufacturedEvaluations':True,'workspacesReleased':True,'allThreeTemporaryIdentitiesRevoked':True},'facts':rows}
+          (out/'report.json').write_text(json.dumps(result,indent=2))
+          manifest=[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for p in sorted(out.iterdir()) if p.is_file()]
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          print(json.dumps({key:value for key,value in result.items() if key!='facts'}))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loancore-final-persisted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: final-persisted-readback/
+          if-no-files-found: error
+          retention-days: 14
