@@ -38,7 +38,7 @@ jobs:
             'distinctScreenshots',(SELECT count(DISTINCT digest) FROM run_evidence e WHERE e.run_id=r.run_id AND e.kind='screenshot' AND e.state='REGISTERED'),
             'workspace',(SELECT jsonb_build_object('status',status,'mode',mode,'identityLength',length(workspace_id),'releasedAt',released_at,'diagnostic',diagnostic) FROM run_workspace w WHERE w.run_id=r.run_id),
             'result',(SELECT jsonb_build_object('outcome',outcome,'gatePassed',gate_passed,'sealed',sealed) FROM run_result rr WHERE rr.run_id=r.run_id)
-          )),'[]'::jsonb) FROM r)) ;
+          )),'[]'::jsonb) FROM r)));
           COMMIT;
           SQL
           sed -i '/^BEGIN$/d; /^SET$/d; /^COMMIT$/d' /tmp/closeout-state/report.json
