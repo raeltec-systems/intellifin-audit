@@ -62,12 +62,23 @@ try {
  await page.goto(`${BASE}/runs/${RUN}/replay`,{waitUntil:'domcontentloaded'});
  const pills=page.locator('.ls-session__scrubber button');await expect(pills).toHaveCount(15);
  const frame=page.locator('img.ls-session__frame');
+ report.replaySelections=[];
+ const selectedEvidence={3:'84a9ccc5-5975-8500-8456-7f6fa4653eaa',8:'bd51bf52-31e3-8a8c-9e66-bcd054e6167a',13:'a69b3537-953f-831c-a579-2b277a266241'};
  for(const index of [3,8,13]){
-  await pills.nth(index).click();await expect.poll(()=>frame.evaluate(img=>img.complete&&img.naturalWidth>200),{timeout:30000}).toBe(true);
-  const src=await frame.getAttribute('src');assert(src.startsWith(`/api/runs/${RUN}/frames/`));
+  const expected=`/api/runs/${RUN}/frames/${selectedEvidence[index]}`;
+  // SSR exposes pills before their React handlers attach. Re-select harmlessly
+  // within a bound, and require the exact retained frame rather than any image.
+  await expect(async()=>{
+   await pills.nth(index).click();
+   await expect(frame).toHaveAttribute('src',expected,{timeout:1000});
+  }).toPass({timeout:15000,intervals:[250,500,1000]});
+  await frame.evaluate(async img=>{await img.decode();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+  await expect(frame).toHaveAttribute('src',expected);
   await frame.scrollIntoViewIfNeeded();await expect(frame).toBeInViewport({ratio:.9});
   await capture(page,`02-replay-record-${index}`);
+  report.replaySelections.push({index,evidenceId:selectedEvidence[index],src:await frame.getAttribute('src')});
  }
+ assert.equal(report.replaySelections.length,3);
  report.checks.replaySelectionAfterFreshLogin=true;
  await page.goto(`${BASE}/runs/${NEGATIVE}`,{waitUntil:'domcontentloaded'});
  await expect(page.getByRole('heading',{name:'Conclusion',exact:true})).toBeVisible();
