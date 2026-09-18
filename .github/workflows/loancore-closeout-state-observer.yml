@@ -1,0 +1,53 @@
+name: LoanCore close-out state observer
+on:
+  push:
+    branches: [validation/loancore-evidence-closeout-20260918]
+    paths: [.github/workflows/loancore-closeout-state-observer.yml]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prove released application is unchanged
+        run: git diff --exit-code 816d6b521a53011fd956582b361fafa1c60654d7 HEAD -- . ':(exclude).github/workflows/**'
+      - name: Read allowlisted facts for this exact acceptance invocation
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p /tmp/closeout-state
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA <<'SQL' > /tmp/closeout-state/report.json
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout='15s';
+          WITH v AS (SELECT version_id,procedure_id,state,control_name,plan_status,plan_failure_reason FROM procedure_version WHERE control_name IN('Live LoanCore acceptance 35333706645-1','Negative LoanCore acceptance 35333706645-1')),
+          r AS (SELECT a.run_id,a.state,a.version_id FROM audit_run a JOIN v ON a.version_id=v.version_id)
+          SELECT jsonb_pretty(jsonb_build_object('observedAt',clock_timestamp(),'acceptanceWorkflowRunId','35333706645',
+          'versions',(SELECT coalesce(jsonb_agg(to_jsonb(v)),'[]'::jsonb) FROM v),
+          'runs',(SELECT coalesce(jsonb_agg(jsonb_build_object('runId',r.run_id,'versionId',r.version_id,'state',r.state,
+            'population',(SELECT jsonb_build_object('retrieved',retrieved_count,'included',included,'excluded',excluded,'indeterminate',indeterminate) FROM population_snapshot p WHERE p.run_id=r.run_id),
+            'work',(SELECT jsonb_build_object('status',status,'diagnostic',diagnostic,'nextTurn',next_turn,'provider',model->>'provider','modelId',model->>'modelId') FROM run_agent_work w WHERE w.run_id=r.run_id),
+            'items',(SELECT coalesce(jsonb_agg(jsonb_build_object('record',subject_key,'state',state,'observations',observations,'diagnostic',diagnostic)),'[]'::jsonb) FROM run_work_item w WHERE w.run_id=r.run_id),
+            'screenshots',(SELECT count(*) FROM run_evidence e WHERE e.run_id=r.run_id AND e.kind='screenshot' AND e.state='REGISTERED'),
+            'distinctScreenshots',(SELECT count(DISTINCT digest) FROM run_evidence e WHERE e.run_id=r.run_id AND e.kind='screenshot' AND e.state='REGISTERED'),
+            'workspace',(SELECT jsonb_build_object('status',status,'mode',mode,'identityLength',length(workspace_id),'releasedAt',released_at,'diagnostic',diagnostic) FROM run_workspace w WHERE w.run_id=r.run_id),
+            'result',(SELECT jsonb_build_object('outcome',outcome,'gatePassed',gate_passed,'sealed',sealed) FROM run_result rr WHERE rr.run_id=r.run_id)
+          )),'[]'::jsonb) FROM r)) ;
+          COMMIT;
+          SQL
+          sed -i '/^BEGIN$/d; /^SET$/d; /^COMMIT$/d' /tmp/closeout-state/report.json
+          python3 -m json.tool /tmp/closeout-state/report.json
+          sha256sum /tmp/closeout-state/report.json > /tmp/closeout-state/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: closeout-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/closeout-state/
+          if-no-files-found: error
+          retention-days: 14
