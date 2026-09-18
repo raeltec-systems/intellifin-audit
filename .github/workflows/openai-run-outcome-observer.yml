@@ -1,0 +1,52 @@
+name: OpenAI Run outcome observer
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/openai-run-outcome-observer.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
+      - name: Read only allowlisted facts for the exact OpenAI acceptance Run
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p /tmp/openai-outcome
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA <<'SQL' > /tmp/openai-outcome/report.json
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout='10s';
+          WITH r AS (SELECT run_id,state,version_id FROM audit_run WHERE run_id='01a0b39a-9c62-7671-a424-994f989f6880')
+          SELECT jsonb_pretty(jsonb_build_object('at',clock_timestamp(),
+            'run',(SELECT to_jsonb(r) FROM r),
+            'agent',(SELECT jsonb_build_object('status',status,'diagnostic',diagnostic,'nextTurn',next_turn,'provider',model->>'provider','modelId',model->>'modelId') FROM run_agent_work WHERE run_id IN(SELECT run_id FROM r)),
+            'waits',(SELECT coalesce(jsonb_agg(jsonb_build_object('kind',kind,'openedAt',opened_at,'closedAt',closed_at,'closure',closure_kind)),'[]'::jsonb) FROM run_wait WHERE run_id IN(SELECT run_id FROM r)),
+            'items',(SELECT coalesce(jsonb_agg(jsonb_build_object('subject',subject_key,'state',state,'observations',observations,'diagnostic',diagnostic)),'[]'::jsonb) FROM run_work_item WHERE run_id IN(SELECT run_id FROM r)),
+            'turns',(SELECT coalesce(jsonb_agg(jsonb_build_object('sequence',sequence,'status',status,'diagnostic',diagnostic) ORDER BY sequence),'[]'::jsonb) FROM run_agent_turn WHERE run_id IN(SELECT run_id FROM r)),
+            'actions',(SELECT coalesce(jsonb_agg(jsonb_build_object('action',action,'outcome',outcome,'status',status,'startedAt',started_at,'completedAt',completed_at,'capture',capture,'diagnostic',diagnostic) ORDER BY started_at),'[]'::jsonb) FROM run_tool_action WHERE run_id IN(SELECT run_id FROM r)),
+            'screenshots',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',evidence_id,'digest',digest,'state',state,'capturedAt',captured_at)),'[]'::jsonb) FROM run_evidence WHERE run_id IN(SELECT run_id FROM r) AND kind='screenshot'),
+            'framesJoined',(SELECT count(*) FROM run_evidence e JOIN run_evidence_capture c ON c.evidence_id=e.evidence_id AND c.run_id=e.run_id JOIN run_tool_action a ON a.tool_action_id=c.tool_action_id AND a.run_id=e.run_id WHERE e.run_id IN(SELECT run_id FROM r) AND e.kind='screenshot' AND e.state='REGISTERED'),
+            'result',(SELECT jsonb_build_object('outcome',outcome,'gatePassed',gate_passed,'sealed',sealed) FROM run_result WHERE run_id IN(SELECT run_id FROM r)),
+            'workspace',(SELECT jsonb_build_object('status',status,'mode',mode,'identityLength',length(workspace_id),'releasedAt',released_at,'diagnostic',diagnostic) FROM run_workspace WHERE run_id IN(SELECT run_id FROM r))
+          ));
+          COMMIT;
+          SQL
+          sed -i '/^BEGIN$/d; /^SET$/d; /^COMMIT$/d' /tmp/openai-outcome/report.json
+          python3 -m json.tool /tmp/openai-outcome/report.json
+          sha256sum /tmp/openai-outcome/report.json > /tmp/openai-outcome/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openai-outcome-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/openai-outcome/
+          if-no-files-found: error
+          retention-days: 14
