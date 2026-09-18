@@ -108,6 +108,10 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
  * both surfaces — every frame is fetched through the Run's own protected route, which
  * consumes a worker-signed grant on the server, so no object-store URL, signed or
  * otherwise, is ever in this markup (AD-5).
+ *
+ * The stage owns its grid alignment: a growing narration/evidence rail must not stretch
+ * this cell and vertically centre the screen below the auditor's viewport. Keep the
+ * frame's position independent of its sibling's height in both Live View and Replay.
  */
 export function SessionStage({ runId, frame, stageNote }: {
   readonly runId: string;
@@ -115,7 +119,7 @@ export function SessionStage({ runId, frame, stageNote }: {
   readonly stageNote: string | null;
 }): React.JSX.Element {
   return (
-    <div className="ls-session__stage">
+    <div className="ls-session__stage" style={{ alignSelf: 'start' }}>
       {frame === null ? (
         <p className="ls-session__stage-note">{stageNote}</p>
       ) : (
