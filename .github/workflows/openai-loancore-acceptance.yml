@@ -1,0 +1,107 @@
+name: OpenAI deployed LoanCore acceptance
+on:
+  push:
+    branches: [validation/final-loancore-20260917]
+    paths: [.github/workflows/openai-loancore-acceptance.yml]
+permissions:
+  contents: read
+concurrency:
+  group: deployed-loancore-acceptance-final-v5
+  cancel-in-progress: false
+env:
+  RELEASE_SHA: ef0515efbf0c2c558c5ad0153559d7239a8652d9
+  EXPECTED_PROVIDER: openai
+  EXPECTED_MODEL: gpt-5.6
+  WORKER_DEPLOYMENT: e13d7f72-fa4b-4ea9-9658-d6d4de27ecae
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prove application source remains the released revision
+        run: git diff --exit-code "$RELEASE_SHA" HEAD -- . ':(exclude).github/workflows/**'
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Assemble the strict UI harness and require the actual Run to use OpenAI
+        run: |
+          python3 .github/workflows/strict-loancore-patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('strict-loancore-acceptance.mjs');s=p.read_text()
+          before="    inspection: await one(sql`SELECT status,diagnostic FROM run_agent_work WHERE run_id=${runId}::uuid`),"
+          after=before+"\n    modelIdentity: await one(sql`SELECT model->>'provider' AS provider, model->>'modelId' AS model_id FROM run_agent_work WHERE run_id=${runId}::uuid`),"
+          assert s.count(before)==1;s=s.replace(before,after,1)
+          before="  report.required.push('sectionPersistence','planSucceeded','watchChangingWhileRunning');"
+          after="  report.checks.approvedOpenAIProvider=report.facts?.modelIdentity?.provider===process.env.EXPECTED_PROVIDER && report.facts?.modelIdentity?.model_id===process.env.EXPECTED_MODEL;\n"+before.replace("'watchChangingWhileRunning'","'watchChangingWhileRunning','approvedOpenAIProvider'")
+          assert s.count(before)==1;s=s.replace(before,after,1)
+          before="  report.finishedAt = new Date().toISOString();"
+          after="  report.providerChange={ownerApproved:true,provider:process.env.EXPECTED_PROVIDER,model:process.env.EXPECTED_MODEL,workerDeploymentId:process.env.WORKER_DEPLOYMENT,preflightWorkflowRunId:'35323563867',preflightPassed:true};\n"+before
+          assert s.count(before)==1;s=s.replace(before,after,1)
+          p.write_text(s);Path('deployed-loancore-evidence/executed-harness.mjs').write_text(s)
+          PY
+          node --check strict-loancore-acceptance.mjs
+          sha256sum strict-loancore-acceptance.mjs
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+      - name: Build dependencies and observer browser
+        run: |
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Execute clean authoring approval inspection Watch and Replay
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM_DEPLOYED_AUDIT: synthetic-loancore
+          ACCEPTANCE_NEGATIVE_CASE: 'false'
+        run: timeout --signal=TERM --kill-after=15s 1800s node strict-loancore-acceptance.mjs
+      - name: Independently revoke this invocation's temporary identities
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p deployed-loancore-evidence
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA \
+            -v auditor="acceptance-auditor-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" \
+            -v manager="acceptance-audit-manager-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" \
+            -v admin="acceptance-poc-administrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" <<'SQL' > deployed-loancore-evidence/independent-cleanup.txt
+          BEGIN;
+          SET LOCAL statement_timeout='15s';
+          DELETE FROM auth_session WHERE user_id IN(SELECT id FROM auth_user WHERE email IN(:'auditor',:'manager',:'admin'));
+          DELETE FROM user_role WHERE user_id IN(SELECT id FROM auth_user WHERE email IN(:'auditor',:'manager',:'admin'));
+          SELECT jsonb_build_object('userId',id,'sessions',(SELECT count(*) FROM auth_session WHERE user_id=u.id),'roles',(SELECT count(*) FROM user_role WHERE user_id=u.id)) FROM auth_user u WHERE email IN(:'auditor',:'manager',:'admin');
+          COMMIT;
+          SQL
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(line) for line in Path('deployed-loancore-evidence/independent-cleanup.txt').read_text().splitlines() if line.startswith('{')]
+          assert all(r['sessions']==0 and r['roles']==0 for r in rows)
+          print(json.dumps({'identityCleanup':rows,'verified':True}))
+          PY
+      - name: Verify application invariant and hash the evidence
+        if: always()
+        run: |
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path('deployed-loancore-evidence');out.mkdir(exist_ok=True)
+          (out/'provenance.json').write_text(json.dumps({'releaseSha':os.environ['RELEASE_SHA'],'validationSha':os.environ['GITHUB_SHA'],'workflowRunId':os.environ['GITHUB_RUN_ID'],'workerDeploymentId':os.environ['WORKER_DEPLOYMENT'],'expectedProvider':'openai','expectedModel':'gpt-5.6','applicationSourceUnchanged':True},indent=2))
+          rows=[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for p in sorted(out.iterdir()) if p.is_file() and p.name!='manifest.json']
+          (out/'manifest.json').write_text(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openai-loancore-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deployed-loancore-evidence/
+          if-no-files-found: error
+          retention-days: 14
