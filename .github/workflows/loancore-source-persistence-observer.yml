@@ -17,36 +17,31 @@ jobs:
           fetch-depth: 0
       - name: Verify released application source
         run: git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
-      - name: Read only the named synthetic acceptance and its progress
+      - name: Read only this OpenAI acceptance's persisted progress
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGCONNECT_TIMEOUT: '15'
         run: |
           mkdir -p /tmp/source-observer
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA <<'SQL' > /tmp/source-observer/report.json
-          BEGIN TRANSACTION READ ONLY;
-          SET LOCAL statement_timeout = '10s';
-          WITH v AS (SELECT * FROM procedure_version WHERE control_name='Live LoanCore acceptance 35318880883-1'),
-            r AS (SELECT a.* FROM audit_run a JOIN v ON a.version_id=v.version_id)
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout='10s';
+          WITH v AS (SELECT * FROM procedure_version WHERE control_name='Live LoanCore acceptance 35323749627-1'),
+            r AS (SELECT a.run_id,a.state,a.version_id FROM audit_run a JOIN v ON a.version_id=v.version_id)
           SELECT jsonb_pretty(jsonb_build_object(
-            'observedAt', clock_timestamp(), 'acceptanceWorkflowRunId', '35318880883',
-            'versions', (SELECT coalesce(jsonb_agg(jsonb_build_object(
-              'procedureId', procedure_id, 'versionId', version_id, 'state', state,
-              'period', period, 'scope', scope, 'sourceBindingId', source_snapshot->>'bindingId',
-              'targets',jsonb_array_length(targets),'instructions',jsonb_array_length(instructions),
-              'planStatus', plan_status, 'planFailureReason', plan_failure_reason,
-              'sectionPreparation',section_preparation,'updatedAt',updated_at
-            )), '[]'::jsonb) FROM v),
+            'observedAt',clock_timestamp(),'acceptanceWorkflowRunId','35323749627',
+            'versions',(SELECT coalesce(jsonb_agg(jsonb_build_object('procedureId',procedure_id,'versionId',version_id,'state',state,'sourceBindingId',source_snapshot->>'bindingId','targets',jsonb_array_length(targets),'instructions',jsonb_array_length(instructions),'planStatus',plan_status,'planFailureReason',plan_failure_reason)),'[]'::jsonb) FROM v),
             'runs',(SELECT coalesce(jsonb_agg(jsonb_build_object('runId',r.run_id,'state',r.state,
-              'population',(SELECT to_jsonb(p)-'raw_object_key'-'source_snapshot' FROM population_snapshot p WHERE p.run_id=r.run_id),
-              'workspace',(SELECT jsonb_build_object('status',status,'mode',mode,'identityLength',length(workspace_id),'diagnostic',diagnostic) FROM run_workspace w WHERE w.run_id=r.run_id),
-              'workItems',(SELECT count(*) FROM run_work_item w WHERE w.run_id=r.run_id),
+              'population',(SELECT jsonb_build_object('included',included,'excluded',excluded,'indeterminate',indeterminate,'retrieved',retrieved_count) FROM population_snapshot p WHERE p.run_id=r.run_id),
+              'workspace',(SELECT jsonb_build_object('status',status,'mode',mode,'identityLength',length(workspace_id),'diagnostic',diagnostic,'releasedAt',released_at) FROM run_workspace w WHERE w.run_id=r.run_id),
+              'agent',(SELECT jsonb_build_object('status',status,'diagnostic',diagnostic,'nextTurn',next_turn,'provider',model->>'provider','modelId',model->>'modelId') FROM run_agent_work w WHERE w.run_id=r.run_id),
+              'items',(SELECT coalesce(jsonb_agg(jsonb_build_object('subject',subject_key,'state',state,'observations',observations,'diagnostic',diagnostic)),'[]'::jsonb) FROM run_work_item w WHERE w.run_id=r.run_id),
+              'modelTurns',(SELECT coalesce(jsonb_agg(jsonb_build_object('sequence',sequence,'status',status,'diagnostic',diagnostic) ORDER BY sequence),'[]'::jsonb) FROM run_agent_turn t WHERE t.run_id=r.run_id),
               'observations',(SELECT count(*) FROM run_observation o WHERE o.run_id=r.run_id),
-              'replayFrames',(SELECT count(*) FROM run_evidence e WHERE e.run_id=r.run_id AND e.role='replay' AND e.state='REGISTERED'),
+              'screenshots',(SELECT count(*) FROM run_evidence e WHERE e.run_id=r.run_id AND e.kind='screenshot' AND e.state='REGISTERED'),
+              'distinctScreenshots',(SELECT count(DISTINCT digest) FROM run_evidence e WHERE e.run_id=r.run_id AND e.kind='screenshot' AND e.state='REGISTERED'),
               'result',(SELECT jsonb_build_object('outcome',outcome,'gatePassed',gate_passed,'sealed',sealed) FROM run_result rr WHERE rr.run_id=r.run_id)
-            )), '[]'::jsonb) FROM r),
-            'events',(SELECT coalesce(jsonb_agg(jsonb_build_object('type',event_type,'at',occurred_at,'outcome',outcome,'section',payload->>'section','sequence',sequence) ORDER BY sequence),'[]'::jsonb)
-              FROM audit_events WHERE aggregate_id IN (SELECT procedure_id::text FROM v))
+            )),'[]'::jsonb) FROM r)
           ));
           COMMIT;
           SQL
@@ -56,7 +51,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: source-persistence-observer-${{ github.run_id }}
+          name: openai-progress-${{ github.run_id }}
           path: /tmp/source-observer/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
