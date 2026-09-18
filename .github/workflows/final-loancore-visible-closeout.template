@@ -1,0 +1,111 @@
+# Non-executable until the normal release succeeds and its deployment IDs are bound.
+name: Final visible LoanCore acceptance
+on:
+  push:
+    branches: [validation/loancore-watch-closeout-20260918]
+    paths: [.github/workflows/final-loancore-visible-closeout.yml]
+permissions:
+  contents: read
+concurrency:
+  group: deployed-loancore-acceptance-final-v5
+  cancel-in-progress: false
+env:
+  RELEASE_SHA: 44fb5966dd085f53625d5f9ac77a466a9c18805f
+  RELEASE_WORKFLOW_ID: '__RELEASE_WORKFLOW_ID__'
+  WEB_DEPLOYMENT_ID: __WEB_DEPLOYMENT_ID__
+  WORKER_DEPLOYMENT_ID: __WORKER_DEPLOYMENT_ID__
+  HARNESS_SOURCE_SHA: ab78abb457c37fddcb8006cda7e2f4a24dd58b78
+  EXTRA_HARNESS_SOURCE_SHA: 9690344b78ad1f3ad3640af550c3333f38b9b2cc
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify the application exactly matches the released revision
+        run: |
+          git diff --exit-code "$RELEASE_SHA" HEAD -- . ':(exclude).github/workflows/**'
+          test "$(git merge-base "$RELEASE_SHA" HEAD)" = "$RELEASE_SHA"
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Assemble the exact workflow-owned observer without editing application files
+        run: |
+          for file in strict-loancore-patch.py final-loancore-observer-patch.py final-loancore-observation-proof.py final-loancore-secrecy-proof.py; do
+            git show "$HARNESS_SOURCE_SHA:.github/workflows/$file" > "/tmp/$file"
+            python3 "/tmp/$file"
+          done
+          for file in final-loancore-viewport-proof.py final-loancore-negative-scope.py final-loancore-decision-proof.py; do
+            git show "$EXTRA_HARNESS_SOURCE_SHA:.github/workflows/$file" > "/tmp/$file"
+            python3 "/tmp/$file"
+          done
+          node --check strict-loancore-acceptance.mjs
+          sha256sum strict-loancore-acceptance.mjs
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+      - name: Build observer dependencies and install Chromium
+        run: |
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Check deployed application health
+        run: curl -fsS --max-time 30 https://web-production-edded.up.railway.app/api/health
+      - name: Exercise authoring approval visible Watch Replay confirmation and negative regression
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM_DEPLOYED_AUDIT: synthetic-loancore
+          ACCEPTANCE_NEGATIVE_CASE: 'false'
+        run: timeout --signal=TERM --kill-after=15s 2400s node strict-loancore-acceptance.mjs
+      - name: Independently revoke this workflow's exact temporary identities
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p deployed-loancore-evidence
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA \
+            -v auditor="acceptance-auditor-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" \
+            -v manager="acceptance-audit-manager-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" \
+            -v admin="acceptance-poc-administrator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.test" <<'SQL' > deployed-loancore-evidence/independent-cleanup.txt
+          BEGIN;
+          SET LOCAL statement_timeout='15s';
+          DELETE FROM auth_session WHERE user_id IN(SELECT id FROM auth_user WHERE email IN(:'auditor',:'manager',:'admin'));
+          DELETE FROM user_role WHERE user_id IN(SELECT id FROM auth_user WHERE email IN(:'auditor',:'manager',:'admin'));
+          SELECT jsonb_build_object('userId',id,'sessions',(SELECT count(*) FROM auth_session WHERE user_id=u.id),'roles',(SELECT count(*) FROM user_role WHERE user_id=u.id)) FROM auth_user u WHERE email IN(:'auditor',:'manager',:'admin');
+          COMMIT;
+          SQL
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(line) for line in Path('deployed-loancore-evidence/independent-cleanup.txt').read_text().splitlines() if line.startswith('{')]
+          assert all(row['sessions']==0 and row['roles']==0 for row in rows)
+          print(json.dumps({'cleanup':rows,'verified':True}))
+          PY
+      - name: Verify source invariance and hash all retained evidence
+        if: always()
+        run: |
+          git diff --exit-code "$RELEASE_SHA" -- . ':(exclude).github/workflows/**'
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path('deployed-loancore-evidence');out.mkdir(exist_ok=True)
+          keys=['RELEASE_SHA','RELEASE_WORKFLOW_ID','WEB_DEPLOYMENT_ID','WORKER_DEPLOYMENT_ID','HARNESS_SOURCE_SHA','EXTRA_HARNESS_SOURCE_SHA','GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT']
+          provenance={key:os.environ.get(key) for key in keys}
+          provenance['applicationSourceUnchanged']=True
+          provenance['mode']='deployed-UI-observation; this workflow never deploys'
+          (out/'provenance.json').write_text(json.dumps(provenance,indent=2))
+          rows=[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'bytes':p.stat().st_size} for p in sorted(out.iterdir()) if p.is_file() and p.name!='manifest.json']
+          (out/'manifest.json').write_text(json.dumps(rows,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-visible-loancore-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deployed-loancore-evidence/
+          if-no-files-found: error
+          retention-days: 14
