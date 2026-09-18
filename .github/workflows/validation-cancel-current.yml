@@ -9,9 +9,53 @@ permissions:
 jobs:
   cancel:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 5
     steps:
-      - name: Cancel only run 35261690230
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prove application source invariant
+        run: git diff --exit-code ef0515efbf0c2c558c5ad0153559d7239a8652d9 HEAD -- . ':(exclude).github/workflows/**'
+      - name: Cancel only the wedged diagnostic 35317361449
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run cancel 35261690230 --repo raeltec-systems/intellifin-audit
+        run: |
+          status="$(gh run view 35317361449 --repo raeltec-systems/intellifin-audit --json status --jq .status)"
+          if [ "$status" != completed ]; then
+            gh run cancel 35317361449 --repo raeltec-systems/intellifin-audit
+          fi
+      - name: Revoke only this diagnostic identity and prove cleanup
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGCONNECT_TIMEOUT: '15'
+        run: |
+          mkdir -p /tmp/diagnostic-cleanup
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA <<'SQL' > /tmp/diagnostic-cleanup/report.txt
+          BEGIN;
+          SET LOCAL statement_timeout = '15s';
+          DELETE FROM auth_session WHERE user_id IN (SELECT id FROM auth_user WHERE email='source-save-diagnostic-35317361449-1@example.test');
+          DELETE FROM user_role WHERE user_id IN (SELECT id FROM auth_user WHERE email='source-save-diagnostic-35317361449-1@example.test');
+          SELECT jsonb_build_object('workflowRun', '35317361449', 'userId', u.id,
+            'sessions', (SELECT count(*) FROM auth_session WHERE user_id=u.id),
+            'roles', (SELECT count(*) FROM user_role WHERE user_id=u.id),
+            'historicalEvidencePreserved', true)
+            FROM auth_user u WHERE email='source-save-diagnostic-35317361449-1@example.test';
+          DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM auth_session s JOIN auth_user u ON s.user_id=u.id WHERE u.email='source-save-diagnostic-35317361449-1@example.test')
+              OR EXISTS (SELECT 1 FROM user_role r JOIN auth_user u ON r.user_id=u.id WHERE u.email='source-save-diagnostic-35317361449-1@example.test')
+            THEN RAISE EXCEPTION 'Diagnostic cleanup failed'; END IF;
+          END $$;
+          COMMIT;
+          SQL
+          cat /tmp/diagnostic-cleanup/report.txt
+          sha256sum /tmp/diagnostic-cleanup/report.txt > /tmp/diagnostic-cleanup/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostic-cleanup-${{ github.run_id }}
+          path: /tmp/diagnostic-cleanup/
+          if-no-files-found: error
+          retention-days: 7
