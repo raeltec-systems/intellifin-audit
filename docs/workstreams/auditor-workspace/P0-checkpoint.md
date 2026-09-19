@@ -1,0 +1,117 @@
+# Auditor Workspace — P0 checkpoint
+
+Status: in development. This is not P0 capability acceptance, a completed co-working
+release, a deployment, or authorization to merge. Owner: Israel Muyoba.
+
+## Baseline and scope
+
+- Feature branch: `feat/auditor-workspace-v1-1`, created from current main
+  `44fb5966dd085f53625d5f9ac77a466a9c18805f` on 19 September 2026.
+- Exact main tree verified locally: `81dd148fd173282f8435768ea67fe639397227d0`.
+  Existing stale worktrees were not reused as branch ancestry. Each recovered file was
+  checked against its GitHub blob SHA; all 1,736 blobs matched.
+- Baseline documents: [v1.1 specification](spec-v1.1.md) and [challenge log](challenge-log.md).
+- D1 is resolved by the owner's instruction: retain the complete target co-working
+  promise. No implicit limited-pilot acceptance. Existing model and browser providers
+  remain unchanged. No new execution engine, target access or deployment was introduced.
+
+## Delivered at this checkpoint
+
+The [interactive prototype](../../prototypes/auditor-workspace/index.html) shows:
+
+1. Conversation left, isolated-workspace stage right, current-work summary outside the
+   transcript, native captured identity/status text, separate capture and connection labels,
+   keyboard/pointer divider, expand/focus and native specimen size.
+2. One contextual execution decision, a named record/target and candidate confirmation,
+   coverage impact and a safe unresolved choice. History has no reactivated answer buttons.
+3. A compact record queue and inspector: approved expectation, captured fields, individual
+   assessments, unloaded evidence distinguished from missing evidence, capture/source/Replay
+   links, and explicit review distinct from opening an image.
+
+The prototype is deliberately identified as a disconnected synthetic fixture on every
+screen. It does not use real audit data, run a model, invoke execution commands, fetch
+registered evidence, authenticate with LoanCore, or persist domain decisions. Local
+session storage holds prototype draft/layout/filter preferences only. Its sample counts
+are fixture data, not production coverage. The native-size view is an HTML specimen,
+not proof of legibility of an actual target screenshot. The pending/applied simulator
+exercises the proposed interaction language, not worker correctness.
+
+The two older contracts are reconciled: provider handles remain infrastructure-private;
+resume retains committed work and restarts the interrupted attempt from the frozen plan.
+
+## Verification
+
+- Prototype script syntax check: passed locally.
+- Exact repository restore and `git diff --check`: passed locally.
+- Typecheck and browser results: pending CI; record the actual run/commit below when available.
+- Added 12 browser cases (six state/viewport cases plus six interaction cases), including
+  accessibility, 1440×900 and 1280×800 geometry, candidate confirmation, inert history,
+  pending versus applied simulation, contextual questions, no substring shortcut,
+  evidence/review separation, Replay selection, presentation reload and keyboard resize.
+- A 720×450 layout checks the CSS viewport equivalent of 200% zoom at 1440×900. It is not
+  a manual screen-reader session or a real browser zoom/accessibility certification.
+- Cloud-browser navigation to the local server returned `ERR_BLOCKED_BY_CLIENT`.
+  The normal repository CI browser suite is the execution route for these tests.
+- The fast `workspace-design` job supplements, and does not replace or weaken, normal
+  typecheck, boundary, unit, PostgreSQL, security and application browser jobs.
+
+## Capability matrix at pinned main
+
+| Capability | Existing code / reuse point | P0 conclusion |
+|---|---|---|
+| One workspace per Run | Infrastructure `browser-execution.ts`; private `LiveWorkspace.context/page`; `run_workspace` checkpoint | Reuse; no second browser/engine |
+| Action-linked evidence | `captureWebTree`, `agent-capture.ts`, registered frame routes and worker-signed read grants | Existing contract; no continuous-video claim |
+| Safe near-live preview | No sampler/subscription port or privacy coordinator; standalone `frame` capture is refused by the adapter | Not proven; needs same-workspace producer and viewer fencing plus measured Solari run |
+| Stored credential entry | Dedicated no-capture action, `CredentialGuard`, narrow authentication POST | Reuse; not secure human assistance |
+| Authentication handoff | No input owner/lease, privacy epoch, web identity/rights verification contract or approved SSO-flow catalogue | Not available; P6 security work and actual target/provider test required |
+| Provider recording | Off; post-release provider recording/replay methods are not a safe preview | Keep off; no attempt to enable it |
+| Strategy steering | Frozen ordered plan exists; no explicit versioned selectable strategy graph with predecessor/max-attempt contract | G2 open; do not reinterpret old instructions as executable capabilities |
+| Pause / wait / result review | Existing authoritative commands, one-open-wait constraint and review/sealing transaction | Reuse; no chat-owned second result or queue lifecycle |
+| Record paging | Existing detail reads are artifact/observation-first; no immutable multi-request review snapshot | P1 must implement and test full population/unit semantics in PostgreSQL |
+
+SDK/type/source inspection is not a live-provider benchmark. No Solari credential or
+application database is configured in this workspace; no provider call was made. A
+separate provider test must use the existing approved deployment account in a synthetic
+non-production test without changing deployment settings or exposing connection handles.
+
+## Seven proof gates
+
+| Gate | Present evidence | Remaining before closure |
+|---|---|---|
+| G1 | Interactive design and committed browser tests | Executed browser results; actual screenshot legibility; five auditors including a manager; 4/5 successful tasks and understanding queued/applied/filtering |
+| G2 | Pinned compiler/adapter inspection | Explicit frozen strategy capability graph, legacy compatibility and real predecessor/retry enforcement |
+| G3 | Pinned browser/credential/capture inspection | Measured same-Run near-live preview, real private pixels/caches, exclusive input and declared auth/identity/read-only verification |
+| G4 | Synthetic-only work | Owner's data-handling policy; encrypted governed content, incident/export/context tests |
+| G5 | Existing commands identified for reuse | Atomic bridge, process kills, worker/wait/control races, payload-bound idempotency and mixed-version rollback |
+| G6 | Required PostgreSQL projection specified | Actual query plans, 1,000 rows, concurrent stable-snapshot paging, duplicate keys and multi-target counts |
+| G7 | Workload retained from v1.1 | Approved measured 10-Run/50-viewer workload, latency, cost/bandwidth and safety/Q&A isolation |
+
+No gate is declared passed by the challenge-log model results.
+
+## Next implementation boundaries
+
+P1: database-backed immutable review snapshots and on-demand selected-record reads;
+full source/work-unit denominators, name resolution and integrity-state distinctions.
+P2: governed durable conversation, existing live invalidation and same-Run evidence stage;
+preview only after the G3 producer/viewer capability passes.
+P3: payload-bound commands linked atomically to existing domain effects; exact contexts,
+control epochs, safety latches and deferred subject-target pause. Strategy selection is
+unavailable for legacy plans lacking an explicit capability graph.
+P4: existing evaluation review authority and exact action/evidence Replay links.
+P6 precedes final P5 acceptance: secure first-target authentication with privacy fences.
+P5: crash/security/model/load/browser verification and complete owner review pack.
+
+Package estimates depend on the provider spike and PostgreSQL query inspection. No
+unsupported delivery date or successful CI/provider/persistence claim is made here.
+
+## Owner/external inputs needed at the relevant stage
+
+- Review the three P0 screen designs before broad interface implementation.
+- D2: retention, exceptional sensitive-content removal, export and provider-data policy
+  before real audit data. Synthetic development can continue without inventing these rules.
+- D3: approve the proposed dedicated manager transfer permission, named reason and audited
+  control epoch; do not infer this from an administrator role. Existing safety/wait rights
+  remain governed by their current handlers.
+- Arrange the five-auditor G1 study and a synthetic provider test using the approved account.
+
+No merge or deploy is authorized.

@@ -3769,3 +3769,15 @@ real frame-grant worker and all authorization/evidence assertions. Cleanup remov
 the phase and population rows before deleting evidence and the Run.
 If a surface test temporarily reopens the Run, reopen its held agent claim in the
 same transaction; a TERMINAL agent phase makes a RUNNING Run eligible for recovery.
+
+## 2026-09-19 — Auditor Workspace P0 is a design/capability gate
+
+Owner authorized AW v1.1 and the challenge log on `feat/auditor-workspace-v1-1`,
+from main `44fb5966`; no merge/deploy permission. Preserve the full target experience,
+including protected near-live preview and secure authentication for the first supported
+flow. `docs/prototypes/auditor-workspace/index.html` is a synthetic, disconnected design
+preview. Its local storage holds presentation preferences/drafts only; simulated receipts
+are never application persistence proof. The P0 browser job supplements normal CI.
+Do not count a compiled plan as the explicit strategy capability graph, provider SDK
+methods as a measured preview/privacy guarantee, or the specification's models as
+application tests. Current application mechanisms remain execution/evidence authority.
