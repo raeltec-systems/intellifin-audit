@@ -415,7 +415,7 @@ test.describe('the Escalation panel as an Auditor', () => {
     await expect(page.locator('.ls-untrusted script')).toHaveCount(0);
     await expect(page.getByRole('link', { name: supportingEvidenceId, exact: true })).toHaveAttribute(
       'href',
-      `/runs/${runs.answered}/evidence#evidence-${supportingEvidenceId}`,
+      `/runs/${runs.answered}/evidence/technical#evidence-${supportingEvidenceId}`,
     );
     await expect(page.getByRole('button', { name: 'Select candidate 1', exact: true })).toHaveText('Select candidate 1');
     await expect(page.getByText('Alice A', { exact: true })).toBeVisible();

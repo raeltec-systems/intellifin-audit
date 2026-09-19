@@ -677,6 +677,65 @@ export class DrizzleRunDetailRepository {
   }
 
   /**
+   * Evidence metadata for a bounded set of selected Observation references.
+   *
+   * The Evidence tab's overview read is intentionally capped and ordered for the
+   * artifact list. A record inspector can select an Observation beyond that sample,
+   * so it must resolve only the exact ids named by that Observation rather than treating
+   * the overview sample as an authorization boundary. This read never touches object
+   * storage or returns bytes; the protected frame and snapshot routes do that on demand.
+   */
+  async readEvidenceItemsByIds(
+    runId: string,
+    evidenceIds: readonly string[],
+  ): Promise<readonly RunEvidenceItem[]> {
+    if (!isUuidText(runId)) return [];
+    const ids = [...new Set(evidenceIds.filter(isUuidText))].slice(0, 64);
+    if (ids.length === 0) return [];
+    const items = await this.db
+      .select()
+      .from(runEvidence)
+      .where(and(eq(runEvidence.runId, runId), inArray(runEvidence.evidenceId, ids)))
+      .orderBy(asc(runEvidence.kind), asc(runEvidence.objectKey));
+    if (items.length === 0) return [];
+    const steps = await this.db
+      .select({ stepId: runSessionStep.stepId, displayName: runSessionStep.displayName, evidenceId: runSessionStep.evidenceId })
+      .from(runSessionStep)
+      .where(and(eq(runSessionStep.runId, runId), inArray(runSessionStep.evidenceId, ids)));
+    const workItems = await this.db
+      .select({ stepId: runWorkItem.stepId, displayName: runWorkItem.displayName, evidenceId: runWorkItem.evidenceId, workItemId: runWorkItem.workItemId })
+      .from(runWorkItem)
+      .where(and(eq(runWorkItem.runId, runId), inArray(runWorkItem.evidenceId, ids)));
+    const producers = new Map<string, { stepId: string; displayName: string; workItemId: string | null }>();
+    for (const step of steps) {
+      if (step.evidenceId !== null) producers.set(step.evidenceId, { stepId: step.stepId, displayName: step.displayName, workItemId: null });
+    }
+    for (const item of workItems) {
+      if (item.evidenceId !== null) producers.set(item.evidenceId, { stepId: item.stepId, displayName: item.displayName, workItemId: item.workItemId });
+    }
+    return items.map((item): RunEvidenceItem => {
+      const producer = producers.get(item.evidenceId) ?? null;
+      return {
+        evidenceId: item.evidenceId,
+        kind: item.kind,
+        registrationId: item.registrationId,
+        objectKey: item.objectKey,
+        mediaType: item.mediaType,
+        digest: item.digest,
+        size: item.size,
+        state: item.state,
+        required: item.required,
+        stepId: producer?.stepId ?? null,
+        displayName: producer?.displayName ?? null,
+        workItemId: producer?.workItemId ?? null,
+        capturedAt: item.capturedAt === null ? null : item.capturedAt.toISOString(),
+        captureMethod: item.captureMethod,
+        captureTimeSource: item.captureTimeSource,
+      };
+    });
+  }
+
+  /**
    * A bounded sample of Observations with their grounding, and the exact total.
    *
    * Ordered by the record key so two reads of the same Run show the same records: the
@@ -697,6 +756,37 @@ export class DrizzleRunDetailRepository {
       .where(eq(runObservation.runId, runId))
       .orderBy(asc(runObservation.targetSystem), asc(runObservation.populationRecordKey))
       .limit(Math.min(limit, RUN_DETAIL_PAGE_SIZE));
+    return { total, rows: await this.projectObservations(runId, rows) };
+  }
+
+  /**
+   * Exact Observation rows for a selected record, independent of the overview's page.
+   *
+   * Selection ids come from the authorized record-review projection. The Run predicate
+   * is repeated here so a stale or forged id can only resolve to an Observation in this
+   * Run, and the list is bounded even if a caller supplies more ids than the inspector
+   * can display.
+   */
+  async readObservationsByIds(
+    runId: string,
+    observationIds: readonly string[],
+  ): Promise<readonly RunObservationRow[]> {
+    if (!isUuidText(runId)) return [];
+    const ids = [...new Set(observationIds.filter(isUuidText))].slice(0, RUN_DETAIL_PAGE_SIZE);
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(runObservation)
+      .where(and(eq(runObservation.runId, runId), inArray(runObservation.observationId, ids)))
+      .orderBy(asc(runObservation.targetSystem), asc(runObservation.populationRecordKey));
+    return this.projectObservations(runId, rows);
+  }
+
+  private async projectObservations(
+    runId: string,
+    rows: readonly (typeof runObservation.$inferSelect)[],
+  ): Promise<readonly RunObservationRow[]> {
+    if (rows.length === 0) return [];
     const ids = rows.map((row) => row.observationId);
     const absenceRows = ids.length === 0 ? [] : await this.db.select().from(runObservationAbsence)
       .where(and(eq(runObservationAbsence.runId, runId), inArray(runObservationAbsence.observationId, ids)));
@@ -712,9 +802,7 @@ export class DrizzleRunDetailRepository {
       list.push({ check: check.checkName, outcome: check.outcome, diagnostic: check.diagnostic });
       byObservation.set(check.observationId, list);
     }
-    return {
-      total,
-      rows: rows.map((row): RunObservationRow => ({
+    return rows.map((row): RunObservationRow => ({
         ...(absence.has(row.observationId) ? { absence: absence.get(row.observationId)! } : {}),
         observationId: row.observationId,
         workItemId: row.workItemId,
@@ -732,8 +820,7 @@ export class DrizzleRunDetailRepository {
         attributes: row.attributes,
         evidenceIds: row.evidenceIds,
         checks: byObservation.get(row.observationId) ?? [],
-      })),
-    };
+      }));
   }
 
   /**

@@ -1445,6 +1445,13 @@ export async function executeAgentWorkItem(
           const cause = runLimit(stepExecutions, checkpoint, plan, dependencies.clock) ?? 'run-token-limit';
           await stopRun(cause, cause); return { retry: false };
         }
+        // The P-4 page reader owns a complete model turn, just as the generic action
+        // loop does below. A pause or cancellation may arrive while that turn is in
+        // flight; honour it before interpreting the response or registering its batch.
+        // `lifecycleBoundary` checks cancellation first, preserving the stronger-stop
+        // rule, and marks an in-flight attempt SUPERSEDED so resume gets a fresh read.
+        const pageBoundary = await lifecycleBoundary({ item, execution });
+        if (pageBoundary !== 'continue') return { retry: false };
         if (page.kind === 'uncertain') return persistWait({ item, execution, kind: 'retry-or-skip', options: FIXED_ESCALATION_OPTIONS['retry-or-skip'], diagnostic: 'insufficient-evidence', supportingEvidenceIds: [current.snapshot.evidenceId] });
         if (page.kind === 'refused') {
           if (page.diagnostic === 'model-invalid-action') { await stopRun('model-invalid-action', 'action-denied'); return { retry: false }; }

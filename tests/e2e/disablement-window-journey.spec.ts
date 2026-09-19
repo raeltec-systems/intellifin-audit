@@ -451,7 +451,7 @@ async function inspectDisabledTime(page: Page, runId: string, disabled: StoredAt
   const observe = (request: { url(): string }) => { browserRequests.push(request.url()); };
   page.on('request', observe);
   try {
-    await page.goto(`/runs/${runId}/evidence`);
+    await page.goto(`/runs/${runId}/evidence/technical`);
     await expect(page.getByRole('heading', { name: 'Match provenance', exact: true })).toBeVisible();
     // The Evidence surface names the captured field by the label the page carried, as
     // untrusted text, beside the protected inspector link for its locator.

@@ -92,7 +92,7 @@ export function PopulationReconciliation({
               <>
                 {' '}
                 · from the acquisition envelope of Evidence{' '}
-                <a href={`/runs/${runId}/evidence#evidence-${evidence.evidenceId}`} className="ls-mono">
+                <a href={`/runs/${runId}/evidence/technical#evidence-${evidence.evidenceId}`} className="ls-mono">
                   {evidence.evidenceId}
                 </a>{' '}
                 <span className="ls-mono">({evidence.envelopeKey})</span>
@@ -116,7 +116,7 @@ export function PopulationReconciliation({
               <>
                 {' '}
                 · from the population artifact of Evidence{' '}
-                <a href={`/runs/${runId}/evidence#evidence-${evidence.evidenceId}`} className="ls-mono">
+                <a href={`/runs/${runId}/evidence/technical#evidence-${evidence.evidenceId}`} className="ls-mono">
                   {evidence.evidenceId}
                 </a>{' '}
                 <span className="ls-mono">({evidence.objectKey})</span>
@@ -252,7 +252,7 @@ export function EvidencePackageSection({
           {artifacts.map((artifact) => (
             <li key={artifact.evidenceId}>
               {artifactKindWord(artifact.kind)} ·{' '}
-              <a className="ls-mono" href={`/runs/${runId}/evidence#evidence-${artifact.evidenceId}`}>
+              <a className="ls-mono" href={`/runs/${runId}/evidence/technical#evidence-${artifact.evidenceId}`}>
                 {artifact.evidenceId}
               </a>{' '}
               <span className="ls-mono">({artifact.objectKey})</span>

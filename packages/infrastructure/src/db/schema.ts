@@ -824,6 +824,7 @@ export const auditRun = pgTable('audit_run', {
   pauseRequestedAt: timestamp('pause_requested_at', { withTimezone: true }),
   pauseRequestedBy: text('pause_requested_by'),
   pauseRequestedSession: text('pause_requested_session'),
+  pauseRequestedCommandId: uuid('pause_requested_command_id'),
 }, table => [
   uniqueIndex('audit_run_initiator_request').on(table.initiatorId, table.requestToken),
   // A marker is written whole or not at all: a Canceled Run Detail states the actor, the
@@ -835,6 +836,7 @@ export const auditRun = pgTable('audit_run', {
   // `(a IS NULL) = (b IS NULL)` is boolean = boolean and is never NULL, so unlike a
   // comparison of the values themselves this cannot pass by evaluating to NULL.
   check('audit_run_pause_request', sql`(${table.pauseRequestedAt} IS NULL) = (${table.pauseRequestedBy} IS NULL) AND (${table.pauseRequestedAt} IS NULL) = (${table.pauseRequestedSession} IS NULL)`),
+  check('audit_run_pause_command', sql`${table.pauseRequestedCommandId} IS NULL OR ${table.pauseRequestedAt} IS NOT NULL`),
   // The predecessor and the reason are one fact. A link with no reason records that a
   // rerun exists and not why, which is exactly what FR-26 asks for.
   check('audit_run_rerun_link', sql`(${table.predecessorRunId} IS NULL) = (${table.rerunReason} IS NULL)`),
@@ -969,6 +971,34 @@ export const populationRow = pgTable('population_row', {
   runId:uuid('run_id').notNull().references(()=>populationSnapshot.runId),ordinal:integer('ordinal').notNull(),
   values:jsonb('values').$type<Record<string,import('@intellifin/domain').JsonValue>>().notNull(), disposition:text('disposition').$type<import('@intellifin/domain').PopulationRow['disposition']>().notNull(), reasons:jsonb('reasons').$type<string[]>().notNull(),
 },t=>[primaryKey({columns:[t.runId,t.ordinal]}),check('population_row_disposition',sql`${t.disposition} IN ('included','excluded','indeterminate')`),check('population_row_ordinal',sql`${t.ordinal}>0`)]);
+
+/** AW-P1: expiring presentation snapshots, never a second audit-result authority. */
+export const runReviewSnapshot = pgTable('run_review_snapshot', {
+  snapshotId: uuid('snapshot_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revision: text('revision').notNull(),
+  queryDigest: text('query_digest').notNull(),
+  cursorKey: text('cursor_key').notNull(),
+  counts: jsonb('counts').$type<import('@intellifin/application').RecordReviewCounts>().notNull(),
+  rowCount: integer('row_count').notNull(),
+}, t => [
+  index('run_review_snapshot_owner').on(t.actorId, t.runId, t.createdAt),
+  index('run_review_snapshot_expiry').on(t.expiresAt),
+  check('run_review_snapshot_lifetime', sql`${t.expiresAt} > ${t.createdAt} AND ${t.expiresAt} <= ${t.createdAt} + interval '10 minutes'`),
+  check('run_review_snapshot_bounds', sql`${t.rowCount} BETWEEN 0 AND 10000 AND jsonb_typeof(${t.counts}) = 'object'`),
+  check('run_review_snapshot_secrets', sql`${t.cursorKey} ~ '^[a-f0-9]{64}$' AND ${t.queryDigest} ~ '^[a-f0-9]{64}$'`),
+]);
+export const runReviewSnapshotRow = pgTable('run_review_snapshot_row', {
+  snapshotId: uuid('snapshot_id').notNull().references(() => runReviewSnapshot.snapshotId, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  row: jsonb('row').$type<import('@intellifin/application').RecordReviewRow>().notNull(),
+}, t => [
+  primaryKey({ columns: [t.snapshotId, t.position] }),
+  check('run_review_snapshot_row_bounds', sql`${t.position} BETWEEN 0 AND 9999 AND jsonb_typeof(${t.row}) = 'object'`),
+]);
 
 /**
  * Generation 19 — the adapter execution stage (Story 3.3).
@@ -1437,6 +1467,7 @@ export const runObservation = pgTable('run_observation', {
   // migration or psql session can store a rollup that disagrees with its own data.
   corroboration: text('corroboration').notNull(),
 }, t=>[
+  index('run_observation_review_record').on(t.runId, t.targetSystem, t.populationRecordKey),
   // A redelivered job cannot create a second Observation for the same record.
   uniqueIndex('run_observation_item_record').on(t.workItemId,t.populationRecordKey),
   // The composite key `run_observation_evaluation` points at, so "an uninspected record is
@@ -1995,4 +2026,78 @@ export const procedureAuthoringRequest = pgTable('procedure_authoring_request', 
   record: jsonb('record').$type<import('@intellifin/application').AuthoringRequestRecord>().notNull(),
 }, table => [index('procedure_authoring_actor_created').on(table.actorId, table.createdAt),
   check('procedure_authoring_record_shape', sql`jsonb_typeof(${table.record}) = 'object' AND coalesce(${table.record}->>'state' IN ('pending','ready','failed','accepted','rejected'), false)`),
+]);
+
+/** Immutable conversation metadata. Prose lives only in separately governed content. */
+export const runConversationMessage = pgTable('run_conversation_message', {
+  messageId: uuid('message_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  actorId: text('actor_id').notNull(),
+  kind: text('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  parentMessageId: uuid('parent_message_id'),
+  requestKey: uuid('request_key'),
+  semanticFingerprint: text('semantic_fingerprint'),
+  contextRevision: text('context_revision'),
+  sourceOrdinal: integer('source_ordinal'),
+  replyToWaitId: uuid('reply_to_wait_id'),
+  sourceEventSequence: integer('source_event_sequence'),
+}, t => [
+  uniqueIndex('run_conversation_sequence').on(t.runId, t.sequence),
+  uniqueIndex('run_conversation_request').on(t.runId, t.actorId, t.requestKey),
+  uniqueIndex('run_conversation_response').on(t.parentMessageId),
+  uniqueIndex('run_conversation_source_event').on(t.runId, t.sourceEventSequence),
+  index('run_conversation_actor_created').on(t.actorId, t.createdAt),
+  check('run_conversation_sequence_bound', sql`${t.sequence} BETWEEN 1 AND 1000000`),
+  check('run_conversation_kind', sql`${t.kind} IN ('auditor-message','platform-event','agent-explanation','decision-request','command-receipt','finding','evidence-reference','security-notice','annotation')`),
+  check('run_conversation_request_binding', sql`(${t.requestKey} IS NULL) = (${t.semanticFingerprint} IS NULL) AND (${t.semanticFingerprint} IS NULL OR ${t.semanticFingerprint} ~ '^[0-9a-f]{64}$')`),
+  check('run_conversation_source_ordinal', sql`${t.sourceOrdinal} IS NULL OR ${t.sourceOrdinal} BETWEEN 1 AND 10000`),
+]);
+
+/** Removal is a governed content action; it cannot rewrite immutable metadata. */
+export const runConversationContent = pgTable('run_conversation_content', {
+  messageId: uuid('message_id').primaryKey().references(() => runConversationMessage.messageId, { onDelete: 'cascade' }),
+  ciphertext: text('ciphertext'),
+  contentEpoch: integer('content_epoch').notNull().default(1),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, t => [
+  check('run_conversation_content_bound', sql`${t.ciphertext} IS NULL OR (octet_length(${t.ciphertext}) <= 90000 AND ${t.ciphertext} ~ '^v1\\.[A-Za-z0-9_-]+$')`),
+  check('run_conversation_content_removal', sql`(${t.ciphertext} IS NULL) = (${t.removedAt} IS NOT NULL) AND ${t.contentEpoch} >= 1`),
+]);
+
+/** Immutable interpretation identity; domain commands still own every execution effect. */
+export const runInteractionCommand = pgTable('run_interaction_command', {
+  commandId: uuid('command_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  messageId: uuid('message_id').notNull().references(() => runConversationMessage.messageId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull(),
+  kind: text('kind').notNull(),
+  requestKey: uuid('request_key').notNull(),
+  semanticFingerprint: text('semantic_fingerprint').notNull(),
+  planDigest: text('plan_digest').notNull(),
+  expectedRunRevision: integer('expected_run_revision').notNull(),
+  interpretationVersion: text('interpretation_version').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [
+  uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
+  uniqueIndex('run_interaction_command_message').on(t.messageId),
+  check('run_interaction_command_kind', sql`${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1'`),
+  check('run_interaction_command_envelope', sql`${t.expectedRunRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.semanticFingerprint} ~ '^[a-f0-9]{64}$'`),
+]);
+
+/** Append-only receipts, linked to authoritative events when the domain effect is known. */
+export const runInteractionTransition = pgTable('run_interaction_transition', {
+  commandId: uuid('command_id').notNull().references(() => runInteractionCommand.commandId, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  state: text('state').notNull(),
+  reasonCode: text('reason_code').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  sourceEventId: uuid('source_event_id'),
+}, t => [
+  primaryKey({ columns: [t.commandId, t.sequence] }),
+  uniqueIndex('run_interaction_transition_event').on(t.sourceEventId),
+  check('run_interaction_transition_state', sql`${t.state} IN ('received','interpreted','queued','applied','refused','superseded')`),
+  check('run_interaction_transition_bounds', sql`${t.sequence} BETWEEN 1 AND 1000 AND ${t.reasonCode} ~ '^[a-z][a-z0-9-]{0,79}$'`),
+  check('run_interaction_transition_event_binding', sql`(${t.state} IN ('queued','applied','superseded')) = (${t.sourceEventId} IS NOT NULL)`),
 ]);

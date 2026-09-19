@@ -252,6 +252,8 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
 
     await page.getByRole('link', { name: 'Evidence', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${runs.queued}/evidence$`));
+    await expect(page.getByText('Record review is unavailable because the Run projection is incomplete.')).toBeVisible();
+    await page.getByRole('link', { name: 'Open technical artifacts', exact: true }).click();
     await expect(page.getByText('No Evidence collected.')).toBeVisible();
     await scan(page);
   });
@@ -302,7 +304,7 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
   });
 
   test('shows recorded grounding and protected snapshot links for a json snapshot', async ({ page }) => {
-    await page.goto(`/runs/${runs.completed}/evidence`);
+    await page.goto(`/runs/${runs.completed}/evidence/technical`);
     await expect(page.getByRole('heading', { name: 'Evidence items' })).toBeVisible();
     await expect(page.getByText('Adapter extract')).toBeVisible();
     await expect(page.getByText('Capture time (UTC)')).toBeVisible();

@@ -258,7 +258,7 @@ test.describe('canonical P-1 absence through the actual compiled worker', () => 
     expect(source.requests).toEqual(expect.arrayContaining(['GET /single-leaver.csv', 'GET /single-leaver.cover-sheet.json']));
     expect(workerMarkers.filter(marker => marker === 'Synthetic absence provider:{"action":"search","opaqueTool":true}')).toHaveLength(2);
     expect((await sql`SELECT to_jsonb(v)::text AS value FROM procedure_version v WHERE version_id=${versionId}`)[0]!.value).toBe(frozen);
-    await page.goto(`/runs/${runId}/evidence`);
+    await page.goto(`/runs/${runId}/evidence/technical`);
     const section = page.getByRole('region', { name: 'Absence proof', exact: true });
     await expect(section).toBeVisible();
     await expect(section.getByText('The registered absence check passed. Other required checks and evaluations still determine the Result.', { exact: true })).toBeVisible();

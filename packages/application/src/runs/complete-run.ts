@@ -466,6 +466,9 @@ async function publishResult(
         payload: {
           requestedBy: pause.requestedBy,
           requestedAt: pause.requestedAt,
+          ...(pause.commandId !== undefined && pause.commandId !== null
+            ? { commandId: pause.commandId }
+            : {}),
           state: decision.runState,
           outcome: decision.outcome,
           occurredAt: input.at,

@@ -133,6 +133,9 @@ export async function performPause(
       requestedAt: input.request.requestedAt,
       occurredAt: input.at,
       deadline: wait.deadline,
+      ...(input.request.commandId !== undefined && input.request.commandId !== null
+        ? { commandId: input.request.commandId }
+        : {}),
       ...(input.stepExecutionId ? { stepExecutionId: input.stepExecutionId } : {}),
       ...(input.workItemId ? { workItemId: input.workItemId } : {}),
     },
@@ -148,6 +151,8 @@ export interface PauseRunDependencies {
   readonly repository: WaitRepository;
   readonly ids: UuidV7Generator;
   readonly clock: Clock;
+  /** Server-assigned ownership for this request; never accepted from the client body. */
+  readonly commandId?: string | null;
 }
 
 export type PauseRunOutcome =
@@ -231,6 +236,11 @@ function parsePauseRequest(value: unknown): { runId: string } | null {
   return { runId: record.runId.toLowerCase() };
 }
 
+function internalCommandId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
+}
+
 function parseResumeRequest(value: unknown): { runId: string; expectedRunRevision: number } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -258,6 +268,8 @@ export async function pauseRun(
   if (!permission.allowed) return { ok: false, reason: permission.reason };
   const request = parsePauseRequest(input.request);
   if (request === null) return { ok: false, reason: PAUSE_REQUEST_MALFORMED };
+  const commandId = internalCommandId(dependencies.commandId);
+  if (commandId === null) return { ok: false, reason: RUN_PAUSE_REFUSALS.INVALID_COMMAND_ID };
   try {
     return await dependencies.repository.transaction(request.runId, async (context) => {
       const role = await context.authorizationRoles.findRole(input.session.userId);
@@ -272,12 +284,19 @@ export async function pauseRun(
       if (runPauseTransition(run.state) === null)
         return { ok: false, reason: RUN_PAUSE_REFUSALS.NOT_RUNNING };
       // Idempotent: one marker, one pause, one event. A second request must not overwrite
-      // the first requester or the first time, which the Paused banner then reports.
-      if (run.pauseRequest !== null) return { ok: true, state: run.state, pending: true };
+      // the first requester or the first time, which the Paused banner then reports. A
+      // server-owned retry may replay only its own marker; a legacy caller without a
+      // command id retains the historical behavior for old and new markers.
+      if (run.pauseRequest !== null) {
+        if (commandId !== undefined && (internalCommandId(run.pauseRequest.commandId) !== commandId || run.pauseRequest.requestedBy !== input.session.userId))
+          return { ok: false, reason: RUN_PAUSE_REFUSALS.ALREADY_REQUESTED };
+        return { ok: true, state: run.state, pending: true };
+      }
       const pause: RunPauseRequest = {
         requestedBy: input.session.userId,
         sessionId: input.session.sessionId,
         requestedAt: dependencies.clock.now().toISOString(),
+        ...(commandId === undefined ? {} : { commandId }),
       };
       await context.requestPause(pause);
       const stored = await context.auditEvents.append({
@@ -294,6 +313,9 @@ export async function pauseRun(
           // The Run is still owned by a worker: this records the REQUEST, and the worker's
           // own event records the transition it then performs.
           performedBy: 'worker',
+          ...(pause.commandId !== undefined && pause.commandId !== null
+            ? { commandId: pause.commandId }
+            : {}),
         },
       });
       await context.notifyTimeline(stored.sequence);

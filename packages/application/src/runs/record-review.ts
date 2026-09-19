@@ -1,0 +1,84 @@
+import type { JsonValue } from '@intellifin/domain';
+
+/** Presentation-only projection. None of these values authorizes an audit action. */
+export const RECORD_REVIEW_FILTERS = ['all', 'exceptions', 'needs-review', 'evidence-problems', 'not-inspected'] as const;
+export type RecordReviewFilter = (typeof RECORD_REVIEW_FILTERS)[number];
+export interface RecordReviewQuery {
+  readonly runId: string;
+  readonly actorId: string;
+  readonly cursor?: string;
+  readonly filter?: string;
+  readonly search?: string;
+  readonly pageSize?: number;
+}
+export interface RecordReviewTarget {
+  readonly targetId: string;
+  readonly targetName: string;
+  readonly observationId: string | null;
+  readonly workItemId: string | null;
+  readonly account: string | null;
+  readonly capturedStatus: string | null;
+  readonly found: string | null;
+  readonly inspected: boolean;
+  readonly exception: boolean;
+  readonly pendingAssessments: number;
+  readonly evidenceProblem: boolean;
+  readonly assessmentState: 'exception' | 'needs-review' | 'unevaluated' | 'compliant' | 'not-inspected' | 'excluded';
+}
+export interface RecordReviewRow {
+  readonly sourceOrdinal: number;
+  readonly recordLabel: string;
+  readonly disposition: string;
+  readonly duplicateIdentity: boolean;
+  readonly missingIdentity: boolean;
+  readonly targets: readonly RecordReviewTarget[];
+}
+export interface RecordReviewCounts {
+  readonly sourceRows: number;
+  readonly sourceDeclaredCount: number | null;
+  readonly sourceGeneratedAt: string | null;
+  readonly sourceQuality: 'verified' | 'problems' | 'unknown';
+  readonly runEvidenceProblems: number;
+  readonly includedRows: number;
+  readonly excludedRows: number;
+  readonly indeterminateRows: number;
+  readonly fullyInspectedSubjects: number;
+  readonly inspectedUnits: number;
+  readonly requiredUnits: number;
+  readonly exceptionRecords: number | null;
+  readonly unattributedObservations: number;
+  readonly pendingAssessments: number;
+  readonly evidenceProblemRecords: number;
+}
+export interface RecordReviewPage {
+  readonly status: 'ready';
+  readonly rows: readonly RecordReviewRow[];
+  readonly counts: RecordReviewCounts;
+  readonly filteredRows: number;
+  readonly asOf: string;
+  readonly expiresAt: string;
+  readonly revision: string;
+  readonly changesAvailable: boolean;
+  readonly currentEvidenceProblems: number;
+  readonly cursor: string;
+  readonly nextCursor: string | null;
+  readonly previousCursor: string | null;
+  readonly pageNumber: number;
+  readonly pageSize: number;
+  readonly filter: RecordReviewFilter;
+  readonly search: string;
+}
+export type RecordReviewResult = RecordReviewPage | {
+  readonly status: 'denied' | 'missing' | 'invalid' | 'expired' | 'unavailable' | 'too-large';
+};
+export interface RecordReviewSelection {
+  readonly status: 'ready';
+  readonly row: RecordReviewRow;
+  readonly sourceValues: Readonly<Record<string, JsonValue>>;
+  readonly conditions: readonly { readonly conditionId: string; readonly text: string }[];
+  readonly scope: string;
+  readonly readAt: string;
+  readonly revision: string;
+  readonly changedSinceList: boolean;
+}
+export type RecordReviewSelectionResult = RecordReviewSelection | Exclude<RecordReviewResult, RecordReviewPage>;

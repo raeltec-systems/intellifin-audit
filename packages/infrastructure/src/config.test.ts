@@ -20,6 +20,16 @@ describe('model deployment policy', () => {
 });
 
 describe('loadConfig', () => {
+  it('keeps conversation off unless synthetic mode has its dedicated content key', () => {
+    expect(loadConfig(validEnv).RUN_CONVERSATION_MODE).toBe('off');
+    expect(() => loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'synthetic' })).toThrow(/RUN_CONVERSATION_CONTENT_KEY/);
+    expect(() => loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'production', RUN_CONVERSATION_CONTENT_KEY: 'ab'.repeat(32) })).toThrow(/RUN_CONVERSATION_MODE/);
+    expect(loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'synthetic', RUN_CONVERSATION_CONTENT_KEY: 'ab'.repeat(32) }).RUN_CONVERSATION_MODE).toBe('synthetic');
+    const invalidKey = 'never-print-this-content-key';
+    try { loadConfig({ ...validEnv, RUN_CONVERSATION_MODE: 'synthetic', RUN_CONVERSATION_CONTENT_KEY: invalidKey }); }
+    catch (error) { expect(String(error)).not.toContain(invalidKey); }
+  });
+
   it('accepts a complete environment', () => {
     const config = loadConfig(validEnv);
     expect(config.SERVICE_NAME).toBe('web');

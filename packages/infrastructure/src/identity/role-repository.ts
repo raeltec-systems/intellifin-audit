@@ -158,7 +158,7 @@ export const USER_LIST_LIMIT = 200;
  */
 /** {@link ActorNameReader}: ids in, names out, in one bounded statement. */
 export class DrizzleActorNameReader implements ActorNameReader {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: ReadHandle) {}
 
   async namesFor(userIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
     const unique = [...new Set(userIds.filter((id) => typeof id === 'string' && id.length > 0))].slice(0, 200);

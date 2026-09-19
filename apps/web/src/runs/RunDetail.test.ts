@@ -939,7 +939,7 @@ describe('the population reconciliation', () => {
     // bytes this surface read for itself.
     expect(html).toContain(evidence.envelopeKey);
     expect(html).toContain(evidence.objectKey);
-    expect(html).toContain('/runs/019823ab-0000-7000-8000-0000000000aa/evidence#evidence-019823ab-0000-7000-8000-0000000000f1');
+    expect(html).toContain('/runs/019823ab-0000-7000-8000-0000000000aa/evidence/technical#evidence-019823ab-0000-7000-8000-0000000000f1');
     // The stored §H verdict stays beside them, READ and never re-derived from the two
     // numbers: a second answer to one question is how a surface comes to disagree with
     // the Gate it reports.
@@ -1012,7 +1012,7 @@ describe('the sealed Evidence package on the Result', () => {
     });
     expect(html).toContain('Population');
     expect(html).toContain('019823ab-0000-7000-8000-0000000000f1');
-    expect(html).toContain('/runs/019823ab-0000-7000-8000-0000000000aa/evidence#evidence-019823ab-0000-7000-8000-0000000000f1');
+    expect(html).toContain('/runs/019823ab-0000-7000-8000-0000000000aa/evidence/technical#evidence-019823ab-0000-7000-8000-0000000000f1');
   });
 
   it('distinguishes "this build did not record which" from "this Run froze nothing"', () => {

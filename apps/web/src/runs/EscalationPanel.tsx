@@ -13,7 +13,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useActionGate } from '../design/action-gate';
-import { ESCALATION_PANEL_COPY } from '../design/copy';
+import { ESCALATION_PANEL_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ESCALATION_KIND_WORDS } from '../design/plain-words';
 import { UntrustedText } from './UntrustedText';
 // The clock's arithmetic, shared with the Paused banner so the two surfaces cannot
@@ -73,6 +73,10 @@ export function escalationMilestone(remaining: number): EscalationMilestone {
   return 'open';
 }
 
+export interface EscalationWorkspacePresentation {
+  readonly stepLabel: string | null;
+}
+
 export interface EscalationPanelProps {
   readonly runId: string;
   readonly wait: EscalationWait;
@@ -82,13 +86,42 @@ export interface EscalationPanelProps {
   readonly runRevision: number;
   /** The snapshot instant used to make the first server/client countdown match. */
   readonly readAt: string;
+  /**
+   * Workspace-only presentation facts. The ordinary Run Detail surface intentionally
+   * omits this prop and keeps its existing technical metadata presentation.
+   *
+   * The label is resolved from the frozen plan by the server. Evidence identifiers still
+   * come from the addressed wait's immutable metadata and are shown only inside the
+   * collapsed technical section in the compact workspace variant.
+   */
+  readonly workspacePresentation?: EscalationWorkspacePresentation;
 }
+
+/** Keep the workspace decision card bounded even if a legacy wait names many captures. */
+const WORKSPACE_SUPPORTING_EVIDENCE_LIMIT = 8;
 
 type PanelMessage = {
   readonly tone: 'success' | 'danger';
   readonly title: string;
   readonly body?: string;
 };
+
+/**
+ * The workspace card has one shared policy sentence so a compact decision does not repeat
+ * the same warning in every source block. Each block still names its untrusted field and
+ * keeps the source value in an inert, escaped preformatted element.
+ */
+function WorkspaceUntrustedText({ field, children }: {
+  readonly field: string;
+  readonly children: string;
+}): React.JSX.Element {
+  return (
+    <div className="ls-untrusted">
+      <p className="ls-untrusted__label">{field} · untrusted</p>
+      <pre className="ls-untrusted__body" aria-describedby="open-escalation-source-policy">{children}</pre>
+    </div>
+  );
+}
 
 /**
  * The one-open-Escalation surface shared by every Run Detail tab.
@@ -98,7 +131,7 @@ type PanelMessage = {
  * untrusted source text. Fixed answer labels come from the closed application vocabulary.
  * The only mutation is the server action, behind the routine confirmation dialog.
  */
-export function EscalationPanel({ runId, wait, details, runRevision, readAt }: EscalationPanelProps): React.JSX.Element {
+export function EscalationPanel({ runId, wait, details, runRevision, readAt, workspacePresentation }: EscalationPanelProps): React.JSX.Element {
   const router = useRouter();
   const headingId = useId();
   const questionId = useId();
@@ -190,11 +223,211 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
   const candidateOptions = wait.kind === 'choose-candidate'
     ? options.filter((option) => option.id !== 'mark-ambiguous')
     : [];
+  const workspace = workspacePresentation !== undefined;
+  const workspaceEvidence = (details?.supportingEvidenceIds ?? []).slice(0, WORKSPACE_SUPPORTING_EVIDENCE_LIMIT);
+  const workspaceStepLabel = workspacePresentation?.stepLabel?.trim() || ESCALATION_PANEL_COPY.noStep;
+
+  const questionSection = (
+    <section aria-labelledby={questionId} className="ls-stack escalation-panel__question">
+      <h3 id={questionId}>Question</h3>
+      {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
+        <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
+      ) : (
+        <UntrustedText field="AGENT-GENERATED question">{details.agentQuestion}</UntrustedText>
+      )}
+      <p><strong>Platform question</strong></p>
+      <p>{question}</p>
+    </section>
+  );
+
+  const evidenceSection = (
+    <section aria-labelledby={evidenceId} className="ls-stack">
+      <h3 id={evidenceId}>Supporting Evidence</h3>
+      {details?.supportingEvidenceIds === null || details?.supportingEvidenceIds === undefined || details.supportingEvidenceIds.length === 0 ? (
+        <p>{ESCALATION_PANEL_COPY.noSupportingEvidence}</p>
+      ) : (
+        <ul>
+          {details.supportingEvidenceIds.map((supportingEvidenceId) => (
+            <li key={supportingEvidenceId}>
+              <a className="ls-mono" href={`/runs/${runId}/evidence/technical#evidence-${encodeURIComponent(supportingEvidenceId)}`}>
+                {supportingEvidenceId}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  const answerSection = (
+    <fieldset className="ls-stack escalation-panel__answers" disabled={unknown}>
+      <legend>Answer</legend>
+      <p className={workspace ? 'ls-caption' : undefined}>{workspace ? 'No answer is recommended.' : 'Choose one answer. The platform expresses no recommendation.'}</p>
+      <div className="ls-stack escalation-panel__answer-options">
+        {options.map((option, index) => (
+          <div key={`${option.id}-${index}`} className="ls-stack escalation-panel__answer-option">
+            {wait.kind === 'choose-candidate' && option.id !== 'mark-ambiguous' ? (
+              workspace ? (
+                <WorkspaceUntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
+                  {option.label}
+                </WorkspaceUntrustedText>
+              ) : (
+                <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
+                  {option.label}
+                </UntrustedText>
+              )
+            ) : null}
+            <Button
+              variant="secondary"
+              busy={busy}
+              onClick={() => setPendingOption(option)}
+              {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}
+            >
+              {wait.kind === 'choose-candidate'
+                ? option.id === 'mark-ambiguous'
+                  ? 'Mark record ambiguous'
+                  : `Select candidate ${candidateOptions.indexOf(option) + 1}`
+                : option.label}
+            </Button>
+          </div>
+        ))}
+      </div>
+    </fieldset>
+  );
+
+  const noteSection = (
+    <div className="ls-stack">
+      <label htmlFor={noteId}>{ESCALATION_PANEL_COPY.answerNoteLabel}</label>
+      <textarea
+        className="ls-textarea"
+        id={noteId}
+        value={note}
+        maxLength={500}
+        onChange={(event) => setNote(event.target.value)}
+        // `readOnly` and `aria-disabled`, never `disabled`: a disabled field cannot be
+        // focused, so the reason beside it is unreachable by keyboard -- the
+        // tooltip-only explanation DESIGN.md forbids, and this contract's own rule for
+        // every other control on the surface.
+        readOnly={busy || unknown || gate.disabledReason !== null}
+        aria-disabled={busy || unknown || gate.disabledReason !== null ? true : undefined}
+        aria-describedby={gate.disabledReason !== null ? `${noteId}-withdrawn` : undefined}
+      />
+      {gate.disabledReason !== null
+        ? <p id={`${noteId}-withdrawn`} className="ls-caption">{gate.disabledReason}</p>
+        : null}
+    </div>
+  );
+
+  const timeSection = (
+    <section className="ls-stack escalation-panel__time" aria-labelledby={countdownId}>
+      <h3 id={countdownId}>Time remaining</h3>
+      {/* `role="timer"` and NO live region. Its implicit `aria-live` is `off`, which is
+          what a clock should be: the milestones are announced beside it instead. */}
+      <p role="timer">
+        <time dateTime={wait.deadline}>{countdown}</time>
+        {countdownExpired ? ' — deadline reached; reload this Run for the recorded outcome.' : null}
+      </p>
+    </section>
+  );
+
+  const technicalSection = workspace ? (
+    <details className="escalation-panel__technical">
+      <summary>Technical details</summary>
+      <dl className="ls-definition">
+        <dt>Kind</dt>
+        <dd>{kindLabel}</dd>
+        <dt>Step</dt>
+        <dd>{workspaceStepLabel}</dd>
+        {details?.stepId === null || details?.stepId === undefined ? null : (
+          <>
+            <dt>Step ID</dt>
+            <dd><span className="ls-mono">{details.stepId}</span></dd>
+          </>
+        )}
+        <dt>Supporting captures</dt>
+        <dd>
+          {workspaceEvidence.length === 0 ? ESCALATION_PANEL_COPY.noSupportingEvidence : (
+            <ul>
+              {workspaceEvidence.map((supportingEvidenceId, index) => (
+                <li key={supportingEvidenceId}>
+                  <span>Supporting capture {index + 1}</span>{' '}
+                  <a className="ls-mono" href={`/runs/${runId}/evidence/technical#evidence-${encodeURIComponent(supportingEvidenceId)}`}>
+                    {supportingEvidenceId}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {details?.supportingEvidenceIds !== undefined && details?.supportingEvidenceIds !== null && details.supportingEvidenceIds.length > workspaceEvidence.length
+            ? <p className="ls-caption">Showing {workspaceEvidence.length} of {details.supportingEvidenceIds.length} supporting captures.</p>
+            : null}
+        </dd>
+      </dl>
+    </details>
+  ) : (
+    <dl className="ls-definition">
+      <dt>Kind</dt>
+      <dd>{kindLabel}</dd>
+      <dt>Step</dt>
+      <dd>{details?.stepId === null || details?.stepId === undefined
+        ? ESCALATION_PANEL_COPY.noStep
+        : <span className="ls-mono">{details.stepId}</span>}</dd>
+      <dt>Deadline</dt>
+      <dd><time dateTime={wait.deadline}>{wait.deadline}</time></dd>
+    </dl>
+  );
+
+  const workspaceContextSection = workspace ? (
+    <section className="escalation-panel__workspace-context ls-stack" aria-labelledby={evidenceId}>
+      <h3 id={evidenceId}>Decision context</h3>
+      <dl className="ls-definition">
+        <dt>Step</dt>
+        <dd>{workspaceStepLabel}</dd>
+        <dt>Supporting captures</dt>
+        <dd>
+          {workspaceEvidence.length === 0 ? ESCALATION_PANEL_COPY.noSupportingEvidence : (
+            <ul>
+              {workspaceEvidence.map((supportingEvidenceId, index) => (
+                <li key={supportingEvidenceId}>
+                  <a href={`/runs/${runId}/evidence/technical#evidence-${encodeURIComponent(supportingEvidenceId)}`}>
+                    Supporting capture {index + 1}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </dd>
+      </dl>
+    </section>
+  ) : null;
+
+  const workspaceQuestionSection = workspace ? (
+    <section aria-labelledby={questionId} className="ls-stack escalation-panel__question">
+      <h3 id={questionId}>Question</h3>
+      {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
+        <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
+      ) : (
+        <WorkspaceUntrustedText field="AGENT-GENERATED question">{details.agentQuestion}</WorkspaceUntrustedText>
+      )}
+      <details className="escalation-panel__platform-question">
+        <summary>Platform question</summary>
+        <p>{question}</p>
+      </details>
+      {workspaceContextSection}
+    </section>
+  ) : null;
+
+  const workspaceNoteSection = workspace ? (
+    <details className="escalation-panel__note">
+      <summary>Add an optional note</summary>
+      {noteSection}
+    </details>
+  ) : noteSection;
 
   return (
     <>
       <a className="ls-skip-link" href="#open-escalation">{ESCALATION_PANEL_COPY.skipLink}</a>
-      <section id="open-escalation" className="ls-card ls-stack" aria-labelledby={headingId}>
+      <section id="open-escalation" className={`ls-card ls-stack${workspace ? ' escalation-panel--workspace' : ''}`} aria-labelledby={headingId}>
         <h2 id={headingId}>Open Escalation</h2>
         {/* The panel's appearance and its two countdown milestones, in the ONE polite
             region this surface has (EXPERIENCE.md → Accessibility). It is always in the
@@ -202,104 +435,19 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
         <p className="ls-visually-hidden" aria-live="polite" aria-atomic="true">{announcement}</p>
         {message !== null ? <Banner tone={message.tone} title={message.title}>{message.body ? <p>{message.body}</p> : null}</Banner> : null}
         {unknown ? <p><a href={`/runs/${runId}`}>Reload this Run</a></p> : null}
+        {workspace ? <p id="open-escalation-source-policy" className="escalation-panel__source-policy">{UNTRUSTED_CONTENT_SENTENCE}</p> : null}
 
-        <dl className="ls-definition">
-          <dt>Kind</dt>
-          <dd>{kindLabel}</dd>
-          <dt>Step</dt>
-          <dd>{details?.stepId === null || details?.stepId === undefined
-            ? ESCALATION_PANEL_COPY.noStep
-            : <span className="ls-mono">{details.stepId}</span>}</dd>
-          <dt>Deadline</dt>
-          <dd><time dateTime={wait.deadline}>{wait.deadline}</time></dd>
-        </dl>
-
-        <section aria-labelledby={questionId} className="ls-stack">
-          <h3 id={questionId}>Question</h3>
-          {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
-            <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
-          ) : (
-            <UntrustedText field="AGENT-GENERATED question">{details.agentQuestion}</UntrustedText>
-          )}
-          <p><strong>Platform question</strong></p>
-          <p>{question}</p>
-        </section>
-
-        <section aria-labelledby={evidenceId} className="ls-stack">
-          <h3 id={evidenceId}>Supporting Evidence</h3>
-          {details?.supportingEvidenceIds === null || details?.supportingEvidenceIds === undefined || details.supportingEvidenceIds.length === 0 ? (
-            <p>{ESCALATION_PANEL_COPY.noSupportingEvidence}</p>
-          ) : (
-            <ul>
-              {details.supportingEvidenceIds.map((supportingEvidenceId) => (
-                <li key={supportingEvidenceId}>
-                  <a className="ls-mono" href={`/runs/${runId}/evidence#evidence-${encodeURIComponent(supportingEvidenceId)}`}>
-                    {supportingEvidenceId}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="ls-stack" aria-labelledby={countdownId}>
-          <h3 id={countdownId}>Time remaining</h3>
-          {/* `role="timer"` and NO live region. Its implicit `aria-live` is `off`, which is
-              what a clock should be: the milestones are announced beside it instead. */}
-          <p role="timer">
-            <time dateTime={wait.deadline}>{countdown}</time>
-            {countdownExpired ? ' — deadline reached; reload this Run for the recorded outcome.' : null}
-          </p>
-        </section>
-
-        <fieldset className="ls-stack" disabled={unknown}>
-          <legend>Answer</legend>
-          <p>Choose one answer. The platform expresses no recommendation.</p>
-          <div className="ls-stack">
-            {options.map((option, index) => (
-              <div key={`${option.id}-${index}`} className="ls-stack">
-                {wait.kind === 'choose-candidate' && option.id !== 'mark-ambiguous' ? (
-                  <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
-                    {option.label}
-                  </UntrustedText>
-                ) : null}
-                <Button
-                  variant="secondary"
-                  busy={busy}
-                  onClick={() => setPendingOption(option)}
-                  {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}
-                >
-                  {wait.kind === 'choose-candidate'
-                    ? option.id === 'mark-ambiguous'
-                      ? 'Mark record ambiguous'
-                      : `Select candidate ${candidateOptions.indexOf(option) + 1}`
-                    : option.label}
-                </Button>
-              </div>
-            ))}
-          </div>
-        </fieldset>
-
-        <div className="ls-stack">
-          <label htmlFor={noteId}>{ESCALATION_PANEL_COPY.answerNoteLabel}</label>
-          <textarea
-            className="ls-textarea"
-            id={noteId}
-            value={note}
-            maxLength={500}
-            onChange={(event) => setNote(event.target.value)}
-            // `readOnly` and `aria-disabled`, never `disabled`: a disabled field cannot be
-            // focused, so the reason beside it is unreachable by keyboard -- the
-            // tooltip-only explanation DESIGN.md forbids, and this contract's own rule for
-            // every other control on the surface.
-            readOnly={busy || unknown || gate.disabledReason !== null}
-            aria-disabled={busy || unknown || gate.disabledReason !== null ? true : undefined}
-            aria-describedby={gate.disabledReason !== null ? `${noteId}-withdrawn` : undefined}
-          />
-          {gate.disabledReason !== null
-            ? <p id={`${noteId}-withdrawn`} className="ls-caption">{gate.disabledReason}</p>
-            : null}
-        </div>
+        {workspace ? null : technicalSection}
+        {workspace ? workspaceQuestionSection : null}
+        {workspace ? answerSection : null}
+        {workspace ? workspaceNoteSection : null}
+        {workspace ? timeSection : null}
+        {workspace ? technicalSection : null}
+        {workspace ? null : questionSection}
+        {workspace ? null : evidenceSection}
+        {workspace ? null : timeSection}
+        {workspace ? null : answerSection}
+        {workspace ? null : noteSection}
       </section>
 
       <ConfirmDialog

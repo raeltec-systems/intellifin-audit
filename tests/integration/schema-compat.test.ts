@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-36 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-53 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -97,6 +97,8 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_agent_execution',
       'run_agent_turn',
       'run_agent_work',
+      'run_conversation_content',
+      'run_conversation_message',
       // Story 4.9. Human decisions retain the original Agent-Judged proposal in an
       // immutable ledger beside the mutable Result review revision.
       'run_evaluation_review',
@@ -119,6 +121,8 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // written once when the last Work Item completes and never updated.
       'run_gate_check',
       'run_initiation_request',
+      'run_interaction_command',
+      'run_interaction_transition',
       'run_observation',
       'run_observation_absence',
       // Story 3.4. Observation registration: the per-Observation Gate check outcomes and
@@ -134,6 +138,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_replay_recording',
       'run_result',
       'run_result_review',
+      // AW-P1: expiring, immutable presentation copies; not a second audit ledger.
+      'run_review_snapshot',
+      'run_review_snapshot_row',
       'run_session_step',
       'run_step_execution',
       'run_tool_action',

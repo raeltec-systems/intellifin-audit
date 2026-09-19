@@ -1,7 +1,7 @@
 import type { AgentModelResponse } from '@intellifin/application';
 import { planProdConsoleTools } from '../../packages/application/src/runs/agent-prodconsole.js';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -27,7 +27,7 @@ const procedureId = ids.next();
 const versionId = ids.next();
 const bindingId = ids.next();
 const targetId = ids.next();
-const controlName = `E2E ProdConsole golden worker ${procedureId}`;
+const controlName = 'E2E ProdConsole golden worker';
 const fixtureJson = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(new URL(`../../fixtures/northstar/${name}`, import.meta.url)), 'utf8'));
 const expectation = fixtureJson('expectations/p-4-config-deviation.json') as {
   run_expectation: { terminal_outcome: string };
@@ -74,6 +74,7 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 let sql: Sql;
 let storage: Awaited<ReturnType<typeof startSyntheticS3>>;
 let stopWorker: (() => Promise<void>) | undefined;
+let releaseReadAttributeBarrier: (() => void) | undefined;
 const workerMarkers: string[] = [];
 let workerFailure: string | null = null;
 
@@ -107,8 +108,14 @@ async function startWorker(): Promise<void> {
       EXCEPTION_FINGERPRINT_KEY,
       EXCEPTION_FINGERPRINT_KEY_ID,
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    // The preload uses this test-local IPC channel for the bounded active-workspace
+    // barrier. Production worker behavior is unchanged; the browser test releases it
+    // in a finally block before asserting the terminal journey.
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
+  if (worker.stdout === null || worker.stderr === null) {
+    throw new Error('ProdConsole journey worker did not expose its expected output pipes.');
+  }
   worker.on('error', () => { workerFailure = 'worker-process-error'; });
   const exited = new Promise<void>((resolveExit) => {
     worker.once('close', (code) => {
@@ -129,6 +136,22 @@ async function startWorker(): Promise<void> {
     }
   };
   worker.stdout.on('data', retainMarkers);
+  worker.on('message', (message: unknown) => {
+    if (typeof message !== 'object' || message === null || !('type' in message)) return;
+    if (message.type === 'prodconsole-read-attribute-barrier-ready') {
+      workerMarkers.push('ProdConsole read-attribute barrier ready');
+    }
+  });
+  releaseReadAttributeBarrier = () => {
+    if (closed || !worker.connected) return;
+    try {
+      worker.send({ type: 'release-prodconsole-read-attribute-barrier' }, (error) => {
+        if (error) workerFailure = 'worker-barrier-release-failed';
+      });
+    } catch {
+      workerFailure = 'worker-barrier-release-failed';
+    }
+  };
   // Stderr is deliberately discarded. A worker error is reported using a fixed code;
   // provider/configuration text must never become a test failure artifact.
   worker.stderr.on('data', () => undefined);
@@ -154,12 +177,34 @@ async function startWorker(): Promise<void> {
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       stopWorker = undefined;
+      releaseReadAttributeBarrier = undefined;
     }
   };
   await expect.poll(() => {
     if (workerFailure) throw new Error(workerFailure);
     return workerMarkers.includes('Heartbeat loop started');
   }, { timeout: 60_000 }).toBe(true);
+}
+
+async function waitForReadAttributeBarrier(): Promise<void> {
+  await expect.poll(() => {
+    if (workerFailure) throw new Error(workerFailure);
+    return workerMarkers.includes('ProdConsole read-attribute barrier ready');
+  }, { timeout: 60_000 }).toBe(true);
+}
+
+interface RegisteredScreenshot {
+  readonly evidence_id: string;
+  readonly object_key: string;
+  readonly digest: string;
+  readonly size: number;
+}
+
+async function latestRegisteredScreenshot(runId: string): Promise<RegisteredScreenshot | null> {
+  const [row] = await sql<RegisteredScreenshot[]>`SELECT evidence_id,object_key,digest,size
+    FROM run_evidence WHERE run_id=${runId} AND kind='screenshot' AND state='REGISTERED'
+    ORDER BY captured_at DESC NULLS LAST,evidence_id DESC LIMIT 1`;
+  return row ?? null;
 }
 
 async function scan(page: Page): Promise<void> {
@@ -257,9 +302,140 @@ test.afterAll(async () => {
 test.describe('canonical P-4 through the real compiled worker', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('reconciles every baseline parameter and seals the golden Inconclusive Result', async ({ page }) => {
-    test.setTimeout(240_000);
+  test('reconciles every baseline parameter and seals the golden Inconclusive Result', async ({ page }, testInfo: TestInfo) => {
+    test.setTimeout(300_000);
     const runId = await startRun(page);
+    let pauseCommandId: string | null = null;
+    try {
+      // The preload pauses the first model read only after the worker has completed the
+      // real page navigation and committed its screenshot. While that response is held,
+      // the Run remains ACTIVE and the browser can exercise the protected frame route
+      // against the actual registered bytes. The release is unconditional so a failed
+      // assertion cannot strand the worker before the terminal journey below.
+      await waitForReadAttributeBarrier();
+      await expect.poll(async () => String((await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state), { timeout: 15_000 }).toBe('RUNNING');
+      await expect.poll(async () => (await latestRegisteredScreenshot(runId)) !== null, { timeout: 15_000 }).toBe(true);
+      const registered = await latestRegisteredScreenshot(runId);
+      if (registered === null) throw new Error('The active ProdConsole Run did not register its screenshot before the read barrier.');
+      const stored = storage.objects.get(registered.object_key);
+      expect(stored).toBeDefined();
+      expect(sha256HexOfBytes(stored!)).toBe(registered.digest);
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`/runs/${runId}/workspace`);
+      await expect(page.getByRole('heading', { name: 'Agent workspace', exact: true })).toBeVisible();
+      const frame = page.locator('.ls-session__frame');
+      await expect(frame).toBeVisible();
+      await expect.poll(
+        () => frame.evaluate((node) => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth),
+        { timeout: 15_000 },
+      ).toBeGreaterThan(100);
+      const frameSource = await frame.getAttribute('src');
+      expect(frameSource).toBe(`/api/runs/${runId}/frames/${registered.evidence_id}`);
+      const response = await page.request.get(frameSource!);
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toBe('image/png');
+      expect(response.headers()['etag']).toBe(`"${registered.digest}"`);
+      const protectedBytes = await response.body();
+      expect(sha256HexOfBytes(protectedBytes)).toBe(registered.digest);
+      expect(protectedBytes.byteLength).toBe(registered.size);
+      const grants = await sql`SELECT status,locator,capability_digest FROM evidence_read_grant
+        WHERE run_id=${runId} AND evidence_id=${registered.evidence_id}`;
+      expect(grants).toEqual(expect.arrayContaining([
+        { status: 'issued', locator: 'frame', capability_digest: registered.digest },
+      ]));
+      await page.getByRole('button', { name: 'Native size', exact: true }).click();
+      await expect.poll(() => frame.evaluate(node => Math.abs(node.clientWidth - (node as HTMLImageElement).naturalWidth))).toBeLessThanOrEqual(2);
+      const captureViewport = page.getByRole('region', { name: 'Protected capture image', exact: true });
+      expect(await captureViewport.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+      await captureViewport.focus();
+      await captureViewport.press('ArrowRight');
+      await expect.poll(() => captureViewport.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+      await expect(frame).toHaveAttribute('src', frameSource!);
+      const nativePath = testInfo.outputPath('native-workspace-1440x900.png');
+      await page.screenshot({ path: nativePath, fullPage: false, caret: 'initial' });
+      await testInfo.attach('native-workspace-1440x900', { path: nativePath, contentType: 'image/png' });
+      await page.getByRole('button', { name: 'Fit capture', exact: true }).click();
+      await expect.poll(() => frame.evaluate(node => node.getBoundingClientRect().width <= node.closest('.workspace-capture-view__viewport')!.clientWidth)).toBe(true);
+      const screenshotPath = testInfo.outputPath('active-workspace-1440x900.png');
+      await page.screenshot({ path: screenshotPath, fullPage: false, caret: 'initial' });
+      await testInfo.attach('active-workspace-1440x900', { path: screenshotPath, contentType: 'image/png' });
+
+      // Route the exact safety phrase through the real workspace composer while the
+      // compiled worker is still held at its model boundary. The command ledger and
+      // pause marker are inspected from PostgreSQL; no test-side event or state is made.
+      const composer = page.getByLabel('Message the Run', { exact: true });
+      await expect(composer).toBeEnabled();
+      await composer.fill('pause now');
+      await page.getByRole('button', { name: 'Send message', exact: true }).click();
+      await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+      const [command] = await sql<{ command_id: string; message_id: string; kind: string }[]>`
+        SELECT command_id::text,message_id::text,kind FROM run_interaction_command
+        WHERE run_id=${runId}::uuid AND kind='pause-now' ORDER BY created_at DESC LIMIT 1`;
+      expect(command).toBeDefined();
+      expect(command).toMatchObject({ kind: 'pause-now' });
+      if (command === undefined) throw new Error('The pause command receipt was not persisted.');
+      pauseCommandId = command.command_id;
+      const commandTransitions = await sql<{ state: string; source_event_id: string | null }[]>`
+        SELECT state,source_event_id::text FROM run_interaction_transition
+        WHERE command_id=${pauseCommandId}::uuid ORDER BY sequence`;
+      expect(commandTransitions.map((row) => row.state)).toEqual(['received', 'interpreted', 'queued']);
+      const [queued] = commandTransitions.slice(-1);
+      expect(queued?.source_event_id).toMatch(/^[0-9a-f-]{36}$/u);
+      const [requestedEvent] = await sql<{ event_type: string; source: string; outcome: string; actor_type: string; command_id: string | null }[]>`
+        SELECT event_type,source,outcome,actor_type,payload->>'commandId' AS command_id
+        FROM audit_events WHERE event_id=${queued!.source_event_id!}::uuid`;
+      expect(requestedEvent).toMatchObject({
+        event_type: 'lifecycle.run-pause-requested', source: 'web', outcome: 'success', actor_type: 'human', command_id: pauseCommandId,
+      });
+      const [pauseRequested] = await sql<{ state: string; pause_requested_command_id: string | null }[]>`
+        SELECT state,pause_requested_command_id::text FROM audit_run WHERE run_id=${runId}::uuid`;
+      expect(pauseRequested).toMatchObject({ state: 'RUNNING', pause_requested_command_id: pauseCommandId });
+    } finally {
+      releaseReadAttributeBarrier?.();
+    }
+
+    // The real worker observes the durable marker at its response boundary and performs
+    // the PAUSED transition in its own transaction. Wait for that applied receipt before
+    // reloading the workspace and exercising the existing direct Resume control.
+    if (pauseCommandId === null) throw new Error('The pause command ID was not available after the active workspace proof.');
+    await expect.poll(async () => String((await sql`SELECT state FROM audit_run WHERE run_id=${runId}::uuid`)[0]?.state), { timeout: 60_000 }).toBe('PAUSED');
+    const [applied] = await sql<{ source_event_id: string | null }[]>`
+      SELECT source_event_id::text FROM run_interaction_transition
+      WHERE command_id=${pauseCommandId}::uuid AND state='applied' ORDER BY sequence DESC LIMIT 1`;
+    expect(applied?.source_event_id).toMatch(/^[0-9a-f-]{36}$/u);
+    const [pausedEvent] = await sql<{ event_id: string; event_type: string; source: string; command_id: string | null }[]>`
+      SELECT event_id::text,event_type,source,payload->>'commandId' AS command_id
+      FROM audit_events WHERE event_id=${applied!.source_event_id}::uuid`;
+    expect(pausedEvent).toMatchObject({ event_type: 'lifecycle.run-paused', source: 'worker', command_id: pauseCommandId });
+    const [pausedRun] = await sql<{ state: string; pause_requested_command_id: string | null }[]>`
+      SELECT state,pause_requested_command_id::text FROM audit_run WHERE run_id=${runId}::uuid`;
+    expect(pausedRun).toMatchObject({ state: 'PAUSED', pause_requested_command_id: null });
+
+    await page.reload();
+    const pausedConversation = page.getByRole('region', { name: 'Run conversation', exact: true });
+    const appliedReceipt = pausedConversation.locator('article').filter({ hasText: 'Pause request: applied.' }).last();
+    await expect(appliedReceipt).toBeVisible();
+    await appliedReceipt.getByText('Technical details', { exact: true }).click();
+    await expect(appliedReceipt).toContainText(applied!.source_event_id!);
+    await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await expect(page.getByText('Run resumed.', { exact: true })).toBeVisible({ timeout: 30_000 });
+    const [resumedEvent] = await sql<{ event_id: string; event_type: string; source: string; outcome: string; actor_type: string }[]>`
+      SELECT event_id::text,event_type,source,outcome,actor_type FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed' ORDER BY sequence DESC LIMIT 1`;
+    expect(resumedEvent).toMatchObject({
+      event_type: 'lifecycle.run-resumed', source: 'web', outcome: 'success', actor_type: 'human',
+    });
+    // A fast worker may already have sealed the Run by the time the action response is
+    // observed. The durable resume event proves the PAUSED -> RUNNING handoff; accept
+    // either that transient state or the terminal state it legitimately reaches next.
+    await expect.poll(async () => {
+      const [row] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}::uuid`;
+      return ['RUNNING', 'COMPLETED', 'INCONCLUSIVE', 'RUN_FAILED', 'CANCELED'].includes(String(row?.state));
+    }, { timeout: 30_000 }).toBe(true);
+
     await expect.poll(async () => {
       if (workerFailure) throw new Error(workerFailure);
       const [row] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
@@ -335,7 +511,10 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     expect(actions.filter(row => row.outcome === 'performed').map(row => row.action)).toContain('navigate');
     expect(actions.every(row => row.method === 'GET')).toBe(true);
     expect(actions.every(row => String(row.destination).startsWith(`${NORTHSTAR_BASE_URL}/prodconsole`))).toBe(true);
-    const turns = await sql<{ status: string; snapshot_evidence_id: string; response: AgentModelResponse }[]>`SELECT status,snapshot_evidence_id,response FROM run_agent_turn WHERE run_id=${runId} ORDER BY sequence`;
+    const turns = await sql<{ status: string; step_execution_id: string; execution_state: string; snapshot_evidence_id: string; response: AgentModelResponse }[]>`
+      SELECT t.status,t.step_execution_id::text,e.state AS execution_state,t.snapshot_evidence_id,t.response
+      FROM run_agent_turn t JOIN run_step_execution e ON e.step_execution_id=t.step_execution_id
+      WHERE t.run_id=${runId} ORDER BY t.sequence`;
     expect(turns.length).toBeGreaterThan(0);
     expect(turns.every(row => row.status === 'COMPLETED')).toBe(true);
     expect(workerMarkers.some(marker => marker.includes('"snapshotTimeToolPresent":true'))).toBe(true);
@@ -367,7 +546,9 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     const plan = frozenVersion!.compiled_plan;
     const target = plan.inputs.targets.find(row => row.registrationId === targetId);
     expect(target).toBeDefined();
-    const readTurns = turns.filter(turn => turn.response.actions.some(action => action.action === 'read-attribute' || action.action === 'read-metadata'));
+    const allReadTurns = turns.filter(turn => turn.response.actions.some(action => action.action === 'read-attribute' || action.action === 'read-metadata'));
+    expect(allReadTurns.filter(turn => turn.execution_state === 'SUPERSEDED')).toHaveLength(1);
+    const readTurns = allReadTurns.filter(turn => turn.execution_state === 'SUCCEEDED');
     expect(readTurns).toHaveLength(1);
     const readTurn = readTurns[0]!;
     expect(readTurn.snapshot_evidence_id).toBe(items[0]?.evidence_id);
@@ -418,15 +599,69 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     const [result] = await sql`SELECT outcome,outcome_row,gate_passed,sealed,version FROM run_result WHERE run_id=${runId}`;
     expect(result).toMatchObject({ outcome, outcome_row: 'gate-failed', gate_passed: false, sealed: true, version: 1 });
     expect(await sql`SELECT state,run_state FROM run_evidence_package WHERE run_id=${runId}`).toMatchObject([{ state: 'SEALED', run_state: 'INCONCLUSIVE' }]);
-    await page.reload();
+    await page.goto(`/runs/${runId}`);
     await expect(page.getByText('Inconclusive', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Safe next action', exact: true })).toBeVisible();
     await scan(page);
     await page.getByRole('link', { name: 'Evidence', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Records and findings', exact: true })).toBeVisible();
+    // Review one actual worker observation through the record inspector before opening
+    // technical artifacts. Its source ordinal comes from the frozen population, not a
+    // nearby screenshot or synthetic observation inserted by the test.
+    const capturedRecord = observations.find(row => row.found === 'true'
+      && evaluations.some(value => value.population_record_key === row.population_record_key && value.value === 'COMPLIANT'));
+    expect(capturedRecord).toBeDefined();
+    const [capturedSource] = await sql<{ ordinal: number }[]>`SELECT ordinal FROM population_row
+      WHERE run_id=${runId} AND disposition='included' AND values->>'parameter'=${capturedRecord!.population_record_key}
+      ORDER BY ordinal LIMIT 1`;
+    expect(capturedSource).toBeDefined();
+    await page.goto(`/runs/${runId}/evidence?selected=${capturedSource!.ordinal}`);
+    const recordInspector = page.getByRole('region', { name: 'Record inspector', exact: true });
+    await expect(recordInspector.getByRole('heading', { name: capturedRecord!.population_record_key, exact: true })).toBeVisible();
+    await expect(recordInspector.locator('.record-review__captured-target')).not.toContainText('No selected Observation');
+    const observedValue = capturedRecord!.attributes.find(attribute => attribute.name === 'observed_value');
+    expect(observedValue).toBeDefined();
+    await expect(recordInspector.locator('.record-review__captured-target')).toContainText(`observed value: ${String(observedValue!.originalValue)}`);
+    await expect(recordInspector.getByRole('link', { name: 'Open recorded page data', exact: true }).first()).toBeVisible();
+    await recordInspector.scrollIntoViewIfNeeded();
+    const inspectorPath = testInfo.outputPath('worker-record-inspector-1440x900.png');
+    await page.screenshot({ path: inspectorPath, fullPage: false, caret: 'initial' });
+    await testInfo.attach('worker-record-inspector-1440x900', { path: inspectorPath, contentType: 'image/png' });
+    await scan(page);
+    // The ordinary route now starts with source records. The historical per-observation
+    // anchors remain independently authorized under Technical details.
+    await page.goto(`/runs/${runId}/evidence/technical`);
     for (const observation of observations) {
       await expect(page.locator(`#observation-${observation.observation_id}`).getByText(observation.population_record_key, { exact: true }).first()).toBeVisible();
     }
     await expect(page.locator('.ls-untrusted script')).toHaveCount(0);
     await scan(page);
+
+    // P2 composition proof uses a capture produced by the compiled worker's actual
+    // local browser, not seeded screenshot metadata or a one-pixel stand-in. The
+    // protected route must obtain its worker grant, verify bytes and decode on screen.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/runs/${runId}/workspace`);
+    await expect(page.getByRole('heading', { name: 'Last workspace capture', exact: true })).toBeVisible();
+    const conversation = page.getByRole('region', { name: 'Run conversation', exact: true });
+    await expect(conversation.getByText('A protected capture was registered for the current inspection.', { exact: true }).first()).toBeVisible();
+    await expect(conversation.getByText('The Run ended and its result was sealed.', { exact: true })).toBeVisible();
+    const frame = page.locator('.ls-session__frame');
+    await expect(frame).toBeVisible();
+    await expect.poll(() => frame.evaluate(node => (node as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(100);
+    const source = await frame.getAttribute('src');
+    expect(source).toMatch(new RegExp(`^/api/runs/${runId}/frames/`));
+    const response = await page.request.get(source!);
+    expect(response.ok()).toBe(true);
+    const bytes = await response.body();
+    const evidenceId = source!.split('/').at(-1)!;
+    const registered = artifacts.find(artifact => artifact.evidence_id === evidenceId);
+    expect(registered?.kind).toBe('screenshot');
+    expect(sha256HexOfBytes(bytes)).toBe(registered?.digest);
+    await expect(page.getByText('Action-linked captures', { exact: false })).toBeVisible();
+    await scan(page);
+    await page.screenshot({ path: 'test-results/auditor-workspace-worker-capture-1440.png', fullPage: true, caret: 'initial' });
+    await page.reload();
+    await expect.poll(() => page.locator('.ls-session__frame').evaluate(node => (node as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(100);
   });
 });

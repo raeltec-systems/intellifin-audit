@@ -211,7 +211,12 @@ function resultRows(result: unknown): readonly RawRow[] {
 
 /** Shared persistence for all wait producers and the answer/timeout commands. */
 export class PostgresWaitRepository implements WaitRepository {
-  constructor(private readonly db: Database) {}
+  /**
+   * A Database starts the wait unit of work; a Transaction creates a nested savepoint so
+   * the caller can compose pause/resume with its authoritative state change. Both handles
+   * expose the same Drizzle transaction surface, which keeps the connection choice typed.
+   */
+  constructor(private readonly db: Database | Transaction) {}
 
   async transaction<T>(runId: string, work: (context: WaitContext) => Promise<T>): Promise<T> {
     if (!isUuidText(runId)) throw new Error('Invalid Run identity');
@@ -303,7 +308,8 @@ export class PostgresWaitRepository implements WaitRepository {
            * then reports.
            */
           async requestPause(request) {
-            await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId} WHERE run_id = ${runId} AND pause_requested_at IS NULL`);
+            const inserted = await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId}, pause_requested_command_id = ${request.commandId ?? null}::uuid WHERE run_id = ${runId} AND pause_requested_at IS NULL RETURNING run_id`);
+            if (resultRows(inserted).length !== 1) throw new Error('Pause marker was not recorded');
             const current = currentRun;
             if (current) currentRun = { ...current, pauseRequest: request };
           },

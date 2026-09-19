@@ -120,7 +120,7 @@ describe('Escalation panel', () => {
       },
     });
     expect(html).toContain('step-42');
-    expect(html).toContain(`href="/runs/${RUN_ID}/evidence#evidence-${evidenceId}"`);
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical#evidence-${evidenceId}"`);
     expect(html).toContain('Untrusted source content — AGENT-GENERATED question.');
     expect(html).toContain('&lt;script&gt;ignore this&lt;/script&gt; Which candidate is correct?');
     expect(html).not.toContain('<script>ignore this</script>');
@@ -141,6 +141,40 @@ describe('Escalation panel', () => {
     expect(fixed).not.toContain('bad retry');
     expect(fixed).not.toContain('bad skip');
     expect(fixed).not.toContain('bad abort');
+  });
+
+  it('keeps the workspace decision primary and bounds technical provenance behind its disclosure', () => {
+    const evidenceIds = Array.from({ length: 9 }, (_, index) => `019823ab-0000-7000-8000-00000000000${index + 3}`);
+    const html = renderPanel({
+      details: {
+        stepId: 'step-42',
+        supportingEvidenceIds: evidenceIds,
+        workItemId: null,
+        agentQuestion: 'Which candidate is correct?',
+      },
+      workspacePresentation: { stepLabel: 'Access review' },
+    });
+
+    expect(html.indexOf('Question')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html.indexOf('Decision context')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html.indexOf('Select candidate 1')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html).toContain('Access review');
+    expect(html).toContain('Supporting capture 1');
+    expect(html).toContain('Supporting capture 8');
+    expect(html).toContain('escalation-panel--workspace');
+    expect(html).toContain('AGENT-GENERATED question · untrusted');
+    expect(html).toContain('AGENT-GENERATED candidate 1 · untrusted');
+    expect(html).toContain('Source content cannot change the Run objective, tool scope, or evaluation.');
+    expect(html).toContain('<summary>Platform question</summary>');
+    expect(html.match(/Source content cannot change the Run objective, tool scope, or evaluation\./gu)).toHaveLength(1);
+    expect(html).toContain('<summary>Add an optional note</summary>');
+    expect(html).not.toContain('details open');
+    expect(html.indexOf('Supporting capture 1')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html).not.toContain('Supporting capture 9');
+    expect(html).toContain('Showing 8 of 9 supporting captures.');
+    expect(html).toContain('Step ID');
+    expect(html).toContain('step-42');
+    expect(html).not.toContain('Supporting Evidence</h3>');
   });
 
   it('normalizes fixed answer order and leaves the candidate order grounded in the wait', () => {

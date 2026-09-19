@@ -147,7 +147,7 @@ test.describe('stored snapshot inspection through the actual worker', () => {
     const row = await fixture();
     const browserRequests: string[] = [];
     page.on('request', request => { browserRequests.push(request.url()); });
-    await page.goto(`/runs/${row.runId}/evidence`);
+    await page.goto(`/runs/${row.runId}/evidence/technical`);
     await expect(page.getByRole('heading', { name: 'Match provenance' })).toBeVisible();
     const link = page.locator(`a[href="${path(row)}"]`);
     await expect(link).toBeVisible();
@@ -174,7 +174,7 @@ test.describe('stored snapshot inspection through the actual worker', () => {
 
   test('shows both actual search keys and opens the entire linked empty-result snapshot without inventing a row locator', async ({ page }) => {
     const row = await fixture(true);
-    await page.goto(`/runs/${row.runId}/evidence`);
+    await page.goto(`/runs/${row.runId}/evidence/technical`);
     const proof = page.getByRole('region', { name: 'Absence proof', exact: true });
     await expect(proof).toBeVisible();
     await expect(proof.getByText('Values actually searched', { exact: true })).toBeVisible();

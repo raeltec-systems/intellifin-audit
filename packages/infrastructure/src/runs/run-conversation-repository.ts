@@ -1,0 +1,750 @@
+import { createHash } from 'node:crypto';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+
+import {
+  RUN_CONVERSATION_MAX_TEXT_BYTES,
+  RUN_CONVERSATION_MAX_TEXT_CHARS,
+  RUN_CONVERSATION_MESSAGE_KINDS,
+  RUN_CONVERSATION_PAGE_SIZE,
+  RUN_CONVERSATION_SCHEMA_VERSION,
+  interpretRunConversationMessage,
+  detectRunConversationSecretPattern,
+  narrateRunConversationEvent,
+  parseRunConversationMessageRequest,
+  pauseRun,
+  type RunConversationAppendReceipt,
+  type RunConversationEvidenceLink,
+  type RunConversationIntentKind,
+  type RunConversationMessage,
+  type RunConversationMessageKind,
+  type RunConversationRead,
+  type RunConversationReadRequest,
+  type RunConversationRepository,
+  type RunConversationEventContext,
+} from '@intellifin/application';
+import { adapterLookupColumn, canonicalJson, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
+
+import type { Database, Transaction } from '../db/client.js';
+import {
+  auditRun,
+  auditEvents,
+  authUser,
+  populationRow,
+  runConversationContent,
+  runConversationMessage,
+  runInteractionCommand,
+  runInteractionTransition,
+  runEvidence,
+  runObservation,
+  runWait,
+  runWorkItem,
+} from '../db/schema.js';
+import { createAuditEventWriter, CryptoUuidV7Generator } from '../db/audit-events.js';
+import { isUuidText } from '../db/identifier.js';
+import { DrizzleRoleRepository } from '../identity/role-repository.js';
+import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
+import { ConversationContentCipher } from './conversation-content.js';
+import { recordReviewProjectionQuery } from './record-review-repository.js';
+import { PostgresWaitRepository } from './wait-repository.js';
+
+const MAX_CONVERSATION_MESSAGES = 10_000;
+const MAX_REQUESTS_PER_MINUTE = 20;
+const MAX_SOURCE_ORDINAL = 10_000;
+const MAX_LINKS = 16;
+export interface PostgresRunConversationAppendInput {
+  readonly actorId: string;
+  readonly sessionId: string;
+  readonly request: unknown;
+}
+
+interface StoredBody {
+  readonly schemaVersion: typeof RUN_CONVERSATION_SCHEMA_VERSION;
+  readonly text: string;
+  readonly links: readonly RunConversationEvidenceLink[];
+}
+
+interface ConversationRun {
+  readonly runId: string;
+  readonly correlationId: string;
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly versionNumber: number;
+  readonly procedureName: string;
+  readonly state: string;
+  readonly revision: number;
+}
+
+interface ProjectionRow extends Record<string, unknown> {
+  readonly ordinal: number;
+  readonly key: string | null;
+  readonly disposition: string;
+  readonly duplicate: boolean;
+  readonly target_id: string | null;
+  readonly target_name: string;
+  readonly observation_id: string | null;
+  readonly work_item_id: string | null;
+  readonly account: string | null;
+  readonly captured_status: string | null;
+  readonly found: string | null;
+  readonly inspected: boolean;
+  readonly exception: boolean;
+  readonly pending: number;
+  readonly evidence_problem: boolean;
+  readonly evaluation_count: number;
+  readonly unevaluated: boolean;
+}
+
+interface SelectedObservation {
+  readonly observationId: string;
+  readonly found: string;
+  readonly coverage: string;
+  readonly corroboration: string;
+}
+
+interface SelectedEvaluation {
+  readonly observationId: string;
+  readonly conditionId: string;
+  readonly value: string;
+  readonly confirmation: string | null;
+}
+
+interface ConversationFacts {
+  readonly workItems: number;
+  readonly selected: {
+    readonly sourceOrdinal: number;
+    readonly targets: readonly {
+      readonly targetId: string;
+      readonly targetName: string;
+      readonly observationId: string | null;
+      readonly found: string | null;
+      readonly inspected: boolean;
+      readonly account: string | null;
+      readonly capturedStatus: string | null;
+      readonly evaluationCount: number;
+      readonly pending: number;
+      readonly exception: boolean;
+      readonly unevaluated: boolean;
+    }[];
+    readonly observations: readonly SelectedObservation[];
+    readonly evaluations: readonly SelectedEvaluation[];
+    readonly conditions: readonly { readonly conditionId: string; readonly text: string }[];
+    readonly evidenceLinks: readonly RunConversationEvidenceLink[];
+  } | null;
+}
+
+interface RunConversationMessageRow {
+  readonly messageId: string;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly actorId: string;
+  readonly kind: string;
+  readonly createdAt: Date;
+  readonly parentMessageId: string | null;
+  readonly contextRevision: string | null;
+  readonly sourceOrdinal: number | null;
+  readonly replyToWaitId: string | null;
+  readonly actorName: string | null;
+  readonly ciphertext: string | null;
+  readonly removedAt: Date | null;
+  readonly sourceEvent: typeof auditEvents.$inferSelect | null;
+}
+
+function validClock(now: Date): Date {
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('Conversation clock unavailable');
+  return new Date(now.getTime());
+}
+
+function validActor(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 255 && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function utf8Bytes(value: string): number {
+  let length = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    length += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+  }
+  return length;
+}
+
+function validText(value: string): boolean {
+  return value.trim().length > 0 && Array.from(value).length <= RUN_CONVERSATION_MAX_TEXT_CHARS && utf8Bytes(value) <= RUN_CONVERSATION_MAX_TEXT_BYTES;
+}
+
+function boundedText(value: string): string {
+  const characters = Array.from(value.replace(/[\u0000-\u001f\u007f]/gu, ' '));
+  while (characters.length > RUN_CONVERSATION_MAX_TEXT_CHARS || utf8Bytes(characters.join('')) > RUN_CONVERSATION_MAX_TEXT_BYTES) characters.pop();
+  const result = characters.join('').trim();
+  return result === '' ? 'No platform text was recorded.' : result;
+}
+
+function plainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  return Object.keys(value).length === expected.length && expected.every((key) => Object.hasOwn(value, key));
+}
+
+function safeLocator(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && value.length <= 255 && !/[\u0000-\u001f\u007f]/u.test(value));
+}
+
+function storedBody(value: string): StoredBody | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+  if (!plainObject(parsed) || !exactKeys(parsed, ['schemaVersion', 'text', 'links']) || parsed.schemaVersion !== RUN_CONVERSATION_SCHEMA_VERSION || typeof parsed.text !== 'string' || !validText(parsed.text) || !Array.isArray(parsed.links) || parsed.links.length > MAX_LINKS) return null;
+  const links: RunConversationEvidenceLink[] = [];
+  for (const item of parsed.links) {
+    if (!plainObject(item) || !exactKeys(item, ['evidenceId', 'locator']) || typeof item.evidenceId !== 'string' || !isUuidText(item.evidenceId) || !safeLocator(item.locator)) return null;
+    links.push({ evidenceId: item.evidenceId.toLowerCase(), locator: item.locator });
+  }
+  return { schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION, text: parsed.text, links };
+}
+
+function bodyEnvelope(text: string, links: readonly RunConversationEvidenceLink[], platformText = true): string {
+  // Auditor text has already passed the application parser's Unicode/size bounds and is
+  // part of the semantic request. Preserve it byte-for-byte, including intentional
+  // newlines and tabs. Only generated platform narration is sanitized here.
+  const stored = platformText ? boundedText(text) : text;
+  return JSON.stringify({ schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION, text: stored, links: links.slice(0, MAX_LINKS) });
+}
+
+function safeFact(value: string, max = 300): string {
+  // An additional conservative refusal for generated facts, not a privacy proof.
+  // Test the complete value before truncation can remove a credential's label.
+  if (detectRunConversationSecretPattern(value) !== null) return '[sensitive value withheld]';
+  const clean = value.replace(/[\u0000-\u001f\u007f]/gu, ' ').trim();
+  return Array.from(clean).slice(0, max).join('');
+}
+
+function errorRead(runId: string, status: 'denied' | 'missing' | 'unavailable', code: 'not-authorized' | 'run-not-found' | 'content-unavailable'): RunConversationRead {
+  return { status, runId, messages: [], olderBefore: null, enabled: false, readAt: null, code };
+}
+
+function parseRun(row: typeof auditRun.$inferSelect): ConversationRun {
+  return {
+    runId: row.runId,
+    correlationId: row.correlationId,
+    procedureId: row.procedureId,
+    versionId: row.versionId,
+    versionNumber: row.versionNumber,
+    procedureName: row.procedureName,
+    state: row.state,
+    revision: row.revision,
+  };
+}
+
+function safeIntentKind(kind: RunConversationIntentKind): RunConversationIntentKind {
+  return kind;
+}
+
+function kindForRequest(_kind: RunConversationIntentKind): RunConversationMessageKind {
+  // Every human request is an auditor-message.  The database guard intentionally
+  // permits platform replies only when their parent has exactly this kind.
+  return 'auditor-message';
+}
+
+function replyText(run: ConversationRun, intent: RunConversationIntentKind, facts: ConversationFacts): string {
+  const base = `Run state: ${safeFact(run.state)}. Procedure: ${safeFact(run.procedureName)} (version ${run.versionNumber}). Recorded Work Items: ${facts.workItems}.`;
+  const selected = facts.selected;
+  const selectedText = selected === null
+    ? ''
+    : ` Selected source record: ${selected.targets.length} frozen target(s), ${selected.observations.length} effective observation(s), ${selected.evidenceLinks.length} registered Evidence reference(s). Targets: ${selected.targets.map(target => {
+      const captured = [target.account, target.capturedStatus].filter((value): value is string => value !== null).map(value => safeFact(value, 100)).join(', ');
+      return `${safeFact(target.targetName, 120)}=${target.found ?? 'not-recorded'}${target.inspected ? ', inspected' : ', not-inspected'}${captured ? `, captured ${captured}` : ''}${target.evaluationCount > 0 ? `, ${target.evaluationCount} effective evaluation(s)` : ''}${target.pending > 0 ? `, ${target.pending} pending` : ''}${target.exception ? ', exception' : ''}${target.unevaluated ? ', unevaluated' : ''}`;
+    }).join('; ') || 'none'}. Frozen conditions: ${selected.conditions.map(condition => safeFact(condition.text, 180)).join('; ') || 'none'}. Effective evaluations: ${selected.evaluations.map(evaluation => `${safeFact(evaluation.value, 40)}${evaluation.confirmation ? ` (${safeFact(evaluation.confirmation, 40)})` : ''}`).join(', ') || 'none'}.`;
+
+  switch (intent) {
+    case 'question':
+      return `Read-only recorded facts. ${base}${selectedText}`;
+    case 'annotation':
+      return 'Annotation recorded in the Run conversation. No Run command was executed.';
+    case 'pause-now':
+      return `Pause outcome is not yet recorded. ${base}${selectedText}`;
+    case 'resume':
+      return `Use the Resume control to review and confirm restarting the paused inspection. ${base}${selectedText}`;
+    case 'stop-confirmation':
+      return `Use the Stop control to review and confirm stopping this Run. ${base}${selectedText}`;
+    case 'deferred-pause-proposal':
+      return `Pausing after the selected record is not available yet. No pause was requested. Pause now requests the next safe worker boundary. ${base}${selectedText}`;
+    case 'answer-request-proposal':
+      return `This conversation does not answer waits. Use the existing Escalation answer control. ${base}${selectedText}`;
+    case 'strategy-proposal':
+      return `The frozen plan does not declare selectable lookup strategies. No strategy was changed. ${base}${selectedText}`;
+    case 'flag-proposal':
+      return `Flag proposals are recorded as conversation text and do not apply a Run flag. Use the existing Flag control. ${base}${selectedText}`;
+    case 'amendment':
+      return `Amendments cannot change this frozen Run. Use the existing Procedure controls for a future version. ${base}${selectedText}`;
+    case 'refusal':
+      return `The requested action was not applied. ${base}${selectedText}`;
+    case 'clarification':
+      return `Please clarify within the bounded Run conversation. No Run command was executed. ${base}${selectedText}`;
+  }
+}
+
+/**
+ * PostgreSQL-backed Run conversation metadata and governed content.  The cipher is an
+ * injected local boundary: this class never reads a key, calls a provider, or emits a
+ * capability.  When it is absent the surface is disabled and no plaintext is persisted.
+ */
+export class PostgresRunConversationRepository implements RunConversationRepository {
+  constructor(
+    private readonly db: Database,
+    private readonly cipher: ConversationContentCipher | null,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async read(input: RunConversationReadRequest): Promise<RunConversationRead> {
+    if (!isUuidText(input.runId)) return errorRead(input.runId, 'missing', 'run-not-found');
+    if (!validActor(input.actorId)) return errorRead(input.runId, 'denied', 'not-authorized');
+    if (input.beforeSequence !== undefined && input.beforeSequence !== null && (!Number.isSafeInteger(input.beforeSequence) || input.beforeSequence <= 0)) {
+      return errorRead(input.runId, 'unavailable', 'content-unavailable');
+    }
+
+    return this.db.transaction(async (tx) => {
+      const role = await new DrizzleRoleRepository(tx).findRole(input.actorId);
+      if (!authorizeActionRole(role, 'run.initiate').allowed) return errorRead(input.runId, 'denied', 'not-authorized');
+      const [run] = await tx.select().from(auditRun).where(eq(auditRun.runId, input.runId)).limit(1);
+      if (!run) return errorRead(input.runId, 'missing', 'run-not-found');
+      const cipher = this.cipher;
+      if (cipher === null) return errorRead(input.runId, 'unavailable', 'content-unavailable');
+
+      const before = input.beforeSequence ?? null;
+      const rows = await tx
+        .select({
+          messageId: runConversationMessage.messageId,
+          runId: runConversationMessage.runId,
+          sequence: runConversationMessage.sequence,
+          actorId: runConversationMessage.actorId,
+          kind: runConversationMessage.kind,
+          createdAt: runConversationMessage.createdAt,
+          parentMessageId: runConversationMessage.parentMessageId,
+          contextRevision: runConversationMessage.contextRevision,
+          sourceOrdinal: runConversationMessage.sourceOrdinal,
+          replyToWaitId: runConversationMessage.replyToWaitId,
+          actorName: authUser.name,
+          ciphertext: runConversationContent.ciphertext,
+          removedAt: runConversationContent.removedAt,
+          sourceEvent: auditEvents,
+        })
+        .from(runConversationMessage)
+        .leftJoin(runConversationContent, eq(runConversationContent.messageId, runConversationMessage.messageId))
+        .leftJoin(authUser, eq(authUser.id, runConversationMessage.actorId))
+        .leftJoin(auditEvents, and(eq(auditEvents.eventId, runConversationMessage.messageId), sql`${auditEvents.aggregateId} = ${runConversationMessage.runId}::text`, eq(auditEvents.sequence, runConversationMessage.sourceEventSequence)))
+        .where(and(eq(runConversationMessage.runId, input.runId), before === null ? sql`true` : lt(runConversationMessage.sequence, before)))
+        .orderBy(desc(runConversationMessage.sequence))
+        .limit(51) as unknown as readonly RunConversationMessageRow[];
+
+      const page = rows.slice(0, RUN_CONVERSATION_PAGE_SIZE);
+      const olderBefore = rows.length > RUN_CONVERSATION_PAGE_SIZE ? page[page.length - 1]?.sequence ?? null : null;
+      const eventContext = await this.eventContext(tx, run, page);
+      const receiptParents = page.filter(row => row.kind === 'command-receipt' && row.parentMessageId !== null).map(row => row.parentMessageId!);
+      const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
+        message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
+        at: string; source_event_id: string | null; event_valid: boolean;
+      }>(sql`SELECT c.message_id::text,c.command_id::text,t.state,
+        to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text,
+        (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
+          AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at
+          AND ((t.state='queued' AND e.event_type='lifecycle.run-pause-requested' AND e.source='web' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
+            OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
+            OR (t.state='superseded' AND e.event_type='lifecycle.pause-superseded' AND e.source='worker' AND e.outcome='failure' AND e.actor_type='system' AND e.actor_id='result-sealer' AND e.payload->>'requestedBy'=c.actor_id)),false)) AS event_valid
+        FROM run_interaction_command c
+        JOIN LATERAL (SELECT state,created_at,source_event_id FROM run_interaction_transition
+          WHERE command_id=c.command_id ORDER BY sequence DESC LIMIT 1) t ON true
+        LEFT JOIN audit_events e ON e.event_id=t.source_event_id
+        WHERE c.run_id=${run.runId}::uuid AND c.kind='pause-now'
+          AND c.message_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(receiptParents)}::jsonb)::uuid)`);
+      // Never present an applied receipt whose authoritative source fact is missing or changed.
+      if (receipts.some(receipt => !receipt.event_valid)) return errorRead(input.runId, 'unavailable', 'content-unavailable');
+      const receiptFor = new Map(receipts.map(receipt => [receipt.message_id, receipt]));
+      const messages: RunConversationMessage[] = [];
+      for (const row of [...page].reverse()) {
+        const platform = row.parentMessageId !== null || row.kind === 'platform-event';
+        let body: string | null = null;
+        let links: readonly RunConversationEvidenceLink[] = [];
+        let contentState: RunConversationMessage['contentState'] = 'unavailable';
+        const source = row.sourceEvent;
+        const receipt = row.parentMessageId === null ? undefined : receiptFor.get(row.parentMessageId);
+        const narration = source === null ? null : narrateRunConversationEvent({
+          eventId: source.eventId,
+          actor: { type: source.actorType, id: source.actorId },
+          eventType: source.eventType,
+          occurredAt: source.occurredAt.toISOString(),
+          source: source.source,
+          outcome: source.outcome,
+          sessionId: source.sessionId,
+          correlationId: source.correlationId,
+          aggregateId: source.aggregateId,
+          sequence: source.sequence,
+          payload: source.payload,
+          previousHash: source.previousHash,
+          eventHash: source.eventHash,
+        } as AuditEventRecord, eventContext);
+        if (narration !== null) {
+          body = narration.text;
+          links = narration.evidenceRefs;
+          contentState = 'available';
+        } else if (row.removedAt !== null) {
+          contentState = 'removed';
+        } else if (row.ciphertext !== null) {
+          try {
+            const opened = storedBody(cipher.open(row.runId, row.messageId, row.ciphertext));
+            if (opened !== null) {
+              body = opened.text;
+              links = opened.links;
+              contentState = 'available';
+            }
+          } catch {
+            // The DTO carries an unavailable tombstone. Ciphertext/key details never cross
+            // the application boundary or enter a log.
+          }
+        }
+        messages.push({
+          schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
+          messageId: row.messageId,
+          runId: row.runId,
+          sequence: row.sequence,
+          actorId: narration !== null && source?.actorType === 'human' ? row.actorId : platform ? null : row.actorId,
+          actorName: narration !== null && source?.actorType === 'human' ? (row.actorName?.trim() || 'Unknown actor') : platform ? 'Platform' : (row.actorName?.trim() || 'Unknown actor'),
+          source: narration !== null && source?.source === 'worker' ? 'worker' : platform ? 'platform' : 'auditor',
+          kind: RUN_CONVERSATION_MESSAGE_KINDS.includes(row.kind as RunConversationMessageKind) ? row.kind as RunConversationMessageKind : 'security-notice',
+          body,
+          contentState,
+          sourceOrdinal: narration?.sourceOrdinal ?? row.sourceOrdinal,
+          createdAt: row.createdAt.toISOString(),
+          contextRevision: row.contextRevision,
+          links,
+          ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: 'pause-now' as const,
+            state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id } }),
+        });
+      }
+      return {
+        status: 'ready' as const,
+        runId: input.runId,
+        messages,
+        olderBefore,
+        enabled: true as const,
+        readAt: validClock(this.now()).toISOString(),
+      };
+    }, { isolationLevel: 'repeatable read' });
+  }
+
+  private async eventContext(tx: Transaction, run: typeof auditRun.$inferSelect, page: readonly RunConversationMessageRow[]): Promise<RunConversationEventContext> {
+    const workIds = new Set<string>();
+    const toolIds = new Set<string>();
+    const evidenceIds = new Set<string>();
+    for (const row of page) {
+      const payload = row.sourceEvent?.payload;
+      if (!payload) continue;
+      if (typeof payload.workItemId === 'string' && isUuidText(payload.workItemId)) workIds.add(payload.workItemId.toLowerCase());
+      if (typeof payload.toolActionId === 'string' && isUuidText(payload.toolActionId)) toolIds.add(payload.toolActionId.toLowerCase());
+      if (Array.isArray(payload.supportingEvidenceIds) && payload.supportingEvidenceIds.length <= MAX_LINKS) {
+        for (const id of payload.supportingEvidenceIds) if (typeof id === 'string' && isUuidText(id)) evidenceIds.add(id.toLowerCase());
+      }
+    }
+    if (workIds.size === 0 && toolIds.size === 0 && evidenceIds.size === 0) return {};
+    const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
+    if (!plan) return {};
+    const key = adapterLookupColumn(plan.inputs.templateId);
+    if (!key) return {};
+    const targets = classifyPlanTargets(plan);
+    // Only a subject-bound work item can name one record. A table-wide P4 inspection
+    // or an adapter batch is not silently attributed to the currently selected row.
+    const subjectTargets = targets.agents.filter(target => plan.inputs.templateId !== 'P-4')
+      .map(target => ({ id: target.target.registrationId, step: target.stepId }));
+    if (subjectTargets.length === 0) return {};
+    const related = await tx.execute<{ work_item_id: string; tool_action_id: string | null; evidence_id: string | null; ordinal: number }>(sql`
+      WITH targets AS (SELECT value->>'id' AS id,value->>'step' AS step
+        FROM jsonb_array_elements(${JSON.stringify(subjectTargets)}::jsonb)),
+      evidence AS (SELECT c.evidence_id,c.tool_action_id FROM run_evidence_capture c
+        WHERE c.run_id=${run.runId}::uuid
+          AND c.evidence_id IN (SELECT jsonb_array_elements_text(${JSON.stringify([...evidenceIds])}::jsonb)::uuid))
+      SELECT w.work_item_id::text,a.tool_action_id::text,e.evidence_id::text,min(p.ordinal)::int AS ordinal
+      FROM run_work_item w
+      JOIN targets t ON t.id=w.registration_id AND t.step=w.step_id
+      JOIN population_row p ON p.run_id=w.run_id AND p.disposition='included'
+        AND jsonb_typeof(p.values->${key})='string' AND p.values->>${key}=w.subject_key
+      LEFT JOIN run_tool_action a ON a.run_id=w.run_id AND a.work_item_id=w.work_item_id
+        AND a.target_system=w.registration_id
+        AND (a.tool_action_id IN (SELECT jsonb_array_elements_text(${JSON.stringify([...toolIds])}::jsonb)::uuid)
+          OR a.tool_action_id IN (SELECT tool_action_id FROM evidence))
+      LEFT JOIN evidence e ON e.tool_action_id=a.tool_action_id
+      WHERE w.run_id=${run.runId}::uuid AND length(w.subject_key)>0
+        AND (w.work_item_id IN (SELECT jsonb_array_elements_text(${JSON.stringify([...workIds])}::jsonb)::uuid) OR a.tool_action_id IS NOT NULL)
+      GROUP BY w.work_item_id,a.tool_action_id,e.evidence_id HAVING count(DISTINCT p.ordinal)=1`);
+    const sourceOrdinalForWorkItemId = new Map<string, number>();
+    const sourceOrdinalForToolActionId = new Map<string, number>();
+    const sourceOrdinalForEvidenceId = new Map<string, number>();
+    for (const row of related) {
+      sourceOrdinalForWorkItemId.set(row.work_item_id, row.ordinal);
+      if (row.tool_action_id !== null) sourceOrdinalForToolActionId.set(row.tool_action_id, row.ordinal);
+      if (row.evidence_id !== null) sourceOrdinalForEvidenceId.set(row.evidence_id, row.ordinal);
+    }
+    return { sourceOrdinalForWorkItemId, sourceOrdinalForToolActionId, sourceOrdinalForEvidenceId };
+  }
+
+  async append(input: PostgresRunConversationAppendInput): Promise<RunConversationAppendReceipt> {
+    if (!validActor(input.actorId) || !validActor(input.sessionId)) return { ok: false, code: 'malformed', reason: 'The conversation identity was not valid.' };
+    const parsed = parseRunConversationMessageRequest(input.request);
+    if (!parsed.ok) return { ok: false, code: 'malformed', reason: parsed.reason };
+    const cipher = this.cipher;
+    if (cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation content is unavailable.' };
+    const interpretation = interpretRunConversationMessage(parsed.value);
+    if (interpretation.intent.kind !== 'pause-now' && parsed.value.selectedSourceOrdinal !== null && parsed.value.selectedSourceOrdinal > MAX_SOURCE_ORDINAL) return { ok: false, code: 'malformed', reason: 'The selected source ordinal is outside the bounded Run surface.' };
+    const at = validClock(this.now());
+    const semanticInput = JSON.stringify(interpretation.intent.kind === 'pause-now' ? {
+      schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
+      runId: parsed.value.runId,
+      actorId: input.actorId,
+      operation: 'pause-now',
+    } : {
+      schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
+      runId: parsed.value.runId,
+      actorId: input.actorId,
+      text: parsed.value.text.trim(),
+      selectedSourceOrdinal: parsed.value.selectedSourceOrdinal,
+      replyToWaitId: parsed.value.replyToWaitId,
+    });
+    const semanticFingerprint = cipher.fingerprint(semanticInput);
+
+    return this.db.transaction(async (tx) => {
+      // Conversation writes are deliberately short and local.  A waiting browser or
+      // a blocked Run-control transaction must never hold these locks indefinitely.
+      await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+      // Serialize the per-actor limiter across Runs. All work under this lock remains
+      // local PostgreSQL or local crypto; no provider, queue or object-store I/O occurs.
+      const safetyShortcut = interpretation.intent.kind === 'pause-now';
+      // Exact unqualified pause targets the Run. A stale review selection must not
+      // retarget it. An explicit wait reply is separately classified as clarification.
+      const sourceOrdinal = safetyShortcut ? null : parsed.value.selectedSourceOrdinal;
+      const replyToWaitId = safetyShortcut ? null : parsed.value.replyToWaitId;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${safetyShortcut ? 'run-conversation-safety' : 'run-conversation-actor'}:${input.actorId}`}, 0))`);
+      const role = await new DrizzleRoleRepository(tx).findRole(input.actorId);
+      if (!authorizeActionRole(role, 'run.initiate').allowed) return { ok: false, code: 'denied', reason: 'Your role does not permit this action.' };
+      const [runRow] = await tx.select().from(auditRun).where(eq(auditRun.runId, parsed.value.runId)).for('update').limit(1);
+      if (!runRow) return { ok: false, code: 'run-not-found', reason: 'The Run was not found.' };
+      const run = parseRun(runRow);
+
+      const [prior] = await tx.select({ messageId: runConversationMessage.messageId, sequence: runConversationMessage.sequence, semanticFingerprint: runConversationMessage.semanticFingerprint })
+        .from(runConversationMessage)
+        .where(and(eq(runConversationMessage.runId, run.runId), eq(runConversationMessage.actorId, input.actorId), eq(runConversationMessage.requestKey, parsed.value.idempotencyKey)))
+        .limit(1);
+      if (prior) {
+        // Replay lookup deliberately precedes context validation. A retry must return
+        // its original receipt even if a referenced wait has since been closed.
+        return prior.semanticFingerprint === semanticFingerprint
+          ? { ok: true, messageId: prior.messageId, sequence: prior.sequence, replayed: true }
+          : { ok: false, code: 'conflict', reason: 'That idempotency key is already bound to another message.' };
+      }
+
+      if (sourceOrdinal !== null) {
+        const [source] = await tx.select({ ordinal: populationRow.ordinal })
+          .from(populationRow)
+          .where(and(eq(populationRow.runId, run.runId), eq(populationRow.ordinal, sourceOrdinal)))
+          .limit(1);
+        if (!source) return { ok: false, code: 'malformed', reason: 'The selected source record is not part of this Run.' };
+      }
+      if (replyToWaitId !== null) {
+        const [wait] = await tx.select({ waitId: runWait.waitId })
+          .from(runWait)
+          .where(and(eq(runWait.waitId, replyToWaitId), eq(runWait.runId, run.runId), isNull(runWait.closedAt)))
+          .limit(1);
+        if (!wait) return { ok: false, code: 'malformed', reason: 'The referenced wait is not open on this Run.' };
+      }
+
+      const windowStart = new Date(at.getTime() - 60_000);
+      const [rate] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
+        .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart),
+          safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId})`));
+      if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', reason: 'The conversation rate limit was reached. Try again shortly.' };
+
+      if (!safetyShortcut) {
+        const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
+          .where(and(eq(runConversationMessage.runId, run.runId), or(isNotNull(runConversationMessage.requestKey), isNotNull(runConversationMessage.parentMessageId))));
+        if ((total?.count ?? 0) + 2 > MAX_CONVERSATION_MESSAGES) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its bounded message limit.' };
+      }
+      const [position] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
+        .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+      const requiredPositions = interpretation.intent.kind === 'pause-now' ? 3 : 2;
+      if ((position?.sequence ?? 0) + requiredPositions > 1_000_000) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its history limit. Execution history remains available in Run details.' };
+
+      const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
+      if (!plan) return { ok: false, code: 'unavailable', reason: 'The frozen Run context is unavailable.' };
+      const facts = safetyShortcut ? null : await this.facts(tx, run, plan, sourceOrdinal);
+      if (!safetyShortcut && facts === null) return { ok: false, code: 'malformed', reason: 'The selected source record is not available in this Run.' };
+      let replyBody = facts === null ? bodyEnvelope('Pause request awaiting the domain decision.', [])
+        : bodyEnvelope(replyText(run, safeIntentKind(interpretation.intent.kind), facts), facts.selected?.evidenceLinks ?? []);
+      const messageId = new CryptoUuidV7Generator().next();
+      const replyMessageId = new CryptoUuidV7Generator().next();
+      const event = await createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator()).append({
+        actor: { type: 'human', id: input.actorId },
+        eventType: 'review.conversation-received',
+        source: 'web',
+        outcome: 'success',
+        sessionId: input.sessionId,
+        correlationId: run.correlationId,
+        aggregateId: run.runId,
+        payload: {
+          messageId,
+          replyMessageId,
+          intent: interpretation.intent.kind,
+          sourceOrdinal: sourceOrdinal,
+          semanticFingerprint,
+        },
+      });
+      const [last] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` }).from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+      const messageSequence = (last?.sequence ?? 0) + 1;
+      const contextRevision = await this.contextRevision(tx, run.runId, run.revision);
+      await tx.insert(runConversationMessage).values({
+        messageId,
+        runId: run.runId,
+        sequence: messageSequence,
+        actorId: input.actorId,
+        kind: kindForRequest(interpretation.intent.kind),
+        createdAt: at,
+        parentMessageId: null,
+        requestKey: parsed.value.idempotencyKey,
+        semanticFingerprint,
+        contextRevision,
+        sourceOrdinal: sourceOrdinal,
+        replyToWaitId: replyToWaitId,
+        sourceEventSequence: event.sequence,
+      });
+      if (interpretation.intent.kind === 'pause-now') {
+        const commandId = new CryptoUuidV7Generator().next();
+        await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
+          actorId: input.actorId, kind: 'pause-now', requestKey: parsed.value.idempotencyKey,
+          semanticFingerprint, planDigest: createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex'),
+          expectedRunRevision: run.revision, interpretationVersion: 'exact-safety-v1', createdAt: at });
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: 1, state: 'received', reasonCode: 'intake-persisted', createdAt: at });
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: 2, state: 'interpreted', reasonCode: 'exact-pause-now', createdAt: at });
+        const auditEvents = createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator());
+        const outcome = await pauseRun({
+          commandId, roles: new DrizzleRoleRepository(tx), repository: new PostgresWaitRepository(tx),
+          unitOfWork: { execute: work => work({ auditEvents }) },
+          ids: new CryptoUuidV7Generator(), clock: { now: () => at },
+        }, { session: { userId: input.actorId, sessionId: input.sessionId }, request: { runId: run.runId } });
+        if (!outcome.ok) {
+          await tx.insert(runInteractionTransition).values({ commandId, sequence: 3, state: 'refused', reasonCode: 'domain-refused', createdAt: at });
+        } else {
+          const [queued] = await tx.select({ state: runInteractionTransition.state }).from(runInteractionTransition)
+            .where(eq(runInteractionTransition.commandId, commandId)).orderBy(desc(runInteractionTransition.sequence)).limit(1);
+          if (queued?.state !== 'queued') throw new Error('Pause domain receipt unavailable');
+        }
+        replyBody = bodyEnvelope(outcome.ok
+          ? 'Pause requested. Execution is still running until the worker reaches its next safe boundary.'
+          : `Pause was not requested. ${outcome.reason}`, []);
+      }
+      // Existing domain events can append operational narration between intake and
+      // reply. Allocate from the committed transaction history after invoking the handler.
+      const [replyPosition] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
+        .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+      const replySequence = (replyPosition?.sequence ?? messageSequence) + 1;
+      if (replySequence > 1_000_000) throw new Error('Conversation reply sequence unavailable');
+      const [replyRun] = await tx.select({ revision: auditRun.revision }).from(auditRun).where(eq(auditRun.runId, run.runId));
+      const replyContextRevision = await this.contextRevision(tx, run.runId, replyRun?.revision ?? run.revision);
+      await tx.insert(runConversationMessage).values({
+        messageId: replyMessageId,
+        runId: run.runId,
+        sequence: replySequence,
+        actorId: input.actorId,
+        kind: interpretation.intent.kind === 'pause-now' ? 'command-receipt' : 'platform-event',
+        createdAt: at,
+        parentMessageId: messageId,
+        requestKey: null,
+        semanticFingerprint: null,
+        contextRevision: replyContextRevision,
+        sourceOrdinal: sourceOrdinal,
+        replyToWaitId: replyToWaitId,
+        sourceEventSequence: null,
+      });
+      await tx.insert(runConversationContent).values([
+        { messageId, ciphertext: cipher.seal(run.runId, messageId, bodyEnvelope(parsed.value.text, [], false)), contentEpoch: 1, removedAt: null },
+        { messageId: replyMessageId, ciphertext: cipher.seal(run.runId, replyMessageId, replyBody), contentEpoch: 1, removedAt: null },
+      ]);
+      await tx.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId: run.runId, sequence: event.sequence })})`);
+      return { ok: true, messageId, sequence: messageSequence, replayed: false };
+    });
+  }
+
+  private async contextRevision(tx: Transaction, runId: string, runRevision: number): Promise<string> {
+    const [row] = await tx.execute<{ revision: string }>(sql`
+      SELECT md5(jsonb_build_array(
+        ${runRevision}::integer,
+        coalesce((SELECT h.last_sequence FROM audit_event_heads h WHERE h.aggregate_id=${runId}), 0),
+        coalesce((SELECT r.revision FROM run_result_review r WHERE r.run_id=${runId}::uuid), 0)
+      )::text) AS revision`);
+    return row?.revision ?? `${runRevision}:0:0`;
+  }
+
+  private async facts(tx: Transaction, run: ConversationRun, plan: ExecutablePlan, sourceOrdinal: number | null): Promise<ConversationFacts | null> {
+    const [work] = await tx.select({ count: sql<number>`count(*)::int` }).from(runWorkItem).where(eq(runWorkItem.runId, run.runId));
+    if (sourceOrdinal === null) return { workItems: work?.count ?? 0, selected: null };
+
+    const [source] = await tx.select({ ordinal: populationRow.ordinal })
+      .from(populationRow)
+      .where(and(eq(populationRow.runId, run.runId), eq(populationRow.ordinal, sourceOrdinal)))
+      .limit(1);
+    if (!source) return null;
+
+    const flat = await tx.execute<ProjectionRow>(recordReviewProjectionQuery(run.runId, plan, sourceOrdinal));
+    const targets = new Map<string, { targetId: string; targetName: string; observationId: string | null; found: string | null; inspected: boolean; account: string | null; capturedStatus: string | null; evaluationCount: number; pending: number; exception: boolean; unevaluated: boolean }>();
+    const observationIds = new Set<string>();
+    for (const row of flat) {
+      if (row.target_id === null) continue;
+      targets.set(row.target_id, {
+        targetId: row.target_id,
+        targetName: row.target_name,
+        observationId: row.observation_id,
+        found: row.found,
+        inspected: row.inspected,
+        account: row.account,
+        capturedStatus: row.captured_status,
+        evaluationCount: row.evaluation_count,
+        pending: row.pending,
+        exception: row.exception,
+        unevaluated: row.unevaluated,
+      });
+      if (row.observation_id !== null && isUuidText(row.observation_id)) observationIds.add(row.observation_id);
+    }
+    const observationRows = observationIds.size === 0 ? [] : await tx.select({ observationId: runObservation.observationId, found: runObservation.found, coverage: runObservation.coverage, corroboration: runObservation.corroboration, evidenceIds: runObservation.evidenceIds })
+      .from(runObservation).where(and(eq(runObservation.runId, run.runId), inArray(runObservation.observationId, [...observationIds]))).limit(32);
+    const evaluations = observationIds.size === 0 ? [] : await tx.execute<{
+      observation_id: string;
+      condition_id: string;
+      value: string;
+      confirmation: string | null;
+    }>(sql`
+      SELECT e.observation_id::text AS observation_id, e.condition_id,
+        CASE WHEN r.decision_id IS NULL THEN e.value ELSE r.effective_value END AS value,
+        CASE WHEN r.decision_id IS NULL THEN e.confirmation ELSE r.effective_confirmation END AS confirmation
+      FROM run_observation_evaluation e
+      LEFT JOIN run_evaluation_review r
+        ON r.run_id=e.run_id AND r.observation_id=e.observation_id AND r.condition_id=e.condition_id
+      WHERE e.run_id=${run.runId}::uuid AND e.observation_id IN ${sql`(${sql.join([...observationIds].map(id => sql`${id}::uuid`), sql`, `)})`}
+      ORDER BY e.observation_id, e.condition_id
+      LIMIT 64`);
+    const evidenceIds = [...new Set(observationRows.flatMap(row => row.evidenceIds.filter(isUuidText)))];
+    const registered = evidenceIds.length === 0 ? [] : await tx.select({ evidenceId: runEvidence.evidenceId }).from(runEvidence)
+      .where(and(eq(runEvidence.runId, run.runId), eq(runEvidence.state, 'REGISTERED'), inArray(runEvidence.evidenceId, evidenceIds))).limit(MAX_LINKS);
+    const conditions = plan.inputs.complianceConditions.slice(0, 32).map(condition => ({ conditionId: safeFact(condition.conditionId, 80), text: safeFact(condition.text, 180) }));
+    return {
+      workItems: work?.count ?? 0,
+      selected: {
+        sourceOrdinal,
+        targets: [...targets.values()],
+        observations: observationRows.map(row => ({ observationId: row.observationId, found: row.found, coverage: row.coverage, corroboration: row.corroboration })),
+        evaluations: evaluations.map(row => ({ observationId: row.observation_id, conditionId: row.condition_id, value: row.value, confirmation: row.confirmation })),
+        conditions,
+        evidenceLinks: registered.map(row => ({ evidenceId: row.evidenceId, locator: null })),
+      },
+    };
+  }
+}

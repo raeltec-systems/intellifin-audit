@@ -23,7 +23,7 @@ import { WatchControl } from './WatchControl';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, STALE_DATA_ACTION, fillTemplate, runCanceledBy, updatedAtTitle } from '../design/copy';
 import { DetailTrail } from '../procedures/DetailTrail';
 import { requireServerAction } from '../server-session';
-import { EscalationPanel } from './EscalationPanel';
+import { EscalationPanel, type EscalationWorkspacePresentation } from './EscalationPanel';
 import { EvaluationReview } from './EvaluationReview';
 import { readOpenEscalation, type OpenEscalationRead } from './escalation-read';
 import { LiveBanner } from './LiveBanner';
@@ -178,11 +178,14 @@ export async function RunDetailFrame({
   tab,
   readAt,
   children,
+  compact = false,
 }: {
   readonly run: RunRecord;
   readonly tab: RunTabSlug;
   readonly readAt: Date;
   readonly children: React.ReactNode;
+  /** Compact chrome for bounded record-review pages; ordinary Run Detail stays unchanged. */
+  readonly compact?: boolean;
 }): Promise<React.JSX.Element> {
   // Read for both wait kinds: an Escalation holds the Run in `AWAITING_AUDITOR` and a
   // pause holds it in `PAUSED`, and the same one read answers which — and, for a pause,
@@ -194,6 +197,7 @@ export async function RunDetailFrame({
     ? await readEvaluationReview(run.runId)
     : null;
   const lifecycle = runLifecycleWord(run.state);
+  const conversationEnabled = (await getRuntime()).conversationEnabled;
   const here = runTabHref(run.runId, tab);
   // The live channel subscribes only while the Run is active (UX-DR35): the cursor is
   // the chain head the page was read at, so the stream replays exactly what commits
@@ -217,11 +221,11 @@ export async function RunDetailFrame({
     : null;
   const trail = [
     { href: '/runs', label: 'Runs' },
-    { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+    { href: runTabHref(run.runId, ''), label: run.procedureName },
     ...(tab === '' ? [] : [{ href: here, label: runTabLabel(tab) }]),
   ];
   return (
-    <div className="ls-stack">
+    <div className={compact ? 'ls-stack run-detail-frame run-detail-frame--compact' : 'ls-stack'}>
       <DetailTrail trail={trail} />
       <header className="ls-page-header">
         <h1>Run · {run.procedureName}</h1>
@@ -232,6 +236,7 @@ export async function RunDetailFrame({
           </Link>{' '}
           · {run.kind === 'STANDARD' ? 'Standard' : 'Regression'} Run
         </p>
+        <p className="ls-caption">Period {run.period.from} to {run.period.to} · Started <time dateTime={run.initiatedAt}>{utcStamp(run.initiatedAt)}</time></p>
         {/* A state outside the vocabulary is written in words: `StatusBadge` throws on an
             unknown state, and on a page that is a 500 for the whole Run. */}
         {lifecycle === null ? (
@@ -250,21 +255,52 @@ export async function RunDetailFrame({
       <RerunLinks runId={run.runId} />
       {/* Watch: the rail's Session control (EXPERIENCE.md → Run Detail rows). Live View
           is its own surface, not a sixth tab, so it is reached from here and from a
-          notification rather than from the tab bar. */}
-      <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
-      <RunLifecycleActions
-        runId={run.runId}
-        active={isActiveRunState(run.state)}
-        awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-        cancelPending={run.cancellation !== null}
-        paused={run.state === 'PAUSED'}
-        pausePending={run.pauseRequest !== null}
-        pausable={runPauseTransition(run.state) !== null}
-        runRevision={escalation?.runRevision ?? null}
-        requestToken={new CryptoUuidV7Generator().next()}
-        procedureName={run.procedureName}
-      />
-      <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />
+          notification rather than from the tab bar. Compact review keeps these links
+          together so the queue can begin in the first viewport. */}
+      {compact ? (
+        <nav className="run-detail-frame__compact-rail" aria-label="Run navigation">
+          <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
+          {conversationEnabled && <Link href={`/runs/${run.runId}/workspace`}>Open Auditor Workspace</Link>}
+        </nav>
+      ) : (
+        <>
+          <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
+          {conversationEnabled && <Link href={`/runs/${run.runId}/workspace`}>Open Auditor Workspace</Link>}
+        </>
+      )}
+      {compact ? (
+        <details className="run-detail-frame__lifecycle">
+          <summary>Run actions</summary>
+          <RunLifecycleActions
+            runId={run.runId}
+            active={isActiveRunState(run.state)}
+            awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+            cancelPending={run.cancellation !== null}
+            paused={run.state === 'PAUSED'}
+            pausePending={run.pauseRequest !== null}
+            pausable={runPauseTransition(run.state) !== null}
+            runRevision={escalation?.runRevision ?? null}
+            requestToken={new CryptoUuidV7Generator().next()}
+            procedureName={run.procedureName}
+          />
+        </details>
+      ) : (
+        <RunLifecycleActions
+          runId={run.runId}
+          active={isActiveRunState(run.state)}
+          awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
+          cancelPending={run.cancellation !== null}
+          paused={run.state === 'PAUSED'}
+          pausePending={run.pauseRequest !== null}
+          pausable={runPauseTransition(run.state) !== null}
+          runRevision={escalation?.runRevision ?? null}
+          requestToken={new CryptoUuidV7Generator().next()}
+          procedureName={run.procedureName}
+        />
+      )}
+      {compact
+        ? <CompactOpenEscalationDisclosure run={run} workspaceAvailable={conversationEnabled} />
+        : <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />}
       {evaluationReview !== null ? (
         <EvaluationReview
           runId={run.runId}
@@ -277,6 +313,31 @@ export async function RunDetailFrame({
       ) : null}
       {children}
     </div>
+  );
+}
+
+/**
+ * Record review keeps its queue in the first viewport. An open decision is still disclosed,
+ * but the full answer panel belongs to Auditor Workspace where its question, source context
+ * and guarded controls have room to remain together.
+ */
+function CompactOpenEscalationDisclosure({ run, workspaceAvailable }: {
+  readonly run: RunRecord;
+  readonly workspaceAvailable: boolean;
+}): React.JSX.Element | null {
+  if (run.state !== 'AWAITING_AUDITOR') return null;
+  const href = workspaceAvailable
+    ? `/runs/${run.runId}/workspace`
+    : `${runTabHref(run.runId, '')}#open-escalation`;
+  const label = workspaceAvailable
+    ? 'Open Auditor Workspace to review the decision'
+    : 'Open Run detail to review the decision';
+  return (
+    <details className="run-detail-frame__lifecycle">
+      <summary>Open auditor decision</summary>
+      <p>This Run is waiting for an auditor answer.</p>
+      <p><Link href={href}>{label}</Link></p>
+    </details>
   );
 }
 
@@ -350,10 +411,11 @@ export function RerunLinksBanner({ successors, names }: {
  * Run is simply busy, which is the "an empty stage that says nothing reads as fine" defect
  * in the one place it costs an audit its answer.
  */
-export function OpenEscalationSection({ run, escalation, readAt }: {
+export function OpenEscalationSection({ run, escalation, readAt, workspacePresentation }: {
   readonly run: RunRecord;
   readonly escalation: OpenEscalationRead | null;
   readonly readAt: Date;
+  readonly workspacePresentation?: EscalationWorkspacePresentation;
 }): React.JSX.Element | null {
   if (run.state !== 'AWAITING_AUDITOR' || escalation === null) return null;
   return escalation.wait !== null && escalation.runRevision !== null
@@ -363,6 +425,7 @@ export function OpenEscalationSection({ run, escalation, readAt }: {
         details={escalation.details}
         runRevision={escalation.runRevision}
         readAt={readAt.toISOString()}
+        {...(workspacePresentation === undefined ? {} : { workspacePresentation })}
       />
     : <Banner tone="danger" title={ESCALATION_PANEL_COPY.unavailable} />;
 }

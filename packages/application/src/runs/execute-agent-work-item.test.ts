@@ -617,6 +617,88 @@ describe('executeAgentWorkItem', () => {
     expect(repository.workItems[0]?.state).toBe('IN_PROGRESS');
   });
 
+  it('holds a P-4 page model read at its response boundary, then resumes with a fresh attempt', async () => {
+    vi.spyOn(gate, 'runRunLevelGate').mockResolvedValue(undefined as never);
+    const p4TargetFields = {
+      kind: 'web' as const,
+      allowedOrigins: ['https://loancore.example.test'],
+      applicationIdentity: '',
+      credentialRef: 'cred://loancore',
+      permittedActions: ['navigate', 'read-attribute', 'read-metadata', 'capture-screenshot'] as const,
+      attributeLabelPatterns: ['Parameter', 'Value', 'Snapshot identifier', 'Expected parameter count', 'Snapshot taken at'],
+      secondaryKey: '',
+    };
+    const p4Target: ProcedureTargetSnapshot = {
+      registrationId: TARGET.registrationId,
+      displayName: 'ProdConsole',
+      digest: registrationDigest(p4TargetFields),
+      contract: registrationDigestEnvelope(p4TargetFields),
+    };
+    const repository = new FakeRepository();
+    repository.plan = {
+      ...PLAN,
+      inputs: {
+        ...PLAN.inputs,
+        templateId: 'P-4',
+        ...initialDraftCompliance('P-4'),
+        ...initialDraftEvidence('P-4'),
+        targets: [p4Target],
+        instructions: [{ registrationId: p4Target.registrationId, text: 'Read the frozen configuration page.' }],
+      },
+    } as unknown as ExecutablePlan;
+    repository.records = [{ ordinal: 1, values: {
+      parameter: 'feature.alpha', approved_value: 'enabled', effective_time: '2026-08-01T00:00:00Z', disposition: 'approved',
+    } }];
+    const landing = [{ group: 'page', role: 'link', label: 'Configuration', value: 'Open configuration', target: 'https://loancore.example.test/loancore/config' }];
+    const page = [
+      { group: 'page', role: 'datum', label: 'Parameter', value: 'feature.alpha', target: null },
+      { group: 'page', role: 'datum', label: 'Value', value: 'enabled', target: null },
+      { group: 'page', role: 'datum', label: 'Snapshot identifier', value: 'snapshot-1', target: null },
+      { group: 'page', role: 'datum', label: 'Expected parameter count', value: '1', target: null },
+      { group: 'page', role: 'datum', label: 'Snapshot taken at', value: '2026-08-31T00:00:00Z', target: null },
+    ];
+    let pauseRequested = false;
+    const model: AgentModelGateway = {
+      identity: identity(),
+      propose: vi.fn(async (request: AgentModelRequest): Promise<AgentModelResponse> => {
+        const actions = request.tools.map(tool => ({
+          toolId: tool.toolId, action: tool.action, destination: tool.destination, locator: tool.locator, parameters: [] as const,
+        }));
+        if (!pauseRequested && actions.some(action => action.action === 'read-attribute')) {
+          pauseRequested = true;
+          repository.run = {
+            ...repository.run,
+            pauseRequest: { requestedBy: 'auditor', sessionId: 'session', requestedAt: '2026-09-07T03:30:00.000Z' },
+          };
+        }
+        return {
+          schemaVersion: 1, phase: 'actions', route: 'anthropic', model: identity(), actions,
+          uncertainty: { kind: 'none', rationale: null }, usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
+        };
+      }),
+    };
+    const dependencies = deps(repository, browserForPages(repository, [landing, page, landing, page]), model, durableWaitPort(repository));
+
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
+    expect(repository.run.state).toBe('PAUSED');
+    expect(repository.checkpoint).toMatchObject({ status: 'RETRY', workItemId: repository.workItems[0]?.workItemId });
+    expect(repository.pauseWaits).toHaveLength(1);
+    expect(repository.workItems[0]).toMatchObject({ state: 'IN_PROGRESS', attempts: 0, observations: 0 });
+    expect(repository.executions).toHaveLength(1);
+    expect(repository.executions[0]).toMatchObject({ state: 'SUPERSEDED', supersededBy: 'resume', diagnostic: null });
+    expect(repository.observations).toHaveLength(0);
+    expect(repository.turns.filter(turn => turn.response?.actions.some(action => action.action === 'read-attribute'))).toHaveLength(1);
+
+    answerLast(repository, 'resume');
+    expect(await executeAgentWorkItem(dependencies, JOB)).toEqual({ retry: false });
+    expect(repository.run.state).toBe('RUNNING');
+    expect(repository.checkpoint).toMatchObject({ status: 'COMPLETE', workItemId: null });
+    expect(repository.workItems[0]).toMatchObject({ state: 'OBSERVED', attempts: 1, observations: 1 });
+    expect(repository.executions.map(execution => execution.state)).toEqual(['SUPERSEDED', 'SUCCEEDED']);
+    expect(repository.observations).toHaveLength(1);
+    expect(repository.turns.filter(turn => turn.response?.actions.some(action => action.action === 'read-attribute'))).toHaveLength(2);
+  });
+
   it('follows a model-selected landing link before offering the search control', async () => {
     const repository = new FakeRepository();
     const landing = [{

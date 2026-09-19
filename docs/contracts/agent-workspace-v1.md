@@ -110,9 +110,11 @@ denials in that one event.
 identifier, the mode, the provider deadline, the frozen step id, the attempt count and the
 lease. There is nowhere in it for an API key, a session token or a wire-protocol endpoint.
 
-- `workspace_id` is `browser.id` under Solari. Opaque and **not a capability** — releasing a
-  Solari session still needs the deployment's API key — so it may be stored and named in a
-  Timeline event, which is what makes a provider-side session correlatable with a Run.
+- `workspace_id` is `browser.id` under Solari and remains private infrastructure state.
+  It must not be named in a Timeline event, normal or technical web view, conversation,
+  notification or export. User-visible correlation uses the application-owned workspace
+  reference. Being opaque and not independently usable as a capability does not make a
+  provider handle safe to disclose (AW-007). No provider endpoint or token reaches viewers.
 - `expires_at` is the provider's **hard** deadline, at which a Solari session
   auto-releases; nothing a Run does resets it. `null` for a local browser, which has no
   plan-tier deadline. A resumed claim past it treats the identity as GONE

@@ -3769,3 +3769,96 @@ real frame-grant worker and all authorization/evidence assertions. Cleanup remov
 the phase and population rows before deleting evidence and the Run.
 If a surface test temporarily reopens the Run, reopen its held agent claim in the
 same transaction; a TERMINAL agent phase makes a RUNNING Run eligible for recovery.
+
+## 2026-09-19 — Auditor Workspace P0 is a design/capability gate
+
+Owner authorized AW v1.1 and the challenge log on `feat/auditor-workspace-v1-1`,
+from main `44fb5966`; no merge/deploy permission. Preserve the full target experience,
+including protected near-live preview and secure authentication for the first supported
+flow. `docs/prototypes/auditor-workspace/index.html` is a synthetic, disconnected design
+preview. Its local storage holds presentation preferences/drafts only; simulated receipts
+are never application persistence proof. The P0 browser job supplements normal CI.
+Do not count a compiled plan as the explicit strategy capability graph, provider SDK
+methods as a measured preview/privacy guarantee, or the specification's models as
+application tests. Current application mechanisms remain execution/evidence authority.
+
+AW-P1 evidence-load distinction: an omitted `GroundingInspector.snapshotOf` means the
+page has not loaded the detail; a supplied resolver returning null means unavailable.
+Do not turn lazy loading into evidence loss, and do not hide a real mismatch/unavailable
+result. The optional resolver remains separate from stored execution corroboration.
+
+### Auditor Workspace P1 review projection — 2026-09-19
+
+Record review membership starts with `(run_id, population_row.ordinal)` crossed with the frozen execution classification's adapter/web targets. Versioned reference files do not add required inspection units. Map observations only through their actual Work Item, frozen step, target and exact subject key; duplicate/missing keys and unmappable historical rows cannot gain coverage. Global pending assessments include unattributed stored evaluations, and an unknown exception-bearing source count is not zero. Review overlays use the existing effective-value expressions; a rejected null confirmation must never fall back to pending.
+
+The queue persists an immutable, actor-bound ten-minute presentation snapshot with at most two retained snapshots per actor/Run and a 10,000-unit admission bound. HMAC cursors bind snapshot, actor, Run, query and unique position. Every page/detail rechecks current role. Concurrent creation uses bounded serializable retries; no transaction crosses a browser request. The worker expires these presentation copies independently of browser activity. A current inspector reads its result/evaluation facts inside one short consistent transaction; opening it never reviews or seals evidence. These caches are not audit records or an alternative execution/review authority.
+
+### Auditor Workspace record inspector and historical checks
+
+A missing historical check set means unknown inspection, not an invented evidence failure. Found records require matching corroboration; absence credit requires recorded search checks/provenance. Reference-only plans still retain source rows. Selected review authorization, command status and reviewer names must share the selected-record transaction; use transaction-compatible readers, not unsafe casts. Keep old artifact anchors on the technical Evidence route while normal review preserves the source ordinal and signed page cursor.
+
+Raw Drizzle `sql` timestamp parameters must use ISO text with an explicit timestamptz cast; schema column encoders do not run for an interpolated Date in raw SQL. Keep Next.js route configuration statically exported at the route itself. Filter forms follow the POST-first guard and use authorized same-origin navigation endpoints, with bounded bodies, rather than relying on hydration.
+
+### Auditor Workspace P2 content and composition — 2026-09-19
+
+Conversation is off by default and has an explicit synthetic-only development mode with a dedicated content-encryption key. Keep immutable message identity/audit metadata separate from governed ciphertext; authenticated encryption binds content to the exact Run/message. Never reuse credential keys, place raw conversation text in audit payloads, or treat a secret detector as private-pixel containment. Exceptional content removal preserves metadata and cannot replace/resurrect content; real-data retention/export/key lifecycle still needs the owner's D2 policy.
+
+Retry the same unconfirmed conversation request with the same idempotency key; generate a new key only after a durable receipt or changed semantics. A successful response requires the persisted message ID and sequence. Read-only conversation and explicit non-executing control replies are P2 groundwork, not P3 command execution. The live workspace must label action-linked captures honestly, reuse existing protected reads/wait controls, and keep decisions beside the conversation. Live count reads reuse P1 projection logic without evicting immutable review snapshots.
+
+
+Browser fixtures must decode frozen JSON field names exactly: compliance condition identity is `conditionId`, even when the SQL alias is `condition_id`. Record-first Evidence navigation tests must assert the new queue/unavailable state before following Technical details for historical artifact assertions. A passing seeded model or SQL projection does not replace the actual browser fixture setup and navigation.
+
+Operational conversation entries reference the exact immutable audit event and derive
+fixed copy on authorized read; they do not copy payload prose or create another event
+authority. Serialize their sequence under the existing audit aggregate head lock, shared
+with human message writes. Acquire the Run key-share lock before the audit-head lock:
+the metadata foreign key would otherwise acquire it in reverse order and could deadlock
+with an ordinary Run command. A conversation history bound must not stop audit recording
+or execution. Historical events are not silently backfilled or attributed to a source row
+by nearest time. New database fixtures must preserve the unique active-standard-period
+invariant even when their only intent is testing cross-Run access.
+
+Raw parameters passed to PostgreSQL polymorphic JSON constructors need explicit types
+(`runRevision::integer`); a successful page read cannot prove its write path. Client-only
+conversation controls stay disabled until hydrated, so an apparently actionable SSR
+button cannot discard a click. Browser role-revocation fixtures must serialize restored
+timestamps as ISO text; failed cleanup can revoke the shared test identity and invalidate
+later journeys. Preserve those cascading failures in the checkpoint rather than counting
+the unrun tests as successful. Screenshot capture must not mutate input caret styles while
+React is still hydrating server-rendered native forms.
+
+### Auditor Workspace compact review surfaces (2026-09-19)
+
+Keep record-review lifecycle actions in an explicitly opened details panel so the queue begins in the first viewport. Workspace decisions use frozen-plan action words and numbered supporting-capture links; raw Step/Evidence identities remain in Technical details. These presentation choices never alter wait IDs, answer options, revision checks or Evidence read grants.
+
+### Auditor Workspace transaction-bound wait composition (2026-09-19)
+
+Conversation-to-command adapters must bind PostgresWaitRepository, role reads and audit denial writes to the enclosing Transaction. Drizzle nested transactions use a savepoint on that same connection. Calling a pool-backed wait command while holding the Run lock risks self-deadlock and cannot make the intake/domain link atomic. The integration proof must throw after the real pauseRun call and verify that marker, audit event and narration all rolled back, then verify an outer commit preserves the original requester.
+
+### Bounded PostgreSQL sequence assertions (2026-09-19)
+
+postgres.js returns audit_events.sequence (bigint) as text and conversation source-event sequence (integer) as a number. Cast the bounded audit sequence explicitly in tests that compare the two; do not misreport a representation mismatch as a failed domain or atomicity effect.
+
+- **AW-P2 browser follow-up:** CI `35450768006` retained the real active-worker capture and finished 227/230 application browser checks. Await selected-record navigation before reading its URL; calculate the oldest message from the persisted initial count because committed narration adds entries. The active/decision/inspector screenshots exposed viewport and decision-density defects, so they do not close G1.
+
+### Auditor Workspace pause receipt identity (2026-09-19)
+
+A conversational pause must carry a server-generated commandId on the existing RunPauseRequest. Client pause envelopes still accept only runId. Another command's pending marker is a refusal for the conversational adapter; the legacy button remains idempotent. Received/interpreted receipts precede the existing handler; queued/applied/superseded receipts derive from that handler/worker's exact audit event in the same transaction. A receipt must never infer application from the Run state or a nearby timestamp. Bind all nested wait, role and denial dependencies to the outer connection. Reserve the extra operational conversation sequence and do not charge exact safety shortcuts to the question limiter. PostgreSQL receipt-transition guards must coalesce nullable first-transition predicates to false; SQL NULL must never permit skipping received.
+
+Exact unqualified Run pause normalizes viewing-only source/wait context to null before persistence. It skips evidence fact reads and the ordinary message quota, with a separate rate bucket; non-safety messages retain full context validation. Absolute history bounds remain enforced.
+
+Interaction command inserts must join the exact conversation-received audit fact (actor, message, intent and semantic fingerprint), not only a generic auditor message. Receipt reads fail closed if their authoritative source event is absent or no longer matches; storage damage must not display a credible applied status. Reply context revisions are read after the domain command.
+
+### P-4 lifecycle boundary after model response (2026-09-19)
+
+The specialized ProdConsole page path must call the existing lifecycle boundary after its model turn, before uncertainty handling or observation/declaration registration. Otherwise a safety request arriving during that read is superseded by completion without pausing. Preserve the completed model-turn evidence on the superseded attempt; after Resume, prove the fresh successful attempt separately instead of asserting only one model read occurred. Browser fixture display names need not embed their generated isolation IDs.
+
+### P3 real-database fixture corrections (2026-09-19)
+
+CI `35453444876` showed that a wait-reply envelope intentionally classifies pause-now as clarification. A Run-wide safety test must use no explicit wait reply; do not weaken that interpretation to make a fixture pass. Record selection remains irrelevant to exact unqualified pause. Terminal cancellation fixtures must remove the sealed Result/Evidence package before deleting their Run, following existing pause-test teardown. Add new migrated tables to the exact schema inventory (generation 53).
+
+### Workspace viewport and native capture follow-up (2026-09-19)
+
+A fixed viewport percentage cannot size a workspace below variable route banners: measure its remaining space and verify actual element bounds before browser auto-scroll. Native capture mode wraps the existing protected image and must prove natural dimensions and keyboard panning; a fitting image alone is not legibility proof. On sunken record cards, muted #64748B has only 4.34:1 contrast; secondary #475569 gives 6.92:1. Compact record review must preserve a working decision link even when conversation is disabled.
+
+Record inspection must render the selected Observation’s original attributes, not just generic account/status summaries or normalized values. Reuse inert untrusted-content rendering; frozen source values and actual captured target values are different evidence.

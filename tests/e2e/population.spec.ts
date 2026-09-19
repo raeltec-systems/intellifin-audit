@@ -181,7 +181,7 @@ async function start(page: Page, index: number, waitForPopulation = true): Promi
  * journey is unchanged; only the address is.
  */
 async function openEvidence(page: Page, runId: string): Promise<void> {
-  await page.goto(`/runs/${runId}/evidence`);
+  await page.goto(`/runs/${runId}/evidence/technical`);
   await expect(page.getByRole('region', { name: 'Population acquisition' })).toBeVisible();
 }
 

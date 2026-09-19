@@ -123,6 +123,15 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
 
+      - name: Retain record review query plan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: record-review-query-plan
+          path: test-results/record-review-query-plan.json
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Mutations run in a separate detached checkout. The runner restores each guard
       # and requires a real assertion failure, never a build error or skipped test.
       - name: Prove agent guard mutations (local Chromium)
@@ -519,4 +528,31 @@ jobs:
           name: agent-abuse-e2e-mutations
           path: ${{ runner.temp }}/agent-abuse-e2e-mutations.json
           if-no-files-found: ignore
+          retention-days: 14
+
+  workspace-design:
+    name: Auditor Workspace P0 design browser checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable corepack and pin pnpm
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Validate prototype interactions, accessibility and desktop geometry
+        run: pnpm exec playwright test --config tests/e2e/workspace-design.config.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: auditor-workspace-p0-design
+          path: |
+            workspace-design-report/
+            test-results/
           retention-days: 14

@@ -39,6 +39,8 @@ export interface RunPauseRequest {
   readonly requestedBy: string;
   readonly sessionId: string;
   readonly requestedAt: string;
+  /** The server-assigned owner of this pause request, when one exists. */
+  readonly commandId?: string | null;
 }
 export interface RunRecord {
   readonly runId: string; readonly correlationId: string; readonly procedureId: string;
@@ -157,6 +159,7 @@ export const RUN_PAUSE_REFUSALS = {
   AWAITING: 'A Run waiting on an answer cannot be paused.',
   NOT_RUNNING: 'Only a Running Run can be paused.',
   ALREADY_REQUESTED: 'A pause has already been requested for this Run.',
+  INVALID_COMMAND_ID: 'The pause command identity was not valid.',
 } as const;
 
 export const RUN_RESUME_REFUSALS = {
