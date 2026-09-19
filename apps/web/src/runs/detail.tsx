@@ -194,6 +194,7 @@ export async function RunDetailFrame({
     ? await readEvaluationReview(run.runId)
     : null;
   const lifecycle = runLifecycleWord(run.state);
+  const conversationEnabled = (await getRuntime()).conversationEnabled;
   const here = runTabHref(run.runId, tab);
   // The live channel subscribes only while the Run is active (UX-DR35): the cursor is
   // the chain head the page was read at, so the stream replays exactly what commits
@@ -253,6 +254,7 @@ export async function RunDetailFrame({
           is its own surface, not a sixth tab, so it is reached from here and from a
           notification rather than from the tab bar. */}
       <WatchControl runId={run.runId} state={run.state} active={isActiveRunState(run.state)} />
+      {conversationEnabled && <Link href={`/runs/${run.runId}/workspace`}>Open Auditor Workspace</Link>}
       <RunLifecycleActions
         runId={run.runId}
         active={isActiveRunState(run.state)}

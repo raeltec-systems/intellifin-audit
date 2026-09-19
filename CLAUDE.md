@@ -3799,5 +3799,11 @@ A missing historical check set means unknown inspection, not an invented evidenc
 
 Raw Drizzle `sql` timestamp parameters must use ISO text with an explicit timestamptz cast; schema column encoders do not run for an interpolated Date in raw SQL. Keep Next.js route configuration statically exported at the route itself. Filter forms follow the POST-first guard and use authorized same-origin navigation endpoints, with bounded bodies, rather than relying on hydration.
 
+### Auditor Workspace P2 content and composition — 2026-09-19
+
+Conversation is off by default and has an explicit synthetic-only development mode with a dedicated content-encryption key. Keep immutable message identity/audit metadata separate from governed ciphertext; authenticated encryption binds content to the exact Run/message. Never reuse credential keys, place raw conversation text in audit payloads, or treat a secret detector as private-pixel containment. Exceptional content removal preserves metadata and cannot replace/resurrect content; real-data retention/export/key lifecycle still needs the owner's D2 policy.
+
+Retry the same unconfirmed conversation request with the same idempotency key; generate a new key only after a durable receipt or changed semantics. A successful response requires the persisted message ID and sequence. Read-only conversation and explicit non-executing control replies are P2 groundwork, not P3 command execution. The live workspace must label action-linked captures honestly, reuse existing protected reads/wait controls, and keep decisions beside the conversation. Live count reads reuse P1 projection logic without evicting immutable review snapshots.
+
 
 Browser fixtures must decode frozen JSON field names exactly: compliance condition identity is `conditionId`, even when the SQL alias is `condition_id`. Record-first Evidence navigation tests must assert the new queue/unavailable state before following Technical details for historical artifact assertions. A passing seeded model or SQL projection does not replace the actual browser fixture setup and navigation.

@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-51 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-52 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -97,6 +97,8 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_agent_execution',
       'run_agent_turn',
       'run_agent_work',
+      'run_conversation_content',
+      'run_conversation_message',
       // Story 4.9. Human decisions retain the original Agent-Judged proposal in an
       // immutable ledger beside the mutable Result review revision.
       'run_evaluation_review',

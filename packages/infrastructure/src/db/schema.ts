@@ -2025,3 +2025,41 @@ export const procedureAuthoringRequest = pgTable('procedure_authoring_request', 
 }, table => [index('procedure_authoring_actor_created').on(table.actorId, table.createdAt),
   check('procedure_authoring_record_shape', sql`jsonb_typeof(${table.record}) = 'object' AND coalesce(${table.record}->>'state' IN ('pending','ready','failed','accepted','rejected'), false)`),
 ]);
+
+/** Immutable conversation metadata. Prose lives only in separately governed content. */
+export const runConversationMessage = pgTable('run_conversation_message', {
+  messageId: uuid('message_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  actorId: text('actor_id').notNull(),
+  kind: text('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  parentMessageId: uuid('parent_message_id'),
+  requestKey: uuid('request_key'),
+  semanticFingerprint: text('semantic_fingerprint'),
+  contextRevision: text('context_revision'),
+  sourceOrdinal: integer('source_ordinal'),
+  replyToWaitId: uuid('reply_to_wait_id'),
+  sourceEventSequence: integer('source_event_sequence'),
+}, t => [
+  uniqueIndex('run_conversation_sequence').on(t.runId, t.sequence),
+  uniqueIndex('run_conversation_request').on(t.runId, t.actorId, t.requestKey),
+  uniqueIndex('run_conversation_response').on(t.parentMessageId),
+  uniqueIndex('run_conversation_source_event').on(t.runId, t.sourceEventSequence),
+  index('run_conversation_actor_created').on(t.actorId, t.createdAt),
+  check('run_conversation_sequence_bound', sql`${t.sequence} BETWEEN 1 AND 1000000`),
+  check('run_conversation_kind', sql`${t.kind} IN ('auditor-message','platform-event','agent-explanation','decision-request','command-receipt','finding','evidence-reference','security-notice','annotation')`),
+  check('run_conversation_request_binding', sql`(${t.requestKey} IS NULL) = (${t.semanticFingerprint} IS NULL) AND (${t.semanticFingerprint} IS NULL OR ${t.semanticFingerprint} ~ '^[0-9a-f]{64}$')`),
+  check('run_conversation_source_ordinal', sql`${t.sourceOrdinal} IS NULL OR ${t.sourceOrdinal} BETWEEN 1 AND 10000`),
+]);
+
+/** Removal is a governed content action; it cannot rewrite immutable metadata. */
+export const runConversationContent = pgTable('run_conversation_content', {
+  messageId: uuid('message_id').primaryKey().references(() => runConversationMessage.messageId, { onDelete: 'cascade' }),
+  ciphertext: text('ciphertext'),
+  contentEpoch: integer('content_epoch').notNull().default(1),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, t => [
+  check('run_conversation_content_bound', sql`${t.ciphertext} IS NULL OR (octet_length(${t.ciphertext}) <= 90000 AND ${t.ciphertext} ~ '^v1\\.[A-Za-z0-9_-]+$')`),
+  check('run_conversation_content_removal', sql`(${t.ciphertext} IS NULL) = (${t.removedAt} IS NOT NULL) AND ${t.contentEpoch} >= 1`),
+]);

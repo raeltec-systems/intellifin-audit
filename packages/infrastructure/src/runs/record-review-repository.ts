@@ -90,6 +90,23 @@ export class PostgresRecordReviewRepository {
     return row!.revision;
   }
 
+  /** Live totals reuse the exact review projection without evicting a reader's paging snapshot. */
+  async readSummary(input: { runId: string; actorId: string }) {
+    return this.db.transaction(async tx => {
+      const context = await this.context(tx, input.runId, input.actorId);
+      if (context.status !== 'ready') return context;
+      const rows = await this.project(tx, input.runId, context.plan);
+      const [totals] = await tx.execute<{ observations: number; pending: number }>(sql`
+        SELECT (SELECT count(*)::int FROM run_observation WHERE run_id=${input.runId}::uuid) AS observations,
+          (SELECT count(*)::int FROM run_observation_evaluation e LEFT JOIN run_evaluation_review r
+            ON r.run_id=e.run_id AND r.observation_id=e.observation_id AND r.condition_id=e.condition_id
+            WHERE e.run_id=${input.runId}::uuid AND
+              (CASE WHEN r.decision_id IS NULL THEN e.confirmation ELSE r.effective_confirmation END)='pending') AS pending`);
+      return { status: 'ready' as const, counts: this.counts(rows, context.source, totals!),
+        revision: context.revision, readAt: this.now().toISOString() };
+    }, { isolationLevel: 'repeatable read' });
+  }
+
   async readPage(input: RecordReviewQuery): Promise<RecordReviewResult> {
     const normalized = query(input);
     if (!normalized) return { status: 'invalid' };

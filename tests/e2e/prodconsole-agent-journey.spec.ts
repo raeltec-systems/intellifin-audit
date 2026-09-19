@@ -432,5 +432,29 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     }
     await expect(page.locator('.ls-untrusted script')).toHaveCount(0);
     await scan(page);
+
+    // P2 composition proof uses a capture produced by the compiled worker's actual
+    // local browser, not seeded screenshot metadata or a one-pixel stand-in. The
+    // protected route must obtain its worker grant, verify bytes and decode on screen.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/runs/${runId}/workspace`);
+    await expect(page.getByRole('heading', { name: 'Last workspace capture', exact: true })).toBeVisible();
+    const frame = page.locator('.ls-session__frame');
+    await expect(frame).toBeVisible();
+    await expect.poll(() => frame.evaluate(node => (node as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(100);
+    const source = await frame.getAttribute('src');
+    expect(source).toMatch(new RegExp(`^/api/runs/${runId}/frames/`));
+    const response = await page.request.get(source!);
+    expect(response.ok()).toBe(true);
+    const bytes = await response.body();
+    const evidenceId = source!.split('/').at(-1)!;
+    const registered = artifacts.find(artifact => artifact.evidence_id === evidenceId);
+    expect(registered?.kind).toBe('screenshot');
+    expect(sha256HexOfBytes(bytes)).toBe(registered?.digest);
+    await expect(page.getByText('Action-linked captures', { exact: false })).toBeVisible();
+    await scan(page);
+    await page.screenshot({ path: 'test-results/auditor-workspace-worker-capture-1440.png', fullPage: true });
+    await page.reload();
+    await expect.poll(() => page.locator('.ls-session__frame').evaluate(node => (node as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(100);
   });
 });

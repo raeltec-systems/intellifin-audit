@@ -213,6 +213,17 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     expect(page.pageNumber).toBe(40);
   });
 
+  it('reads live totals without creating or evicting immutable review snapshots', async () => {
+    const page = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId });
+    expect(page.status).toBe('ready');
+    if (page.status !== 'ready') return;
+    const before = await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId} ORDER BY snapshot_id`;
+    const summary = await repository().readSummary({ runId: seeded.runId, actorId: seeded.actorId });
+    expect(summary.status).toBe('ready');
+    if (summary.status === 'ready') expect(summary.counts).toEqual(page.counts);
+    expect(await sql`SELECT snapshot_id FROM run_review_snapshot WHERE run_id=${seeded.runId} ORDER BY snapshot_id`).toEqual(before);
+  });
+
   it('keeps multi-target partial results, duplicate identities and missing rows visible', async () => {
     const result = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 50 });
     expect(result.status).toBe('ready');
