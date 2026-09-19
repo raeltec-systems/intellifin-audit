@@ -96,3 +96,12 @@ exclusive authentication input in the same isolated provider workspace. D2/G4 po
 approval is required before real data; D3 proposed controller-transfer authority remains
 ungranted. G5 crash/race/rollback and G7 measured safety/Q&A/preview isolation remain
 release gates. Routine synthetic implementation continues without choosing a limited pilot.
+
+## Follow-up CI on `4a88960`
+
+Normal CI `35450768006` passed all 12 conversation PostgreSQL tests, including actual
+transaction rollback/concurrency and the unique/duplicate/cross-Run record joins.
+The full database suite was 601 passed, one failed: the new pause outer-commit assertion
+compared a bigint returned as text with an integer. The test query now casts explicitly.
+Type/boundary/unit, P0 design browser, container and hydrated worker-abuse checks passed.
+The full application browser suite is still running; its result remains open.

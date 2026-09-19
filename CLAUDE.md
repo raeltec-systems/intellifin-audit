@@ -3834,3 +3834,7 @@ Keep record-review lifecycle actions in an explicitly opened details panel so th
 ### Auditor Workspace transaction-bound wait composition (2026-09-19)
 
 Conversation-to-command adapters must bind PostgresWaitRepository, role reads and audit denial writes to the enclosing Transaction. Drizzle nested transactions use a savepoint on that same connection. Calling a pool-backed wait command while holding the Run lock risks self-deadlock and cannot make the intake/domain link atomic. The integration proof must throw after the real pauseRun call and verify that marker, audit event and narration all rolled back, then verify an outer commit preserves the original requester.
+
+### Bounded PostgreSQL sequence assertions (2026-09-19)
+
+postgres.js returns audit_events.sequence (bigint) as text and conversation source-event sequence (integer) as a number. Cast the bounded audit sequence explicitly in tests that compare the two; do not misreport a representation mismatch as a failed domain or atomicity effect.

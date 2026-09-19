@@ -487,7 +487,7 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
       expect(new Date(run!.pause_requested_at as string).toISOString()).toBe(baseNow.toISOString());
 
       const [event] = await sql<{ event_id: string; sequence: number; payload: Record<string, unknown> }[]>`
-        SELECT event_id::text,sequence,payload
+        SELECT event_id::text,sequence::int,payload
         FROM audit_events
         WHERE aggregate_id=${runId} AND event_type='lifecycle.run-pause-requested'`;
       expect(event).toMatchObject({
