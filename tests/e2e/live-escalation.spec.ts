@@ -354,6 +354,7 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
       'execution.escalation-answered',
       'lifecycle.run-pause-requested',
       'lifecycle.run-paused',
+      'lifecycle.run-control-lease-acquired',
       'lifecycle.run-resumed',
       'execution.escalation-raised',
     ]);

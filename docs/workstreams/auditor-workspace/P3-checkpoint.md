@@ -169,3 +169,23 @@ passed TypeScript/boundaries and 4,690 unit tests; its one failure identified a
 nonexistent caption class in the controller component. The follow-up uses the existing
 class and passes the unchanged 34-case stylesheet contract locally. No completed green
 CI result is claimed from these partial observations.
+
+
+## Completed controller browser run and fixture repair
+
+CI `35457445681` completed: focused authoring 16 passed; full application browser
+189 passed, 22 failed and 20 not run. The compiled-worker journey passed with controller
+acquisition, confirmed Resume, persisted conversational pause, native evidence and
+record inspection, retaining the golden Inconclusive result. Hydrated abuse also passed.
+
+Record review reached its 1440/1280 inspector captures, paging and role-revocation
+checks, then failed to restore the shared Auditor because its fixture bound a raw Date
+through postgres.js. Later authenticated cases failed or could not start. The repair
+encodes the timestamp explicitly, including the same latent controller-fixture cleanup
+bug. A separate live-escalation assertion now includes the actual lease-acquired event.
+No authorization check is weakened. The new workspace layout, stale-tab controller
+proof and Replay selection cases remain unverified until the clean normal-CI rerun.
+
+Browser artifact `10589361619` reports SHA-256
+`ba4135ee7adee8d7812b70db8a2a54df8a2b175c0929f5704d4277b86b96d6a4`.
+The completed run is failed, not a passing checkpoint or closure of a proof gate.

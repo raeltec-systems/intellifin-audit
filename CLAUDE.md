@@ -3925,3 +3925,12 @@ a false “this Run captured nothing” claim. Preserve explicit scrubber choice
 paused on reload. Multi-target inspectors expose target-specific links. Evidence reads
 add their legitimate evidence-access audit events; readonly Replay proof compares Run
 state and all other audit facts rather than forbidding the access trail itself.
+
+
+### Restore shared browser identities with encoded timestamps (2026-09-19)
+
+postgres.js result Dates cannot be passed straight back as timestamp parameters. Encode
+assigned_at as ISO text with an explicit timestamptz cast, including finally cleanup.
+A failed role restoration can invalidate every later authenticated browser case; keep
+those cases unverified until a clean rerun. Resume audit expectations must include the
+actual controller acquisition; do not relax the authorization or event-chain assertions.

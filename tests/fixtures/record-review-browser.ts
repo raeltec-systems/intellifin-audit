@@ -303,7 +303,7 @@ export async function createRecordReviewBrowserFixture(): Promise<RecordReviewBr
   async function restoreAuditor(): Promise<void> {
     if (!roleRevoked) return;
     await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by)
-      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at},${originalRole.assigned_by})
+      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at.toISOString()}::timestamptz,${originalRole.assigned_by})
       ON CONFLICT (user_id) DO UPDATE SET role=excluded.role,assigned_at=excluded.assigned_at,assigned_by=excluded.assigned_by`;
     roleRevoked = false;
   }

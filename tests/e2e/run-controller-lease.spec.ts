@@ -350,7 +350,7 @@ test.describe('durable Run controller lease', () => {
       if (holderContext) await closeContext(holderContext);
       if (contenderContext) await closeContext(contenderContext);
       if (originalAdminRole !== null) {
-        await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at} WHERE user_id=${adminId}`;
+        await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at?.toISOString() ?? null}::timestamptz WHERE user_id=${adminId}`;
       }
     }
   });
