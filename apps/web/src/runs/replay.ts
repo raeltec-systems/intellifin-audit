@@ -46,6 +46,26 @@ export type ReplayJumpTarget = {
   | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence }
 );
 
+export type ReplayInitialSelection =
+  | { readonly kind: 'start'; readonly frameIndex: number }
+  | { readonly kind: 'inspection'; readonly target: ReplayJumpTarget; readonly frameIndex: number | null }
+  | { readonly kind: 'unavailable'; readonly frameIndex: null };
+
+/** Resolve only against this authorized Run's stored targets. A bad or bounded-out
+ * deep link must never silently show a different record's first capture. */
+export function replayInitialSelection(
+  workItem: string | readonly string[] | undefined,
+  targets: readonly ReplayJumpTarget[],
+  frameCount: number,
+): ReplayInitialSelection {
+  if (workItem === undefined) return { kind: 'start', frameIndex: clampReplayIndex(0, frameCount) };
+  if (typeof workItem !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workItem))
+    return { kind: 'unavailable', frameIndex: null };
+  const target = targets.find(item => item.kind === 'work-item' && item.id === workItem.toLowerCase());
+  return target === undefined ? { kind: 'unavailable', frameIndex: null }
+    : { kind: 'inspection', target, frameIndex: target.frameIndex };
+}
+
 function landing(frameIndex: number | null, whenMissing: ReplayFrameAbsence):
   | { readonly frameIndex: number; readonly absence: null }
   | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence } {

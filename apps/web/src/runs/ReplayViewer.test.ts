@@ -61,6 +61,25 @@ function render(input: Partial<React.ComponentProps<typeof ReplayViewer>> = {}):
 }
 
 describe('Replay, as the server first paints it', () => {
+  it('opens the requested inspection paused at its stored capture', () => {
+    const html = render({ initialSelection: { kind: 'inspection', frameIndex: 1,
+      target: { kind: 'work-item', id: 'stored-work', label: 'E-2', frameIndex: 1, absence: null } } });
+    expect(html).toContain('Frame 2 of 3');
+    expect(html).toContain('/frames/019823ab-0000-7000-8000-000000000002');
+    expect(html).not.toContain('/frames/019823ab-0000-7000-8000-000000000001');
+    expect(html).toContain(`>${REPLAY_COPY.play}<`);
+  });
+
+  it('never substitutes the first record image for an unavailable requested inspection', () => {
+    const html = render({ initialSelection: { kind: 'unavailable', frameIndex: null } });
+    expect(html).toContain('The requested inspection is not available in this Replay view.');
+    expect(html).toContain('No selected frame');
+    expect(html).not.toContain('/frames/');
+    expect(html).not.toContain('ls-scrubber-pill--current');
+    expect(html).not.toContain(REPLAY_COPY.noFrames);
+    expect(html).not.toContain(REPLAY_COPY.observationsNoFrame);
+  });
+
   it('starts PAUSED at the first frame', () => {
     const html = render();
     // Paused: the control offers Play. A Replay that started playing would move a session

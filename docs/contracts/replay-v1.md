@@ -33,12 +33,20 @@ fails there rather than in a deployment whose provider happened to answer.
 port on this path; a Replay that could re-run a Tool Action would be a Replay that could
 change what it is showing.
 
-## It starts PAUSED at the first frame
+## It starts PAUSED at the requested inspection or first frame
 
 UX-DR26. A Replay that started playing would move a session under somebody who opened it to
 look at one thing. Server-side rendering is that state, so `ReplayViewer.test.ts` asserts
 the contract rather than a convenience: the control offers **Play**, the counter says
-`Frame 1 of N`, and the only frame in the markup is the first.
+`Frame 1 of N`, and the only frame in the markup is the first when no selection was requested.
+
+Auditor Workspace record links use `?workItem=<id>`. The route resolves that identifier
+only against this authorized Run’s stored jump targets and starts at that inspection’s
+first recorded frame, still paused. Reload preserves the request. Invalid, duplicate,
+cross-Run or unavailable selections never silently substitute frame zero: the stage
+shows no selected frame and explains the limit. A bounded read still distinguishes
+not-read from none-captured. Explicit scrubber/jump choices remain available. For a
+record inspected in several systems, the inspector exposes a separate link per target.
 
 Playing advances one frame every `FRAME_INTERVAL_MS` and STOPS at the last: a loop would
 make a finished session look like one still going.

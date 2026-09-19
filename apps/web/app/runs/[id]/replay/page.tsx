@@ -13,7 +13,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { replayInitialSelection, replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -37,8 +37,10 @@ export const dynamic = 'force-dynamic';
  */
 export default async function RunReplayPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
+  readonly searchParams: Promise<{ readonly workItem?: string | string[] }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -156,10 +158,24 @@ export default async function RunReplayPage({
     };
   });
 
+  const targets = replayJumpTargets({
+    frames: resolveFrameWorkItems(frames.rows, timeline.stepExecutions.rows),
+    framesTotal: frames.total,
+    workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName, subjectKey: item.subjectKey })),
+    exceptions: exceptions.rows.map((row) => ({
+      exceptionId: row.exceptionId,
+      workItemId: row.workItemId,
+      populationRecordKey: row.populationRecordKey,
+    })),
+    waits,
+  });
+  const initialSelection = replayInitialSelection((await searchParams).workItem, targets, views.length);
+
   return (
     <div className="ls-stack">
       {header}
       <ReplayViewer
+        key={`${run.runId}:${readAt.toISOString()}`}
         runId={run.runId}
         stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
         workspace={
@@ -171,17 +187,8 @@ export default async function RunReplayPage({
         framesTotal={frames.total}
         plannedSteps={plannedStepCount(plan)}
         stageNote={REPLAY_COPY.noFrames}
-        jumpTargets={replayJumpTargets({
-          frames: resolveFrameWorkItems(frames.rows, timeline.stepExecutions.rows),
-          framesTotal: frames.total,
-          workItems: timeline.workItems.map((item) => ({ workItemId: item.workItemId, displayName: item.displayName, subjectKey: item.subjectKey })),
-          exceptions: exceptions.rows.map((row) => ({
-            exceptionId: row.exceptionId,
-            workItemId: row.workItemId,
-            populationRecordKey: row.populationRecordKey,
-          })),
-          waits,
-        })}
+        jumpTargets={targets}
+        initialSelection={initialSelection}
         instructions={(plan?.inputs.instructions ?? []).map((instruction) => ({
           system: targetName(instruction.registrationId) ?? instruction.registrationId,
           text: instruction.text,

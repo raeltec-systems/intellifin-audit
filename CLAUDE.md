@@ -3913,3 +3913,15 @@ CI `35457445681` passed TypeScript/boundaries and 4,690 unit tests, but the styl
 contract caught a nonexistent ls-text-caption class in the new controller view. Use the
 existing ls-caption token. A focused component pass does not replace the global static
 class inventory; its failing guard remains unchanged.
+
+
+### A record Replay link must resolve the record it names (2026-09-19)
+
+RecordReview emitted ?workItem links but Replay ignored searchParams, silently showing
+the first capture. Resolve only from the authorized Run’s existing jump targets, with
+the same Step Execution work-item fallback as its jump list. Invalid/multiple/cross-Run
+or bounded-out selections must show no selected frame, not a guessed first record or
+a false “this Run captured nothing” claim. Preserve explicit scrubber choices and start
+paused on reload. Multi-target inspectors expose target-specific links. Evidence reads
+add their legitimate evidence-access audit events; readonly Replay proof compares Run
+state and all other audit facts rather than forbidding the access trail itself.

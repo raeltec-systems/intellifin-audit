@@ -1,0 +1,41 @@
+# Auditor Workspace — P4 review and Replay checkpoint
+
+Status: partial implementation, not target-release acceptance. No merge or deployment.
+
+## Delivered behavior
+
+The existing selected-record inspector reuses EvaluationReview and its independent
+authorization, Result/review revisions and immutable proposal/decision overlay. Opening
+evidence is explicitly separate from confirming an assessment. P1’s bounded queue
+retains its list snapshot while selected detail reports newer authoritative facts.
+
+This follow-up repairs review-to-Replay continuity: the existing workItem query link
+was ignored by the Replay route. It now opens the first stored capture for that exact
+same-Run inspection, paused, and retains the selection on reload. Invalid, duplicate,
+cross-Run or unavailable selections show an explicit unavailable stage, never another
+record’s frame zero. Bounded-out and never-captured states remain distinct. Multi-system
+records expose separate target inspection links instead of silently selecting one.
+
+Replay still reaches only platform-owned evidence and existing protected read grants.
+No execution command, provider client or mutable target access is added.
+
+## Verification status
+
+Focused resolver/viewer/inspector and shared stylesheet checks, plus web/root TypeScript,
+are the local verification. New real-browser assertions request the second inspection,
+check the protected image decoded, reload the exact selection, reject another Run’s
+work item and duplicate parameters without image requests, block outside origins and
+compare persisted Run/review-independent audit state. That new journey is pending CI.
+
+Normal CI on the preceding controller candidate `379699d` passed all 609 PostgreSQL
+integration cases. Its full browser result is recorded in P3 when available. Neither
+that result nor these component tests proves the new P4 journey.
+
+## Remaining P4 scope and gates
+
+Full conversation-to-capture/assessment history linkage and a combined record-inspector
+confirmation/rejection browser journey remain. The prior dedicated evaluation-review
+journey does not by itself prove the composed inspector. Loading a selected inspection
+beyond the current Replay read bound also remains; this candidate reports that limit
+honestly. P3’s remaining commands and P6 secure assistance are still required for the
+full co-working target. G1 auditor review and G3/G4/G5/G7 release obligations remain open.

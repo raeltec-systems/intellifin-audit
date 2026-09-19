@@ -199,4 +199,18 @@ describe('record review queue and inspector', () => {
     expect(html).toContain('Opening evidence does not confirm an assessment.');
     expect(html).toContain('Technical details');
   });
+
+  it('offers each target inspection separately instead of choosing the first system silently', () => {
+    const otherWork = '019823ab-0000-7000-8000-000000000005';
+    const html = renderToStaticMarkup(React.createElement(RecordReviewInspector, {
+      runId: RUN_ID,
+      selection: { ...selection, row: { ...selection.row, targets: [target, { ...target, targetId: 'target-2', targetName: 'AccessGate', workItemId: otherWork }] } },
+      observations: [], evaluations: [], evidence: [], navigation, page,
+    }));
+    expect(html).toContain('Replay LoanCore inspection');
+    expect(html).toContain('Replay AccessGate inspection');
+    expect(html).toContain(`/replay?workItem=${WORK_ITEM_ID}`);
+    expect(html).toContain(`/replay?workItem=${otherWork}`);
+    expect(html).not.toContain('Replay this inspection');
+  });
 });

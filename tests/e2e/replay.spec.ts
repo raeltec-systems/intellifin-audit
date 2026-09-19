@@ -409,6 +409,61 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`);
   });
 
+  test('opens a requested inspection on its own stored frame and preserves it on reload', async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedReplayRun();
+    const otherRun = await seedReplayRun();
+    const origin = new URL(baseURL!).origin;
+    const offOrigin: string[] = [];
+    const requestedFrames: string[] = [];
+    await page.route('**/*', async route => {
+      const url = new URL(route.request().url());
+      if (url.origin !== origin && !['data:', 'blob:'].includes(url.protocol)) {
+        offOrigin.push(url.origin); await route.abort(); return;
+      }
+      if (url.pathname.startsWith(`/api/runs/${seeded.runId}/frames/`)) requestedFrames.push(url.pathname);
+      await route.fallback();
+    });
+    const before = await sql`SELECT state,revision FROM audit_run WHERE run_id=${seeded.runId}`;
+    const eventsBefore = await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${seeded.runId} AND event_type NOT LIKE 'evidence-access.%' ORDER BY sequence`;
+    const href = `/runs/${seeded.runId}/replay?workItem=${seeded.workItems[1]}`;
+    const expectedFrame = `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`;
+    await page.goto(href);
+    await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', expectedFrame);
+    await expect.poll(() => page.locator('.ls-session__frame').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1);
+    await expect(page.getByText('Work Item: E-000106 · LoanCore', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: REPLAY_COPY.play, exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('.ls-session__frame')).toHaveAttribute('src', expectedFrame);
+    await expect(page.getByText('Frame 2 of 3', { exact: false })).toBeVisible();
+    expect(requestedFrames.length).toBeGreaterThan(0);
+    expect(requestedFrames.every(path => path === expectedFrame)).toBe(true);
+
+    // An existing work item from another Run and a duplicate query parameter both
+    // withhold the stage. Neither silently substitutes the first record's capture.
+    for (const query of [`workItem=${otherRun.workItems[1]}`, `workItem=${seeded.workItems[0]}&workItem=${seeded.workItems[1]}`]) {
+      requestedFrames.length = 0;
+      await page.goto(`/runs/${seeded.runId}/replay?${query}`);
+      await expect(page.getByText('No selected frame', { exact: true })).toBeVisible();
+      await expect(page.locator('.ls-session__frame')).toHaveCount(0);
+      await expect(page.getByRole('status')).toContainText('The requested inspection is not available in this Replay view.');
+      const play = page.getByRole('button', { name: REPLAY_COPY.play, exact: true });
+      await expect(play).toHaveAttribute('aria-disabled', 'true');
+      await play.click();
+      await expect(play).toBeVisible();
+      expect(requestedFrames).toEqual([]);
+    }
+    expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${seeded.runId}`).toEqual(before);
+    // Evidence read grants have their own audit facts; no lifecycle or assessment effect
+    // may be produced by opening a Replay. Compare the pre-existing Run chain entries.
+    const eventsAfter = await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${seeded.runId} AND event_type NOT LIKE 'evidence-access.%' ORDER BY sequence`;
+    expect(eventsAfter).toEqual(eventsBefore);
+    expect(offOrigin).toEqual([]);
+    expect((await new AxeBuilder({ page }).withTags(TAGS).analyze()).violations).toEqual([]);
+  });
+
   test('offers Replay from a terminal Run’s rail, and says a live Run has none yet', async ({ page }) => {
     const seeded = await seedReplayRun();
     await page.goto(`/runs/${seeded.runId}`);

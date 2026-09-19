@@ -452,11 +452,9 @@ export function RecordReviewInspector({
   const targetsWithObservations = selection.row.targets.filter((target) => target.observationId !== null);
   const unresolvedRows = page.rows.filter((row) => row.sourceOrdinal !== selection.row.sourceOrdinal && row.targets.some((target) => target.assessmentState === 'needs-review' || target.assessmentState === 'unevaluated' || target.assessmentState === 'not-inspected' || target.pendingAssessments > 0));
   const nextUnresolved = unresolvedRows[0] ?? null;
-  const firstWorkItem = selection.row.targets.find((target) => target.workItemId !== null)?.workItemId ?? null;
+  const replayTargets = [...new Map(selection.row.targets.filter(target => target.workItemId !== null)
+    .map(target => [target.workItemId, target])).values()];
   const nextHref = nextUnresolved === null ? null : recordReviewHref(runId, navigation, { selected: nextUnresolved.sourceOrdinal });
-  const replayHref = firstWorkItem === null
-    ? `/runs/${encodeURIComponent(runId)}/replay`
-    : `/runs/${encodeURIComponent(runId)}/replay?workItem=${encodeURIComponent(firstWorkItem)}`;
 
   return (
     <section className="record-review__inspector ls-card" aria-label="Record inspector">
@@ -600,7 +598,11 @@ export function RecordReviewInspector({
 
       <section className="record-review__section record-review__inspector-actions" aria-label="Record actions">
         <Link href="#recorded-source-values">View source record</Link>
-        <Link href={replayHref}>Replay this inspection</Link>
+        {replayTargets.length === 0 ? <Link href={`/runs/${encodeURIComponent(runId)}/replay`}>Open Run Replay</Link>
+          : replayTargets.map(target => <Link key={target.workItemId}
+            href={`/runs/${encodeURIComponent(runId)}/replay?workItem=${encodeURIComponent(target.workItemId!)}`}>
+            {replayTargets.length === 1 ? 'Replay this inspection' : `Replay ${target.targetName} inspection`}
+          </Link>)}
         {nextHref === null ? <span className="ls-caption">No other unresolved record on this page.</span> : <Link href={nextHref}>Next unresolved record</Link>}
       </section>
 
