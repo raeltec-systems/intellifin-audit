@@ -43,7 +43,9 @@ resume retains committed work and restarts the interrupted attempt from the froz
 
 - Prototype script syntax check: passed locally.
 - Exact repository restore and `git diff --check`: passed locally.
-- Typecheck and browser results: pending CI; record the actual run/commit below when available.
+- Pinned-runtime typecheck/boundaries/unit, PostgreSQL integration, container checks and
+  design browser, full application browser and hydrated abuse jobs all passed on
+  candidate `196f423`; see the executed evidence below.
 - Added 12 browser cases (six state/viewport cases plus six interaction cases), including
   accessibility, 1440×900 and 1280×800 geometry, candidate confirmation, inert history,
   pending versus applied simulation, contextual questions, no substring shortcut,
@@ -69,18 +71,19 @@ resume retains committed work and restarts the interrupted attempt from the froz
 | Pause / wait / result review | Existing authoritative commands, one-open-wait constraint and review/sealing transaction | Reuse; no chat-owned second result or queue lifecycle |
 | Record paging | Existing detail reads are artifact/observation-first; no immutable multi-request review snapshot | P1 must implement and test full population/unit semantics in PostgreSQL |
 
-SDK/type/source inspection is not a live-provider benchmark. No Solari credential or
-application database is configured in this workspace; no provider call was made. A
-separate provider test must use the existing approved deployment account in a synthetic
-non-production test without changing deployment settings or exposing connection handles.
+SDK/type/source inspection is not a live-provider benchmark. The existing dedicated CI
+route subsequently ran the bounded live isolation check on the exact candidate, using
+the approved synthetic target and existing configured provider. Its persisted release
+records are described below. This proves baseline remote workspace isolation, not a
+near-live preview or secure human-input capability. Deployment settings were not changed.
 
 ## Seven proof gates
 
 | Gate | Present evidence | Remaining before closure |
 |---|---|---|
-| G1 | Interactive design and committed browser tests | Executed browser results; actual screenshot legibility; five auditors including a manager; 4/5 successful tasks and understanding queued/applied/filtering |
+| G1 | Interactive design; 12 passing browser checks and six retained screenshots | Actual target screenshot legibility; five auditors including a manager; 4/5 successful tasks and understanding queued/applied/filtering |
 | G2 | Pinned compiler/adapter inspection | Explicit frozen strategy capability graph, legacy compatibility and real predecessor/retry enforcement |
-| G3 | Pinned browser/credential/capture inspection | Measured same-Run near-live preview, real private pixels/caches, exclusive input and declared auth/identity/read-only verification |
+| G3 | Pinned inspection and passing live two-workspace isolation/cleanup | Measured same-Run near-live preview, real private pixels/caches, exclusive input and declared auth/identity/read-only verification |
 | G4 | Synthetic-only work | Owner's data-handling policy; encrypted governed content, incident/export/context tests |
 | G5 | Existing commands identified for reuse | Atomic bridge, process kills, worker/wait/control races, payload-bound idempotency and mixed-version rollback |
 | G6 | Required PostgreSQL projection specified | Actual query plans, 1,000 rows, concurrent stable-snapshot paging, duplicate keys and multi-target counts |
@@ -156,3 +159,43 @@ rendered regression tests cover those boundaries. The direct local web suite pas
 80 files / 1,456 tests and the web TypeScript check passed on Node 24.19.0. Normal CI on
 the pinned runtime remains the gate. This repair is not completion of P1's bounded
 PostgreSQL record queue or on-demand evidence workflow.
+
+## Executed candidate verification — 19 September 2026
+
+Application/test candidate: `196f423d444264924a632c434fc695a848732579`. Normal CI
+[run 35435057064](https://github.com/raeltec-systems/intellifin-audit/actions/runs/35435057064)
+uses pinned Node 24.20.0 / pnpm 11.25.0. The design job passed **12/12** with zero
+retries in 7.0 seconds. It retains six named desktop screenshots and the HTML report in
+[artifact 10581173383](https://github.com/raeltec-systems/intellifin-audit/actions/runs/35435057064/artifacts/10581173383),
+ZIP SHA-256 `e404a23cb4aa8bf74cd9a1fb6875642f3b18718c488035c4eedf7bdf00233698`.
+Visual inspection confirmed the corrected short-desktop composer fits and the active,
+contextual-decision and inspector screens render as intended. The target surface is
+still a synthetic HTML specimen; actual screenshot legibility and human G1 study remain.
+
+Normal typecheck/boundary/unit checks passed **232 files / 4,583 tests**. PostgreSQL 18
+integration passed **47 files / 571 tests**, followed by the existing guard-mutation
+checks. Container image builds and startup refusals passed. Full application browser
+and hydrated abuse jobs subsequently passed: all six normal CI jobs succeeded. These existing integration tests do not prove new conversation or
+interaction-ledger persistence, which has not yet been implemented.
+
+The existing explicitly selected Solari **isolation-only** workflow
+[run 35435430682](https://github.com/raeltec-systems/intellifin-audit/actions/runs/35435430682)
+passed its single live case (14.8 seconds including setup) on the exact clean candidate.
+It used at most two overlapping Solari sessions, zero model requests, recording off,
+and the already-approved synthetic LoanCore target. The label's workflow job title
+mentions a live model, but the selected scope made no model calls.
+
+[Retained report 10582268344](https://github.com/raeltec-systems/intellifin-audit/actions/runs/35435430682/artifacts/10582268344)
+has ZIP SHA-256 `22dd35e2277a8bd0c86c8e6b93c8a4228891fb0295fafcda9292919afc7ec9dc`.
+The report and test confirm separate cookie/local/session/cache state, an authenticated
+captured read in B while an operation in A remained pending, rejected cross-Run
+references, two persisted egress-denial events, and both `run_workspace` rows `RELEASED`
+before provider expiry with null diagnostics. The test also asserts both Runs durably
+`CANCELED`, closed browser pages and exactly one release event each. Provider handles
+remain in the restricted operational artifact; none are copied into this report.
+
+This live result does **not** prove worker-memory or provider-firewall isolation,
+continuous preview timing, private-pixel/capture-cache containment, exclusive human
+input, production SSO identity/rights verification or model behavior. G3 remains open.
+No rollout, migration of a deployed database, provider recording, provider switch or
+parallel execution engine was introduced.

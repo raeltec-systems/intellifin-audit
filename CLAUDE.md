@@ -3786,3 +3786,9 @@ AW-P1 evidence-load distinction: an omitted `GroundingInspector.snapshotOf` mean
 page has not loaded the detail; a supplied resolver returning null means unavailable.
 Do not turn lazy loading into evidence loss, and do not hide a real mismatch/unavailable
 result. The optional resolver remains separate from stored execution corroboration.
+
+### Auditor Workspace P1 review projection — 2026-09-19
+
+Record review membership starts with `(run_id, population_row.ordinal)` crossed with the frozen execution classification's adapter/web targets. Versioned reference files do not add required inspection units. Map observations only through their actual Work Item, frozen step, target and exact subject key; duplicate/missing keys and unmappable historical rows cannot gain coverage. Global pending assessments include unattributed stored evaluations, and an unknown exception-bearing source count is not zero. Review overlays use the existing effective-value expressions; a rejected null confirmation must never fall back to pending.
+
+The queue persists an immutable, actor-bound ten-minute presentation snapshot with at most two retained snapshots per actor/Run and a 10,000-unit admission bound. HMAC cursors bind snapshot, actor, Run, query and unique position. Every page/detail rechecks current role. Concurrent creation uses bounded serializable retries; no transaction crosses a browser request. The worker expires these presentation copies independently of browser activity. A current inspector reads its result/evaluation facts inside one short consistent transaction; opening it never reviews or seals evidence. These caches are not audit records or an alternative execution/review authority.

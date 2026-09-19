@@ -3,7 +3,7 @@ import { isActiveRunState } from '@intellifin/domain';
 import { hostname } from 'node:os';
 
 import {
-  ConfigError,
+  ConfigError, startRecordReviewExpiry,
   createExceptionFingerprinter, PostgresEvaluationReviewRepository, startEvaluationReviewWorker, startEvaluationReviewRecovery,
   PostgresEvidenceReadGrantRepository, startEvidenceReadGrantWorker, startEvidenceReadGrantRecovery,
   PostgresWaitRepository, startWaitWorker, startWaitRecovery,
@@ -73,6 +73,7 @@ async function main(): Promise<void> {
   let stopQueueMaintenance: (() => Promise<void>) | undefined;
   let stopNotificationDelivery: (() => Promise<void>) | undefined;
   let stopEvidenceReadRecovery: (() => Promise<void>) | undefined;
+  let stopRecordReviewExpiry: (() => Promise<void>) | undefined;
   let stopReviewRecovery: (() => Promise<void>) | undefined;
   let stopWaitRecovery: (() => Promise<void>) | undefined;
   let stopRecovery: (() => void) | undefined;
@@ -91,6 +92,7 @@ async function main(): Promise<void> {
     stopRecovery?.();
     await stopWaitRecovery?.();
     await stopReviewRecovery?.();
+    await stopRecordReviewExpiry?.();
     await stopEvidenceReadRecovery?.();
     await stopPopulationRecovery?.();
     await stopIntegritySweep?.();
@@ -202,6 +204,7 @@ async function main(): Promise<void> {
   // Human review is durable worker work even when acquisition or browser credentials
   // are unavailable. Only this process owns the fingerprint closure; the web enqueues
   // an actor-bound command and reports it as pending until this transaction commits.
+  stopRecordReviewExpiry = startRecordReviewExpiry(db, () => telemetry.captureError('Fatal worker error', new Error('Record review cache expiry failed'), {}));
   const reviewRepository = new PostgresEvaluationReviewRepository(db, {
     exceptions: config.EXCEPTION_FINGERPRINT_KEY === undefined ? undefined : createExceptionFingerprinter({
       keyId: config.EXCEPTION_FINGERPRINT_KEY_ID,

@@ -123,6 +123,15 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
 
+      - name: Retain record review query plan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: record-review-query-plan
+          path: test-results/record-review-query-plan.json
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Mutations run in a separate detached checkout. The runner restores each guard
       # and requires a real assertion failure, never a build error or skipped test.
       - name: Prove agent guard mutations (local Chromium)

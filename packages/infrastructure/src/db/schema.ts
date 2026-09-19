@@ -970,6 +970,34 @@ export const populationRow = pgTable('population_row', {
   values:jsonb('values').$type<Record<string,import('@intellifin/domain').JsonValue>>().notNull(), disposition:text('disposition').$type<import('@intellifin/domain').PopulationRow['disposition']>().notNull(), reasons:jsonb('reasons').$type<string[]>().notNull(),
 },t=>[primaryKey({columns:[t.runId,t.ordinal]}),check('population_row_disposition',sql`${t.disposition} IN ('included','excluded','indeterminate')`),check('population_row_ordinal',sql`${t.ordinal}>0`)]);
 
+/** AW-P1: expiring presentation snapshots, never a second audit-result authority. */
+export const runReviewSnapshot = pgTable('run_review_snapshot', {
+  snapshotId: uuid('snapshot_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revision: text('revision').notNull(),
+  queryDigest: text('query_digest').notNull(),
+  cursorKey: text('cursor_key').notNull(),
+  counts: jsonb('counts').$type<import('@intellifin/application').RecordReviewCounts>().notNull(),
+  rowCount: integer('row_count').notNull(),
+}, t => [
+  index('run_review_snapshot_owner').on(t.actorId, t.runId, t.createdAt),
+  index('run_review_snapshot_expiry').on(t.expiresAt),
+  check('run_review_snapshot_lifetime', sql`${t.expiresAt} > ${t.createdAt} AND ${t.expiresAt} <= ${t.createdAt} + interval '10 minutes'`),
+  check('run_review_snapshot_bounds', sql`${t.rowCount} BETWEEN 0 AND 10000 AND jsonb_typeof(${t.counts}) = 'object'`),
+  check('run_review_snapshot_secrets', sql`${t.cursorKey} ~ '^[a-f0-9]{64}$' AND ${t.queryDigest} ~ '^[a-f0-9]{64}$'`),
+]);
+export const runReviewSnapshotRow = pgTable('run_review_snapshot_row', {
+  snapshotId: uuid('snapshot_id').notNull().references(() => runReviewSnapshot.snapshotId, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  row: jsonb('row').$type<import('@intellifin/application').RecordReviewRow>().notNull(),
+}, t => [
+  primaryKey({ columns: [t.snapshotId, t.position] }),
+  check('run_review_snapshot_row_bounds', sql`${t.position} BETWEEN 0 AND 9999 AND jsonb_typeof(${t.row}) = 'object'`),
+]);
+
 /**
  * Generation 19 — the adapter execution stage (Story 3.3).
  *
@@ -1437,6 +1465,7 @@ export const runObservation = pgTable('run_observation', {
   // migration or psql session can store a rollup that disagrees with its own data.
   corroboration: text('corroboration').notNull(),
 }, t=>[
+  index('run_observation_review_record').on(t.runId, t.targetSystem, t.populationRecordKey),
   // A redelivered job cannot create a second Observation for the same record.
   uniqueIndex('run_observation_item_record').on(t.workItemId,t.populationRecordKey),
   // The composite key `run_observation_evaluation` points at, so "an uninspected record is
