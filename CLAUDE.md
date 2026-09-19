@@ -3852,3 +3852,7 @@ Interaction command inserts must join the exact conversation-received audit fact
 ### P-4 lifecycle boundary after model response (2026-09-19)
 
 The specialized ProdConsole page path must call the existing lifecycle boundary after its model turn, before uncertainty handling or observation/declaration registration. Otherwise a safety request arriving during that read is superseded by completion without pausing. Preserve the completed model-turn evidence on the superseded attempt; after Resume, prove the fresh successful attempt separately instead of asserting only one model read occurred. Browser fixture display names need not embed their generated isolation IDs.
+
+### P3 real-database fixture corrections (2026-09-19)
+
+CI `35453444876` showed that a wait-reply envelope intentionally classifies pause-now as clarification. A Run-wide safety test must use no explicit wait reply; do not weaken that interpretation to make a fixture pass. Record selection remains irrelevant to exact unqualified pause. Terminal cancellation fixtures must remove the sealed Result/Evidence package before deleting their Run, following existing pause-test teardown. Add new migrated tables to the exact schema inventory (generation 53).

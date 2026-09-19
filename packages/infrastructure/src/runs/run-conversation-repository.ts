@@ -521,8 +521,8 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       // Serialize the per-actor limiter across Runs. All work under this lock remains
       // local PostgreSQL or local crypto; no provider, queue or object-store I/O occurs.
       const safetyShortcut = interpretation.intent.kind === 'pause-now';
-      // Exact unqualified pause targets the Run. A stale review selection or resolved
-      // wait must not make that safety request depend on unrelated record context.
+      // Exact unqualified pause targets the Run. A stale review selection must not
+      // retarget it. An explicit wait reply is separately classified as clarification.
       const sourceOrdinal = safetyShortcut ? null : parsed.value.selectedSourceOrdinal;
       const replyToWaitId = safetyShortcut ? null : parsed.value.replyToWaitId;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${safetyShortcut ? 'run-conversation-safety' : 'run-conversation-actor'}:${input.actorId}`}, 0))`);

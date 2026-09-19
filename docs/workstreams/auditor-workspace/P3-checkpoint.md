@@ -28,9 +28,10 @@ applied or refused/superseded without taking ownership of execution.
   The UI names its time and keeps technical IDs in the existing details disclosure.
 - Safety admission has a separate bounded limiter from ordinary questions/notes. There
   is no model/provider call under the transaction and no new execution engine. Exact
-  pause drops unrelated selected-record/wait context, skips record fact reads and does
+  pause drops unrelated selected-record context, skips record fact reads and does
   not consume the ordinary question rate bucket or depend on its message quota. The
-  absolute bounded history limit still fails closed.
+  absolute bounded history limit still fails closed. Explicit wait replies retain their
+  request-bound interpretation and are not silently turned into Run commands.
 
 ## Verification in progress
 
@@ -75,3 +76,14 @@ model turn remains attached to its superseded attempt; the resumed successful re
 verified separately. The compiled-worker browser journey now checks queued/applied
 PostgreSQL receipts and Resume before preserving the unchanged golden negative result.
 This proof is still pending normal CI.
+
+## First P3 CI result
+
+On `8fec5ff`, normal CI `35453444876` passed type/boundary/unit, P0 browser and
+container checks. PostgreSQL completed with 601 passed and three failed: the pause
+fixture accidentally attached an explicit wait-reply context (correctly preventing an
+unqualified shortcut), cancellation teardown omitted its newly sealed evidence package,
+and the exact schema inventory still named generation 52. Follow-up repairs retain
+the interpreter rule, clean up the actual terminal package, and list the two generation
+53 tables. The new pause application proof is not yet passed. Browser results remain
+pending on this candidate.

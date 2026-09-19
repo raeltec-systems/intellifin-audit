@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-52 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-53 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -121,6 +121,8 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       // written once when the last Work Item completes and never updated.
       'run_gate_check',
       'run_initiation_request',
+      'run_interaction_command',
+      'run_interaction_transition',
       'run_observation',
       'run_observation_absence',
       // Story 3.4. Observation registration: the per-Observation Gate check outcomes and

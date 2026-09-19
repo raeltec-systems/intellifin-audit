@@ -488,11 +488,11 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     const runId = ids.next();
     await insertRun(runId, seeded.procedureId, seeded.versionId, seeded.readerId, '2026-10-01', '2026-10-31');
     try {
-      // Stale viewing context cannot retarget or block an unqualified Run safety command.
-      const request = { runId, idempotencyKey: ids.next(), text: 'pause now', selectedSourceOrdinal: 10001, replyToWaitId: ids.next() };
+      // Stale record selection cannot retarget or block an unqualified Run safety command.
+      const request = { runId, idempotencyKey: ids.next(), text: 'pause now', selectedSourceOrdinal: 10001, replyToWaitId: null };
       const input = { actorId: seeded.readerId, sessionId: seeded.readerSession, request };
       const first = await repository().append(input);
-      expect(first.ok).toBe(true);
+      expect(first).toMatchObject({ ok: true });
       if (!first.ok) throw new Error('Pause intake refused');
       const [intake] = await sql`SELECT source_ordinal,reply_to_wait_id FROM run_conversation_message WHERE message_id=${first.messageId}`;
       expect(intake).toMatchObject({ source_ordinal: null, reply_to_wait_id: null });
@@ -975,6 +975,11 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
   }
 
   async function cleanupRun(runId: string): Promise<void> {
+    await sql`DELETE FROM notification WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_result WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+    await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
     await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
     await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
     await sql`DELETE FROM run_observation_absence WHERE run_id=${runId}`;
