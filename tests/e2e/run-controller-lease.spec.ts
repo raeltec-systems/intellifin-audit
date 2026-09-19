@@ -162,7 +162,7 @@ async function assertA11y(page: Page): Promise<void> {
 }
 
 async function capture(page: Page, testInfo: TestInfo, name: string): Promise<void> {
-  const path = testInfo.outputPath(name);
+  const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: false, caret: 'initial' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }

@@ -413,6 +413,15 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     test.setTimeout(120_000);
     const seeded = await seedReplayRun();
     const otherRun = await seedReplayRun();
+    // Raising the fixture's real Escalation also queues notification deliveries.
+    // Let those production-worker outcomes settle BEFORE taking the immutable
+    // Replay baseline; otherwise their delayed audit facts race the first page read.
+    expect(await sql`SELECT send_key FROM notification WHERE run_id=${seeded.runId}`).not.toHaveLength(0);
+    await expect.poll(async () => {
+      const [pending] = await sql`SELECT count(*)::int AS count FROM notification
+        WHERE run_id=${seeded.runId} AND (in_app_outcome IS NULL OR email_outcome IS NULL)`;
+      return pending?.count;
+    }, { timeout: 30_000 }).toBe(0);
     const origin = new URL(baseURL!).origin;
     const offOrigin: string[] = [];
     const requestedFrames: string[] = [];
@@ -425,7 +434,7 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
       await route.fallback();
     });
     const before = await sql`SELECT state,revision FROM audit_run WHERE run_id=${seeded.runId}`;
-    const eventsBefore = await sql`SELECT event_id,sequence FROM audit_events
+    const eventsBefore = await sql`SELECT event_id,sequence,event_type FROM audit_events
       WHERE aggregate_id=${seeded.runId} AND event_type NOT LIKE 'evidence-access.%' ORDER BY sequence`;
     const href = `/runs/${seeded.runId}/replay?workItem=${seeded.workItems[1]}`;
     const expectedFrame = `/api/runs/${seeded.runId}/frames/${seeded.frames[1]}`;
@@ -458,7 +467,7 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
     expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${seeded.runId}`).toEqual(before);
     // Evidence read grants have their own audit facts; no lifecycle or assessment effect
     // may be produced by opening a Replay. Compare the pre-existing Run chain entries.
-    const eventsAfter = await sql`SELECT event_id,sequence FROM audit_events
+    const eventsAfter = await sql`SELECT event_id,sequence,event_type FROM audit_events
       WHERE aggregate_id=${seeded.runId} AND event_type NOT LIKE 'evidence-access.%' ORDER BY sequence`;
     expect(eventsAfter).toEqual(eventsBefore);
     expect(offOrigin).toEqual([]);

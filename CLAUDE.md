@@ -3986,3 +3986,12 @@ the frozen work item, population, capture and C2 proposal. Route its confirm/rej
 journeys through the record queue and inspector, retain the selected URL across reload,
 and compare original Observation/evaluation/Evidence rows before and after review.
 A successful submit is insufficient: require the worker command and sealed Result.
+
+### Await fixture notification outcomes before Replay baselines (2026-09-19)
+
+A real raised Escalation queues independent notification deliveries; their worker audit
+facts may land after fixture setup returns. Wait for both persisted channel outcomes
+before taking a no-execution-effects Replay baseline. Keep the complete non-access
+audit comparison, including event types for diagnosis. Role-revocation browser checks
+must account for the shell bell's exact `/api/runs/events` 403 as well as the Run stream;
+do not allow arbitrary console errors. Playwright screenshot paths need a `.png` suffix.

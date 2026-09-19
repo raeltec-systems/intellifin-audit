@@ -55,13 +55,15 @@ test.describe('Record Review through the authenticated application', () => {
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       // A denied protected reload/stream reports HTTP 403 in Chromium's console.
-      // Only that exact, same-Run refusal is expected during the revocation phase.
+      // The shell bell also opens the global Runs stream. Both streams authorize
+      // independently and must refuse the newly revoked actor.
       const resource = message.location().url;
       const expectedDenial = checkingRevocation &&
         message.text() === 'Failed to load resource: the server responded with a status of 403 (Forbidden)' &&
         resource.startsWith(new URL(page.url()).origin + '/') &&
-        new URL(resource).pathname.includes(`/runs/${fixture.runId}`);
-      if (!expectedDenial) consoleErrors.push(message.text());
+        ['/api/runs/events', `/api/runs/${fixture.runId}/events`, `/runs/${fixture.runId}/evidence`]
+          .includes(new URL(resource).pathname);
+      if (!expectedDenial) consoleErrors.push(`${message.text()} (${resource})`);
     });
     page.on('pageerror', (error) => consoleErrors.push(error.message));
 

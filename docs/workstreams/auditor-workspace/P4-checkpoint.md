@@ -54,3 +54,19 @@ Root test TypeScript passes locally. These changed browser journeys are pending 
 CI; their prior Run Detail passes do not prove this new composition. On `c8a7a68`,
 CI `35459276209` has passed all 4,696 unit tests, TypeScript, 675-module boundaries and
 P0 browser checks; its full application browser suite is still running.
+
+
+## Actual composed review proof
+
+CI `35464796052` on `625dd3b` passed both actual P-1 compiled-worker journeys through
+the record queue and inspector: confirm sealed the Result; reject produced the
+worker-signed Exception. Both retained the selected record on reload and checked
+original Observation/evaluation/Evidence rows and persisted command completion.
+This supersedes the pending composition note above.
+
+The selected Replay journey reached its decoded same-record image, reload, cross-Run
+and duplicate-selection refusal checks, then failed its audit-chain comparison. The
+fixture's raised Escalation queues independent notification delivery; the follow-up
+waits for its persisted channel outcomes before taking the baseline, keeps all existing
+non-access audit entries in the comparison, and includes event types in any failure.
+That correction still needs CI; full history/deep Replay and the release gates remain.

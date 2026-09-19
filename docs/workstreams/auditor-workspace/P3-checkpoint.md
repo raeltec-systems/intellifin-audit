@@ -249,3 +249,26 @@ All four deferred core cases passed. The first failure was role restoration call
 following governed-content cases to fail at controller acquisition. The follow-up reads
 role timestamps as PostgreSQL text in all sibling fixtures and restores with an explicit
 cast. The suite is failed until rerun; removed/corrupt proposal cases remain unproven.
+
+
+### Completed candidate browser observations
+
+CI `35464796052` on `625dd3b` completed with 16 focused authoring passes and
+**231 full browser passes / 3 failures**. Both deferred confirmation journeys passed:
+the queued receipt survives reload without closing the question, and release/reacquire
+fences the original proposal. Both actual worker-to-record-inspector confirm/reject
+journeys passed. The persisted conversation and 1280×800 workspace geometry passed.
+Container/startup, hydrated worker/UI abuse and all 4,710 unit tests also passed.
+
+The remaining failures were the record-review final console assertion (the revoked
+actor's shell bell received the expected global Runs-stream 403); Replay's immutable
+audit baseline (the real fixture Escalation queues asynchronous notification delivery);
+and the controller screenshot helper lacking a PNG suffix. The controller stale-POST
+refusal, unchanged Run/wait/revision and exact lease-event chain assertions executed
+before that screenshot error. Its later accessibility assertion still needs the rerun.
+
+The follow-up permits only exact known same-origin 403 resources during revocation,
+waits for persisted notification delivery outcomes before the Replay baseline, preserves
+the full non-access event comparison, and fixes the screenshot filename. Root test
+TypeScript passes. Full green CI is still required, including the timestamp and JSONB
+receipt corrections. These results close no acceptance proof gate by themselves.
