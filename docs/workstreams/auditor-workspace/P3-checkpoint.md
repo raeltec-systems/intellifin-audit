@@ -156,3 +156,16 @@ unknown-response recovery, but no payload-keyed renewal receipt; do not claim it
 is exactly once. Continuous named-controller display beyond the paused control surface
 and the approved D3 transfer flow also remain. G5 process-kill/queue/mixed-version proof
 and G7 measured capacity are not supplied by these tests.
+
+
+## First controller CI observations
+
+On `379699d`, normal CI `35457445681` passed migration 54, schema drift checking,
+all 609 PostgreSQL integration tests across 50 files, and the database mutation job.
+All 14 conversation cases and all five new controller cases passed, including the real
+Run-lock/expiry probe. Container/startup and P0 browser checks also passed. The full
+application browser and hydrated abuse jobs were still running at this entry. The type/boundary/unit job
+passed TypeScript/boundaries and 4,690 unit tests; its one failure identified a
+nonexistent caption class in the controller component. The follow-up uses the existing
+class and passes the unchanged 34-case stylesheet contract locally. No completed green
+CI result is claimed from these partial observations.

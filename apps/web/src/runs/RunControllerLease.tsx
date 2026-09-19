@@ -61,7 +61,7 @@ export function RunControllerLease({ runId, refreshKey, onRead }: {
       : <>
         <p>{read.heldByYou ? 'You control this Run.' : read.holderName === null ? 'No auditor currently holds control.' : `Current controller: ${read.holderName}.`}</p>
         {read.heldByYou ? <>
-          <p className="ls-text-caption">Your lease renews while this view is connected and visible.</p>
+          <p className="ls-caption">Your lease renews while this view is connected and visible.</p>
           <Button variant="secondary" busy={busy} onClick={() => { void change('release'); }}
             {...(unknown ? { disabledReason: 'Reload to check the recorded controller.' } : gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}>Release control</Button>
         </> : <Button variant="secondary" busy={busy} onClick={() => { void change('acquire'); }}

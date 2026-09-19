@@ -3905,3 +3905,11 @@ Capture the Resume revision/epoch when its confirmation opens; live rereads cann
 silently rebind a previously shown decision. No new manager takeover permission is
 implied. Lease-renewal payload idempotency and full conversational command receipts
 remain separate uncompleted P3 work.
+
+
+### Shared styling is enforced by the whole unit suite (2026-09-19)
+
+CI `35457445681` passed TypeScript/boundaries and 4,690 unit tests, but the stylesheet
+contract caught a nonexistent ls-text-caption class in the new controller view. Use the
+existing ls-caption token. A focused component pass does not replace the global static
+class inventory; its failing guard remains unchanged.
