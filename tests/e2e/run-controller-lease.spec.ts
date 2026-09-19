@@ -239,13 +239,14 @@ test.describe('durable Run controller lease', () => {
       contenderPage = await contenderContext.newPage();
 
       // The Running control remains eligible without any controller row. This is the
-      // exact Pause control path, and the page must not mount a lease controller for it.
+      // exact Pause control path. Steering can offer acquisition alongside it, but
+      // an unowned lease must never disable the independent safety control.
       await holderPage.goto(`/runs/${runningRunId}`);
       await expect(holderPage.locator('#run-pause[data-client-ready=true]')).toBeVisible();
       const pause = holderPage.getByRole('button', { name: 'Pause', exact: true });
       await expect(pause).toBeVisible();
       await expect(pause).not.toHaveAttribute('aria-disabled', 'true');
-      await expect(holderPage.getByRole('region', { name: 'Run controller', exact: true })).toHaveCount(0);
+      await expect(holderPage.getByRole('region', { name: 'Run controller', exact: true })).toBeVisible();
       expect(await readLease(runningRunId)).toBeNull();
 
       // A durable Escalation answer also stays available without the Resume lease.
@@ -254,7 +255,7 @@ test.describe('durable Run controller lease', () => {
       const answer = holderPage.getByRole('button', { name: 'Select candidate 1', exact: true });
       await expect(answer).toBeVisible();
       await expect(answer).not.toHaveAttribute('aria-disabled', 'true');
-      await expect(holderPage.getByRole('region', { name: 'Run controller', exact: true })).toHaveCount(0);
+      await expect(holderPage.getByRole('region', { name: 'Run controller', exact: true })).toBeVisible();
       const [openWait] = await sql<{ wait_id: string; closed_at: string | null }[]>`SELECT wait_id,closed_at FROM run_wait WHERE run_id=${escalationRunId}`;
       expect(openWait).toMatchObject({ wait_id: escalationWaitId, closed_at: null });
 

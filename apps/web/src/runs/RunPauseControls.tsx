@@ -129,7 +129,7 @@ export function RunPauseControls({
       disabledReason={ESCALATION_PANEL_COPY.pauseUnavailable}
       disabledReasonId="run-pause-unavailable"
     >Pause</Button> : null}
-    {paused && <RunControllerLease runId={runId} refreshKey={controlRefreshKey} onRead={setControl} />}
+    {(paused || pausable || awaitingAuditor) && <RunControllerLease runId={runId} refreshKey={controlRefreshKey} onRead={setControl} />}
     {paused ? <Button variant="primary" busy={busy} onClick={() => {
         if (runRevision !== null && control?.status === 'ready' && (!control.required || control.heldByYou))
           setResumeConfirmation({ revision: runRevision, epoch: control.required ? control.epoch : null });

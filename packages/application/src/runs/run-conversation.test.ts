@@ -15,6 +15,13 @@ const RUN = '01920000-0000-7000-8000-000000000001';
 const OTHER_RUN = '01920000-0000-7000-8000-000000000002';
 const IDEMPOTENCY = '01920000-0000-7000-8000-000000000003';
 const WAIT = '01920000-0000-7000-8000-000000000004';
+const INSPECTION = {
+  workItemId: '01920000-0000-7000-8000-000000000005',
+  subjectKey: 'EMP-0042',
+  registrationId: '01920000-0000-7000-8000-000000000006',
+  runRevision: 7,
+  planDigest: 'ab'.repeat(32),
+};
 
 const baseEnvelope = {
   runId: RUN.toUpperCase(),
@@ -52,6 +59,24 @@ describe('the bounded Run conversation request parser', () => {
     const normalized = parseSuccess();
     expect(parseRunConversationMessageRequest(normalized)).toEqual({ ok: true, value: normalized });
     expect(parseSuccess({ selectedSourceOrdinal: null, replyToWaitId: null })).toEqual(normalized);
+  });
+
+  it('preserves the captured inspection without accepting client authority or attempt identity', () => {
+    const parsed = parseSuccess({ currentInspection: INSPECTION });
+    expect(parsed.currentInspection).toEqual(INSPECTION);
+    expect(parseRunConversationMessageRequest(parsed)).toEqual({ ok: true, value: parsed });
+    for (const currentInspection of [
+      { ...INSPECTION, expectedControlEpoch: 1 },
+      { ...INSPECTION, attemptId: WAIT },
+      { ...INSPECTION, selectedSourceOrdinal: 42 },
+      { ...INSPECTION, runRevision: -1 },
+      { ...INSPECTION, planDigest: 'AB'.repeat(32) },
+      { ...INSPECTION, subjectKey: '😀'.repeat(129) },
+    ]) {
+      expect(parseRunConversationMessageRequest({ ...baseEnvelope, currentInspection })).toMatchObject({ ok: false });
+    }
+    expect(parseRunConversationMessageRequest({ ...baseEnvelope, currentInspection: INSPECTION, expectedControlEpoch: 1 }))
+      .toMatchObject({ ok: false, code: 'unknown-fields' });
   });
 
   it('rejects missing and unknown envelope fields before interpretation', () => {
@@ -284,7 +309,7 @@ describe('finite conversation intent interpretation', () => {
     });
   });
 
-  it('requires an explicit deferred phrase and a selected record before proposing a deferred pause', () => {
+  it('requires an explicit deferred phrase and inspection context before proposing a deferred pause', () => {
     const deferred = interpretRunConversationMessage(
       parseSuccess({ text: 'pause after this employee', selectedSourceOrdinal: 12 }),
     );
@@ -301,6 +326,27 @@ describe('finite conversation intent interpretation', () => {
       disposition: 'clarification',
       execution: 'not-executed',
     });
+  });
+
+  it('proposes a named current inspection while leaving an existing question unanswered', () => {
+    for (const text of ['pause after this employee', 'pause after this record', 'pause after this inspection']) {
+      const interpretation = interpretRunConversationMessage(parseSuccess({
+        text, currentInspection: INSPECTION, replyToWaitId: WAIT,
+      }));
+      expect(interpretation).toMatchObject({
+        intent: { kind: 'deferred-pause-proposal', selectedSourceOrdinal: null },
+        disposition: 'proposal', requiresConfirmation: true, execution: 'not-executed',
+      });
+    }
+  });
+
+  it('does not turn quoted, negated or combined deferred instructions into a pause proposal', () => {
+    for (const text of ['"pause after this inspection"', 'do not pause after this inspection',
+      'pause after this inspection and skip the next record', 'if needed, pause after this record']) {
+      const interpretation = interpretRunConversationMessage(parseSuccess({ text, currentInspection: INSPECTION }));
+      expect(interpretation.intent.kind).not.toBe('deferred-pause-proposal');
+      expect(interpretation.execution).toBe('not-executed');
+    }
   });
 
   it('does not apply a safety shortcut when a wait reply context is attached', () => {

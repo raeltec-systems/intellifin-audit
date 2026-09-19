@@ -1,3 +1,6 @@
+import type { DeferredPauseAnchor } from '@intellifin/domain';
+import { parseDeferredPauseAnchor } from './deferred-pause-run.js';
+
 /**
  * The application contract for the bounded Run conversation surface.
  *
@@ -75,7 +78,9 @@ export interface RunConversationMessage {
   /** Current persisted receipt, separate from the immutable message text. */
   readonly command?: {
     readonly commandId: string;
-    readonly kind: 'pause-now';
+    readonly kind: 'pause-now' | 'pause-after-inspection';
+    readonly targetLabel?: string;
+    readonly canConfirm?: boolean;
     readonly state: 'received' | 'interpreted' | 'queued' | 'applied' | 'refused' | 'superseded';
     readonly at: string;
     readonly sourceEventId: string | null;
@@ -139,7 +144,14 @@ export interface RunConversationMessageRequest {
   readonly text: string;
   readonly selectedSourceOrdinal: number | null;
   readonly replyToWaitId: string | null;
+  /** Server-read execution context captured when composition begins; never a selected-row guess. */
+  readonly currentInspection?: DeferredPauseAnchor | null;
 }
+
+export type RunConversationInspectionRead =
+  | { readonly status: 'ready'; readonly anchor: DeferredPauseAnchor; readonly subjectLabel: string;
+      readonly targetName: string; readonly sourceOrdinal: number | null; readonly multipleTargets: boolean }
+  | { readonly status: 'unavailable'; readonly reason: string };
 
 export const RUN_CONVERSATION_MESSAGE_REFUSAL_CODES = [
   'malformed',
@@ -197,6 +209,10 @@ export type RunConversationAppendReceipt =
       readonly reason: string;
       readonly code: RunConversationAppendErrorCode;
     };
+
+export type RunConversationCommandReceipt =
+  | { readonly ok: true; readonly commandId: string; readonly state: 'queued' | 'applied' | 'superseded'; readonly replayed: boolean }
+  | { readonly ok: false; readonly code: RunConversationAppendErrorCode; readonly reason: string };
 
 /** Secret-like classes rejected before a caller can ask the content repository to store. */
 export const RUN_CONVERSATION_SECRET_PATTERNS = ['password', 'otp', 'token'] as const;
@@ -283,7 +299,7 @@ function failure(code: RunConversationMessageRefusalCode, reason: string): RunCo
 export function parseRunConversationMessageRequest(value: unknown): RunConversationMessageParseResult {
   if (!plainObject(value)) return failure('malformed', 'The conversation message must be an object.');
 
-  const expectedKeys = ['runId', 'idempotencyKey', 'text', 'selectedSourceOrdinal', 'replyToWaitId'] as const;
+  const expectedKeys = ['runId', 'idempotencyKey', 'text', 'selectedSourceOrdinal', 'replyToWaitId', 'currentInspection'] as const;
   const requiredKeys = ['runId', 'idempotencyKey', 'text'] as const;
   const keys = Object.keys(value);
   if (keys.some((key) => !expectedKeys.includes(key as (typeof expectedKeys)[number]))) {
@@ -340,6 +356,11 @@ export function parseRunConversationMessageRequest(value: unknown): RunConversat
     replyToWaitId = value.replyToWaitId.toLowerCase();
   }
 
+  const currentInspection = value.currentInspection === undefined || value.currentInspection === null
+    ? null : parseDeferredPauseAnchor(value.currentInspection);
+  if (value.currentInspection !== undefined && value.currentInspection !== null && currentInspection === null)
+    return failure('malformed', 'The current inspection context is invalid.');
+
   return {
     ok: true,
     value: {
@@ -348,6 +369,7 @@ export function parseRunConversationMessageRequest(value: unknown): RunConversat
       text: value.text,
       selectedSourceOrdinal,
       replyToWaitId,
+      ...(Object.hasOwn(value, 'currentInspection') ? { currentInspection } : {}),
     },
   };
 }
@@ -397,7 +419,7 @@ export type RunConversationIntent =
   | { readonly kind: 'stop-confirmation' }
   | {
       readonly kind: 'deferred-pause-proposal';
-      readonly selectedSourceOrdinal: number;
+      readonly selectedSourceOrdinal: number | null;
     }
   | {
       readonly kind: 'answer-request-proposal';
@@ -483,12 +505,11 @@ export function interpretRunConversationMessage(
     return interpretation({ kind: 'pause-now' }, 'safety-shortcut', false);
   }
 
-  // Deferred control is a separate, explicit phrase.  It still needs the selected
-  // source ordinal supplied by the caller and remains a proposal until confirmation.
+  // The exact phrase creates only a proposal. An execution anchor is required at the
+  // authoritative admission boundary; a historical selected row cannot supply it.
   if (
     /^pause after this (?:employee|record|inspection)$/.test(normalized) &&
-    input.selectedSourceOrdinal !== null &&
-    input.replyToWaitId === null
+    (input.currentInspection != null || input.selectedSourceOrdinal !== null)
   ) {
     return interpretation(
       { kind: 'deferred-pause-proposal', selectedSourceOrdinal: input.selectedSourceOrdinal },

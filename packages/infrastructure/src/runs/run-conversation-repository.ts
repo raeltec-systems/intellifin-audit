@@ -12,7 +12,11 @@ import {
   narrateRunConversationEvent,
   parseRunConversationMessageRequest,
   pauseRun,
+  acceptDeferredPause,
+  parseDeferredPauseAnchor,
   type RunConversationAppendReceipt,
+  type RunConversationInspectionRead,
+  type RunConversationCommandReceipt,
   type RunConversationEvidenceLink,
   type RunConversationIntentKind,
   type RunConversationMessage,
@@ -38,6 +42,7 @@ import {
   runObservation,
   runWait,
   runWorkItem,
+  runAgentWork,
 } from '../db/schema.js';
 import { createAuditEventWriter, CryptoUuidV7Generator } from '../db/audit-events.js';
 import { isUuidText } from '../db/identifier.js';
@@ -46,6 +51,8 @@ import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository
 import { ConversationContentCipher } from './conversation-content.js';
 import { recordReviewProjectionQuery } from './record-review-repository.js';
 import { PostgresWaitRepository } from './wait-repository.js';
+import { readLockedRunControlLease, runControlServerTime } from './run-control-lease-repository.js';
+import { PostgresDeferredPauseRepository } from './deferred-pause-repository.js';
 
 const MAX_CONVERSATION_MESSAGES = 10_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
@@ -299,6 +306,45 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** A coherent current execution anchor; a selected review row cannot manufacture it. */
+  async readCurrentInspection(input: { runId: string; actorId: string }): Promise<RunConversationInspectionRead> {
+    const unavailable = (reason: string): RunConversationInspectionRead => ({ status: 'unavailable', reason });
+    if (!isUuidText(input.runId) || !validActor(input.actorId) || this.cipher === null)
+      return unavailable('Current inspection is unavailable.');
+    return this.db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+      const role = await new DrizzleRoleRepository(tx).findRole(input.actorId);
+      if (!authorizeActionRole(role, 'run.initiate').allowed) return unavailable('Your role cannot read the current inspection.');
+      const [run] = await tx.select().from(auditRun).where(eq(auditRun.runId, input.runId)).limit(1);
+      if (!run || !['RUNNING', 'AWAITING_AUDITOR'].includes(run.state)) return unavailable('No active inspection is available for a deferred pause.');
+      const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
+      if (!plan) return unavailable('The frozen inspection context is unavailable.');
+      const [current] = await tx.select({
+        workItemId: runWorkItem.workItemId, subjectKey: runWorkItem.subjectKey,
+        registrationId: runWorkItem.registrationId, stepId: runWorkItem.stepId,
+        state: runWorkItem.state, stage: runAgentWork.status,
+      }).from(runAgentWork).innerJoin(runWorkItem, and(
+        eq(runWorkItem.workItemId, runAgentWork.workItemId), eq(runWorkItem.runId, runAgentWork.runId),
+      )).where(eq(runAgentWork.runId, input.runId)).limit(1);
+      if (!current || !['EXECUTING', 'RETRY', 'WAITING'].includes(current.stage) ||
+        !['IN_PROGRESS', 'AWAITING'].includes(current.state)) return unavailable('No current agent inspection is available yet.');
+      const target = classifyPlanTargets(plan).agents.find(entry =>
+        entry.target.registrationId === current.registrationId && entry.stepId === current.stepId);
+      if (!target) return unavailable('The current inspection is not part of the frozen agent plan.');
+      const key = adapterLookupColumn(plan.inputs.templateId);
+      const sources = current.subjectKey === null || key === null ? [] : await tx.select({ ordinal: populationRow.ordinal })
+        .from(populationRow).where(and(eq(populationRow.runId, input.runId), eq(populationRow.disposition, 'included'),
+          sql`jsonb_typeof(${populationRow.values}->${key})='string' AND ${populationRow.values}->>${key}=${current.subjectKey}`)).limit(2);
+      return { status: 'ready' as const,
+        anchor: { workItemId: current.workItemId, subjectKey: current.subjectKey, registrationId: current.registrationId,
+          runRevision: run.revision, planDigest: createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex') },
+        subjectLabel: current.subjectKey ?? 'Page inspection', targetName: target.target.displayName,
+        sourceOrdinal: sources.length === 1 ? sources[0]!.ordinal : null,
+        multipleTargets: plan.targetSystems.length > 1,
+      };
+    }, { isolationLevel: 'repeatable read' });
+  }
+
   async read(input: RunConversationReadRequest): Promise<RunConversationRead> {
     if (!isUuidText(input.runId)) return errorRead(input.runId, 'missing', 'run-not-found');
     if (!validActor(input.actorId)) return errorRead(input.runId, 'denied', 'not-authorized');
@@ -346,20 +392,38 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const receiptParents = page.filter(row => row.kind === 'command-receipt' && row.parentMessageId !== null).map(row => row.parentMessageId!);
       const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
         message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
+        kind: 'pause-now' | 'pause-after-inspection'; actor_id: string; deferred_anchor: unknown;
         at: string; source_event_id: string | null; event_valid: boolean;
-      }>(sql`SELECT c.message_id::text,c.command_id::text,t.state,
+      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.deferred_anchor,t.state,
         to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text,
         (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
-          AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at
-          AND ((t.state='queued' AND e.event_type='lifecycle.run-pause-requested' AND e.source='web' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
-            OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
-            OR (t.state='superseded' AND e.event_type='lifecycle.pause-superseded' AND e.source='worker' AND e.outcome='failure' AND e.actor_type='system' AND e.actor_id='result-sealer' AND e.payload->>'requestedBy'=c.actor_id)),false)) AS event_valid
+          AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at AND (
+            (c.kind='pause-now' AND (
+              (t.state='queued' AND e.event_type='lifecycle.run-pause-requested' AND e.source='web' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
+              OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
+              OR (t.state='superseded' AND e.event_type='lifecycle.pause-superseded' AND e.source='worker' AND e.outcome='failure' AND e.actor_type='system' AND e.actor_id='result-sealer' AND e.payload->>'requestedBy'=c.actor_id)
+            )) OR (c.kind='pause-after-inspection'
+              AND e.payload->>'workItemId'=c.deferred_anchor->>'workItemId'
+              AND e.payload ? 'subjectKey'
+              AND (e.payload->>'subjectKey' IS NOT DISTINCT FROM c.deferred_anchor->>'subjectKey')
+              AND e.payload->>'registrationId'=c.deferred_anchor->>'registrationId' AND (
+                (t.state='queued' AND e.event_type='lifecycle.run-deferred-pause-requested' AND e.source='web' AND e.outcome='success'
+                  AND e.actor_type='human' AND e.actor_id=c.actor_id AND e.payload->>'expectedControlEpoch'=c.deferred_control_epoch::text
+                  AND e.payload->>'planDigest'=c.plan_digest AND e.payload->>'runRevision'=c.expected_run_revision::text)
+                OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success'
+                  AND e.actor_type='human' AND e.actor_id=c.actor_id AND e.payload->>'pauseMode'='after-inspection')
+                OR (t.state='superseded' AND e.event_type='lifecycle.deferred-pause-superseded' AND e.source IN ('web','worker') AND e.outcome='failure'
+                  AND e.actor_type='system' AND e.actor_id='deferred-pause-coordinator' AND e.payload->>'requestedBy'=c.actor_id)
+              ))
+          ),false)) AS event_valid
         FROM run_interaction_command c
         JOIN LATERAL (SELECT state,created_at,source_event_id FROM run_interaction_transition
           WHERE command_id=c.command_id ORDER BY sequence DESC LIMIT 1) t ON true
         LEFT JOIN audit_events e ON e.event_id=t.source_event_id
-        WHERE c.run_id=${run.runId}::uuid AND c.kind='pause-now'
+        WHERE c.run_id=${run.runId}::uuid AND c.kind IN ('pause-now','pause-after-inspection')
           AND c.message_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(receiptParents)}::jsonb)::uuid)`);
+      const receiptPlan = receipts.some(receipt => receipt.kind === 'pause-after-inspection')
+        ? await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId) : null;
       // Never present an applied receipt whose authoritative source fact is missing or changed.
       if (receipts.some(receipt => !receipt.event_valid)) return errorRead(input.runId, 'unavailable', 'content-unavailable');
       const receiptFor = new Map(receipts.map(receipt => [receipt.message_id, receipt]));
@@ -420,8 +484,16 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           createdAt: row.createdAt.toISOString(),
           contextRevision: row.contextRevision,
           links,
-          ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: 'pause-now' as const,
-            state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id } }),
+          ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: receipt.kind,
+            state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id,
+            ...(receipt.kind === 'pause-after-inspection' ? (() => {
+              const anchor = parseDeferredPauseAnchor(receipt.deferred_anchor);
+              const target = receiptPlan?.inputs.targets.find(entry => entry.registrationId === anchor?.registrationId);
+              return { targetLabel: anchor && target ? `${anchor.subjectKey === null ? 'the page inspection' : JSON.stringify(anchor.subjectKey)} on ${target.displayName}` : undefined,
+                canConfirm: anchor !== null && target !== undefined && contentState === 'available' && receipt.state === 'interpreted' &&
+                  receipt.actor_id === input.actorId && authorizeActionRole(role, 'run.pause').allowed };
+            })() : {}),
+          } }),
         });
       }
       return {
@@ -489,6 +561,95 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     return { sourceOrdinalForWorkItemId, sourceOrdinalForToolActionId, sourceOrdinalForEvidenceId };
   }
 
+  /** Confirm only the immutable proposal; the client cannot replace its target or epoch. */
+  async confirmDeferredPause(input: PostgresRunConversationAppendInput): Promise<RunConversationCommandReceipt> {
+    const request = input.request;
+    if (!validActor(input.actorId) || !validActor(input.sessionId) || typeof request !== 'object' || request === null || Array.isArray(request))
+      return { ok: false, code: 'malformed', reason: 'Choose a recorded inspection-pause proposal.' };
+    const fields = request as Record<string, unknown>;
+    if (Object.keys(fields).length !== 2 || typeof fields.runId !== 'string' || typeof fields.commandId !== 'string' || !isUuidText(fields.runId) || !isUuidText(fields.commandId))
+      return { ok: false, code: 'malformed', reason: 'Choose a recorded inspection-pause proposal.' };
+    const runId = fields.runId.toLowerCase();
+    const commandId = fields.commandId.toLowerCase();
+    if (this.cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation is unavailable.' };
+    return this.db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL lock_timeout = '250ms'`);
+      await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
+      const [run] = await tx.select().from(auditRun).where(eq(auditRun.runId, runId)).for('update').limit(1);
+      const roles = new DrizzleRoleRepository(tx);
+      const role = await roles.findRole(input.actorId);
+      if (!authorizeActionRole(role, 'run.pause').allowed) return { ok: false, code: 'denied', reason: 'Your current role cannot request this pause.' };
+      if (!run) return { ok: false, code: 'run-not-found', reason: 'The Run was not found.' };
+      const [command] = await tx.select().from(runInteractionCommand).where(and(
+        eq(runInteractionCommand.commandId, commandId), eq(runInteractionCommand.runId, runId),
+        eq(runInteractionCommand.kind, 'pause-after-inspection'), eq(runInteractionCommand.actorId, input.actorId),
+      )).for('update').limit(1);
+      if (!command) return { ok: false, code: 'denied', reason: 'Only the auditor who proposed this inspection pause can confirm it.' };
+      const anchor = parseDeferredPauseAnchor(command.deferredAnchor);
+      if (anchor === null || command.deferredControlEpoch === null) return { ok: false, code: 'unavailable', reason: 'The recorded proposal context is unavailable.' };
+      const [prior] = await tx.select().from(runInteractionTransition).where(eq(runInteractionTransition.commandId, commandId))
+        .orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if (prior?.state === 'queued' || prior?.state === 'applied' || prior?.state === 'superseded') {
+        const [fact] = prior.sourceEventId === null ? [] : await tx.select().from(auditEvents).where(and(
+          eq(auditEvents.eventId, prior.sourceEventId), eq(auditEvents.aggregateId, runId), sql`${auditEvents.payload}->>'commandId'=${commandId}`,
+        )).limit(1);
+        const exactTarget = fact !== undefined && fact.occurredAt.getTime() === prior.createdAt.getTime() &&
+          fact.payload.workItemId === anchor.workItemId && fact.payload.subjectKey === anchor.subjectKey &&
+          fact.payload.registrationId === anchor.registrationId;
+        const human = fact?.actorType === 'human' && fact.actorId === command.actorId;
+        const protocol = prior.state === 'queued'
+          ? fact?.eventType === 'lifecycle.run-deferred-pause-requested' && fact.source === 'web' && fact.outcome === 'success' && human &&
+            fact.payload.expectedControlEpoch === command.deferredControlEpoch && fact.payload.planDigest === command.planDigest &&
+            fact.payload.runRevision === command.expectedRunRevision
+          : prior.state === 'applied'
+            ? fact?.eventType === 'lifecycle.run-paused' && fact.source === 'worker' && fact.outcome === 'success' && human && fact.payload.pauseMode === 'after-inspection'
+            : fact?.eventType === 'lifecycle.deferred-pause-superseded' && ['web', 'worker'].includes(fact.source) && fact.outcome === 'failure' &&
+              fact.actorType === 'system' && fact.actorId === 'deferred-pause-coordinator' && fact.payload.requestedBy === command.actorId;
+        if (!exactTarget || !protocol) return { ok: false, code: 'unavailable', reason: 'The authoritative command receipt is unavailable.' };
+        return { ok: true, commandId, state: prior.state, replayed: true };
+      }
+      if (prior?.state !== 'interpreted') return { ok: false, code: 'conflict', reason: 'This proposal is no longer available for confirmation. Read its receipt and create a new proposal if needed.' };
+      // The auditor reviewed the child proposal, not only their original sentence.
+      // Both governed bodies must still be readable at first acceptance; a stale modal
+      // cannot confirm a removed or undecipherable proposal. Recorded retries above
+      // only recover a prior outcome and never execute it again.
+      const bodies = await tx.select({ messageId: runConversationMessage.messageId,
+        ciphertext: runConversationContent.ciphertext, removedAt: runConversationContent.removedAt })
+        .from(runConversationMessage).leftJoin(runConversationContent,
+          eq(runConversationContent.messageId, runConversationMessage.messageId))
+        .where(and(eq(runConversationMessage.runId, runId), or(
+          eq(runConversationMessage.messageId, command.messageId),
+          and(eq(runConversationMessage.parentMessageId, command.messageId), eq(runConversationMessage.kind, 'command-receipt')),
+        ))).limit(3);
+      let readable = bodies.length === 2;
+      for (const body of bodies) {
+        try {
+          if (body.removedAt !== null || body.ciphertext === null ||
+            storedBody(this.cipher!.open(runId, body.messageId, body.ciphertext)) === null) readable = false;
+        } catch { readable = false; }
+      }
+      if (!readable) return { ok: false, code: 'unavailable', reason: 'The proposal content is no longer available for confirmation.' };
+      const at = new Date(await runControlServerTime(tx));
+      const auditEventsWriter = createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator());
+      const outcome = await acceptDeferredPause({ roles, repository: new PostgresDeferredPauseRepository(tx),
+        unitOfWork: { execute: work => work({ auditEvents: auditEventsWriter }) }, ids: new CryptoUuidV7Generator(),
+        clock: { now: () => at }, commandId,
+      }, { session: { userId: input.actorId, sessionId: input.sessionId }, request: { runId, anchor, expectedControlEpoch: command.deferredControlEpoch } });
+      if (!outcome.ok) {
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: prior.sequence + 1, state: 'refused', reasonCode: 'domain-refused', createdAt: at });
+        const refusal = await auditEventsWriter.append({ actor: { type: 'human', id: input.actorId },
+          eventType: 'review.interaction-refused', source: 'web', outcome: 'failure', aggregateId: runId,
+          correlationId: run.correlationId, sessionId: input.sessionId, payload: { commandId, reasonCode: 'domain-refused' } });
+        await tx.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence: refusal.sequence })})`);
+        return { ok: false, code: 'conflict', reason: outcome.reason };
+      }
+      const [queued] = await tx.select({ state: runInteractionTransition.state }).from(runInteractionTransition)
+        .where(eq(runInteractionTransition.commandId, commandId)).orderBy(desc(runInteractionTransition.sequence)).limit(1);
+      if (queued?.state !== 'queued') throw new Error('Deferred pause domain receipt unavailable');
+      return { ok: true, commandId, state: 'queued', replayed: false };
+    });
+  }
+
   async append(input: PostgresRunConversationAppendInput): Promise<RunConversationAppendReceipt> {
     if (!validActor(input.actorId) || !validActor(input.sessionId)) return { ok: false, code: 'malformed', reason: 'The conversation identity was not valid.' };
     const parsed = parseRunConversationMessageRequest(input.request);
@@ -510,6 +671,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       text: parsed.value.text.trim(),
       selectedSourceOrdinal: parsed.value.selectedSourceOrdinal,
       replyToWaitId: parsed.value.replyToWaitId,
+      ...(interpretation.intent.kind === 'deferred-pause-proposal' ? { currentInspection: parsed.value.currentInspection ?? null } : {}),
     });
     const semanticFingerprint = cipher.fingerprint(semanticInput);
 
@@ -562,7 +724,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const windowStart = new Date(at.getTime() - 60_000);
       const [rate] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
         .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart),
-          safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId})`));
+          safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')`));
       if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', reason: 'The conversation rate limit was reached. Try again shortly.' };
 
       if (!safetyShortcut) {
@@ -577,6 +739,34 @@ export class PostgresRunConversationRepository implements RunConversationReposit
 
       const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
       if (!plan) return { ok: false, code: 'unavailable', reason: 'The frozen Run context is unavailable.' };
+      const deferredAnchor = interpretation.intent.kind === 'deferred-pause-proposal' ? parsed.value.currentInspection ?? null : null;
+      let deferredTargetLabel: string | null = null;
+      let deferredControlEpoch: number | null = null;
+      if (interpretation.intent.kind === 'deferred-pause-proposal') {
+        if (deferredAnchor === null) return { ok: false, code: 'conflict', reason: 'No current inspection was captured for this draft. Clear the draft and start again from the current workspace.' };
+        const currentRole = await new DrizzleRoleRepository(tx).findRole(input.actorId);
+        if (!authorizeActionRole(currentRole, 'run.pause').allowed) return { ok: false, code: 'denied', reason: 'Your current role cannot request this pause.' };
+        const control = await readLockedRunControlLease(tx, run.runId);
+        const serverNow = Date.parse(await runControlServerTime(tx));
+        if (!control || control.holderId !== input.actorId || control.expiresAt === null || Date.parse(control.expiresAt) <= serverNow)
+          return { ok: false, code: 'denied', reason: 'Acquire control before proposing a pause after the current inspection.' };
+        deferredControlEpoch = control.epoch;
+        const digest = createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex');
+        const [current] = await tx.select({ workItemId: runWorkItem.workItemId, subjectKey: runWorkItem.subjectKey,
+          registrationId: runWorkItem.registrationId, stepId: runWorkItem.stepId, state: runWorkItem.state,
+          stage: runAgentWork.status }).from(runAgentWork).innerJoin(runWorkItem, and(
+            eq(runAgentWork.workItemId, runWorkItem.workItemId), eq(runAgentWork.runId, runWorkItem.runId),
+          )).where(eq(runAgentWork.runId, run.runId)).limit(1);
+        const target = current && classifyPlanTargets(plan).agents.find(entry => entry.stepId === current.stepId && entry.target.registrationId === current.registrationId);
+        if (!current || !target || !['RUNNING', 'AWAITING_AUDITOR'].includes(run.state) ||
+          !['EXECUTING', 'RETRY', 'WAITING'].includes(current.stage) || !['IN_PROGRESS', 'AWAITING'].includes(current.state) ||
+          current.workItemId !== deferredAnchor.workItemId || current.subjectKey !== deferredAnchor.subjectKey ||
+          current.registrationId !== deferredAnchor.registrationId || run.revision !== deferredAnchor.runRevision || digest !== deferredAnchor.planDigest)
+          return { ok: false, code: 'conflict', reason: 'The inspection changed while you were composing. No pause was requested. Clear the draft and review the current inspection.' };
+        if (deferredAnchor.subjectKey === null && !/pause after this inspection[.!?]*$/i.test(parsed.value.text.trim()))
+          return { ok: false, code: 'conflict', reason: 'The current unit is a page inspection, not one source record. Use “pause after this inspection” to name that boundary.' };
+        deferredTargetLabel = `${deferredAnchor.subjectKey === null ? 'the page inspection' : JSON.stringify(deferredAnchor.subjectKey)} on ${safeFact(target.target.displayName, 120)}`;
+      }
       const facts = safetyShortcut ? null : await this.facts(tx, run, plan, sourceOrdinal);
       if (!safetyShortcut && facts === null) return { ok: false, code: 'malformed', reason: 'The selected source record is not available in this Run.' };
       let replyBody = facts === null ? bodyEnvelope('Pause request awaiting the domain decision.', [])
@@ -642,6 +832,18 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           ? 'Pause requested. Execution is still running until the worker reaches its next safe boundary.'
           : `Pause was not requested. ${outcome.reason}`, []);
       }
+      if (deferredAnchor !== null && deferredTargetLabel !== null) {
+        const commandId = new CryptoUuidV7Generator().next();
+        await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
+          actorId: input.actorId, kind: 'pause-after-inspection', requestKey: parsed.value.idempotencyKey,
+          semanticFingerprint, planDigest: deferredAnchor.planDigest, expectedRunRevision: deferredAnchor.runRevision,
+          interpretationVersion: 'confirmed-inspection-v1', deferredAnchor, deferredControlEpoch, createdAt: at });
+        await tx.insert(runInteractionTransition).values([
+          { commandId, sequence: 1, state: 'received', reasonCode: 'intake-persisted', createdAt: at },
+          { commandId, sequence: 2, state: 'interpreted', reasonCode: 'inspection-confirmation-required', createdAt: at },
+        ]);
+        replyBody = bodyEnvelope(`Review a pause after ${deferredTargetLabel}. Only this target's inspection is named; this is not an all-systems record barrier. No pause is requested until you confirm. An open question remains open. If no work remains after this inspection, the Run can finish instead.`, []);
+      }
       // Existing domain events can append operational narration between intake and
       // reply. Allocate from the committed transaction history after invoking the handler.
       const [replyPosition] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
@@ -655,13 +857,15 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         runId: run.runId,
         sequence: replySequence,
         actorId: input.actorId,
-        kind: interpretation.intent.kind === 'pause-now' ? 'command-receipt' : 'platform-event',
+        kind: interpretation.intent.kind === 'pause-now' || deferredAnchor !== null ? 'command-receipt' : 'platform-event',
         createdAt: at,
         parentMessageId: messageId,
         requestKey: null,
         semanticFingerprint: null,
         contextRevision: replyContextRevision,
-        sourceOrdinal: sourceOrdinal,
+        // The review selection can be historical. A deferred execution command names
+        // its immutable current inspection; never link its receipt to that selection.
+        sourceOrdinal: deferredAnchor === null ? sourceOrdinal : null,
         replyToWaitId: replyToWaitId,
         sourceEventSequence: null,
       });

@@ -90,4 +90,22 @@ describe('RunConversation', () => {
     expect(unicodeLength('A🙂界')).toBe(3);
     expect(conversationBody({ ...message, body: null, contentState: 'unavailable' })).toContain('temporarily unavailable');
   });
+  it('separates a proposal awaiting confirmation from a queued inspection pause', () => {
+    const command = { commandId: MESSAGE_ID, kind: 'pause-after-inspection' as const,
+      targetLabel: 'E-102 on LoanCore', canConfirm: true, state: 'interpreted' as const,
+      at: message.createdAt, sourceEventId: null };
+    const render = (row: RunConversationMessage) => renderToStaticMarkup(React.createElement(RunConversation, {
+      runId: RUN_ID, messages: [row], onReviewCommand: () => undefined,
+    }));
+    const proposal = render({ ...message, kind: 'command-receipt', command });
+    expect(proposal).toContain('awaiting your confirmation');
+    expect(proposal).toContain('Review pause after inspection');
+    const queued = render({ ...message, command: { ...command, state: 'queued' } });
+    expect(queued).toContain('waiting for the named inspection to settle');
+    expect(queued).not.toContain('Review pause after inspection');
+    expect(queued).not.toContain('Pause request: applied');
+    const removed = render({ ...message, command, body: null, contentState: 'removed' });
+    expect(removed).not.toContain('Review pause after inspection');
+  });
+
 });

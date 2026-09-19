@@ -68,3 +68,4 @@ export * from './runs/record-review-repository.js';
 export * from './runs/conversation-content.js';
 export * from './runs/run-conversation-repository.js';
 export * from './runs/run-control-lease-repository.js';
+export * from './runs/deferred-pause-repository.js';

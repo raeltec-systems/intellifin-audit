@@ -87,3 +87,4 @@ export * from './runs/record-review.js';
 export * from './runs/run-conversation.js';
 export * from './runs/run-conversation-events.js';
 export * from './runs/run-control-lease.js';
+export * from './runs/deferred-pause-run.js';

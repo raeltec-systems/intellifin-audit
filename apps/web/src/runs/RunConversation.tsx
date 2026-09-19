@@ -8,6 +8,7 @@ import {
   type RunConversationMessage,
   type RunConversationMessageKind,
   type RunConversationMessageRequest,
+  type RunConversationInspectionRead,
   type RunConversationMessageSource,
 } from '@intellifin/application';
 
@@ -22,6 +23,7 @@ import {
 
 import { utcStamp } from './labels';
 import { useActionGate } from '../design/action-gate';
+import { Button } from '../design/Button';
 import './RunWorkspaceShell.css';
 
 export { RUN_CONVERSATION_MAX_TEXT_CHARS } from '@intellifin/application';
@@ -53,6 +55,7 @@ export interface RunConversationProps {
   readonly onLoadOlder?: (beforeSequence: number) => unknown | Promise<unknown>;
   readonly loadingOlder?: boolean;
   readonly readError?: string | null;
+  readonly onReviewCommand?: (command: NonNullable<RunConversationMessage['command']>) => void;
   readonly recordLinksFor?: (message: RunConversationMessage) => readonly RunConversationRecordLink[];
   readonly evidenceHrefFor?: (
     message: RunConversationMessage,
@@ -60,6 +63,7 @@ export interface RunConversationProps {
   ) => string | null;
   readonly selectedSourceOrdinal?: number | null;
   readonly replyToWaitId?: string | null;
+  readonly currentInspection?: RunConversationInspectionRead;
   readonly onSend?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
   /** Alias for action wiring that uses submit terminology. */
   readonly onSubmit?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
@@ -74,6 +78,7 @@ export interface RunConversationComposerProps {
   readonly runId: string;
   readonly selectedSourceOrdinal?: number | null;
   readonly replyToWaitId?: string | null;
+  readonly currentInspection?: RunConversationInspectionRead;
   readonly onSend?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
   readonly onSubmit?: (input: RunConversationSendInput) => unknown | Promise<unknown>;
   readonly disabled?: boolean;
@@ -202,12 +207,15 @@ function ConversationMessage({
   runId,
   recordLinksFor,
   evidenceHrefFor,
+  onReviewCommand,
 }: {
   readonly message: RunConversationMessage;
   readonly runId: string;
   readonly recordLinksFor?: RunConversationProps['recordLinksFor'];
   readonly evidenceHrefFor?: RunConversationProps['evidenceHrefFor'];
+  readonly onReviewCommand?: RunConversationProps['onReviewCommand'];
 }): React.JSX.Element {
+  const gate = useActionGate();
   const links = recordLinks(message, runId, recordLinksFor);
   const evidenceLinks = message.links;
   return (
@@ -225,9 +233,15 @@ function ConversationMessage({
         <p className="run-conversation__actor">{messageActorLabel(message)}</p>
         <p className="run-conversation__body">{conversationBody(message)}</p>
         {message.command && <p className="run-conversation__command-status">
-          <strong>Pause request: {message.command.state === 'queued' ? 'awaiting worker boundary' : message.command.state}.</strong>{' '}
+          <strong>Pause request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind === 'pause-after-inspection' ? 'awaiting your confirmation' : message.command.state}.</strong>{' '}
           Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
         </p>}
+
+        {message.command?.kind === 'pause-after-inspection' && message.command.state === 'interpreted' &&
+          message.command.canConfirm && message.contentState === 'available' && onReviewCommand &&
+          <Button variant="secondary" onClick={() => {
+            if (gate.disabledReason === null && message.command) onReviewCommand(message.command);
+          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>Review pause after inspection</Button>}
 
         {links.length > 0 || evidenceLinks.length > 0 ? (
           <div className="run-conversation__links" role="group" aria-label="Related records and evidence">
@@ -275,6 +289,7 @@ function ConversationComposer({
   runId,
   selectedSourceOrdinal = null,
   replyToWaitId = null,
+  currentInspection,
   onSend,
   onSubmit,
   disabled = false,
@@ -283,6 +298,7 @@ function ConversationComposer({
   idempotencyKeyFactory = createIdempotencyKey,
 }: RunConversationComposerProps): React.JSX.Element {
   const [draft, setDraft] = useState('');
+  const [draftInspection, setDraftInspection] = useState<RunConversationInspectionRead | null>(null);
   const [sending, setSending] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
@@ -309,12 +325,14 @@ function ConversationComposer({
 
   const onDraftChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextDraft = truncateConversationText(event.currentTarget.value);
+    if (nextDraft === '') setDraftInspection(null);
+    else if (draft === '') setDraftInspection(currentInspection ?? { status: 'unavailable', reason: 'No inspection context was available when this draft began.' });
     setDraft(nextDraft);
     const pending = pendingRequestRef.current;
     if (pending !== null && pending.text !== nextDraft) pendingRequestRef.current = null;
     setSubmitError(null);
     setSubmitStatus(null);
-  }, []);
+  }, [draft, currentInspection]);
 
   const onFormSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -337,6 +355,7 @@ function ConversationComposer({
               text: draft,
               selectedSourceOrdinal,
               replyToWaitId,
+              currentInspection: draftInspection?.status === 'ready' ? draftInspection.anchor : null,
             };
       pendingRequestRef.current = input;
       try {
@@ -344,6 +363,7 @@ function ConversationComposer({
         if (durableReceiptAccepted(receipt)) {
           pendingRequestRef.current = null;
           setDraft('');
+          setDraftInspection(null);
           setSubmitStatus('Message accepted.');
         } else {
           setSubmitError(receiptFailureReason(receipt));
@@ -354,9 +374,10 @@ function ConversationComposer({
         setSending(false);
       }
     },
-    [blockedControl, disabled, draft, idempotencyKeyFactory, replyToWaitId, runId, selectedSourceOrdinal, send, sending],
+    [blockedControl, disabled, draft, draftInspection, idempotencyKeyFactory, replyToWaitId, runId, selectedSourceOrdinal, send, sending],
   );
 
+  const visibleInspection = draftInspection ?? currentInspection;
   const remaining = RUN_CONVERSATION_MAX_TEXT_CHARS - unicodeLength(draft);
   const disabledMessage = disabledReason ?? (disabled || send === undefined ? 'Messaging is unavailable for this Run.' : 'Connecting conversation…');
   const unavailable = !interactive || disabled || send === undefined;
@@ -366,6 +387,9 @@ function ConversationComposer({
       <label className="run-conversation__composer-label" htmlFor="run-conversation-message">
         Message the Run
       </label>
+      {visibleInspection?.status === 'ready' && <p className="run-conversation__composer-help">
+        {draftInspection === null ? 'Current inspection' : 'Inspection at draft start'}: {visibleInspection.subjectLabel} · {visibleInspection.targetName}.
+      </p>}
       <textarea
         id="run-conversation-message"
         className="run-conversation__composer-input"
@@ -417,8 +441,10 @@ export function RunConversation({
   readError = null,
   recordLinksFor,
   evidenceHrefFor,
+  onReviewCommand,
   selectedSourceOrdinal = null,
   replyToWaitId = null,
+  currentInspection,
   onSend,
   onSubmit,
   composerDisabled = false,
@@ -540,6 +566,7 @@ export function RunConversation({
               <ConversationMessage
                 key={message.messageId}
                 message={message}
+                onReviewCommand={onReviewCommand}
                 runId={runId}
                 recordLinksFor={recordLinksFor}
                 evidenceHrefFor={evidenceHrefFor}
@@ -561,7 +588,7 @@ export function RunConversation({
           <ConversationComposer
             runId={runId}
             selectedSourceOrdinal={selectedSourceOrdinal}
-            replyToWaitId={replyToWaitId}
+            replyToWaitId={replyToWaitId} currentInspection={currentInspection}
             onSend={onSend}
             onSubmit={onSubmit}
             disabled={composerDisabled}

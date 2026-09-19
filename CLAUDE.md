@@ -1,3 +1,18 @@
+## 2026-09-19 — An inspection pause is an immutable proposal and a sticky worker latch
+
+The browser captures the current Run-owned Work Item when composition starts, independently
+of a historical selected record. The persisted proposal binds that item, frozen plan digest,
+Run revision and controller epoch. Confirmation accepts only Run ID + command ID, rechecks
+role/current work/lease with PostgreSQL time, and requires readable governed intake AND
+proposal content. A removed child proposal cannot be confirmed from an already-open modal.
+After acceptance the safety latch survives role/lease changes; only the existing worker
+boundary applies it after the named logical item settles. Check this before EVERY next
+item, including one settled in the same invocation, not only already-terminal initial rows.
+Immediate pause/cancellation supersedes it, and final-unit completion never creates an empty
+pause. Receipts must match exact source events, including explicit null page subject keys.
+The retained marker Work Item FK is deferred: fixture aggregate cleanup must delete children
+and their Run in one transaction. Do not disable retention guards for test cleanup.
+
 ## 2026-09-19 — Disabled browser controls and failure cleanup
 
 Playwright click waits for aria-disabled controls to become enabled. Negative tests must

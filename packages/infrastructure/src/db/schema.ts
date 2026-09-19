@@ -2078,12 +2078,64 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
   planDigest: text('plan_digest').notNull(),
   expectedRunRevision: integer('expected_run_revision').notNull(),
   interpretationVersion: text('interpretation_version').notNull(),
+  deferredAnchor: jsonb('deferred_anchor'),
+  deferredControlEpoch: integer('deferred_control_epoch'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
 }, t => [
   uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
   uniqueIndex('run_interaction_command_message').on(t.messageId),
-  check('run_interaction_command_kind', sql`${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1'`),
+  check('run_interaction_command_kind', sql`(
+    (${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL)
+    OR
+    (${t.kind} = 'pause-after-inspection' AND ${t.interpretationVersion} = 'confirmed-inspection-v1'
+      AND ${t.deferredControlEpoch} IS NOT NULL AND ${t.deferredControlEpoch} > 0 AND ${t.deferredAnchor} IS NOT NULL
+      AND jsonb_typeof(${t.deferredAnchor}) = 'object'
+      AND ${t.deferredAnchor} ?& ARRAY['workItemId','subjectKey','registrationId','runRevision','planDigest']
+      AND (${t.deferredAnchor} - ARRAY['workItemId','subjectKey','registrationId','runRevision','planDigest']::text[]) = '{}'::jsonb
+      AND jsonb_typeof(${t.deferredAnchor}->'workItemId') = 'string'
+      AND (${t.deferredAnchor}->>'workItemId') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      AND jsonb_typeof(${t.deferredAnchor}->'registrationId') = 'string'
+      AND (${t.deferredAnchor}->>'registrationId') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      AND jsonb_typeof(${t.deferredAnchor}->'subjectKey') IN ('string','null')
+      AND (${t.deferredAnchor}->>'subjectKey' IS NULL OR octet_length(${t.deferredAnchor}->>'subjectKey') BETWEEN 1 AND 512)
+      AND jsonb_typeof(${t.deferredAnchor}->'runRevision') = 'number'
+      AND (${t.deferredAnchor}->>'runRevision') ~ '^[0-9]+$'
+      AND (${t.deferredAnchor}->>'runRevision')::numeric <= 2147483647
+      AND (${t.deferredAnchor}->>'runRevision')::integer = ${t.expectedRunRevision}
+      AND jsonb_typeof(${t.deferredAnchor}->'planDigest') = 'string'
+      AND (${t.deferredAnchor}->>'planDigest') ~ '^[a-f0-9]{64}$'
+      AND ${t.deferredAnchor}->>'planDigest' = ${t.planDigest}
+    )
+  )`),
   check('run_interaction_command_envelope', sql`${t.expectedRunRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.semanticFingerprint} ~ '^[a-f0-9]{64}$'`),
+]);
+
+/** The sticky deferred safety latch. Its identity survives retries and is terminally retained. */
+export const runDeferredPause = pgTable('run_deferred_pause', {
+  commandId: uuid('command_id').primaryKey().references(() => runInteractionCommand.commandId, { onDelete: 'cascade' }),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  workItemId: uuid('work_item_id').notNull().references(() => runWorkItem.workItemId),
+  subjectKey: text('subject_key'),
+  registrationId: text('registration_id').notNull(),
+  runRevision: integer('run_revision').notNull(),
+  planDigest: text('plan_digest').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  sessionId: text('session_id').notNull(),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull(),
+  expectedControlEpoch: integer('expected_control_epoch').notNull(),
+  state: text('state').notNull().default('PENDING'),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  supersededReason: text('superseded_reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [
+  uniqueIndex('run_deferred_pause_pending').on(t.runId).where(sql`${t.state} = 'PENDING'`),
+  check('run_deferred_pause_state', sql`(
+    (${t.state}='PENDING' AND ${t.appliedAt} IS NULL AND ${t.supersededAt} IS NULL AND ${t.supersededReason} IS NULL)
+    OR (${t.state}='APPLIED' AND ${t.appliedAt} IS NOT NULL AND ${t.supersededAt} IS NULL AND ${t.supersededReason} IS NULL)
+    OR (${t.state}='SUPERSEDED' AND ${t.appliedAt} IS NULL AND ${t.supersededAt} IS NOT NULL AND ${t.supersededReason} IS NOT NULL AND ${t.supersededReason} IN ('immediate-pause','cancellation','run-finalized'))
+  )`),
+  check('run_deferred_pause_anchor', sql`${t.runRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.expectedControlEpoch} > 0 AND (${t.subjectKey} IS NULL OR octet_length(${t.subjectKey}) BETWEEN 1 AND 512)`),
 ]);
 
 /** Append-only receipts, linked to authoritative events when the domain effect is known. */

@@ -36,6 +36,17 @@ export class PostgresAgentWorkRepository implements AgentWorkRepository {
       const captures = await tx.select().from(runEvidenceCapture).where(eq(runEvidenceCapture.runId, runId));
       return work({
         ...shared,
+        // Agent work is the only execution stage that may consume a deferred latch. The
+        // shared result context supplies the same locked marker methods; make the
+        // capability required at this worker seam rather than silently dropping it.
+        readDeferredPause: async () => {
+          if (shared.readDeferredPause === undefined) throw new Error('Deferred pause marker port unavailable');
+          return shared.readDeferredPause();
+        },
+        settleDeferredPause: async (state, at, reason) => {
+          if (shared.settleDeferredPause === undefined) throw new Error('Deferred pause marker port unavailable');
+          return shared.settleDeferredPause(state, at, reason);
+        },
         checkpoint: stage === undefined ? null : {
           revision: stage.revision, status: stage.status as AgentWorkCheckpoint['status'],
           runStartedAt: stage.runStartedAt.toISOString(), leaseUntil: stage.leaseUntil.toISOString(),

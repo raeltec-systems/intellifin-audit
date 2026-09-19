@@ -31,6 +31,7 @@ import type {
   OutcomeRowId,
   RaisedException,
   RunCancellationRequest,
+  RunDeferredPauseRequest,
   RunPauseRequest,
   RunRecord,
   RunResultConditionCount,
@@ -929,6 +930,9 @@ export interface RunResultContext extends EvidencePackageContext {
    * reached, which is what `lifecycle.pause-superseded` records.
    */
   readPauseRequest(): Promise<RunPauseRequest | null>;
+  /** Deferred steering is optional on legacy result fakes, but present on every production context. */
+  readonly readDeferredPause?: () => Promise<RunDeferredPauseRequest | null>;
+  readonly settleDeferredPause?: (state: 'APPLIED' | 'SUPERSEDED', at: string, reason?: string) => Promise<void>;
   /** The terminal transition being committed. Sealed in the same transaction. */
   saveRunState(state: RunRecord['state']): Promise<void>;
   readPopulationFacts(): Promise<RunGatePopulationFacts | null>;

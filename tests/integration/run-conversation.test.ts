@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cancelRun, performCancellation, performPause } from '@intellifin/application';
+import { acquireRunControlLease, releaseRunControlLease, cancelRun, performCancellation, performPause } from '@intellifin/application';
 import { withRunExecutionContext } from '../../packages/infrastructure/src/runs/adapter-execution-repository.js';
 
 import {
@@ -16,6 +16,7 @@ import {
   registrationDigest,
   snapshotFromRegistration,
   type ExecutablePlan,
+  type DeferredPauseAnchor,
   type JsonValue,
   type ObservationAttribute,
   type ObservationRecord,
@@ -26,6 +27,7 @@ import {
   CryptoUuidV7Generator,
   PostgresAuditUnitOfWork,
   PostgresRunCancellationRepository,
+  PostgresRunControlLeaseRepository,
   PostgresRunsUnitOfWork,
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
@@ -614,7 +616,265 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     }
   });
 
-  async function append(actorId: string, input: { runId?: string; text: string; selectedSourceOrdinal?: number | null; replyToWaitId?: string | null }) {
+  it('persists an inspection proposal without executing it, then confirms once while preserving the exact open question', async () => {
+    const fixture = await seedDeferredContext(true);
+    try {
+      await acquireControl(fixture.runId);
+      const inspection = await currentInspection(fixture.runId);
+      expect(inspection).toMatchObject({ sourceOrdinal: 1, subjectLabel: 'E-001', targetName: 'LoanCore' });
+      const beforeWait = await sql`SELECT * FROM run_wait WHERE wait_id=${fixture.waitId}`;
+      const beforeRun = await sql`SELECT state,revision FROM audit_run WHERE run_id=${fixture.runId}`;
+      const commandId = await proposeInspection(fixture.runId, inspection.anchor, fixture.waitId, 2);
+      expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }]);
+      let read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.status).toBe('ready');
+      expect(read.messages.find(message => message.command?.commandId === commandId)?.command)
+        .toMatchObject({ kind: 'pause-after-inspection', state: 'interpreted', canConfirm: true, targetLabel: '"E-001" on LoanCore' });
+      expect(read.messages.find(message => message.command?.commandId === commandId)?.sourceOrdinal).toBeNull();
+      expect(read.messages.find(message => message.source === 'auditor' && message.body === 'pause after this employee')?.sourceOrdinal).toBe(2);
+
+      // The browser cannot substitute the anchor or the controller fence in confirmation.
+      expect(await confirmInspection(fixture.runId, commandId, { currentInspection: inspection.anchor }))
+        .toMatchObject({ ok: false, code: 'malformed' });
+      expect(await repository().confirmDeferredPause({ actorId: seeded.pagerId, sessionId: seeded.readerSession,
+        request: { runId: fixture.runId, commandId } })).toMatchObject({ ok: false, code: 'denied' });
+      const concurrent = await Promise.all([
+        confirmInspection(fixture.runId, commandId), confirmInspection(fixture.runId, commandId),
+      ]);
+      expect(concurrent).toEqual(expect.arrayContaining([
+        expect.objectContaining({ ok: true, state: 'queued', replayed: false }),
+        expect.objectContaining({ ok: true, state: 'queued', replayed: true }),
+      ]));
+      expect(await confirmInspection(fixture.runId, commandId)).toMatchObject({ ok: true, state: 'queued', replayed: true });
+      expect(await sql`SELECT work_item_id,subject_key,expected_control_epoch,state FROM run_deferred_pause WHERE run_id=${fixture.runId}`)
+        .toEqual([{ work_item_id: fixture.exactWorkItemId, subject_key: 'E-001', expected_control_epoch: 1, state: 'PENDING' }]);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='lifecycle.run-deferred-pause-requested'`).toHaveLength(1);
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'queued' }]);
+      expect(await sql`SELECT * FROM run_wait WHERE wait_id=${fixture.waitId}`).toEqual(beforeWait);
+      expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${fixture.runId}`).toEqual(beforeRun);
+      expect(await sql`SELECT wait_id FROM run_wait WHERE run_id=${fixture.runId} AND closed_at IS NULL`).toHaveLength(1);
+      read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.messages.find(message => message.command?.commandId === commandId)?.command)
+        .toMatchObject({ state: 'queued', canConfirm: false });
+      // A stored transition alone cannot stand in for its authoritative source fact.
+      await sql`DELETE FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='lifecycle.run-deferred-pause-requested'`;
+      expect(await repository().read({ runId: fixture.runId, actorId: seeded.readerId }))
+        .toMatchObject({ status: 'unavailable', messages: [] });
+      expect(await confirmInspection(fixture.runId, commandId)).toMatchObject({ ok: false, code: 'unavailable' });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('requires owned live control before recording a deferred proposal', async () => {
+    const fixture = await seedDeferredContext();
+    try {
+      const { anchor } = await currentInspection(fixture.runId);
+      const propose = () => append(seeded.readerId, { runId: fixture.runId, text: 'pause after this employee', currentInspection: anchor });
+      expect(await propose()).toMatchObject({ ok: false, code: 'denied' });
+      await acquireControl(fixture.runId, seeded.pagerId);
+      expect(await propose()).toMatchObject({ ok: false, code: 'denied' });
+      expect(await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('refuses a stale proposal after the same auditor releases and reacquires control', async () => {
+    const fixture = await seedDeferredContext();
+    try {
+      await acquireControl(fixture.runId);
+      const { anchor } = await currentInspection(fixture.runId);
+      const commandId = await proposeInspection(fixture.runId, anchor);
+      expect(await releaseRunControlLease(controlDependencies(), { session: readerSession(),
+        request: { runId: fixture.runId, expectedEpoch: 1 } })).toMatchObject({ ok: true, lease: { epoch: 2 } });
+      await acquireControl(fixture.runId, seeded.readerId, 2);
+      expect(await confirmInspection(fixture.runId, commandId)).toMatchObject({ ok: false, code: 'conflict', reason: expect.stringContaining('lease changed') });
+      expect(await sql`SELECT deferred_control_epoch,deferred_anchor FROM run_interaction_command WHERE command_id=${commandId}`)
+        .toEqual([{ deferred_control_epoch: 1, deferred_anchor: anchor }]);
+      expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.messages.find(message => message.command?.commandId === commandId)?.command)
+        .toMatchObject({ state: 'refused', canConfirm: false });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('uses database time to reject an expired owned controller at proposal intake', async () => {
+    const fixture = await seedDeferredContext();
+    try {
+      const { anchor } = await currentInspection(fixture.runId);
+      await sql`WITH stamp AS (SELECT clock_timestamp() AS at)
+        INSERT INTO run_control_lease(run_id,epoch,holder_id,updated_at,expires_at)
+        SELECT ${fixture.runId}::uuid,1,${seeded.readerId},at-interval '121 seconds',at-interval '1 second' FROM stamp`;
+      expect(await append(seeded.readerId, { runId: fixture.runId, text: 'pause after this employee', currentInspection: anchor }))
+        .toMatchObject({ ok: false, code: 'denied' });
+      expect(await sql`SELECT command_id FROM run_interaction_command WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('refuses forged or stale draft anchors and never retargets a persisted proposal to the next record', async () => {
+    const fixture = await seedDeferredContext();
+    try {
+      await acquireControl(fixture.runId);
+      const { anchor } = await currentInspection(fixture.runId);
+      for (const currentInspection of [
+        { ...anchor, workItemId: fixture.crossRunWorkItemId, subjectKey: 'E-CROSS' },
+        { ...anchor, workItemId: fixture.duplicateWorkItemId, subjectKey: 'E-DUP' },
+        { ...anchor, planDigest: '00'.repeat(32) },
+        { ...anchor, runRevision: anchor.runRevision + 1 },
+        { ...anchor, registrationId: ids.next() },
+      ]) {
+        expect(await append(seeded.readerId, { runId: fixture.runId, text: 'pause after this record', currentInspection }))
+          .toMatchObject({ ok: false, code: 'conflict' });
+      }
+      // Historical review selection alone is not an execution target.
+      expect(await append(seeded.readerId, { runId: fixture.runId, text: 'pause after this employee', selectedSourceOrdinal: 1 }))
+        .toMatchObject({ ok: false, code: 'conflict' });
+      const commandId = await proposeInspection(fixture.runId, anchor);
+      await sql`UPDATE run_agent_work SET work_item_id=${fixture.duplicateWorkItemId},revision=revision+1 WHERE run_id=${fixture.runId}`;
+      expect(await currentInspection(fixture.runId)).toMatchObject({ subjectLabel: 'E-DUP', sourceOrdinal: null });
+      expect(await confirmInspection(fixture.runId, commandId)).toMatchObject({ ok: false, code: 'conflict', reason: expect.stringContaining('inspection changed') });
+      expect(await sql`SELECT deferred_anchor FROM run_interaction_command WHERE command_id=${commandId}`).toEqual([{ deferred_anchor: anchor }]);
+      expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.messages.find(message => message.command?.commandId === commandId)?.command)
+        .toMatchObject({ state: 'refused', targetLabel: '"E-001" on LoanCore' });
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it('checks current role again at confirmation and leaves the proposal non-executable after revocation', async () => {
+    const fixture = await seedDeferredContext();
+    try {
+      await acquireControl(fixture.runId);
+      const { anchor } = await currentInspection(fixture.runId);
+      const commandId = await proposeInspection(fixture.runId, anchor);
+      const original = await sql<{ assigned_at: Date; assigned_by: string | null }[]>`SELECT assigned_at,assigned_by FROM user_role WHERE user_id=${seeded.readerId}`;
+      await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
+      try {
+        expect(await confirmInspection(fixture.runId, commandId)).toMatchObject({ ok: false, code: 'denied' });
+        expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+        expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
+          .toEqual([{ state: 'received' }, { state: 'interpreted' }]);
+      } finally {
+        await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by) VALUES (${seeded.readerId},'auditor',${original[0]!.assigned_at.toISOString()}::timestamptz,${original[0]!.assigned_by})`;
+      }
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  it.each(['removed', 'corrupt'] as const)('refuses confirmation when the displayed child proposal is %s despite an intact intake', async mode => {
+    const fixture = await seedDeferredContext();
+    try {
+      await acquireControl(fixture.runId);
+      const { anchor } = await currentInspection(fixture.runId);
+      // Inject a damaged child at initial storage, never by disabling the immutable
+      // content guard. Only the proposal is damaged; the auditor intake decrypts.
+      class DamagedProposalCipher extends ConversationContentCipher {
+        override seal(runId: string, messageId: string, content: string): string {
+          const envelope = JSON.parse(content) as { text: string };
+          return envelope.text.startsWith('Review a pause after ') ? 'v1.AAAA' : super.seal(runId, messageId, content);
+        }
+      }
+      const writer = mode === 'corrupt'
+        ? new PostgresRunConversationRepository(db, new DamagedProposalCipher('11'.repeat(32)), () => now)
+        : repository();
+      const receipt = await writer.append({ actorId: seeded.readerId, sessionId: seeded.readerSession, request: {
+        runId: fixture.runId, idempotencyKey: ids.next(), text: 'pause after this employee', currentInspection: anchor,
+      } });
+      expect(receipt.ok).toBe(true);
+      if (!receipt.ok) throw new Error(receipt.reason);
+      const [stored] = await sql<{ command_id: string; proposal_id: string; intake_ciphertext: string }[]>`
+        SELECT c.command_id,child.message_id AS proposal_id,intake.ciphertext AS intake_ciphertext
+        FROM run_interaction_command c
+        JOIN run_conversation_message child ON child.parent_message_id=c.message_id AND child.kind='command-receipt'
+        JOIN run_conversation_content intake ON intake.message_id=c.message_id
+        WHERE c.message_id=${receipt.messageId}`;
+      if (!stored) throw new Error('Deferred proposal was not stored');
+      expect(cipher.open(fixture.runId, receipt.messageId, stored.intake_ciphertext)).toContain('pause after this employee');
+      if (mode === 'removed') {
+        await sql`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1
+          WHERE message_id=${stored.proposal_id}`;
+      }
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.status).toBe('ready');
+      expect(read.messages.find(message => message.messageId === stored.proposal_id))
+        .toMatchObject({ body: null, contentState: mode === 'removed' ? 'removed' : 'unavailable', command: { canConfirm: false } });
+      expect(await confirmInspection(fixture.runId, stored.command_id)).toMatchObject({ ok: false, code: 'unavailable' });
+      expect(await sql`SELECT command_id FROM run_deferred_pause WHERE run_id=${fixture.runId}`).toHaveLength(0);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${fixture.runId} AND event_type='lifecycle.run-deferred-pause-requested'`).toHaveLength(0);
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${stored.command_id} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }]);
+    } finally { await cleanupDeferredContext(fixture); }
+  });
+
+  function readerSession(actorId = seeded.readerId) { return { userId: actorId, sessionId: seeded.readerSession }; }
+
+  function controlDependencies() {
+    return { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+      repository: new PostgresRunControlLeaseRepository(db), ids, allowEnrollment: true };
+  }
+
+  async function acquireControl(runId: string, actorId = seeded.readerId, expectedEpoch = 0) {
+    expect(await acquireRunControlLease(controlDependencies(), { session: readerSession(actorId), request: { runId, expectedEpoch } }))
+      .toMatchObject({ ok: true, lease: { epoch: expectedEpoch + 1 } });
+  }
+
+  async function currentInspection(runId: string) {
+    const read = await repository().readCurrentInspection({ runId, actorId: seeded.readerId });
+    expect(read.status).toBe('ready');
+    if (read.status !== 'ready') throw new Error(read.reason);
+    return read;
+  }
+
+  async function proposeInspection(runId: string, currentInspection: DeferredPauseAnchor, replyToWaitId: string | null = null, selectedSourceOrdinal: number | null = null) {
+    const receipt = await append(seeded.readerId, { runId, text: 'pause after this employee', currentInspection, replyToWaitId, selectedSourceOrdinal });
+    expect(receipt.ok).toBe(true);
+    if (!receipt.ok) throw new Error(receipt.reason);
+    const [command] = await sql<{ command_id: string }[]>`SELECT command_id FROM run_interaction_command WHERE run_id=${runId} AND message_id=${receipt.messageId}`;
+    if (!command) throw new Error('Deferred proposal did not persist a command');
+    return command.command_id;
+  }
+
+  function confirmInspection(runId: string, commandId: string, extra: Record<string, unknown> = {}) {
+    return repository().confirmDeferredPause({ actorId: seeded.readerId, sessionId: seeded.readerSession, request: { runId, commandId, ...extra } });
+  }
+
+  async function seedDeferredContext(waiting = false) {
+    // Separate actor rate-limit windows without using the test clock for lease expiry.
+    now = new Date(now.getTime() + 61_000);
+    const fixture = await seedP1EventContext();
+    const waitId = ids.next();
+    if (waiting) {
+      await sql`UPDATE audit_run SET state='AWAITING_AUDITOR' WHERE run_id=${fixture.runId}`;
+      await sql`UPDATE run_work_item SET state='AWAITING' WHERE work_item_id=${fixture.exactWorkItemId}`;
+      await sql`INSERT INTO run_wait(wait_id,run_id,kind,options,opened_at,deadline)
+        VALUES (${waitId},${fixture.runId},'choose-candidate',${JSON.stringify([{ id: 'one', label: 'One' }])}::jsonb,clock_timestamp(),clock_timestamp()+interval '1 day')`;
+    }
+    await sql`INSERT INTO run_agent_work(run_id,revision,status,run_started_at,lease_until,attempt_id,work_item_id,wait_id,next_turn,tokens,reserved_tokens)
+      VALUES (${fixture.runId},1,${waiting ? 'WAITING' : 'EXECUTING'},clock_timestamp(),clock_timestamp()+interval '1 minute',${ids.next()},${fixture.exactWorkItemId},${waiting ? waitId : null},1,0,0)`;
+    return { ...fixture, waitId };
+  }
+
+  async function cleanupDeferredContext(fixture: Awaited<ReturnType<typeof seedDeferredContext>>) {
+    // The marker survives with its Run. Its Work Item FK is deferred so both can be
+    // deleted in one transaction without disabling the retained-identity guard.
+    for (const runId of [fixture.runId, fixture.otherRunId]) {
+      await sql.begin(async tx => {
+        await tx`DELETE FROM run_agent_work WHERE run_id=${runId}`;
+        await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_row WHERE run_id=${runId}`;
+        await tx`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+        await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+        await tx`DELETE FROM run_work_item WHERE run_id=${runId}`;
+        await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+      });
+    }
+    await sql`DELETE FROM procedure_version WHERE procedure_id=${fixture.procedureId}`;
+    await sql`DELETE FROM procedure WHERE procedure_id=${fixture.procedureId}`;
+  }
+
+  async function append(actorId: string, input: { runId?: string; text: string; selectedSourceOrdinal?: number | null; replyToWaitId?: string | null; currentInspection?: DeferredPauseAnchor | null }) {
     return repository().append({
       actorId,
       sessionId: seeded.readerSession,
@@ -624,6 +884,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
         text: input.text,
         selectedSourceOrdinal: input.selectedSourceOrdinal ?? null,
         replyToWaitId: input.replyToWaitId ?? null,
+        ...(input.currentInspection === undefined ? {} : { currentInspection: input.currentInspection }),
       },
     });
   }

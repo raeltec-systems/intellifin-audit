@@ -5,11 +5,13 @@ import { changeRunControlAction, readRunControlAction, type RunControlReadAction
 import { Button } from '../design/Button';
 import { useLiveGate } from './LiveGate';
 
+const ignoreRead = (_value: RunControlReadActionResult | null): void => {};
+
 /** Owns no execution state. Each command and renewal reauthorizes on the server. */
-export function RunControllerLease({ runId, refreshKey, onRead }: {
+export function RunControllerLease({ runId, refreshKey, onRead = ignoreRead }: {
   readonly runId: string;
   readonly refreshKey: string;
-  readonly onRead: (value: RunControlReadActionResult | null) => void;
+  readonly onRead?: (value: RunControlReadActionResult | null) => void;
 }): React.JSX.Element {
   const gate = useLiveGate();
   const [read, setRead] = useState<RunControlReadActionResult | null>(null);
@@ -55,13 +57,13 @@ export function RunControllerLease({ runId, refreshKey, onRead }: {
   }
 
   if (read?.status === 'ready' && !read.required) return <></>;
-  return <section aria-label="Run controller" className="ls-stack" data-control-ready={read?.status === 'ready'}>
+  return <section aria-label="Run controller" className="ls-stack run-controller" data-control-ready={read?.status === 'ready'}>
     {read === null ? <p>Checking Run control…</p> : read.status !== 'ready'
-      ? <p>Run control is unavailable. Reload this Run before resuming.</p>
+      ? <p>Run control is unavailable. Reload before confirming steering or Resume.</p>
       : <>
         <p>{read.heldByYou ? 'You control this Run.' : read.holderName === null ? 'No auditor currently holds control.' : `Current controller: ${read.holderName}.`}</p>
         {read.heldByYou ? <>
-          <p className="ls-caption">Your lease renews while this view is connected and visible.</p>
+          <details><summary>Lease details</summary><p className="ls-caption">Your lease renews while this view is connected and visible.</p></details>
           <Button variant="secondary" busy={busy} onClick={() => { void change('release'); }}
             {...(unknown ? { disabledReason: 'Reload to check the recorded controller.' } : gate.disabledReason !== null ? { disabledReason: gate.disabledReason } : {})}>Release control</Button>
         </> : <Button variant="secondary" busy={busy} onClick={() => { void change('acquire'); }}

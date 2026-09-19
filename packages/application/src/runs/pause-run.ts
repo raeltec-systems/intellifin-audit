@@ -20,6 +20,7 @@ import {
 } from './escalation-kind.js';
 import type { RunPauseContext } from './execution-ports.js';
 import type { WaitRepository } from './waits.js';
+import { DEFERRED_PAUSE_SUPERSEDED_EVENT } from './deferred-pause-run.js';
 
 /**
  * `PauseRun` and `ResumeRun`: stop a Running Run on a person's word, and start it again
@@ -103,6 +104,10 @@ export async function performPause(
     /** The Step Execution this pause superseded, when a stage had one in flight. */
     readonly stepExecutionId?: string | null;
     readonly workItemId?: string | null;
+    /** Deferred steering names the settled logical unit in the applied event. */
+    readonly pauseMode?: 'immediate' | 'after-inspection';
+    readonly subjectKey?: string | null;
+    readonly registrationId?: string | null;
   },
 ): Promise<RunWait> {
   const wait = pauseWaitFor({
@@ -138,6 +143,11 @@ export async function performPause(
         : {}),
       ...(input.stepExecutionId ? { stepExecutionId: input.stepExecutionId } : {}),
       ...(input.workItemId ? { workItemId: input.workItemId } : {}),
+      pauseMode: input.pauseMode ?? 'immediate',
+      ...(input.pauseMode === 'after-inspection' ? {
+        subjectKey: input.subjectKey ?? null,
+        registrationId: input.registrationId ?? null,
+      } : {}),
     },
   });
   await context.notifyTimeline(stored.sequence);
@@ -303,6 +313,22 @@ export async function pauseRun(
         ...(commandId === undefined ? {} : { commandId }),
       };
       await context.requestPause(pause);
+      // Installing the stronger safety request atomically retires any deferred latch.
+      // The worker still owns the actual pause; this records only the superseded intent.
+      const deferred = await context.readDeferredPause?.();
+      if (deferred != null) {
+        if (context.settleDeferredPause === undefined) throw new Error('Deferred pause settlement unavailable');
+        await context.settleDeferredPause('SUPERSEDED', pause.requestedAt, 'immediate-pause');
+        const superseded = await context.auditEvents.append({
+          actor: { type: 'system', id: 'deferred-pause-coordinator' },
+          eventType: DEFERRED_PAUSE_SUPERSEDED_EVENT, source: 'web', outcome: 'failure',
+          aggregateId: run.runId, correlationId, sessionId: deferred.sessionId,
+          payload: { commandId: deferred.commandId, requestedBy: deferred.requestedBy,
+            workItemId: deferred.workItemId, subjectKey: deferred.subjectKey,
+            registrationId: deferred.registrationId, reason: 'immediate-pause' },
+        });
+        await context.notifyTimeline(superseded.sequence);
+      }
       const stored = await context.auditEvents.append({
         actor: { type: 'human', id: pause.requestedBy },
         eventType: PAUSE_REQUESTED_EVENT,

@@ -8,9 +8,10 @@ import { currentIdentity } from '../../../../src/server-session';
 import { DetailTrail } from '../../../../src/procedures/DetailTrail';
 import { RunDenied, openRun, OpenEscalationSection, PauseBanners } from '../../../../src/runs/detail';
 import { readOpenEscalation } from '../../../../src/runs/escalation-read';
-import { readRunConversation } from '../../../../src/runs/run-conversation-actions';
+import { readRunConversation, readCurrentRunInspection } from '../../../../src/runs/run-conversation-actions';
 import { LiveGate } from '../../../../src/runs/LiveGate';
 import { SessionStage } from '../../../../src/runs/LiveViewer';
+import { RunControllerLease } from '../../../../src/runs/RunControllerLease';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
@@ -38,13 +39,13 @@ export default async function RunWorkspacePage({ params, searchParams }: {
   const records = new PostgresRecordReviewRepository(runtime.db);
   const search = await searchParams;
   const ordinal = typeof search.record === 'string' && /^[1-9]\d{0,4}$/.test(search.record) ? Number(search.record) : null;
-  const [timeline, frame, plan, conversation, summary, selected, waits, cursor, flags] = await Promise.all([
+  const [timeline, frame, plan, conversation, summary, selected, waits, cursor, flags, currentInspection] = await Promise.all([
     detail.readTimeline(id), detail.readLatestFrame(id),
     new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
     readRunConversation(id), records.readSummary({ runId: id, actorId: identity.session.userId }),
     ordinal === null ? Promise.resolve(null) : records.readSelection({ runId: id, actorId: identity.session.userId, sourceOrdinal: ordinal }),
     run.state === 'AWAITING_AUDITOR' || run.state === 'PAUSED' ? readOpenEscalation(id) : Promise.resolve(null),
-    isActiveRunState(run.state) ? readTimelineHead(runtime.db, id) : Promise.resolve(null), detail.readFlags(id),
+    isActiveRunState(run.state) ? readTimelineHead(runtime.db, id) : Promise.resolve(null), detail.readFlags(id), readCurrentRunInspection(id),
   ]);
   const names = await new DrizzleActorNameReader(runtime.db).namesFor([
     ...flags.map(flag => flag.flaggedBy), ...(waits?.pause?.openedBy ? [waits.pause.openedBy] : []),
@@ -62,7 +63,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
   return <div className="ls-stack run-workspace-route">
     <DetailTrail trail={[{ href: '/runs', label: 'Runs' }, { href: `/runs/${id}`, label: run.procedureName }, { href: here, label: 'Auditor Workspace' }]} />
     <LiveGate runId={id} state={run.state} url={`/api/runs/${id}/events`} cursor={cursor} readAt={readAt.toISOString()} href={here}>
-      <RunWorkspaceConversation runId={id} initial={conversation}
+      <RunWorkspaceConversation runId={id} initial={conversation} currentInspection={currentInspection}
         selectedSourceOrdinal={selected?.status === 'ready' ? selected.row.sourceOrdinal : null} replyToWaitId={waits?.wait?.waitId ?? null}
         header={<header><h1>Auditor Workspace · {run.procedureName}</h1>
           <p>Approved version {run.versionNumber} · {run.period.from} to {run.period.to} · {run.state.toLowerCase().replaceAll('_', ' ')}</p></header>}
@@ -72,7 +73,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           <p className="ls-caption">Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : `${planActionWord(current.action)}${currentSubject === null ? '' : ` for ${currentSubject}`}${currentTarget === null ? '' : ` on ${currentTarget}`}, started ${utcStamp(current.startedAt)}.`}</p>
         </div>}
         controls={<>{run.state === 'AWAITING_AUDITOR'
-          ? <p className="ls-caption">Pause is unavailable while an auditor answer is open.</p>
+          ? <><p className="ls-caption">Pause is unavailable while an auditor answer is open.</p><RunControllerLease runId={id} refreshKey={readAt.toISOString()} /></>
           : <RunPauseControls runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
             pausePending={run.pauseRequest !== null} awaitingAuditor={false}
             pausable={runPauseTransition(run.state) !== null} runRevision={waits?.runRevision ?? null} controlRefreshKey={readAt.toISOString()} />}

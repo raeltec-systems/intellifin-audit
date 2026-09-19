@@ -790,3 +790,16 @@
     width: 100%;
   }
 }
+
+/* Keep named control beside the safety actions without consuming the conversation pane. */
+.run-workspace-route #run-pause,
+.run-workspace-route .run-controller {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+.run-workspace-route .run-controller p {
+  margin: 0;
+}

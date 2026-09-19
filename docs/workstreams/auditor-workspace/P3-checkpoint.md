@@ -1,6 +1,6 @@
 # Auditor Workspace — P3 control checkpoint
 
-Status: first control path in development. This is not completion of P3 or the
+Status: pause-now and controller paths delivered; deferred inspection pause in verification. This is not completion of P3 or the
 co-working release. No merge or deployment is authorized.
 
 ## First implemented path
@@ -189,3 +189,43 @@ proof and Replay selection cases remain unverified until the clean normal-CI rer
 Browser artifact `10589361619` reports SHA-256
 `ba4135ee7adee8d7812b70db8a2a54df8a2b175c0929f5704d4277b86b96d6a4`.
 The completed run is failed, not a passing checkpoint or closure of a proof gate.
+
+
+## Deferred inspection pause — implementation candidate
+
+The exact phrases “pause after this inspection”, “pause after this record” and “pause after
+this employee” now create a reviewable proposal when the current agent inspection is known.
+The composer captures the inspection at draft start. A selected historical review record is
+not execution authority and is not attached to the command receipt as its target. Page-only
+inspections accept the inspection phrase; they do not pretend to be a population record.
+
+The proposal names the subject and frozen Target. Explicit confirmation sends only its
+server-assigned command ID and Run ID. Fresh role, Run revision, current Work Item, frozen
+plan digest and owned unexpired controller epoch are checked again. Releasing/reacquiring
+control cannot revive the earlier proposal. Both original intake and the displayed proposal
+must remain governed, decryptable content at first confirmation. Retry recovers the same
+source-backed receipt; it cannot bind new inputs or enqueue another marker.
+
+The existing worker consumes the retained latch only after that logical inspection settles,
+before a different Work Item. It does not close an open question or bypass its answer. A
+retry remains the same logical inspection. Immediate pause and cancellation take precedence;
+if the inspection was final, normal completion supersedes the latch without an empty pause.
+The queued receipt says it is waiting for the named inspection; only the worker fact says
+applied. No provider, queue engine or execution loop was replaced.
+
+Migration 55 adds immutable proposal context, one pending latch per Run, retained terminal
+history and exact source-event guards. The existing startup compatibility gate requires 55;
+old images must fail closed. That is not proof of mixed-version rollback or process recovery.
+
+Verification so far: 198 focused unit/UI tests pass; web and root test typechecks and
+678-module dependency checks pass. Schema generation reports no drift. New PostgreSQL
+admission/rollback/receipt/tamper tests and actual browser confirmation/reload/stale-tab
+journeys are written but remain pending normal CI. Local skips without PostgreSQL are not
+application evidence. Two real PostgreSQL + Chromium worker-boundary cases are also written: an accepted latch
+survives controller release, pauses before a second employee, and is superseded on a final
+inspection; fresh-repository redelivery must not duplicate evidence or receipts. All of
+these new application proofs still require CI execution.
+
+P3 remains incomplete: the broader conversational control set and frozen strategy
+capabilities still need implementation/proof. Continuous preview, secure assistance and
+all seven acceptance proof gates remain outside this checkpoint's completion claim.

@@ -42,6 +42,35 @@ export interface RunPauseRequest {
   /** The server-assigned owner of this pause request, when one exists. */
   readonly commandId?: string | null;
 }
+
+/**
+ * The frozen logical inspection unit a deferred safety pause names.
+ *
+ * `workItemId` is the durable identity that survives retries. `runRevision` and
+ * `planDigest` are admission freshness facts; neither is used as an attempt identity
+ * after the latch has been accepted. The subject and target are retained beside the
+ * opaque id so a reader can prove that the latch was never silently retargeted.
+ */
+export interface DeferredPauseAnchor {
+  readonly workItemId: string;
+  readonly subjectKey: string | null;
+  readonly registrationId: string;
+  readonly runRevision: number;
+  readonly planDigest: string;
+}
+
+/** A deferred safety latch retained until the worker applies or supersedes it. */
+export interface RunDeferredPauseRequest extends DeferredPauseAnchor {
+  readonly runId: string;
+  readonly commandId: string;
+  readonly state: DeferredPauseState;
+  readonly requestedBy: string;
+  readonly sessionId: string;
+  readonly requestedAt: string;
+  readonly expectedControlEpoch: number;
+}
+
+export type DeferredPauseState = 'PENDING' | 'APPLIED' | 'SUPERSEDED';
 export interface RunRecord {
   readonly runId: string; readonly correlationId: string; readonly procedureId: string;
   readonly versionId: string; readonly versionNumber: number; readonly procedureName: string;
