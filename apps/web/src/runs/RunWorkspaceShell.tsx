@@ -145,8 +145,42 @@ export function RunWorkspaceShell({
   const [focusWorkspace, setFocusWorkspace] = useState(initialFocusWorkspace);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [storageHydrated, setStorageHydrated] = useState(false);
+  const shellRef = useRef<HTMLElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startPercent: number } | null>(null);
+
+  /**
+   * The shell follows the space left after the route chrome. That chrome is intentionally
+   * server-rendered and its height changes with banners, open decisions and compact route
+   * controls, so a viewport-only `76dvh` leaves the composer below the fold on short pages.
+   * Keep the measured value on the shell itself so the layout still has a deterministic CSS
+   * fallback before hydration.
+   */
+  const measureAvailableHeight = useCallback(() => {
+    const shell = shellRef.current;
+    if (shell === null || typeof window === 'undefined') return;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const rect = shell.getBoundingClientRect();
+    // Derive the shell's document origin before subtracting the viewport bottom. Using
+    // `rect.top` alone would make the shell grow every time the page scrolled upward.
+    const documentTop = rect.top + window.scrollY;
+    const available = Math.max(240, Math.floor(viewportHeight - documentTop - 12));
+    shell.style.setProperty('--run-workspace-available-height', `${available}px`);
+  }, []);
+
+  useEffect(() => {
+    measureAvailableHeight();
+    window.addEventListener('resize', measureAvailableHeight);
+    const parent = shellRef.current?.parentElement;
+    const observer = typeof ResizeObserver === 'undefined' || parent == null
+      ? null
+      : new ResizeObserver(measureAvailableHeight);
+    if (observer !== null && parent != null) observer.observe(parent);
+    return () => {
+      window.removeEventListener('resize', measureAvailableHeight);
+      observer?.disconnect();
+    };
+  }, [measureAvailableHeight]);
 
   useEffect(() => {
     const stored = readStoredPreferences(storageKey);
@@ -220,6 +254,7 @@ export function RunWorkspaceShell({
 
   return (
     <section
+      ref={shellRef}
       className={`run-workspace-shell${focusWorkspace ? ' run-workspace-shell--focus-workspace' : ''}${navigationOpen ? ' run-workspace-shell--navigation-open' : ''}`}
       data-testid="run-workspace-shell"
     >

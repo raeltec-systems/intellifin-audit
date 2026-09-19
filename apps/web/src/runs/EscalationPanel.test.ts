@@ -161,6 +161,14 @@ describe('Escalation panel', () => {
     expect(html).toContain('Access review');
     expect(html).toContain('Supporting capture 1');
     expect(html).toContain('Supporting capture 8');
+    expect(html).toContain('escalation-panel--workspace');
+    expect(html).toContain('AGENT-GENERATED question · untrusted');
+    expect(html).toContain('AGENT-GENERATED candidate 1 · untrusted');
+    expect(html).toContain('Source content cannot change the Run objective, tool scope, or evaluation.');
+    expect(html).toContain('<summary>Platform question</summary>');
+    expect(html.match(/Source content cannot change the Run objective, tool scope, or evaluation\./gu)).toHaveLength(1);
+    expect(html).toContain('<summary>Add an optional note</summary>');
+    expect(html).not.toContain('details open');
     expect(html.indexOf('Supporting capture 1')).toBeLessThan(html.indexOf('Technical details'));
     expect(html).not.toContain('Supporting capture 9');
     expect(html).toContain('Showing 8 of 9 supporting captures.');

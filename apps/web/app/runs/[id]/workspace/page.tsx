@@ -15,6 +15,7 @@ import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunWorkspaceConversation } from '../../../../src/runs/RunWorkspaceConversation';
+import { WorkspaceCaptureView } from '../../../../src/runs/WorkspaceCaptureView';
 import { frameNarration, currentStepExecution } from '../../../../src/runs/live-view';
 import { planActionWord, utcStamp } from '../../../../src/runs/labels';
 
@@ -70,9 +71,11 @@ export default async function RunWorkspacePage({ params, searchParams }: {
             : <p>Record coverage is not yet available.</p>}
           <p className="ls-caption">Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : `${planActionWord(current.action)}${currentSubject === null ? '' : ` for ${currentSubject}`}${currentTarget === null ? '' : ` on ${currentTarget}`}, started ${utcStamp(current.startedAt)}.`}</p>
         </div>}
-        controls={<><RunPauseControls runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
-          pausePending={run.pauseRequest !== null} awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
-          pausable={runPauseTransition(run.state) !== null} runRevision={waits?.runRevision ?? null} />
+        controls={<>{run.state === 'AWAITING_AUDITOR'
+          ? <p className="ls-caption">Pause is unavailable while an auditor answer is open.</p>
+          : <RunPauseControls runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
+            pausePending={run.pauseRequest !== null} awaitingAuditor={false}
+            pausable={runPauseTransition(run.state) !== null} runRevision={waits?.runRevision ?? null} />}
           <RunCancelControl runId={id} procedureName={run.procedureName} active={isActiveRunState(run.state)} cancelPending={run.cancellation !== null} />
           <Link href={`/runs/${id}/evidence`}>Records and findings</Link><Link href={`/runs/${id}/replay`}>Replay</Link>
           <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>Approved procedure</Link></>}
@@ -84,10 +87,12 @@ export default async function RunWorkspacePage({ params, searchParams }: {
         workspace={<section aria-label="Action-linked workspace captures">
           <h2>{isActiveRunState(run.state) ? 'Agent workspace' : 'Last workspace capture'}</h2>
           <p>Action-linked captures · {timeline.workspace?.status.toLowerCase() ?? 'workspace not yet available'}</p>
-          <SessionStage runId={id} frame={frame === null ? null : {
-            evidenceId: frame.evidenceId, sourceLocation: frame.sourceLocation, digest: frame.digest, capturedAt: frame.capturedAt,
-            narration: frameNarration(frame, frameStep, targetFor(frameStep?.workItemId ?? frame.workItemId), itemFor(frameStep?.workItemId ?? frame.workItemId)?.subjectKey ?? null),
-          }} stageNote={timeline.workspace === null ? 'No browser workspace has been recorded for this Run.' : 'No registered workspace capture is available yet.'} />
+          <WorkspaceCaptureView hasCapture={frame !== null}>
+            <SessionStage runId={id} frame={frame === null ? null : {
+              evidenceId: frame.evidenceId, sourceLocation: frame.sourceLocation, digest: frame.digest, capturedAt: frame.capturedAt,
+              narration: frameNarration(frame, frameStep, targetFor(frameStep?.workItemId ?? frame.workItemId), itemFor(frameStep?.workItemId ?? frame.workItemId)?.subjectKey ?? null),
+            }} stageNote={timeline.workspace === null ? 'No browser workspace has been recorded for this Run.' : 'No registered workspace capture is available yet.'} />
+          </WorkspaceCaptureView>
           <p className="ls-caption">Images update when execution registers evidence. Near-live preview is not available in this development checkpoint.</p>
         </section>} />
     <details><summary>Flag this Run</summary><RunFlagControl runId={id} flaggable={isFlaggableRunState(run.state)} flags={flags.map(flag => ({ ...flag, flaggedBy: names.get(flag.flaggedBy) ?? 'Auditor' }))} /></details>

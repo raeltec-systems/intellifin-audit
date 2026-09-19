@@ -60,6 +60,22 @@ async function assertShellLoaded(page: Page): Promise<void> {
   await expect(shell(page).locator('.run-workspace-shell__decision').getByRole('button', { name: 'Select candidate 1', exact: true })).toBeVisible();
 }
 
+async function assertWorkspaceFitsViewport(page: Page): Promise<void> {
+  // Visibility alone allows an offscreen or clipped element. Inspect the actual bounds
+  // before clicking/scrollIntoView can conceal a broken initial composition.
+  const send = shell(page).getByRole('button', { name: 'Send message', exact: true });
+  await expect.poll(() => send.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    return box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth;
+  })).toBe(true);
+  const firstChoice = shell(page).getByRole('button', { name: 'Select candidate 1', exact: true });
+  await expect.poll(() => firstChoice.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const decision = element.closest('.run-workspace-shell__decision')!.getBoundingClientRect();
+    return box.top >= Math.max(0, decision.top) && box.bottom <= Math.min(window.innerHeight, decision.bottom);
+  })).toBe(true);
+}
+
 test.beforeAll(async () => {
   test.setTimeout(120_000);
   fixture = await createRunWorkspaceBrowserFixture();
@@ -81,6 +97,7 @@ test.describe('Run Workspace through the authenticated application', () => {
 
     await page.goto(workspaceUrl());
     await assertShellLoaded(page);
+    await assertWorkspaceFitsViewport(page);
     await screenshot(page, testInfo, 'run-workspace-decision-1440x900');
 
     // The selected source ordinal is carried into the workspace from request state. The
@@ -165,6 +182,7 @@ test.describe('Run Workspace through the authenticated application', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(workspaceUrl());
     await assertShellLoaded(page);
+    await assertWorkspaceFitsViewport(page);
 
     const thread = history(page);
     const rowsBeforePaging = await fixture.readConversationRows();

@@ -186,7 +186,7 @@
 .record-review__captured-facts dt,
 .record-review__condition-facts dt,
 .record-review__evidence-facts dt {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: var(--type-caption-font-size);
   line-height: var(--type-caption-line-height);
 }
@@ -259,7 +259,7 @@
 .record-review__captured-facts dt,
 .record-review__condition-facts dt,
 .record-review__evidence-facts dt {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 
 .record-review__row-facts dd {

@@ -117,3 +117,23 @@ It contains the actual active workspace, contextual decision and record inspecto
 Inspection exposed a composer below the viewport and an overly short decision panel;
 the compact review frame also still placed a full escalation above the record queue.
 Those images are application evidence and design feedback, not a G1 usability pass.
+
+## Application layout follow-up
+
+The viewport repair measures the available space after the actual route chrome, keeps
+the composer inside that space, and gives the contextual decision a compact layout.
+Record review discloses an outstanding decision without placing the entire decision
+form before its queue; the link falls back to ordinary Run Detail when the conversation
+feature is disabled. Captured-fact labels now use the secondary text token: its contrast
+on the sunken card is 6.92:1, replacing the muted token's 4.34:1.
+
+The actual workspace gains Fit capture / Native size controls around the existing
+protected image. Native mode preserves original pixel dimensions and keyboard panning.
+The compiled-worker journey checks those dimensions and pan behavior, then opens a
+record inspector backed by an observation produced by that same worker. These are new
+browser assertions, pending the next normal CI run; they do not establish G1 or G3.
+
+The record inspector now also renders the selected observation’s original captured
+attributes through the existing inert untrusted-content component. Configuration values
+are therefore readable without opening technical artifacts. The browser journey compares
+its displayed observed value with the value persisted by the real worker.

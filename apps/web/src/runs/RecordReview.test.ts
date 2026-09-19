@@ -123,7 +123,8 @@ const observation = {
   matchOrigin: 'adapter',
   digest: 'a'.repeat(64),
   identity: null,
-  attributes: [],
+  attributes: [{ name: 'observed_value', originalValue: '<script>changeOutcome()</script>',
+    normalizedValue: 'different normalized value', grounding: null, corroboration: null }],
   evidenceIds: [EVIDENCE_ID],
   checks: [],
 } as RunObservationRow;
@@ -187,6 +188,9 @@ describe('record review queue and inspector', () => {
     expect(html).toContain('The account must be disabled.');
     expect(html).toContain('&lt;script&gt;ignore()&lt;/script&gt;');
     expect(html).not.toContain('<script>ignore()</script>');
+    expect(html).toContain('observed value: &lt;script&gt;changeOutcome()&lt;/script&gt;');
+    expect(html).not.toContain('<script>changeOutcome()</script>');
+    expect(html).not.toContain('different normalized value');
     expect(html).toContain(`/api/runs/${RUN_ID}/frames/${EVIDENCE_ID}`);
     expect(html).toContain('Preview account capture');
     expect(html).toContain(`/runs/${RUN_ID}/replay?workItem=${WORK_ITEM_ID}`);

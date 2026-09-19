@@ -3856,3 +3856,9 @@ The specialized ProdConsole page path must call the existing lifecycle boundary 
 ### P3 real-database fixture corrections (2026-09-19)
 
 CI `35453444876` showed that a wait-reply envelope intentionally classifies pause-now as clarification. A Run-wide safety test must use no explicit wait reply; do not weaken that interpretation to make a fixture pass. Record selection remains irrelevant to exact unqualified pause. Terminal cancellation fixtures must remove the sealed Result/Evidence package before deleting their Run, following existing pause-test teardown. Add new migrated tables to the exact schema inventory (generation 53).
+
+### Workspace viewport and native capture follow-up (2026-09-19)
+
+A fixed viewport percentage cannot size a workspace below variable route banners: measure its remaining space and verify actual element bounds before browser auto-scroll. Native capture mode wraps the existing protected image and must prove natural dimensions and keyboard panning; a fitting image alone is not legibility proof. On sunken record cards, muted #64748B has only 4.34:1 contrast; secondary #475569 gives 6.92:1. Compact record review must preserve a working decision link even when conversation is disabled.
+
+Record inspection must render the selected Observation’s original attributes, not just generic account/status summaries or normalized values. Reuse inert untrusted-content rendering; frozen source values and actual captured target values are different evidence.

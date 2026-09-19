@@ -298,7 +298,9 @@ export async function RunDetailFrame({
           procedureName={run.procedureName}
         />
       )}
-      <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />
+      {compact
+        ? <CompactOpenEscalationDisclosure run={run} workspaceAvailable={conversationEnabled} />
+        : <OpenEscalationSection run={run} escalation={escalation} readAt={readAt} />}
       {evaluationReview !== null ? (
         <EvaluationReview
           runId={run.runId}
@@ -311,6 +313,31 @@ export async function RunDetailFrame({
       ) : null}
       {children}
     </div>
+  );
+}
+
+/**
+ * Record review keeps its queue in the first viewport. An open decision is still disclosed,
+ * but the full answer panel belongs to Auditor Workspace where its question, source context
+ * and guarded controls have room to remain together.
+ */
+function CompactOpenEscalationDisclosure({ run, workspaceAvailable }: {
+  readonly run: RunRecord;
+  readonly workspaceAvailable: boolean;
+}): React.JSX.Element | null {
+  if (run.state !== 'AWAITING_AUDITOR') return null;
+  const href = workspaceAvailable
+    ? `/runs/${run.runId}/workspace`
+    : `${runTabHref(run.runId, '')}#open-escalation`;
+  const label = workspaceAvailable
+    ? 'Open Auditor Workspace to review the decision'
+    : 'Open Run detail to review the decision';
+  return (
+    <details className="run-detail-frame__lifecycle">
+      <summary>Open auditor decision</summary>
+      <p>This Run is waiting for an auditor answer.</p>
+      <p><Link href={href}>{label}</Link></p>
+    </details>
   );
 }
 

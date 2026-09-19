@@ -344,6 +344,19 @@ test.describe('canonical P-4 through the real compiled worker', () => {
       expect(grants).toEqual(expect.arrayContaining([
         { status: 'issued', locator: 'frame', capability_digest: registered.digest },
       ]));
+      await page.getByRole('button', { name: 'Native size', exact: true }).click();
+      await expect.poll(() => frame.evaluate(node => Math.abs(node.clientWidth - (node as HTMLImageElement).naturalWidth))).toBeLessThanOrEqual(2);
+      const captureViewport = page.getByRole('region', { name: 'Protected capture image', exact: true });
+      expect(await captureViewport.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+      await captureViewport.focus();
+      await captureViewport.press('ArrowRight');
+      await expect.poll(() => captureViewport.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+      await expect(frame).toHaveAttribute('src', frameSource!);
+      const nativePath = testInfo.outputPath('native-workspace-1440x900.png');
+      await page.screenshot({ path: nativePath, fullPage: false, caret: 'initial' });
+      await testInfo.attach('native-workspace-1440x900', { path: nativePath, contentType: 'image/png' });
+      await page.getByRole('button', { name: 'Fit capture', exact: true }).click();
+      await expect.poll(() => frame.evaluate(node => node.getBoundingClientRect().width <= node.closest('.workspace-capture-view__viewport')!.clientWidth)).toBe(true);
       const screenshotPath = testInfo.outputPath('active-workspace-1440x900.png');
       await page.screenshot({ path: screenshotPath, fullPage: false, caret: 'initial' });
       await testInfo.attach('active-workspace-1440x900', { path: screenshotPath, contentType: 'image/png' });
@@ -592,6 +605,29 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await scan(page);
     await page.getByRole('link', { name: 'Evidence', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Records and findings', exact: true })).toBeVisible();
+    // Review one actual worker observation through the record inspector before opening
+    // technical artifacts. Its source ordinal comes from the frozen population, not a
+    // nearby screenshot or synthetic observation inserted by the test.
+    const capturedRecord = observations.find(row => row.found === 'true'
+      && evaluations.some(value => value.population_record_key === row.population_record_key && value.value === 'COMPLIANT'));
+    expect(capturedRecord).toBeDefined();
+    const [capturedSource] = await sql<{ ordinal: number }[]>`SELECT ordinal FROM population_row
+      WHERE run_id=${runId} AND disposition='included' AND values->>'parameter'=${capturedRecord!.population_record_key}
+      ORDER BY ordinal LIMIT 1`;
+    expect(capturedSource).toBeDefined();
+    await page.goto(`/runs/${runId}/evidence?selected=${capturedSource!.ordinal}`);
+    const recordInspector = page.getByRole('region', { name: 'Record inspector', exact: true });
+    await expect(recordInspector.getByRole('heading', { name: capturedRecord!.population_record_key, exact: true })).toBeVisible();
+    await expect(recordInspector.locator('.record-review__captured-target')).not.toContainText('No selected Observation');
+    const observedValue = capturedRecord!.attributes.find(attribute => attribute.name === 'observed_value');
+    expect(observedValue).toBeDefined();
+    await expect(recordInspector.locator('.record-review__captured-target')).toContainText(`observed value: ${String(observedValue!.originalValue)}`);
+    await expect(recordInspector.getByRole('link', { name: 'Open recorded page data', exact: true }).first()).toBeVisible();
+    await recordInspector.scrollIntoViewIfNeeded();
+    const inspectorPath = testInfo.outputPath('worker-record-inspector-1440x900.png');
+    await page.screenshot({ path: inspectorPath, fullPage: false, caret: 'initial' });
+    await testInfo.attach('worker-record-inspector-1440x900', { path: inspectorPath, contentType: 'image/png' });
+    await scan(page);
     // The ordinary route now starts with source records. The historical per-observation
     // anchors remain independently authorized under Technical details.
     await page.goto(`/runs/${runId}/evidence/technical`);

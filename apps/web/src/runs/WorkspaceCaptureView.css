@@ -1,0 +1,62 @@
+.workspace-capture-view {
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.workspace-capture-view__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.workspace-capture-view__controls button {
+  min-height: var(--spacing-control-sm);
+  padding: var(--spacing-1) var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace-capture-view__controls button[aria-pressed='true'] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-border-selected);
+}
+
+.workspace-capture-view__viewport {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.workspace-capture-view__viewport:focus-visible,
+.workspace-capture-view__controls button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.workspace-capture-view .ls-session__stage {
+  min-height: 0;
+  padding: var(--spacing-2);
+}
+
+.workspace-capture-view__viewport--native {
+  max-height: 50dvh;
+}
+
+.workspace-capture-view__viewport--native .ls-session__stage {
+  width: max-content;
+}
+
+.workspace-capture-view__viewport--native .ls-session__figure {
+  width: min-content;
+}
+
+.workspace-capture-view__viewport--native .ls-session__frame {
+  width: auto;
+  max-width: none;
+}

@@ -21,7 +21,7 @@ import type {
 import { Banner } from '../design/Banner';
 import { Digest } from '../design/Digest';
 import { EvaluationReview } from './EvaluationReview';
-import { UntrustedText } from './UntrustedText';
+import { UntrustedList, UntrustedText } from './UntrustedText';
 import {
   coverageWord,
   evaluationOriginWord,
@@ -631,6 +631,10 @@ function CapturedTarget({ target, observation }: { readonly target: RecordReview
         <div><dt>Evidence completeness</dt><dd>{target.evidenceProblem ? 'Problem recorded' : observation === null ? 'Not loaded' : 'No problem recorded'}</dd></div>
         <div><dt>Observed</dt><dd>{observation === null ? 'Not recorded' : <time dateTime={observation.observedAt}>{utcStamp(observation.observedAt)}</time>}</dd></div>
       </dl>
+      {observation !== null && observation.attributes.length > 0 ? <UntrustedList
+        field="captured fields"
+        values={observation.attributes.map(attribute => `${attribute.name.replaceAll('_', ' ')}: ${jsonValueText(attribute.originalValue)}`)}
+      /> : null}
       {observation === null ? <p>No selected Observation was available for this target.</p> : null}
     </article>
   );

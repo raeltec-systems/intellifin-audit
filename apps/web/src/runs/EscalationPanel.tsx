@@ -13,7 +13,7 @@ import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useActionGate } from '../design/action-gate';
-import { ESCALATION_PANEL_COPY } from '../design/copy';
+import { ESCALATION_PANEL_COPY, UNTRUSTED_CONTENT_SENTENCE } from '../design/copy';
 import { ESCALATION_KIND_WORDS } from '../design/plain-words';
 import { UntrustedText } from './UntrustedText';
 // The clock's arithmetic, shared with the Paused banner so the two surfaces cannot
@@ -105,6 +105,23 @@ type PanelMessage = {
   readonly title: string;
   readonly body?: string;
 };
+
+/**
+ * The workspace card has one shared policy sentence so a compact decision does not repeat
+ * the same warning in every source block. Each block still names its untrusted field and
+ * keeps the source value in an inert, escaped preformatted element.
+ */
+function WorkspaceUntrustedText({ field, children }: {
+  readonly field: string;
+  readonly children: string;
+}): React.JSX.Element {
+  return (
+    <div className="ls-untrusted">
+      <p className="ls-untrusted__label">{field} · untrusted</p>
+      <pre className="ls-untrusted__body" aria-describedby="open-escalation-source-policy">{children}</pre>
+    </div>
+  );
+}
 
 /**
  * The one-open-Escalation surface shared by every Run Detail tab.
@@ -211,7 +228,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   const workspaceStepLabel = workspacePresentation?.stepLabel?.trim() || ESCALATION_PANEL_COPY.noStep;
 
   const questionSection = (
-    <section aria-labelledby={questionId} className="ls-stack">
+    <section aria-labelledby={questionId} className="ls-stack escalation-panel__question">
       <h3 id={questionId}>Question</h3>
       {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
         <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
@@ -243,16 +260,22 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   );
 
   const answerSection = (
-    <fieldset className="ls-stack" disabled={unknown}>
+    <fieldset className="ls-stack escalation-panel__answers" disabled={unknown}>
       <legend>Answer</legend>
-      <p>Choose one answer. The platform expresses no recommendation.</p>
-      <div className="ls-stack">
+      <p className={workspace ? 'ls-caption' : undefined}>{workspace ? 'No answer is recommended.' : 'Choose one answer. The platform expresses no recommendation.'}</p>
+      <div className="ls-stack escalation-panel__answer-options">
         {options.map((option, index) => (
-          <div key={`${option.id}-${index}`} className="ls-stack">
+          <div key={`${option.id}-${index}`} className="ls-stack escalation-panel__answer-option">
             {wait.kind === 'choose-candidate' && option.id !== 'mark-ambiguous' ? (
-              <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
-                {option.label}
-              </UntrustedText>
+              workspace ? (
+                <WorkspaceUntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
+                  {option.label}
+                </WorkspaceUntrustedText>
+              ) : (
+                <UntrustedText field={`AGENT-GENERATED candidate ${candidateOptions.indexOf(option) + 1}`}>
+                  {option.label}
+                </UntrustedText>
+              )
             ) : null}
             <Button
               variant="secondary"
@@ -296,7 +319,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   );
 
   const timeSection = (
-    <section className="ls-stack" aria-labelledby={countdownId}>
+    <section className="ls-stack escalation-panel__time" aria-labelledby={countdownId}>
       <h3 id={countdownId}>Time remaining</h3>
       {/* `role="timer"` and NO live region. Its implicit `aria-live` is `off`, which is
           what a clock should be: the milestones are announced beside it instead. */}
@@ -355,7 +378,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   );
 
   const workspaceContextSection = workspace ? (
-    <section className="escalation-panel__workspace-context" aria-labelledby={evidenceId}>
+    <section className="escalation-panel__workspace-context ls-stack" aria-labelledby={evidenceId}>
       <h3 id={evidenceId}>Decision context</h3>
       <dl className="ls-definition">
         <dt>Step</dt>
@@ -378,10 +401,33 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
     </section>
   ) : null;
 
+  const workspaceQuestionSection = workspace ? (
+    <section aria-labelledby={questionId} className="ls-stack escalation-panel__question">
+      <h3 id={questionId}>Question</h3>
+      {details?.agentQuestion === null || details?.agentQuestion === undefined ? (
+        <p>{ESCALATION_PANEL_COPY.noAgentQuestion}</p>
+      ) : (
+        <WorkspaceUntrustedText field="AGENT-GENERATED question">{details.agentQuestion}</WorkspaceUntrustedText>
+      )}
+      <details className="escalation-panel__platform-question">
+        <summary>Platform question</summary>
+        <p>{question}</p>
+      </details>
+      {workspaceContextSection}
+    </section>
+  ) : null;
+
+  const workspaceNoteSection = workspace ? (
+    <details className="escalation-panel__note">
+      <summary>Add an optional note</summary>
+      {noteSection}
+    </details>
+  ) : noteSection;
+
   return (
     <>
       <a className="ls-skip-link" href="#open-escalation">{ESCALATION_PANEL_COPY.skipLink}</a>
-      <section id="open-escalation" className="ls-card ls-stack" aria-labelledby={headingId}>
+      <section id="open-escalation" className={`ls-card ls-stack${workspace ? ' escalation-panel--workspace' : ''}`} aria-labelledby={headingId}>
         <h2 id={headingId}>Open Escalation</h2>
         {/* The panel's appearance and its two countdown milestones, in the ONE polite
             region this surface has (EXPERIENCE.md → Accessibility). It is always in the
@@ -389,12 +435,12 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
         <p className="ls-visually-hidden" aria-live="polite" aria-atomic="true">{announcement}</p>
         {message !== null ? <Banner tone={message.tone} title={message.title}>{message.body ? <p>{message.body}</p> : null}</Banner> : null}
         {unknown ? <p><a href={`/runs/${runId}`}>Reload this Run</a></p> : null}
+        {workspace ? <p id="open-escalation-source-policy" className="escalation-panel__source-policy">{UNTRUSTED_CONTENT_SENTENCE}</p> : null}
 
         {workspace ? null : technicalSection}
-        {workspace ? questionSection : null}
-        {workspace ? workspaceContextSection : null}
+        {workspace ? workspaceQuestionSection : null}
         {workspace ? answerSection : null}
-        {workspace ? noteSection : null}
+        {workspace ? workspaceNoteSection : null}
         {workspace ? timeSection : null}
         {workspace ? technicalSection : null}
         {workspace ? null : questionSection}
