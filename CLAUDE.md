@@ -3838,3 +3838,5 @@ Conversation-to-command adapters must bind PostgresWaitRepository, role reads an
 ### Bounded PostgreSQL sequence assertions (2026-09-19)
 
 postgres.js returns audit_events.sequence (bigint) as text and conversation source-event sequence (integer) as a number. Cast the bounded audit sequence explicitly in tests that compare the two; do not misreport a representation mismatch as a failed domain or atomicity effect.
+
+- **AW-P2 browser follow-up:** CI `35450768006` retained the real active-worker capture and finished 227/230 application browser checks. Await selected-record navigation before reading its URL; calculate the oldest message from the persisted initial count because committed narration adds entries. The active/decision/inspector screenshots exposed viewport and decision-density defects, so they do not close G1.

@@ -104,4 +104,16 @@ transaction rollback/concurrency and the unique/duplicate/cross-Run record joins
 The full database suite was 601 passed, one failed: the new pause outer-commit assertion
 compared a bigint returned as text with an integer. The test query now casts explicitly.
 Type/boundary/unit, P0 design browser, container and hydrated worker-abuse checks passed.
-The full application browser suite is still running; its result remains open.
+The full application browser suite finished with 227 passed and three failed. The
+worker-produced active capture passed decoding, protected-byte digest, ETag and grant
+checks. The remaining failures were a terminal assertion on the workspace instead of
+Run Detail, reading a selected-record URL before navigation completed, and a hard-coded
+first sequence after committed narration added an entry. These are corrected in the
+follow-up; Q&A persistence and the captured-record inspector still require a passing run.
+
+Retained browser artifact `10587765054` has SHA-256
+`b8304c6f2ecb1e0d4aac03a3f53a43cfb61418c18cf2eb00eb6615151cd30a20`.
+It contains the actual active workspace, contextual decision and record inspector views.
+Inspection exposed a composer below the viewport and an overly short decision panel;
+the compact review frame also still placed a full escalation above the record queue.
+Those images are application evidence and design feedback, not a G1 usability pass.

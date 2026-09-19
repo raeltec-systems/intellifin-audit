@@ -104,7 +104,7 @@ test.describe('Run Workspace through the authenticated application', () => {
 
     const thread = history(page);
     await expect(thread.locator('article[data-message-sequence]')).toHaveCount(50);
-    await expect(thread.locator('[data-message-sequence="6"]')).toBeVisible();
+    await expect(thread.locator(`[data-message-sequence="${fixture.initialMessageCount - 49}"]`)).toBeVisible();
     await expect(thread.locator('[data-message-sequence="55"]')).toContainText('historical decision context');
     await expect(conversationPane(page).getByRole('button', { name: 'Load older messages', exact: true })).toBeVisible();
 

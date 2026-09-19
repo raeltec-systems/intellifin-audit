@@ -83,6 +83,7 @@ test.describe('Record Review through the authenticated application', () => {
     // The selected source ordinal is carried alongside the list query. The inspector is
     // reading Observation, frozen condition and registered Evidence metadata from the DB.
     await rows(page).first().getByRole('link', { name: 'Review evidence', exact: true }).click();
+    await expect(page).toHaveURL(url => url.searchParams.get('selected') === String(fixture.primaryOrdinal));
     const selectedUrl = page.url();
     const selected = new URL(selectedUrl);
     expect(selected.searchParams.get('selected')).toBe(String(fixture.primaryOrdinal));
