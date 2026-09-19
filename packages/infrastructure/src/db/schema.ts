@@ -2101,3 +2101,19 @@ export const runInteractionTransition = pgTable('run_interaction_transition', {
   check('run_interaction_transition_bounds', sql`${t.sequence} BETWEEN 1 AND 1000 AND ${t.reasonCode} ~ '^[a-z][a-z0-9-]{0,79}$'`),
   check('run_interaction_transition_event_binding', sql`(${t.state} IN ('queued','applied','superseded')) = (${t.sourceEventId} IS NOT NULL)`),
 ]);
+
+/**
+ * Persistent discretionary-control fence. An empty holder is a released/expired lease,
+ * never a return to legacy Resume authority. The Run row serializes every transition.
+ */
+export const runControlLease = pgTable('run_control_lease', {
+  runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  epoch: integer('epoch').notNull(),
+  holderId: text('holder_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+}, t => [
+  check('run_control_lease_epoch', sql`${t.epoch} > 0`),
+  check('run_control_lease_holder_expiry', sql`(${t.holderId} IS NULL) = (${t.expiresAt} IS NULL)`),
+  check('run_control_lease_duration', sql`${t.expiresAt} IS NULL OR (${t.expiresAt} > ${t.updatedAt} AND ${t.expiresAt} <= ${t.updatedAt} + interval '120 seconds')`),
+]);

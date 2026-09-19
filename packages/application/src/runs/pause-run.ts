@@ -169,7 +169,7 @@ export type ResumeRunOutcome =
   | { readonly ok: true; readonly state: 'RUNNING'; readonly waitId: string }
   | { readonly ok: false; readonly reason: string; readonly code: ResumeRefusalCode };
 
-export type ResumeRefusalCode = 'malformed' | 'unknown' | 'not-paused' | 'stale-revision' | 'timed-out' | 'closed';
+export type ResumeRefusalCode = 'malformed' | 'unknown' | 'not-paused' | 'stale-revision' | 'timed-out' | 'closed' | 'control-required' | 'stale-control';
 
 export const PAUSE_REQUEST_MALFORMED = 'Choose a Run that is still running.';
 export const RESUME_REQUEST_MALFORMED = 'Choose a Paused Run and the revision you read.';
@@ -195,6 +195,8 @@ export const RESUME_RUN_REFUSALS: Readonly<Record<ResumeRefusalCode, string>> = 
    * and says `closed` otherwise; this is that rule, one command along.
    */
   closed: 'This pause was already closed. Reload the Run to see its state.',
+  'control-required': 'Acquire control of this Run before confirming Resume.',
+  'stale-control': 'Your control lease changed or expired. Reload the Run before confirming Resume.',
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -241,11 +243,11 @@ function internalCommandId(value: unknown): string | null | undefined {
   return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
 }
 
-function parseResumeRequest(value: unknown): { runId: string; expectedRunRevision: number } | null {
+function parseResumeRequest(value: unknown): { runId: string; expectedRunRevision: number; expectedControlEpoch: number | null } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.length !== 2 || !Object.hasOwn(record, 'runId') || !Object.hasOwn(record, 'expectedRunRevision'))
+  if ((keys.length !== 2 && keys.length !== 3) || keys.some(key => !['runId', 'expectedRunRevision', 'expectedControlEpoch'].includes(key)) || !Object.hasOwn(record, 'runId') || !Object.hasOwn(record, 'expectedRunRevision'))
     return null;
   if (typeof record.runId !== 'string' || !UUID.test(record.runId)) return null;
   if (
@@ -254,7 +256,9 @@ function parseResumeRequest(value: unknown): { runId: string; expectedRunRevisio
     record.expectedRunRevision < 0
   )
     return null;
-  return { runId: record.runId.toLowerCase(), expectedRunRevision: record.expectedRunRevision };
+  const epoch = record.expectedControlEpoch;
+  if (Object.hasOwn(record, 'expectedControlEpoch') && (typeof epoch !== 'number' || !Number.isSafeInteger(epoch) || epoch <= 0)) return null;
+  return { runId: record.runId.toLowerCase(), expectedRunRevision: record.expectedRunRevision, expectedControlEpoch: typeof epoch === 'number' ? epoch : null };
 }
 
 /** Record one person's pause request. The worker honours it at its next boundary. */
@@ -330,7 +334,10 @@ export async function pauseRun(
   }
 }
 
-export interface ResumeRunDependencies extends PauseRunDependencies {}
+export interface ResumeRunDependencies extends PauseRunDependencies {
+  /** Server policy for Runs never enrolled in control. Existing lease rows ALWAYS fence. */
+  readonly requireControllerLease: boolean;
+}
 
 /**
  * Close the pause wait and put the Run back to `RUNNING`.
@@ -365,7 +372,15 @@ export async function resumeRun(
         return { ok: false, reason: RESUME_RUN_REFUSALS['not-paused'], code: 'not-paused' };
       if (run.state !== 'PAUSED')
         return { ok: false, reason: RESUME_RUN_REFUSALS['not-paused'], code: 'not-paused' };
-      const now = dependencies.clock.now().toISOString();
+      const control = await context.readResumeControl();
+      const controlRequired = dependencies.requireControllerLease === true || control.lease !== null || request.expectedControlEpoch !== null;
+      if (controlRequired && (control.lease === null || request.expectedControlEpoch === null))
+        return { ok: false, reason: RESUME_RUN_REFUSALS['control-required'], code: 'control-required' };
+      if (controlRequired && (control.lease!.holderId !== input.session.userId || control.lease!.epoch !== request.expectedControlEpoch ||
+          control.lease!.expiresAt === null || !Number.isFinite(Date.parse(control.lease!.expiresAt)) ||
+          !Number.isFinite(control.now.getTime()) || Date.parse(control.lease!.expiresAt) <= control.now.getTime()))
+        return { ok: false, reason: RESUME_RUN_REFUSALS['stale-control'], code: 'stale-control' };
+      const now = (controlRequired ? control.now : dependencies.clock.now()).toISOString();
       const operation = await context.closeWait({
         waitId: wait.waitId,
         expectedRunRevision: request.expectedRunRevision,
@@ -412,6 +427,7 @@ export async function resumeRun(
           waitId: wait.waitId,
           closureKind: 'resume',
           pausedAt: wait.openedAt,
+          ...(controlRequired ? { controlEpoch: control.lease!.epoch } : {}),
           occurredAt: now,
         },
       });

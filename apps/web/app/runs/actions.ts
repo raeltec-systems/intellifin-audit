@@ -210,14 +210,16 @@ export async function resumeRunAction(request: unknown): Promise<PauseRunActionR
     if (!decision.allowed) return { ok: false, reason: decision.reason };
     if (typeof request !== 'object' || request === null || Array.isArray(request)) return { ok: false, reason: PAUSE_MALFORMED };
     const fields = request as Record<string, unknown>;
-    if (Object.keys(fields).length !== 2 || !Object.hasOwn(fields, 'runId') || !Object.hasOwn(fields, 'expectedRunRevision') ||
+    if (![2, 3].includes(Object.keys(fields).length) || Object.keys(fields).some(key => !['runId', 'expectedRunRevision', 'expectedControlEpoch'].includes(key)) || !Object.hasOwn(fields, 'runId') || !Object.hasOwn(fields, 'expectedRunRevision') ||
       typeof fields.runId !== 'string' || !RUN_UUID.test(fields.runId) ||
       typeof fields.expectedRunRevision !== 'number' || !Number.isSafeInteger(fields.expectedRunRevision) ||
-      fields.expectedRunRevision < 0) return { ok: false, reason: PAUSE_MALFORMED };
+      fields.expectedRunRevision < 0 ||
+      (Object.hasOwn(fields, 'expectedControlEpoch') && (typeof fields.expectedControlEpoch !== 'number' || !Number.isSafeInteger(fields.expectedControlEpoch) || fields.expectedControlEpoch <= 0))) return { ok: false, reason: PAUSE_MALFORMED };
     const runtime = await getRuntime();
     const outcome = await resumeRun(
-      { roles: new DrizzleRoleRepository(runtime.db), unitOfWork: new PostgresRunsUnitOfWork(runtime.db), repository: new PostgresWaitRepository(runtime.db), ids: new CryptoUuidV7Generator(), clock: new SystemClock() },
-      { session: decision.session, request: { runId: fields.runId, expectedRunRevision: fields.expectedRunRevision } },
+      { roles: new DrizzleRoleRepository(runtime.db), unitOfWork: new PostgresRunsUnitOfWork(runtime.db), repository: new PostgresWaitRepository(runtime.db), ids: new CryptoUuidV7Generator(), clock: new SystemClock(), requireControllerLease: runtime.conversationEnabled },
+      { session: decision.session, request: { runId: fields.runId, expectedRunRevision: fields.expectedRunRevision,
+        ...(typeof fields.expectedControlEpoch === 'number' ? { expectedControlEpoch: fields.expectedControlEpoch } : {}) } },
     );
     return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
   } catch (error) {

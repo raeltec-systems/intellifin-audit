@@ -171,9 +171,13 @@ test.describe('pausing and resuming a Run', () => {
     const live = await new AxeBuilder({ page }).withTags(TAGS).analyze();
     expect(live.violations).toEqual([]);
 
-    // Resume is DIRECT: EXPERIENCE.md's confirmation table lists pause and not resume.
+    // v1.1 requires current controller ownership and explicit confirmation on every surface.
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Resume this Run?', exact: true }).getByRole('button', { name: 'Resume Run', exact: true }).click();
     await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toBeVisible();
 
     const [resumed] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
@@ -185,6 +189,7 @@ test.describe('pausing and resuming a Run', () => {
     expect(events.map((row) => row.event_type)).toEqual([
       'lifecycle.run-pause-requested',
       'lifecycle.run-paused',
+      'lifecycle.run-control-lease-acquired',
       'lifecycle.run-resumed',
     ]);
     // The pause is over, so the Run has no open wait and Pause is offered again.

@@ -84,6 +84,7 @@ class FakeWaitContext implements WaitContext {
   authorizationRoles = { findRole: async (): Promise<typeof this.role> => this.role };
   readWait = async (waitId: string): Promise<RunWait | null> => (this.wait?.waitId === waitId ? this.wait : null);
   readEscalationDetails = async (): Promise<null> => null;
+  readResumeControl = async (): Promise<{ lease: import('./run-control-lease.js').RunControlLeaseState | null; now: Date }> => ({ lease: null, now: NOW });
   auditEvents = {
     append: async (draft: { eventType: string; payload: Record<string, unknown>; actor: { id: string } }) => {
       this.sequence += 1;
@@ -176,6 +177,7 @@ function ids(): { next(): string } {
 function dependencies(repository: WaitRepository, clock: { now(): Date } = { now: () => NOW }, commandId?: string | null) {
   return {
     repository,
+    requireControllerLease: false,
     roles: { findRole: async () => 'auditor' as const },
     unitOfWork: { execute: async () => undefined } as never,
     ids: ids(),
@@ -528,5 +530,51 @@ describe('ResumeRun', () => {
       expect(outcome.ok).toBe(false);
     }
     expect(repository.context.wait?.closedAt).toBeNull();
+  });
+
+  it('requires acquisition when server policy enrolls Resume even before a lease exists', async () => {
+    const repository = await paused();
+    const result = await resumeRun({ ...dependencies(repository), requireControllerLease: true }, {
+      session: SESSION, request: { runId: RUN_ID, expectedRunRevision: repository.context.run!.revision },
+    });
+    expect(result).toMatchObject({ ok: false, code: 'control-required' });
+    expect(repository.context.wait?.closedAt).toBeNull();
+  });
+
+  it.each(['missing-epoch', 'old-epoch', 'other-holder', 'expired', 'released'] as const)(
+    'keeps an enrolled Run fenced with conversation disabled: %s', async failure => {
+      const repository = await paused();
+      repository.context.readResumeControl = async () => ({
+        now: NOW,
+        lease: {
+          runId: RUN_ID, epoch: 7,
+          holderId: failure === 'released' ? null : failure === 'other-holder' ? 'other-auditor' : SESSION.userId,
+          expiresAt: failure === 'released' ? null : new Date(NOW.getTime() + (failure === 'expired' ? 0 : 120_000)).toISOString(),
+          updatedAt: NOW.toISOString(),
+        },
+      });
+      const result = await resumeRun({ ...dependencies(repository), requireControllerLease: false }, {
+        session: SESSION,
+        request: { runId: RUN_ID, expectedRunRevision: repository.context.run!.revision,
+          ...(failure === 'missing-epoch' ? {} : { expectedControlEpoch: failure === 'old-epoch' ? 5 : 7 }) },
+      });
+      expect(result).toMatchObject({ ok: false, code: failure === 'missing-epoch' ? 'control-required' : 'stale-control' });
+      expect(repository.context.run?.state).toBe('PAUSED');
+      expect(repository.context.wait?.closedAt).toBeNull();
+      expect(repository.context.events.filter(event => event.eventType === 'lifecycle.run-resumed')).toHaveLength(0);
+    },
+  );
+
+  it('records the current control epoch on the existing authoritative Resume event', async () => {
+    const repository = await paused();
+    repository.context.readResumeControl = async () => ({ now: NOW, lease: {
+      runId: RUN_ID, epoch: 7, holderId: SESSION.userId,
+      expiresAt: new Date(NOW.getTime() + 120_000).toISOString(), updatedAt: NOW.toISOString(),
+    } });
+    const result = await resumeRun({ ...dependencies(repository), requireControllerLease: true }, {
+      session: SESSION, request: { runId: RUN_ID, expectedRunRevision: repository.context.run!.revision, expectedControlEpoch: 7 },
+    });
+    expect(result).toMatchObject({ ok: true, state: 'RUNNING' });
+    expect(repository.context.events.at(-1)).toMatchObject({ eventType: 'lifecycle.run-resumed', payload: { controlEpoch: 7 } });
   });
 });

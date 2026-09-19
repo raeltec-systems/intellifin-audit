@@ -3884,3 +3884,24 @@ is displayed, not that all inert metadata disappears. Measure meaningful visible
 history as well as Send and the first contextual choice: a control can fit while leaving
 almost no conversation. Compact full provenance accessibly; aria-label on a paragraph
 is prohibited. Keep fresh/live-state information visible in compact workspace chrome.
+
+
+### Controller fencing belongs inside the existing Resume transaction (2026-09-19)
+
+Run controller operations lock the canonical Run before reading PostgreSQL
+clock_timestamp; transaction-start time can renew a lease that expired while waiting.
+Retain the row after release/expiry and advance its epoch, including same-actor
+reacquisition. Resume reads that fence under the existing wait transaction, with current
+role, revision and confirmation epoch. Require every Resume adapter to name its server
+policy explicitly. Once enrolled, mode-off cannot restore epoch-free Resume: disable
+new enrollment while retaining protected recovery controls for existing Runs.
+
+Lease row, audit event and existing timeline notification share the transaction. An
+expiry is attributed to the system observer with observedBy metadata; the auditor did
+not cause the clock deadline. The insert trigger requires epoch one, so use a locked
+UPDATE then INSERT, not an UPSERT whose BEFORE INSERT trigger sees a renewal epoch.
+Never extend controller ownership into Pause/Stop safety or existing exact-wait rights.
+Capture the Resume revision/epoch when its confirmation opens; live rereads cannot
+silently rebind a previously shown decision. No new manager takeover permission is
+implied. Lease-renewal payload idempotency and full conversational command receipts
+remain separate uncompleted P3 work.

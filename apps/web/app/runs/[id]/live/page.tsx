@@ -194,6 +194,7 @@ export default async function RunLivePage({
           awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
           pausable={runPauseTransition(run.state) !== null}
           runRevision={waits?.runRevision ?? null}
+          controlRefreshKey={readAt.toISOString()}
         />
         <RunCancelControl
           runId={run.runId}

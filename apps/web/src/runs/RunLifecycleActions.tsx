@@ -94,7 +94,7 @@ export function RunLifecycleActions({ runId, active, awaitingAuditor = false, ca
         a Replay and has nothing to rerun from. */}
     <RunPauseControls runId={runId} procedureName={procedureName} paused={paused}
       pausePending={pausePending} awaitingAuditor={awaitingAuditor} pausable={pausable}
-      runRevision={runRevision} />
+      runRevision={runRevision} controlRefreshKey={requestToken} />
     <RunCancelControl runId={runId} procedureName={procedureName} active={active} cancelPending={cancelPending} />
     {active ? null
       : <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}

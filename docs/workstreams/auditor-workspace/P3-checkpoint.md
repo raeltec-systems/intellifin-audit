@@ -117,3 +117,42 @@ The two unrelated browser failures and retained artifact digest are recorded in 
 The remaining PostgreSQL pause test still requires the corrected-envelope rerun before
 its later application, rollback and revocation assertions can be claimed. No gate is
 closed by the passing browser case alone.
+
+
+## Controller/confirmed Resume implementation candidate
+
+Generation 54 adds a retained Run controller fence. Acquire/release/expiry advance its
+epoch; authorized renewals retain it. PostgreSQL time is sampled after the existing Run
+row lock. Lease changes, lifecycle audit events and the existing timeline wake commit
+together. Expiry is a system observation with the triggering auditor explicitly named
+as observer. No controller-transfer permission or implicit manager takeover is granted.
+
+The shared Resume handler checks current role, Run revision, the live holder and exact
+epoch under the same transaction as closing the existing pause wait. Run Detail, Live
+View and Auditor Workspace share a confirmation dialog which captures the epoch and
+revision the auditor actually confirmed. Every production caller must explicitly supply
+the server policy; clients cannot supply that policy or actor. A retained row always
+fences Resume even after feature disable. Pause, Stop and eligible exact-wait answers
+keep their existing authority and accepted safety latches.
+
+Mode-off deliberately disables **new enrollment**, while enrolled Runs retain protected
+acquire/renew/release and Resume recovery. It neither deletes the fence nor strands an
+already-paused Run. This is a compatible-application recovery rule, not proof an old
+image can use generation 54. Exact schema compatibility still refuses old images.
+
+Focused application/action tests pass (76); affected component checks pass (23);
+application/infrastructure/web/root TypeScript and 675-module boundary checks pass.
+These counts describe local verification only. New real-PostgreSQL cases cover competing
+holders, same-actor reacquisition, expiry, revocation, rollback and a transaction begun
+before expiry but blocked on the actual Run lock until after expiry. A new two-context
+browser case holds an actual Resume POST across release/reacquisition and checks the
+unchanged Run, open wait, revision and persisted audit chain. These integration/browser
+cases still require normal CI execution.
+
+This bounded slice is not all P3: confirmed chat Resume/Stop, command receipts for the
+rest of the catalogue, exact contextual replies, deferred subject-target pause, flags
+and frozen strategy capabilities remain. Renewal currently has epoch fencing and
+unknown-response recovery, but no payload-keyed renewal receipt; do not claim its retry
+is exactly once. Continuous named-controller display beyond the paused control surface
+and the approved D3 transfer flow also remain. G5 process-kill/queue/mixed-version proof
+and G7 measured capacity are not supplied by these tests.

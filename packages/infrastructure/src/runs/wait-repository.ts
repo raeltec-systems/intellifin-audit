@@ -37,6 +37,7 @@ import {
   sendWaitWake,
 } from './wait-rows.js';
 import { withRunExecutionContext } from './adapter-execution-repository.js';
+import { readLockedRunControlLease, runControlServerTime } from './run-control-lease-repository.js';
 
 /** Queue name for delayed wake jobs. The queue is created by the release migrator. */
 export const WAIT_QUEUE = WAIT_QUEUE_NAME;
@@ -293,6 +294,10 @@ export class PostgresWaitRepository implements WaitRepository {
             };
           },
           authorizationRoles: new DrizzleRoleRepository(tx),
+          async readResumeControl() {
+            const lease = await readLockedRunControlLease(tx, runId);
+            return { lease, now: new Date(await runControlServerTime(tx)) };
+          },
           async saveRunState(state) {
             const current = currentRun;
             if (!current) return;

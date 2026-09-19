@@ -52,6 +52,7 @@ import type { RoleRepository, SessionSnapshot } from '../identity/ports.js';
 import { completeRun } from './complete-run.js';
 import { performCancellation } from './cancel-run.js';
 import type { RunResultContext } from './execution-ports.js';
+import type { RunControlLeaseState } from './run-control-lease.js';
 
 /** The durable wait wire contract. A wait is intentionally kind-agnostic. */
 export const WAIT_SCHEMA_VERSION = 1 as const;
@@ -130,6 +131,8 @@ export interface WaitContext extends RunResultContext {
   readEscalationDetails(waitId: string): Promise<EscalationDetails | null>;
   /** Role lookup bound to the same transaction, for the second authorization check. */
   readonly authorizationRoles: RoleRepository;
+  /** Resume alone uses this fence; Pause and exact wait answers remain independent. */
+  readResumeControl(): Promise<{ readonly lease: RunControlLeaseState | null; readonly now: Date }>;
   /** The frozen plan used when a timeout must complete the Run. */
   frozenPlan(): Promise<ExecutablePlan | null>;
   /** Persist the abort marker before the sole CANCELED transition. */

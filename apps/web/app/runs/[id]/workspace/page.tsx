@@ -75,7 +75,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           ? <p className="ls-caption">Pause is unavailable while an auditor answer is open.</p>
           : <RunPauseControls runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
             pausePending={run.pauseRequest !== null} awaitingAuditor={false}
-            pausable={runPauseTransition(run.state) !== null} runRevision={waits?.runRevision ?? null} />}
+            pausable={runPauseTransition(run.state) !== null} runRevision={waits?.runRevision ?? null} controlRefreshKey={readAt.toISOString()} />}
           <RunCancelControl runId={id} procedureName={run.procedureName} active={isActiveRunState(run.state)} cancelPending={run.cancellation !== null} />
           <Link href={`/runs/${id}/evidence`}>Records and findings</Link><Link href={`/runs/${id}/replay`}>Replay</Link>
           <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>Approved procedure</Link></>}

@@ -420,7 +420,15 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await expect(appliedReceipt).toContainText(applied!.source_event_id!);
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
     await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await expect(controller.getByRole('button', { name: 'Acquire control', exact: true })).toBeVisible();
+    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(controller).toContainText('You control this Run.');
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    const resumeDialog = page.getByRole('dialog');
+    await expect(resumeDialog).toBeVisible();
+    await expect(resumeDialog.getByRole('heading', { name: 'Resume this Run?', exact: true })).toBeVisible();
+    await resumeDialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
     await expect(page.getByText('Run resumed.', { exact: true })).toBeVisible({ timeout: 30_000 });
     const [resumedEvent] = await sql<{ event_id: string; event_type: string; source: string; outcome: string; actor_type: string }[]>`
       SELECT event_id::text,event_type,source,outcome,actor_type FROM audit_events

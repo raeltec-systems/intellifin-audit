@@ -325,7 +325,11 @@ test.describe('Flow 3: supervising a Run from Live View', () => {
     await scan(page);
 
     await expect(page.locator('#run-pause')).toHaveAttribute('data-client-ready', 'true');
+    await expect(page.getByRole('button', { name: 'Acquire control', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+    await page.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(page.getByText('You control this Run.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Resume this Run?', exact: true }).getByRole('button', { name: 'Resume Run', exact: true }).click();
     await expect(page.getByText(PAUSE_COPY.resumed, { exact: true })).toBeVisible({ timeout: 30_000 });
     const [resumed] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
     expect(resumed).toMatchObject({ state: 'RUNNING' });

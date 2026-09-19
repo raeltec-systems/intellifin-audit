@@ -3,12 +3,14 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { pauseRunAction, resumeRunAction } from '../../app/runs/actions';
+import type { RunControlReadActionResult } from '../../app/runs/control-actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import { UnavailableActions } from '../design/UnavailableActions';
 import { useLiveGate } from './LiveGate';
+import { RunControllerLease } from './RunControllerLease';
 
 /**
  * Pause and Resume, on Run Detail AND on Live View (Story 5.4).
@@ -17,9 +19,8 @@ import { useLiveGate } from './LiveGate';
  * agree on every case anybody tried and diverge on the first one nobody did — here that
  * divergence would be one surface refusing a stale revision and the other not.
  *
- * **Pause is a ROUTINE confirmation; Resume is direct.** EXPERIENCE.md's confirmation
- * table lists pause and does NOT list resume: putting the Run back to work is the thing
- * the person paused it to be able to do, and it is undone by pausing again.
+ * Auditor Workspace v1.1 requires confirmed Resume with the current controller epoch.
+ * Every surface shares this implementation and the same authoritative domain command.
  *
  * **The success message never says the Run is paused.** The worker performs that
  * transition at its next Tool Action boundary, so what succeeded here is the REQUEST, and
@@ -53,10 +54,12 @@ export interface RunPauseControlsProps {
    * point of the token is that it names the state the person was actually looking at.
    */
   readonly runRevision: number | null;
+  /** The existing live-channel server reread invalidates the controller projection too. */
+  readonly controlRefreshKey?: string;
 }
 
 export function RunPauseControls({
-  runId, procedureName, paused, pausePending, awaitingAuditor, pausable, runRevision,
+  runId, procedureName, paused, pausePending, awaitingAuditor, pausable, runRevision, controlRefreshKey = '',
 }: RunPauseControlsProps): React.JSX.Element {
   const router = useRouter();
   // Live View withdraws its controls when the channel is lost or the Run has ended
@@ -65,6 +68,8 @@ export function RunPauseControls({
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => { setClientReady(true); }, []);
   const [confirming, setConfirming] = useState(false);
+  const [control, setControl] = useState<RunControlReadActionResult | null>(null);
+  const [resumeConfirmation, setResumeConfirmation] = useState<{ revision: number; epoch: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; title: string; body?: string } | null>(null);
@@ -93,10 +98,11 @@ export function RunPauseControls({
     // Withdrawn below when the revision could not be read; this is the guard behind it, so
     // a click that reaches here anyway (a forced one) sends nothing and says WHY rather
     // than describing a lost response for a request that was never made.
-    if (runRevision === null) { setAttempt(value => value + 1); setMessage({ tone: 'danger', title: PAUSE_COPY.unreadable }); return; }
+    if (resumeConfirmation === null) return;
     setBusy(true); setMessage(null); setAttempt(value => value + 1);
     try {
-      const result = await resumeRunAction({ runId, expectedRunRevision: runRevision });
+      const result = await resumeRunAction({ runId, expectedRunRevision: resumeConfirmation.revision,
+        ...(resumeConfirmation.epoch === null ? {} : { expectedControlEpoch: resumeConfirmation.epoch }) });
       if (!result.ok) {
         setMessage({ tone: 'danger', title: result.reason ?? PAUSE_COPY.resumeUnknown });
         if (result.unknownOutcome === true) setUnknown(true);
@@ -107,7 +113,7 @@ export function RunPauseControls({
     } catch {
       setUnknown(true);
       setMessage({ tone: 'danger', title: PAUSE_COPY.resumeUnknown });
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setResumeConfirmation(null); }
   };
 
   // Nothing to show at all: a Queued or terminal Run has no pause control and no pause.
@@ -123,12 +129,18 @@ export function RunPauseControls({
       disabledReason={ESCALATION_PANEL_COPY.pauseUnavailable}
       disabledReasonId="run-pause-unavailable"
     >Pause</Button> : null}
-    {paused ? <Button variant="primary" busy={busy} onClick={() => { void resume(); }}
+    {paused && <RunControllerLease runId={runId} refreshKey={controlRefreshKey} onRead={setControl} />}
+    {paused ? <Button variant="primary" busy={busy} onClick={() => {
+        if (runRevision !== null && control?.status === 'ready' && (!control.required || control.heldByYou))
+          setResumeConfirmation({ revision: runRevision, epoch: control.required ? control.epoch : null });
+      }}
         {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
           : unknown ? { disabledReason: RUN_LOST_RESPONSE }
           // The revision is the compare-and-set the resume needs; without it the request
           // cannot be made, so the control is withdrawn with the banner's own reason.
-          : runRevision === null ? { disabledReason: PAUSE_COPY.unreadable } : {})}>Resume</Button> : null}
+          : runRevision === null ? { disabledReason: PAUSE_COPY.unreadable }
+          : control?.status !== 'ready' ? { disabledReason: 'Checking current Run control. Reload if it remains unavailable.' }
+          : control.required && !control.heldByYou ? { disabledReason: 'Acquire control before confirming Resume.' } : {})}>Resume</Button> : null}
     {pausable && !paused && !awaitingAuditor ? <Button variant="secondary" busy={busy} onClick={() => setConfirming(true)}
         {...(gate.disabledReason !== null ? { disabledReason: gate.disabledReason }
           : pausePending ? { disabledReason: ALREADY_REQUESTED }
@@ -144,5 +156,10 @@ export function RunPauseControls({
       busy={busy}
       onCancel={() => { if (!busy) setConfirming(false); }}
       onConfirm={() => { void pause(); }} />
+    <ConfirmDialog open={resumeConfirmation !== null} weight="routine"
+      title="Resume this Run?"
+      consequence={`Resume the approved frozen procedure ${procedureName}. Interrupted work restarts under the existing execution rules.`}
+      confirmLabel={busy ? 'Saving…' : 'Resume Run'} cancelLabel="Go back" busy={busy}
+      onCancel={() => { if (!busy) setResumeConfirmation(null); }} onConfirm={() => { void resume(); }} />
   </div>;
 }

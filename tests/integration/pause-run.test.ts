@@ -139,6 +139,7 @@ describe.skipIf(!url)('pausing and resuming a Run', () => {
 
   function deps(now = baseNow) {
     return {
+      requireControllerLease: false,
       roles: new DrizzleRoleRepository(db),
       unitOfWork: new PostgresRunsUnitOfWork(db),
       repository: new PostgresWaitRepository(db),
