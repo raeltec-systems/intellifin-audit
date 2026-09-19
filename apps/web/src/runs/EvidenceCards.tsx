@@ -199,6 +199,10 @@ export function GroundingInspector({
   readonly snapshotHrefOf?: (evidenceId: string, locator: string) => string | null;
   readonly absenceHrefOf?: (evidenceId: string, observationId: string) => string | null;
 }): React.JSX.Element {
+  // An omitted resolver is the overview composition saying that the detail was not
+  // fetched. Keep that state separate from a resolver that was supplied and returned
+  // null: the latter is an actual unavailable-artifact result.
+  const snapshotLoaded = snapshotOf !== undefined;
   const snapshotResolver = snapshotOf ?? (() => null);
   // No link is emitted until an authorized server composition supplies one. A guessed
   // `/api/evidence` URL would be a dead placeholder and could suggest that access happened.
@@ -277,6 +281,7 @@ export function GroundingInspector({
                   ? null
                   : snapshotResolver(observation.identity.grounding.evidenceId)
               }
+              snapshotLoaded={snapshotLoaded}
               snapshotHref={
                 observation.identity.grounding === null
                   ? null
@@ -311,6 +316,7 @@ export function GroundingInspector({
                     ? null
                     : snapshotResolver(attribute.grounding.evidenceId)
                 }
+                snapshotLoaded={snapshotLoaded}
                 snapshotHref={
                   attribute.grounding === null
                     ? null
@@ -330,6 +336,7 @@ function AttributeGrounding({
   attribute,
   substrate,
   snapshot,
+  snapshotLoaded,
   snapshotHref,
   corroborationDiagnostic,
   populationRecordKey,
@@ -339,13 +346,17 @@ function AttributeGrounding({
   readonly attribute: ObservationAttribute;
   readonly substrate: SnapshotSubstrate | null;
   readonly snapshot: StoredSnapshot | null;
+  readonly snapshotLoaded: boolean;
   readonly snapshotHref: string | null;
   readonly corroborationDiagnostic: string | null;
   readonly populationRecordKey?: string;
   readonly isIdentity?: boolean;
   readonly identityMatchOrigin?: string;
 }): React.JSX.Element {
-  const inspection = inspectStoredGrounding(attribute, substrate, snapshot);
+  const inspection =
+    !snapshotLoaded && substrate !== null && attribute.grounding !== null
+      ? { cell: null, failure: 'snapshot-not-loaded' as const }
+      : inspectStoredGrounding(attribute, substrate, snapshot);
   const reason = corroborationReason(attribute.corroboration, corroborationDiagnostic);
   return (
     <li className="ls-grounding">
@@ -418,7 +429,9 @@ function AttributeGrounding({
                   <p>
                     {inspection.failure === null
                       ? 'No snapshot cell was read.'
-                      : groundingInspectionReason(inspection.failure)}
+                      : inspection.failure === 'snapshot-not-loaded'
+                        ? 'The stored snapshot has not been loaded for this page.'
+                        : groundingInspectionReason(inspection.failure)}
                   </p>
                 ) : (
                   <UntrustedText field={`${attribute.name}, as read at the stored snapshot locator`}>

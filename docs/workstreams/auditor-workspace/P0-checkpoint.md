@@ -115,3 +115,44 @@ unsupported delivery date or successful CI/provider/persistence claim is made he
 - Arrange the five-auditor G1 study and a synthetic provider test using the approved account.
 
 No merge or deploy is authorized.
+
+## First executed browser result and correction
+
+Commit `35c2a5beccdd3905d426b78c9757be1eba9fc758`, normal CI run `35434553302`,
+design job `105874906885`: **10 passed, 2 failed** on pinned Node 24.20.0 / pnpm
+11.25.0 and Chromium 151. No retries. The 1440px active/decision/inspector checks passed;
+1280px active exposed a non-focusable scroll region and 1280px decision placed the
+composer bottom at 816px in an 800px viewport. The next change makes the screen viewport
+keyboard focusable and compacts short-desktop spacing. These failures are retained;
+passing re-verification is required rather than removing either assertion.
+
+The existing normal typecheck/boundary/unit job passed on this commit. Other normal CI
+jobs were still running at the time of this entry. Local package build and root test
+TypeScript checks passed using available Node 24.19.0; that local runtime is not the
+repository-approved runtime gate.
+
+## In-Run scheduling and G2 inspection
+
+`execute-agent-work-item.ts` constructs work in target-major, subject-minor order,
+retaining source ordinal. A logical work item has a stable ID reused by `(stepId,
+subjectKey)` across retries; each attempt receives a new Step Execution ID. Therefore a
+deferred pause can bind one subject-target work item without reordering. It cannot claim
+an all-target subject barrier. `skip` leaves the item `UNINSPECTED`, even when the decision
+Step Execution succeeds. An open wait remains the one authoritative wait.
+
+`ExecutablePlan` versions and ordered `sessionSteps`/`planSteps` are not a selectable
+strategy graph. `LookupSpec` currently carries key/value/label, and `planAgentTools`
+derives lookup progression from attempted searches. G2 requires explicit frozen strategy
+identity, predecessor and attempt constraints consumed by both planner and executor;
+legacy plans must not gain this steering capability through prose reinterpretation.
+
+## Bounded P1 repair delivered alongside P0
+
+`GroundingInspector` no longer treats an omitted snapshot resolver as proof of a missing
+artifact. It says the snapshot has not been loaded for this page. A supplied resolver
+returning null still reports unavailable; mismatched evidence and unsupported media keep
+their failures. Stored corroboration and escaped source content are unchanged. Five new
+rendered regression tests cover those boundaries. The direct local web suite passed
+80 files / 1,456 tests and the web TypeScript check passed on Node 24.19.0. Normal CI on
+the pinned runtime remains the gate. This repair is not completion of P1's bounded
+PostgreSQL record queue or on-demand evidence workflow.

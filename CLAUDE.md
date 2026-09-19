@@ -3781,3 +3781,8 @@ are never application persistence proof. The P0 browser job supplements normal C
 Do not count a compiled plan as the explicit strategy capability graph, provider SDK
 methods as a measured preview/privacy guarantee, or the specification's models as
 application tests. Current application mechanisms remain execution/evidence authority.
+
+AW-P1 evidence-load distinction: an omitted `GroundingInspector.snapshotOf` means the
+page has not loaded the detail; a supplied resolver returning null means unavailable.
+Do not turn lazy loading into evidence loss, and do not hide a real mismatch/unavailable
+result. The optional resolver remains separate from stored execution corroboration.
