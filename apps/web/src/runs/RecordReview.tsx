@@ -252,7 +252,7 @@ export function RecordReviewQueue({ runId, page, navigation }: RecordReviewQueue
         </Banner>
       ) : null}
 
-      <form className="record-review__filters" method="get" action={`/runs/${encodeURIComponent(runId)}/evidence`}>
+      <form className="record-review__filters" method="post" action={`/api/runs/${encodeURIComponent(runId)}/record-review-navigation`}>
         <div className="record-review__filter-field">
           <label htmlFor="record-review-search">Search records</label>
           <input

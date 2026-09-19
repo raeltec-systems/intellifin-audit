@@ -66,7 +66,7 @@ test.describe('Record Review through the authenticated application', () => {
     await attachScreenshot(page, testInfo, 'record-review-queue-1440x900');
     await scan(page);
 
-    // Search and filter use a normal GET form. That keeps the query part of the URL and
+    // Search and filter POST validated navigation. That keeps the query part of the URL and
     // means a reload can prove the same list context without client-side state.
     await queue(page).getByLabel('Search records').fill(fixture.searchTerm);
     await queue(page).getByLabel('Filter').selectOption('exceptions');

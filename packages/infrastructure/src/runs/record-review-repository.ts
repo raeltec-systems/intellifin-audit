@@ -129,7 +129,7 @@ export class PostgresRecordReviewRepository {
             // Remove only bounded expired cache entries; immutable audit/evidence rows
             // are unrelated. The per-owner eviction remains bounded independently.
             await tx.execute(sql`DELETE FROM run_review_snapshot WHERE snapshot_id IN (
-              SELECT snapshot_id FROM run_review_snapshot WHERE expires_at <= ${this.now()} ORDER BY expires_at LIMIT 100)`);
+              SELECT snapshot_id FROM run_review_snapshot WHERE expires_at <= ${this.now().toISOString()}::timestamptz ORDER BY expires_at LIMIT 100)`);
             const older = await tx.select({ id: runReviewSnapshot.snapshotId }).from(runReviewSnapshot)
               .where(and(eq(runReviewSnapshot.actorId, input.actorId), eq(runReviewSnapshot.runId, input.runId)))
               .orderBy(desc(runReviewSnapshot.createdAt), desc(runReviewSnapshot.snapshotId));
@@ -240,7 +240,7 @@ export class PostgresRecordReviewRepository {
 /** Expired presentation copies are removed even when no auditor opens another page. */
 export async function purgeExpiredRecordReviews(db: Database, now = new Date()): Promise<number> {
   const rows = await db.execute<{ snapshot_id: string }>(sql`DELETE FROM run_review_snapshot WHERE snapshot_id IN (
-    SELECT snapshot_id FROM run_review_snapshot WHERE expires_at <= ${now}
+    SELECT snapshot_id FROM run_review_snapshot WHERE expires_at <= ${now.toISOString()}::timestamptz
     ORDER BY expires_at LIMIT 20 FOR UPDATE SKIP LOCKED) RETURNING snapshot_id`);
   return rows.length;
 }

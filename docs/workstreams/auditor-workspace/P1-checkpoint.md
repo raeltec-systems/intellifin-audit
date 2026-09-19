@@ -43,6 +43,15 @@ artifact. It therefore does not resolve G6. PostgreSQL integration, actual brows
 interaction, persisted reload/revocation behavior, and retained UI evidence must pass on
 the final P1 candidate before acceptance.
 
+The composed UI candidate `2f1b044` exposed three further implementation defects in
+normal CI: the filter form violated the POST-first guard, Next.js refused a re-exported
+route configuration, and raw SQL expiry parameters used JavaScript Date objects rather
+than encoded timestamps. These are corrected in the next candidate. Of the new SQL
+tests, only production `EXPLAIN ANALYZE` passed on that candidate; 15 paging/selection
+tests failed and are not accepted. All 47 pre-existing integration files passed.
+The actual plan is retained in run `35445808397`, artifact `10584764673`, SHA256
+`f59f39203302535d29c95932567ae9c4b5fb56e23f751786e2cdf6934356e720`.
+
 ## Remaining proof and decisions
 
 G6 remains open pending real SQL plans, paging/concurrency/count results and browser

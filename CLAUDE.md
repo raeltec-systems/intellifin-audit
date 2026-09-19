@@ -3796,3 +3796,5 @@ The queue persists an immutable, actor-bound ten-minute presentation snapshot wi
 ### Auditor Workspace record inspector and historical checks
 
 A missing historical check set means unknown inspection, not an invented evidence failure. Found records require matching corroboration; absence credit requires recorded search checks/provenance. Reference-only plans still retain source rows. Selected review authorization, command status and reviewer names must share the selected-record transaction; use transaction-compatible readers, not unsafe casts. Keep old artifact anchors on the technical Evidence route while normal review preserves the source ordinal and signed page cursor.
+
+Raw Drizzle `sql` timestamp parameters must use ISO text with an explicit timestamptz cast; schema column encoders do not run for an interpolated Date in raw SQL. Keep Next.js route configuration statically exported at the route itself. Filter forms follow the POST-first guard and use authorized same-origin navigation endpoints, with bounded bodies, rather than relying on hydration.
