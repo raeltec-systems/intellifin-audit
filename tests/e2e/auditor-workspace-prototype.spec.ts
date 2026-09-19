@@ -33,7 +33,9 @@ test.describe('AW-P0 interactive screen designs', () => {
         const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
         expect(axe.violations).toEqual([]);
         expect(errors).toEqual([]);
-        await testInfo.attach(`aw-p0-${state}-${viewport.width}`, { body: await page.screenshot(), contentType: 'image/png' });
+        const screenshot = testInfo.outputPath(`aw-p0-${state}-${viewport.width}.png`);
+        await page.screenshot({ path: screenshot });
+        await testInfo.attach(`aw-p0-${state}-${viewport.width}`, { path: screenshot, contentType: 'image/png' });
       });
     }
   }
@@ -113,6 +115,7 @@ test.describe('AW-P0 interactive screen designs', () => {
     await page.setViewportSize({ width: 720, height: 450 }); // 1440px viewport equivalent at 200% browser zoom.
     await expect(page.getByText('Desktop supervision is required', { exact: false })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 });
