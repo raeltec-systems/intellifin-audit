@@ -423,6 +423,10 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await expect(page.getByRole('heading', { name: 'Safe next action', exact: true })).toBeVisible();
     await scan(page);
     await page.getByRole('link', { name: 'Evidence', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Records and findings', exact: true })).toBeVisible();
+    // The ordinary route now starts with source records. The historical per-observation
+    // anchors remain independently authorized under Technical details.
+    await page.goto(`/runs/${runId}/evidence/technical`);
     for (const observation of observations) {
       await expect(page.locator(`#observation-${observation.observation_id}`).getByText(observation.population_record_key, { exact: true }).first()).toBeVisible();
     }

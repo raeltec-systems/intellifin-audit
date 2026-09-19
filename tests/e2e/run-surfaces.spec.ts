@@ -252,6 +252,8 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
 
     await page.getByRole('link', { name: 'Evidence', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/runs/${runs.queued}/evidence$`));
+    await expect(page.getByText('Record review is unavailable because the Run projection is incomplete.')).toBeVisible();
+    await page.getByRole('link', { name: 'Open technical artifacts', exact: true }).click();
     await expect(page.getByText('No Evidence collected.')).toBeVisible();
     await scan(page);
   });

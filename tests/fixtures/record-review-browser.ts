@@ -137,9 +137,9 @@ async function insertObservedRecord(
   // conditions are read from the persisted version below, so the caller inserts them in
   // the same order and with the same IDs rather than inventing a browser-only condition.
   const conditions = await sql<{ condition_id: string }[]>`
-    SELECT condition_id
+    SELECT condition."conditionId" AS condition_id
     FROM procedure_version,
-      jsonb_to_recordset(compiled_plan->'inputs'->'complianceConditions') AS condition(condition_id text)
+      jsonb_to_recordset(compiled_plan->'inputs'->'complianceConditions') AS condition("conditionId" text)
     WHERE version_id=${versionId}`;
   for (const condition of conditions) {
     await sql`INSERT INTO run_observation_evaluation(
@@ -169,10 +169,10 @@ async function insertObservedRecord(
         exception_id,run_id,observation_id,work_item_id,target_system,population_record_key,
         condition_ids,diagnostics,fingerprint,fingerprint_key_id,raised_at)
       SELECT ${ids.next()},${values.runId},${observationId},${persistedWorkItemId},${values.targetRegistrationId},
-        ${key},jsonb_agg(condition_id),${json(['P-4 baseline differs from the approved value.'])}::jsonb,
+        ${key},jsonb_agg(condition."conditionId"),${json(['P-4 baseline differs from the approved value.'])}::jsonb,
         ${'e'.repeat(64)},'record-review-fixture',${observedAt}
       FROM jsonb_to_recordset((SELECT compiled_plan->'inputs'->'complianceConditions'
-        FROM procedure_version WHERE version_id=${versionId})) AS condition(condition_id text)`;
+        FROM procedure_version WHERE version_id=${versionId})) AS condition("conditionId" text)`;
   }
 }
 
