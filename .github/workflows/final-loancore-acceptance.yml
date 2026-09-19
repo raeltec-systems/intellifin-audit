@@ -1,0 +1,104 @@
+name: Final LoanCore acceptance
+
+# The close-out acceptance against the ALREADY RELEASED production build.
+#
+# Known deployed behaviour this harness now survives: a Builder section's Server Action
+# COMMITS and its response body never completes. The row is written — two plan-derivation
+# attempts with two different input digests, and a digest moves only when authored inputs
+# do — while `Response.finished()` never resolves. The harness treats that as the
+# product's own lost-acknowledgement case and reads the stored row instead of waiting.
+#
+# This workflow never deploys. It proves the deployed application source is byte-identical
+# to the released revision, then drives the real UI as a real auditor and a real Audit
+# Manager. The harness is `scripts/verify-deployed-loancore.mjs` exactly as committed:
+# patching a harness inside a workflow makes a second copy of the journey that only the
+# workflow can break, which is how the 2026-09-17 attempt came to hang for 35 minutes
+# with nothing emitted.
+on:
+  push:
+    branches: [claude/relaxed-rubin-stwsfu]
+    paths: [.github/workflows/final-loancore-acceptance.yml]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type synthetic-loancore to authorize a new synthetic live audit
+        required: true
+        type: string
+      negative_case:
+        description: Also run the defective 27-row population and require it to refuse
+        required: false
+        default: true
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: final-loancore-acceptance
+  cancel-in-progress: false
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prove the deployed application source is the released revision
+        env:
+          RELEASED: ef0515efbf0c2c558c5ad0153559d7239a8652d9
+        run: |
+          set -euo pipefail
+          # apps/ and packages/ are what Railway builds and serves. A difference here would
+          # mean the acceptance was driving something other than the released build.
+          changed="$(git diff --name-only "$RELEASED" HEAD -- apps packages fixtures)"
+          if [ -n "$changed" ]; then printf 'Deployed source differs from %s:\n%s\n' "$RELEASED" "$changed"; exit 1; fi
+          echo "apps/, packages/ and fixtures/ are identical to $RELEASED"
+          git rev-parse HEAD > /tmp/acceptance-harness-sha.txt
+          git diff --name-only "$RELEASED" HEAD > /tmp/acceptance-harness-diff.txt
+          cat /tmp/acceptance-harness-diff.txt
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Gate the harness before spending a live Run
+        run: |
+          set -euo pipefail
+          node --check scripts/verify-deployed-loancore.mjs
+          pnpm typecheck
+          pnpm test
+      - name: Refuse to run against an unhealthy or pre-repair web build
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/api/health
+          echo
+          curl -fsS --max-time 30 https://web-production-edded.up.railway.app/sign-in > /tmp/sign-in.html
+          grep -q 'data-signin-ready' /tmp/sign-in.html \
+            || { echo 'The deployed build predates the sign-in hydration repair.'; exit 1; }
+      - name: Build pinned administrative dependencies and observer browser
+        run: |
+          pnpm --filter '@intellifin/infrastructure...' build
+          pnpm exec playwright install --with-deps chromium
+      - name: Author approve inspect observe conclude and prove the negative case
+        # Bounded below the job so the evidence upload below still runs. A job-level
+        # cancellation kills the step AND its `always()` siblings, which is how the first
+        # attempt at this close-out lost its own report.
+        timeout-minutes: 75
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM_DEPLOYED_AUDIT: ${{ github.event_name == 'push' && 'synthetic-loancore' || inputs.confirm }}
+          ACCEPTANCE_NEGATIVE_CASE: ${{ github.event_name == 'push' && 'true' || inputs.negative_case }}
+        run: node scripts/verify-deployed-loancore.mjs
+      - name: Retain secret-free acceptance observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-loancore-acceptance-${{ github.run_id }}
+          path: |
+            deployed-loancore-evidence/
+            /tmp/acceptance-harness-sha.txt
+            /tmp/acceptance-harness-diff.txt
+          if-no-files-found: error
+          retention-days: 14

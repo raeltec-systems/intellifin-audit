@@ -1,3 +1,76 @@
+## 2026-09-17 — One banner for six sections, and a workflow that rewrote its own harness
+
+The final LoanCore acceptance stopped at authoring for a whole afternoon against a build
+that was working. Two harness defects, and the second is a rule this file already carries.
+
+- **Every Builder section reports the SAME sentence**, `Saved. The Draft change is recorded
+  in the audit chain.`, so the banner says that A save was acknowledged and never says WHICH
+  section landed. `step()` matched it with `.first()`, so the Population Source step passed
+  while the reader was looking at the PERIOD save's own banner; the journey walked on with
+  `source_snapshot` still null, plan derivation refused every attempt with `Choose a
+  Population Source.`, and the report said the section was saved. `step()` now takes the
+  section's own stored value and polls PostgreSQL for it after the acknowledgement, for all
+  six sections — a green step is a ROW, not a sentence. **A shared acknowledgement is not
+  evidence about the thing that was acknowledged.**
+- **The workflow rewrote `scripts/verify-deployed-loancore.mjs` at run time**, with a python
+  heredoc replacing five anchored strings — the exact thing the 2026-09-16 note forbids
+  ("a second copy of the command shape that only the workflow could break"). One of its
+  replacements narrowed `planSettled`'s wait from `/Re-derived|Cannot derive:/` to
+  `/Re-derived/`, which an incomplete Draft can never satisfy. The run hung for 35 minutes
+  emitting nothing after `procedure-created-through-ui` and was read as a product defect in
+  the Population Source save. **Fold the change into the script, run the script as
+  committed, and gate the workflow on the source it is about to drive.**
+- **The local journey is what told a harness defect from a product defect, in 37 seconds.**
+  A copy of the harness pointed at a local `next dev`, the real worker and the real
+  synthetic systems ran create → six sections → six section reviews → submit → approval by
+  a second identity → initiate → agent inspection → Watch → Replay → human confirmation →
+  sealed `CONTROL_FAILURE`, and the defective 27-row population still ended `INCONCLUSIVE`
+  on `population-key-unresolved`. CI's feedback loop is twenty minutes; this one is under a
+  minute, and the 2026-09-17 note already said this is the class of defect only a journey
+  finds. **Reproduce locally BEFORE spending another deployed Run.**
+- **`visibleInspection` could be satisfied after the Run had ended.** It flipped on the
+  first change of the frame `src` whatever the Run state, and `lastFrame` starts empty — so
+  one frame appearing on a terminal Run passed the one check whose subject is watching an
+  agent work. `watchDuringRun` counts screens delivered to the viewer WHILE the state is
+  `RUNNING` and requires two, which neither a static placeholder nor a post-mortem frame
+  can reach; `report.watch.progression` records the Work Items advancing record by record
+  beside the Tool Action and frame counts, and `report.watch.actions` names what the agent
+  did between the screens. The page is never reloaded in that loop: a reader who has to
+  reload is not watching, and reloading would make the gate unfailable.
+
+- **A cleanup that asks "is anyone signed in?" misses the identities that never sign in.**
+  The acceptance identity sweep skipped an account whose SESSION was created in the last
+  forty-five minutes, on the reasoning that a live run's identities are signed in. Two of
+  an acceptance run's three are not: the PoC Administrator registers the Population Source
+  and the Target System server-side, and the Audit Manager has no session until the moment
+  it approves. Both had zero session rows, were read as leftovers from a cancelled run,
+  and lost their role grants while run 35272648301 was still executing — taking with them
+  the manager approval and the configuration registration its negative case still needed.
+  Recency is `auth_user.created_at` now, which every identity has from the moment the run
+  seeds it. **Ask when the thing was MADE, not when it was last used**: the second is a
+  property of how it happens to be exercised, and the exercise is exactly what varies.
+- **An empty GitHub expression written inside a workflow COMMENT invalidates the file.** GitHub
+  evaluates its expression syntax wherever it appears, comments included, and an empty
+  expression is a parse error — so every push produced a run with zero jobs whose display
+  title was the file path rather than the workflow name, and the workflow never executed.
+  A run with no jobs is a file GitHub could not read; do not debug it as a failing step.
+
+Three mechanical notes:
+
+- **`pkill -f <pattern>` matched this shell's own command line, for the fourth time**
+  (exit 144), and everything after it in that command never ran. Kill by PID:
+  `ps -eo pid,args --no-headers | grep -E '<pattern>' | grep -v grep | awk '{print $1}'`.
+- **A pre-installed Playwright browser is pinned to a REVISION, not to a version range.**
+  This environment ships `chromium_headless_shell-1194` and the repo's `playwright-core`
+  1.62.1 wants 1234, so the worker's local Agent Workspace failed `workspace-unavailable`
+  and read as a provider fault. `pnpm exec playwright install chromium` fixes it, and the
+  executable lives at `chrome-headless-shell-linux64/chrome-headless-shell` for the shell
+  build and `chrome-linux/headless_shell` for older ones — check before hard-coding either.
+- **A worker started before its object store has population execution DISABLED for its
+  whole life**, because the capability is read once at boot. The Run then ends `RUN_FAILED`
+  through `stopUnexecutableRun` with no Work Item, which reads exactly like a broken agent.
+  Read the worker's own startup lines before diagnosing a Run that failed in seconds.
+
 ## 2026-09-17 — The Work Item label, on all four surfaces this time
 
 The Timeline was repaired so a Work Item row names the RECORD rather than the Target System,

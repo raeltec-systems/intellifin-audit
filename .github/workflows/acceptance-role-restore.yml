@@ -1,0 +1,64 @@
+name: Acceptance role restore
+
+# Re-grants the two roles the identity cleanup took from the acceptance run that was
+# STILL IN FLIGHT. The cleanup's guard skipped accounts with a recent session, and an
+# account used only server-side (the PoC Administrator that registers the configuration,
+# and the Audit Manager before they sign in) has none — so it revoked a live run's roles.
+#
+# The addresses are fixed here rather than taken as input: a free-text address on a path
+# that upserts a role is how an ordinary account gets elevated by accident.
+on:
+  push:
+    branches: [claude/relaxed-rubin-stwsfu]
+    paths: [.github/workflows/acceptance-role-restore.yml]
+permissions:
+  contents: read
+concurrency:
+  group: acceptance-role-restore
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - name: Restore the in-flight acceptance roles
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_URL: https://seed.invalid
+        run: |
+          set -euo pipefail
+          # `seed-identity` upserts the role for an address that already exists and never
+          # resets its password, so the live run keeps the credential it signed in with.
+          BETTER_AUTH_SECRET="$(openssl rand -hex 32)" SEED_PASSWORD="$(openssl rand -hex 32)" \
+            node scripts/seed-identity.mts \
+              --email 'acceptance-audit-manager-35272648301-1@example.test' \
+              --name 'Live Acceptance Audit Manager' --role audit-manager
+          BETTER_AUTH_SECRET="$(openssl rand -hex 32)" SEED_PASSWORD="$(openssl rand -hex 32)" \
+            node scripts/seed-identity.mts \
+              --email 'acceptance-poc-administrator-35272648301-1@example.test' \
+              --name 'Acceptance Configuration Administrator' --role poc-administrator
+      - name: Show the restored grants
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createSqlClient } from '@intellifin/infrastructure';
+          const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          try {
+            const rows = await sql`
+              SELECT u.email, r.role FROM auth_user u LEFT JOIN user_role r ON r.user_id = u.id
+              WHERE u.email LIKE 'acceptance-%-35272648301-1@example.test' ORDER BY u.email`;
+            console.log('RESTORED', JSON.stringify(rows, null, 2));
+          } finally { await sql.end({ timeout: 5 }); }
+          NODE

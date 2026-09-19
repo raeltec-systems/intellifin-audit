@@ -1,0 +1,116 @@
+name: Acceptance identity cleanup
+
+# Revokes the temporary identities left behind by acceptance runs that were CANCELLED
+# before their own `finally` could run. A cancelled node process is sent SIGTERM mid-step,
+# so its session-revocation block never executes and a working credential for a seeded
+# account stays live. This removes the session rows and the role grant; the accounts and
+# every authored artefact they produced are left exactly as they are, because deleting
+# audit history to tidy an environment is the one thing this must not do.
+#
+# `workflow_dispatch` only fires for a workflow file on the DEFAULT branch, so this one
+# also carries a push trigger scoped to its own path: that is how it is invoked from the
+# validation branch.
+on:
+  push:
+    branches: [claude/relaxed-rubin-stwsfu]
+    paths: [.github/workflows/acceptance-identity-cleanup.yml]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type revoke-acceptance-identities to authorize
+        required: true
+        type: string
+      keep_run_id:
+        description: GITHUB_RUN_ID of an acceptance run still in flight, whose identities must be left alone
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: acceptance-identity-cleanup
+jobs:
+  revoke:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.20.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@intellifin/infrastructure...' build
+      - name: Revoke stale acceptance identities
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM: ${{ github.event_name == 'push' && 'revoke-acceptance-identities' || inputs.confirm }}
+          KEEP_RUN_ID: ${{ github.event_name == 'push' && '' || inputs.keep_run_id }}
+          # The close-out pass ran at '2' on 2026-09-17 with no acceptance in flight and
+          # revoked all 43. It is back to the default: a short window is only ever safe
+          # when nothing is running, and leaving one armed is how a live run loses its
+          # roles mid-journey, which has already happened once.
+          RECENT_MINUTES: '120'
+        run: |
+          set -euo pipefail
+          # Inputs cross as quoted environment variables. A GitHub expression is substituted
+          # BEFORE bash parses this script, so an input spelled inline would be program text
+          # rather than data — which is also why this comment does not spell one out: GitHub
+          # evaluates the expression syntax wherever it appears, comments included, and an
+          # empty one makes the whole workflow file invalid.
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createSqlClient } from '@intellifin/infrastructure';
+          assert.equal(process.env.CONFIRM, 'revoke-acceptance-identities', 'Explicit cleanup confirmation required.');
+          const keep = (process.env.KEEP_RUN_ID ?? '').trim();
+          const sql = createSqlClient(process.env.DATABASE_URL, { max: 1 });
+          try {
+            // Only the harness's own synthetic addresses, and only the ones whose run is over.
+            const candidates = await sql`
+              SELECT u.id, u.email
+              FROM auth_user u
+              WHERE u.email LIKE 'acceptance-%@example.test'
+                 OR u.email LIKE 'source-save-diagnostic-%@example.test'
+              ORDER BY u.email`;
+            // An acceptance run revokes its OWN identities in its `finally`, so anything left
+            // here belongs to a run that was cancelled — with one exception this cannot see:
+            // a run still in flight. Recency is read from when the ACCOUNT was created, not
+            // from when it last signed in. Two of an acceptance run's three identities never
+            // sign in through a browser at all — the PoC Administrator registers the
+            // configuration server-side and the Audit Manager has no session until it
+            // approves — so a session-based guard reads them as leftovers and revokes a live
+            // run's roles, which is exactly what happened to run 35272648301.
+            // Default two hours: an acceptance run with a negative case is a long journey
+            // and revoking a live one costs the whole run, while skipping a stale account
+            // costs one more invocation. The close-out pass narrows it once no acceptance
+            // is in flight, which is the only time a short window is safe.
+            const minutes = Number(process.env.RECENT_MINUTES ?? '120');
+            const recent = new Date(Date.now() - (Number.isFinite(minutes) && minutes > 0 ? minutes : 120) * 60000);
+            const live = new Set((await sql`
+              SELECT email FROM auth_user
+              WHERE email LIKE 'acceptance-%@example.test' AND created_at > ${recent.toISOString()}::timestamptz
+            `).map(row => String(row.email)));
+            const named = keep === '' ? [] : candidates.filter(row => String(row.email).includes(`-${keep}-`)).map(row => String(row.email));
+            const skipped = candidates.filter(row => live.has(String(row.email)) || named.includes(String(row.email))).map(row => String(row.email));
+            const stale = candidates.filter(row => !skipped.includes(String(row.email)));
+            const report = [];
+            for (const account of stale) {
+              const result = await sql.begin(async tx => {
+                const sessions = await tx`DELETE FROM auth_session WHERE user_id=${account.id} RETURNING id`;
+                const roles = await tx`DELETE FROM user_role WHERE user_id=${account.id} RETURNING role`;
+                return { sessions: sessions.length, roles: roles.map(r => r.role) };
+              });
+              report.push({ email: account.email, ...result });
+            }
+            console.log('CLEANUP', JSON.stringify({ considered: candidates.length, revoked: report.length, skippedAsLiveOrNamed: skipped, keptRunId: keep || null, report }, null, 2));
+            const remaining = await sql`
+              SELECT count(*)::int AS sessions FROM auth_session s
+              JOIN auth_user u ON u.id = s.user_id
+              WHERE u.email LIKE 'acceptance-%@example.test'`;
+            console.log('REMAINING_ACCEPTANCE_SESSIONS', remaining[0].sessions);
+          } finally { await sql.end({ timeout: 5 }); }
+          NODE
