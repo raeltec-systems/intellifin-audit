@@ -100,3 +100,20 @@ same key to test conflict. Later worker application/rollback/revocation assertio
 that case remain unproven until the rerun. Type/boundary/unit checks passed all 4,646
 tests, P0 browser and container checks passed. Application-browser results are pending.
 The preceding `8fec5ff` browser job was superseded and canceled, not passed.
+
+
+## Actual worker/browser pause proof on `f89b1a0`
+
+The browser result for CI `35454413253` is now complete: 228 passed, two failed, with
+the compiled-worker journey passed. While the real worker was held at its test-only
+boundary, the UI submitted the exact pause message and PostgreSQL retained its
+received/interpreted/queued receipts. Releasing the worker produced the existing pause
+wait and the applied receipt linked to the exact source event; the pause marker cleared.
+Reload read that receipt, existing Resume started a fresh attempt, and the canonical
+golden Inconclusive result remained unchanged. Native image/record inspection passed
+in the same journey. This is application evidence, distinct from the unit/model tests.
+
+The two unrelated browser failures and retained artifact digest are recorded in P2.
+The remaining PostgreSQL pause test still requires the corrected-envelope rerun before
+its later application, rollback and revocation assertions can be claimed. No gate is
+closed by the passing browser case alone.

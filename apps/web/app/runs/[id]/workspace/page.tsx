@@ -59,7 +59,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
   const currentSubject = itemFor(current?.workItemId ?? null)?.subjectKey ?? null;
   const currentTarget = targetFor(current?.workItemId ?? null);
   const here = `/runs/${id}/workspace`;
-  return <div className="ls-stack">
+  return <div className="ls-stack run-workspace-route">
     <DetailTrail trail={[{ href: '/runs', label: 'Runs' }, { href: `/runs/${id}`, label: run.procedureName }, { href: here, label: 'Auditor Workspace' }]} />
     <LiveGate runId={id} state={run.state} url={`/api/runs/${id}/events`} cursor={cursor} readAt={readAt.toISOString()} href={here}>
       <RunWorkspaceConversation runId={id} initial={conversation}

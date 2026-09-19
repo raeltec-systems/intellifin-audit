@@ -115,9 +115,15 @@ function WorkspaceUntrustedText({ field, children }: {
   readonly field: string;
   readonly children: string;
 }): React.JSX.Element {
+  const compactField = field.startsWith('AGENT-GENERATED candidate ')
+    ? `Candidate ${field.slice('AGENT-GENERATED candidate '.length)}`
+    : field === 'AGENT-GENERATED question' ? 'Question' : field;
   return (
     <div className="ls-untrusted">
-      <p className="ls-untrusted__label">{field} · untrusted</p>
+      <p className="ls-untrusted__label">
+        <span aria-hidden="true">{compactField} · untrusted</span>
+        <span className="ls-visually-hidden">{field} · untrusted.</span>
+      </p>
       <pre className="ls-untrusted__body" aria-describedby="open-escalation-source-policy">{children}</pre>
     </div>
   );
@@ -378,8 +384,8 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
   );
 
   const workspaceContextSection = workspace ? (
-    <section className="escalation-panel__workspace-context ls-stack" aria-labelledby={evidenceId}>
-      <h3 id={evidenceId}>Decision context</h3>
+    <details className="escalation-panel__workspace-context">
+      <summary>Decision context</summary>
       <dl className="ls-definition">
         <dt>Step</dt>
         <dd>{workspaceStepLabel}</dd>
@@ -398,7 +404,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt, wor
           )}
         </dd>
       </dl>
-    </section>
+    </details>
   ) : null;
 
   const workspaceQuestionSection = workspace ? (

@@ -24,9 +24,10 @@ Replay and the remaining proof gates are still outstanding. No merge or deployme
   whole-table inspections and unresolved evidence relationships retain unknown context.
 - The composer preserves an unconfirmed draft and retry key. Reload reads PostgreSQL;
   older history is bounded and reauthorized, rather than an accumulating client transcript.
-- Free-text control requests currently produce explicit non-executing responses. Existing
-  buttons and contextual answers retain their existing command authority. This is an
-  intermediate P2 implementation; it does not satisfy P3 or the target release.
+- The P3 extension now applies exact unqualified pause requests through the existing
+  handler and worker boundary; see the P3 checkpoint. Other free-text control requests
+  remain non-executing. Contextual answers retain existing command authority. The full
+  P3 interaction catalogue and target release are still incomplete.
 
 ## Admission and verification
 
@@ -137,3 +138,32 @@ The record inspector now also renders the selected observation’s original capt
 attributes through the existing inert untrusted-content component. Configuration values
 are therefore readable without opening technical artifacts. The browser journey compares
 its displayed observed value with the value persisted by the real worker.
+
+
+## Actual application proof on `f89b1a0`
+
+Normal CI `35454413253` completed the focused authoring suite (16 passed) and the full
+application browser suite (228 passed, two failed). The compiled-worker P-4 journey passed:
+its real registered capture decoded through the protected grant, matched stored bytes,
+digest and ETag, retained its natural dimensions in Native size, and panned by keyboard.
+The same journey inspected a worker-produced record and compared the displayed original
+observed value with PostgreSQL. It also proved the queued/applied conversational pause,
+existing Resume and unchanged golden Inconclusive result.
+
+The 1440×900 contextual question journey passed encrypted message persistence, reload
+and authorization-revocation checks. Two failures remain explicit: the 1280×800 first
+choice was clipped, and the record-review test wrongly required every untrusted-content
+block to disappear when object bytes were unavailable. That page correctly retains the
+registered grounding label as inert metadata. The corrected assertion preserves the
+typed unavailable warning and forbids an actual snapshot cell while requiring the label.
+
+The new layout candidate compacts workspace-only chrome and keeps a measurable history
+area beside the current question and composer. Browser bounds and early failure captures
+remain mandatory on the rerun; these changes are not claimed visually verified yet.
+
+Retained browser artifact `10587952669` has SHA-256
+`7ff876e206d9fe50d10a412a4d56aa8f75f4d4bd4e899a4d1b157c53350d5337`.
+Its active-workspace, decision and worker-record-inspector images were shown for owner
+review. Type/boundary/unit passed 4,646 tests; P0 browser, container/startup and hydrated
+worker-abuse checks passed. PostgreSQL finished 603/604; the precise fixture correction
+is recorded in P3. G1 still needs human usability review; G3/G4/G5/G7 remain open.

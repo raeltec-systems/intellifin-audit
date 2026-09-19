@@ -104,7 +104,11 @@ test.describe('Record Review through the authenticated application', () => {
     // object-store bytes. The protected route must surface its typed unavailable state,
     // rather than implying that a metadata row is a readable artifact.
     await expect(page.getByText('The stored snapshot could not be made available before its read window closed.', { exact: true })).toBeVisible();
-    await expect(page.locator('.ls-untrusted')).toHaveCount(0);
+    // The registered grounding label remains inert metadata. A failed protected
+    // read must never present an actual snapshot cell as though bytes were available.
+    const snapshot = page.getByRole('region', { name: 'Stored Structural Snapshot', exact: true });
+    await expect(snapshot.locator('.ls-untrusted').filter({ hasText: 'recorded grounding field label' })).toHaveCount(1);
+    await expect(snapshot.locator('.ls-untrusted').filter({ hasText: 'as read at the stored snapshot locator' })).toHaveCount(0);
     await page.goto(selectedUrl);
     await expect(inspector).toBeVisible();
     await expect(inspector.getByRole('heading', { name: fixture.searchTerm, exact: true })).toBeVisible();

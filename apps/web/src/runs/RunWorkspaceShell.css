@@ -160,7 +160,7 @@
    the composer. The generic 35% cap was sized for an ordinary notice and clipped the question
    before the first candidate in the workspace. The panel owns its own compact spacing below. */
 .run-workspace-shell__decision:has(.escalation-panel--workspace) {
-  max-height: min(20rem, calc(100% - 9rem));
+  max-height: min(13rem, calc(100% - 9rem));
 }
 
 .run-workspace-shell__conversation-pane .run-workspace-shell__composer {
@@ -172,7 +172,62 @@
 }
 
 .run-workspace-shell__conversation-pane .run-conversation__composer-input {
-  min-height: 3rem;
+  height: 3.5rem;
+  min-height: 3.5rem;
+}
+
+/* The workspace keeps the live banner and its freshness link, but the route has less
+   vertical chrome than a normal detail page so the two working panes can share one desktop
+   viewport. Nothing here removes status or gating: it only tightens the route's spacing. */
+.run-workspace-route {
+  gap: var(--spacing-2);
+}
+
+.run-workspace-route > .ls-breadcrumbs {
+  margin-bottom: var(--spacing-1);
+}
+
+.run-workspace-route .ls-banner {
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+}
+
+.run-workspace-route > .ls-banner > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--spacing-3);
+}
+
+@media (min-width: 1024px) {
+  /* Reserve actual history/composer space; clipping the transcript to fit a decision
+     would make the split appear successful while removing the working conversation. */
+  .run-workspace-route .run-workspace-shell__conversation-scroll {
+    min-height: 120px;
+  }
+
+  .run-workspace-route .run-workspace-shell__decision:has(.escalation-panel--workspace) {
+    max-height: min(15rem, calc(100% - 17rem));
+  }
+}
+
+.run-workspace-route .run-workspace-shell__meta {
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) 0 var(--spacing-2);
+}
+
+.run-workspace-route .run-workspace-shell__controls {
+  gap: var(--spacing-1);
+  min-height: var(--spacing-control-sm);
+}
+
+.run-workspace-route .run-workspace-shell__controls-content {
+  gap: var(--spacing-1);
+}
+
+.run-workspace-route .run-workspace-shell__conversation-pane .run-workspace-shell__composer,
+.run-workspace-route .run-workspace-shell__conversation-pane .run-conversation__composer {
+  padding: var(--spacing-1);
 }
 
 /* The workspace decision keeps source text visibly untrusted while using the tighter rhythm
@@ -182,9 +237,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: start;
-  column-gap: var(--spacing-3);
-  gap: var(--spacing-2);
-  padding: var(--spacing-3);
+  column-gap: var(--spacing-2);
+  gap: var(--spacing-1);
+  padding: var(--spacing-2);
 }
 
 .escalation-panel--workspace > h2,
@@ -219,7 +274,7 @@
 .escalation-panel--workspace > .escalation-panel__answers,
 .escalation-panel--workspace > .escalation-panel__note,
 .escalation-panel--workspace > .escalation-panel__time {
-  gap: var(--spacing-2);
+  gap: var(--spacing-1);
 }
 
 .escalation-panel--workspace .escalation-panel__workspace-context .ls-definition {
@@ -229,6 +284,7 @@
 }
 
 .escalation-panel--workspace .escalation-panel__platform-question,
+.escalation-panel--workspace .escalation-panel__workspace-context,
 .escalation-panel--workspace .escalation-panel__note,
 .escalation-panel--workspace .escalation-panel__technical {
   display: flex;
@@ -237,7 +293,7 @@
 }
 
 .escalation-panel--workspace .escalation-panel__answer-options {
-  gap: var(--spacing-2);
+  gap: var(--spacing-1);
 }
 
 .escalation-panel--workspace .escalation-panel__answer-option {
@@ -259,6 +315,7 @@
 
 .escalation-panel--workspace .escalation-panel__note > summary,
 .escalation-panel--workspace .escalation-panel__platform-question > summary,
+.escalation-panel--workspace .escalation-panel__workspace-context > summary,
 .escalation-panel--workspace .escalation-panel__technical > summary {
   cursor: pointer;
   color: var(--color-text-link);

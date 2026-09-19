@@ -60,20 +60,67 @@ async function assertShellLoaded(page: Page): Promise<void> {
   await expect(shell(page).locator('.run-workspace-shell__decision').getByRole('button', { name: 'Select candidate 1', exact: true })).toBeVisible();
 }
 
-async function assertWorkspaceFitsViewport(page: Page): Promise<void> {
+async function captureWorkspaceBounds(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const bounds = await page.evaluate(() => {
+    const rect = (element: Element | null): Record<string, number> | null => {
+      if (!(element instanceof HTMLElement)) return null;
+      const box = element.getBoundingClientRect();
+      return { top: box.top, right: box.right, bottom: box.bottom, left: box.left, width: box.width, height: box.height };
+    };
+    const shell = document.querySelector('[data-testid="run-workspace-shell"]');
+    const decision = shell?.querySelector('.run-workspace-shell__decision') ?? null;
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight, scrollY: window.scrollY },
+      shell: rect(shell),
+      decision: rect(decision),
+      history: rect(shell?.querySelector('.run-conversation__thread') ?? null),
+      send: rect(shell?.querySelector('.run-conversation__send') ?? null),
+      firstChoice: rect(decision?.querySelector('button') ?? null),
+    };
+  });
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: false, caret: 'initial' });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+  await testInfo.attach(`${name}-bounds`, {
+    body: JSON.stringify(bounds, null, 2),
+    contentType: 'application/json',
+  });
+}
+
+async function assertWorkspaceFitsViewport(page: Page, testInfo: TestInfo): Promise<void> {
   // Visibility alone allows an offscreen or clipped element. Inspect the actual bounds
   // before clicking/scrollIntoView can conceal a broken initial composition.
   const send = shell(page).getByRole('button', { name: 'Send message', exact: true });
-  await expect.poll(() => send.evaluate(element => {
-    const box = element.getBoundingClientRect();
-    return box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth;
-  })).toBe(true);
+  try {
+    await expect.poll(() => send.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth;
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-send-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
   const firstChoice = shell(page).getByRole('button', { name: 'Select candidate 1', exact: true });
-  await expect.poll(() => firstChoice.evaluate(element => {
-    const box = element.getBoundingClientRect();
-    const decision = element.closest('.run-workspace-shell__decision')!.getBoundingClientRect();
-    return box.top >= Math.max(0, decision.top) && box.bottom <= Math.min(window.innerHeight, decision.bottom);
-  })).toBe(true);
+  try {
+    await expect.poll(() => firstChoice.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const decision = element.closest('.run-workspace-shell__decision')!.getBoundingClientRect();
+      return box.top >= Math.max(0, decision.top) && box.bottom <= Math.min(window.innerHeight, decision.bottom);
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-choice-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
+  const conversationHistory = history(page);
+  try {
+    await expect.poll(() => conversationHistory.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return box.height >= 120 && box.top >= 0 && box.bottom <= window.innerHeight && box.left >= 0 && box.right <= window.innerWidth;
+    })).toBe(true);
+  } catch (error) {
+    await captureWorkspaceBounds(page, testInfo, `workspace-bounds-history-${page.viewportSize()?.width ?? 'unknown'}x${page.viewportSize()?.height ?? 'unknown'}`);
+    throw error;
+  }
 }
 
 test.beforeAll(async () => {
@@ -97,7 +144,7 @@ test.describe('Run Workspace through the authenticated application', () => {
 
     await page.goto(workspaceUrl());
     await assertShellLoaded(page);
-    await assertWorkspaceFitsViewport(page);
+    await assertWorkspaceFitsViewport(page, testInfo);
     await screenshot(page, testInfo, 'run-workspace-decision-1440x900');
 
     // The selected source ordinal is carried into the workspace from request state. The
@@ -182,7 +229,7 @@ test.describe('Run Workspace through the authenticated application', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(workspaceUrl());
     await assertShellLoaded(page);
-    await assertWorkspaceFitsViewport(page);
+    await assertWorkspaceFitsViewport(page, testInfo);
 
     const thread = history(page);
     const rowsBeforePaging = await fixture.readConversationRows();

@@ -3873,3 +3873,14 @@ Keep both guards: assert the malformed ordinary request, then use a valid null s
 with the same request key to prove a changed operation conflicts. Normal CI on `f89b1a0`
 passed 603 of 604 PostgreSQL cases and exposed this distinction; the follow-up must still
 reach and pass the actual worker application, rollback and revocation assertions.
+
+
+### Actual workspace proof must distinguish metadata from evidence bytes (2026-09-19)
+
+Normal CI `35454413253` passed the compiled-worker pause/native-capture/record-inspector
+journey and 228/230 browser cases. An unavailable protected snapshot still displays its
+registered grounding label through UntrustedText; assert that no actual snapshot cell
+is displayed, not that all inert metadata disappears. Measure meaningful visible chat
+history as well as Send and the first contextual choice: a control can fit while leaving
+almost no conversation. Compact full provenance accessibly; aria-label on a paragraph
+is prohibited. Keep fresh/live-state information visible in compact workspace chrome.
