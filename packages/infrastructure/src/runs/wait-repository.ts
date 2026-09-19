@@ -211,7 +211,12 @@ function resultRows(result: unknown): readonly RawRow[] {
 
 /** Shared persistence for all wait producers and the answer/timeout commands. */
 export class PostgresWaitRepository implements WaitRepository {
-  constructor(private readonly db: Database) {}
+  /**
+   * A Database starts the wait unit of work; a Transaction creates a nested savepoint so
+   * the caller can compose pause/resume with its authoritative state change. Both handles
+   * expose the same Drizzle transaction surface, which keeps the connection choice typed.
+   */
+  constructor(private readonly db: Database | Transaction) {}
 
   async transaction<T>(runId: string, work: (context: WaitContext) => Promise<T>): Promise<T> {
     if (!isUuidText(runId)) throw new Error('Invalid Run identity');

@@ -3830,3 +3830,7 @@ React is still hydrating server-rendered native forms.
 ### Auditor Workspace compact review surfaces (2026-09-19)
 
 Keep record-review lifecycle actions in an explicitly opened details panel so the queue begins in the first viewport. Workspace decisions use frozen-plan action words and numbered supporting-capture links; raw Step/Evidence identities remain in Technical details. These presentation choices never alter wait IDs, answer options, revision checks or Evidence read grants.
+
+### Auditor Workspace transaction-bound wait composition (2026-09-19)
+
+Conversation-to-command adapters must bind PostgresWaitRepository, role reads and audit denial writes to the enclosing Transaction. Drizzle nested transactions use a savepoint on that same connection. Calling a pool-backed wait command while holding the Run lock risks self-deadlock and cannot make the intake/domain link atomic. The integration proof must throw after the real pauseRun call and verify that marker, audit event and narration all rolled back, then verify an outer commit preserves the original requester.
