@@ -1,3 +1,11 @@
+## 2026-09-19 — Preserve fixture role timestamps as PostgreSQL text
+
+Driver/test environments do not consistently return role timestamps as JavaScript Date
+objects. Read `assigned_at::text` and restore it with an explicit `::timestamptz` cast.
+This preserves the value without relying on either raw Date binding or `.toISOString()`.
+An integration cleanup failure revoked the shared actor and invalidated later tests;
+all four sibling workspace/review/controller fixtures now use the same text contract.
+
 ## 2026-09-19 — Exact receipt identity includes JSON value types
 
 PostgreSQL JSON text extraction (`->>`) coerces a numeric value and a numeric-looking

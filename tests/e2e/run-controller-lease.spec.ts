@@ -27,7 +27,7 @@ const procedureId = ids.next();
 const versionId = ids.next();
 const leaseAt = (): string => new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-type RoleRow = { readonly role: string; readonly assigned_by: string | null; readonly assigned_at: Date | null };
+type RoleRow = { readonly role: string; readonly assigned_by: string | null; readonly assigned_at: string | null };
 type LeaseRow = { readonly epoch: number; readonly holder_id: string | null; readonly expires_at: Date | string | null };
 type RunRow = { readonly run_id: string; readonly revision: number; readonly state: string };
 
@@ -180,7 +180,7 @@ test.beforeAll(async () => {
   const [admin] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.administrator.email}`;
   if (!auditor || !admin) throw new Error('Seed the synthetic Auditor and Administrator before the controller lease journey.');
   adminId = admin.id;
-  originalAdminRole = (await sql<RoleRow[]>`SELECT role,assigned_by,assigned_at FROM user_role WHERE user_id=${adminId}`)[0] ?? null;
+  originalAdminRole = (await sql<RoleRow[]>`SELECT role,assigned_by,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${adminId}`)[0] ?? null;
   if (originalAdminRole === null) throw new Error('The controller lease contender requires the seeded Administrator role.');
   const version = activeRunVersion(procedureId, versionId, auditor.id);
   await new PostgresProceduresUnitOfWork(createDb(sql)).execute(async context => {
@@ -352,7 +352,7 @@ test.describe('durable Run controller lease', () => {
       // Restore the shared identity before browser teardown: a timed-out context may
       // already be closed, and its cleanup must never leak the temporary manager role.
       if (originalAdminRole !== null) {
-        await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at?.toISOString() ?? null}::timestamptz WHERE user_id=${adminId}`;
+        await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at}::timestamptz WHERE user_id=${adminId}`;
       }
       await Promise.allSettled([holderContext, contenderContext]
         .filter((context): context is BrowserContext => context !== undefined)

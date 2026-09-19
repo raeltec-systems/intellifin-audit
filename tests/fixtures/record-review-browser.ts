@@ -34,7 +34,7 @@ const generatedAt = '2026-09-01T00:00:00.000Z';
 const snapshotDigest = 'a'.repeat(64);
 const observationDigest = 'd'.repeat(64);
 
-type RoleRow = { role: string; assigned_by: string | null; assigned_at: Date };
+type RoleRow = { role: string; assigned_by: string | null; assigned_at: string };
 
 export interface RecordReviewBrowserFixture {
   readonly runId: string;
@@ -192,7 +192,7 @@ export async function createRecordReviewBrowserFixture(): Promise<RecordReviewBr
   if (!auditor) throw new Error('Seed the synthetic Auditor before the Record Review journey.');
   const auditorId = auditor.id;
   const [role] = await sql<RoleRow[]>`
-    SELECT role,assigned_by,assigned_at FROM user_role WHERE user_id=${auditorId}`;
+    SELECT role,assigned_by,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${auditorId}`;
   if (!role || role.role !== 'auditor') throw new Error('The Record Review journey requires the seeded Auditor role.');
 
   const version = activeRunVersion(procedureId, versionId, auditorId);
@@ -303,7 +303,7 @@ export async function createRecordReviewBrowserFixture(): Promise<RecordReviewBr
   async function restoreAuditor(): Promise<void> {
     if (!roleRevoked) return;
     await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by)
-      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at.toISOString()}::timestamptz,${originalRole.assigned_by})
+      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at}::timestamptz,${originalRole.assigned_by})
       ON CONFLICT (user_id) DO UPDATE SET role=excluded.role,assigned_at=excluded.assigned_at,assigned_by=excluded.assigned_by`;
     roleRevoked = false;
   }

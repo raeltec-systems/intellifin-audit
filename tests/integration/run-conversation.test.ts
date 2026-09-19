@@ -749,7 +749,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       await acquireControl(fixture.runId);
       const { anchor } = await currentInspection(fixture.runId);
       const commandId = await proposeInspection(fixture.runId, anchor);
-      const original = await sql<{ assigned_at: Date; assigned_by: string | null }[]>`SELECT assigned_at,assigned_by FROM user_role WHERE user_id=${seeded.readerId}`;
+      const original = await sql<{ assigned_at: string; assigned_by: string | null }[]>`SELECT assigned_at::text AS assigned_at,assigned_by FROM user_role WHERE user_id=${seeded.readerId}`;
       await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
       try {
         expect(await confirmInspection(fixture.runId, commandId)).toMatchObject({ ok: false, code: 'denied' });
@@ -757,7 +757,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
         expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${commandId} ORDER BY sequence`)
           .toEqual([{ state: 'received' }, { state: 'interpreted' }]);
       } finally {
-        await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by) VALUES (${seeded.readerId},'auditor',${original[0]!.assigned_at.toISOString()}::timestamptz,${original[0]!.assigned_by})`;
+        await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by) VALUES (${seeded.readerId},'auditor',${original[0]!.assigned_at}::timestamptz,${original[0]!.assigned_by})`;
       }
     } finally { await cleanupDeferredContext(fixture); }
   });

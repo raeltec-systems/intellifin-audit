@@ -35,7 +35,7 @@ const runAt = '2026-09-10T09:00:00.000Z';
 // from reclaiming it during CI.
 const leaseUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-type RoleRow = { role: string; assigned_by: string | null; assigned_at: Date | null };
+type RoleRow = { role: string; assigned_by: string | null; assigned_at: string | null };
 
 export interface RunWorkspaceConversationRow {
   readonly message_id: string;
@@ -147,7 +147,7 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   if (!auditor) throw new Error('Seed the synthetic Auditor before the Run Workspace journey.');
   const auditorId = auditor.id;
   const [role] = await sql<RoleRow[]>`
-    SELECT role,assigned_by,assigned_at FROM user_role WHERE user_id=${auditorId}`;
+    SELECT role,assigned_by,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${auditorId}`;
   if (!role || role.role !== 'auditor') throw new Error('The Run Workspace journey requires the seeded Auditor role.');
   const originalRole = role;
 
@@ -260,7 +260,7 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   const restoreAuditor = async (): Promise<void> => {
     if (!roleRevoked) return;
     await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by)
-      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at?.toISOString() ?? null}::timestamptz,${originalRole.assigned_by})
+      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at}::timestamptz,${originalRole.assigned_by})
       ON CONFLICT (user_id) DO UPDATE SET role=excluded.role,assigned_at=excluded.assigned_at,assigned_by=excluded.assigned_by`;
     roleRevoked = false;
   };

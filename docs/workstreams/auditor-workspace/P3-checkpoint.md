@@ -240,3 +240,12 @@ found SQL text coercion in exact receipt matching; the follow-up compares JSONB 
 and adds a valid P1 numeric-looking employee-key regression. That follow-up is not yet
 covered by the running candidate's results.
 
+
+CI `35464796052` completed PostgreSQL with 620 passes and three failures. Both real
+Chromium/PostgreSQL worker cases PASSED, including accepted-latch survival after lease
+release, exact next-record boundary/final completion and fresh-repository redelivery.
+All four deferred core cases passed. The first failure was role restoration calling
+`.toISOString()` on a string timestamp; that left the actor revoked and caused both
+following governed-content cases to fail at controller acquisition. The follow-up reads
+role timestamps as PostgreSQL text in all sibling fixtures and restores with an explicit
+cast. The suite is failed until rerun; removed/corrupt proposal cases remain unproven.
