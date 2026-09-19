@@ -376,7 +376,7 @@ async function inspectCapturedAccountStatus(page: Page, runId: string): Promise<
   const observe = (request: { url(): string }) => { browserRequests.push(request.url()); };
   page.on('request', observe);
   try {
-    await page.goto(`/runs/${runId}/evidence`);
+    await page.goto(`/runs/${runId}/evidence/technical`);
     await expect(page.getByRole('heading', { name: 'Match provenance', exact: true })).toBeVisible();
     const link = page.locator(`a[href="${path}"]`);
     await expect(link).toBeVisible();

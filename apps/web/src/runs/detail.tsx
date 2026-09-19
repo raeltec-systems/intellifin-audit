@@ -217,7 +217,7 @@ export async function RunDetailFrame({
     : null;
   const trail = [
     { href: '/runs', label: 'Runs' },
-    { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+    { href: runTabHref(run.runId, ''), label: run.procedureName },
     ...(tab === '' ? [] : [{ href: here, label: runTabLabel(tab) }]),
   ];
   return (
@@ -232,6 +232,7 @@ export async function RunDetailFrame({
           </Link>{' '}
           · {run.kind === 'STANDARD' ? 'Standard' : 'Regression'} Run
         </p>
+        <p className="ls-caption">Period {run.period.from} to {run.period.to} · Started <time dateTime={run.initiatedAt}>{utcStamp(run.initiatedAt)}</time></p>
         {/* A state outside the vocabulary is written in words: `StatusBadge` throws on an
             unknown state, and on a page that is a 500 for the whole Run. */}
         {lifecycle === null ? (

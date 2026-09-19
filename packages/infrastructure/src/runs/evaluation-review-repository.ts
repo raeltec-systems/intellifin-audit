@@ -642,7 +642,7 @@ const context: EvaluationReviewContext = {
 
 export class PostgresEvaluationReviewRepository implements EvaluationReviewCommandRepository {
   constructor(
-    private readonly db: Database,
+    private readonly db: Database | Transaction,
     private readonly options: EvaluationReviewRepositoryOptions = {},
   ) {}
 

@@ -1,0 +1,461 @@
+/* AW-040/P1: the record queue and its focused inspector share the existing Ledger Signal
+   tokens. Evidence bytes stay behind the protected routes; this sheet styles metadata only. */
+.record-review__layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(440px, 1.35fr);
+  gap: var(--spacing-4);
+  align-items: start;
+}
+
+.record-review__queue,
+.record-review__inspector {
+  min-width: 0;
+}
+
+.record-review__queue {
+  gap: var(--spacing-4);
+}
+
+.record-review__queue-heading,
+.record-review__inspector-head,
+.record-review__section-head,
+.record-review__row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.record-review__queue-heading h2,
+.record-review__inspector-head h2 {
+  margin: 0;
+}
+
+.record-review__queue-heading .ls-caption {
+  margin-top: var(--spacing-1);
+  max-width: 48ch;
+}
+
+.record-review__count,
+.record-review__state {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: var(--spacing-badge-sm);
+  padding: 2px var(--spacing-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-full);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+  font-weight: 500;
+}
+
+.record-review__count,
+.record-review__state--neutral {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.record-review__state--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.record-review__state--info {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--color-info-text);
+}
+
+.record-review__state--warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.record-review__state--danger {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.record-review__filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(8rem, 0.7fr) auto;
+  align-items: end;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-sunken);
+}
+
+.record-review__filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.record-review__filter-field label {
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.record-review__filter-field input,
+.record-review__filter-field select {
+  min-width: 0;
+  min-height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-card);
+}
+
+.record-review__source-note,
+.record-review__evidence-note {
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-relaxed-line-height);
+}
+
+.record-review__source-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-sunken);
+}
+
+.record-review__source-summary dt {
+  color: var(--color-text-muted);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.record-review__source-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.record-review__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--spacing-3);
+  margin: 0;
+}
+
+.record-review__metrics > div,
+.record-review__captured-facts > div,
+.record-review__condition-facts > div,
+.record-review__evidence-facts > div {
+  min-width: 0;
+}
+
+.record-review__metrics dt,
+.record-review__captured-facts dt,
+.record-review__condition-facts dt,
+.record-review__evidence-facts dt {
+  color: var(--color-text-muted);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-line-height);
+}
+
+.record-review__metrics dd,
+.record-review__captured-facts dd,
+.record-review__condition-facts dd,
+.record-review__evidence-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.record-review__metrics dd {
+  font-family: var(--type-mono-font-family);
+  font-weight: 500;
+}
+
+.record-review__as-of {
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-font-size);
+  line-height: var(--type-caption-relaxed-line-height);
+}
+
+.record-review__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-review__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-card);
+}
+
+.record-review__row--selected {
+  border-color: var(--color-border-selected);
+  background: var(--color-surface-selected);
+}
+
+.record-review__row-head h3,
+.record-review__captured-target h4,
+.record-review__assessment h4,
+.record-review__evidence-item h4 {
+  margin: 0;
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+  font-weight: var(--type-sub-title-font-weight);
+  overflow-wrap: anywhere;
+}
+
+.record-review__row-facts,
+.record-review__captured-facts,
+.record-review__condition-facts,
+.record-review__evidence-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--spacing-3);
+  margin: 0;
+}
+
+.record-review__row-facts dt,
+.record-review__captured-facts dt,
+.record-review__condition-facts dt,
+.record-review__evidence-facts dt {
+  color: var(--color-text-muted);
+}
+
+.record-review__row-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.record-review__row-note {
+  padding-left: var(--spacing-2);
+  border-left: 3px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.record-review__review-link {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.record-review__technical {
+  margin-top: var(--spacing-1);
+}
+
+.record-review__pagination,
+.record-review__inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+.record-review__empty {
+  padding: var(--spacing-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--rounded-md);
+  color: var(--color-text-secondary);
+}
+
+.record-review__inspector {
+  gap: var(--spacing-4);
+}
+
+.record-review__overline {
+  margin-bottom: var(--spacing-1);
+  color: var(--color-text-secondary);
+  font-size: var(--type-overline-font-size);
+  line-height: var(--type-overline-line-height);
+  letter-spacing: var(--type-overline-letter-spacing);
+  text-transform: uppercase;
+}
+
+.record-review__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding-top: var(--spacing-4);
+  border-top: 1px solid var(--color-border-default);
+}
+
+.record-review__expectation {
+  padding-left: var(--spacing-3);
+  border-left: 3px solid var(--color-teal);
+  border-top: 0;
+}
+
+.record-review__conditions,
+.record-review__condition-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding-left: var(--spacing-5);
+}
+
+.record-review__conditions li,
+.record-review__condition-rows li {
+  padding-left: var(--spacing-1);
+  overflow-wrap: anywhere;
+}
+
+.record-review__target-list,
+.record-review__assessment-list,
+.record-review__evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-review__captured-target,
+.record-review__assessment,
+.record-review__evidence-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-md);
+  background: var(--color-surface-sunken);
+}
+
+.record-review__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.record-review__preview-frame {
+  max-width: 48rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--rounded-sm);
+  background: var(--color-surface-sunken);
+}
+
+.record-review__preview-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 28rem;
+  object-fit: contain;
+}
+
+.record-review__source-record {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  scroll-margin-top: var(--spacing-4);
+}
+
+.record-review__source-record h4 {
+  margin: 0;
+  font-size: var(--type-sub-title-font-size);
+  line-height: var(--type-sub-title-line-height);
+}
+
+.record-review__source-table {
+  width: 100%;
+  font-size: var(--type-body-sm-font-size);
+  line-height: var(--type-body-sm-line-height);
+}
+
+.record-review__source-table th,
+.record-review__source-table td {
+  padding: var(--spacing-2) 0;
+  border-top: 1px solid var(--color-border-default);
+  text-align: left;
+  vertical-align: top;
+}
+
+.record-review__source-table th {
+  width: 38%;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.record-review__source-table td {
+  overflow-wrap: anywhere;
+}
+
+.record-review__source-value,
+.record-review__source-copy {
+  overflow-wrap: anywhere;
+}
+
+.record-review__condition-rows {
+  gap: var(--spacing-4);
+}
+
+.record-review__condition-rows li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.record-review__evidence-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .record-review__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .record-review__inspector {
+    order: -1;
+  }
+}
+
+@media (min-width: 1101px) {
+  /* Keep the queue and the focused record independently usable beside one another.
+     The surrounding Run chrome remains visible while either pane is scrolled. */
+  .record-review__queue,
+  .record-review__inspector {
+    max-height: calc(100vh - 12rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    position: sticky;
+    top: var(--spacing-3);
+  }
+}
+
+@media (max-width: 700px) {
+  .record-review__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .record-review__queue-heading,
+  .record-review__inspector-head,
+  .record-review__section-head,
+  .record-review__row-head {
+    flex-direction: column;
+  }
+
+  .record-review__filter-field input,
+  .record-review__filter-field select,
+  .record-review__filters button {
+    width: 100%;
+  }
+}

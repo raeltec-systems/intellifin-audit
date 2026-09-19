@@ -46,6 +46,10 @@ export interface EvaluationReviewProps {
   readonly pendingCount: number | null;
   /** Durable command state for the exact target/revision read by the server. */
   readonly commandStatuses?: readonly EvaluationReviewCommandStatus[];
+  /** Human labels for a focused record. Opaque ids remain available in technical details. */
+  readonly observationLabels?: Readonly<Record<string, string>>;
+  readonly conditionLabels?: Readonly<Record<string, string>>;
+  readonly reviewerNames?: Readonly<Record<string, string>>;
 }
 
 type PendingDecision = {
@@ -132,6 +136,9 @@ export function EvaluationReview({
   reviewRevision,
   pendingCount,
   commandStatuses = [],
+  observationLabels,
+  conditionLabels,
+  reviewerNames,
 }: EvaluationReviewProps): React.JSX.Element | null {
   const router = useRouter();
   const headingId = useId();
@@ -296,8 +303,12 @@ export function EvaluationReview({
             return (
               <li className="ls-evaluation ls-stack" key={key}>
                 <p className="ls-evaluation__condition">
-                  <span className="ls-mono">{row.observationId}</span>{' / '}
-                  <span className="ls-mono">{row.conditionId}</span>
+                  {observationLabels === undefined
+                    ? row.observationId
+                    : observationLabels[row.observationId] ?? 'Selected observation'}{' / '}
+                  {conditionLabels === undefined
+                    ? row.conditionId
+                    : conditionLabels[row.conditionId] ?? 'Recorded condition'}
                 </p>
                 <div className="ls-evaluation__badges">
                   {originBadge(row)}
@@ -341,7 +352,9 @@ export function EvaluationReview({
                       </div>
                       <div>
                         <dt>Reviewer</dt>
-                        <dd className="ls-mono">{reviewDecision.actorId}</dd>
+                        <dd>{reviewerNames === undefined
+                          ? reviewDecision.actorId
+                          : reviewerNames[reviewDecision.actorId] ?? 'Reviewer name unavailable'}</dd>
                       </div>
                       <div>
                         <dt>Decided at (UTC)</dt>
@@ -352,6 +365,19 @@ export function EvaluationReview({
                       <p><strong>Rejection rationale:</strong> {reviewDecision.rejectionRationale}</p>
                     )}
                   </section>
+                ) : null}
+
+                {observationLabels !== undefined || conditionLabels !== undefined || reviewerNames !== undefined ? (
+                  <details className="ls-disclosure">
+                    <summary>Technical details</summary>
+                    <div className="ls-disclosure__body">
+                      <dl className="ls-definition">
+                        <div><dt>Observation reference</dt><dd className="ls-mono">{row.observationId}</dd></div>
+                        <div><dt>Condition reference</dt><dd className="ls-mono">{row.conditionId}</dd></div>
+                        {reviewDecision === null ? null : <div><dt>Reviewer reference</dt><dd className="ls-mono">{reviewDecision.actorId}</dd></div>}
+                      </dl>
+                    </div>
+                  </details>
                 ) : null}
 
                 {commandPending ? (

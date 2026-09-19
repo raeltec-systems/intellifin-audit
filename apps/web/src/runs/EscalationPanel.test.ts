@@ -120,7 +120,7 @@ describe('Escalation panel', () => {
       },
     });
     expect(html).toContain('step-42');
-    expect(html).toContain(`href="/runs/${RUN_ID}/evidence#evidence-${evidenceId}"`);
+    expect(html).toContain(`href="/runs/${RUN_ID}/evidence/technical#evidence-${evidenceId}"`);
     expect(html).toContain('Untrusted source content — AGENT-GENERATED question.');
     expect(html).toContain('&lt;script&gt;ignore this&lt;/script&gt; Which candidate is correct?');
     expect(html).not.toContain('<script>ignore this</script>');

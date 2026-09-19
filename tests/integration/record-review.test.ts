@@ -80,6 +80,14 @@ interface SeededReviewRun {
   readonly sourceValues: ReadonlyMap<number, Record<string, JsonValue>>;
 }
 
+interface ReferenceOnlyReviewRun {
+  readonly runId: string;
+  readonly procedureId: string;
+  readonly versionId: string;
+  readonly plan: ExecutablePlan;
+  cleanup(): Promise<void>;
+}
+
 describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
   let sql: Sql;
   let db: Database;
@@ -256,6 +264,42 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     expect(result.rows.find(row => row.sourceOrdinal === 4)?.recordLabel).toBe('  CaseSensitive–004  ');
   });
 
+  it('leaves a captured observation uninspected when its historical checks are missing without inventing an evidence problem', async () => {
+    const observationId = observationIdFor(seeded.primaryWorkItemId, 'Param-0001');
+    const originalChecks = await sql<{ check_name: string; outcome: string; diagnostic: string | null }[]>`
+      SELECT check_name, outcome, diagnostic
+      FROM run_observation_check
+      WHERE observation_id=${observationId}
+      ORDER BY check_name`;
+    expect(originalChecks).toHaveLength(CHECKS.length);
+
+    try {
+      await sql`DELETE FROM run_observation_check WHERE observation_id=${observationId}`;
+      const result = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 50 });
+      expect(result.status).toBe('ready');
+      if (result.status !== 'ready') return;
+
+      const row = result.rows.find(entry => entry.sourceOrdinal === 1)!;
+      const primary = row.targets.find(target => target.targetId === seeded.primaryTarget.registrationId);
+      expect(primary).toMatchObject({
+        observationId,
+        inspected: false,
+        evidenceProblem: false,
+        assessmentState: 'not-inspected',
+      });
+      expect(result.counts.inspectedUnits).toBe(96);
+      expect(result.counts.fullyInspectedSubjects).toBe(0);
+      expect(result.counts.evidenceProblemRecords).toBe(4);
+    } finally {
+      for (const check of originalChecks) {
+        await sql`INSERT INTO run_observation_check(observation_id,run_id,check_name,outcome,diagnostic)
+          VALUES(${observationId},${seeded.runId},${check.check_name},${check.outcome},${check.diagnostic})
+          ON CONFLICT (observation_id,check_name) DO UPDATE
+          SET run_id=excluded.run_id,outcome=excluded.outcome,diagnostic=excluded.diagnostic`;
+      }
+    }
+  });
+
   it('applies filters and search while preserving counts from the unfiltered snapshot', async () => {
     const cases = [
       { filter: 'exceptions', expected: [1] },
@@ -291,6 +335,30 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       pageSize: 25,
     });
     expect(search).toMatchObject({ status: 'ready', filteredRows: 1, rows: [{ sourceOrdinal: 1, recordLabel: 'Param-0001' }] });
+  });
+
+  it('retains source rows for a valid frozen plan whose only Target is a versioned-file Reference Source', async () => {
+    const referenceRun = await seedReferenceOnlyRun();
+    try {
+      const classification = classifyPlanTargets(referenceRun.plan);
+      expect(classification.unsupported).toBeNull();
+      expect(classification.references).toHaveLength(1);
+      expect(classification.adapters).toHaveLength(0);
+      expect(classification.agents).toHaveLength(0);
+
+      const result = await repository().readPage({ runId: referenceRun.runId, actorId: seeded.actorId, pageSize: 25 });
+      expect(result).toMatchObject({ status: 'ready', filteredRows: 2 });
+      if (result.status !== 'ready') return;
+      expect(result.rows.map(row => row.sourceOrdinal)).toEqual([1, 2]);
+      expect(result.rows.map(row => row.recordLabel)).toEqual(['Reference-0001', 'Reference-0002']);
+      expect(result.rows.every(row => row.targets.length === 0)).toBe(true);
+      expect(result.counts.requiredUnits).toBe(0);
+      expect(result.counts.inspectedUnits).toBe(0);
+      expect(result.counts.fullyInspectedSubjects).toBe(0);
+      expect(result.counts.evidenceProblemRecords).toBe(0);
+    } finally {
+      await referenceRun.cleanup();
+    }
   });
 
   it('fails closed when a stored observation cannot be attributed to a source row', async () => {
@@ -364,6 +432,89 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
     await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, filter: 'exceptions', pageSize: 25 });
     await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, search: 'Param-0001', pageSize: 25 });
     const snapshots = await sql`SELECT snapshot_id FROM run_review_snapshot WHERE actor_id=${seeded.actorId} AND run_id=${seeded.runId}`;
+    expect(snapshots.length).toBeLessThanOrEqual(2);
+  });
+
+  it('round-trips a cursor for an empty filtered snapshot without rejecting position zero', async () => {
+    const first = await repository().readPage({
+      runId: seeded.runId,
+      actorId: seeded.actorId,
+      search: 'does-not-exist-in-the-population',
+      pageSize: 25,
+    });
+    expect(first).toMatchObject({
+      status: 'ready',
+      filteredRows: 0,
+      rows: [],
+      pageNumber: 1,
+      nextCursor: null,
+      previousCursor: null,
+    });
+    if (first.status !== 'ready') return;
+
+    const roundTrip = await repository().readPage({
+      runId: seeded.runId,
+      actorId: seeded.actorId,
+      cursor: first.cursor,
+      search: 'does-not-exist-in-the-population',
+      pageSize: 25,
+    });
+    expect(roundTrip).toMatchObject({
+      status: 'ready',
+      filteredRows: 0,
+      rows: [],
+      pageNumber: 1,
+      nextCursor: null,
+      previousCursor: null,
+    });
+    if (roundTrip.status !== 'ready') return;
+    expect(roundTrip.cursor).toBe(first.cursor);
+    expect(roundTrip.revision).toBe(first.revision);
+  });
+
+  it('rejects an update to an immutable presentation snapshot row with check-violation 23514', async () => {
+    const first = await repository().readPage({ runId: seeded.runId, actorId: seeded.actorId, pageSize: 25 });
+    expect(first.status).toBe('ready');
+    if (first.status !== 'ready') return;
+
+    const [stored] = await sql<{ snapshot_id: string; position: number; row: unknown }[]>`
+      SELECT r.snapshot_id::text AS snapshot_id, snapshot_row.position, snapshot_row.row
+      FROM run_review_snapshot_row snapshot_row
+      JOIN run_review_snapshot r ON r.snapshot_id=snapshot_row.snapshot_id
+      WHERE r.run_id=${seeded.runId} AND r.actor_id=${seeded.actorId}
+      ORDER BY r.created_at DESC, snapshot_row.position
+      LIMIT 1`;
+    expect(stored).toBeDefined();
+    if (!stored) return;
+
+    let failure: unknown;
+    try {
+      await sql`UPDATE run_review_snapshot_row
+        SET row=${JSON.stringify({ tampered: true })}::jsonb
+        WHERE snapshot_id=${stored.snapshot_id}::uuid AND position=${stored.position}`;
+    } catch (error) {
+      failure = error;
+    }
+    expect((failure as { code?: string } | undefined)?.code).toBe('23514');
+    const [unchanged] = await sql<{ row: unknown }[]>`
+      SELECT row FROM run_review_snapshot_row
+      WHERE snapshot_id=${stored.snapshot_id}::uuid AND position=${stored.position}`;
+    expect(unchanged?.row).toEqual(stored.row);
+  });
+
+  it('admits concurrent cursorless reads while retaining at most two actor/run snapshots', async () => {
+    const results = await Promise.all(Array.from({ length: 8 }, () => repository().readPage({
+      runId: seeded.runId,
+      actorId: seeded.actorId,
+      pageSize: 25,
+    })));
+    expect(results.every(result => result.status === 'ready')).toBe(true);
+    expect(results.every(result => result.status === 'ready' && result.rows.length === 25)).toBe(true);
+
+    const snapshots = await sql<{ snapshot_id: string }[]>`
+      SELECT snapshot_id::text
+      FROM run_review_snapshot
+      WHERE actor_id=${seeded.actorId} AND run_id=${seeded.runId}`;
     expect(snapshots.length).toBeLessThanOrEqual(2);
   });
 
@@ -602,12 +753,15 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
 
     const execution = new PostgresAgentWorkRepository(db);
     await execution.transaction(runId, async context => {
+      // Evidence is the parent row for Work Item.evidence_id. Persist the registered
+      // artifact before the Work Item references it; this keeps the fixture valid on a
+      // database enforcing the foreign key during each statement.
+      await context.saveEvidence(primaryEvidence);
+      await context.saveEvidence(secondaryEvidence);
       await context.saveWorkItem({ workItemId: primaryWorkItemId, subjectKey: null, stepId: primaryStepId, ordinal: 1, registrationId: primaryTarget.registrationId, displayName: primaryTarget.displayName, state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId: primaryEvidenceId, observations: 1 });
       await context.saveStepExecution({ stepExecutionId: primaryStepExecutionId, planStepId: primaryStepId, workItemId: primaryWorkItemId, action: 'inspect-record', state: 'SUCCEEDED', attempt: 1, startedAt: at, completedAt: at, diagnostic: null });
       await context.saveWorkItem({ workItemId: secondaryWorkItemId, subjectKey: null, stepId: secondaryStepId, ordinal: 2, registrationId: secondaryTarget.registrationId, displayName: secondaryTarget.displayName, state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId: secondaryEvidenceId, observations: 97 });
       await context.saveStepExecution({ stepExecutionId: secondaryStepExecutionId, planStepId: secondaryStepId, workItemId: secondaryWorkItemId, action: 'extract-adapter', state: 'SUCCEEDED', attempt: 1, startedAt: at, completedAt: at, diagnostic: null });
-      await context.saveEvidence(primaryEvidence);
-      await context.saveEvidence(secondaryEvidence);
       await context.saveToolAction(primaryAction);
       await context.saveToolAction(secondaryAction);
       await context.saveCapture({ evidenceId: primaryEvidenceId, toolActionId: primaryAction.toolActionId, sourceLocation: primaryAction.destination });
@@ -660,6 +814,73 @@ describe.skipIf(!url)('record review projection on PostgreSQL 18', () => {
       await context.saveObservationEvaluations([evaluation]);
       await context.saveWorkItem({ workItemId: seeded.secondaryWorkItemId, subjectKey: null, stepId: inspectStep(seeded.plan, seeded.secondaryTarget.registrationId), ordinal: 2, registrationId: seeded.secondaryTarget.registrationId, displayName: seeded.secondaryTarget.displayName, state: 'OBSERVED', attempts: 1, cycles: 0, diagnostic: null, evidenceId: seeded.secondaryEvidenceId, observations: 98 });
     });
+  }
+
+  async function seedReferenceOnlyRun(): Promise<ReferenceOnlyReviewRun> {
+    const procedureId = ids.next();
+    const versionId = ids.next();
+    const runId = ids.next();
+    const referenceRegistration = {
+      registrationId: ids.next(),
+      displayName: 'ReferenceOnly',
+      kind: 'versioned-file' as const,
+      allowedOrigins: ['https://synthetic.invalid/reference.csv'],
+      applicationIdentity: '',
+      credentialRef: 'vault://synthetic/reference-only',
+      permittedActions: ['read-file', 'read-metadata'] as const,
+      attributeLabelPatterns: ['parameter'],
+      secondaryKey: '',
+    };
+    const inputs = {
+      ...executablePlanInputs(),
+      targets: [snapshotFromRegistration({
+        ...referenceRegistration,
+        digest: registrationDigest(referenceRegistration),
+      })],
+      instructions: [],
+    };
+    const version = activeRunVersion(procedureId, versionId, seeded.actorId, inputs);
+    await new PostgresProceduresUnitOfWork(db).execute(async context => {
+      await context.procedures.insertProcedure(version);
+      await context.procedures.insertVersion(version);
+    });
+
+    await insertRun(runId, procedureId, versionId, seeded.actorId, '2026-09-19T12:00:00.000Z', '2026-08-01', '2026-08-31');
+    await db.insert(populationSnapshot).values({
+      runId,
+      included: 2,
+      excluded: 0,
+      indeterminate: 0,
+      rowsDigest: null,
+      checks: POPULATION_CHECK_NAMES.map(name => ({ name, passed: true })),
+      generatedAt: new Date('2026-09-01T00:00:00.000Z'),
+      declaredCount: 2,
+      retrievedCount: 2,
+    });
+    await db.insert(populationRow).values([1, 2].map(ordinal => ({
+      runId,
+      ordinal,
+      values: { parameter: `Reference-${String(ordinal).padStart(4, '0')}` },
+      disposition: 'included' as const,
+      reasons: [] as string[],
+    })));
+
+    return {
+      runId,
+      procedureId,
+      versionId,
+      plan: version.compiledPlan!,
+      cleanup: async () => {
+        await sql`DELETE FROM run_review_snapshot WHERE run_id=${runId}`;
+        await sql`DELETE FROM population_row WHERE run_id=${runId}`;
+        await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+        await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+        await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+        await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+        await sql`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
+        await sql`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+      },
+    };
   }
 
   async function insertRun(runId: string, procedureId: string, versionId: string, actorId: string, initiatedAt: string, periodFrom: string, periodTo: string): Promise<void> {

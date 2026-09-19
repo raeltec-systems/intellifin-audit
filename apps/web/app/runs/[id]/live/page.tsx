@@ -144,7 +144,7 @@ export default async function RunLivePage({
       <DetailTrail
         trail={[
           { href: '/runs', label: 'Runs' },
-          { href: runTabHref(run.runId, ''), label: run.runId, mono: true },
+          { href: runTabHref(run.runId, ''), label: run.procedureName },
           { href: here, label: 'Live' },
         ]}
       />

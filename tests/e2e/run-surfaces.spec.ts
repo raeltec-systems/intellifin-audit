@@ -302,7 +302,7 @@ test.describe('the Runs list and Run Detail as an Auditor', () => {
   });
 
   test('shows recorded grounding and protected snapshot links for a json snapshot', async ({ page }) => {
-    await page.goto(`/runs/${runs.completed}/evidence`);
+    await page.goto(`/runs/${runs.completed}/evidence/technical`);
     await expect(page.getByRole('heading', { name: 'Evidence items' })).toBeVisible();
     await expect(page.getByText('Adapter extract')).toBeVisible();
     await expect(page.getByText('Capture time (UTC)')).toBeVisible();

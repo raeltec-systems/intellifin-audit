@@ -233,7 +233,7 @@ export function EscalationPanel({ runId, wait, details, runRevision, readAt }: E
             <ul>
               {details.supportingEvidenceIds.map((supportingEvidenceId) => (
                 <li key={supportingEvidenceId}>
-                  <a className="ls-mono" href={`/runs/${runId}/evidence#evidence-${encodeURIComponent(supportingEvidenceId)}`}>
+                  <a className="ls-mono" href={`/runs/${runId}/evidence/technical#evidence-${encodeURIComponent(supportingEvidenceId)}`}>
                     {supportingEvidenceId}
                   </a>
                 </li>

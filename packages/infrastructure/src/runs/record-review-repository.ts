@@ -17,7 +17,7 @@ type Header = typeof runReviewSnapshot.$inferSelect;
 type Query = { filter: RecordReviewFilter; search: string; pageSize: number };
 type SelectionInput = { runId: string; actorId: string; sourceOrdinal: number; listedRevision?: string };
 type ReadySelection = Extract<RecordReviewSelectionResult, { status: 'ready' }>;
-type Flat = { ordinal: number; key: string | null; disposition: string; duplicate: boolean; target_id: string;
+type Flat = { ordinal: number; key: string | null; disposition: string; duplicate: boolean; target_id: string | null;
   target_name: string; observation_id: string | null; work_item_id: string | null; account: string | null;
   captured_status: string | null; found: string | null; inspected: boolean; exception: boolean;
   pending: number; evidence_problem: boolean; evaluation_count: number; unevaluated: boolean };
@@ -155,7 +155,7 @@ export class PostgresRecordReviewRepository {
         }, { isolationLevel: input.cursor ? 'repeatable read' : 'serializable' });
       } catch (error) {
         const code = (error as { code?: string; cause?: { code?: string } }).code ?? (error as { cause?: { code?: string } }).cause?.code;
-        if (code !== '40001' || attempt >= 3) {
+        if (!['40001', '40P01'].includes(code ?? '') || attempt >= 7) {
           // Drizzle errors may embed SQL parameters, including source labels and cursor
           // material. Preserve only a closed-format diagnostic, never the raw cause.
           throw new Error(`Record review read failed (${typeof code === 'string' && /^[A-Z0-9]{5}$/.test(code) ? code : 'unavailable'})`);
@@ -224,6 +224,7 @@ export class PostgresRecordReviewRepository {
       let row = rows.get(unit.ordinal);
       if (!row) { row = { sourceOrdinal: unit.ordinal, recordLabel: unit.key || `Source row ${unit.ordinal}`,
         disposition: unit.disposition, duplicateIdentity: unit.duplicate, missingIdentity: !unit.key, targets: [] }; rows.set(unit.ordinal,row); }
+      if (unit.target_id === null) continue; // Reference-only plans still retain every source row.
       row.targets.push({ targetId: unit.target_id, targetName: unit.target_name,
         observationId: unit.observation_id, workItemId: unit.work_item_id,
         account: unit.account, capturedStatus: unit.captured_status, found: unit.found,
@@ -295,17 +296,17 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
             WHERE a->>'name' IN ('account_status','status','enabled') LIMIT 1) AS captured_status,
           coalesce(e.exception,false) AS exception,coalesce(e.pending,0) AS pending,
           coalesce(e.count,0) AS evaluation_count,coalesce(e.unevaluated,false) AS unevaluated,
-          s.disposition='included' AND (s.duplicates>1 OR coalesce(s.key,'')='' OR (o.observation_id IS NOT NULL AND (coalesce(c.failed,true) OR
-            NOT coalesce(c.passed @> ARRAY['required-evidence','ambiguous-match','freshness',
-              CASE WHEN o.found='false' THEN 'search-completeness' ELSE 'identity-corroboration' END],false) OR
-            o.corroboration='CONTRADICTORY' OR (o.found='false' AND NOT EXISTS (
-              SELECT 1 FROM run_observation_absence a WHERE a.run_id=${runId}::uuid AND a.observation_id=o.observation_id AND a.proof IS NOT NULL
-            )) OR EXISTS (
+          coalesce(((o.found='true' AND o.corroboration='MATCHED') OR (o.found='false' AND EXISTS (
+            SELECT 1 FROM run_observation_absence a WHERE a.run_id=${runId}::uuid AND a.observation_id=o.observation_id AND a.proof IS NOT NULL
+          ))) AND c.passed @> ARRAY['required-evidence','ambiguous-match','freshness',
+            CASE WHEN o.found='false' THEN 'search-completeness' ELSE 'identity-corroboration' END],false) AS checks_complete,
+          s.disposition='included' AND (s.duplicates>1 OR coalesce(s.key,'')='' OR (o.observation_id IS NOT NULL AND (coalesce(c.failed,false) OR o.found='ambiguous' OR
+            o.corroboration='CONTRADICTORY' OR EXISTS (
               SELECT 1 FROM jsonb_array_elements_text(o.evidence_ids) evidence(id)
               WHERE NOT EXISTS (SELECT 1 FROM run_evidence re WHERE re.run_id=${runId}::uuid AND re.evidence_id::text=evidence.id AND re.state='REGISTERED')
                 OR EXISTS (SELECT 1 FROM run_evidence_integrity ri WHERE ri.run_id=${runId}::uuid AND ri.evidence_id::text=evidence.id)
             )))) AS evidence_problem
-        FROM source s CROSS JOIN targets t
+        FROM source s LEFT JOIN targets t ON true
         LEFT JOIN observations m ON m.target_system=t.id AND m.population_record_key=s.key AND m.count=1
           AND s.disposition='included' AND s.duplicates=1 AND coalesce(s.key,'')<>''
         LEFT JOIN run_observation o ON o.observation_id=m.id
@@ -314,7 +315,7 @@ export function recordReviewProjectionQuery(runId: string, plan: ExecutablePlan,
         ${ordinal === undefined ? sql`` : sql`WHERE s.ordinal=${ordinal}`}
       ) SELECT ordinal,key,disposition,duplicates>1 AND disposition='included' AS duplicate,
         target_id,target_name,observation_id,work_item_id,account,captured_status,found,
-        coalesce(disposition='included' AND coverage='COVERED' AND NOT evidence_problem,false) AS inspected,
+        coalesce(disposition='included' AND coverage='COVERED' AND checks_complete AND NOT evidence_problem,false) AS inspected,
         exception,pending,evidence_problem,evaluation_count,unevaluated
       FROM units ORDER BY ordinal,ordinality`;
 }

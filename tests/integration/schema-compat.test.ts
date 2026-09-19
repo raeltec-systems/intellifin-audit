@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
     );
   });
 
-  it('has exactly the generation-36 tables and nothing was auto-migrated at startup', async () => {
+  it('has exactly the generation-51 tables and nothing was auto-migrated at startup', async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
@@ -134,6 +134,9 @@ describe.skipIf(!databaseUrl)('startup guards against a migrated PostgreSQL 18',
       'run_replay_recording',
       'run_result',
       'run_result_review',
+      // AW-P1: expiring, immutable presentation copies; not a second audit ledger.
+      'run_review_snapshot',
+      'run_review_snapshot_row',
       'run_session_step',
       'run_step_execution',
       'run_tool_action',
