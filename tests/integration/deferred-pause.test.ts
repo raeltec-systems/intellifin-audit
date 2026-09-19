@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { acceptDeferredPause, acquireRunControlLease, pauseRun, type AuditUnitOfWork } from '@intellifin/application';
-import { classifyPlanTargets, type DeferredPauseAnchor } from '@intellifin/domain';
+import { bindingDigest, bindingDigestEnvelope, classifyPlanTargets, initialDraftPopulation, initialDraftSections, initialDraftCompliance, initialDraftEvidence, registrationDigest, snapshotFromRegistration, type DeferredPauseAnchor, type FrozenPlanInputs } from '@intellifin/domain';
 import {
   createDb, createSqlClient, createAuditEventWriter, CryptoUuidV7Generator, DrizzleRoleRepository,
   PostgresDeferredPauseRepository, PostgresProceduresUnitOfWork, PostgresRunControlLeaseRepository,
@@ -11,6 +11,22 @@ import { auditRun } from '../../packages/infrastructure/src/db/schema.js';
 import { ConversationContentCipher } from '../../packages/infrastructure/src/runs/conversation-content.js';
 import { PostgresRunConversationRepository } from '../../packages/infrastructure/src/runs/run-conversation-repository.js';
 
+function employeeInputs(): FrozenPlanInputs {
+  const source = { kind: 'versioned-file' as const, location: 'https://synthetic.invalid/leavers.csv',
+    declaredSchema: ['employee_id', 'full_name', 'employment_status', 'termination_effective_date'], sensitiveFields: [], declaredCountMechanism: 'cover-sheet' as const };
+  const registration = { registrationId: '018f0000-0000-7000-8000-0000000000a2', displayName: 'LoanCore', kind: 'web' as const,
+    allowedOrigins: ['https://synthetic.invalid'], applicationIdentity: '', credentialRef: 'vault://synthetic/loancore',
+    permittedActions: ['navigate', 'search', 'read-attribute'] as const,
+    attributeLabelPatterns: ['Employee ID', 'Full name', 'Status', 'Username', 'Roles'], secondaryKey: 'full_name' };
+  return { ...initialDraftPopulation('P-1'), ...initialDraftCompliance('P-1'), ...initialDraftEvidence('P-1'),
+    templateId: 'P-1', controlName: 'Numeric employee key fixture', sections: initialDraftSections('P-1'),
+    scope: 'Synthetic terminated employees', period: { from: '2026-08-01', to: '2026-08-31' },
+    sourceSnapshot: { bindingId: '018f0000-0000-7000-8000-000000000098', displayName: 'Leavers', digest: bindingDigest(source), contract: bindingDigestEnvelope(source) },
+    schedule: { frequency: 'once', startTime: '00:00', periodDerivationRule: 'explicit-period' },
+    targets: [snapshotFromRegistration({ ...registration, digest: registrationDigest(registration) })],
+    instructions: [{ registrationId: registration.registrationId, text: 'Inspect the approved employee account.' }] };
+}
+
 const url = process.env.DATABASE_URL;
 describe.skipIf(!url)('deferred pause durable latch and admission guards', () => {
   let client: Sql;
@@ -19,7 +35,7 @@ describe.skipIf(!url)('deferred pause durable latch and admission guards', () =>
   const actor = ids.next(), procedureId = ids.next(), versionId = ids.next();
   const session = { userId: actor, sessionId: `${actor}-deferred` };
   const version = activeRunVersion(procedureId, versionId, actor);
-  const target = classifyPlanTargets(version.compiledPlan!).agents[0]!;
+  const employeeVersion = activeRunVersion(ids.next(), ids.next(), actor, employeeInputs());
   const runs: string[] = [];
   const clock = new SystemClock();
 
@@ -32,7 +48,9 @@ describe.skipIf(!url)('deferred pause durable latch and admission guards', () =>
     await client`INSERT INTO auth_user(id,name,email) VALUES (${actor},'Deferred pause auditor',${actor+'@test.invalid'})`;
     await client`INSERT INTO user_role(user_id,role) VALUES (${actor},'auditor')`;
     await new PostgresProceduresUnitOfWork(db).execute(async context => {
-      await context.procedures.insertProcedure(version); await context.procedures.insertVersion(version);
+      for (const frozen of [version, employeeVersion]) {
+        await context.procedures.insertProcedure(frozen); await context.procedures.insertVersion(frozen);
+      }
     });
   });
 
@@ -46,8 +64,10 @@ describe.skipIf(!url)('deferred pause durable latch and admission guards', () =>
         await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
         await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
       });
-      await client`DELETE FROM procedure_version WHERE procedure_id=${procedureId}`;
-      await client`DELETE FROM procedure WHERE procedure_id=${procedureId}`;
+      for (const frozen of [version, employeeVersion]) {
+        await client`DELETE FROM procedure_version WHERE procedure_id=${frozen.procedureId}`;
+        await client`DELETE FROM procedure WHERE procedure_id=${frozen.procedureId}`;
+      }
       await client`DELETE FROM user_role WHERE user_id=${actor}`;
       await client`DELETE FROM auth_user WHERE id=${actor}`;
     } finally { await client.end({ timeout: 5 }); }
@@ -62,16 +82,18 @@ describe.skipIf(!url)('deferred pause durable latch and admission guards', () =>
       repository: new PostgresDeferredPauseRepository(connection), ids, clock, commandId };
   }
 
-  async function fixture(): Promise<{ runId: string; commandId: string; anchor: DeferredPauseAnchor }> {
+  async function fixture(subjectKey: string | null = null): Promise<{ runId: string; commandId: string; anchor: DeferredPauseAnchor }> {
+    const frozen = subjectKey === null ? version : employeeVersion;
+    const target = classifyPlanTargets(frozen.compiledPlan!).agents[0]!;
     const runId = ids.next(), itemId = ids.next();
     runs.push(runId);
     const year = 2040 + runs.length;
-    await db.insert(auditRun).values({ runId, requestToken: ids.next(), correlationId: ids.next(), procedureId,
-      versionId, versionNumber: 1, procedureName: 'Deferred pause fixture', periodFrom: `${year}-01-01`,
+    await db.insert(auditRun).values({ runId, requestToken: ids.next(), correlationId: ids.next(), procedureId: frozen.procedureId,
+      versionId: frozen.versionId, versionNumber: 1, procedureName: 'Deferred pause fixture', periodFrom: `${year}-01-01`,
       periodTo: `${year}-01-31`, state: 'RUNNING', kind: 'STANDARD', initiatorId: actor,
       sessionId: session.sessionId, authorizationRole: 'auditor', initiatedAt: new Date() });
     await client`INSERT INTO run_work_item(work_item_id,run_id,step_id,ordinal,subject_key,registration_id,display_name,state,attempts,cycles,observations)
-      VALUES(${itemId},${runId},${target.stepId},1,NULL,${target.target.registrationId},'Configuration page','IN_PROGRESS',1,0,0)`;
+      VALUES(${itemId},${runId},${target.stepId},1,${subjectKey},${target.target.registrationId},'Configuration page','IN_PROGRESS',1,0,0)`;
     const attempt = ids.next();
     await client`INSERT INTO run_agent_work(run_id,revision,status,run_started_at,lease_until,attempt_id,work_item_id,next_turn,tokens,reserved_tokens)
       VALUES(${runId},1,'EXECUTING',clock_timestamp(),clock_timestamp()+interval '1 minute',${attempt},${itemId},1,0,0)`;
@@ -131,6 +153,27 @@ describe.skipIf(!url)('deferred pause durable latch and admission guards', () =>
     await expect(client`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at,source_event_id)
       SELECT ${row.commandId}::uuid,4,'applied','forged-applied',occurred_at,event_id FROM audit_events WHERE event_id=${forged.eventId}`)
       .rejects.toMatchObject({ code: '23514' });
+    expect(await client`SELECT state FROM run_deferred_pause WHERE command_id=${row.commandId}`).toMatchObject([{ state: 'PENDING' }]);
+  });
+
+  it('rejects a numeric JSON subject in an applied event for the frozen string employee key', async () => {
+    const row = await fixture('123');
+    expect(row.anchor.subjectKey).toBe('123');
+    expect(await acceptDeferredPause(coreDeps(row.commandId), { session,
+      request: { runId: row.runId, anchor: row.anchor, expectedControlEpoch: 1 } })).toMatchObject({ ok: true });
+    const forged = await db.transaction(tx => createAuditEventWriter(tx, clock, ids).append({
+      actor: { type: 'human', id: actor }, eventType: 'lifecycle.run-paused', source: 'worker', outcome: 'success',
+      aggregateId: row.runId, correlationId: ids.next(), sessionId: session.sessionId,
+      payload: { commandId: row.commandId, pauseMode: 'after-inspection', workItemId: row.anchor.workItemId,
+        registrationId: row.anchor.registrationId, subjectKey: 123 },
+    }));
+    // The projector already rejects number !== string. The database must enforce the
+    // same rule even if a writer attempts to insert the receipt directly.
+    await expect(client`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at,source_event_id)
+      SELECT ${row.commandId}::uuid,4,'applied','forged-applied',occurred_at,event_id FROM audit_events WHERE event_id=${forged.eventId}`)
+      .rejects.toMatchObject({ code: '23514' });
+    expect((await client`SELECT state FROM run_interaction_transition WHERE command_id=${row.commandId} ORDER BY sequence`).map(item => item.state))
+      .toEqual(['received','interpreted','queued']);
     expect(await client`SELECT state FROM run_deferred_pause WHERE command_id=${row.commandId}`).toMatchObject([{ state: 'PENDING' }]);
   });
 

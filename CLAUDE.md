@@ -1,3 +1,11 @@
+## 2026-09-19 — Exact receipt identity includes JSON value types
+
+PostgreSQL JSON text extraction (`->>`) coerces a numeric value and a numeric-looking
+string to the same text. Deferred receipt guards and read projections use JSONB equality
+for anchor values and `to_jsonb` for typed command fields, so employee key `"123"` cannot
+be replaced by JSON number `123` in a supposedly exact worker fact. The regression uses
+a valid frozen P1 inspection and requires forged receipt insertion to fail.
+
 ## 2026-09-19 — An inspection pause is an immutable proposal and a sticky worker latch
 
 The browser captures the current Run-owned Work Item when composition starts, independently

@@ -114,17 +114,17 @@ BEGIN
       OR NEW.created_at<>fact.occurred_at OR NOT coalesce((
         (NEW.state='queued' AND cmd.kind='pause-now' AND fact.event_type='lifecycle.run-pause-requested' AND fact.source='web' AND fact.actor_type='human' AND fact.actor_id=cmd.actor_id AND fact.outcome='success') OR
         (NEW.state='queued' AND cmd.kind='pause-after-inspection' AND fact.event_type='lifecycle.run-deferred-pause-requested' AND fact.source='web' AND fact.actor_type='human' AND fact.actor_id=cmd.actor_id AND fact.outcome='success'
-          AND fact.payload->>'workItemId'=cmd.deferred_anchor->>'workItemId' AND fact.payload->>'registrationId'=cmd.deferred_anchor->>'registrationId'
-          AND fact.payload ? 'subjectKey' AND fact.payload->>'subjectKey' IS NOT DISTINCT FROM cmd.deferred_anchor->>'subjectKey' AND fact.payload->>'expectedControlEpoch'=cmd.deferred_control_epoch::text
-          AND fact.payload->>'runRevision'=cmd.expected_run_revision::text AND fact.payload->>'planDigest'=cmd.plan_digest
+          AND fact.payload->'workItemId'=cmd.deferred_anchor->'workItemId' AND fact.payload->'registrationId'=cmd.deferred_anchor->'registrationId'
+          AND fact.payload ? 'subjectKey' AND fact.payload->'subjectKey' IS NOT DISTINCT FROM cmd.deferred_anchor->'subjectKey' AND fact.payload->'expectedControlEpoch'=to_jsonb(cmd.deferred_control_epoch)
+          AND fact.payload->'runRevision'=to_jsonb(cmd.expected_run_revision) AND fact.payload->'planDigest'=to_jsonb(cmd.plan_digest)
           AND EXISTS (SELECT 1 FROM run_deferred_pause latch WHERE latch.command_id=cmd.command_id
             AND latch.requested_by=fact.actor_id AND latch.session_id=fact.session_id
             AND latch.requested_at=(fact.payload->>'requestedAt')::timestamptz)) OR
         (NEW.state='applied' AND fact.event_type='lifecycle.run-paused' AND fact.source='worker' AND fact.actor_type='human' AND fact.actor_id=cmd.actor_id AND fact.outcome='success'
-          AND (cmd.kind='pause-now' OR (fact.payload->>'pauseMode'='after-inspection' AND fact.payload->>'workItemId'=cmd.deferred_anchor->>'workItemId' AND fact.payload->>'registrationId'=cmd.deferred_anchor->>'registrationId' AND fact.payload ? 'subjectKey' AND fact.payload->>'subjectKey' IS NOT DISTINCT FROM cmd.deferred_anchor->>'subjectKey'))) OR
+          AND (cmd.kind='pause-now' OR (fact.payload->>'pauseMode'='after-inspection' AND fact.payload->'workItemId'=cmd.deferred_anchor->'workItemId' AND fact.payload->'registrationId'=cmd.deferred_anchor->'registrationId' AND fact.payload ? 'subjectKey' AND fact.payload->'subjectKey' IS NOT DISTINCT FROM cmd.deferred_anchor->'subjectKey'))) OR
         (NEW.state='superseded' AND cmd.kind='pause-now' AND fact.event_type='lifecycle.pause-superseded' AND fact.source='worker' AND fact.actor_type='system' AND fact.actor_id='result-sealer' AND fact.outcome='failure' AND fact.payload->>'requestedBy'=cmd.actor_id) OR
         (NEW.state='superseded' AND cmd.kind='pause-after-inspection' AND fact.event_type='lifecycle.deferred-pause-superseded' AND fact.source IN ('worker','web') AND fact.actor_type='system' AND fact.actor_id='deferred-pause-coordinator' AND fact.outcome='failure' AND fact.payload->>'requestedBy'=cmd.actor_id
-          AND fact.payload->>'workItemId'=cmd.deferred_anchor->>'workItemId' AND fact.payload->>'registrationId'=cmd.deferred_anchor->>'registrationId' AND fact.payload ? 'subjectKey' AND fact.payload->>'subjectKey' IS NOT DISTINCT FROM cmd.deferred_anchor->>'subjectKey')
+          AND fact.payload->'workItemId'=cmd.deferred_anchor->'workItemId' AND fact.payload->'registrationId'=cmd.deferred_anchor->'registrationId' AND fact.payload ? 'subjectKey' AND fact.payload->'subjectKey' IS NOT DISTINCT FROM cmd.deferred_anchor->'subjectKey')
       ),false) THEN RAISE EXCEPTION 'Interaction receipt requires its exact domain event' USING ERRCODE='23514'; END IF;
   END IF;
   RETURN NEW;

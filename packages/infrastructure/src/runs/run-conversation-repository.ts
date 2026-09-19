@@ -403,13 +403,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
               OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
               OR (t.state='superseded' AND e.event_type='lifecycle.pause-superseded' AND e.source='worker' AND e.outcome='failure' AND e.actor_type='system' AND e.actor_id='result-sealer' AND e.payload->>'requestedBy'=c.actor_id)
             )) OR (c.kind='pause-after-inspection'
-              AND e.payload->>'workItemId'=c.deferred_anchor->>'workItemId'
+              AND e.payload->'workItemId'=c.deferred_anchor->'workItemId'
               AND e.payload ? 'subjectKey'
-              AND (e.payload->>'subjectKey' IS NOT DISTINCT FROM c.deferred_anchor->>'subjectKey')
-              AND e.payload->>'registrationId'=c.deferred_anchor->>'registrationId' AND (
+              AND (e.payload->'subjectKey' IS NOT DISTINCT FROM c.deferred_anchor->'subjectKey')
+              AND e.payload->'registrationId'=c.deferred_anchor->'registrationId' AND (
                 (t.state='queued' AND e.event_type='lifecycle.run-deferred-pause-requested' AND e.source='web' AND e.outcome='success'
-                  AND e.actor_type='human' AND e.actor_id=c.actor_id AND e.payload->>'expectedControlEpoch'=c.deferred_control_epoch::text
-                  AND e.payload->>'planDigest'=c.plan_digest AND e.payload->>'runRevision'=c.expected_run_revision::text)
+                  AND e.actor_type='human' AND e.actor_id=c.actor_id AND e.payload->'expectedControlEpoch'=to_jsonb(c.deferred_control_epoch)
+                  AND e.payload->'planDigest'=to_jsonb(c.plan_digest) AND e.payload->'runRevision'=to_jsonb(c.expected_run_revision))
                 OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success'
                   AND e.actor_type='human' AND e.actor_id=c.actor_id AND e.payload->>'pauseMode'='after-inspection')
                 OR (t.state='superseded' AND e.event_type='lifecycle.deferred-pause-superseded' AND e.source IN ('web','worker') AND e.outcome='failure'

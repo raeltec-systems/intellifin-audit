@@ -229,3 +229,14 @@ these new application proofs still require CI execution.
 P3 remains incomplete: the broader conversational control set and frozen strategy
 capabilities still need implementation/proof. Continuous preview, secure assistance and
 all seven acceptance proof gates remain outside this checkpoint's completion claim.
+
+
+### Candidate verification and typed receipt follow-up
+
+Candidate `625dd3b` has passed normal-CI type checks, 678-module boundaries and all
+4,710 unit tests (241 files), plus migration 55/schema drift and P0 browser checks.
+Real PostgreSQL and full application browser jobs are still running. A read-only review
+found SQL text coercion in exact receipt matching; the follow-up compares JSONB values
+and adds a valid P1 numeric-looking employee-key regression. That follow-up is not yet
+covered by the running candidate's results.
+
