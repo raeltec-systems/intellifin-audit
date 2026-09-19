@@ -282,7 +282,8 @@ test.describe('durable Run controller lease', () => {
       const contenderAcquire = contenderController.getByRole('button', { name: 'Acquire control', exact: true });
       await expect(contenderAcquire).toHaveAttribute('aria-disabled', 'true');
       await expect(contenderAcquire).toHaveAccessibleDescription('The current controller must release control or let the lease expire.');
-      await contenderAcquire.click();
+      await contenderAcquire.focus();
+      await contenderAcquire.press('Enter');
       expect(await readLease(pausedRunId)).toMatchObject({ epoch: 1, holder_id: auditor.id });
 
       // The stale tab captures the first epoch and the server-rendered Run revision. Its
@@ -347,11 +348,14 @@ test.describe('durable Run controller lease', () => {
       await assertA11y(holderPage);
     } finally {
       releaseStaleResume?.();
-      if (holderContext) await closeContext(holderContext);
-      if (contenderContext) await closeContext(contenderContext);
+      // Restore the shared identity before browser teardown: a timed-out context may
+      // already be closed, and its cleanup must never leak the temporary manager role.
       if (originalAdminRole !== null) {
         await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at?.toISOString() ?? null}::timestamptz WHERE user_id=${adminId}`;
       }
+      await Promise.allSettled([holderContext, contenderContext]
+        .filter((context): context is BrowserContext => context !== undefined)
+        .map(closeContext));
     }
   });
 });

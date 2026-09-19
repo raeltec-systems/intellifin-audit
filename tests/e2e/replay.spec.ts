@@ -450,7 +450,8 @@ test.describe('Replay with the Workspace Provider unreachable', () => {
       await expect(page.getByRole('status')).toContainText('The requested inspection is not available in this Replay view.');
       const play = page.getByRole('button', { name: REPLAY_COPY.play, exact: true });
       await expect(play).toHaveAttribute('aria-disabled', 'true');
-      await play.click();
+      await play.focus();
+      await play.press('Enter');
       await expect(play).toBeVisible();
       expect(requestedFrames).toEqual([]);
     }

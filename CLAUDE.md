@@ -1,3 +1,14 @@
+## 2026-09-19 — Disabled browser controls and failure cleanup
+
+Playwright click waits for aria-disabled controls to become enabled. Negative tests must
+use keyboard activation of the focusable control and assert persisted state remains
+unchanged; waiting for a forbidden action to become enabled proves nothing. Restore
+shared test roles before browser-context cleanup, because a timed-out context may already
+be closed. The record-review revocation phase permits only Chromium's exact HTTP 403
+resource message for that same Run, while page errors and all earlier console errors fail.
+Workspace decision height must share space with the actual composer and a 120px history
+floor: a fixed rem subtraction clipped the first answer at 1280×800.
+
 ## 2026-09-17 — The Work Item label, on all four surfaces this time
 
 The Timeline was repaired so a Work Item row names the RECORD rather than the Target System,

@@ -51,8 +51,17 @@ test.describe('Record Review through the authenticated application', () => {
   test('keeps the real queue and inspector bounded, searchable, and cursor-stable', async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     const consoleErrors: string[] = [];
+    let checkingRevocation = false;
     page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text());
+      if (message.type() !== 'error') return;
+      // A denied protected reload/stream reports HTTP 403 in Chromium's console.
+      // Only that exact, same-Run refusal is expected during the revocation phase.
+      const resource = message.location().url;
+      const expectedDenial = checkingRevocation &&
+        message.text() === 'Failed to load resource: the server responded with a status of 403 (Forbidden)' &&
+        resource.startsWith(new URL(page.url()).origin + '/') &&
+        new URL(resource).pathname.includes(`/runs/${fixture.runId}`);
+      if (!expectedDenial) consoleErrors.push(message.text());
     });
     page.on('pageerror', (error) => consoleErrors.push(error.message));
 
@@ -155,6 +164,8 @@ test.describe('Record Review through the authenticated application', () => {
 
     // Revoking the actor before a new request must bypass the presentation snapshot. The
     // previous page was visible, but reload authorizes first and cannot serve cached rows.
+    expect(consoleErrors).toEqual([]);
+    checkingRevocation = true;
     await fixture.revokeAuditor();
     try {
       await page.reload();

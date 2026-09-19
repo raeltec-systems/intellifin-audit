@@ -187,3 +187,22 @@ proof and Replay selection cases remain unverified until the clean normal-CI rer
 Browser artifact `10589361619` reports SHA-256
 `ba4135ee7adee8d7812b70db8a2a54df8a2b175c0929f5704d4277b86b96d6a4`.
 The completed run is failed, not a passing checkpoint or closure of a proof gate.
+
+
+## Browser correction after c8a7a68
+
+Normal CI 35459276209: 4,696 unit and 609 PostgreSQL tests passed, as did P0,
+container and hydrated abuse jobs. Full application browser: 212 passed, 20 failed;
+focused authoring: 16 passed. The two new negative tests waited for disabled controls
+to become enabled; controller timeout then prevented shared-role restoration and
+contaminated later administrator journeys. They now activate through the keyboard,
+retain durable-state assertions, and restore the role before best-effort context cleanup.
+The record-review test now distinguishes the exact same-Run HTTP 403 during intentional
+role revocation from unexpected console errors. The actual 1280×800 decision clipping
+is addressed with flex allocation from real sibling heights, retaining the 120px history
+floor. All existing browser geometry assertions remain mandatory on the rerun.
+
+Root test typecheck and 51 focused layout/escalation/stylesheet tests pass locally.
+Actual browser success is still pending. Retained artifact 10589224989 SHA-256:
+`13eaa4d66ab9d6db9deaa66b4945ee0f8d25af07c0327118186891f49e06bc2e`.
+No proof gate closes on these corrections alone.

@@ -203,11 +203,18 @@
   /* Reserve actual history/composer space; clipping the transcript to fit a decision
      would make the split appear successful while removing the working conversation. */
   .run-workspace-route .run-workspace-shell__conversation-scroll {
+    flex: 1 0 120px;
     min-height: 120px;
   }
 
   .run-workspace-route .run-workspace-shell__decision:has(.escalation-panel--workspace) {
-    max-height: min(15rem, calc(100% - 17rem));
+    /* Let the actual composer height and history floor determine the remaining room.
+       A fixed 17rem reservation clipped the first answer at 1280×800 even though
+       the history still had spare height. The decision alone shrinks and scrolls. */
+    flex: 0 1 15rem;
+    min-height: 0;
+    max-height: 15rem;
+    padding: var(--spacing-1);
   }
 }
 
