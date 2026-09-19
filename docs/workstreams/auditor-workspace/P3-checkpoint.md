@@ -87,3 +87,16 @@ and the exact schema inventory still named generation 52. Follow-up repairs reta
 the interpreter rule, clean up the actual terminal package, and list the two generation
 53 tables. The new pause application proof is not yet passed. Browser results remain
 pending on this candidate.
+
+
+## Second P3 database result
+
+On `f89b1a0`, normal CI `35454413253` passed 603 of 604 PostgreSQL tests. The
+cancellation supersession case and schema inventory passed. The remaining pause test
+reached its changed-operation check with an out-of-range selected record, correctly
+receiving malformed-envelope refusal before idempotency reconciliation. The follow-up
+asserts that refusal and separately sends a valid changed-operation envelope with the
+same key to test conflict. Later worker application/rollback/revocation assertions in
+that case remain unproven until the rerun. Type/boundary/unit checks passed all 4,646
+tests, P0 browser and container checks passed. Application-browser results are pending.
+The preceding `8fec5ff` browser job was superseded and canceled, not passed.

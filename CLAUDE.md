@@ -3862,3 +3862,14 @@ CI `35453444876` showed that a wait-reply envelope intentionally classifies paus
 A fixed viewport percentage cannot size a workspace below variable route banners: measure its remaining space and verify actual element bounds before browser auto-scroll. Native capture mode wraps the existing protected image and must prove natural dimensions and keyboard panning; a fitting image alone is not legibility proof. On sunken record cards, muted #64748B has only 4.34:1 contrast; secondary #475569 gives 6.92:1. Compact record review must preserve a working decision link even when conversation is disabled.
 
 Record inspection must render the selected Observation’s original attributes, not just generic account/status summaries or normalized values. Reuse inert untrusted-content rendering; frozen source values and actual captured target values are different evidence.
+
+
+## 2026-09-19 — Validate the changed-operation fixture before testing idempotency
+
+An unqualified `pause now` deliberately ignores stale selected-record context. Ordinary
+messages do not inherit that exception. Reusing the pause fixture’s out-of-range ordinal
+for `resume` tests malformed-envelope refusal before it can test idempotency conflict.
+Keep both guards: assert the malformed ordinary request, then use a valid null selection
+with the same request key to prove a changed operation conflicts. Normal CI on `f89b1a0`
+passed 603 of 604 PostgreSQL cases and exposed this distinction; the follow-up must still
+reach and pass the actual worker application, rollback and revocation assertions.

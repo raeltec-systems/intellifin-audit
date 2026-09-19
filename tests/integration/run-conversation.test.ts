@@ -498,7 +498,10 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       expect(intake).toMatchObject({ source_ordinal: null, reply_to_wait_id: null });
       expect(await repository().append(input)).toEqual({ ...first, replayed: true });
       expect(await repository().append({ ...input, request: { ...request, text: ' PAUSE NOW ' } })).toEqual({ ...first, replayed: true });
-      expect(await repository().append({ ...input, request: { ...request, text: 'resume' } })).toMatchObject({ ok: false, code: 'conflict' });
+      // Only the unqualified safety shortcut ignores stale view selection. An ordinary
+      // request still validates that envelope before idempotency reconciliation.
+      expect(await repository().append({ ...input, request: { ...request, text: 'resume' } })).toMatchObject({ ok: false, code: 'malformed' });
+      expect(await repository().append({ ...input, request: { ...request, text: 'resume', selectedSourceOrdinal: null } })).toMatchObject({ ok: false, code: 'conflict' });
       const [command] = await sql<{ command_id: string; plan_digest: string }[]>`SELECT command_id::text,plan_digest FROM run_interaction_command WHERE message_id=${first.messageId}`;
       expect(command?.plan_digest).toMatch(/^[a-f0-9]{64}$/);
       if (!command) throw new Error('Pause command missing');
