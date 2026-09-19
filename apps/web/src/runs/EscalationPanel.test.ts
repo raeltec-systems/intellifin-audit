@@ -143,6 +143,32 @@ describe('Escalation panel', () => {
     expect(fixed).not.toContain('bad abort');
   });
 
+  it('keeps the workspace decision primary and bounds technical provenance behind its disclosure', () => {
+    const evidenceIds = Array.from({ length: 9 }, (_, index) => `019823ab-0000-7000-8000-00000000000${index + 3}`);
+    const html = renderPanel({
+      details: {
+        stepId: 'step-42',
+        supportingEvidenceIds: evidenceIds,
+        workItemId: null,
+        agentQuestion: 'Which candidate is correct?',
+      },
+      workspacePresentation: { stepLabel: 'Access review' },
+    });
+
+    expect(html.indexOf('Question')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html.indexOf('Decision context')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html.indexOf('Select candidate 1')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html).toContain('Access review');
+    expect(html).toContain('Supporting capture 1');
+    expect(html).toContain('Supporting capture 8');
+    expect(html.indexOf('Supporting capture 1')).toBeLessThan(html.indexOf('Technical details'));
+    expect(html).not.toContain('Supporting capture 9');
+    expect(html).toContain('Showing 8 of 9 supporting captures.');
+    expect(html).toContain('Step ID');
+    expect(html).toContain('step-42');
+    expect(html).not.toContain('Supporting Evidence</h3>');
+  });
+
   it('normalizes fixed answer order and leaves the candidate order grounded in the wait', () => {
     const fixed = wait({
       kind: 'retry-or-skip',

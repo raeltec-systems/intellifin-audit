@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
+import { narrateRunConversationEvent } from '@intellifin/application';
 
 import type {
   AuditChainReader,
@@ -24,7 +25,8 @@ import {
 } from '@intellifin/domain';
 
 import type { Database, Transaction } from './client.js';
-import { auditEventHeads, auditEvents } from './schema.js';
+import { auditEventHeads, auditEvents, auditRun, runConversationMessage } from './schema.js';
+import { isUuidText } from './identifier.js';
 
 export class SystemClock implements Clock {
   now(): Date {
@@ -65,6 +67,14 @@ async function appendAuditEvent(
   validateAuditEventDraft(draft);
   assertNoWorkspaceCapabilities(draft.payload);
   const aggregateId = draft.aggregateId ?? 'platform';
+
+  // Keep the established Run-before-audit-head lock order. The conversation FK
+  // takes KEY SHARE at insertion; taking it before the head prevents inversion
+  // with a concurrent command that holds the Run and then appends its audit event.
+  const [run] = isUuidText(aggregateId)
+    ? await transaction.select({ runId: auditRun.runId }).from(auditRun)
+      .where(eq(auditRun.runId, aggregateId)).for('key share').limit(1)
+    : [];
 
   await transaction
     .insert(auditEventHeads)
@@ -110,6 +120,27 @@ async function appendAuditEvent(
     .update(auditEventHeads)
     .set({ lastSequence: sequence, lastEventHash: eventHash })
     .where(eq(auditEventHeads.aggregateId, aggregateId));
+
+  // The existing aggregate head lock orders these references with human messages.
+  // No copied prose, model call, queue, or second event authority is introduced.
+  // Fixed operational copy is derived from this immutable source event at read time.
+  if (run && narrateRunConversationEvent(record) !== null) {
+    const [last] = await transaction.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
+      .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+    // The bounded conversation must never stop authoritative execution. The audit
+    // event above remains complete and available through the existing timeline.
+    if ((last?.sequence ?? 0) >= 1_000_000) return record;
+    await transaction.insert(runConversationMessage).values({
+      messageId: record.eventId,
+      runId: run.runId,
+      sequence: (last?.sequence ?? 0) + 1,
+      actorId: record.actor.id,
+      kind: 'platform-event',
+      createdAt: new Date(record.occurredAt),
+      sourceEventSequence: record.sequence,
+    });
+    await transaction.execute(sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId: run.runId, sequence: record.sequence })})`);
+  }
 
   return record;
 }

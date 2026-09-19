@@ -1,5 +1,30 @@
 /* AW-040/P1: the record queue and its focused inspector share the existing Ledger Signal
    tokens. Evidence bytes stay behind the protected routes; this sheet styles metadata only. */
+.run-detail-frame--compact {
+  gap: var(--spacing-3);
+}
+
+.run-detail-frame--compact > .ls-page-header {
+  margin-bottom: 0;
+  gap: var(--spacing-1);
+}
+
+.run-detail-frame__compact-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.run-detail-frame__lifecycle > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.run-detail-frame__lifecycle[open] > summary {
+  margin-bottom: var(--spacing-3);
+}
+
 .record-review__layout {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(440px, 1.35fr);
@@ -133,7 +158,7 @@
 }
 
 .record-review__source-summary dt {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: var(--type-caption-font-size);
   line-height: var(--type-caption-line-height);
 }

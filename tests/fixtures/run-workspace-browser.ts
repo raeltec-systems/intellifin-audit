@@ -224,6 +224,9 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
     VALUES(${stepExecutionId},${runId},${inspectStep.id},${workItemId},'inspect-record','RUNNING',1,
       ${runAt},NULL,NULL)`;
 
+  // Historical conversation precedes the actual raised decision. The audit writer
+  // appends its own operational entry; never seed over its authoritative sequence.
+  await seedConversation(sql, auditorId);
   const raised = await raiseEscalation(
     { repository: new PostgresWaitRepository(createDb(sql)), ids, clock: new SystemClock() },
     {
@@ -241,7 +244,6 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   if (!raised.ok) throw new Error(`Run Workspace fixture could not open its persisted wait: ${raised.reason}`);
   const waitId = raised.wait.waitId;
   await seedAgentContext(sql, { waitId, evidenceId, workItemId, stepExecutionId, attemptId });
-  await seedConversation(sql, auditorId);
 
   let roleRevoked = false;
   const readConversationRows = async (): Promise<readonly RunWorkspaceConversationRow[]> => sql`
@@ -258,7 +260,7 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
   const restoreAuditor = async (): Promise<void> => {
     if (!roleRevoked) return;
     await sql`INSERT INTO user_role(user_id,role,assigned_at,assigned_by)
-      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at},${originalRole.assigned_by})
+      VALUES(${auditorId},${originalRole.role},${originalRole.assigned_at?.toISOString() ?? null}::timestamptz,${originalRole.assigned_by})
       ON CONFLICT (user_id) DO UPDATE SET role=excluded.role,assigned_at=excluded.assigned_at,assigned_by=excluded.assigned_by`;
     roleRevoked = false;
   };
@@ -303,7 +305,7 @@ export async function createRunWorkspaceBrowserFixture(): Promise<RunWorkspaceBr
     auditorId,
     targetRegistrationId,
     sourceOrdinal: RUN_WORKSPACE_RECORD_ORDINAL,
-    initialMessageCount,
+    initialMessageCount: (await readConversationRows()).length,
     sql,
     readConversationRows,
     revokeAuditor,

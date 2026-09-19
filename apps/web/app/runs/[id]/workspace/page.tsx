@@ -15,8 +15,8 @@ import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
 import { RunWorkspaceConversation } from '../../../../src/runs/RunWorkspaceConversation';
-import { frameNarration, currentStepExecution, stepNarration } from '../../../../src/runs/live-view';
-import { utcStamp } from '../../../../src/runs/labels';
+import { frameNarration, currentStepExecution } from '../../../../src/runs/live-view';
+import { planActionWord, utcStamp } from '../../../../src/runs/labels';
 
 export const metadata: Metadata = { title: 'Auditor Workspace · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -53,6 +53,10 @@ export default async function RunWorkspacePage({ params, searchParams }: {
   const itemFor = (workItemId: string | null) => timeline.workItems.find(item => item.workItemId === workItemId);
   const targetFor = (workItemId: string | null) => plan?.inputs.targets.find(target => target.registrationId === itemFor(workItemId)?.registrationId)?.displayName ?? null;
   const frameStep = frame === null ? null : timeline.stepExecutions.rows.find(step => step.stepExecutionId === frame.stepExecutionId) ?? null;
+  const decisionStep = plan === null ? undefined : [...plan.sessionSteps, ...plan.targetSystems.flatMap(target => target.planSteps)]
+    .find(step => step.id === waits?.details?.stepId);
+  const currentSubject = itemFor(current?.workItemId ?? null)?.subjectKey ?? null;
+  const currentTarget = targetFor(current?.workItemId ?? null);
   const here = `/runs/${id}/workspace`;
   return <div className="ls-stack">
     <DetailTrail trail={[{ href: '/runs', label: 'Runs' }, { href: `/runs/${id}`, label: run.procedureName }, { href: here, label: 'Auditor Workspace' }]} />
@@ -64,7 +68,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
         progress={<div role="group" aria-label="Run progress">
           {summary.status === 'ready' ? <p>{summary.counts.fullyInspectedSubjects} of {summary.counts.includedRows} included records inspected · {summary.counts.exceptionRecords ?? 'Unknown'} with exceptions · {summary.counts.pendingAssessments} assessments awaiting confirmation</p>
             : <p>Record coverage is not yet available.</p>}
-          <p className="ls-caption">Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : stepNarration(current, targetFor(current.workItemId), itemFor(current.workItemId)?.subjectKey ?? null)}</p>
+          <p className="ls-caption">Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : `${planActionWord(current.action)}${currentSubject === null ? '' : ` for ${currentSubject}`}${currentTarget === null ? '' : ` on ${currentTarget}`}, started ${utcStamp(current.startedAt)}.`}</p>
         </div>}
         controls={<><RunPauseControls runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
           pausePending={run.pauseRequest !== null} awaitingAuditor={run.state === 'AWAITING_AUDITOR'}
@@ -72,7 +76,8 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           <RunCancelControl runId={id} procedureName={run.procedureName} active={isActiveRunState(run.state)} cancelPending={run.cancellation !== null} />
           <Link href={`/runs/${id}/evidence`}>Records and findings</Link><Link href={`/runs/${id}/replay`}>Replay</Link>
           <Link href={`/procedures/${run.procedureId}/versions/${run.versionId}`}>Approved procedure</Link></>}
-        currentDecision={<><OpenEscalationSection run={run} escalation={waits} readAt={readAt} />
+        currentDecision={<><OpenEscalationSection run={run} escalation={waits} readAt={readAt}
+          workspacePresentation={{ stepLabel: decisionStep === undefined ? null : planActionWord(decisionStep.action) }} />
           <PauseBanners run={run} pause={waits?.pause ?? null} readAt={readAt} names={names} />
           {selected?.status === 'ready' && <p>Conversation context: {selected.row.recordLabel}. <Link href={`/runs/${id}/evidence?selected=${selected.row.sourceOrdinal}`}>Open record inspector</Link></p>}
           {ordinal !== null && selected?.status !== 'ready' && <p>The selected record is unavailable. Messages will have Run context only.</p>}</>}

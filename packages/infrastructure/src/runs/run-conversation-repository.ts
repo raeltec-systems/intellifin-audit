@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 
 import {
   RUN_CONVERSATION_MAX_TEXT_BYTES,
@@ -7,6 +7,8 @@ import {
   RUN_CONVERSATION_PAGE_SIZE,
   RUN_CONVERSATION_SCHEMA_VERSION,
   interpretRunConversationMessage,
+  detectRunConversationSecretPattern,
+  narrateRunConversationEvent,
   parseRunConversationMessageRequest,
   type RunConversationAppendReceipt,
   type RunConversationEvidenceLink,
@@ -16,12 +18,14 @@ import {
   type RunConversationRead,
   type RunConversationReadRequest,
   type RunConversationRepository,
+  type RunConversationEventContext,
 } from '@intellifin/application';
-import { authorizeActionRole, type ExecutablePlan } from '@intellifin/domain';
+import { adapterLookupColumn, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
 import {
   auditRun,
+  auditEvents,
   authUser,
   populationRow,
   runConversationContent,
@@ -137,6 +141,7 @@ interface RunConversationMessageRow {
   readonly actorName: string | null;
   readonly ciphertext: string | null;
   readonly removedAt: Date | null;
+  readonly sourceEvent: typeof auditEvents.$inferSelect | null;
 }
 
 function validClock(now: Date): Date {
@@ -205,6 +210,9 @@ function bodyEnvelope(text: string, links: readonly RunConversationEvidenceLink[
 }
 
 function safeFact(value: string, max = 300): string {
+  // An additional conservative refusal for generated facts, not a privacy proof.
+  // Test the complete value before truncation can remove a credential's label.
+  if (detectRunConversationSecretPattern(value) !== null) return '[sensitive value withheld]';
   const clean = value.replace(/[\u0000-\u001f\u007f]/gu, ' ').trim();
   return Array.from(clean).slice(0, max).join('');
 }
@@ -317,27 +325,50 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           actorName: authUser.name,
           ciphertext: runConversationContent.ciphertext,
           removedAt: runConversationContent.removedAt,
+          sourceEvent: auditEvents,
         })
         .from(runConversationMessage)
         .leftJoin(runConversationContent, eq(runConversationContent.messageId, runConversationMessage.messageId))
         .leftJoin(authUser, eq(authUser.id, runConversationMessage.actorId))
+        .leftJoin(auditEvents, and(eq(auditEvents.eventId, runConversationMessage.messageId), sql`${auditEvents.aggregateId} = ${runConversationMessage.runId}::text`, eq(auditEvents.sequence, runConversationMessage.sourceEventSequence)))
         .where(and(eq(runConversationMessage.runId, input.runId), before === null ? sql`true` : lt(runConversationMessage.sequence, before)))
         .orderBy(desc(runConversationMessage.sequence))
         .limit(51) as unknown as readonly RunConversationMessageRow[];
 
       const page = rows.slice(0, RUN_CONVERSATION_PAGE_SIZE);
       const olderBefore = rows.length > RUN_CONVERSATION_PAGE_SIZE ? page[page.length - 1]?.sequence ?? null : null;
+      const eventContext = await this.eventContext(tx, run, page);
       const messages: RunConversationMessage[] = [];
       for (const row of [...page].reverse()) {
         const platform = row.parentMessageId !== null || row.kind === 'platform-event';
         let body: string | null = null;
         let links: readonly RunConversationEvidenceLink[] = [];
         let contentState: RunConversationMessage['contentState'] = 'unavailable';
-        if (row.removedAt !== null) {
+        const source = row.sourceEvent;
+        const narration = source === null ? null : narrateRunConversationEvent({
+          eventId: source.eventId,
+          actor: { type: source.actorType, id: source.actorId },
+          eventType: source.eventType,
+          occurredAt: source.occurredAt.toISOString(),
+          source: source.source,
+          outcome: source.outcome,
+          sessionId: source.sessionId,
+          correlationId: source.correlationId,
+          aggregateId: source.aggregateId,
+          sequence: source.sequence,
+          payload: source.payload,
+          previousHash: source.previousHash,
+          eventHash: source.eventHash,
+        } as AuditEventRecord, eventContext);
+        if (narration !== null) {
+          body = narration.text;
+          links = narration.evidenceRefs;
+          contentState = 'available';
+        } else if (row.removedAt !== null) {
           contentState = 'removed';
         } else if (row.ciphertext !== null) {
           try {
-            const opened = storedBody(cipher.open(input.runId, row.messageId, row.ciphertext));
+            const opened = storedBody(cipher.open(row.runId, row.messageId, row.ciphertext));
             if (opened !== null) {
               body = opened.text;
               links = opened.links;
@@ -353,13 +384,13 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           messageId: row.messageId,
           runId: row.runId,
           sequence: row.sequence,
-          actorId: platform ? null : row.actorId,
-          actorName: platform ? 'Platform' : (row.actorName?.trim() || 'Unknown actor'),
-          source: platform ? 'platform' : 'auditor',
+          actorId: narration !== null && source?.actorType === 'human' ? row.actorId : platform ? null : row.actorId,
+          actorName: narration !== null && source?.actorType === 'human' ? (row.actorName?.trim() || 'Unknown actor') : platform ? 'Platform' : (row.actorName?.trim() || 'Unknown actor'),
+          source: narration !== null && source?.source === 'worker' ? 'worker' : platform ? 'platform' : 'auditor',
           kind: RUN_CONVERSATION_MESSAGE_KINDS.includes(row.kind as RunConversationMessageKind) ? row.kind as RunConversationMessageKind : 'security-notice',
           body,
           contentState,
-          sourceOrdinal: row.sourceOrdinal,
+          sourceOrdinal: narration?.sourceOrdinal ?? row.sourceOrdinal,
           createdAt: row.createdAt.toISOString(),
           contextRevision: row.contextRevision,
           links,
@@ -374,6 +405,60 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         readAt: validClock(this.now()).toISOString(),
       };
     }, { isolationLevel: 'repeatable read' });
+  }
+
+  private async eventContext(tx: Transaction, run: typeof auditRun.$inferSelect, page: readonly RunConversationMessageRow[]): Promise<RunConversationEventContext> {
+    const workIds = new Set<string>();
+    const toolIds = new Set<string>();
+    const evidenceIds = new Set<string>();
+    for (const row of page) {
+      const payload = row.sourceEvent?.payload;
+      if (!payload) continue;
+      if (typeof payload.workItemId === 'string' && isUuidText(payload.workItemId)) workIds.add(payload.workItemId.toLowerCase());
+      if (typeof payload.toolActionId === 'string' && isUuidText(payload.toolActionId)) toolIds.add(payload.toolActionId.toLowerCase());
+      if (Array.isArray(payload.supportingEvidenceIds) && payload.supportingEvidenceIds.length <= MAX_LINKS) {
+        for (const id of payload.supportingEvidenceIds) if (typeof id === 'string' && isUuidText(id)) evidenceIds.add(id.toLowerCase());
+      }
+    }
+    if (workIds.size === 0 && toolIds.size === 0 && evidenceIds.size === 0) return {};
+    const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
+    if (!plan) return {};
+    const key = adapterLookupColumn(plan.inputs.templateId);
+    if (!key) return {};
+    const targets = classifyPlanTargets(plan);
+    // Only a subject-bound work item can name one record. A table-wide P4 inspection
+    // or an adapter batch is not silently attributed to the currently selected row.
+    const subjectTargets = targets.agents.filter(target => plan.inputs.templateId !== 'P-4')
+      .map(target => ({ id: target.target.registrationId, step: target.stepId }));
+    if (subjectTargets.length === 0) return {};
+    const related = await tx.execute<{ work_item_id: string; tool_action_id: string | null; evidence_id: string | null; ordinal: number }>(sql`
+      WITH targets AS (SELECT value->>'id' AS id,value->>'step' AS step
+        FROM jsonb_array_elements(${JSON.stringify(subjectTargets)}::jsonb)),
+      evidence AS (SELECT c.evidence_id,c.tool_action_id FROM run_evidence_capture c
+        WHERE c.run_id=${run.runId}::uuid
+          AND c.evidence_id IN (SELECT jsonb_array_elements_text(${JSON.stringify([...evidenceIds])}::jsonb)::uuid))
+      SELECT w.work_item_id::text,a.tool_action_id::text,e.evidence_id::text,min(p.ordinal)::int AS ordinal
+      FROM run_work_item w
+      JOIN targets t ON t.id=w.registration_id AND t.step=w.step_id
+      JOIN population_row p ON p.run_id=w.run_id AND p.disposition='included'
+        AND jsonb_typeof(p.values->${key})='string' AND p.values->>${key}=w.subject_key
+      LEFT JOIN run_tool_action a ON a.run_id=w.run_id AND a.work_item_id=w.work_item_id
+        AND a.target_system=w.registration_id
+        AND (a.tool_action_id IN (SELECT jsonb_array_elements_text(${JSON.stringify([...toolIds])}::jsonb)::uuid)
+          OR a.tool_action_id IN (SELECT tool_action_id FROM evidence))
+      LEFT JOIN evidence e ON e.tool_action_id=a.tool_action_id
+      WHERE w.run_id=${run.runId}::uuid AND length(w.subject_key)>0
+        AND (w.work_item_id IN (SELECT jsonb_array_elements_text(${JSON.stringify([...workIds])}::jsonb)::uuid) OR a.tool_action_id IS NOT NULL)
+      GROUP BY w.work_item_id,a.tool_action_id,e.evidence_id HAVING count(DISTINCT p.ordinal)=1`);
+    const sourceOrdinalForWorkItemId = new Map<string, number>();
+    const sourceOrdinalForToolActionId = new Map<string, number>();
+    const sourceOrdinalForEvidenceId = new Map<string, number>();
+    for (const row of related) {
+      sourceOrdinalForWorkItemId.set(row.work_item_id, row.ordinal);
+      if (row.tool_action_id !== null) sourceOrdinalForToolActionId.set(row.tool_action_id, row.ordinal);
+      if (row.evidence_id !== null) sourceOrdinalForEvidenceId.set(row.evidence_id, row.ordinal);
+    }
+    return { sourceOrdinalForWorkItemId, sourceOrdinalForToolActionId, sourceOrdinalForEvidenceId };
   }
 
   async append(input: PostgresRunConversationAppendInput): Promise<RunConversationAppendReceipt> {
@@ -441,8 +526,12 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart)));
       if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', reason: 'The conversation rate limit was reached. Try again shortly.' };
 
-      const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+      const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
+        .where(and(eq(runConversationMessage.runId, run.runId), or(isNotNull(runConversationMessage.requestKey), isNotNull(runConversationMessage.parentMessageId))));
       if ((total?.count ?? 0) + 2 > MAX_CONVERSATION_MESSAGES) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its bounded message limit.' };
+      const [position] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
+        .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+      if ((position?.sequence ?? 0) + 2 > 1_000_000) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its history limit. Execution history remains available in Run details.' };
 
       const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
       if (!plan) return { ok: false, code: 'unavailable', reason: 'The frozen Run context is unavailable.' };
@@ -513,7 +602,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
   private async contextRevision(tx: Transaction, runId: string, runRevision: number): Promise<string> {
     const [row] = await tx.execute<{ revision: string }>(sql`
       SELECT md5(jsonb_build_array(
-        ${runRevision},
+        ${runRevision}::integer,
         coalesce((SELECT h.last_sequence FROM audit_event_heads h WHERE h.aggregate_id=${runId}), 0),
         coalesce((SELECT r.revision FROM run_result_review r WHERE r.run_id=${runId}::uuid), 0)
       )::text) AS revision`);

@@ -77,7 +77,7 @@ describe('RunConversation', () => {
         messages: [{ ...message, body: null, contentState: 'removed' }],
       }),
     );
-    expect(html).toContain('Message content removed by retention policy.');
+    expect(html).toContain('Message content was removed.');
     expect(html).toContain('disabled=""');
     expect(html).toContain('Messaging is unavailable for this Run.');
   });

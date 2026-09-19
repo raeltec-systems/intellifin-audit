@@ -3807,3 +3807,26 @@ Retry the same unconfirmed conversation request with the same idempotency key; g
 
 
 Browser fixtures must decode frozen JSON field names exactly: compliance condition identity is `conditionId`, even when the SQL alias is `condition_id`. Record-first Evidence navigation tests must assert the new queue/unavailable state before following Technical details for historical artifact assertions. A passing seeded model or SQL projection does not replace the actual browser fixture setup and navigation.
+
+Operational conversation entries reference the exact immutable audit event and derive
+fixed copy on authorized read; they do not copy payload prose or create another event
+authority. Serialize their sequence under the existing audit aggregate head lock, shared
+with human message writes. Acquire the Run key-share lock before the audit-head lock:
+the metadata foreign key would otherwise acquire it in reverse order and could deadlock
+with an ordinary Run command. A conversation history bound must not stop audit recording
+or execution. Historical events are not silently backfilled or attributed to a source row
+by nearest time. New database fixtures must preserve the unique active-standard-period
+invariant even when their only intent is testing cross-Run access.
+
+Raw parameters passed to PostgreSQL polymorphic JSON constructors need explicit types
+(`runRevision::integer`); a successful page read cannot prove its write path. Client-only
+conversation controls stay disabled until hydrated, so an apparently actionable SSR
+button cannot discard a click. Browser role-revocation fixtures must serialize restored
+timestamps as ISO text; failed cleanup can revoke the shared test identity and invalidate
+later journeys. Preserve those cascading failures in the checkpoint rather than counting
+the unrun tests as successful. Screenshot capture must not mutate input caret styles while
+React is still hydrating server-rendered native forms.
+
+### Auditor Workspace compact review surfaces (2026-09-19)
+
+Keep record-review lifecycle actions in an explicitly opened details panel so the queue begins in the first viewport. Workspace decisions use frozen-plan action words and numbered supporting-capture links; raw Step/Evidence identities remain in Technical details. These presentation choices never alter wait IDs, answer options, revision checks or Evidence read grants.

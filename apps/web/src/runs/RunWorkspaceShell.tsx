@@ -292,7 +292,7 @@ export function RunWorkspaceShell({
           className="run-workspace-shell__pane run-workspace-shell__workspace-pane"
           aria-label="Run workspace"
         >
-          <div className="run-workspace-shell__scroll run-workspace-shell__workspace-scroll">
+          <div className="run-workspace-shell__scroll run-workspace-shell__workspace-scroll" role="region" aria-label="Workspace capture viewport" tabIndex={0}>
             {workspace}
           </div>
         </section>

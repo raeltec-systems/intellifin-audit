@@ -195,7 +195,7 @@ export default async function RunEvidencePage({
   });
   if (pageResult.status !== 'ready') {
     return (
-      <RunDetailFrame run={run} tab="evidence" readAt={readAt}>
+      <RunDetailFrame run={run} tab="evidence" readAt={readAt} compact>
         <Unavailable
           title="Record review queue"
           message={pageStatusCopy(pageResult.status)}
@@ -230,7 +230,7 @@ export default async function RunEvidencePage({
   }
 
   return (
-    <RunDetailFrame run={run} tab="evidence" readAt={readAt}>
+    <RunDetailFrame run={run} tab="evidence" readAt={readAt} compact>
       <div className="record-review__layout">
         <RecordReviewQueue runId={run.runId} page={pageResult} navigation={listNavigation} />
         <RecordReviewInspector

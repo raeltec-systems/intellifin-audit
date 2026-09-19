@@ -127,7 +127,7 @@ export function messageActorLabel(message: RunConversationMessage): string {
 }
 
 export function conversationBody(message: RunConversationMessage): string {
-  if (message.contentState === 'removed') return 'Message content removed by retention policy.';
+  if (message.contentState === 'removed') return 'Message content was removed.';
   if (message.contentState === 'unavailable') return 'Message content is temporarily unavailable.';
   if (message.body === null || message.body === '') return 'No message text recorded.';
   return message.body;
@@ -278,6 +278,8 @@ function ConversationComposer({
   const [sending, setSending] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => { setInteractive(true); }, []);
   const pendingRequestRef = useRef<RunConversationSendInput | null>(null);
   const send = onSend ?? onSubmit;
 
@@ -344,8 +346,8 @@ function ConversationComposer({
   );
 
   const remaining = RUN_CONVERSATION_MAX_TEXT_CHARS - unicodeLength(draft);
-  const disabledMessage = disabledReason ?? 'Messaging is unavailable for this Run.';
-  const unavailable = disabled || send === undefined;
+  const disabledMessage = disabledReason ?? (disabled || send === undefined ? 'Messaging is unavailable for this Run.' : 'Connecting conversation…');
+  const unavailable = !interactive || disabled || send === undefined;
 
   return (
     <form className="run-conversation__composer-form" method="post" action={formAction} onSubmit={onFormSubmit}>
@@ -420,6 +422,8 @@ export function RunConversation({
   const [newActivity, setNewActivity] = useState(false);
   const [loadingOlderInternal, setLoadingOlderInternal] = useState(false);
   const [readActionError, setReadActionError] = useState<string | null>(null);
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => { setInteractive(true); }, []);
   const readOlder = onReadOlder ?? onLoadOlder;
   const isLoadingOlder = loadingOlder || loadingOlderInternal;
 
@@ -494,7 +498,7 @@ export function RunConversation({
         type="button"
         className="run-conversation__older-button"
         onClick={readOlderMessages}
-        disabled={isLoadingOlder || readOlder === undefined}
+        disabled={!interactive || isLoadingOlder || readOlder === undefined}
       >
         {isLoadingOlder ? 'Loading older messages…' : 'Load older messages'}
       </button>

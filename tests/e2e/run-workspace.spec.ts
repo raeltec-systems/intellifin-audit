@@ -45,7 +45,7 @@ async function scan(page: Page): Promise<void> {
 
 async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: false });
+  await page.screenshot({ path, fullPage: false, caret: 'initial' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
@@ -81,6 +81,7 @@ test.describe('Run Workspace through the authenticated application', () => {
 
     await page.goto(workspaceUrl());
     await assertShellLoaded(page);
+    await screenshot(page, testInfo, 'run-workspace-decision-1440x900');
 
     // The selected source ordinal is carried into the workspace from request state. The
     // link remains a protected Record Review navigation, not a client-side mock or a label.
@@ -90,6 +91,9 @@ test.describe('Run Workspace through the authenticated application', () => {
     await expect(page).toHaveURL(/\/runs\/[^/]+\/evidence\?(?:[^#]*&)?(?:selected|record)=1$/);
     const inspector = page.getByRole('region', { name: 'Record inspector', exact: true });
     await expect(inspector).toBeVisible();
+    await inspector.scrollIntoViewIfNeeded();
+    await expect(inspector).toBeInViewport();
+    await screenshot(page, testInfo, 'run-workspace-record-inspector-1440x900');
     await expect(inspector.getByRole('heading', { name: 'parameter-0001', exact: true })).toBeVisible();
     // This fixture has a source row and a real registered wait Evidence reference, but no
     // Observation for the selected row. The inspector's typed Not captured state is the
@@ -134,7 +138,7 @@ test.describe('Run Workspace through the authenticated application', () => {
     // The receipt is followed by a direct database assertion: metadata and governed content
     // were committed, ciphertext contains no plaintext, and the request text decrypts only
     // with the disposable synthetic key used by the browser server.
-    await expect.poll(async () => (await fixture.readConversationRows()).length, { timeout: 10_000 }).toBe(57);
+    await expect.poll(async () => (await fixture.readConversationRows()).length, { timeout: 10_000 }).toBe(fixture.initialMessageCount + 2);
     const rows = await fixture.readConversationRows();
     const submitted = rows.find((row) => row.sequence === fixture.initialMessageCount + 1);
     expect(submitted).toBeDefined();
@@ -146,7 +150,7 @@ test.describe('Run Workspace through the authenticated application', () => {
 
     await page.reload();
     await assertShellLoaded(page);
-    await expect(history(page).locator('[data-message-sequence="56"]')).toContainText(RUN_WORKSPACE_SUBMITTED_TEXT);
+    await expect(history(page).locator(`[data-message-sequence="${fixture.initialMessageCount + 1}"]`)).toContainText(RUN_WORKSPACE_SUBMITTED_TEXT);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await screenshot(page, testInfo, 'run-workspace-persisted-1440x900');
     await scan(page);

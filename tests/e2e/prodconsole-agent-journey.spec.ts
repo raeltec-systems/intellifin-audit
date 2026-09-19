@@ -1,7 +1,7 @@
 import type { AgentModelResponse } from '@intellifin/application';
 import { planProdConsoleTools } from '../../packages/application/src/runs/agent-prodconsole.js';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -74,6 +74,7 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 let sql: Sql;
 let storage: Awaited<ReturnType<typeof startSyntheticS3>>;
 let stopWorker: (() => Promise<void>) | undefined;
+let releaseReadAttributeBarrier: (() => void) | undefined;
 const workerMarkers: string[] = [];
 let workerFailure: string | null = null;
 
@@ -107,8 +108,14 @@ async function startWorker(): Promise<void> {
       EXCEPTION_FINGERPRINT_KEY,
       EXCEPTION_FINGERPRINT_KEY_ID,
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    // The preload uses this test-local IPC channel for the bounded active-workspace
+    // barrier. Production worker behavior is unchanged; the browser test releases it
+    // in a finally block before asserting the terminal journey.
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
+  if (worker.stdout === null || worker.stderr === null) {
+    throw new Error('ProdConsole journey worker did not expose its expected output pipes.');
+  }
   worker.on('error', () => { workerFailure = 'worker-process-error'; });
   const exited = new Promise<void>((resolveExit) => {
     worker.once('close', (code) => {
@@ -129,6 +136,22 @@ async function startWorker(): Promise<void> {
     }
   };
   worker.stdout.on('data', retainMarkers);
+  worker.on('message', (message: unknown) => {
+    if (typeof message !== 'object' || message === null || !('type' in message)) return;
+    if (message.type === 'prodconsole-read-attribute-barrier-ready') {
+      workerMarkers.push('ProdConsole read-attribute barrier ready');
+    }
+  });
+  releaseReadAttributeBarrier = () => {
+    if (closed || !worker.connected) return;
+    try {
+      worker.send({ type: 'release-prodconsole-read-attribute-barrier' }, (error) => {
+        if (error) workerFailure = 'worker-barrier-release-failed';
+      });
+    } catch {
+      workerFailure = 'worker-barrier-release-failed';
+    }
+  };
   // Stderr is deliberately discarded. A worker error is reported using a fixed code;
   // provider/configuration text must never become a test failure artifact.
   worker.stderr.on('data', () => undefined);
@@ -154,12 +177,34 @@ async function startWorker(): Promise<void> {
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       stopWorker = undefined;
+      releaseReadAttributeBarrier = undefined;
     }
   };
   await expect.poll(() => {
     if (workerFailure) throw new Error(workerFailure);
     return workerMarkers.includes('Heartbeat loop started');
   }, { timeout: 60_000 }).toBe(true);
+}
+
+async function waitForReadAttributeBarrier(): Promise<void> {
+  await expect.poll(() => {
+    if (workerFailure) throw new Error(workerFailure);
+    return workerMarkers.includes('ProdConsole read-attribute barrier ready');
+  }, { timeout: 60_000 }).toBe(true);
+}
+
+interface RegisteredScreenshot {
+  readonly evidence_id: string;
+  readonly object_key: string;
+  readonly digest: string;
+  readonly size: number;
+}
+
+async function latestRegisteredScreenshot(runId: string): Promise<RegisteredScreenshot | null> {
+  const [row] = await sql<RegisteredScreenshot[]>`SELECT evidence_id,object_key,digest,size
+    FROM run_evidence WHERE run_id=${runId} AND kind='screenshot' AND state='REGISTERED'
+    ORDER BY captured_at DESC NULLS LAST,evidence_id DESC LIMIT 1`;
+  return row ?? null;
 }
 
 async function scan(page: Page): Promise<void> {
@@ -257,9 +302,54 @@ test.afterAll(async () => {
 test.describe('canonical P-4 through the real compiled worker', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('reconciles every baseline parameter and seals the golden Inconclusive Result', async ({ page }) => {
+  test('reconciles every baseline parameter and seals the golden Inconclusive Result', async ({ page }, testInfo: TestInfo) => {
     test.setTimeout(240_000);
     const runId = await startRun(page);
+    try {
+      // The preload pauses the first model read only after the worker has completed the
+      // real page navigation and committed its screenshot. While that response is held,
+      // the Run remains ACTIVE and the browser can exercise the protected frame route
+      // against the actual registered bytes. The release is unconditional so a failed
+      // assertion cannot strand the worker before the terminal journey below.
+      await waitForReadAttributeBarrier();
+      await expect.poll(async () => String((await sql`SELECT state FROM audit_run WHERE run_id=${runId}`)[0]?.state), { timeout: 15_000 }).toBe('RUNNING');
+      await expect.poll(async () => (await latestRegisteredScreenshot(runId)) !== null, { timeout: 15_000 }).toBe(true);
+      const registered = await latestRegisteredScreenshot(runId);
+      if (registered === null) throw new Error('The active ProdConsole Run did not register its screenshot before the read barrier.');
+      const stored = storage.objects.get(registered.object_key);
+      expect(stored).toBeDefined();
+      expect(sha256HexOfBytes(stored!)).toBe(registered.digest);
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`/runs/${runId}/workspace`);
+      await expect(page.getByRole('heading', { name: 'Agent workspace', exact: true })).toBeVisible();
+      const frame = page.locator('.ls-session__frame');
+      await expect(frame).toBeVisible();
+      await expect.poll(
+        () => frame.evaluate((node) => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth),
+        { timeout: 15_000 },
+      ).toBeGreaterThan(100);
+      const frameSource = await frame.getAttribute('src');
+      expect(frameSource).toBe(`/api/runs/${runId}/frames/${registered.evidence_id}`);
+      const response = await page.request.get(frameSource!);
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toBe('image/png');
+      expect(response.headers()['etag']).toBe(`"${registered.digest}"`);
+      const protectedBytes = await response.body();
+      expect(sha256HexOfBytes(protectedBytes)).toBe(registered.digest);
+      expect(protectedBytes.byteLength).toBe(registered.size);
+      const grants = await sql`SELECT status,locator,capability_digest FROM evidence_read_grant
+        WHERE run_id=${runId} AND evidence_id=${registered.evidence_id}`;
+      expect(grants).toEqual(expect.arrayContaining([
+        { status: 'issued', locator: 'frame', capability_digest: registered.digest },
+      ]));
+      const screenshotPath = testInfo.outputPath('active-workspace-1440x900.png');
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+      await testInfo.attach('active-workspace-1440x900', { path: screenshotPath, contentType: 'image/png' });
+    } finally {
+      releaseReadAttributeBarrier?.();
+    }
+
     await expect.poll(async () => {
       if (workerFailure) throw new Error(workerFailure);
       const [row] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
@@ -439,6 +529,9 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/runs/${runId}/workspace`);
     await expect(page.getByRole('heading', { name: 'Last workspace capture', exact: true })).toBeVisible();
+    const conversation = page.getByRole('region', { name: 'Run conversation', exact: true });
+    await expect(conversation.getByText('A protected capture was registered for the current inspection.', { exact: true }).first()).toBeVisible();
+    await expect(conversation.getByText('The Run ended and its result was sealed.', { exact: true })).toBeVisible();
     const frame = page.locator('.ls-session__frame');
     await expect(frame).toBeVisible();
     await expect.poll(() => frame.evaluate(node => (node as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(100);

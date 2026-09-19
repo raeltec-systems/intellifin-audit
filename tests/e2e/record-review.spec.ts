@@ -24,7 +24,7 @@ async function scan(page: Page): Promise<void> {
 
 async function attachScreenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: false });
+  await page.screenshot({ path, fullPage: false, caret: 'initial' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 

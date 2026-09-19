@@ -1,10 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  bindingDigest,
+  bindingDigestEnvelope,
   classifyPlanTargets,
+  initialDraftCompliance,
+  initialDraftEvidence,
+  initialDraftPopulation,
+  initialDraftSections,
   observationDigest,
   observationIdFor,
   POPULATION_CHECK_NAMES,
+  registrationDigest,
+  snapshotFromRegistration,
   type ExecutablePlan,
   type JsonValue,
   type ObservationAttribute,
@@ -14,6 +22,7 @@ import {
   createDb,
   createSqlClient,
   CryptoUuidV7Generator,
+  PostgresAuditUnitOfWork,
   PostgresProceduresUnitOfWork,
   type Database,
   type Sql,
@@ -51,6 +60,48 @@ interface SeededConversation {
   readonly targetId: string;
   readonly stepId: string;
   readonly sourceKey: string;
+}
+
+function p1ConversationInputs(bindingId: string, registrationId: string) {
+  const schema = ['employee_id', 'full_name', 'employment_status', 'termination_effective_date'];
+  const source = {
+    kind: 'versioned-file' as const,
+    location: 'https://synthetic.invalid/leavers.csv',
+    declaredSchema: schema,
+    sensitiveFields: [],
+    declaredCountMechanism: 'cover-sheet' as const,
+  };
+  const registration = {
+    registrationId,
+    displayName: 'LoanCore',
+    kind: 'web' as const,
+    allowedOrigins: ['https://synthetic.invalid'],
+    applicationIdentity: '',
+    credentialRef: 'vault://synthetic/loancore',
+    permittedActions: ['navigate', 'search', 'read-attribute'] as const,
+    attributeLabelPatterns: ['Employee ID', 'Full name', 'Status', 'Username', 'Roles'],
+    secondaryKey: 'full_name',
+    authenticationDestination: 'https://synthetic.invalid/sign-in',
+  };
+  return {
+    ...initialDraftPopulation('P-1'),
+    ...initialDraftCompliance('P-1'),
+    ...initialDraftEvidence('P-1'),
+    templateId: 'P-1' as const,
+    controlName: 'Synthetic leaver review',
+    sections: initialDraftSections('P-1'),
+    scope: 'Synthetic terminated employees',
+    period: { from: '2026-08-01', to: '2026-08-31' },
+    sourceSnapshot: {
+      bindingId,
+      displayName: 'Synthetic leavers',
+      digest: bindingDigest(source),
+      contract: bindingDigestEnvelope(source),
+    },
+    schedule: { frequency: 'once' as const, startTime: '00:00', periodDerivationRule: 'explicit-period' as const },
+    targets: [snapshotFromRegistration({ ...registration, digest: registrationDigest(registration) })],
+    instructions: [{ registrationId, text: 'Search by the approved employee keys and inspect the account.' }],
+  };
 }
 
 /**
@@ -238,6 +289,15 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       replacementFailure = error as { code?: string };
     }
     expect(replacementFailure?.code).toBe('23514');
+    let secondRemovalFailure: { code?: string } | undefined;
+    try {
+      await sql`UPDATE run_conversation_content
+        SET ciphertext=NULL, removed_at=${new Date(now.getTime() + 3_000).toISOString()}::timestamptz, content_epoch=content_epoch+1
+        WHERE message_id=${receipt.messageId}::uuid`;
+    } catch (error) {
+      secondRemovalFailure = error as { code?: string };
+    }
+    expect(secondRemovalFailure?.code).toBe('23514');
     const read = await repository().read({ runId: seeded.runId, actorId: seeded.revokedId });
     expect(read.status).toBe('ready');
     if (read.status !== 'ready') return;
@@ -270,6 +330,154 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     expect(pauseReply?.body).toContain('does not execute Run controls');
   });
 
+  it('projects a committed workspace event into conversation metadata and fixed narration', async () => {
+    const event = await appendWorkspaceEvent(seeded.runId);
+    const [metadata] = await sql<{
+      message_id: string;
+      run_id: string;
+      sequence: number;
+      source_event_sequence: number;
+      kind: string;
+    }[]>`
+      SELECT message_id::text,run_id::text,sequence,source_event_sequence,kind
+      FROM run_conversation_message
+      WHERE message_id=${event.eventId}::uuid`;
+    expect(metadata).toMatchObject({
+      message_id: event.eventId,
+      run_id: seeded.runId,
+      source_event_sequence: event.sequence,
+      kind: 'platform-event',
+    });
+
+    const [content] = await sql<{ message_id: string }[]>`
+      SELECT message_id::text FROM run_conversation_content WHERE message_id=${event.eventId}::uuid`;
+    expect(content).toBeUndefined();
+
+    const read = await repository().read({ runId: seeded.runId, actorId: seeded.readerId });
+    expect(read.status).toBe('ready');
+    if (read.status !== 'ready') return;
+    expect(read.messages.find(message => message.messageId === event.eventId)).toMatchObject({
+      messageId: event.eventId,
+      actorId: null,
+      actorName: 'Platform',
+      source: 'worker',
+      kind: 'platform-event',
+      body: 'A private workspace was created for this Run.',
+      contentState: 'available',
+      sourceOrdinal: null,
+    });
+  });
+
+  it('maps a P-1 work event only through the frozen Run population join', async () => {
+    const fixture = await seedP1EventContext();
+    try {
+      const exact = await appendInspectionEvent(fixture.runId, fixture.exactWorkItemId);
+      const duplicate = await appendInspectionEvent(fixture.runId, fixture.duplicateWorkItemId);
+      const crossRun = await appendInspectionEvent(fixture.runId, fixture.crossRunWorkItemId);
+
+      const read = await repository().read({ runId: fixture.runId, actorId: seeded.readerId });
+      expect(read.status).toBe('ready');
+      if (read.status !== 'ready') return;
+
+      expect(read.messages.find(message => message.messageId === exact.eventId)).toMatchObject({
+        kind: 'platform-event',
+        body: 'The current inspection started.',
+        sourceOrdinal: 1,
+      });
+      expect(read.messages.find(message => message.messageId === duplicate.eventId)).toMatchObject({
+        kind: 'platform-event',
+        body: 'The current inspection started.',
+        sourceOrdinal: null,
+      });
+      expect(read.messages.find(message => message.messageId === crossRun.eventId)).toMatchObject({
+        kind: 'platform-event',
+        body: 'The current inspection started.',
+        sourceOrdinal: null,
+      });
+    } finally {
+      await cleanupRun(fixture.runId);
+      await cleanupRun(fixture.otherRunId);
+      await sql`DELETE FROM procedure_version WHERE procedure_id=${fixture.procedureId}`;
+      await sql`DELETE FROM procedure WHERE procedure_id=${fixture.procedureId}`;
+    }
+  });
+
+  it('rolls back an audit event and its operational conversation metadata together', async () => {
+    let eventId: string | undefined;
+    let failure: unknown;
+    try {
+      await new PostgresAuditUnitOfWork(db, { clock: { now: () => new Date(now.getTime()) } }).execute(async ({ auditEvents }) => {
+        const event = await auditEvents.append(workspaceEventDraft(seeded.runId));
+        eventId = event.eventId;
+        throw new Error('conversation rollback probe');
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('conversation rollback probe');
+    expect(eventId).toBeDefined();
+    if (!eventId) return;
+
+    const [event] = await sql<{ event_id: string }[]>`
+      SELECT event_id::text FROM audit_events WHERE event_id=${eventId}::uuid`;
+    const [message] = await sql<{ message_id: string }[]>`
+      SELECT message_id::text FROM run_conversation_message WHERE message_id=${eventId}::uuid`;
+    expect(event).toBeUndefined();
+    expect(message).toBeUndefined();
+  });
+
+  it('orders concurrent human and operational appends with unique conversation sequences', async () => {
+    const eventPromise = appendWorkspaceEvent(seeded.runId);
+    const humanPromise = append(seeded.readerId, { text: 'concurrent ordering probe' });
+    const [event, human] = await Promise.all([eventPromise, humanPromise]);
+    expect(human.ok).toBe(true);
+    if (!human.ok) return;
+
+    const rows = await sql<{
+      message_id: string;
+      sequence: number;
+      source_event_sequence: number | null;
+    }[]>`
+      SELECT message_id::text,sequence,source_event_sequence
+      FROM run_conversation_message
+      WHERE run_id=${seeded.runId}
+        AND (message_id=${event.eventId}::uuid OR message_id=${human.messageId}::uuid OR parent_message_id=${human.messageId}::uuid)
+      ORDER BY sequence ASC`;
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map(row => row.sequence)).size).toBe(rows.length);
+    const operational = rows.find(row => row.message_id === event.eventId);
+    const humanRow = rows.find(row => row.message_id === human.messageId);
+    const replyRow = rows.find(row => row.message_id !== event.eventId && row.message_id !== human.messageId);
+    expect(operational).toMatchObject({ source_event_sequence: event.sequence });
+    expect(humanRow).toMatchObject({ sequence: human.sequence });
+    expect(replyRow).toMatchObject({ sequence: human.sequence + 1 });
+    expect(humanRow?.source_event_sequence).not.toBeNull();
+    if (humanRow?.source_event_sequence === null || humanRow?.source_event_sequence === undefined || operational === undefined) return;
+    if (event.sequence < humanRow.source_event_sequence) {
+      expect(operational.sequence).toBeLessThan(human.sequence);
+    } else {
+      expect(event.sequence).toBeGreaterThan(humanRow.source_event_sequence);
+      expect(operational.sequence).toBeGreaterThan(human.sequence + 1);
+    }
+  });
+
+  it('opens governed content when the Run identifier is supplied with uppercase hex', async () => {
+    const receipt = await append(seeded.readerId, { text: 'uppercase canonical Run identity probe' });
+    expect(receipt.ok).toBe(true);
+    if (!receipt.ok) return;
+
+    const read = await repository().read({ runId: seeded.runId.toUpperCase(), actorId: seeded.readerId });
+    expect(read.status).toBe('ready');
+    if (read.status !== 'ready') return;
+    expect(read.messages.find(message => message.messageId === receipt.messageId)).toMatchObject({
+      messageId: receipt.messageId,
+      runId: seeded.runId,
+      body: 'uppercase canonical Run identity probe',
+      contentState: 'available',
+    });
+  });
+
   async function append(actorId: string, input: { runId?: string; text: string; selectedSourceOrdinal?: number | null; replyToWaitId?: string | null }) {
     return repository().append({
       actorId,
@@ -282,6 +490,139 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
         replyToWaitId: input.replyToWaitId ?? null,
       },
     });
+  }
+
+  function workspaceEventDraft(runId: string) {
+    return {
+      actor: { type: 'system' as const, id: 'workspace-worker' },
+      eventType: 'lifecycle.agent-workspace' as const,
+      source: 'worker' as const,
+      outcome: 'success' as const,
+      sessionId: 'workspace-session',
+      correlationId: ids.next(),
+      aggregateId: runId,
+      payload: { diagnostic: 'workspace-created', state: 'RUNNING', stepId: null },
+    };
+  }
+
+  async function appendWorkspaceEvent(runId: string) {
+    return new PostgresAuditUnitOfWork(db, { clock: { now: () => new Date(now.getTime()) } }).execute(({ auditEvents }) =>
+      auditEvents.append(workspaceEventDraft(runId)),
+    );
+  }
+
+  async function appendInspectionEvent(runId: string, workItemId: string) {
+    const stepExecutionId = ids.next();
+    return new PostgresAuditUnitOfWork(db, { clock: { now: () => new Date(now.getTime()) } }).execute(({ auditEvents }) =>
+      auditEvents.append({
+        actor: { type: 'system' as const, id: 'agent-worker' },
+        eventType: 'lifecycle.agent-work' as const,
+        source: 'worker' as const,
+        outcome: 'success' as const,
+        sessionId: 'p1-inspection',
+        correlationId: ids.next(),
+        aggregateId: runId,
+        payload: { diagnostic: 'work-item-attempt-started', state: 'RUNNING', workItemId, stepExecutionId, attempt: 1 },
+      }),
+    );
+  }
+
+  async function seedP1EventContext() {
+    const procedureId = ids.next();
+    const versionId = ids.next();
+    const runId = ids.next();
+    const otherRunId = ids.next();
+    const registrationId = ids.next();
+    const bindingId = ids.next();
+    const version = activeRunVersion(procedureId, versionId, seeded.readerId, p1ConversationInputs(bindingId, registrationId));
+    await new PostgresProceduresUnitOfWork(db).execute(async context => {
+      await context.procedures.insertProcedure(version);
+      await context.procedures.insertVersion(version);
+    });
+    const plan = version.compiledPlan!;
+    const target = classifyPlanTargets(plan).agents[0];
+    if (!target) throw new Error('P-1 conversation fixture requires a subject-scoped agent Target');
+    await insertRun(runId, procedureId, versionId, seeded.readerId, '2026-08-01', '2026-08-31');
+    await insertRun(otherRunId, procedureId, versionId, seeded.readerId, '2026-09-01', '2026-09-30');
+    await insertP1Population(runId, [
+      { employee_id: 'E-001', full_name: 'Exact Person' },
+      { employee_id: 'E-DUP', full_name: 'Duplicate One' },
+      { employee_id: 'E-DUP', full_name: 'Duplicate Two' },
+    ]);
+    await insertP1Population(otherRunId, [{ employee_id: 'E-CROSS', full_name: 'Cross Run Person' }]);
+
+    const exactWorkItemId = ids.next();
+    const duplicateWorkItemId = ids.next();
+    const crossRunWorkItemId = ids.next();
+    await db.insert(runWorkItem).values([
+      {
+        workItemId: exactWorkItemId,
+        runId,
+        stepId: target.stepId,
+        ordinal: 1,
+        subjectKey: 'E-001',
+        registrationId: target.target.registrationId,
+        displayName: 'LoanCore exact record',
+        state: 'IN_PROGRESS',
+        attempts: 1,
+        cycles: 0,
+        diagnostic: null,
+        evidenceId: null,
+        observations: 0,
+      },
+      {
+        workItemId: duplicateWorkItemId,
+        runId,
+        stepId: target.stepId,
+        ordinal: 2,
+        subjectKey: 'E-DUP',
+        registrationId: target.target.registrationId,
+        displayName: 'LoanCore duplicate record',
+        state: 'IN_PROGRESS',
+        attempts: 1,
+        cycles: 0,
+        diagnostic: null,
+        evidenceId: null,
+        observations: 0,
+      },
+      {
+        workItemId: crossRunWorkItemId,
+        runId: otherRunId,
+        stepId: target.stepId,
+        ordinal: 1,
+        subjectKey: 'E-CROSS',
+        registrationId: target.target.registrationId,
+        displayName: 'LoanCore cross Run record',
+        state: 'IN_PROGRESS',
+        attempts: 1,
+        cycles: 0,
+        diagnostic: null,
+        evidenceId: null,
+        observations: 0,
+      },
+    ]);
+    return { procedureId, runId, otherRunId, exactWorkItemId, duplicateWorkItemId, crossRunWorkItemId };
+  }
+
+  async function insertP1Population(runId: string, rows: readonly { employee_id: string; full_name: string }[]): Promise<void> {
+    await db.insert(populationSnapshot).values({
+      runId,
+      included: rows.length,
+      excluded: 0,
+      indeterminate: 0,
+      rowsDigest: null,
+      checks: POPULATION_CHECK_NAMES.map(name => ({ name, passed: true })),
+      generatedAt: new Date('2026-09-01T00:00:00.000Z'),
+      declaredCount: rows.length,
+      retrievedCount: rows.length,
+    });
+    await db.insert(populationRow).values(rows.map((values, index) => ({
+      runId,
+      ordinal: index + 1,
+      values: { ...values } satisfies Record<string, JsonValue>,
+      disposition: 'included' as const,
+      reasons: [] as string[],
+    })));
   }
 
   async function seed(): Promise<SeededConversation> {
@@ -317,8 +658,8 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       { userId: pagerId, role: 'auditor', assignedAt: new Date(BASE_NOW), assignedBy: readerId },
       { userId: revokedId, role: 'auditor', assignedAt: new Date(BASE_NOW), assignedBy: readerId },
     ]);
-    await insertRun(runId, procedureId, versionId, readerId);
-    await insertRun(otherRunId, procedureId, versionId, readerId);
+    await insertRun(runId, procedureId, versionId, readerId, '2026-08-01', '2026-08-31');
+    await insertRun(otherRunId, procedureId, versionId, readerId, '2026-09-01', '2026-09-30');
     await insertPopulation(runId);
     await insertPopulation(otherRunId);
 
@@ -335,7 +676,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     return { procedureId, versionId, runId, otherRunId, readerId, pagerId, revokedId, readerSession, evidenceId, otherEvidenceId, waitId, plan, targetId, stepId, sourceKey };
   }
 
-  async function insertRun(runId: string, procedureId: string, versionId: string, actorId: string): Promise<void> {
+  async function insertRun(runId: string, procedureId: string, versionId: string, actorId: string, periodFrom: string, periodTo: string): Promise<void> {
     await db.insert(auditRun).values({
       requestToken: ids.next(),
       runId,
@@ -344,8 +685,8 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       versionId,
       versionNumber: 1,
       procedureName: 'Conversation test procedure',
-      periodFrom: '2026-08-01',
-      periodTo: '2026-08-31',
+      periodFrom,
+      periodTo,
       state: 'RUNNING',
       kind: 'STANDARD',
       initiatorId: actorId,
