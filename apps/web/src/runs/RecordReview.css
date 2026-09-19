@@ -107,7 +107,7 @@
 
 .record-review__filters {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(8rem, 0.7fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
   align-items: end;
   gap: var(--spacing-3);
   padding: var(--spacing-3);

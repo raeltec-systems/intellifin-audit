@@ -134,6 +134,13 @@ test.describe('Record Review through the authenticated application', () => {
     await expect(inspector.getByRole('heading', { name: fixture.searchTerm, exact: true })).toBeVisible();
     await expect(queue(page).getByLabel('Search records')).toHaveValue(fixture.searchTerm);
     await expect(queue(page).getByLabel('Filter')).toHaveValue('exceptions');
+    // The queue narrows when the inspector is open. Its controls must wrap instead
+    // of shrinking the search to two characters and the filter to an arrow alone.
+    for (const field of ['Search records', 'Filter']) {
+      const bounds = await queue(page).getByLabel(field, { exact: true }).boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.width).toBeGreaterThanOrEqual(160);
+    }
     await expect(inspector).toBeVisible();
     await attachScreenshot(page, testInfo, 'record-review-inspector-1280x800');
     await scan(page);

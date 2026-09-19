@@ -70,3 +70,13 @@ fixture's raised Escalation queues independent notification delivery; the follow
 waits for its persisted channel outcomes before taking the baseline, keeps all existing
 non-access audit entries in the comparison, and includes event types in any failure.
 That correction still needs CI; full history/deep Replay and the release gates remain.
+
+
+### Inspector filter readability correction
+
+Visual inspection of the retained `625dd3b` worker-produced inspector capture exposed
+a narrow search field and an almost arrow-only filter. The four-column grid responded
+only to viewport width while the inspector reduced the queue's available space. The
+follow-up uses a grid that wraps according to the pane width and adds a 1280×800 browser
+assertion requiring readable search/filter widths. Existing value, paging, selected-row,
+revocation and accessibility assertions remain. Actual browser verification is pending.

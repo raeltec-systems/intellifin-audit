@@ -4007,3 +4007,10 @@ that same transaction. Retry validates that source fact and does not close anoth
 wait. Both intake and displayed proposal must remain readable at first confirmation.
 Disclose the existing safe attempt restart. The worker-produced browser journey and
 lost-response/retry journey are required application proof, not replaced by model tests.
+
+### Size record filters for their pane, not the viewport (2026-09-19)
+
+The actual worker-to-inspector capture exposed search/filter controls reduced to a few
+pixels inside the desktop queue. The viewport was wide, but the adjacent inspector
+made the queue narrow. Use an auto-fitting grid with readable field minima so controls
+wrap with their own pane. Browser proof must measure the fields with the inspector open.
