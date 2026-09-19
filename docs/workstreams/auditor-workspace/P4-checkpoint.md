@@ -39,3 +39,18 @@ journey does not by itself prove the composed inspector. Loading a selected insp
 beyond the current Replay read bound also remains; this candidate reports that limit
 honestly. P3’s remaining commands and P6 secure assistance are still required for the
 full co-working target. G1 auditor review and G3/G4/G5/G7 release obligations remain open.
+
+
+## Composed worker-to-inspector review candidate
+
+The existing actual P-1 worker journeys now open their produced record from the review
+queue and make both confirm and reject decisions inside its inspector. They require
+the selected URL to survive reload, no review command from merely opening the record,
+the worker-completed command and sealed Result, original proposal history and unchanged
+Observation/evaluation/Evidence rows. Rejection still requires the worker-signed
+Exception. The independent standalone review tests remain in the normal suite.
+
+Root test TypeScript passes locally. These changed browser journeys are pending normal
+CI; their prior Run Detail passes do not prove this new composition. On `c8a7a68`,
+CI `35459276209` has passed all 4,696 unit tests, TypeScript, 675-module boundaries and
+P0 browser checks; its full application browser suite is still running.

@@ -3934,3 +3934,13 @@ assigned_at as ISO text with an explicit timestamptz cast, including finally cle
 A failed role restoration can invalidate every later authenticated browser case; keep
 those cases unverified until a clean rerun. Resume audit expectations must include the
 actual controller acquisition; do not relax the authorization or event-chain assertions.
+
+
+### Prove composed review with worker-produced records (2026-09-19)
+
+The standalone evaluation fixture seeds machine proposals for command testing and is
+not proof of record projection joins. The actual P-1 worker journey already produces
+the frozen work item, population, capture and C2 proposal. Route its confirm/reject
+journeys through the record queue and inspector, retain the selected URL across reload,
+and compare original Observation/evaluation/Evidence rows before and after review.
+A successful submit is insufficient: require the worker command and sealed Result.

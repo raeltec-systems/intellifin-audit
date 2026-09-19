@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -394,13 +394,33 @@ async function inspectCapturedAccountStatus(page: Page, runId: string): Promise<
   } finally { page.off('request', observe); }
 }
 
-async function assertPendingReview(page: Page, runId: string): Promise<void> {
-  await page.goto(`/runs/${runId}`);
-  await expect(page.getByText('1 Agent-Judged evaluations await confirmation', { exact: true })).toBeVisible();
-  await expect(page.getByText('Original Agent-Judged proposal', { exact: true })).toBeVisible();
-  await expect(page.getByText('Synthetic provider proposal: the captured account is disabled and carries only the frozen read-only role.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Confirm evaluation', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Reject evaluation', exact: true })).toBeVisible();
+async function assertPendingReview(page: Page, runId: string, testInfo: TestInfo): Promise<void> {
+  await page.goto(`/runs/${runId}/evidence`);
+  const queue = page.getByRole('region', { name: 'Records and findings', exact: true });
+  await expect(queue).toBeVisible();
+  const row = queue.locator('ol[aria-label="Record review queue"] > li').filter({ hasText: EMPLOYEE_ID });
+  await expect(row).toHaveCount(1);
+  await row.getByRole('link', { name: 'Review evidence', exact: true }).click();
+  await expect(page).toHaveURL(url => url.searchParams.has('selected'));
+  const selectedUrl = page.url();
+  const inspector = page.getByRole('region', { name: 'Record inspector', exact: true });
+  await expect(inspector).toBeVisible();
+  await expect(inspector).toContainText(EMPLOYEE_ID);
+  const review = inspector.getByRole('region', { name: 'Human review', exact: true });
+  await expect(review.getByText('1 Agent-Judged evaluations await confirmation', { exact: true })).toBeVisible();
+  await expect(review.getByText('Original Agent-Judged proposal', { exact: true })).toBeVisible();
+  await expect(review.getByText('Synthetic provider proposal: the captured account is disabled and carries only the frozen read-only role.', { exact: true })).toBeVisible();
+  await expect(review.getByRole('button', { name: 'Confirm evaluation', exact: true })).toBeVisible();
+  await expect(review.getByRole('button', { name: 'Reject evaluation', exact: true })).toBeVisible();
+  // Reading the selected record and its worker-produced evidence cannot decide it.
+  const [before] = await sql`SELECT count(*)::int AS count FROM run_evaluation_review_command WHERE run_id=${runId}`;
+  expect(before?.count).toBe(0);
+  await page.reload();
+  await expect(page).toHaveURL(selectedUrl);
+  await expect(review.getByRole('button', { name: 'Confirm evaluation', exact: true })).toBeVisible();
+  const path = testInfo.outputPath('record-inspector-pending-review.png');
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach('record-inspector-pending-review', { path, contentType: 'image/png' });
   await scan(page);
 }
 
@@ -447,7 +467,10 @@ async function assertFinalReview(page: Page, runId: string, action: 'confirm' | 
     await expect.poll(async () => Number((await sql`SELECT count(*)::int AS count FROM run_exception WHERE run_id=${runId}`)[0]?.count ?? 0), { timeout: 30_000 }).toBe(0);
   }
 
+  const selectedUrl = page.url();
   await page.reload();
+  await expect(page).toHaveURL(selectedUrl);
+  await expect(page.getByRole('region', { name: 'Record inspector', exact: true })).toContainText(EMPLOYEE_ID);
   await expect(page.getByText('Stored human review decision', { exact: true })).toBeVisible();
   await expect(page.getByText('The Result is sealed. Review history is read-only.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm evaluation', exact: true })).toHaveCount(0);
@@ -528,7 +551,7 @@ test.afterAll(async () => {
 test.describe.serial('actual P-1 execution through human Agent-Judged review', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
-  test('executes the compiled worker, reaches pending, and confirms from Run Detail', async ({ page }) => {
+  test('executes the compiled worker, reaches pending, and confirms from the record inspector', async ({ page }, testInfo) => {
     test.setTimeout(240_000);
     const markerStart = workerMarkers.length;
     const runId = await startRun(page);
@@ -536,20 +559,20 @@ test.describe.serial('actual P-1 execution through human Agent-Judged review', (
     await assertActualExecution(runId, markerStart);
     const before = await reviewSnapshot(runId);
     await inspectCapturedAccountStatus(page, runId);
-    await assertPendingReview(page, runId);
+    await assertPendingReview(page, runId, testInfo);
     await finishReview(page, runId, 'confirm');
     await assertFinalReview(page, runId, 'confirm');
     expect(await reviewSnapshot(runId)).toEqual(before);
   });
 
-  test('executes a fresh worker run, reaches pending, and rejects with a worker-signed Exception', async ({ page }) => {
+  test('executes a fresh worker run, reaches pending, and rejects from the record inspector with a worker-signed Exception', async ({ page }, testInfo) => {
     test.setTimeout(240_000);
     const markerStart = workerMarkers.length;
     const runId = await startRun(page);
     await waitForPending(runId);
     await assertActualExecution(runId, markerStart);
     const before = await reviewSnapshot(runId);
-    await assertPendingReview(page, runId);
+    await assertPendingReview(page, runId, testInfo);
     await finishReview(page, runId, 'reject');
     await assertFinalReview(page, runId, 'reject');
     expect(await reviewSnapshot(runId)).toEqual(before);
