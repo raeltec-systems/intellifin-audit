@@ -3848,3 +3848,7 @@ A conversational pause must carry a server-generated commandId on the existing R
 Exact unqualified Run pause normalizes viewing-only source/wait context to null before persistence. It skips evidence fact reads and the ordinary message quota, with a separate rate bucket; non-safety messages retain full context validation. Absolute history bounds remain enforced.
 
 Interaction command inserts must join the exact conversation-received audit fact (actor, message, intent and semantic fingerprint), not only a generic auditor message. Receipt reads fail closed if their authoritative source event is absent or no longer matches; storage damage must not display a credible applied status. Reply context revisions are read after the domain command.
+
+### P-4 lifecycle boundary after model response (2026-09-19)
+
+The specialized ProdConsole page path must call the existing lifecycle boundary after its model turn, before uncertainty handling or observation/declaration registration. Otherwise a safety request arriving during that read is superseded by completion without pausing. Preserve the completed model-turn evidence on the superseded attempt; after Resume, prove the fresh successful attempt separately instead of asserting only one model read occurred. Browser fixture display names need not embed their generated isolation IDs.

@@ -65,3 +65,13 @@ retains the existing exact schema-generation startup guard; a prior image refuse
 new schema rather than half-serving it. This is not a claim that rollback has been
 proven. G7 still needs the specified workload benchmark. G1 auditor study, G3 preview/
 private-input isolation, and D2/D3 policy/authority decisions remain open.
+
+## Worker-boundary correction
+
+Review of the actual P-4 runner found a missing lifecycle check after its specialized
+page-model turn. The follow-up invokes the existing boundary before registration,
+retaining cancellation priority and attempt-restart semantics. The interrupted completed
+model turn remains attached to its superseded attempt; the resumed successful read is
+verified separately. The compiled-worker browser journey now checks queued/applied
+PostgreSQL receipts and Resume before preserving the unchanged golden negative result.
+This proof is still pending normal CI.
