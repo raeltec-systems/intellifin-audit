@@ -48,3 +48,15 @@ export async function confirmDeferredPauseProposal(request: unknown): Promise<Ru
     return { ok: false, code: 'unavailable', reason: 'The pause could not be confirmed. Retry the same confirmation to recover its recorded outcome.' };
   }
 }
+
+export async function confirmConversationResume(request: unknown): Promise<RunConversationCommandReceipt> {
+  const decision = await requireServerAction('run.resume');
+  if (!decision.allowed) return { ok: false, code: 'denied', reason: decision.reason };
+  try {
+    return await (await getRuntime()).conversation.confirmResume({
+      actorId: decision.session.userId, sessionId: decision.session.sessionId, request,
+    });
+  } catch {
+    return { ok: false, code: 'unavailable', reason: 'Resume could not be confirmed. Retry this same confirmation to recover its recorded outcome.' };
+  }
+}

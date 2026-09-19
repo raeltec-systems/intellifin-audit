@@ -807,6 +807,89 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     } finally { await cleanupDeferredContext(fixture); }
   });
 
+  it('confirms the stored Resume once and recovers that fact without rebinding the pause', async () => {
+    const runId = await seedResumeContext();
+    try {
+      await acquireControl(runId);
+      const receipt = await append(seeded.readerId, { runId, text: 'Resume' });
+      expect(receipt.ok).toBe(true);
+      const [command] = await sql`SELECT command_id,resume_anchor,expected_run_revision,plan_digest FROM run_interaction_command WHERE run_id=${runId} AND kind='resume'`;
+      if (!command) throw new Error('Resume proposal missing');
+      const request = { runId, commandId: command.command_id };
+      const confirm = () => repository().confirmResume({ actorId: seeded.readerId, sessionId: seeded.readerSession, request });
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE run_id=${runId}`).toEqual([{ closed_at: null }]);
+      expect(await repository().confirmResume({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+        request: { ...request, expectedControlEpoch: 99 } })).toMatchObject({ ok: false, code: 'malformed' });
+      expect(await repository().confirmResume({ actorId: seeded.pagerId, sessionId: seeded.readerSession, request }))
+        .toMatchObject({ ok: false, code: 'denied' });
+      const results = await Promise.all([confirm(), confirm()]);
+      expect(results).toContainEqual({ ok: true, commandId: command.command_id, state: 'applied', replayed: false });
+      expect(results).toContainEqual({ ok: true, commandId: command.command_id, state: 'applied', replayed: true });
+      expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${runId}`)
+        .toEqual([{ state: 'RUNNING', revision: Number(command.expected_run_revision) + 1 }]);
+      const facts = await sql`SELECT event_id,payload FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`;
+      expect(facts).toHaveLength(1);
+      expect(facts[0]?.payload).toMatchObject({ ...command.resume_anchor, commandId: command.command_id,
+        expectedRunRevision: command.expected_run_revision, planDigest: command.plan_digest });
+      expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${command.command_id} ORDER BY sequence`)
+        .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'applied' }]);
+      // A later lease release cannot undo this accepted outcome or cause another Resume.
+      expect(await releaseRunControlLease(controlDependencies(), { session: readerSession(), request: { runId, expectedEpoch: 1 } })).toMatchObject({ ok: true });
+      expect(await confirm()).toMatchObject({ ok: true, state: 'applied', replayed: true });
+      const read = await repository().read({ runId, actorId: seeded.readerId });
+      expect(read.status).toBe('ready');
+      expect(read.messages.find(row => row.command?.commandId === command.command_id)?.command)
+        .toMatchObject({ kind: 'resume', state: 'applied', canConfirm: false });
+      // The read must not imply application after the authoritative event is unavailable.
+      await sql`DELETE FROM audit_events WHERE event_id=${facts[0]!.event_id}`;
+      expect(await confirm()).toMatchObject({ ok: false, code: 'unavailable' });
+      expect(await repository().read({ runId, actorId: seeded.readerId })).toMatchObject({ status: 'unavailable' });
+    } finally { await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`; await cleanupRun(runId); }
+  });
+
+  it.each(['stale-control', 'removed-content', 'role-revoked'] as const)('refuses a Resume proposal after %s without closing the pause', async mode => {
+    const runId = await seedResumeContext();
+    const [originalRole] = await sql`SELECT role,assigned_by,assigned_at::text AS assigned_at FROM user_role WHERE user_id=${seeded.readerId}`;
+    try {
+      await acquireControl(runId);
+      expect((await append(seeded.readerId, { runId, text: 'Resume' })).ok).toBe(true);
+      const [command] = await sql`SELECT command_id,message_id FROM run_interaction_command WHERE run_id=${runId} AND kind='resume'`;
+      if (!command) throw new Error('Resume proposal missing');
+      if (mode === 'stale-control') {
+        expect(await releaseRunControlLease(controlDependencies(), { session: readerSession(), request: { runId, expectedEpoch: 1 } })).toMatchObject({ ok: true });
+        await acquireControl(runId, seeded.readerId, 2);
+      } else if (mode === 'removed-content') {
+        await sql`UPDATE run_conversation_content SET ciphertext=NULL,removed_at=clock_timestamp(),content_epoch=content_epoch+1
+          WHERE message_id IN (SELECT message_id FROM run_conversation_message WHERE parent_message_id=${command.message_id})`;
+      } else await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
+      expect(await repository().confirmResume({ actorId: seeded.readerId, sessionId: seeded.readerSession,
+        request: { runId, commandId: command.command_id } })).toMatchObject({ ok: false,
+          code: mode === 'stale-control' ? 'conflict' : mode === 'removed-content' ? 'unavailable' : 'denied' });
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE run_id=${runId}`).toEqual([{ closed_at: null }]);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`).toHaveLength(0);
+    } finally {
+      if (mode === 'role-revoked' && originalRole) await sql`INSERT INTO user_role(user_id,role,assigned_by,assigned_at)
+        VALUES (${seeded.readerId},${originalRole.role},${originalRole.assigned_by},${originalRole.assigned_at}::timestamptz)`;
+      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+      await cleanupRun(runId);
+    }
+  });
+
+  async function seedResumeContext() {
+    now = new Date(now.getTime() + 61_000);
+    const runId = ids.next();
+    await insertRun(runId, seeded.procedureId, seeded.versionId, seeded.readerId, '2027-01-01', '2027-01-31');
+    expect((await append(seeded.readerId, { runId, text: 'pause now' })).ok).toBe(true);
+    await db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
+      if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
+      await context.saveRunState('PAUSED');
+      await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: new Date().toISOString() });
+    }));
+    return runId;
+  }
+
   function readerSession(actorId = seeded.readerId) { return { userId: actorId, sessionId: seeded.readerSession }; }
 
   function controlDependencies() {

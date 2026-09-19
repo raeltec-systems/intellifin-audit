@@ -565,6 +565,33 @@ describe('ResumeRun', () => {
     },
   );
 
+  it.each(['unchanged', 'other-wait', 'other-deadline'] as const)('binds conversational Resume to the reviewed pause: %s', async mode => {
+    const repository = await paused();
+    const wait = repository.context.wait!;
+    repository.context.readResumeControl = async () => ({ now: NOW, lease: {
+      runId: RUN_ID, epoch: 7, holderId: SESSION.userId,
+      expiresAt: new Date(NOW.getTime() + 120_000).toISOString(), updatedAt: NOW.toISOString(),
+    } });
+    const revision = repository.context.run!.revision;
+    const result = await resumeRun({ ...dependencies(repository), requireControllerLease: false,
+      confirmedInteraction: { commandId: COMMAND_ID, planDigest: 'a'.repeat(64),
+        waitId: mode === 'other-wait' ? '01a06fd8-0000-7000-8000-0000000000ee' : wait.waitId,
+        pausedAt: wait.openedAt, deadline: mode === 'other-deadline' ? NOW.toISOString() : wait.deadline },
+    }, { session: SESSION, request: { runId: RUN_ID, expectedRunRevision: revision, expectedControlEpoch: 7 } });
+    if (mode === 'unchanged') {
+      expect(result).toMatchObject({ ok: true, state: 'RUNNING' });
+      expect(repository.context.events.at(-1)).toMatchObject({ eventType: 'lifecycle.run-resumed', payload: {
+        commandId: COMMAND_ID, planDigest: 'a'.repeat(64), waitId: wait.waitId,
+        expectedRunRevision: revision, controlEpoch: 7, pausedAt: wait.openedAt, deadline: wait.deadline,
+      } });
+    } else {
+      expect(result).toMatchObject({ ok: false, code: 'stale-revision' });
+      expect(repository.context.run?.state).toBe('PAUSED');
+      expect(repository.context.wait?.closedAt).toBeNull();
+      expect(repository.context.events).toHaveLength(0);
+    }
+  });
+
   it('records the current control epoch on the existing authoritative Resume event', async () => {
     const repository = await paused();
     repository.context.readResumeControl = async () => ({ now: NOW, lease: {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { RunConversationMessageRequest, RunConversationRead, RunConversationInspectionRead, RunConversationMessage } from '@intellifin/application';
 import { RunConversation, RunConversationComposer } from './RunConversation';
 import { RunWorkspaceShell } from './RunWorkspaceShell';
-import { readRunConversation, sendRunConversationMessage, confirmDeferredPauseProposal } from './run-conversation-actions';
+import { readRunConversation, sendRunConversationMessage, confirmDeferredPauseProposal, confirmConversationResume } from './run-conversation-actions';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { useDesktopViewport, useLiveGate } from './LiveGate';
 
@@ -32,16 +32,17 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
   const confirm = async () => {
     if (confirmation === null || confirming) return;
     if (!desktop || gate.disabledReason !== null) {
-      setConfirmationError(gate.disabledReason ?? 'Open on a desktop to confirm this pause.');
+      setConfirmationError(gate.disabledReason ?? 'Open on a desktop to confirm this command.');
       return;
     }
     setConfirming(true); setConfirmationError(null);
     try {
-      const result = await confirmDeferredPauseProposal({ runId, commandId: confirmation.commandId });
+      const execute = confirmation.kind === 'resume' ? confirmConversationResume : confirmDeferredPauseProposal;
+      const result = await execute({ runId, commandId: confirmation.commandId });
       if (!result.ok) { setConfirmationError(result.reason); router.refresh(); return; }
       setConfirmation(null); setBefore(null); setHistory(null); router.refresh();
     } catch {
-      setConfirmationError('The pause could not be confirmed. Retry this same confirmation to recover its recorded outcome.');
+      setConfirmationError('The command could not be confirmed. Retry this same confirmation to recover its recorded outcome.');
     } finally { setConfirming(false); }
   };
   const [history, setHistory] = useState<RunConversationRead | null>(null);
@@ -76,13 +77,16 @@ export function RunWorkspaceConversation({ runId, initial, selectedSourceOrdinal
   return <RunWorkspaceShell header={header} progress={progress} controls={controls}
     currentDecision={currentDecision} workspace={workspace}
     conversation={<>
-      <ConfirmDialog open={confirmation !== null} weight="routine" title="Pause after this inspection?"
-        consequence={`Request a pause after ${confirmation?.targetLabel ?? 'the named inspection'} settles, including any recorded skip. Only this target inspection is named. An open question remains open; if no work remains, the Run finishes instead.`}
-        confirmLabel="Pause after this inspection" cancelLabel="Go back" busy={confirming} refusal={confirmationError}
+      <ConfirmDialog open={confirmation !== null} weight="routine" title={confirmation?.kind === 'resume' ? 'Resume this Run?' : 'Pause after this inspection?'}
+        consequence={confirmation?.kind === 'resume'
+          ? `Resume the pause opened at ${confirmation.resumeAnchor?.pausedAt}. Confirm before ${confirmation.resumeAnchor?.deadline}. Interrupted work restarts as a new attempt using the frozen plan and committed evidence.`
+          : `Request a pause after ${confirmation?.targetLabel ?? 'the named inspection'} settles, including any recorded skip. Only this target inspection is named. An open question remains open; if no work remains, the Run finishes instead.`}
+        confirmLabel={confirmation?.kind === 'resume' ? 'Resume Run' : 'Pause after this inspection'} cancelLabel="Go back" busy={confirming} refusal={confirmationError}
         onCancel={() => { if (!confirming) setConfirmation(null); }} onConfirm={() => { void confirm(); }} />
       {before !== null && <button type="button" onClick={() => { setBefore(null); setHistory(null); setError(null); }}>Return to latest messages</button>}
       <RunConversation onReviewCommand={command => {
-        if (command.kind === 'pause-after-inspection' && command.canConfirm && command.targetLabel && gate.disabledReason === null) {
+        if (command.canConfirm && gate.disabledReason === null &&
+          ((command.kind === 'pause-after-inspection' && command.targetLabel) || (command.kind === 'resume' && command.resumeAnchor))) {
           setConfirmationError(null); setConfirmation(command);
         }
       }} runId={runId} messages={read?.messages ?? []} olderBefore={read?.olderBefore ?? null}

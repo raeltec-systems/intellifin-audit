@@ -363,6 +363,14 @@ export async function pauseRun(
 export interface ResumeRunDependencies extends PauseRunDependencies {
   /** Server policy for Runs never enrolled in control. Existing lease rows ALWAYS fence. */
   readonly requireControllerLease: boolean;
+  /** Server-owned, persisted proposal context; never accepted in the public request. */
+  readonly confirmedInteraction?: {
+    readonly commandId: string;
+    readonly planDigest: string;
+    readonly waitId: string;
+    readonly pausedAt: string;
+    readonly deadline: string;
+  };
 }
 
 /**
@@ -383,6 +391,10 @@ export async function resumeRun(
   if (!permission.allowed) return { ok: false, reason: permission.reason, code: 'malformed' };
   const request = parseResumeRequest(input.request);
   if (request === null) return { ok: false, reason: RESUME_REQUEST_MALFORMED, code: 'malformed' };
+  const interaction = dependencies.confirmedInteraction;
+  if (interaction !== undefined && (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(interaction.commandId) ||
+    !/^[0-9a-f]{64}$/.test(interaction.planDigest)))
+    return { ok: false, reason: RESUME_REQUEST_MALFORMED, code: 'malformed' };
   try {
     return await dependencies.repository.transaction(request.runId, async (context) => {
       const role = await context.authorizationRoles.findRole(input.session.userId);
@@ -398,8 +410,11 @@ export async function resumeRun(
         return { ok: false, reason: RESUME_RUN_REFUSALS['not-paused'], code: 'not-paused' };
       if (run.state !== 'PAUSED')
         return { ok: false, reason: RESUME_RUN_REFUSALS['not-paused'], code: 'not-paused' };
+      if (interaction !== undefined && (wait.waitId !== interaction.waitId ||
+        wait.openedAt !== interaction.pausedAt || wait.deadline !== interaction.deadline))
+        return { ok: false, reason: 'The pause changed after this Resume was proposed. Review the current pause.', code: 'stale-revision' };
       const control = await context.readResumeControl();
-      const controlRequired = dependencies.requireControllerLease === true || control.lease !== null || request.expectedControlEpoch !== null;
+      const controlRequired = dependencies.requireControllerLease === true || interaction !== undefined || control.lease !== null || request.expectedControlEpoch !== null;
       if (controlRequired && (control.lease === null || request.expectedControlEpoch === null))
         return { ok: false, reason: RESUME_RUN_REFUSALS['control-required'], code: 'control-required' };
       if (controlRequired && (control.lease!.holderId !== input.session.userId || control.lease!.epoch !== request.expectedControlEpoch ||
@@ -454,6 +469,9 @@ export async function resumeRun(
           closureKind: 'resume',
           pausedAt: wait.openedAt,
           ...(controlRequired ? { controlEpoch: control.lease!.epoch } : {}),
+          ...(interaction === undefined ? {} : { commandId: interaction.commandId,
+            planDigest: interaction.planDigest, expectedRunRevision: request.expectedRunRevision,
+            deadline: interaction.deadline }),
           occurredAt: now,
         },
       });

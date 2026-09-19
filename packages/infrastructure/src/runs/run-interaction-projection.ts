@@ -1,9 +1,23 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { AuditEventRecord } from '@intellifin/domain';
-import { parseDeferredPauseAnchor } from '@intellifin/application';
+import { parseDeferredPauseAnchor, parseRunConversationResumeAnchor } from '@intellifin/application';
 import type { Transaction } from '../db/client.js';
 import { isUuidText } from '../db/identifier.js';
 import { runInteractionCommand, runInteractionTransition } from '../db/schema.js';
+
+export function matchesResumeInteractionEvent(command: typeof runInteractionCommand.$inferSelect,
+  event: { readonly eventType: string; readonly source: string; readonly outcome: string;
+    readonly actor: { readonly type: string; readonly id: string }; readonly aggregateId: string;
+    readonly payload: Readonly<Record<string, unknown>> }): boolean {
+  const anchor = parseRunConversationResumeAnchor(command.resumeAnchor);
+  return command.kind === 'resume' && anchor !== null && event.aggregateId === command.runId &&
+    event.eventType === 'lifecycle.run-resumed' && event.source === 'web' && event.outcome === 'success' &&
+    event.actor.type === 'human' && event.actor.id === command.actorId && event.payload.commandId === command.commandId &&
+    event.payload.waitId === anchor.waitId && event.payload.pausedAt === anchor.pausedAt &&
+    event.payload.deadline === anchor.deadline && event.payload.controlEpoch === anchor.controlEpoch &&
+    event.payload.expectedRunRevision === command.expectedRunRevision && event.payload.planDigest === command.planDigest &&
+    event.payload.closureKind === 'resume' && event.payload.priorState === 'PAUSED' && event.payload.state === 'RUNNING';
+}
 
 /** Called by the existing audit writer, in the transaction that owns the domain fact. */
 export async function projectRunInteractionEvent(tx: Transaction, event: AuditEventRecord): Promise<void> {
@@ -16,7 +30,10 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   let state: 'queued' | 'applied' | 'superseded';
   let priorState: 'interpreted' | 'queued';
   const human = event.actor.type === 'human' && event.actor.id === command.actorId;
-  if (command.kind === 'pause-now') {
+  if (command.kind === 'resume') {
+    if (!matchesResumeInteractionEvent(command, event)) return;
+    state = 'applied'; priorState = 'interpreted';
+  } else if (command.kind === 'pause-now') {
     if (event.eventType === 'lifecycle.run-pause-requested' && event.source === 'web' && event.outcome === 'success' && human) {
       state = 'queued'; priorState = 'interpreted';
     } else if (event.eventType === 'lifecycle.run-paused' && event.source === 'worker' && event.outcome === 'success' && human) {
@@ -45,7 +62,7 @@ export async function projectRunInteractionEvent(tx: Transaction, event: AuditEv
   // A terminal receipt is never overwritten by a later or duplicate fact.
   if (!prior || prior.state !== priorState) return;
   await tx.insert(runInteractionTransition).values({ commandId: command.commandId, sequence: prior.sequence + 1,
-    state, reasonCode: state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
+    state, reasonCode: command.kind === 'resume' ? 'run-resumed' : state === 'queued' ? 'pause-requested' : state === 'applied' ? 'worker-paused' :
       command.kind === 'pause-after-inspection' ? 'deferred-pause-superseded' : 'run-finalized',
     createdAt: new Date(event.occurredAt), sourceEventId: event.eventId });
 }

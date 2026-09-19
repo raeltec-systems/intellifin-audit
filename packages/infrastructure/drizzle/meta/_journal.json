@@ -393,6 +393,13 @@
       "when": 1789842514684,
       "tag": "0055_deferred_pause_latch",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1789848779393,
+      "tag": "0056_confirmed_conversation_resume",
+      "breakpoints": true
     }
   ]
 }

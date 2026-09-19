@@ -3995,3 +3995,15 @@ before taking a no-execution-effects Replay baseline. Keep the complete non-acce
 audit comparison, including event types for diagnosis. Role-revocation browser checks
 must account for the shell bell's exact `/api/runs/events` 403 as well as the Run stream;
 do not allow arbitrary console errors. Playwright screenshot paths need a `.png` suffix.
+
+### Conversational Resume binds the reviewed pause (2026-09-19)
+
+Persist a Resume proposal with its exact pause wait, opened/deadline instants, controller
+epoch, Run revision and frozen plan digest. Confirmation accepts only Run/command IDs
+and reuses `resumeRun` inside the conversation transaction. Recheck current role, live
+controller, exact pause and frozen plan; a released/reacquired lease cannot rebind it.
+The existing web Resume event projects directly to an applied interaction receipt in
+that same transaction. Retry validates that source fact and does not close another
+wait. Both intake and displayed proposal must remain readable at first confirmation.
+Disclose the existing safe attempt restart. The worker-produced browser journey and
+lost-response/retry journey are required application proof, not replaced by model tests.

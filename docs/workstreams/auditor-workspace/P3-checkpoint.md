@@ -272,3 +272,36 @@ waits for persisted notification delivery outcomes before the Replay baseline, p
 the full non-access event comparison, and fixes the screenshot filename. Root test
 TypeScript passes. Full green CI is still required, including the timestamp and JSONB
 receipt corrections. These results close no acceptance proof gate by themselves.
+
+
+## Corrected deferred candidate and conversational Resume
+
+On `2e158d3`, normal CI `35466506732` passed all **624 PostgreSQL integration tests**
+(51 files), including the governed-content and numeric-looking subject-key cases.
+Migration 55/drift, unit/type/boundaries, P0, containers and hydrated worker/UI abuse
+also passed. Full application browser was still running when this entry was written.
+The earlier retained browser artifact `10590674136` has SHA-256
+`f8a8b6ced51a3739c9948a3da492803d2c6cba5cf9febe5e903536d1e2279398`.
+
+The next implementation slice makes exact “Resume” a durable, explicitly confirmed
+conversation command. Its proposal captures the current pause, deadline, control epoch,
+Run revision and frozen plan. The confirmation sends only Run/command IDs. It calls
+the existing Resume handler under the same Run transaction, closes that exact pause
+and records the authoritative web event and applied receipt together. Lost-response
+retry recovers that receipt without rebinding context or executing again. The dialog
+explains that interrupted work restarts as a new attempt from frozen context.
+
+Generation 56 retains the new immutable proposal context and guards direct applied
+receipts against the actual closed pause and exact typed event payload. Fresh authority,
+lease, deadline, revision, plan and governed-content checks remain mandatory. Existing
+non-conversation Resume controls retain their shared handler and lease rules.
+
+Local verification: 115 focused domain/receipt/UI/schema/style tests pass; application,
+infrastructure, web and root test TypeScript pass; 679-module boundaries and schema
+generation pass. Four new PostgreSQL cases, the actual worker's conversational Resume
+journey and a lost-response browser retry are written and typechecked, pending normal
+CI. No new application pass is claimed for this slice until that execution completes.
+
+Conversational Stop, typed contextual answers, flags, frozen strategy capabilities and
+controller-renewal receipts still remain within P3. This is an intermediate checkpoint;
+continuous protected preview, secure assistance and all seven proof gates remain open.

@@ -78,8 +78,9 @@ export interface RunConversationMessage {
   /** Current persisted receipt, separate from the immutable message text. */
   readonly command?: {
     readonly commandId: string;
-    readonly kind: 'pause-now' | 'pause-after-inspection';
+    readonly kind: 'pause-now' | 'pause-after-inspection' | 'resume';
     readonly targetLabel?: string;
+    readonly resumeAnchor?: RunConversationResumeAnchor;
     readonly canConfirm?: boolean;
     readonly state: 'received' | 'interpreted' | 'queued' | 'applied' | 'refused' | 'superseded';
     readonly at: string;
@@ -152,6 +153,26 @@ export type RunConversationInspectionRead =
   | { readonly status: 'ready'; readonly anchor: DeferredPauseAnchor; readonly subjectLabel: string;
       readonly targetName: string; readonly sourceOrdinal: number | null; readonly multipleTargets: boolean }
   | { readonly status: 'unavailable'; readonly reason: string };
+
+/** Immutable pause and control context displayed before a conversational Resume. */
+export interface RunConversationResumeAnchor {
+  readonly waitId: string;
+  readonly pausedAt: string;
+  readonly deadline: string;
+  readonly controlEpoch: number;
+}
+
+export function parseRunConversationResumeAnchor(value: unknown): RunConversationResumeAnchor | null {
+  if (!plainObject(value) || Object.keys(value).length !== 4 ||
+    typeof value.waitId !== 'string' || !UUID.test(value.waitId) || value.waitId !== value.waitId.toLowerCase() ||
+    typeof value.pausedAt !== 'string' || typeof value.deadline !== 'string' ||
+    !Number.isFinite(Date.parse(value.pausedAt)) || !Number.isFinite(Date.parse(value.deadline)) ||
+    new Date(value.pausedAt).toISOString() !== value.pausedAt || new Date(value.deadline).toISOString() !== value.deadline ||
+    Date.parse(value.deadline) <= Date.parse(value.pausedAt) ||
+    !Number.isInteger(value.controlEpoch) || typeof value.controlEpoch !== 'number' ||
+    value.controlEpoch < 1 || value.controlEpoch > 2147483647) return null;
+  return { waitId: value.waitId, pausedAt: value.pausedAt, deadline: value.deadline, controlEpoch: value.controlEpoch };
+}
 
 export const RUN_CONVERSATION_MESSAGE_REFUSAL_CODES = [
   'malformed',

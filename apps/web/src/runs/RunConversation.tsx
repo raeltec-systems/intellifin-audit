@@ -233,15 +233,15 @@ function ConversationMessage({
         <p className="run-conversation__actor">{messageActorLabel(message)}</p>
         <p className="run-conversation__body">{conversationBody(message)}</p>
         {message.command && <p className="run-conversation__command-status">
-          <strong>Pause request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind === 'pause-after-inspection' ? 'awaiting your confirmation' : message.command.state}.</strong>{' '}
+          <strong>{message.command.kind === 'resume' ? 'Resume' : 'Pause'} request: {message.command.state === 'queued' ? (message.command.kind === 'pause-after-inspection' ? 'waiting for the named inspection to settle' : 'awaiting worker boundary') : message.command.state === 'interpreted' && message.command.kind !== 'pause-now' ? 'awaiting your confirmation' : message.command.state}.</strong>{' '}
           Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
         </p>}
 
-        {message.command?.kind === 'pause-after-inspection' && message.command.state === 'interpreted' &&
+        {message.command && message.command.kind !== 'pause-now' && message.command.state === 'interpreted' &&
           message.command.canConfirm && message.contentState === 'available' && onReviewCommand &&
           <Button variant="secondary" onClick={() => {
             if (gate.disabledReason === null && message.command) onReviewCommand(message.command);
-          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>Review pause after inspection</Button>}
+          }} {...(gate.disabledReason === null ? {} : { disabledReason: gate.disabledReason })}>{message.command.kind === 'resume' ? 'Review Resume' : 'Review pause after inspection'}</Button>}
 
         {links.length > 0 || evidenceLinks.length > 0 ? (
           <div className="run-conversation__links" role="group" aria-label="Related records and evidence">

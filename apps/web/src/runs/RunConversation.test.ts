@@ -90,6 +90,21 @@ describe('RunConversation', () => {
     expect(unicodeLength('A🙂界')).toBe(3);
     expect(conversationBody({ ...message, body: null, contentState: 'unavailable' })).toContain('temporarily unavailable');
   });
+  it('offers explicit Resume review only while the governed proposal is available', () => {
+    const command = { commandId: MESSAGE_ID, kind: 'resume' as const, canConfirm: true,
+      state: 'interpreted' as const, at: message.createdAt, sourceEventId: null,
+      resumeAnchor: { waitId: MESSAGE_ID, pausedAt: message.createdAt, deadline: '2026-09-19T10:30:00.000Z', controlEpoch: 1 } };
+    const render = (row: RunConversationMessage) => renderToStaticMarkup(React.createElement(RunConversation, {
+      runId: RUN_ID, messages: [row], onReviewCommand: () => undefined,
+    }));
+    expect(render({ ...message, command })).toContain('Resume request: awaiting your confirmation');
+    expect(render({ ...message, command })).toContain('Review Resume');
+    expect(render({ ...message, command, body: null, contentState: 'removed' })).not.toContain('Review Resume');
+    const applied = render({ ...message, command: { ...command, state: 'applied' } });
+    expect(applied).toContain('Resume request: applied');
+    expect(applied).not.toContain('Review Resume');
+  });
+
   it('separates a proposal awaiting confirmation from a queued inspection pause', () => {
     const command = { commandId: MESSAGE_ID, kind: 'pause-after-inspection' as const,
       targetLabel: 'E-102 on LoanCore', canConfirm: true, state: 'interpreted' as const,

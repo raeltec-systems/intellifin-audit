@@ -397,7 +397,7 @@ test.describe('canonical P-4 through the real compiled worker', () => {
 
     // The real worker observes the durable marker at its response boundary and performs
     // the PAUSED transition in its own transaction. Wait for that applied receipt before
-    // reloading the workspace and exercising the existing direct Resume control.
+    // reloading the workspace and confirming Resume through the conversation.
     if (pauseCommandId === null) throw new Error('The pause command ID was not available after the active workspace proof.');
     await expect.poll(async () => String((await sql`SELECT state FROM audit_run WHERE run_id=${runId}::uuid`)[0]?.state), { timeout: 60_000 }).toBe('PAUSED');
     const [applied] = await sql<{ source_event_id: string | null }[]>`
@@ -424,16 +424,30 @@ test.describe('canonical P-4 through the real compiled worker', () => {
     await expect(controller.getByRole('button', { name: 'Acquire control', exact: true })).toBeVisible();
     await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
     await expect(controller).toContainText('You control this Run.');
-    await page.getByRole('button', { name: 'Resume', exact: true }).click();
-    const resumeDialog = page.getByRole('dialog');
+    await page.getByLabel('Message the Run', { exact: true }).fill('Resume');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+    await page.getByRole('button', { name: 'Review Resume', exact: true }).click();
+    const resumeDialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
     await expect(resumeDialog).toBeVisible();
-    await expect(resumeDialog.getByRole('heading', { name: 'Resume this Run?', exact: true })).toBeVisible();
+    await expect(resumeDialog).toContainText('Interrupted work restarts as a new attempt');
+    expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`).toHaveLength(0);
+    await resumeDialog.getByRole('button', { name: 'Go back', exact: true }).click();
+    expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
+    await page.getByRole('button', { name: 'Review Resume', exact: true }).click();
     await resumeDialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
-    await expect(page.getByText('Run resumed.', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(pausedConversation).toContainText('Resume request: applied.', { timeout: 30_000 });
+    const resumeCommands = await sql`SELECT c.command_id,t.source_event_id FROM run_interaction_command c
+      JOIN run_interaction_transition t ON t.command_id=c.command_id AND t.state='applied'
+      WHERE c.run_id=${runId} AND c.kind='resume'`;
+    expect(resumeCommands).toHaveLength(1);
+    await page.reload();
+    await expect(pausedConversation).toContainText('Resume request: applied.');
     const [resumedEvent] = await sql<{ event_id: string; event_type: string; source: string; outcome: string; actor_type: string }[]>`
       SELECT event_id::text,event_type,source,outcome,actor_type FROM audit_events
       WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed' ORDER BY sequence DESC LIMIT 1`;
     expect(resumedEvent).toMatchObject({
+      event_id: resumeCommands[0]!.source_event_id,
       event_type: 'lifecycle.run-resumed', source: 'web', outcome: 'success', actor_type: 'human',
     });
     // A fast worker may already have sealed the Run by the time the action response is

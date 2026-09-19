@@ -208,6 +208,68 @@ test.afterAll(async () => {
 test.describe('durable Run controller lease', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
+  test('recovers the same conversational Resume after the response is lost', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('The Resume journey requires its synthetic Auditor.');
+    const runId = await seedRun('RUNNING');
+    const waitId = await pauseSeededRun(runId, auditor.id);
+    await page.goto(`/runs/${runId}/workspace`);
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(controller).toContainText('You control this Run.');
+    await page.getByLabel('Message the Run', { exact: true }).fill('Resume');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+    const [proposal] = await sql<{ command_id: string; expected_run_revision: number }[]>`
+      SELECT command_id,expected_run_revision FROM run_interaction_command WHERE run_id=${runId} AND kind='resume'`;
+    if (!proposal) throw new Error('The conversation did not retain its Resume proposal.');
+    await page.getByRole('button', { name: 'Review Resume', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
+    await expect(dialog).toContainText('Interrupted work restarts as a new attempt');
+    await expect(dialog.getByRole('button', { name: 'Go back', exact: true })).toBeFocused();
+    expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${waitId}`).toEqual([{ closed_at: null }]);
+    let dropped = false;
+    let forwardedStatus: number | null = null;
+    await page.route(`**/runs/${runId}/workspace`, async route => {
+      const request = route.request();
+      const fields = actionFields(request.postData());
+      if (!dropped && request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
+        fields?.runId === runId && fields.commandId === proposal.command_id) {
+        dropped = true;
+        // Execute the real authenticated request, then lose only its response. The
+        // retry must discover the existing effect instead of sending new inputs.
+        const response = await route.fetch();
+        forwardedStatus = response.status();
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+    await dialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
+    await expect(dialog).toContainText('Retry this same confirmation');
+    expect(dropped).toBe(true);
+    expect(forwardedStatus).toBe(200);
+    expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${runId}`)
+      .toEqual([{ state: 'RUNNING', revision: proposal.expected_run_revision + 1 }]);
+    const beforeRetry = await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`;
+    expect(beforeRetry).toHaveLength(1);
+    await dialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByLabel('Conversation history')).toContainText('Resume request: applied.');
+    await page.reload();
+    await expect(page.getByLabel('Conversation history')).toContainText('Resume request: applied.');
+    expect(await sql`SELECT event_id,sequence FROM audit_events
+      WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`).toEqual(beforeRetry);
+    expect(await sql`SELECT state FROM run_interaction_transition WHERE command_id=${proposal.command_id} ORDER BY sequence`)
+      .toEqual([{ state: 'received' }, { state: 'interpreted' }, { state: 'applied' }]);
+    expect(await sql`SELECT closure_kind,actor FROM run_wait WHERE wait_id=${waitId}`)
+      .toEqual([{ closure_kind: 'resume', actor: auditor.id }]);
+    await capture(page, testInfo, 'conversation-resume-recovered-1440x900');
+    await assertA11y(page);
+  });
+
   test('serializes Resume across contexts, fences stale requests, and leaves eligible controls lease-free', async ({ browser, baseURL }, testInfo) => {
     test.setTimeout(150_000);
     const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;

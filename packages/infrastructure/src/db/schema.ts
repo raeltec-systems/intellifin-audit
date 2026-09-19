@@ -2080,14 +2080,15 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
   interpretationVersion: text('interpretation_version').notNull(),
   deferredAnchor: jsonb('deferred_anchor'),
   deferredControlEpoch: integer('deferred_control_epoch'),
+  resumeAnchor: jsonb('resume_anchor'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
 }, t => [
   uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
   uniqueIndex('run_interaction_command_message').on(t.messageId),
   check('run_interaction_command_kind', sql`(
-    (${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL)
+    (${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1' AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL AND ${t.resumeAnchor} IS NULL)
     OR
-    (${t.kind} = 'pause-after-inspection' AND ${t.interpretationVersion} = 'confirmed-inspection-v1'
+    (${t.kind} = 'pause-after-inspection' AND ${t.interpretationVersion} = 'confirmed-inspection-v1' AND ${t.resumeAnchor} IS NULL
       AND ${t.deferredControlEpoch} IS NOT NULL AND ${t.deferredControlEpoch} > 0 AND ${t.deferredAnchor} IS NOT NULL
       AND jsonb_typeof(${t.deferredAnchor}) = 'object'
       AND ${t.deferredAnchor} ?& ARRAY['workItemId','subjectKey','registrationId','runRevision','planDigest']
@@ -2105,6 +2106,21 @@ export const runInteractionCommand = pgTable('run_interaction_command', {
       AND jsonb_typeof(${t.deferredAnchor}->'planDigest') = 'string'
       AND (${t.deferredAnchor}->>'planDigest') ~ '^[a-f0-9]{64}$'
       AND ${t.deferredAnchor}->>'planDigest' = ${t.planDigest}
+    )
+    OR (${t.kind} = 'resume' AND ${t.interpretationVersion} = 'confirmed-resume-v1'
+      AND ${t.deferredAnchor} IS NULL AND ${t.deferredControlEpoch} IS NULL
+      AND ${t.resumeAnchor} IS NOT NULL AND jsonb_typeof(${t.resumeAnchor}) = 'object'
+      AND ${t.resumeAnchor} ?& ARRAY['waitId','pausedAt','deadline','controlEpoch']
+      AND (${t.resumeAnchor} - ARRAY['waitId','pausedAt','deadline','controlEpoch']::text[]) = '{}'::jsonb
+      AND jsonb_typeof(${t.resumeAnchor}->'waitId') = 'string'
+      AND (${t.resumeAnchor}->>'waitId') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      AND jsonb_typeof(${t.resumeAnchor}->'pausedAt') = 'string'
+      AND (${t.resumeAnchor}->>'pausedAt') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND jsonb_typeof(${t.resumeAnchor}->'deadline') = 'string'
+      AND (${t.resumeAnchor}->>'deadline') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+      AND jsonb_typeof(${t.resumeAnchor}->'controlEpoch') = 'number'
+      AND (${t.resumeAnchor}->>'controlEpoch') ~ '^[0-9]+$'
+      AND (${t.resumeAnchor}->>'controlEpoch')::numeric BETWEEN 1 AND 2147483647
     )
   )`),
   check('run_interaction_command_envelope', sql`${t.expectedRunRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.semanticFingerprint} ~ '^[a-f0-9]{64}$'`),
