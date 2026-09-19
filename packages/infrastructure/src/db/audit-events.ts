@@ -27,6 +27,7 @@ import {
 import type { Database, Transaction } from './client.js';
 import { auditEventHeads, auditEvents, auditRun, runConversationMessage } from './schema.js';
 import { isUuidText } from './identifier.js';
+import { projectRunInteractionEvent } from '../runs/run-interaction-projection.js';
 
 export class SystemClock implements Clock {
   now(): Date {
@@ -122,6 +123,8 @@ async function appendAuditEvent(
     .where(eq(auditEventHeads.aggregateId, aggregateId));
 
   // The existing aggregate head lock orders these references with human messages.
+  await projectRunInteractionEvent(transaction, record);
+
   // No copied prose, model call, queue, or second event authority is introduced.
   // Fixed operational copy is derived from this immutable source event at read time.
   if (run && narrateRunConversationEvent(record) !== null) {

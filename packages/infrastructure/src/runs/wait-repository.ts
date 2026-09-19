@@ -308,7 +308,8 @@ export class PostgresWaitRepository implements WaitRepository {
            * then reports.
            */
           async requestPause(request) {
-            await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId} WHERE run_id = ${runId} AND pause_requested_at IS NULL`);
+            const inserted = await tx.execute(sql`UPDATE audit_run SET pause_requested_at = ${request.requestedAt}::timestamptz, pause_requested_by = ${request.requestedBy}, pause_requested_session = ${request.sessionId}, pause_requested_command_id = ${request.commandId ?? null}::uuid WHERE run_id = ${runId} AND pause_requested_at IS NULL RETURNING run_id`);
+            if (resultRows(inserted).length !== 1) throw new Error('Pause marker was not recorded');
             const current = currentRun;
             if (current) currentRun = { ...current, pauseRequest: request };
           },

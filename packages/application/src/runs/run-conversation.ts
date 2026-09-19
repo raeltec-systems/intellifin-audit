@@ -72,6 +72,14 @@ export interface RunConversationMessage {
   readonly createdAt: string;
   readonly contextRevision: string | null;
   readonly links: readonly RunConversationEvidenceLink[];
+  /** Current persisted receipt, separate from the immutable message text. */
+  readonly command?: {
+    readonly commandId: string;
+    readonly kind: 'pause-now';
+    readonly state: 'received' | 'interpreted' | 'queued' | 'applied' | 'refused' | 'superseded';
+    readonly at: string;
+    readonly sourceEventId: string | null;
+  };
 }
 
 export const RUN_CONVERSATION_READ_STATUSES = [

@@ -2,6 +2,7 @@
 
 import {
   RUN_CONVERSATION_MAX_TEXT_CHARS,
+  interpretRunConversationMessage,
   type RunConversationAppendReceipt,
   type RunConversationEvidenceLink,
   type RunConversationMessage,
@@ -20,6 +21,7 @@ import {
 } from 'react';
 
 import { utcStamp } from './labels';
+import { useActionGate } from '../design/action-gate';
 import './RunWorkspaceShell.css';
 
 export { RUN_CONVERSATION_MAX_TEXT_CHARS } from '@intellifin/application';
@@ -222,6 +224,10 @@ function ConversationMessage({
         </header>
         <p className="run-conversation__actor">{messageActorLabel(message)}</p>
         <p className="run-conversation__body">{conversationBody(message)}</p>
+        {message.command && <p className="run-conversation__command-status">
+          <strong>Pause request: {message.command.state === 'queued' ? 'awaiting worker boundary' : message.command.state}.</strong>{' '}
+          Recorded at <time dateTime={message.command.at}>{utcStamp(message.command.at)}</time>.
+        </p>}
 
         {links.length > 0 || evidenceLinks.length > 0 ? (
           <div className="run-conversation__links" role="group" aria-label="Related records and evidence">
@@ -256,6 +262,8 @@ function ConversationMessage({
             <div><dt>Source record ordinal</dt><dd>{message.sourceOrdinal ?? 'Not recorded'}</dd></div>
             <div><dt>Context revision</dt><dd>{message.contextRevision ?? 'Not recorded'}</dd></div>
             <div><dt>Content state</dt><dd>{message.contentState}</dd></div>
+            {message.command && <><div><dt>Command ID</dt><dd>{message.command.commandId}</dd></div>
+              <div><dt>Domain event</dt><dd>{message.command.sourceEventId ?? 'No domain effect recorded'}</dd></div></>}
           </dl>
         </details>
       </article>
@@ -282,6 +290,10 @@ function ConversationComposer({
   useEffect(() => { setInteractive(true); }, []);
   const pendingRequestRef = useRef<RunConversationSendInput | null>(null);
   const send = onSend ?? onSubmit;
+  const gate = useActionGate();
+  const blockedControl = gate.disabledReason !== null && interpretRunConversationMessage({
+    runId, idempotencyKey: '', text: draft, selectedSourceOrdinal, replyToWaitId,
+  }).intent.kind === 'pause-now';
 
   useEffect(() => {
     const pending = pendingRequestRef.current;
@@ -307,7 +319,7 @@ function ConversationComposer({
   const onFormSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (sending || disabled || send === undefined || draft.trim() === '') return;
+      if (sending || disabled || blockedControl || send === undefined || draft.trim() === '') return;
       setSending(true);
       setSubmitError(null);
       setSubmitStatus(null);
@@ -342,7 +354,7 @@ function ConversationComposer({
         setSending(false);
       }
     },
-    [disabled, draft, idempotencyKeyFactory, replyToWaitId, runId, selectedSourceOrdinal, send, sending],
+    [blockedControl, disabled, draft, idempotencyKeyFactory, replyToWaitId, runId, selectedSourceOrdinal, send, sending],
   );
 
   const remaining = RUN_CONVERSATION_MAX_TEXT_CHARS - unicodeLength(draft);
@@ -373,12 +385,13 @@ function ConversationComposer({
         <button
           type="submit"
           className="run-conversation__send"
-          disabled={unavailable || sending || draft.trim() === ''}
+          disabled={unavailable || blockedControl || sending || draft.trim() === ''}
         >
           {sending ? 'Sending…' : 'Send message'}
         </button>
       </div>
       {unavailable && <p className="run-conversation__composer-note">{disabledMessage}</p>}
+      {blockedControl && <p className="run-conversation__composer-note" role="status">{gate.disabledReason}</p>}
       {submitError !== null ? <p className="run-conversation__composer-error" role="alert">{submitError}</p> : null}
       {submitStatus !== null ? <p className="run-conversation__composer-status" role="status">{submitStatus}</p> : null}
     </form>

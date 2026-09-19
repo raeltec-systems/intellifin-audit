@@ -824,6 +824,7 @@ export const auditRun = pgTable('audit_run', {
   pauseRequestedAt: timestamp('pause_requested_at', { withTimezone: true }),
   pauseRequestedBy: text('pause_requested_by'),
   pauseRequestedSession: text('pause_requested_session'),
+  pauseRequestedCommandId: uuid('pause_requested_command_id'),
 }, table => [
   uniqueIndex('audit_run_initiator_request').on(table.initiatorId, table.requestToken),
   // A marker is written whole or not at all: a Canceled Run Detail states the actor, the
@@ -835,6 +836,7 @@ export const auditRun = pgTable('audit_run', {
   // `(a IS NULL) = (b IS NULL)` is boolean = boolean and is never NULL, so unlike a
   // comparison of the values themselves this cannot pass by evaluating to NULL.
   check('audit_run_pause_request', sql`(${table.pauseRequestedAt} IS NULL) = (${table.pauseRequestedBy} IS NULL) AND (${table.pauseRequestedAt} IS NULL) = (${table.pauseRequestedSession} IS NULL)`),
+  check('audit_run_pause_command', sql`${table.pauseRequestedCommandId} IS NULL OR ${table.pauseRequestedAt} IS NOT NULL`),
   // The predecessor and the reason are one fact. A link with no reason records that a
   // rerun exists and not why, which is exactly what FR-26 asks for.
   check('audit_run_rerun_link', sql`(${table.predecessorRunId} IS NULL) = (${table.rerunReason} IS NULL)`),
@@ -2062,4 +2064,40 @@ export const runConversationContent = pgTable('run_conversation_content', {
 }, t => [
   check('run_conversation_content_bound', sql`${t.ciphertext} IS NULL OR (octet_length(${t.ciphertext}) <= 90000 AND ${t.ciphertext} ~ '^v1\\.[A-Za-z0-9_-]+$')`),
   check('run_conversation_content_removal', sql`(${t.ciphertext} IS NULL) = (${t.removedAt} IS NOT NULL) AND ${t.contentEpoch} >= 1`),
+]);
+
+/** Immutable interpretation identity; domain commands still own every execution effect. */
+export const runInteractionCommand = pgTable('run_interaction_command', {
+  commandId: uuid('command_id').primaryKey(),
+  runId: uuid('run_id').notNull().references(() => auditRun.runId, { onDelete: 'cascade' }),
+  messageId: uuid('message_id').notNull().references(() => runConversationMessage.messageId, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull(),
+  kind: text('kind').notNull(),
+  requestKey: uuid('request_key').notNull(),
+  semanticFingerprint: text('semantic_fingerprint').notNull(),
+  planDigest: text('plan_digest').notNull(),
+  expectedRunRevision: integer('expected_run_revision').notNull(),
+  interpretationVersion: text('interpretation_version').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, t => [
+  uniqueIndex('run_interaction_command_request').on(t.runId, t.actorId, t.kind, t.requestKey),
+  uniqueIndex('run_interaction_command_message').on(t.messageId),
+  check('run_interaction_command_kind', sql`${t.kind} = 'pause-now' AND ${t.interpretationVersion} = 'exact-safety-v1'`),
+  check('run_interaction_command_envelope', sql`${t.expectedRunRevision} >= 0 AND ${t.planDigest} ~ '^[a-f0-9]{64}$' AND ${t.semanticFingerprint} ~ '^[a-f0-9]{64}$'`),
+]);
+
+/** Append-only receipts, linked to authoritative events when the domain effect is known. */
+export const runInteractionTransition = pgTable('run_interaction_transition', {
+  commandId: uuid('command_id').notNull().references(() => runInteractionCommand.commandId, { onDelete: 'cascade' }),
+  sequence: integer('sequence').notNull(),
+  state: text('state').notNull(),
+  reasonCode: text('reason_code').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  sourceEventId: uuid('source_event_id'),
+}, t => [
+  primaryKey({ columns: [t.commandId, t.sequence] }),
+  uniqueIndex('run_interaction_transition_event').on(t.sourceEventId),
+  check('run_interaction_transition_state', sql`${t.state} IN ('received','interpreted','queued','applied','refused','superseded')`),
+  check('run_interaction_transition_bounds', sql`${t.sequence} BETWEEN 1 AND 1000 AND ${t.reasonCode} ~ '^[a-z][a-z0-9-]{0,79}$'`),
+  check('run_interaction_transition_event_binding', sql`(${t.state} IN ('queued','applied','superseded')) = (${t.sourceEventId} IS NOT NULL)`),
 ]);

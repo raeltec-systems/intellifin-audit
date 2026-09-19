@@ -3840,3 +3840,11 @@ Conversation-to-command adapters must bind PostgresWaitRepository, role reads an
 postgres.js returns audit_events.sequence (bigint) as text and conversation source-event sequence (integer) as a number. Cast the bounded audit sequence explicitly in tests that compare the two; do not misreport a representation mismatch as a failed domain or atomicity effect.
 
 - **AW-P2 browser follow-up:** CI `35450768006` retained the real active-worker capture and finished 227/230 application browser checks. Await selected-record navigation before reading its URL; calculate the oldest message from the persisted initial count because committed narration adds entries. The active/decision/inspector screenshots exposed viewport and decision-density defects, so they do not close G1.
+
+### Auditor Workspace pause receipt identity (2026-09-19)
+
+A conversational pause must carry a server-generated commandId on the existing RunPauseRequest. Client pause envelopes still accept only runId. Another command's pending marker is a refusal for the conversational adapter; the legacy button remains idempotent. Received/interpreted receipts precede the existing handler; queued/applied/superseded receipts derive from that handler/worker's exact audit event in the same transaction. A receipt must never infer application from the Run state or a nearby timestamp. Bind all nested wait, role and denial dependencies to the outer connection. Reserve the extra operational conversation sequence and do not charge exact safety shortcuts to the question limiter. PostgreSQL receipt-transition guards must coalesce nullable first-transition predicates to false; SQL NULL must never permit skipping received.
+
+Exact unqualified Run pause normalizes viewing-only source/wait context to null before persistence. It skips evidence fact reads and the ordinary message quota, with a separate rate bucket; non-safety messages retain full context validation. Absolute history bounds remain enforced.
+
+Interaction command inserts must join the exact conversation-received audit fact (actor, message, intent and semantic fingerprint), not only a generic auditor message. Receipt reads fail closed if their authoritative source event is absent or no longer matches; storage damage must not display a credible applied status. Reply context revisions are read after the domain command.

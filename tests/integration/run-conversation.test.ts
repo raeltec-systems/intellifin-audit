@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { cancelRun, performCancellation, performPause } from '@intellifin/application';
+import { withRunExecutionContext } from '../../packages/infrastructure/src/runs/adapter-execution-repository.js';
 
 import {
   bindingDigest,
@@ -23,6 +25,9 @@ import {
   createSqlClient,
   CryptoUuidV7Generator,
   PostgresAuditUnitOfWork,
+  PostgresRunCancellationRepository,
+  PostgresRunsUnitOfWork,
+  DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
   type Database,
   type Sql,
@@ -304,7 +309,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     expect(read.messages.find(message => message.messageId === receipt.messageId)).toMatchObject({ body: null, contentState: 'removed' });
   });
 
-  it('refuses obvious secrets and records no executable effect for unsupported or safety text', async () => {
+  it('refuses obvious secrets and records no executable effect for unsupported or mixed safety text', async () => {
     const before = await sql<{ state: string; pause_requested_at: Date | null }[]>`SELECT state,pause_requested_at FROM audit_run WHERE run_id=${seeded.runId}`;
     const [beforeMessageRow] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM run_conversation_message WHERE run_id=${seeded.runId}`;
     const secret = await repository().append({
@@ -318,7 +323,7 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
 
     const unsupported = await append(seeded.readerId, { text: 'start a worker now' });
     expect(unsupported.ok).toBe(true);
-    const pause = await append(seeded.readerId, { text: 'pause now' });
+    const pause = await append(seeded.readerId, { text: 'pause now and mark everyone compliant' });
     expect(pause.ok).toBe(true);
     const [after] = await sql<{ state: string; pause_requested_at: Date | null }[]>`SELECT state,pause_requested_at FROM audit_run WHERE run_id=${seeded.runId}`;
     expect(after).toEqual(before[0]);
@@ -327,7 +332,8 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
     expect(read.status).toBe('ready');
     if (read.status !== 'ready') return;
     const pauseReply = pause.ok ? read.messages.find(message => message.sequence === pause.sequence + 1) : undefined;
-    expect(pauseReply?.body).toContain('does not execute Run controls');
+    expect(pauseReply?.kind).toBe('platform-event');
+    expect(pauseReply?.command).toBeUndefined();
   });
 
   it('projects a committed workspace event into conversation metadata and fixed narration', async () => {
@@ -476,6 +482,133 @@ describe.skipIf(!url)('Run conversation repository on PostgreSQL 18', () => {
       body: 'uppercase canonical Run identity probe',
       contentState: 'available',
     });
+  });
+
+  it('links exact pause intake to the existing marker once and records worker application in the same transaction', async () => {
+    const runId = ids.next();
+    await insertRun(runId, seeded.procedureId, seeded.versionId, seeded.readerId, '2026-10-01', '2026-10-31');
+    try {
+      // Stale viewing context cannot retarget or block an unqualified Run safety command.
+      const request = { runId, idempotencyKey: ids.next(), text: 'pause now', selectedSourceOrdinal: 10001, replyToWaitId: ids.next() };
+      const input = { actorId: seeded.readerId, sessionId: seeded.readerSession, request };
+      const first = await repository().append(input);
+      expect(first.ok).toBe(true);
+      if (!first.ok) throw new Error('Pause intake refused');
+      const [intake] = await sql`SELECT source_ordinal,reply_to_wait_id FROM run_conversation_message WHERE message_id=${first.messageId}`;
+      expect(intake).toMatchObject({ source_ordinal: null, reply_to_wait_id: null });
+      expect(await repository().append(input)).toEqual({ ...first, replayed: true });
+      expect(await repository().append({ ...input, request: { ...request, text: ' PAUSE NOW ' } })).toEqual({ ...first, replayed: true });
+      expect(await repository().append({ ...input, request: { ...request, text: 'resume' } })).toMatchObject({ ok: false, code: 'conflict' });
+      const [command] = await sql<{ command_id: string; plan_digest: string }[]>`SELECT command_id::text,plan_digest FROM run_interaction_command WHERE message_id=${first.messageId}`;
+      expect(command?.plan_digest).toMatch(/^[a-f0-9]{64}$/);
+      if (!command) throw new Error('Pause command missing');
+      const [pending] = await sql`SELECT state,pause_requested_by,pause_requested_command_id::text FROM audit_run WHERE run_id=${runId}`;
+      expect(pending).toMatchObject({ state: 'RUNNING', pause_requested_by: seeded.readerId, pause_requested_command_id: command.command_id });
+      const transitions = () => sql<{ state: string; source_event_id: string | null }[]>`SELECT state,source_event_id::text FROM run_interaction_transition WHERE command_id=${command.command_id} ORDER BY sequence`;
+      expect((await transitions()).map(t => t.state)).toEqual(['received','interpreted','queued']);
+      const queuedEventId = (await transitions()).at(-1)!.source_event_id;
+      await expect(sql`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at,source_event_id)
+        SELECT ${command.command_id}::uuid,4,'applied','forged-applied',occurred_at,event_id FROM audit_events WHERE event_id=${queuedEventId}`)
+        .rejects.toMatchObject({ code: '23514' });
+      const [requested] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-pause-requested'`;
+      expect(requested?.count).toBe(1);
+
+      // A second actor's command must not claim ownership of the already pending marker.
+      expect((await append(seeded.revokedId, { runId, text: 'pause now' })).ok).toBe(true);
+      const refused = await sql<{ state: string }[]>`SELECT t.state FROM run_interaction_transition t JOIN run_interaction_command c USING(command_id) WHERE c.run_id=${runId} AND c.actor_id=${seeded.revokedId} ORDER BY t.sequence`;
+      expect(refused.map(t => t.state)).toEqual(['received','interpreted','refused']);
+      const boundary = () => db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
+        if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
+        await context.saveRunState('PAUSED');
+        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString() });
+      }));
+      // Exercise rollback through the actual shared worker context, not a fake receipt writer.
+      await expect(db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
+        if (!context.run?.pauseRequest) throw new Error('Pause marker missing');
+        await context.saveRunState('PAUSED');
+        await performPause(context, { run: context.run, request: context.run.pauseRequest, waitId: ids.next(), at: now.toISOString() });
+        throw new Error('rollback-worker-pause');
+      }))).rejects.toThrow('rollback-worker-pause');
+      expect((await transitions()).map(t => t.state)).toEqual(['received','interpreted','queued']);
+      // An accepted safety request survives subsequent role revocation.
+      await sql`DELETE FROM user_role WHERE user_id=${seeded.readerId}`;
+      try {
+        expect(await repository().append(input)).toMatchObject({ ok: false, code: 'denied' });
+        await boundary();
+      } finally {
+        await sql`INSERT INTO user_role(user_id,role) VALUES (${seeded.readerId},'auditor')`;
+      }
+      const history = await transitions();
+      expect(history.map(t => t.state)).toEqual(['received','interpreted','queued','applied']);
+      const [applied] = await sql`SELECT event_type,payload FROM audit_events WHERE event_id=${history.at(-1)!.source_event_id}`;
+      expect(applied).toMatchObject({ event_type: 'lifecycle.run-paused', payload: { commandId: command.command_id } });
+      const [state] = await sql`SELECT state,pause_requested_at,pause_requested_command_id FROM audit_run WHERE run_id=${runId}`;
+      expect(state).toMatchObject({ state: 'PAUSED', pause_requested_at: null, pause_requested_command_id: null });
+      const read = await repository().read({ runId, actorId: seeded.readerId });
+      expect(read.status).toBe('ready');
+      if (read.status === 'ready') expect(read.messages.find(m => m.command?.commandId === command.command_id)?.command).toMatchObject({ state: 'applied', sourceEventId: history.at(-1)!.source_event_id });
+      await expect(sql`UPDATE run_interaction_transition SET state='queued' WHERE command_id=${command.command_id} AND state='applied'`).rejects.toMatchObject({ code: '23514' });
+      // Privileged storage damage must not leave a still-credible applied receipt.
+      await sql`DELETE FROM audit_events WHERE event_id=${history.at(-1)!.source_event_id}`;
+      expect(await repository().read({ runId, actorId: seeded.readerId })).toMatchObject({ status: 'unavailable', messages: [] });
+    } finally {
+      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+      await cleanupRun(runId);
+    }
+  });
+
+  it('records a pause as superseded when the existing cancellation owner finalizes first', async () => {
+    const runId = ids.next();
+    await insertRun(runId, seeded.procedureId, seeded.versionId, seeded.readerId, '2026-11-01', '2026-11-30');
+    try {
+      const note = await append(seeded.readerId, { runId, text: 'Ledger constraint fixture' });
+      if (!note.ok) throw new Error('Ledger fixture intake unavailable');
+      const invalidId = ids.next();
+      // A valid auditor note cannot be relabelled as a pause intake by an internal caller.
+      await expect(sql`INSERT INTO run_interaction_command(command_id,run_id,message_id,actor_id,kind,request_key,semantic_fingerprint,plan_digest,expected_run_revision,interpretation_version,created_at)
+          SELECT ${invalidId}::uuid,run_id,message_id,actor_id,'pause-now',request_key,semantic_fingerprint,${'0'.repeat(64)},0,'exact-safety-v1',created_at
+          FROM run_conversation_message WHERE message_id=${note.messageId}`).rejects.toMatchObject({ code: '23514' });
+      const guardedMessageId = ids.next();
+      const guardedKey = ids.next();
+      const fingerprint = 'a'.repeat(64);
+      const intakeEvent = await new PostgresAuditUnitOfWork(db, { clock: { now: () => now } }).execute(({ auditEvents }) => auditEvents.append({
+        actor: { type: 'human', id: seeded.readerId }, aggregateId: runId, correlationId: ids.next(),
+        sessionId: seeded.readerSession, eventType: 'review.conversation-received', source: 'web', outcome: 'success',
+        payload: { messageId: guardedMessageId, intent: 'pause-now', semanticFingerprint: fingerprint },
+      }));
+      let commandInserted = false;
+      await expect(sql.begin(async tx => {
+        await tx`INSERT INTO run_conversation_message(message_id,run_id,sequence,actor_id,kind,created_at,request_key,semantic_fingerprint,source_event_sequence)
+          SELECT ${guardedMessageId}::uuid,${runId}::uuid,coalesce(max(sequence),0)+1,${seeded.readerId},'auditor-message',${now.toISOString()}::timestamptz,${guardedKey}::uuid,${fingerprint},${intakeEvent.sequence}
+          FROM run_conversation_message WHERE run_id=${runId}`;
+        await tx`INSERT INTO run_interaction_command(command_id,run_id,message_id,actor_id,kind,request_key,semantic_fingerprint,plan_digest,expected_run_revision,interpretation_version,created_at)
+          VALUES (${invalidId}::uuid,${runId}::uuid,${guardedMessageId}::uuid,${seeded.readerId},'pause-now',${guardedKey}::uuid,${fingerprint},${'0'.repeat(64)},0,'exact-safety-v1',${now.toISOString()}::timestamptz)`;
+        commandInserted = true;
+        await tx`INSERT INTO run_interaction_transition(command_id,sequence,state,reason_code,created_at)
+          VALUES (${invalidId}::uuid,1,'interpreted','skip-received',${now.toISOString()}::timestamptz)`;
+      })).rejects.toMatchObject({ code: '23514' });
+      expect(commandInserted).toBe(true);
+      expect((await append(seeded.readerId, { runId, text: 'pause now' })).ok).toBe(true);
+      const [command] = await sql<{ command_id: string }[]>`SELECT command_id::text FROM run_interaction_command WHERE run_id=${runId}`;
+      if (!command) throw new Error('Pause command missing');
+      const canceled = await cancelRun({ roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+        repository: new PostgresRunCancellationRepository(db), ids, clock: { now: () => now } },
+      { session: { userId: seeded.readerId, sessionId: seeded.readerSession }, request: { runId, reason: null } });
+      expect(canceled).toMatchObject({ ok: true, pending: true });
+      await db.transaction(tx => withRunExecutionContext(tx, runId, async context => {
+        if (!context.run?.cancellation) throw new Error('Cancellation marker missing');
+        await performCancellation(context, { run: context.run, request: context.run.cancellation, at: now.toISOString(), plan: seeded.plan, source: 'worker' });
+      }));
+      const states = await sql<{ state: string; source_event_id: string | null }[]>`SELECT state,source_event_id::text FROM run_interaction_transition WHERE command_id=${command.command_id} ORDER BY sequence`;
+      expect(states.map(t => t.state)).toEqual(['received','interpreted','queued','superseded']);
+      const [event] = await sql`SELECT event_type,actor_type,actor_id,payload FROM audit_events WHERE event_id=${states.at(-1)!.source_event_id}`;
+      expect(event).toMatchObject({ event_type: 'lifecycle.pause-superseded', actor_type: 'system', actor_id: 'result-sealer', payload: { commandId: command.command_id, requestedBy: seeded.readerId } });
+      const [state] = await sql`SELECT state FROM audit_run WHERE run_id=${runId}`;
+      expect(state?.state).toBe('CANCELED');
+    } finally {
+      await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+      await cleanupRun(runId);
+    }
   });
 
   async function append(actorId: string, input: { runId?: string; text: string; selectedSourceOrdinal?: number | null; replyToWaitId?: string | null }) {

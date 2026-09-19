@@ -531,6 +531,45 @@ describe('a cancellation the Run outran', () => {
   });
 });
 
+describe('a pause the Run outran', () => {
+  const PAUSE_COMMAND_ID = '01a06fd8-0000-7000-8000-0000000000c6';
+
+  it('carries the server command id onto the exact pause-superseded event', async () => {
+    const context = new FakeContext();
+    context.pauseRequest = {
+      requestedBy: 'auditor',
+      sessionId: 'browser-session',
+      requestedAt: '2026-09-06T08:59:59.000Z',
+      commandId: PAUSE_COMMAND_ID,
+    };
+    const result = await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+
+    expect(result).toMatchObject({ outcome: 'PASS', runState: 'COMPLETED' });
+    const superseded = context.events.filter((entry) => entry.eventType === 'lifecycle.pause-superseded');
+    expect(superseded).toHaveLength(1);
+    expect(superseded[0]?.payload).toMatchObject({
+      requestedBy: 'auditor',
+      requestedAt: '2026-09-06T08:59:59.000Z',
+      commandId: PAUSE_COMMAND_ID,
+      state: 'COMPLETED',
+      outcome: 'PASS',
+    });
+  });
+
+  it('leaves the command id absent for a legacy pause marker', async () => {
+    const context = new FakeContext();
+    context.pauseRequest = {
+      requestedBy: 'auditor',
+      sessionId: 'browser-session',
+      requestedAt: '2026-09-06T08:59:59.000Z',
+    };
+    await completeRun(context, { run: RUN, state: 'COMPLETED', at: AT, plan: plan() });
+
+    const superseded = context.events.find((entry) => entry.eventType === 'lifecycle.pause-superseded');
+    expect(superseded?.payload).not.toHaveProperty('commandId');
+  });
+});
+
 /**
  * Generation 47, from the PR 29 review.
  *

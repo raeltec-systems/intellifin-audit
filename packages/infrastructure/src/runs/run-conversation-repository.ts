@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 
 import {
@@ -10,6 +11,7 @@ import {
   detectRunConversationSecretPattern,
   narrateRunConversationEvent,
   parseRunConversationMessageRequest,
+  pauseRun,
   type RunConversationAppendReceipt,
   type RunConversationEvidenceLink,
   type RunConversationIntentKind,
@@ -20,7 +22,7 @@ import {
   type RunConversationRepository,
   type RunConversationEventContext,
 } from '@intellifin/application';
-import { adapterLookupColumn, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan } from '@intellifin/domain';
+import { adapterLookupColumn, canonicalJson, classifyPlanTargets, authorizeActionRole, type AuditEventRecord, type ExecutablePlan, type JsonValue } from '@intellifin/domain';
 
 import type { Database, Transaction } from '../db/client.js';
 import {
@@ -30,6 +32,8 @@ import {
   populationRow,
   runConversationContent,
   runConversationMessage,
+  runInteractionCommand,
+  runInteractionTransition,
   runEvidence,
   runObservation,
   runWait,
@@ -41,6 +45,7 @@ import { DrizzleRoleRepository } from '../identity/role-repository.js';
 import { DrizzleFrozenExecutionReader } from '../procedures/procedure-repository.js';
 import { ConversationContentCipher } from './conversation-content.js';
 import { recordReviewProjectionQuery } from './record-review-repository.js';
+import { PostgresWaitRepository } from './wait-repository.js';
 
 const MAX_CONVERSATION_MESSAGES = 10_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
@@ -260,17 +265,17 @@ function replyText(run: ConversationRun, intent: RunConversationIntentKind, fact
     case 'annotation':
       return 'Annotation recorded in the Run conversation. No Run command was executed.';
     case 'pause-now':
-      return `This conversation does not execute Run controls. Use the existing Pause control. ${base}${selectedText}`;
+      return `Pause outcome is not yet recorded. ${base}${selectedText}`;
     case 'resume':
-      return `This conversation does not execute Run controls. Use the existing Resume control after confirmation. ${base}${selectedText}`;
+      return `Use the Resume control to review and confirm restarting the paused inspection. ${base}${selectedText}`;
     case 'stop-confirmation':
-      return `This conversation does not execute Run controls. Use the existing Stop control after confirmation. ${base}${selectedText}`;
+      return `Use the Stop control to review and confirm stopping this Run. ${base}${selectedText}`;
     case 'deferred-pause-proposal':
-      return `This conversation records a deferred pause proposal only. Use the existing Run control after reviewing the selected record. ${base}${selectedText}`;
+      return `Pausing after the selected record is not available yet. No pause was requested. Pause now requests the next safe worker boundary. ${base}${selectedText}`;
     case 'answer-request-proposal':
       return `This conversation does not answer waits. Use the existing Escalation answer control. ${base}${selectedText}`;
     case 'strategy-proposal':
-      return `Strategy proposals are recorded for review and do not alter the frozen plan. ${base}${selectedText}`;
+      return `The frozen plan does not declare selectable lookup strategies. No strategy was changed. ${base}${selectedText}`;
     case 'flag-proposal':
       return `Flag proposals are recorded as conversation text and do not apply a Run flag. Use the existing Flag control. ${base}${selectedText}`;
     case 'amendment':
@@ -338,6 +343,26 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const page = rows.slice(0, RUN_CONVERSATION_PAGE_SIZE);
       const olderBefore = rows.length > RUN_CONVERSATION_PAGE_SIZE ? page[page.length - 1]?.sequence ?? null : null;
       const eventContext = await this.eventContext(tx, run, page);
+      const receiptParents = page.filter(row => row.kind === 'command-receipt' && row.parentMessageId !== null).map(row => row.parentMessageId!);
+      const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
+        message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
+        at: string; source_event_id: string | null; event_valid: boolean;
+      }>(sql`SELECT c.message_id::text,c.command_id::text,t.state,
+        to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text,
+        (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
+          AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at
+          AND ((t.state='queued' AND e.event_type='lifecycle.run-pause-requested' AND e.source='web' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
+            OR (t.state='applied' AND e.event_type='lifecycle.run-paused' AND e.source='worker' AND e.outcome='success' AND e.actor_type='human' AND e.actor_id=c.actor_id)
+            OR (t.state='superseded' AND e.event_type='lifecycle.pause-superseded' AND e.source='worker' AND e.outcome='failure' AND e.actor_type='system' AND e.actor_id='result-sealer' AND e.payload->>'requestedBy'=c.actor_id)),false)) AS event_valid
+        FROM run_interaction_command c
+        JOIN LATERAL (SELECT state,created_at,source_event_id FROM run_interaction_transition
+          WHERE command_id=c.command_id ORDER BY sequence DESC LIMIT 1) t ON true
+        LEFT JOIN audit_events e ON e.event_id=t.source_event_id
+        WHERE c.run_id=${run.runId}::uuid AND c.kind='pause-now'
+          AND c.message_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(receiptParents)}::jsonb)::uuid)`);
+      // Never present an applied receipt whose authoritative source fact is missing or changed.
+      if (receipts.some(receipt => !receipt.event_valid)) return errorRead(input.runId, 'unavailable', 'content-unavailable');
+      const receiptFor = new Map(receipts.map(receipt => [receipt.message_id, receipt]));
       const messages: RunConversationMessage[] = [];
       for (const row of [...page].reverse()) {
         const platform = row.parentMessageId !== null || row.kind === 'platform-event';
@@ -345,6 +370,7 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         let links: readonly RunConversationEvidenceLink[] = [];
         let contentState: RunConversationMessage['contentState'] = 'unavailable';
         const source = row.sourceEvent;
+        const receipt = row.parentMessageId === null ? undefined : receiptFor.get(row.parentMessageId);
         const narration = source === null ? null : narrateRunConversationEvent({
           eventId: source.eventId,
           actor: { type: source.actorType, id: source.actorId },
@@ -394,6 +420,8 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           createdAt: row.createdAt.toISOString(),
           contextRevision: row.contextRevision,
           links,
+          ...(receipt === undefined ? {} : { command: { commandId: receipt.command_id, kind: 'pause-now' as const,
+            state: receipt.state, at: receipt.at, sourceEventId: receipt.source_event_id } }),
         });
       }
       return {
@@ -465,12 +493,17 @@ export class PostgresRunConversationRepository implements RunConversationReposit
     if (!validActor(input.actorId) || !validActor(input.sessionId)) return { ok: false, code: 'malformed', reason: 'The conversation identity was not valid.' };
     const parsed = parseRunConversationMessageRequest(input.request);
     if (!parsed.ok) return { ok: false, code: 'malformed', reason: parsed.reason };
-    if (parsed.value.selectedSourceOrdinal !== null && parsed.value.selectedSourceOrdinal > MAX_SOURCE_ORDINAL) return { ok: false, code: 'malformed', reason: 'The selected source ordinal is outside the bounded Run surface.' };
     const cipher = this.cipher;
     if (cipher === null) return { ok: false, code: 'unavailable', reason: 'Run conversation content is unavailable.' };
     const interpretation = interpretRunConversationMessage(parsed.value);
+    if (interpretation.intent.kind !== 'pause-now' && parsed.value.selectedSourceOrdinal !== null && parsed.value.selectedSourceOrdinal > MAX_SOURCE_ORDINAL) return { ok: false, code: 'malformed', reason: 'The selected source ordinal is outside the bounded Run surface.' };
     const at = validClock(this.now());
-    const semanticInput = JSON.stringify({
+    const semanticInput = JSON.stringify(interpretation.intent.kind === 'pause-now' ? {
+      schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
+      runId: parsed.value.runId,
+      actorId: input.actorId,
+      operation: 'pause-now',
+    } : {
       schemaVersion: RUN_CONVERSATION_SCHEMA_VERSION,
       runId: parsed.value.runId,
       actorId: input.actorId,
@@ -487,7 +520,12 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       await tx.execute(sql`SET LOCAL statement_timeout = '5s'`);
       // Serialize the per-actor limiter across Runs. All work under this lock remains
       // local PostgreSQL or local crypto; no provider, queue or object-store I/O occurs.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-conversation-actor:${input.actorId}`}, 0))`);
+      const safetyShortcut = interpretation.intent.kind === 'pause-now';
+      // Exact unqualified pause targets the Run. A stale review selection or resolved
+      // wait must not make that safety request depend on unrelated record context.
+      const sourceOrdinal = safetyShortcut ? null : parsed.value.selectedSourceOrdinal;
+      const replyToWaitId = safetyShortcut ? null : parsed.value.replyToWaitId;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${safetyShortcut ? 'run-conversation-safety' : 'run-conversation-actor'}:${input.actorId}`}, 0))`);
       const role = await new DrizzleRoleRepository(tx).findRole(input.actorId);
       if (!authorizeActionRole(role, 'run.initiate').allowed) return { ok: false, code: 'denied', reason: 'Your role does not permit this action.' };
       const [runRow] = await tx.select().from(auditRun).where(eq(auditRun.runId, parsed.value.runId)).for('update').limit(1);
@@ -506,38 +544,43 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           : { ok: false, code: 'conflict', reason: 'That idempotency key is already bound to another message.' };
       }
 
-      if (parsed.value.selectedSourceOrdinal !== null) {
+      if (sourceOrdinal !== null) {
         const [source] = await tx.select({ ordinal: populationRow.ordinal })
           .from(populationRow)
-          .where(and(eq(populationRow.runId, run.runId), eq(populationRow.ordinal, parsed.value.selectedSourceOrdinal)))
+          .where(and(eq(populationRow.runId, run.runId), eq(populationRow.ordinal, sourceOrdinal)))
           .limit(1);
         if (!source) return { ok: false, code: 'malformed', reason: 'The selected source record is not part of this Run.' };
       }
-      if (parsed.value.replyToWaitId !== null) {
+      if (replyToWaitId !== null) {
         const [wait] = await tx.select({ waitId: runWait.waitId })
           .from(runWait)
-          .where(and(eq(runWait.waitId, parsed.value.replyToWaitId), eq(runWait.runId, run.runId), isNull(runWait.closedAt)))
+          .where(and(eq(runWait.waitId, replyToWaitId), eq(runWait.runId, run.runId), isNull(runWait.closedAt)))
           .limit(1);
         if (!wait) return { ok: false, code: 'malformed', reason: 'The referenced wait is not open on this Run.' };
       }
 
       const windowStart = new Date(at.getTime() - 60_000);
       const [rate] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
-        .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart)));
+        .where(and(eq(runConversationMessage.actorId, input.actorId), isNotNull(runConversationMessage.requestKey), gte(runConversationMessage.createdAt, windowStart),
+          safetyShortcut ? sql`EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId} AND c.kind='pause-now')` : sql`NOT EXISTS (SELECT 1 FROM ${runInteractionCommand} c WHERE c.message_id=${runConversationMessage.messageId})`));
       if ((rate?.count ?? 0) >= MAX_REQUESTS_PER_MINUTE) return { ok: false, code: 'unavailable', reason: 'The conversation rate limit was reached. Try again shortly.' };
 
-      const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
-        .where(and(eq(runConversationMessage.runId, run.runId), or(isNotNull(runConversationMessage.requestKey), isNotNull(runConversationMessage.parentMessageId))));
-      if ((total?.count ?? 0) + 2 > MAX_CONVERSATION_MESSAGES) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its bounded message limit.' };
+      if (!safetyShortcut) {
+        const [total] = await tx.select({ count: sql<number>`count(*)::int` }).from(runConversationMessage)
+          .where(and(eq(runConversationMessage.runId, run.runId), or(isNotNull(runConversationMessage.requestKey), isNotNull(runConversationMessage.parentMessageId))));
+        if ((total?.count ?? 0) + 2 > MAX_CONVERSATION_MESSAGES) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its bounded message limit.' };
+      }
       const [position] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
         .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
-      if ((position?.sequence ?? 0) + 2 > 1_000_000) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its history limit. Execution history remains available in Run details.' };
+      const requiredPositions = interpretation.intent.kind === 'pause-now' ? 3 : 2;
+      if ((position?.sequence ?? 0) + requiredPositions > 1_000_000) return { ok: false, code: 'unavailable', reason: 'The Run conversation has reached its history limit. Execution history remains available in Run details.' };
 
       const plan = await new DrizzleFrozenExecutionReader(tx).readFrozenExecution(run.versionId, run.procedureId);
       if (!plan) return { ok: false, code: 'unavailable', reason: 'The frozen Run context is unavailable.' };
-      const facts = await this.facts(tx, run, plan, parsed.value.selectedSourceOrdinal);
-      if (facts === null) return { ok: false, code: 'malformed', reason: 'The selected source record is not available in this Run.' };
-      const replyBody = bodyEnvelope(replyText(run, safeIntentKind(interpretation.intent.kind), facts), facts.selected?.evidenceLinks ?? []);
+      const facts = safetyShortcut ? null : await this.facts(tx, run, plan, sourceOrdinal);
+      if (!safetyShortcut && facts === null) return { ok: false, code: 'malformed', reason: 'The selected source record is not available in this Run.' };
+      let replyBody = facts === null ? bodyEnvelope('Pause request awaiting the domain decision.', [])
+        : bodyEnvelope(replyText(run, safeIntentKind(interpretation.intent.kind), facts), facts.selected?.evidenceLinks ?? []);
       const messageId = new CryptoUuidV7Generator().next();
       const replyMessageId = new CryptoUuidV7Generator().next();
       const event = await createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator()).append({
@@ -552,13 +595,12 @@ export class PostgresRunConversationRepository implements RunConversationReposit
           messageId,
           replyMessageId,
           intent: interpretation.intent.kind,
-          sourceOrdinal: parsed.value.selectedSourceOrdinal,
+          sourceOrdinal: sourceOrdinal,
           semanticFingerprint,
         },
       });
       const [last] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` }).from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
       const messageSequence = (last?.sequence ?? 0) + 1;
-      const replySequence = messageSequence + 1;
       const contextRevision = await this.contextRevision(tx, run.runId, run.revision);
       await tx.insert(runConversationMessage).values({
         messageId,
@@ -571,23 +613,56 @@ export class PostgresRunConversationRepository implements RunConversationReposit
         requestKey: parsed.value.idempotencyKey,
         semanticFingerprint,
         contextRevision,
-        sourceOrdinal: parsed.value.selectedSourceOrdinal,
-        replyToWaitId: parsed.value.replyToWaitId,
+        sourceOrdinal: sourceOrdinal,
+        replyToWaitId: replyToWaitId,
         sourceEventSequence: event.sequence,
       });
+      if (interpretation.intent.kind === 'pause-now') {
+        const commandId = new CryptoUuidV7Generator().next();
+        await tx.insert(runInteractionCommand).values({ commandId, runId: run.runId, messageId,
+          actorId: input.actorId, kind: 'pause-now', requestKey: parsed.value.idempotencyKey,
+          semanticFingerprint, planDigest: createHash('sha256').update(canonicalJson(plan as unknown as JsonValue)).digest('hex'),
+          expectedRunRevision: run.revision, interpretationVersion: 'exact-safety-v1', createdAt: at });
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: 1, state: 'received', reasonCode: 'intake-persisted', createdAt: at });
+        await tx.insert(runInteractionTransition).values({ commandId, sequence: 2, state: 'interpreted', reasonCode: 'exact-pause-now', createdAt: at });
+        const auditEvents = createAuditEventWriter(tx, { now: () => at }, new CryptoUuidV7Generator());
+        const outcome = await pauseRun({
+          commandId, roles: new DrizzleRoleRepository(tx), repository: new PostgresWaitRepository(tx),
+          unitOfWork: { execute: work => work({ auditEvents }) },
+          ids: new CryptoUuidV7Generator(), clock: { now: () => at },
+        }, { session: { userId: input.actorId, sessionId: input.sessionId }, request: { runId: run.runId } });
+        if (!outcome.ok) {
+          await tx.insert(runInteractionTransition).values({ commandId, sequence: 3, state: 'refused', reasonCode: 'domain-refused', createdAt: at });
+        } else {
+          const [queued] = await tx.select({ state: runInteractionTransition.state }).from(runInteractionTransition)
+            .where(eq(runInteractionTransition.commandId, commandId)).orderBy(desc(runInteractionTransition.sequence)).limit(1);
+          if (queued?.state !== 'queued') throw new Error('Pause domain receipt unavailable');
+        }
+        replyBody = bodyEnvelope(outcome.ok
+          ? 'Pause requested. Execution is still running until the worker reaches its next safe boundary.'
+          : `Pause was not requested. ${outcome.reason}`, []);
+      }
+      // Existing domain events can append operational narration between intake and
+      // reply. Allocate from the committed transaction history after invoking the handler.
+      const [replyPosition] = await tx.select({ sequence: sql<number>`coalesce(max(${runConversationMessage.sequence}), 0)::int` })
+        .from(runConversationMessage).where(eq(runConversationMessage.runId, run.runId));
+      const replySequence = (replyPosition?.sequence ?? messageSequence) + 1;
+      if (replySequence > 1_000_000) throw new Error('Conversation reply sequence unavailable');
+      const [replyRun] = await tx.select({ revision: auditRun.revision }).from(auditRun).where(eq(auditRun.runId, run.runId));
+      const replyContextRevision = await this.contextRevision(tx, run.runId, replyRun?.revision ?? run.revision);
       await tx.insert(runConversationMessage).values({
         messageId: replyMessageId,
         runId: run.runId,
         sequence: replySequence,
         actorId: input.actorId,
-        kind: 'platform-event',
+        kind: interpretation.intent.kind === 'pause-now' ? 'command-receipt' : 'platform-event',
         createdAt: at,
         parentMessageId: messageId,
         requestKey: null,
         semanticFingerprint: null,
-        contextRevision,
-        sourceOrdinal: parsed.value.selectedSourceOrdinal,
-        replyToWaitId: parsed.value.replyToWaitId,
+        contextRevision: replyContextRevision,
+        sourceOrdinal: sourceOrdinal,
+        replyToWaitId: replyToWaitId,
         sourceEventSequence: null,
       });
       await tx.insert(runConversationContent).values([
