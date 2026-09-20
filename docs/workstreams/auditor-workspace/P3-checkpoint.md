@@ -305,3 +305,19 @@ CI. No new application pass is claimed for this slice until that execution compl
 Conversational Stop, typed contextual answers, flags, frozen strategy capabilities and
 controller-renewal receipts still remain within P3. This is an intermediate checkpoint;
 continuous protected preview, secure assistance and all seven proof gates remain open.
+
+## Completed deferred candidate browser run
+
+CI `35466506732` on `2e158d3` finished with focused authoring **16 passed** and
+full browser **233 passed / 1 failed**. Record review, exact selected Replay, controller
+stale-POST refusal and accessibility, deferred confirmation/reload/stale epoch, and
+the compiled worker inspection journeys passed. The only failure was the workspace
+role-revocation test's final console assertion: the now-forbidden global/per-Run
+event stream returned 403. All prior refusal and no-workspace/no-conversation-leak
+assertions passed.
+
+The correction permits only that exact Chrome 403 text for the two same-origin event
+resources during this negative test's revocation phase. Earlier console checks and
+all page errors remain strict. The new candidate includes conversational Resume and
+pane-width record-filter wrapping; its normal CI and actual browser proofs are pending.
+No acceptance proof gate is closed by these intermediate test results.

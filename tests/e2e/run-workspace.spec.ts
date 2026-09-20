@@ -257,11 +257,22 @@ test.describe('Run Workspace through the authenticated application', () => {
   test('does not reuse the workspace view after the auditor role is revoked', async ({ page }) => {
     test.setTimeout(120_000);
     const consoleErrors: string[] = [];
-    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+    let checkingRevocation = false;
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return;
+      const resource = message.location().url;
+      const expectedRefusal = checkingRevocation
+        && message.text() === 'Failed to load resource: the server responded with a status of 403 (Forbidden)'
+        && resource.startsWith(new URL(page.url()).origin + '/')
+        && ['/api/runs/events', `/api/runs/${fixture.runId}/events`].includes(new URL(resource).pathname);
+      if (!expectedRefusal) consoleErrors.push(`${message.text()} [${resource}]`);
+    });
     page.on('pageerror', (error) => consoleErrors.push(error.message));
     await page.goto(workspaceUrl());
     await assertShellLoaded(page);
 
+    expect(consoleErrors).toEqual([]);
+    checkingRevocation = true;
     await fixture.revokeAuditor();
     try {
       await page.reload();

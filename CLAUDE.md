@@ -4014,3 +4014,9 @@ The actual worker-to-inspector capture exposed search/filter controls reduced to
 pixels inside the desktop queue. The viewport was wide, but the adjacent inspector
 made the queue narrow. Use an auto-fitting grid with readable field minima so controls
 wrap with their own pane. Browser proof must measure the fields with the inspector open.
+
+- Auditor Workspace revocation browser checks must keep pre-revocation console errors
+  strict. After revocation, the shell and Run event streams can correctly return 403;
+  only allow the exact Chrome error at the exact same-origin event paths in that phase.
+  CI 35466506732: 624 PostgreSQL tests and 233/234 full browser tests passed; the last
+  failure was this workspace console assertion after all access-refusal checks passed.
