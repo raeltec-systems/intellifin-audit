@@ -366,6 +366,32 @@ export interface RunFrameRow {
   readonly actionStartedAt: string;
 }
 
+/** Rich inspection pages are bounded independently of the chronological Replay prefix. */
+export const REPLAY_INSPECTION_PAGE_SIZE = 100;
+
+export interface RunInspectionReplayFrame {
+  readonly frame: RunFrameRow;
+  readonly step: RunStepExecutionRow;
+  readonly action: RunTimelineToolAction;
+  readonly globalOrdinal: number;
+  readonly inspectionOrdinal: number;
+  readonly observations: number;
+}
+
+export type RunInspectionReplayRead =
+  | { readonly kind: 'unavailable' }
+  | {
+      readonly kind: 'inspection';
+      readonly workItem: Pick<RunTimelineWorkItem, 'workItemId' | 'subjectKey' | 'displayName' | 'registrationId'>;
+      readonly workspace: { readonly mode: string; readonly reference: string } | null;
+      readonly rows: readonly RunInspectionReplayFrame[];
+      readonly total: number;
+      readonly framesTotal: number;
+      readonly cursor: number;
+      readonly previousCursor: number | null;
+      readonly nextCursor: number | null;
+    };
+
 /** One wait a Run held, closed or open — a Replay jump target (Story 5.8). */
 export interface RunReplayWait {
   readonly waitId: string;
@@ -475,15 +501,19 @@ export class DrizzleRunDetailRepository {
       .from(runEvidence)
       .innerJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
       .innerJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
+      .innerJoin(runStepExecution, and(eq(runStepExecution.stepExecutionId, runToolAction.stepExecutionId), eq(runStepExecution.runId, runId)))
+      .leftJoin(runWorkItem, and(eq(runWorkItem.workItemId, sql`coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId})`), eq(runWorkItem.runId, runId)))
       .where(and(
         eq(runEvidence.runId, runId),
         eq(runEvidence.kind, 'screenshot'),
         eq(runEvidence.state, 'REGISTERED'),
+        sql`(coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId}) IS NULL OR ${runWorkItem.workItemId} IS NOT NULL)`,
         ...(evidenceId === undefined ? [] : [eq(runEvidence.evidenceId, evidenceId)]),
       ))
       .orderBy(
         direction === 'asc' ? asc(runToolAction.startedAt) : desc(runToolAction.startedAt),
         direction === 'asc' ? asc(runToolAction.toolActionId) : desc(runToolAction.toolActionId),
+        direction === 'asc' ? asc(runEvidence.evidenceId) : desc(runEvidence.evidenceId),
       );
   }
 
@@ -502,7 +532,10 @@ export class DrizzleRunDetailRepository {
       .from(runEvidence)
       .innerJoin(runEvidenceCapture, and(eq(runEvidenceCapture.evidenceId, runEvidence.evidenceId), eq(runEvidenceCapture.runId, runId)))
       .innerJoin(runToolAction, and(eq(runToolAction.toolActionId, runEvidenceCapture.toolActionId), eq(runToolAction.runId, runId)))
-      .where(and(eq(runEvidence.runId, runId), eq(runEvidence.kind, 'screenshot'), eq(runEvidence.state, 'REGISTERED')));
+      .innerJoin(runStepExecution, and(eq(runStepExecution.stepExecutionId, runToolAction.stepExecutionId), eq(runStepExecution.runId, runId)))
+      .leftJoin(runWorkItem, and(eq(runWorkItem.workItemId, sql`coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId})`), eq(runWorkItem.runId, runId)))
+      .where(and(eq(runEvidence.runId, runId), eq(runEvidence.kind, 'screenshot'), eq(runEvidence.state, 'REGISTERED'),
+        sql`(coalesce(${runStepExecution.workItemId}, ${runToolAction.workItemId}) IS NULL OR ${runWorkItem.workItemId} IS NOT NULL)`));
     const total = Number(counted[0]?.total ?? 0);
     if (total === 0) return { rows: [], total: 0 };
     const rows = await this.frames(runId, undefined, 'asc').limit(Math.min(limit, REPLAY_FRAME_LIMIT));
@@ -511,6 +544,96 @@ export class DrizzleRunDetailRepository {
     // unserveable row is one the scrubber does not offer instead of a pill that opens
     // nothing. `total` stays the exact count of bound registered screenshots either way.
     return { total, rows: rows.map(frameRow).filter((row): row is RunFrameRow => row !== null) };
+  }
+
+  /**
+   * Exact same-Run inspection selection, independent of every chronological prefix.
+   * SQL ranks all retained captures but serializes at most one inspection page. Context
+   * joins happen after that bound; no provider handles or storage keys are projected.
+   * Cursor is the zero-based inspection offset, always a whole page boundary.
+   */
+  async readInspectionReplay(runId: string, workItemId: string, cursor = 0): Promise<RunInspectionReplayRead> {
+    if (!isUuidText(runId) || !isUuidText(workItemId) || !Number.isSafeInteger(cursor) ||
+      cursor < 0 || cursor > 2_147_483_600 || cursor % REPLAY_INSPECTION_PAGE_SIZE !== 0)
+      return { kind: 'unavailable' };
+    const [owner] = await this.db.select({
+      workItemId: runWorkItem.workItemId, subjectKey: runWorkItem.subjectKey,
+      displayName: runWorkItem.displayName, registrationId: runWorkItem.registrationId,
+    }).from(runWorkItem).where(and(eq(runWorkItem.runId, runId), eq(runWorkItem.workItemId, workItemId))).limit(1);
+    if (owner === undefined) return { kind: 'unavailable' };
+    const result = await this.db.execute<{
+      total: number; frames_total: number; rows: RunInspectionReplayFrame[];
+    }>(sql`
+      WITH ranked AS MATERIALIZED (
+        SELECT e.evidence_id, a.tool_action_id, a.step_execution_id, a.started_at AS action_started_at,
+          coalesce(s.work_item_id, a.work_item_id) AS work_item_id,
+          row_number() OVER (ORDER BY a.started_at, a.tool_action_id, e.evidence_id)::int AS global_ordinal
+        FROM run_evidence e
+        JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id AND c.run_id = ${runId}::uuid
+        JOIN run_tool_action a ON a.tool_action_id = c.tool_action_id AND a.run_id = ${runId}::uuid
+        JOIN run_step_execution s ON s.step_execution_id = a.step_execution_id AND s.run_id = ${runId}::uuid
+        LEFT JOIN run_work_item w ON w.work_item_id = coalesce(s.work_item_id, a.work_item_id) AND w.run_id = ${runId}::uuid
+        WHERE e.run_id = ${runId}::uuid AND e.kind = 'screenshot' AND e.state = 'REGISTERED'
+          AND (coalesce(s.work_item_id, a.work_item_id) IS NULL OR w.work_item_id IS NOT NULL)
+      ), selected AS MATERIALIZED (
+        SELECT *, row_number() OVER (ORDER BY global_ordinal)::int AS inspection_ordinal
+        FROM ranked WHERE work_item_id = ${workItemId}::uuid
+      ), page AS (
+        SELECT * FROM selected ORDER BY inspection_ordinal LIMIT ${REPLAY_INSPECTION_PAGE_SIZE} OFFSET ${cursor}
+      ), observation_times AS (
+        SELECT ev.occurred_at AS instant,
+          sum(CASE WHEN jsonb_typeof(ev.payload->'registered') = 'number'
+            THEN (ev.payload->>'registered')::numeric ELSE 0 END) AS delta
+        FROM audit_events ev WHERE ev.aggregate_id = ${runId}
+          AND ev.event_type = 'execution.observations-registered'
+          AND ev.occurred_at <= (SELECT max(action_started_at) FROM page)
+        GROUP BY ev.occurred_at
+        UNION ALL
+        SELECT DISTINCT action_started_at AS instant, 0::numeric AS delta FROM page
+      ), observation_totals AS MATERIALIZED (
+        SELECT instant, sum(sum(delta)) OVER (ORDER BY instant ROWS UNBOUNDED PRECEDING) AS observations
+        FROM observation_times GROUP BY instant
+      )
+      SELECT (SELECT count(*)::int FROM selected) AS total,
+        (SELECT count(*)::int FROM ranked) AS frames_total,
+        coalesce((SELECT jsonb_agg(jsonb_build_object(
+          'globalOrdinal', p.global_ordinal, 'inspectionOrdinal', p.inspection_ordinal,
+          'frame', jsonb_build_object(
+            'evidenceId', e.evidence_id, 'toolActionId', a.tool_action_id,
+            'stepExecutionId', s.step_execution_id, 'workItemId', p.work_item_id,
+            'action', a.action, 'digest', e.digest, 'size', e.size, 'mediaType', e.media_type,
+            'sourceLocation', c.source_location, 'capturedAt', e.captured_at, 'actionStartedAt', a.started_at),
+          'step', jsonb_build_object(
+            'stepExecutionId', s.step_execution_id, 'planStepId', s.plan_step_id, 'workItemId', s.work_item_id,
+            'action', s.action, 'state', s.state, 'attempt', s.attempt, 'startedAt', s.started_at,
+            'completedAt', s.completed_at, 'diagnostic', s.diagnostic),
+          'action', jsonb_build_object(
+            'toolActionId', a.tool_action_id, 'stepExecutionId', a.step_execution_id, 'surface', a.surface,
+            'action', a.action, 'method', a.method, 'destination', a.destination, 'outcome', a.outcome,
+            'denial', a.denial, 'status', a.status, 'redirected', a.redirected, 'downloads', a.downloads,
+            'capture', a.capture, 'captureSuppression', a.capture_suppression, 'startedAt', a.started_at,
+            'completedAt', a.completed_at, 'diagnostic', a.diagnostic),
+          'observations', totals.observations
+        ) ORDER BY p.inspection_ordinal)
+        FROM page p
+        JOIN run_evidence e ON e.evidence_id = p.evidence_id AND e.run_id = ${runId}::uuid
+        JOIN run_evidence_capture c ON c.evidence_id = e.evidence_id AND c.run_id = ${runId}::uuid
+        JOIN run_tool_action a ON a.tool_action_id = p.tool_action_id AND a.run_id = ${runId}::uuid
+        JOIN run_step_execution s ON s.step_execution_id = p.step_execution_id AND s.run_id = ${runId}::uuid
+        JOIN observation_totals totals ON totals.instant = a.started_at
+        ), '[]'::jsonb) AS rows
+    `);
+    const read = result[0];
+    if (read === undefined || (cursor > 0 && cursor >= read.total)) return { kind: 'unavailable' };
+    const [workspace] = await this.db.select({ mode: runWorkspace.mode }).from(runWorkspace)
+      .where(eq(runWorkspace.runId, runId)).limit(1);
+    return {
+      kind: 'inspection', workItem: owner,
+      workspace: workspace === undefined ? null : { mode: workspace.mode, reference: workspaceReference(runId) },
+      rows: read.rows, total: read.total, framesTotal: read.frames_total, cursor,
+      previousCursor: cursor === 0 ? null : cursor - REPLAY_INSPECTION_PAGE_SIZE,
+      nextCursor: cursor + REPLAY_INSPECTION_PAGE_SIZE < read.total ? cursor + REPLAY_INSPECTION_PAGE_SIZE : null,
+    };
   }
 
   /**

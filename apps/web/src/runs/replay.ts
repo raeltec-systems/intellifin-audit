@@ -41,10 +41,53 @@ export type ReplayJumpTarget = {
   readonly kind: ReplayJumpKind;
   readonly id: string;
   readonly label: string;
+  /** Exact inspection route when its capture is outside the prefix. */
+  readonly workItemId?: string;
 } & (
   | { readonly frameIndex: number; readonly absence: null }
   | { readonly frameIndex: null; readonly absence: ReplayFrameAbsence }
 );
+
+/** A page is an explicit, stable inspection offset; it never changes the prefix limit. */
+export type ReplayRequest =
+  | { readonly kind: 'prefix' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'inspection'; readonly workItemId: string; readonly cursor: number };
+
+export type ReplayWindow =
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'inspection'; readonly workItemId: string; readonly label: string;
+      readonly total: number; readonly cursor: number;
+      readonly previousCursor: number | null; readonly nextCursor: number | null };
+
+export function replayRequest(query: {
+  readonly workItem?: string | readonly string[];
+  readonly cursor?: string | readonly string[];
+}, pageSize: number): ReplayRequest {
+  if (query.workItem === undefined && query.cursor === undefined) return { kind: 'prefix' };
+  if (typeof query.workItem !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.workItem))
+    return { kind: 'unavailable' };
+  // Canonical decimal offsets only: duplicates, signs, exponents and leading zeroes refuse.
+  if (query.cursor !== undefined && (typeof query.cursor !== 'string' || !/^(0|[1-9][0-9]{0,9})$/.test(query.cursor)))
+    return { kind: 'unavailable' };
+  const cursor = query.cursor === undefined ? 0 : Number(query.cursor);
+  if (!Number.isSafeInteger(cursor) || cursor > 2_147_483_600 || cursor % pageSize !== 0)
+    return { kind: 'unavailable' };
+  return { kind: 'inspection', workItemId: query.workItem.toLowerCase(), cursor };
+}
+
+export function replayInspectionHref(runId: string, workItemId: string, cursor = 0): string {
+  return `/runs/${encodeURIComponent(runId)}/replay?workItem=${encodeURIComponent(workItemId)}${cursor === 0 ? '' : `&cursor=${cursor}`}`;
+}
+
+/** The same Step-first owner used by the stored selected-inspection read. */
+export function effectiveFrameWorkItemId(
+  frame: Pick<RunFrameRow, 'workItemId'>,
+  step: { readonly workItemId: string | null } | null | undefined,
+): string | null {
+  return step?.workItemId ?? frame.workItemId;
+}
 
 export type ReplayInitialSelection =
   | { readonly kind: 'start'; readonly frameIndex: number }
@@ -99,10 +142,9 @@ export function resolveFrameWorkItems(
   frames: readonly RunFrameRow[],
   stepExecutions: readonly { readonly stepExecutionId: string; readonly workItemId: string | null }[],
 ): readonly RunFrameRow[] {
-  const byStep = new Map(stepExecutions.map((step) => [step.stepExecutionId, step.workItemId]));
+  const byStep = new Map(stepExecutions.map((step) => [step.stepExecutionId, step]));
   return frames.map((frame) => {
-    const viaStep = byStep.get(frame.stepExecutionId);
-    return viaStep === undefined || viaStep === null ? frame : { ...frame, workItemId: viaStep };
+    return { ...frame, workItemId: effectiveFrameWorkItemId(frame, byStep.get(frame.stepExecutionId)) };
   });
 }
 
@@ -168,6 +210,7 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'work-item',
       id: item.workItemId,
+      workItemId: item.workItemId,
       label: workItemLabel(item),
       ...landing(replayFrameForWorkItem(input.frames, item.workItemId), whenNoFrame),
     });
@@ -176,6 +219,7 @@ export function replayJumpTargets(input: {
     targets.push({
       kind: 'exception',
       id: exception.exceptionId,
+      workItemId: exception.workItemId,
       label: exception.populationRecordKey,
       ...landing(replayFrameForWorkItem(input.frames, exception.workItemId), whenNoFrame),
     });

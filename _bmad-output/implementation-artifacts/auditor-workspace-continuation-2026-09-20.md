@@ -219,3 +219,30 @@ JavaScript-disabled submission proves POST with no query and the note in the bod
 and the workspace journey proves successful conversation submission with no console errors.
 Web and root TypeScript checks passed. The rest of this candidate's CI remains
 independent evidence. No merge/deployment or overall proof-gate closure is claimed.
+
+
+## Selected inspection Replay — implemented and locally verified
+
+An auditor can open a retained inspection beyond the first 500 Replay frames. Dedicated
+100-frame pages carry exact action/Step context, global session positions and cumulative
+Observation counts from the full history. Links retain the selected inspection and reopen
+paused. Invalid or empty selections never substitute another record. Failed protected images
+retain their metadata and offer an explicit retry of the same Evidence ID.
+
+Three independent reviews were reconciled. All five PostgreSQL cases passed, including
+610-frame pagination, interleaved ownership, deterministic timestamp ties, foreign identity
+refusals and a verified 5,508-event chain. The larger page query took 655.7ms locally;
+fixture setup took 897.3ms. These measurements do not close capacity acceptance.
+
+Both authenticated browser journeys passed with zero retries across separate runs. The
+record-review journey follows its actual inspection link to an empty retained capture set;
+the long journey proves late image decoding, reload, paging, playback, integrity refusal,
+retry and role revocation. The initial combined invocation recorded one Chromium target
+crash; the isolated long journey passed in 49.5 seconds. Browser off-origin telemetry does
+not measure server/worker outbound calls.
+
+The final combined local unit suite passed **4,812/4,812 tests across 250 files**. Build,
+web/root TypeScript and final dependency boundaries passed. This includes the native POST
+correction. See [the Replay specification and suggested review order](spec-aw-selected-replay.md).
+Conversation/record/evidence/history synchronization remains required; all seven overall
+proof gates remain open. No merge or deployment has occurred.

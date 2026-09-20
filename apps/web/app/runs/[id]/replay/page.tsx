@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { isActiveRunState } from '@intellifin/domain';
-import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_PAGE_SIZE } from '@intellifin/infrastructure';
+import { DrizzleFrozenExecutionReader, DrizzleRunDetailRepository, REPLAY_INSPECTION_PAGE_SIZE, REPLAY_PAGE_SIZE } from '@intellifin/infrastructure';
 
 import { getRuntime } from '../../../../src/bootstrap';
 import { Banner } from '../../../../src/design/Banner';
@@ -13,7 +13,7 @@ import { RunDenied, openRun, runTabHref } from '../../../../src/runs/detail';
 import { planActionWord, runLifecycleWord, utcStamp, workItemLabel } from '../../../../src/runs/labels';
 import { StatusBadge } from '../../../../src/design/StatusBadge';
 import { frameNarration, plannedStepCount, stepNarration } from '../../../../src/runs/live-view';
-import { replayInitialSelection, replayJumpTargets, replayObservationsThrough, resolveFrameWorkItems } from '../../../../src/runs/replay';
+import { effectiveFrameWorkItemId, replayInitialSelection, replayJumpTargets, replayObservationsThrough, replayRequest, resolveFrameWorkItems } from '../../../../src/runs/replay';
 
 export const metadata: Metadata = { title: 'Run · Replay · IntelliFin Audit' };
 export const dynamic = 'force-dynamic';
@@ -40,7 +40,7 @@ export default async function RunReplayPage({
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>;
-  readonly searchParams: Promise<{ readonly workItem?: string | string[] }>;
+  readonly searchParams: Promise<{ readonly workItem?: string | string[]; readonly cursor?: string | string[] }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
   const access = await openRun(id);
@@ -90,6 +90,62 @@ export default async function RunReplayPage({
 
   const runtime = await getRuntime();
   const detail = new DrizzleRunDetailRepository(runtime.db);
+  const request = replayRequest(await searchParams, REPLAY_INSPECTION_PAGE_SIZE);
+  if (request.kind !== 'prefix') {
+    const [selected, plan] = await Promise.all([
+      request.kind === 'inspection'
+        ? detail.readInspectionReplay(run.runId, request.workItemId, request.cursor)
+        : Promise.resolve({ kind: 'unavailable' } as const),
+      new DrizzleFrozenExecutionReader(runtime.db).readFrozenExecution(run.versionId, run.procedureId),
+    ]);
+    const owner = selected.kind === 'inspection' ? selected.workItem : null;
+    const system = owner === null ? null : plan?.inputs.targets
+      .find(target => target.registrationId === owner.registrationId)?.displayName ?? null;
+    const label = owner === null ? null : workItemLabel({ ...owner, displayName: system ?? owner.displayName });
+    const views: readonly ReplayFrameView[] = selected.kind === 'unavailable' ? [] : selected.rows.map(row => {
+      const narration = frameNarration(row.frame, row.step, system, owner?.subjectKey ?? null);
+      return {
+        evidenceId: row.frame.evidenceId, narration, stepNarration: narration, workItemLabel: label,
+        sourceLocation: row.frame.sourceLocation, digest: row.frame.digest, capturedAt: row.frame.capturedAt,
+        action: { action: row.action.action, method: row.action.method, destination: row.action.destination,
+          outcome: row.action.outcome, status: row.action.status, denial: row.action.denial,
+          capture: row.action.capture, captureSuppression: row.action.captureSuppression, startedAt: row.action.startedAt },
+        observations: row.observations, globalOrdinal: row.globalOrdinal,
+      };
+    });
+    return (
+      <div className="ls-stack">
+        {header}
+        <ReplayViewer
+          key={`${run.runId}:${request.kind === 'inspection' ? `${request.workItemId}:${request.cursor}` : 'unavailable'}:${readAt.toISOString()}`}
+          runId={run.runId}
+          stateSentence={`Session REPLAY. This Run ended: ${run.state}.`}
+          workspace={selected.kind === 'inspection' ? selected.workspace : null}
+          frames={views}
+          framesTotal={selected.kind === 'inspection' ? selected.framesTotal : 0}
+          plannedSteps={plannedStepCount(plan)}
+          stageNote={null}
+          jumpTargets={[]}
+          initialSelection={selected.kind === 'unavailable'
+            ? { kind: 'unavailable', frameIndex: null }
+            : { kind: 'inspection', frameIndex: views.length === 0 ? null : 0,
+                target: { kind: 'work-item', id: selected.workItem.workItemId, label: label!,
+                  ...(views.length === 0 ? { frameIndex: null, absence: 'none-captured' } as const
+                    : { frameIndex: 0, absence: null } as const) } }}
+          window={selected.kind === 'unavailable' ? { kind: 'unavailable' }
+            : { kind: 'inspection', workItemId: selected.workItem.workItemId, label: label!,
+                total: selected.total, cursor: selected.cursor,
+                previousCursor: selected.previousCursor, nextCursor: selected.nextCursor }}
+          instructions={(plan?.inputs.instructions ?? []).map(instruction => ({
+            system: plan?.inputs.targets.find(target => target.registrationId === instruction.registrationId)?.displayName ?? instruction.registrationId,
+            text: instruction.text,
+          }))}
+          adapterSteps={[]}
+        />
+        <p className="ls-caption">Read at {utcStamp(readAt)}.</p>
+      </div>
+    );
+  }
   // Sized for REPLAY, not for a Run Detail page. Every one of these is joined against the
   // frames this surface renders — up to `REPLAY_FRAME_LIMIT` of them — so a fifty-row
   // default silently dropped later Tool Actions, jump targets and Observation deltas from
@@ -120,11 +176,11 @@ export default async function RunReplayPage({
 
   const views: readonly ReplayFrameView[] = frames.rows.map((frame) => {
     const step = timeline.stepExecutions.rows.find((row) => row.stepExecutionId === frame.stepExecutionId) ?? null;
-    const system = systemOf(step?.workItemId ?? frame.workItemId);
+    const system = systemOf(effectiveFrameWorkItemId(frame, step));
     // The record, so the frame's `alt` and each scrubber pill's label can tell two Work
     // Items of the same Run apart. `system` is identical on both.
     const subject = timeline.workItems
-      .find((item) => item.workItemId === (step?.workItemId ?? frame.workItemId))?.subjectKey ?? null;
+      .find((item) => item.workItemId === (effectiveFrameWorkItemId(frame, step)))?.subjectKey ?? null;
     // The frame's `alt` and the rail's Step narration are the SAME string (UX-DR37): a
     // reader who cannot see the picture hears exactly what the picture is captioned with.
     const narration = frameNarration(frame, step, system, subject);
@@ -140,7 +196,7 @@ export default async function RunReplayPage({
       // is nullable, so a frame whose Work Item is known only through its Step Execution
       // reported no Work Item at all while the narration beside it named the system.
       workItemLabel: (() => {
-        const owner = timeline.workItems.find((item) => item.workItemId === (step?.workItemId ?? frame.workItemId));
+        const owner = timeline.workItems.find((item) => item.workItemId === (effectiveFrameWorkItemId(frame, step)));
         return owner === undefined ? null : workItemLabel(owner);
       })(),
       action: action === null ? null : {
@@ -169,7 +225,7 @@ export default async function RunReplayPage({
     })),
     waits,
   });
-  const initialSelection = replayInitialSelection((await searchParams).workItem, targets, views.length);
+  const initialSelection = replayInitialSelection(undefined, targets, views.length);
 
   return (
     <div className="ls-stack">

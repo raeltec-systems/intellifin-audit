@@ -7,11 +7,13 @@ import { Digest } from '../design/Digest';
 import { REPLAY_COPY } from '../design/copy';
 import { SessionChrome, SessionStage, type LiveViewerAdapterStep, type LiveViewerFrame } from './LiveViewer';
 import { UntrustedText } from './UntrustedText';
-import { clampReplayIndex, type ReplayFrameAbsence, type ReplayInitialSelection, type ReplayJumpTarget } from './replay';
+import { clampReplayIndex, replayInspectionHref, type ReplayWindow, type ReplayFrameAbsence, type ReplayInitialSelection, type ReplayJumpTarget } from './replay';
 import { utcStamp } from './labels';
 
 /** One frame and everything the platform already stored about the action that took it. */
 export interface ReplayFrameView extends LiveViewerFrame {
+  /** Position among all retained session captures, distinct from the loaded page index. */
+  readonly globalOrdinal?: number;
   /** The Step narration, which is also this frame's `alt` (UX-DR37). */
   readonly stepNarration: string;
   readonly workItemLabel: string | null;
@@ -43,6 +45,7 @@ export interface ReplayViewerProps {
   readonly instructions: readonly { readonly system: string; readonly text: string }[];
   readonly adapterSteps: readonly LiveViewerAdapterStep[];
   readonly initialSelection?: ReplayInitialSelection;
+  readonly window?: ReplayWindow;
 }
 
 /** How long one frame is held while Replay is playing. */
@@ -82,9 +85,10 @@ const JUMP_WORDS: Readonly<Record<ReplayJumpTarget['kind'], string>> = {
  * cannot disagree about a state dot, a workspace identity or where a frame comes from.
  */
 export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
-  const [index, setIndex] = useState(() => props.initialSelection?.frameIndex === null
+  const [index, setIndex] = useState(() => props.window?.kind === 'unavailable' || props.initialSelection?.frameIndex === null
     ? -1 : clampReplayIndex(props.initialSelection?.frameIndex ?? 0, props.frames.length));
   const [playing, setPlaying] = useState(false);
+  const [unavailableFrame, setUnavailableFrame] = useState<string | null>(null);
   const viewer = useRef<HTMLDivElement>(null);
   const frame = index < 0 ? null : props.frames[index] ?? null;
   const last = props.frames.length - 1;
@@ -115,11 +119,15 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
     }
   }
 
-  const counter = props.plannedSteps === null
-    ? `Frame ${index + 1} of ${props.frames.length}`
-    : `Frame ${index + 1} of ${props.frames.length} · ${props.plannedSteps} planned Steps`;
+  const position = `Frame ${frame?.globalOrdinal ?? index + 1} of ${props.window?.kind === 'inspection' ? props.framesTotal : props.frames.length}`;
+  const counter = props.plannedSteps === null ? position : `${position} · ${props.plannedSteps} planned Steps`;
+  const inspection = props.window?.kind === 'inspection' ? props.window : null;
   const selection = props.initialSelection;
-  const selectionNote = selection?.kind === 'unavailable'
+  const selectionNote = props.window?.kind === 'unavailable'
+    ? 'The requested inspection is not available in this Replay view. Its identity or page could not be resolved.'
+    : inspection !== null && props.frames.length === 0
+      ? `No retained capture exists for this inspection: ${inspection.label}.`
+      : selection?.kind === 'unavailable'
     ? 'The requested inspection is not available in this Replay view. Choose a recorded target below.'
     : selection?.kind === 'inspection' && selection.target.frameIndex === null
       ? `Requested inspection: ${selection.target.label}. ${absenceSentence(selection.target.absence, props.frames.length)} Choose a recorded target below.`
@@ -132,9 +140,21 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         chrome="REPLAY"
         stateSentence={props.stateSentence}
         workspace={props.workspace}
-        counter={index < 0 ? props.frames.length === 0 ? 'No frames' : 'No selected frame' : counter}
+        counter={index < 0 ? props.window !== undefined ? 'No selected frame' : props.frames.length === 0 ? 'No frames' : 'No selected frame' : counter}
       />
 
+      {inspection === null ? null : (
+        <section aria-labelledby="replay-inspection-heading" className="ls-stack">
+          <h3 id="replay-inspection-heading">Selected inspection: {inspection.label}</h3>
+          <p>{props.frames.length === 0 ? '0 retained inspection frames.'
+            : `Inspection frames ${inspection.cursor + 1}–${inspection.cursor + props.frames.length} of ${inspection.total}. This page contains only this inspection’s captures.`}</p>
+          <nav aria-label="Inspection frame pages" className="ls-stack">
+            {inspection.previousCursor === null ? null : <Link href={replayInspectionHref(props.runId, inspection.workItemId, inspection.previousCursor)}>Previous inspection frames</Link>}
+            {inspection.nextCursor === null ? null : <Link href={replayInspectionHref(props.runId, inspection.workItemId, inspection.nextCursor)}>Next inspection frames</Link>}
+          </nav>
+        </section>
+      )}
+      {props.window === undefined ? null : <p><Link href={`/runs/${props.runId}/replay`}>Open session Replay</Link></p>}
       {selectionNote === null ? null : <p role="status">{selectionNote}</p>}
 
       <p className="ls-session-desktop-only">{REPLAY_COPY.desktopOnly}</p>
@@ -151,14 +171,19 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
       >
         <SessionStage
           runId={props.runId}
+          onFrameError={(evidenceId) => { setPlaying(false); setUnavailableFrame(evidenceId); }}
           frame={frame}
-          stageNote={frame === null ? selectionNote ?? props.stageNote : null}
+          imageUnavailable={frame !== null && frame.evidenceId === unavailableFrame}
+          onRetryFrame={() => { setPlaying(false); setUnavailableFrame(null); }}
+          stageNote={frame?.evidenceId === unavailableFrame
+            ? 'This recorded frame could not be read from Evidence storage. Its Evidence record is unchanged.'
+            : frame === null ? selectionNote ?? props.stageNote : null}
         />
 
         <div className="ls-session__rail ls-stack">
           <section aria-labelledby="replay-step-heading" className="ls-stack">
             <h3 id="replay-step-heading">Step</h3>
-            {frame === null ? <p>{props.framesTotal > 0 ? 'Choose a recorded frame to see its inspection step.' : REPLAY_COPY.noFrames}</p> : <p>{frame.stepNarration}</p>}
+            {frame === null ? <p>{selectionNote ?? (props.framesTotal > 0 ? 'Choose a recorded frame to see its inspection step.' : REPLAY_COPY.noFrames)}</p> : <p>{frame.stepNarration}</p>}
             {frame?.workItemLabel === null || frame?.workItemLabel === undefined
               ? null
               : <p>Work Item: {frame.workItemLabel}</p>}
@@ -188,7 +213,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                 describes a frame that does not exist. */}
             <p>
               {frame === null
-                ? props.framesTotal > 0 ? 'Choose a recorded frame to see the observations registered by that moment.' : REPLAY_COPY.observationsNoFrame
+                ? selectionNote ?? (props.framesTotal > 0 ? 'Choose a recorded frame to see the observations registered by that moment.' : REPLAY_COPY.observationsNoFrame)
                 : REPLAY_COPY.observationsThrough.replace('{count}', String(frame.observations))}
             </p>
             {/* Observations are listed on the Evidence tab, with their grounding; there is
@@ -215,12 +240,12 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             type="button"
             className={position === index ? 'ls-scrubber-pill ls-scrubber-pill--current' : 'ls-scrubber-pill'}
             aria-current={position === index ? 'true' : undefined}
-            aria-label={`Frame ${position + 1} of ${props.frames.length}: ${item.stepNarration}`}
+            aria-label={`Frame ${item.globalOrdinal ?? position + 1} of ${inspection === null ? props.frames.length : props.framesTotal}: ${item.stepNarration}`}
             onClick={() => go(position)}
           />
         ))}
       </div>
-      {props.framesTotal > props.frames.length ? (
+      {props.window === undefined && props.framesTotal > props.frames.length ? (
         <p className="ls-caption">
           {REPLAY_COPY.bounded
             .replace('{shown}', String(props.frames.length))
@@ -228,7 +253,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
         </p>
       ) : null}
 
-      <section aria-labelledby="replay-jump-heading" className="ls-card ls-stack">
+      {props.window === undefined ? <section aria-labelledby="replay-jump-heading" className="ls-card ls-stack">
         <h3 id="replay-jump-heading">Jump to</h3>
         {props.jumpTargets.length === 0 ? <p>{REPLAY_COPY.noJumpTargets}</p> : (
           <ul className="ls-session__jumps">
@@ -242,6 +267,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
                   <span>
                     {JUMP_WORDS[target.kind]} · <span className="ls-mono">{target.label}</span>
                     {' '}· {absenceSentence(target.absence, props.frames.length)}
+                    {target.absence === 'not-read' && target.workItemId !== undefined ? <> <Link href={replayInspectionHref(props.runId, target.workItemId)}>Open inspection Replay</Link></> : null}
                   </span>
                 ) : (
                   <button
@@ -256,7 +282,7 @@ export function ReplayViewer(props: ReplayViewerProps): React.JSX.Element {
             ))}
           </ul>
         )}
-      </section>
+      </section> : null}
 
       {props.instructions.length === 0 ? null : (
         <section aria-labelledby="replay-instructions-heading" className="ls-card ls-stack">

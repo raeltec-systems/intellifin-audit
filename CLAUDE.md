@@ -1,3 +1,13 @@
+## 2026-09-20 — Selected Replay needs exact bounded context
+
+A selected inspection uses its own bounded frame page with global ordinals and full-history
+observation totals. Resolve ownership through the Step first, then the action, and bind every
+join to the Run. Use Evidence ID as the final tie key: UUIDv7 generation within one millisecond
+does not establish insertion order. Protected-image refusal keeps metadata and retries only
+that Evidence ID. Browser-only network telemetry cannot establish server/worker zero calls.
+Adversarial cross-Run fixtures must delete all owned capture/action children before either
+Run's Steps, in one transaction; preserve the production guards during cleanup.
+
 ## 2026-09-20 — Bound record-query admission before acquiring its snapshot
 
 Cursorless review reads use a transaction-scoped try-lock before context/projection. Busy

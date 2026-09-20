@@ -113,10 +113,13 @@ export function SessionChrome({ chrome, stateSentence, workspace, counter }: {
  * this cell and vertically centre the screen below the auditor's viewport. Keep the
  * frame's position independent of its sibling's height in both Live View and Replay.
  */
-export function SessionStage({ runId, frame, stageNote }: {
+export function SessionStage({ runId, frame, stageNote, onFrameError, imageUnavailable, onRetryFrame }: {
   readonly runId: string;
   readonly frame: LiveViewerFrame | null;
   readonly stageNote: string | null;
+  readonly onFrameError?: (evidenceId: string) => void;
+  readonly imageUnavailable?: boolean;
+  readonly onRetryFrame?: () => void;
 }): React.JSX.Element {
   return (
     <div className="ls-session__stage" style={{ alignSelf: 'start' }}>
@@ -126,12 +129,19 @@ export function SessionStage({ runId, frame, stageNote }: {
         <figure className="ls-session__figure">
           {/* A registered artifact's bytes never change, so the route answers a strong
               ETag and the browser may revalidate rather than re-read the store. */}
-          <img
+          {imageUnavailable ? (
+            <div className="ls-stack">
+              <p role="status" aria-live="polite">{stageNote}</p>
+              {onRetryFrame === undefined ? null : <button type="button" className="ls-button ls-button--secondary ls-button--sm" onClick={onRetryFrame}>Retry this frame</button>}
+            </div>
+          ) : <img
+            key={frame.evidenceId}
             className="ls-session__frame"
             src={`/api/runs/${runId}/frames/${frame.evidenceId}`}
             alt={frame.narration}
             decoding="async"
-          />
+            onError={onFrameError === undefined ? undefined : () => onFrameError(frame.evidenceId)}
+          />}
           <figcaption className="ls-session__caption">
             <UntrustedText field="captured page location">{frame.sourceLocation}</UntrustedText>
             <span>

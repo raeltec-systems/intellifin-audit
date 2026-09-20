@@ -80,3 +80,82 @@ only to viewport width while the inspector reduced the queue's available space. 
 follow-up uses a grid that wraps according to the pane width and adds a 1280×800 browser
 assertion requiring readable search/filter widths. Existing value, paging, selected-row,
 revocation and accessibility assertions remain. Actual browser verification is pending.
+
+
+## Selected inspection beyond the prefix — implementation candidate
+
+Record-review links now use a dedicated same-Run inspection read with at most 100 frames
+per request. It resolves late action/Step context directly, counts registration events
+through the action time over the full history, and labels each frame with its global
+session position. Explicit previous/next inspection-page links retain selection and open
+paused. Empty inspections and invalid identities/pages show no substituted capture. The
+default 500-frame chronological view offers exact inspection links for Work Item and
+Exception targets outside its prefix. Protected frame rendering and read grants are shared
+unchanged with the existing viewer.
+
+The focused Replay/LiveViewer, selected route/SSR and stylesheet checks passed 114 cases
+locally. The dedicated PostgreSQL fixture in
+`tests/integration/selected-replay.test.ts` covers 610 captures, 608 actions/Steps, 508
+registration events, Step-only ownership, 100+5 inspection pagination, exact global ranks,
+512 observations at the selected action time, deterministic ties, foreign identities and
+empty inspections. Its execution and authenticated late-image/page-navigation proof are
+pending the parent verification pass; fixture existence is not a passing result.
+
+This supersedes the earlier implementation limitation for prefix-excluded inspections.
+Conversation/history synchronization and the other P4 and release gates remain separate
+obligations. No production acceptance or deployment is claimed by this slice.
+
+
+### Selected Replay review corrections
+
+The image refusal state retains the exact capture metadata, announces the refusal and
+offers a paused retry of the same protected Evidence ID. Selected page props project only
+the fields displayed in the viewer; stored action diagnostics do not enter browser props.
+Observation totals now use one cumulative aggregation rather than a correlated base-history
+sum for each frame. The initial parent PostgreSQL run passed two of three new cases; its
+remaining failure was a fixture assumption about UUIDv7 generation order within a
+millisecond. The fixture now independently sorts the Evidence tie keys. The initial
+610-frame/508-event page took 522.6ms during that full run; the revised aggregation and
+5,508-event measurement await the parent verification pass.
+
+After review, 93 focused checks passed covering the changed helper/route/viewer, existing
+LiveViewer and stylesheet checks. Added PostgreSQL cases exercise interleaved 205-frame
+history, 100+3 selected pagination with global gaps, action-only and conflicting Step-first
+owners, permitted foreign FK relationships excluded by the read and the storage trigger's
+cross-Run capture refusal. Added browser assertions follow the real prefix-excluded link,
+observe timer advancement and page-end stop, navigate while playing, retry refused bytes,
+and revoke the role before subsequent image/page access. A source-backed record-review
+fixture follows its actual inspection link to an honestly empty capture set; it does not
+claim a late-capture journey from that fixture.
+
+Browser off-origin counting is explicitly browser telemetry. Server and worker outbound
+calls are not instrumented by this test; disabled provider/model credentials are fixture
+configuration, not a measured zero-call result. Revised database/browser execution and
+remaining full verification are still parent owned.
+
+
+## Selected inspection Replay — implemented and locally verified
+
+An auditor can open a retained inspection beyond the first 500 Replay frames. Dedicated
+100-frame pages carry exact action/Step context, global session positions and cumulative
+Observation counts from the full history. Links retain the selected inspection and reopen
+paused. Invalid or empty selections never substitute another record. Failed protected images
+retain their metadata and offer an explicit retry of the same Evidence ID.
+
+Three independent reviews were reconciled. All five PostgreSQL cases passed, including
+610-frame pagination, interleaved ownership, deterministic timestamp ties, foreign identity
+refusals and a verified 5,508-event chain. The larger page query took 655.7ms locally;
+fixture setup took 897.3ms. These measurements do not close capacity acceptance.
+
+Both authenticated browser journeys passed with zero retries across separate runs. The
+record-review journey follows its actual inspection link to an empty retained capture set;
+the long journey proves late image decoding, reload, paging, playback, integrity refusal,
+retry and role revocation. The initial combined invocation recorded one Chromium target
+crash; the isolated long journey passed in 49.5 seconds. Browser off-origin telemetry does
+not measure server/worker outbound calls.
+
+The final combined local unit suite passed **4,812/4,812 tests across 250 files**. Build,
+web/root TypeScript and final dependency boundaries passed. This includes the native POST
+correction. See [the Replay specification and suggested review order](../../../_bmad-output/implementation-artifacts/spec-aw-selected-replay.md).
+Conversation/record/evidence/history synchronization remains required; all seven overall
+proof gates remain open. No merge or deployment has occurred.
