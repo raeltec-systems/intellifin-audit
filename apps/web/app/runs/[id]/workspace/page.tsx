@@ -11,7 +11,6 @@ import { readOpenEscalation } from '../../../../src/runs/escalation-read';
 import { readRunConversation, readCurrentRunInspection } from '../../../../src/runs/run-conversation-actions';
 import { LiveGate } from '../../../../src/runs/LiveGate';
 import { SessionStage } from '../../../../src/runs/LiveViewer';
-import { RunControllerLease } from '../../../../src/runs/RunControllerLease';
 import { RunPauseControls } from '../../../../src/runs/RunPauseControls';
 import { RunCancelControl } from '../../../../src/runs/RunCancelControl';
 import { RunFlagControl } from '../../../../src/runs/RunFlagControl';
@@ -63,7 +62,7 @@ export default async function RunWorkspacePage({ params, searchParams }: {
   return <div className="ls-stack run-workspace-route">
     <DetailTrail trail={[{ href: '/runs', label: 'Runs' }, { href: `/runs/${id}`, label: run.procedureName }, { href: here, label: 'Auditor Workspace' }]} />
     <LiveGate runId={id} state={run.state} url={`/api/runs/${id}/events`} cursor={cursor} readAt={readAt.toISOString()} href={here}>
-      <RunWorkspaceConversation runId={id} initial={conversation} currentInspection={currentInspection}
+      <RunWorkspaceConversation key={id} runId={id} initial={conversation} controlRefreshKey={readAt.toISOString()} currentInspection={currentInspection}
         selectedSourceOrdinal={selected?.status === 'ready' ? selected.row.sourceOrdinal : null} replyToWaitId={waits?.wait?.waitId ?? null}
         header={<header><h1>Auditor Workspace · {run.procedureName}</h1>
           <p>Approved version {run.versionNumber} · {run.period.from} to {run.period.to} · {run.state.toLowerCase().replaceAll('_', ' ')}</p></header>}
@@ -73,8 +72,8 @@ export default async function RunWorkspacePage({ params, searchParams }: {
           <p className="ls-caption">Read at {utcStamp(readAt)}. {current === null ? 'No committed current action.' : `${planActionWord(current.action)}${currentSubject === null ? '' : ` for ${currentSubject}`}${currentTarget === null ? '' : ` on ${currentTarget}`}, started ${utcStamp(current.startedAt)}.`}</p>
         </div>}
         controls={<>{run.state === 'AWAITING_AUDITOR'
-          ? <><p className="ls-caption">Pause is unavailable while an auditor answer is open.</p><RunControllerLease runId={id} refreshKey={readAt.toISOString()} /></>
-          : <RunPauseControls runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
+          ? <p className="ls-caption">Pause is unavailable while an auditor answer is open.</p>
+          : <RunPauseControls showController={false} runId={id} procedureName={run.procedureName} paused={run.state === 'PAUSED'}
             pausePending={run.pauseRequest !== null} awaitingAuditor={false}
             pausable={runPauseTransition(run.state) !== null} runRevision={waits?.runRevision ?? null} controlRefreshKey={readAt.toISOString()} />}
           <RunCancelControl runId={id} procedureName={run.procedureName} active={isActiveRunState(run.state)} cancelPending={run.cancellation !== null} />

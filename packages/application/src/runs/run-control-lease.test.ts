@@ -92,6 +92,7 @@ interface Harness {
 function harness(options: HarnessOptions = {}): Harness {
   let current = options.state === undefined ? null : options.state;
   const events: AuditEventDraft[] = [];
+  const records: AuditEventRecord[] = [];
   const denials: AuditEventDraft[] = [];
   const saved: RunControlLeaseState[] = [];
   const notifications: number[] = [];
@@ -106,7 +107,7 @@ function harness(options: HarnessOptions = {}): Harness {
   const append = async (draft: AuditEventDraft): Promise<AuditEventRecord> => {
     operations.push('audit');
     events.push(draft);
-    return {
+    const record = {
       ...draft,
       eventId: `019823ab-0000-7000-8000-0000000000${events.length + 10}`,
       aggregateId: draft.aggregateId ?? 'platform',
@@ -115,6 +116,8 @@ function harness(options: HarnessOptions = {}): Harness {
       previousHash: '0'.repeat(64),
       eventHash: '1'.repeat(64),
     } as AuditEventRecord;
+    records.push(record);
+    return record;
   };
 
   const unitOfWork: AuditUnitOfWork = {
@@ -152,6 +155,7 @@ function harness(options: HarnessOptions = {}): Harness {
           authorizationRoles: { findRole: async () => lockedRole },
           now: new Date(options.now ?? AT),
           auditEvents: { append },
+          readRenewalEvent: async (actorId, requestKey) => records.find(event => event.actor.id === actorId && event.payload.requestKey === requestKey) ?? null,
           readLease: async () => current,
           saveLease: async (next) => {
             operations.push('save');
@@ -192,6 +196,9 @@ function harness(options: HarnessOptions = {}): Harness {
 function request(expectedEpoch: number, runId = RUN_ID): { runId: string; expectedEpoch: number } {
   return { runId, expectedEpoch };
 }
+
+const REQUEST_KEY = '019823ab-0000-7000-8000-000000000099';
+function renewal(expectedEpoch: number) { return { ...request(expectedEpoch), requestKey: REQUEST_KEY }; }
 
 describe('run-control-lease request parser', () => {
   it('accepts only Run plus a nonnegative safe epoch and normalizes the Run id', () => {
@@ -307,11 +314,12 @@ describe('run-control-lease commands', () => {
 
   it('renews only the live same-holder epoch and keeps the epoch stable', async () => {
     const test = harness({ state: lease(), now: '2026-09-19T10:01:00.000Z' });
-    const result = await renewRunControlLease(test.dependencies, { session: SESSION_A, request: request(1) });
+    const result = await renewRunControlLease(test.dependencies, { session: SESSION_A, request: renewal(1) });
 
     expect(result).toEqual({
       ok: true,
       operation: 'renew',
+      receipt: { requestKey: REQUEST_KEY, expectedEpoch: 1, eventId: expect.any(String), sequence: 1 },
       lease: {
         runId: RUN_ID,
         epoch: 1,
@@ -326,7 +334,7 @@ describe('run-control-lease commands', () => {
   it.each(['renew', 'release'] as const)('materializes expiry and refuses %s at the exact deadline', async (operation) => {
     const test = harness({ state: lease(), now: '2026-09-19T10:02:00.000Z' });
     const run = operation === 'renew'
-      ? renewRunControlLease(test.dependencies, { session: SESSION_A, request: request(1) })
+      ? renewRunControlLease(test.dependencies, { session: SESSION_A, request: renewal(1) })
       : releaseRunControlLease(test.dependencies, { session: SESSION_A, request: request(1) });
     await expect(run).resolves.toEqual({ ok: false, code: 'expired', reason: RUN_CONTROL_LEASE_REFUSALS.expired });
     expect(test.currentState()).toEqual({
@@ -361,7 +369,7 @@ describe('run-control-lease commands', () => {
     const test = harness({ state: lease({ expiresAt: '2026-09-19T09:59:59.000Z' }) });
     await acquireRunControlLease(test.dependencies, { session: SESSION_A, request: request(1) });
 
-    const stale = await renewRunControlLease(test.dependencies, { session: SESSION_A, request: request(1) });
+    const stale = await renewRunControlLease(test.dependencies, { session: SESSION_A, request: renewal(1) });
     expect(stale).toEqual({ ok: false, code: 'stale-epoch', reason: RUN_CONTROL_LEASE_REFUSALS.staleEpoch });
   });
 
@@ -380,12 +388,12 @@ describe('run-control-lease commands', () => {
 
   it('denies wrong owner, stale epoch and no-current-lease operations without mutation', async () => {
     const wrongOwner = harness({ state: lease() });
-    await expect(renewRunControlLease(wrongOwner.dependencies, { session: SESSION_B, request: request(1) })).resolves.toMatchObject({ code: 'not-owner' });
+    await expect(renewRunControlLease(wrongOwner.dependencies, { session: SESSION_B, request: renewal(1) })).resolves.toMatchObject({ code: 'not-owner' });
     await expect(releaseRunControlLease(wrongOwner.dependencies, { session: SESSION_A, request: request(0) })).resolves.toMatchObject({ code: 'stale-epoch' });
     expect(wrongOwner.saved).toEqual([]);
 
     const noLease = harness({ state: lease({ epoch: 2, holderId: null, expiresAt: null }) });
-    await expect(renewRunControlLease(noLease.dependencies, { session: SESSION_A, request: request(2) })).resolves.toEqual({
+    await expect(renewRunControlLease(noLease.dependencies, { session: SESSION_A, request: renewal(2) })).resolves.toEqual({
       ok: false,
       code: 'no-lease',
       reason: RUN_CONTROL_LEASE_REFUSALS.noLease,
@@ -422,4 +430,47 @@ describe('run-control-lease commands', () => {
     expect(test.saved).toHaveLength(1);
     expect(test.events).toHaveLength(1);
   });
+  it('recovers the exact event before epoch admission, including after release/reacquisition', async () => {
+    const test = harness({ state: lease() });
+    const input = { session: SESSION_A, request: renewal(1) };
+    const [first, duplicate] = await Promise.all([
+      renewRunControlLease(test.dependencies, input), renewRunControlLease(test.dependencies, input),
+    ]);
+    expect(duplicate).toEqual(first);
+    expect(test.events).toHaveLength(1);
+    await releaseRunControlLease(test.dependencies, { session: SESSION_A, request: request(1) });
+    await acquireRunControlLease(test.dependencies, { session: SESSION_B, request: request(2) });
+    expect(await renewRunControlLease(test.dependencies, input)).toEqual(first);
+    expect(test.currentState()).toMatchObject({ epoch: 3, holderId: SESSION_B.userId });
+    expect(await renewRunControlLease(test.dependencies, { ...input, request: renewal(3) })).toMatchObject({ code: 'conflict' });
+    expect(test.events).toHaveLength(3);
+  });
+
+  it('requires a UUID renewal key and rejects it on other operations', () => {
+    expect(parseRunControlLeaseRequest(request(1), 'renew')).toBeNull();
+    expect(parseRunControlLeaseRequest({ ...renewal(1), requestKey: 'invalid' }, 'renew')).toBeNull();
+    expect(parseRunControlLeaseRequest(renewal(1), 'release')).toBeNull();
+    expect(parseRunControlLeaseRequest(renewal(1), 'acquire')).toBeNull();
+    expect(parseRunControlLeaseRequest(renewal(1), 'renew')).toEqual(renewal(1));
+  });
+
+  it.each<Record<string, string | number>>([
+    { epoch: 2 }, { expectedEpoch: '1' }, { holderId: SESSION_B.userId },
+    { expiresAt: '2026-09-19T10:03:00.000Z' }, { requestKey: 'invalid' }, { extra: 'ignored?' },
+  ])('refuses corrupt retained renewal payload %j rather than synthesizing success', async patch => {
+    const test = harness({ state: lease() });
+    const input = { session: SESSION_A, request: renewal(1) };
+    await renewRunControlLease(test.dependencies, input);
+    const repository = test.dependencies.repository;
+    const dependencies = { ...test.dependencies, repository: {
+      transaction: <T>(runId: string, work: (context: RunControlLeaseContext) => Promise<T>) => repository.transaction(runId,
+        context => work({ ...context, readRenewalEvent: async (actorId, key) => {
+          const event = await context.readRenewalEvent(actorId, key);
+          return event === null ? null : { ...event, payload: { ...event.payload, ...patch } };
+        } })),
+    } };
+    await expect(renewRunControlLease(dependencies, input)).rejects.toThrow('Invalid retained controller renewal receipt');
+    expect(test.events).toHaveLength(1);
+  });
+
 });

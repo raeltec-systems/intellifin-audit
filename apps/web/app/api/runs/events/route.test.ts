@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** `GET /api/runs/events`: the same gate as the Runs list, and a list-mode engine. */
 
@@ -30,6 +30,10 @@ async function call() {
 }
 
 describe('GET /api/runs/events', () => {
+  // Import the shared infrastructure graph before timing assertions. Otherwise a
+  // cold transform can outlive the first test and leak its request into the next.
+  beforeAll(async () => { await import('./route'); }, 60_000);
+
   beforeEach(() => {
     state.opened.length = 0;
     getRuntime.mockReset();

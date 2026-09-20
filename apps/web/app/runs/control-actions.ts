@@ -1,6 +1,6 @@
 'use server';
 
-import { acquireRunControlLease, releaseRunControlLease, renewRunControlLease } from '@intellifin/application';
+import { acquireRunControlLease, releaseRunControlLease, renewRunControlLease, type RunControlLeaseOutcome } from '@intellifin/application';
 import {
   CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunControlLeaseRepository,
   PostgresRunsUnitOfWork, readRunControlLease, type RunControlLeaseRead,
@@ -9,7 +9,7 @@ import { getRuntime } from '../../src/bootstrap';
 import { currentCorrelationId, requireServerAction } from '../../src/server-session';
 
 export type RunControlReadActionResult = RunControlLeaseRead | { readonly status: 'unavailable' };
-export type RunControlActionResult = { readonly ok: true } | { readonly ok: false; readonly reason: string; readonly unknownOutcome?: boolean };
+export type RunControlActionResult = Extract<RunControlLeaseOutcome, { ok: true }> | { readonly ok: false; readonly reason: string; readonly unknownOutcome?: boolean };
 
 export async function readRunControlAction(runId: unknown): Promise<RunControlReadActionResult> {
   try {
@@ -41,7 +41,7 @@ export async function changeRunControlAction(operation: unknown, request: unknow
       ids: new CryptoUuidV7Generator(),
       allowEnrollment: runtime.conversationEnabled,
     }, { session: authorization.session, request });
-    return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
+    return outcome.ok ? outcome : { ok: false, reason: outcome.reason };
   } catch (error) {
     try {
       const runtime = await getRuntime();

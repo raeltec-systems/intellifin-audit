@@ -381,3 +381,43 @@ revocation, controller/Resume behavior and a real worker SIGKILL after acceptanc
 normal recovery with retained evidence and a sealed canceled Result. Final web TypeScript passed.
 The new candidate still requires its own remote CI. Full P3, all overall proof gates, merge and
 deployment remain open/out of scope for this individual slice.
+
+## Controller renewal recovery (2026-09-20)
+
+Renewals require an actor/Run-scoped UUID request key. After fresh authorization, an exact
+retry returns the original immutable event-linked receipt before checking current ownership
+or terminal state. It cannot extend the lease again or revive an old epoch. Migration 58
+binds the explicit lease marker to its exact event, rejects forged/changed bindings and
+retains keyed receipts through the Run lifetime. Acquire/release retain their contracts.
+
+The shared controller keeps a stable 30-second cadence, serializes mutations across remounts
+and preserves unresolved renewal identities in bounded session storage. Hidden/disconnected
+views withdraw authority. Read generations and request-start monotonic expiry fence stale
+responses. A brief checking state preserves an open decision while disabling submission;
+actual ownership loss or a changed epoch invalidates unsubmitted Resume/deferred proposals.
+Unknown confirmations reconcile through authoritative history. Pause, Stop and exact runtime
+answers remain independently authorized. Fresh ready reads clear obsolete read warnings
+without hiding genuine mutation refusals.
+
+Browser tests exposed a Next Server Action queue constraint: a held read blocked later
+mutations. Controller reads now use freshly authorized, no-store GET requests with abort
+and generation fencing. The actual browser regression proves safety Pause commits before
+a held ownership response is released. Mutation authority and handlers remain unchanged.
+
+Final local evidence on 20 September:
+
+- 668 PostgreSQL tests passed across 51 files, including 13 lease cases and actual 120-second expiry.
+- 65 focused command/storage/action/GET-route unit tests passed.
+- Full units recorded 4,772 passes and four timing failures; the affected 20 route tests and two boundary checks passed in focused reruns. All 4,776 cases have passing evidence across these runs. The original full invocation was not green.
+- All 26 boundary cases passed across the full run and isolated recheck; final build, complete TypeScript and schema-drift checks passed.
+- 17 authenticated browser journeys passed with zero retries. Three overlapping journeys passed again after the stale-warning correction.
+
+The unit fixes move cold route imports into bounded setup hooks; request assertions and
+product deadlines are unchanged. Never run standalone boundary/build/type checks while
+boundary mutation tests are planting deliberate illegal imports.
+
+The prior Stop commit passed all six remote jobs in CI 35528130988. Renewal awaits its own
+pushed-candidate CI. See the continuation report and renewal spec under
+`_bmad-output/implementation-artifacts/` for review order and exact evidence. D3 transfer
+authority is approved in its decision record but remains a separate implementation slice.
+Full P3 and all seven overall proof gates remain open. No merge or deployment occurred.

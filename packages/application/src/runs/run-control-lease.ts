@@ -1,6 +1,7 @@
 import {
   authorizeAction,
   isTerminalRunState,
+  type AuditEventRecord,
   type Role,
   type RunRecord,
 } from '@intellifin/domain';
@@ -45,9 +46,10 @@ export interface RunControlLeaseContext {
   /** PostgreSQL `clock_timestamp()`, sampled after the Run lock is taken. */
   readonly now: Date;
   readonly auditEvents: AuditEventWriter;
+  readRenewalEvent(actorId: string, requestKey: string): Promise<AuditEventRecord | null>;
   readLease(): Promise<RunControlLeaseState | null>;
   /** Writes the current fence in this transaction. The row is never deleted by a command. */
-  saveLease(state: RunControlLeaseState): Promise<void>;
+  saveLease(state: RunControlLeaseState, renewalRequestKey?: string): Promise<void>;
   /** Wake the existing Run timeline after the audit event has been appended. */
   notifyTimeline(sequence: number): Promise<void>;
 }
@@ -70,11 +72,13 @@ export interface RunControlLeaseDependencies {
 export interface RunControlLeaseRequest {
   readonly runId: string;
   readonly expectedEpoch: number;
+  readonly requestKey?: string;
 }
 
 export type RunControlLeaseOperation = 'acquire' | 'renew' | 'release';
 
 export type RunControlLeaseRefusalCode =
+  | 'conflict'
   | 'malformed'
   | 'unauthorized'
   | 'unknown'
@@ -92,6 +96,8 @@ export type RunControlLeaseOutcome =
       readonly ok: true;
       readonly operation: RunControlLeaseOperation;
       readonly lease: RunControlLeaseState;
+      /** Historical committed renewal; never current ownership authority. */
+      readonly receipt?: { readonly requestKey: string; readonly expectedEpoch: number; readonly eventId: string; readonly sequence: number };
     }
   | {
       readonly ok: false;
@@ -101,6 +107,7 @@ export type RunControlLeaseOutcome =
 
 /** Stable refusal copy; callers can translate the code without matching prose. */
 export const RUN_CONTROL_LEASE_REFUSALS = {
+  conflict: 'This renewal request key already names a different request.',
   malformed: 'Choose a Run and the control epoch you read.',
   unknown: 'That Run does not exist.',
   terminal: 'This Run has finished and its controller cannot be changed.',
@@ -119,11 +126,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
  * Parse the exact untrusted request envelope. The actor is intentionally absent: identity
  * comes only from `SessionSnapshot`, so a request cannot acquire a lease for somebody else.
  */
-export function parseRunControlLeaseRequest(value: unknown): RunControlLeaseRequest | null {
+export function parseRunControlLeaseRequest(value: unknown, operation: RunControlLeaseOperation = 'acquire'): RunControlLeaseRequest | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (
-    Object.keys(record).length !== 2 ||
+    Object.keys(record).length !== (operation === 'renew' ? 3 : 2) ||
+    (operation === 'renew' && (!Object.hasOwn(record, 'requestKey') || typeof record.requestKey !== 'string' || !UUID.test(record.requestKey))) ||
     !Object.hasOwn(record, 'runId') ||
     !Object.hasOwn(record, 'expectedEpoch') ||
     typeof record.runId !== 'string' ||
@@ -133,7 +141,30 @@ export function parseRunControlLeaseRequest(value: unknown): RunControlLeaseRequ
     record.expectedEpoch < 0
   )
     return null;
-  return { runId: record.runId.toLowerCase(), expectedEpoch: record.expectedEpoch };
+  return { runId: record.runId.toLowerCase(), expectedEpoch: record.expectedEpoch,
+    ...(operation === 'renew' ? { requestKey: (record.requestKey as string).toLowerCase() } : {}) };
+}
+
+/** Reject malformed historical events instead of deriving success from today's lease. */
+function renewalReceipt(event: AuditEventRecord, runId: string, actorId: string, requestKey: string): Extract<RunControlLeaseOutcome, { ok: true }> {
+  const p = event.payload;
+  const epoch = p.expectedEpoch;
+  if (event.aggregateId !== runId || event.actor.type !== 'human' || event.actor.id !== actorId ||
+      event.eventType !== RUN_CONTROL_LEASE_RENEWED_EVENT || event.outcome !== 'success' || event.source !== 'web' ||
+      !UUID.test(event.eventId) || !event.sessionId.trim() || !event.correlationId.trim() ||
+      !Number.isFinite(Date.parse(event.occurredAt)) || !Number.isSafeInteger(event.sequence) || event.sequence < 1 ||
+      Object.keys(p).length !== 9 || p.operation !== 'renew' || p.requestKey !== requestKey || !UUID.test(requestKey) ||
+      typeof epoch !== 'number' || !Number.isSafeInteger(epoch) || epoch < 1 || epoch > 2_147_483_647 ||
+      p.priorEpoch !== epoch || p.epoch !== epoch || p.priorHolderId !== actorId || p.holderId !== actorId ||
+      typeof p.updatedAt !== 'string' || typeof p.expiresAt !== 'string' ||
+      !Number.isFinite(Date.parse(p.updatedAt)) || !Number.isFinite(Date.parse(p.expiresAt)) ||
+      new Date(p.updatedAt).toISOString() !== p.updatedAt || new Date(p.expiresAt).toISOString() !== p.expiresAt ||
+      Date.parse(p.expiresAt) - Date.parse(p.updatedAt) !== RUN_CONTROL_LEASE_DURATION_MS) {
+    throw new Error('Invalid retained controller renewal receipt');
+  }
+  return { ok: true, operation: 'renew',
+    lease: { runId, epoch, holderId: actorId, expiresAt: p.expiresAt, updatedAt: p.updatedAt },
+    receipt: { requestKey, expectedEpoch: epoch, eventId: event.eventId, sequence: event.sequence } };
 }
 
 class Revoked extends Error {
@@ -189,11 +220,12 @@ async function persistTransition(
     readonly correlationId: string;
     readonly prior: RunControlLeaseState | null;
     readonly next: RunControlLeaseState;
+    readonly requestKey?: string;
   },
-): Promise<void> {
+): Promise<AuditEventRecord> {
   // `saveLease` and this event use the same locked repository transaction. If either
   // operation fails, the adapter rolls back the fence, event, and timeline wake together.
-  await context.saveLease(input.next);
+  await context.saveLease(input.next, input.requestKey);
   const stored = await context.auditEvents.append({
     actor: input.operation === 'expire'
       ? { type: 'system', id: 'run-control-lease-observer' }
@@ -212,10 +244,12 @@ async function persistTransition(
       holderId: input.next.holderId,
       expiresAt: input.next.expiresAt,
       updatedAt: input.next.updatedAt,
+      ...(input.operation === 'renew' ? { requestKey: input.requestKey!, expectedEpoch: input.prior!.epoch } : {}),
       ...(input.operation === 'expire' ? { observedBy: input.actorId } : {}),
     },
   });
   await context.notifyTimeline(stored.sequence);
+  return stored;
 }
 
 /**
@@ -273,7 +307,7 @@ async function executeLeaseCommand(
   const permission = await authorizeCommandRole(dependencies, authorization);
   if (!permission.allowed) return refusal('unauthorized', permission.reason);
 
-  const request = parseRunControlLeaseRequest(input.request);
+  const request = parseRunControlLeaseRequest(input.request, operation);
   if (request === null) return refusal('malformed', RUN_CONTROL_LEASE_REFUSALS.malformed);
 
   try {
@@ -281,6 +315,14 @@ async function executeLeaseCommand(
       await freshAuthorization(context, input);
       const run = context.run;
       if (run === null) return refusal('unknown', RUN_CONTROL_LEASE_REFUSALS.unknown);
+      if (operation === 'renew') {
+        const event = await context.readRenewalEvent(input.session.userId, request.requestKey!);
+        if (event !== null) {
+          const recovered = renewalReceipt(event, request.runId, input.session.userId, request.requestKey!);
+          if (recovered.receipt!.expectedEpoch !== request.expectedEpoch) return refusal('conflict', RUN_CONTROL_LEASE_REFUSALS.conflict);
+          return recovered;
+        }
+      }
       if (isTerminalRunState(run.state)) return refusal('terminal', RUN_CONTROL_LEASE_REFUSALS.terminal);
 
       const now = transactionTime(context);
@@ -344,8 +386,8 @@ async function executeLeaseCommand(
           expiresAt: new Date(now.ms + RUN_CONTROL_LEASE_DURATION_MS).toISOString(),
           updatedAt: now.iso,
         };
-        await persistTransition(context, { operation, actorId: input.session.userId, sessionId: input.session.sessionId, correlationId, prior, next });
-        return { ok: true, operation, lease: next };
+        const event = await persistTransition(context, { operation, actorId: input.session.userId, sessionId: input.session.sessionId, correlationId, prior, next, requestKey: request.requestKey! });
+        return renewalReceipt(event, request.runId, input.session.userId, request.requestKey!);
       }
 
       const epoch = nextEpoch(prior);

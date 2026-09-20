@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FRAME_LOCATOR } from '@intellifin/application';
 
@@ -6,9 +6,8 @@ import { EVIDENCE_GRANT_DOWNLOAD_FAILURES } from '../../../../../../src/runs/evi
 
 /**
  * `GET /api/runs/<id>/frames/<evidenceId>`: the gate before the lookup, the frame scope,
- * the conditional read, and the grant the route asks for. The module is imported inside
- * each test so the mocks are in effect when it is evaluated (the `session-route.test.ts`
- * template, the same one the events route follows).
+ * the conditional read, and the grant the route asks for. Warm the module after mocks
+ * are registered, as in `session-route.test.ts`, before timing request assertions.
  */
 
 const RUN = '01a0a0a0-0000-7000-8000-000000000001';
@@ -79,6 +78,8 @@ async function call(headers: Record<string, string> = {}, id = RUN, evidenceId =
 }
 
 describe('GET /api/runs/<id>/frames/<evidenceId>', () => {
+  beforeAll(async () => { await import('./route'); }, 60_000);
+
   beforeEach(() => {
     state.run = { runId: RUN };
     state.frame = { evidenceId: EVIDENCE, digest: DIGEST };

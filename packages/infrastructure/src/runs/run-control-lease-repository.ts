@@ -1,8 +1,8 @@
-import { eq, sql } from 'drizzle-orm';
-import { authorizeActionRole } from '@intellifin/domain';
+import { and, eq, sql } from 'drizzle-orm';
+import { authorizeActionRole, type AuditEventRecord } from '@intellifin/domain';
 import type { RunControlLeaseRepository, RunControlLeaseContext, RunControlLeaseState } from '@intellifin/application';
 import type { Database, Transaction } from '../db/client.js';
-import { auditRun, authUser, runControlLease } from '../db/schema.js';
+import { auditEvents, auditRun, authUser, runControlLease } from '../db/schema.js';
 import { isUuidText } from '../db/identifier.js';
 import { DrizzleRoleRepository } from '../identity/role-repository.js';
 import { createAuditEventWriter, CryptoUuidV7Generator, SystemClock } from '../db/audit-events.js';
@@ -37,12 +37,24 @@ export class PostgresRunControlLeaseRepository implements RunControlLeaseReposit
         now,
         authorizationRoles: new DrizzleRoleRepository(tx),
         auditEvents: createAuditEventWriter(tx, new SystemClock(), new CryptoUuidV7Generator()),
+        async readRenewalEvent(actorId, requestKey) {
+          const [row] = await tx.select().from(auditEvents).where(and(
+            eq(auditEvents.aggregateId, runId), eq(auditEvents.actorId, actorId),
+            eq(auditEvents.eventType, 'lifecycle.run-control-lease-renewed'),
+            sql`${auditEvents.payload} ? 'requestKey'`,
+            sql`${auditEvents.payload}->>'requestKey' = ${requestKey}`,
+          )).limit(1);
+          return row === undefined ? null : {
+            ...row, actor: { type: row.actorType, id: row.actorId }, occurredAt: row.occurredAt.toISOString(),
+          } as AuditEventRecord;
+        },
         readLease: () => readLockedRunControlLease(tx, runId),
-        async saveLease(state) {
+        async saveLease(state, renewalRequestKey) {
           if (state.runId !== runId || run === null) throw new Error('Invalid Run control identity');
           const values = {
             runId,
             epoch: state.epoch,
+            renewalRequestKey: renewalRequestKey ?? null,
             holderId: state.holderId,
             expiresAt: state.expiresAt === null ? null : new Date(state.expiresAt),
             updatedAt: new Date(state.updatedAt),
@@ -110,7 +122,7 @@ export async function readRunControlLease(
       runId: row.runId,
       required: row.epoch !== null || input.requiredForUnenrolledRun,
       epoch: row.epoch ?? 0,
-      heldByYou: live && row.holderId === input.actorId,
+      heldByYou: ['QUEUED', 'RUNNING', 'AWAITING_AUDITOR', 'PAUSED'].includes(row.state) && live && row.holderId === input.actorId,
       holderName: live ? row.holderName ?? 'Unavailable controller identity' : null,
       expiresAt: live ? row.expiresAt!.toISOString() : null,
       serverTime: now.toISOString(),

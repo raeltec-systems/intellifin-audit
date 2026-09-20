@@ -2,6 +2,8 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { AUTH_STATE } from './accounts';
 import { createDeferredPauseBrowserFixture, type DeferredPauseBrowserFixture } from '../fixtures/deferred-pause-browser';
+import { acquireRunControlLease, releaseRunControlLease } from '@intellifin/application';
+import { createDb, CryptoUuidV7Generator, DrizzleRoleRepository, PostgresRunsUnitOfWork, PostgresRunControlLeaseRepository } from '@intellifin/infrastructure';
 
 let fixture: DeferredPauseBrowserFixture | undefined;
 
@@ -156,8 +158,23 @@ test.describe('deferred inspection pause through the authenticated workspace', (
     await acquire(page);
     const proposal = await propose(page);
     const dialog = await openConfirmation(page);
-    // A second real page in the same authenticated session changes the lease while the
-    // original confirmation stays open. No request interception or mocked response.
+    // Hold an already-submitted confirmation. Fresh ownership now closes unsubmitted
+    // dialogs, so only a real in-flight stale request should reach the server fence.
+    let releaseConfirmation!: () => void;
+    let captureConfirmation!: () => void;
+    const released = new Promise<void>(resolve => { releaseConfirmation = resolve; });
+    const captured = new Promise<void>(resolve => { captureConfirmation = resolve; });
+    await page.route(`**/runs/${runId}/workspace`, async route => {
+      const request = route.request();
+      if (request.method() === 'POST' && request.headers()['next-action']) {
+        const args: unknown = JSON.parse(request.postData() ?? 'null');
+        const fields = Array.isArray(args) ? args[0] as Record<string, unknown> | undefined : undefined;
+        if (fields?.commandId === proposal.command_id) { captureConfirmation(); await released; }
+      }
+      await route.continue();
+    });
+    await dialog.getByRole('button', { name: 'Pause after this inspection', exact: true }).click();
+    await captured;
     const controllerPage = await context.newPage();
     try {
       await openWorkspace(controllerPage);
@@ -170,8 +187,7 @@ test.describe('deferred inspection pause through the authenticated workspace', (
       expect(lease?.holder_id).toBe(auditorId);
       expect(lease!.epoch).toBeGreaterThan(proposal.deferred_control_epoch);
       await page.bringToFront();
-      await dialog.getByRole('button', { name: 'Pause after this inspection', exact: true }).click();
-      await expect(dialog).toContainText('Your control lease changed or expired. Review the current inspection again.');
+      releaseConfirmation();
       await expect.poll(async () => (await readProposal())?.state).toBe('refused');
       expect(await markerCount()).toBe(0);
       expect(await safetyState()).toEqual(before);
@@ -179,12 +195,76 @@ test.describe('deferred inspection pause through the authenticated workspace', (
       expect(retained.deferred_anchor).toEqual(proposal.deferred_anchor);
       expect(retained.deferred_control_epoch).toBe(proposal.deferred_control_epoch);
       await capture(page, testInfo, 'deferred-pause-stale-confirmation-refused');
-      await dialog.getByRole('button', { name: 'Go back', exact: true }).click();
       await page.reload();
       await expect(page.getByLabel('Conversation history')).toContainText('Pause request: refused.');
       await expect(page.getByRole('button', { name: 'Review pause after inspection', exact: true })).toHaveCount(0);
       expect(await markerCount()).toBe(0);
       expect(await safetyState()).toEqual(before);
-    } finally { await controllerPage.close(); }
+    } finally { releaseConfirmation(); await controllerPage.close(); }
   });
+
+  for (const invalidation of ['failed ownership read', 'same actor new epoch'] as const) {
+    test(`withdraws deferred confirmation after ${invalidation} without hiding Stop`, async ({ page }) => {
+      const { sql, runId, auditorId } = current();
+      const before = await safetyState();
+      await openWorkspace(page); await acquire(page);
+      const proposal = await propose(page);
+      const dialog = await openConfirmation(page);
+      let confirmations = 0;
+      let reads = 0;
+      await page.route(`**/api/runs/${runId}/control`, async route => {
+        reads += 1;
+        if (invalidation === 'failed ownership read') { await route.abort('failed'); return; }
+        await route.continue();
+      });
+      await page.route(`**/runs/${runId}/workspace`, async route => {
+        const request = route.request();
+        if (request.method() === 'POST' && request.headers()['next-action']) {
+          const args: unknown = JSON.parse(request.postData() ?? 'null');
+          const fields = Array.isArray(args) ? args[0] as Record<string, unknown> | string | undefined : undefined;
+          if (typeof fields === 'object' && fields?.commandId) confirmations += 1;
+        }
+        await route.continue();
+      });
+      const db = createDb(sql);
+      const ids = new CryptoUuidV7Generator();
+      const work = new PostgresRunsUnitOfWork(db);
+      if (invalidation === 'same actor new epoch') {
+        const dependencies = { roles: new DrizzleRoleRepository(db), unitOfWork: work,
+          repository: new PostgresRunControlLeaseRepository(db), ids, allowEnrollment: true };
+        const session = { userId: auditorId, sessionId: 'deferred-confirmation-epoch-fixture' };
+        expect(await releaseRunControlLease(dependencies, { session,
+          request: { runId, expectedEpoch: proposal.deferred_control_epoch } })).toMatchObject({ ok: true });
+        expect(await acquireRunControlLease(dependencies, { session,
+          request: { runId, expectedEpoch: proposal.deferred_control_epoch + 1 } })).toMatchObject({ ok: true });
+      }
+      const event = await work.execute(context => context.auditEvents.append({
+        actor: { type: 'system', id: 'deferred-confirmation-fixture' }, source: 'worker', outcome: 'success',
+        eventType: 'lifecycle.run-progressed', aggregateId: runId, correlationId: ids.next(),
+        sessionId: 'deferred-confirmation', payload: {},
+      }));
+      await sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence: event.sequence })})`;
+      await expect.poll(() => reads).toBeGreaterThan(0);
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Review pause after inspection', exact: true })).toHaveCount(0);
+      const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+      if (invalidation === 'same actor new epoch') {
+        await expect(controller).toContainText('You control this Run.');
+        expect(await sql`SELECT epoch,holder_id FROM run_control_lease WHERE run_id=${runId}`)
+          .toEqual([{ epoch: proposal.deferred_control_epoch + 2, holder_id: auditorId }]);
+      } else await expect(controller).toContainText('Run control is unavailable.');
+      expect(confirmations).toBe(0);
+      expect(await markerCount()).toBe(0);
+      expect(await safetyState()).toEqual(before);
+      expect(await readProposal()).toEqual(proposal);
+      await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
+      await page.getByRole('button', { name: 'Send message', exact: true }).click();
+      await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
+      const stop = page.getByRole('dialog', { name: 'Stop this Run?', exact: true });
+      await expect(stop.getByRole('button', { name: 'Stop Run', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+      await stop.getByRole('button', { name: 'Go back', exact: true }).click();
+      expect(confirmations).toBe(0);
+      expect(await safetyState()).toEqual(before);
+    });
+  }
 });

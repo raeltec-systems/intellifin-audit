@@ -399,10 +399,10 @@ export class PostgresRunConversationRepository implements RunConversationReposit
       const receiptParents = page.filter(row => row.kind === 'command-receipt' && row.parentMessageId !== null).map(row => row.parentMessageId!);
       const receipts = receiptParents.length === 0 ? [] : await tx.execute<{
         message_id: string; command_id: string; state: NonNullable<RunConversationMessage['command']>['state'];
-        expected_run_revision: number; reason_code: string;
+        expected_run_revision: number; deferred_control_epoch: number | null; reason_code: string;
         kind: 'pause-now' | 'pause-after-inspection' | 'resume' | 'stop'; actor_id: string; deferred_anchor: unknown; resume_anchor: unknown;
         at: string; source_event_id: string | null; event_valid: boolean;
-      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_anchor,c.resume_anchor,t.state,t.reason_code,
+      }>(sql`SELECT c.message_id::text,c.command_id::text,c.kind,c.actor_id,c.expected_run_revision,c.deferred_control_epoch,c.deferred_anchor,c.resume_anchor,t.state,t.reason_code,
         to_char(t.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,t.source_event_id::text,
         (t.source_event_id IS NULL OR coalesce(e.aggregate_id=c.run_id::text
           AND e.payload->>'commandId'=c.command_id::text AND e.occurred_at=t.created_at AND (
@@ -517,14 +517,14 @@ export class PostgresRunConversationRepository implements RunConversationReposit
             })() : {}),
             ...(receipt.kind === 'resume' ? (() => {
               const anchor = parseRunConversationResumeAnchor(receipt.resume_anchor);
-              return { ...(anchor === null ? {} : { resumeAnchor: anchor }), canConfirm: anchor !== null &&
+              return { ...(anchor === null ? {} : { resumeAnchor: anchor, expectedControlEpoch: anchor.controlEpoch }), canConfirm: anchor !== null &&
                 contentState === 'available' && receipt.state === 'interpreted' && receipt.actor_id === input.actorId &&
                 authorizeActionRole(role, 'run.resume').allowed };
             })() : {}),
             ...(receipt.kind === 'pause-after-inspection' ? (() => {
               const anchor = parseDeferredPauseAnchor(receipt.deferred_anchor);
               const target = receiptPlan?.inputs.targets.find(entry => entry.registrationId === anchor?.registrationId);
-              return { targetLabel: anchor && target ? `${anchor.subjectKey === null ? 'the page inspection' : JSON.stringify(anchor.subjectKey)} on ${target.displayName}` : undefined,
+              return { ...(receipt.deferred_control_epoch === null ? {} : { expectedControlEpoch: receipt.deferred_control_epoch }), targetLabel: anchor && target ? `${anchor.subjectKey === null ? 'the page inspection' : JSON.stringify(anchor.subjectKey)} on ${target.displayName}` : undefined,
                 canConfirm: anchor !== null && target !== undefined && contentState === 'available' && receipt.state === 'interpreted' &&
                   receipt.actor_id === input.actorId && authorizeActionRole(role, 'run.pause').allowed };
             })() : {}),

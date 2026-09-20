@@ -3,14 +3,13 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { pauseRunAction, resumeRunAction } from '../../app/runs/actions';
-import type { RunControlReadActionResult } from '../../app/runs/control-actions';
 import { Banner } from '../design/Banner';
 import { Button } from '../design/Button';
 import { ConfirmDialog } from '../design/ConfirmDialog';
 import { ESCALATION_PANEL_COPY, PAUSE_COPY, RUN_LOST_RESPONSE } from '../design/copy';
 import { UnavailableActions } from '../design/UnavailableActions';
 import { useLiveGate } from './LiveGate';
-import { RunControllerLease } from './RunControllerLease';
+import { RunControllerLease, useSharedRunControl, type RunControlView } from './RunControllerLease';
 
 /**
  * Pause and Resume, on Run Detail AND on Live View (Story 5.4).
@@ -56,10 +55,11 @@ export interface RunPauseControlsProps {
   readonly runRevision: number | null;
   /** The existing live-channel server reread invalidates the controller projection too. */
   readonly controlRefreshKey?: string;
+  readonly showController?: boolean;
 }
 
 export function RunPauseControls({
-  runId, procedureName, paused, pausePending, awaitingAuditor, pausable, runRevision, controlRefreshKey = '',
+  runId, procedureName, paused, pausePending, awaitingAuditor, pausable, runRevision, controlRefreshKey = '', showController = true,
 }: RunPauseControlsProps): React.JSX.Element {
   const router = useRouter();
   // Live View withdraws its controls when the channel is lost or the Run has ended
@@ -68,7 +68,9 @@ export function RunPauseControls({
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => { setClientReady(true); }, []);
   const [confirming, setConfirming] = useState(false);
-  const [control, setControl] = useState<RunControlReadActionResult | null>(null);
+  const [localControl, setControl] = useState<RunControlView>(null);
+  const sharedControl = useSharedRunControl();
+  const control = showController ? localControl : sharedControl?.read ?? null;
   const [resumeConfirmation, setResumeConfirmation] = useState<{ revision: number; epoch: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -76,6 +78,14 @@ export function RunPauseControls({
   // A lost Server Action response is an UNKNOWN outcome: the transaction may have
   // committed. Further attempts are blocked and a reload is what inspects what was saved.
   const [unknown, setUnknown] = useState(false);
+
+  const ownsControl = control?.status === 'ready' && control.active && (!control.required || control.heldByYou);
+  useEffect(() => {
+    if (resumeConfirmation !== null && !busy && control?.status !== 'checking' && (!ownsControl ||
+      (control?.status === 'ready' && control.required && control.epoch !== resumeConfirmation.epoch))) {
+      setResumeConfirmation(null);
+    }
+  }, [control, ownsControl, resumeConfirmation, busy]);
 
   const pause = async (): Promise<void> => {
     setBusy(true); setMessage(null); setAttempt(value => value + 1);
@@ -98,7 +108,8 @@ export function RunPauseControls({
     // Withdrawn below when the revision could not be read; this is the guard behind it, so
     // a click that reaches here anyway (a forced one) sends nothing and says WHY rather
     // than describing a lost response for a request that was never made.
-    if (resumeConfirmation === null) return;
+    if (resumeConfirmation === null || !ownsControl ||
+      (control?.status === 'ready' && control.required && control.epoch !== resumeConfirmation.epoch)) return;
     setBusy(true); setMessage(null); setAttempt(value => value + 1);
     try {
       const result = await resumeRunAction({ runId, expectedRunRevision: resumeConfirmation.revision,
@@ -129,7 +140,7 @@ export function RunPauseControls({
       disabledReason={ESCALATION_PANEL_COPY.pauseUnavailable}
       disabledReasonId="run-pause-unavailable"
     >Pause</Button> : null}
-    {(paused || pausable || awaitingAuditor) && <RunControllerLease runId={runId} refreshKey={controlRefreshKey} onRead={setControl} />}
+    {showController && (paused || pausable || awaitingAuditor) && <RunControllerLease runId={runId} refreshKey={controlRefreshKey} onRead={setControl} />}
     {paused ? <Button variant="primary" busy={busy} onClick={() => {
         if (runRevision !== null && control?.status === 'ready' && (!control.required || control.heldByYou))
           setResumeConfirmation({ revision: runRevision, epoch: control.required ? control.epoch : null });
@@ -160,6 +171,7 @@ export function RunPauseControls({
       title="Resume this Run?"
       consequence={`Resume the approved frozen procedure ${procedureName}. Interrupted work restarts under the existing execution rules.`}
       confirmLabel={busy ? 'Saving…' : 'Resume Run'} cancelLabel="Go back" busy={busy}
+      disabledReason={!ownsControl ? 'Checking current Run control before Resume.' : null}
       onCancel={() => { if (!busy) setResumeConfirmation(null); }} onConfirm={() => { void resume(); }} />
   </div>;
 }

@@ -82,6 +82,7 @@ export interface RunConversationMessage {
     readonly targetLabel?: string;
     readonly resumeAnchor?: RunConversationResumeAnchor;
     readonly canConfirm?: boolean;
+    readonly expectedControlEpoch?: number;
     readonly reason?: string;
     readonly state: 'received' | 'interpreted' | 'queued' | 'applied' | 'refused' | 'superseded';
     readonly at: string;

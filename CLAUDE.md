@@ -2534,7 +2534,7 @@ There is no lint step yet.
 - **The Northstar read-only rule is middleware above ROUTING, and the test walks the route table.** A write to a path no route serves must be refused, not 404'd: a 404 says "there is nothing here", a 405 says "this system does not accept that, and here is the rule", and only the second is something a Run can record.
 - **Declared counts and cover-sheet digests are generated from the datasets, never typed beside them**, and the digest is over the bytes actually served. Python generates, TypeScript recomputes with `node:crypto`; two implementations must agree or a test fails.
 - **The Leavers export is CSV, not the addendum's `.xlsx`.** A valid xlsx needs a zip writer, nothing parses it yet, and the spec asks only for files with signed cover sheets. **LoanCore served the audit account as already signed in**, because a sign-in form is a POST that its own read-only rule refused — `[SUPERSEDED]` twice: by Story 4.2's credential, and then by the form the corrected read-only predicate allows. **LedgerDesk and the Railway deployment of the Northstar service are deferred**, both named.
-- **Two agents planting boundary violations collide.** `tests/unit/boundaries.test.ts` uses one fixture directory name, so a second concurrent run of it fails for a reason that is not a defect. Read the FIRST failure, and do not run it while a reviewer is planting.
+- **Two agents planting boundary violations collide.** `tests/unit/boundaries.test.ts` uses one fixture directory name, so a second concurrent run of it fails for a reason that is not a defect. Read the FIRST failure, and do not run it while a reviewer is planting. Standalone `pnpm boundaries`, builds and typechecks must also wait for this module to finish: a full unit run temporarily contains deliberate illegal imports.
 
 ### Procedures and Templates (added with Story 2.1)
 
@@ -4052,3 +4052,52 @@ use `INTELLIFIN_LOW_MEMORY=1` instead for full cache eviction; do not combine th
 Keep worker deadlines and product assertions unchanged and warm cold routes before timed
 worker journeys. The Node runtime import in `instrumentation.ts` must sit inside the positive
 `NEXT_RUNTIME === 'nodejs'` branch so both bundlers can exclude it from the edge bundle.
+
+### Renewal receipts and browser authority are separate facts (2026-09-20)
+
+Controller renewal uses a required UUID request key scoped to actor and Run, with exact
+operation/expected-epoch comparison after fresh authorization and before current-epoch
+admission. The immutable renewal event is its receipt. A nullable lease renewal marker and
+deferred matching-event guard bind the effect to that event; use explicit durable identity,
+not PostgreSQL `xmin`/transaction-status heuristics. Retain keyed events through the Run
+lifetime. Aggregate fixture cleanup must delete the event and Run in one transaction.
+
+Keep the 30-second renewal interval independent of read projections and callbacks. Serialize
+mutations, retain the original unknown renewal payload/key, and read current ownership after
+receipt recovery. A historical successful receipt does not confer current control. Fence reads
+by generation and Run lifetime; invalidate on hiding, disconnect, failure or elapsed expiry.
+Compute conservative display expiry from request-start monotonic time plus the server's
+remaining duration, counting the round trip against it. Publish unavailable ownership to all
+Resume/discretionary surfaces, including already-open dialogs; safety Stop/Pause and exact
+runtime answers remain independently authorized.
+
+Retain unresolved renewal requests in bounded session storage before dispatch so a Run-state
+remount or reload recovers the exact key. A document-wide mutation guard prevents remounts
+from overlapping outstanding mutations. Distinguish temporary `checking` from unavailable
+ownership: disable an open confirmation during reconciliation, then keep it only if the
+same epoch remains current. Compare proposal epochs even when the same actor reacquires.
+For unknown conversational confirmations, an authoritative queued/applied history receipt
+can resolve the dialog; test exact authenticated replay without forcing that dialog to stay
+open. A retained recovery dialog clears old connection refusal text when the gate reopens.
+
+Next 16.3.4 serializes browser Server Actions in one router queue, including actions used
+only for reads. A controller read held in that queue also blocks renewal and independent
+safety actions; invalidating its presentation does not release the queue. Controller reads
+therefore use a freshly authorized, no-store GET with cancellable same-origin fetch.
+Mutation actions retain their existing authority. Test slow reads through the real GET
+transport and prove safety persistence before releasing the held response. Settle initial
+hydration/stream refreshes before delaying an ownership projection for expiry assertions.
+
+Route tests that dynamically import the full infrastructure graph must warm that import
+in a bounded setup hook, as the session-route tests do. A cold import inside a five-second
+request test can time out and let its continuation read the next case's mocks. Keep request
+assertions unchanged; account for module transformation in setup rather than request time.
+
+### D3 manager transfer authority approved (2026-09-20)
+
+The user approved a separately granted `run.control-transfer` permission for Audit Managers,
+with a required reason and audited controller epoch change. Administrator status alone is
+insufficient. Preserve accepted Pause/Stop requests and all independent answer, approval and
+review permissions. Implementation must prove exact retries and stale-direction fencing;
+approval does not enable an unimplemented permission or authorize deployment. See
+`_bmad-output/implementation-artifacts/decision-aw-manager-transfer-d3.md`.

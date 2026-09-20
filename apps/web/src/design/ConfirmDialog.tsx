@@ -18,6 +18,10 @@ interface ConfirmDialogProps {
   readonly initialRationale?: string;
   readonly refusal?: string | null;
   readonly busy?: boolean;
+  /** Temporary reconciliation disables submission without discarding the decision. */
+  readonly disabledReason?: string | null;
+  /** An unknown command keeps its identity while waiting for the live gate to reopen. */
+  readonly keepOpenOnGateClose?: boolean;
   readonly open: boolean;
   readonly weight: ConfirmWeight;
   /** Names the consequence, and for a finalization names that it cannot be undone. */
@@ -69,12 +73,14 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   onConfirm,
   onCancel,
-  initialRationale = '', refusal = null, busy = false,
+  initialRationale = '', refusal = null, busy = false, disabledReason = null, keepOpenOnGateClose = false,
 }: ConfirmDialogProps): React.JSX.Element | null {
   const titleId = useId();
   const consequenceId = useId();
   const rationaleId = useId();
   const errorId = useId();
+  const disabledReasonId = useId();
+  const gateRefusalId = useId();
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const initialFocusRef = useRef<HTMLElement | null>(null);
@@ -195,16 +201,17 @@ export function ConfirmDialog({
     setGateRefusal(gate.disabledReason);
     // `busy` IS a dependency, so the dismissal that was refused while the action was in
     // flight happens as soon as it lands.
-    cancelRef.current();
-  }, [open, gate.disabledReason, busy]);
+    if (!keepOpenOnGateClose) cancelRef.current();
+  }, [open, gate.disabledReason, busy, keepOpenOnGateClose]);
 
-  // A dialog reopened after the gate has opened again starts clean.
-  useEffect(() => { if (!open) setGateRefusal(null); }, [open]);
+  // Unknown-outcome recovery can retain the dialog through reconnect. Its prior
+  // connection refusal is no longer current once the gate reopens.
+  useEffect(() => { if (!open || gate.disabledReason === null) setGateRefusal(null); }, [open, gate.disabledReason]);
 
   if (!open || !container) return null;
 
   function handleConfirm(): void {
-    if (confirmedRef.current || busy) return;
+    if (confirmedRef.current || busy || disabledReason !== null) return;
     // The gate, re-read at the moment of the decision rather than at the moment the
     // dialog opened. The effect above closes the dialog; this is what makes the refusal
     // true even if the two land in the same tick.
@@ -235,7 +242,7 @@ export function ConfirmDialog({
         </h2>
         <p id={consequenceId}>{consequence}</p>
         {refusal ? <p role="alert" className="ls-field-error">{refusal}</p> : null}
-        {gateRefusal ? <p role="alert" className="ls-field-error">{gateRefusal}</p> : null}
+        {gateRefusal ? <p id={gateRefusalId} role="alert" className="ls-field-error">{gateRefusal}</p> : null}
 
         {needsRationale ? (
           <div className="ls-dialog__field">
@@ -263,6 +270,7 @@ export function ConfirmDialog({
           </div>
         ) : null}
 
+        {disabledReason !== null && <p id={disabledReasonId} role="status">{disabledReason}</p>}
         <div className="ls-dialog__actions">
           <button
             type="button"
@@ -282,7 +290,8 @@ export function ConfirmDialog({
             }`}
             onClick={handleConfirm}
             disabled={busy}
-            {...(gate.disabledReason !== null ? { 'aria-disabled': true } : {})}
+            {...(gate.disabledReason !== null || disabledReason !== null ? { 'aria-disabled': true,
+              'aria-describedby': disabledReason !== null ? disabledReasonId : gateRefusal ? gateRefusalId : consequenceId } : {})}
           >
             {confirmLabel}
           </button>

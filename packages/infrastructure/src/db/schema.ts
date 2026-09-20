@@ -87,6 +87,8 @@ export const auditEvents = pgTable(
   },
   (table) => [
     uniqueIndex('audit_events_aggregate_sequence_uidx').on(table.aggregateId, table.sequence),
+    uniqueIndex('audit_events_control_renewal_request_uidx').on(table.aggregateId, table.actorId, sql`(${table.payload}->>'requestKey')`)
+      .where(sql`${table.eventType} = 'lifecycle.run-control-lease-renewed' AND ${table.payload} ? 'requestKey'`),
     index('audit_events_correlation_idx').on(table.correlationId),
     index('audit_events_type_time_idx').on(table.eventType, table.occurredAt),
     check('audit_events_sequence_positive', sql`${table.sequence} > 0`),
@@ -2178,6 +2180,7 @@ export const runInteractionTransition = pgTable('run_interaction_transition', {
  * never a return to legacy Resume authority. The Run row serializes every transition.
  */
 export const runControlLease = pgTable('run_control_lease', {
+  renewalRequestKey: uuid('renewal_request_key'),
   runId: uuid('run_id').primaryKey().references(() => auditRun.runId, { onDelete: 'cascade' }),
   epoch: integer('epoch').notNull(),
   holderId: text('holder_id'),

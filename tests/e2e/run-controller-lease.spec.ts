@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type BrowserContext, type Page, type Request, type TestInfo } from '@playwright/test';
-import { performPause, pauseRun, raiseEscalation } from '@intellifin/application';
+import { acquireRunControlLease, releaseRunControlLease, performPause, pauseRun, raiseEscalation } from '@intellifin/application';
 import {
   createDb,
   createSqlClient,
@@ -8,6 +8,7 @@ import {
   DrizzleRoleRepository,
   PostgresProceduresUnitOfWork,
   PostgresRunsUnitOfWork,
+  PostgresRunControlLeaseRepository,
   PostgresWaitRepository,
   SystemClock,
   type Sql,
@@ -53,6 +54,15 @@ async function readLease(runId: string): Promise<LeaseRow | null> {
   const [row] = await sql<LeaseRow[]>`
     SELECT epoch,holder_id,expires_at FROM run_control_lease WHERE run_id=${runId}`;
   return row ?? null;
+}
+
+async function progressEvent(runId: string): Promise<void> {
+  const event = await new PostgresRunsUnitOfWork(createDb(sql)).execute(context => context.auditEvents.append({
+    actor: { type: 'system', id: 'renewal-fixture' }, source: 'worker', outcome: 'success',
+    eventType: 'lifecycle.run-progressed', aggregateId: runId, correlationId: ids.next(),
+    sessionId: 'renewal-progress', payload: {},
+  }));
+  await sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence: event.sequence })})`;
 }
 
 async function seedRun(state: 'RUNNING' | 'AWAITING_AUDITOR'): Promise<string> {
@@ -125,35 +135,37 @@ async function openEscalation(runId: string): Promise<string> {
 }
 
 async function cleanupRun(runId: string): Promise<void> {
-  await sql`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
-  await sql`DELETE FROM notification WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_wait WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_result_review WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_result WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_tool_action WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_agent_work WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_observation_check WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_observation WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_step_execution WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_session_step WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_work_item WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_gate_check WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_evidence WHERE run_id=${runId}`;
-  await sql`DELETE FROM run_execution WHERE run_id=${runId}`;
-  await sql`DELETE FROM population_row WHERE run_id=${runId}`;
-  await sql`DELETE FROM population_snapshot WHERE run_id=${runId}`;
-  await sql`DELETE FROM population_evidence WHERE run_id=${runId}`;
-  await sql`DELETE FROM population_execution WHERE run_id=${runId}`;
-  await sql`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
-  await sql`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
-  await sql`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
+  await sql.begin(async tx => {
+  await tx`DELETE FROM pgboss.job WHERE data->>'runId'=${runId}`;
+  await tx`DELETE FROM notification WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_wait WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_result_review WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_result WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_evidence_integrity WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_evidence_package WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_evidence_capture WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_tool_action WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_agent_turn WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_agent_work WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_observation_evaluation WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_observation_check WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_observation WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_step_execution WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_session_step WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_work_item WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_gate_check WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_evidence WHERE run_id=${runId}`;
+  await tx`DELETE FROM run_execution WHERE run_id=${runId}`;
+  await tx`DELETE FROM population_row WHERE run_id=${runId}`;
+  await tx`DELETE FROM population_snapshot WHERE run_id=${runId}`;
+  await tx`DELETE FROM population_evidence WHERE run_id=${runId}`;
+  await tx`DELETE FROM population_execution WHERE run_id=${runId}`;
+  await tx`DELETE FROM audit_events WHERE aggregate_id=${runId}`;
+  await tx`DELETE FROM audit_event_heads WHERE aggregate_id=${runId}`;
+  await tx`DELETE FROM run_initiation_request WHERE run_id=${runId} OR refused_run_id=${runId}`;
   // The lease is a retained child fence and is removed only by the aggregate cascade.
-  await sql`DELETE FROM audit_run WHERE run_id=${runId}`;
+  await tx`DELETE FROM audit_run WHERE run_id=${runId}`;
+  });
 }
 
 async function assertA11y(page: Page): Promise<void> {
@@ -208,6 +220,373 @@ test.afterAll(async () => {
 test.describe('durable Run controller lease', () => {
   test.use({ storageState: AUTH_STATE.auditor });
 
+  test('recovers the original renewal across state changes and reload after ownership changes', async ({ page }, testInfo) => {
+    test.setTimeout(100_000);
+    const runId = await seedRun('RUNNING');
+    await page.goto(`/runs/${runId}/workspace`);
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(controller).toContainText('You control this Run.');
+    let dropped = false;
+    const renewalBodies: string[] = [];
+    let readRequests = 0;
+    let holdRead = false;
+    let releaseRead!: () => void;
+    const readReleased = new Promise<void>(resolve => { releaseRead = resolve; });
+    let readCaptured!: () => void;
+    const readReady = new Promise<void>(resolve => { readCaptured = resolve; });
+    await page.route(`**/api/runs/${runId}/control`, async route => {
+      readRequests += 1;
+      if (holdRead) {
+        const response = await route.fetch(); readCaptured(); await readReleased;
+        await route.fulfill({ response }); return;
+      }
+      await route.continue();
+    });
+    await page.route(`**/runs/${runId}/workspace`, async route => {
+      const request = route.request();
+      if (request.method() === 'POST' && request.headers()['next-action']) {
+        const args: unknown = JSON.parse(request.postData() ?? 'null');
+        if (Array.isArray(args) && args[0] === 'renew') {
+          renewalBodies.push(request.postData()!);
+          if (!dropped) {
+            dropped = true;
+            expect((await route.fetch()).status()).toBe(200);
+            await route.abort('failed'); return;
+          }
+        }
+      }
+      await route.continue();
+    });
+    const work = new PostgresRunsUnitOfWork(createDb(sql));
+    let stopped = false;
+    const progress = (async () => {
+      while (!stopped) {
+        const event = await work.execute(context => context.auditEvents.append({
+          actor: { type: 'system', id: 'renewal-fixture' }, source: 'worker', outcome: 'success',
+          eventType: 'lifecycle.run-progressed', aggregateId: runId, correlationId: ids.next(),
+          sessionId: 'renewal-progress', payload: {},
+        }));
+        await sql`SELECT pg_notify('run_timeline', ${JSON.stringify({ runId, sequence: event.sequence })})`;
+        await new Promise(resolve => setTimeout(resolve, 2_000));
+      }
+    })();
+    try {
+      await expect(controller.getByRole('button', { name: 'Retry renewal', exact: true })).toBeVisible({ timeout: 40_000 });
+      expect(readRequests).toBeGreaterThan(5);
+      expect(dropped).toBe(true);
+      await expect(controller).not.toContainText('You control this Run.');
+      const beforeRetry = await sql`SELECT event_id,payload FROM audit_events WHERE aggregate_id=${runId}
+        AND event_type='lifecycle.run-control-lease-renewed'`;
+      expect(beforeRetry).toHaveLength(1);
+      await openEscalation(runId);
+      await expect(page.getByRole('heading', { name: 'Open Escalation', exact: true })).toBeVisible();
+      await expect(controller.getByRole('button', { name: 'Retry renewal', exact: true })).toBeVisible();
+      await page.reload();
+      await expect(controller.getByRole('button', { name: 'Retry renewal', exact: true })).toBeVisible();
+      const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+      if (!auditor) throw new Error('Auditor missing');
+      await sql`UPDATE user_role SET role='audit-manager' WHERE user_id=${adminId}`;
+      const db = createDb(sql);
+      const dependencies = { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+        repository: new PostgresRunControlLeaseRepository(db), ids, allowEnrollment: true };
+      expect(await releaseRunControlLease(dependencies, { session: { userId: auditor.id, sessionId: 'renewal-fixture' },
+        request: { runId, expectedEpoch: 1 } })).toMatchObject({ ok: true });
+      expect(await acquireRunControlLease(dependencies, { session: { userId: adminId, sessionId: 'renewal-fixture' },
+        request: { runId, expectedEpoch: 2 } })).toMatchObject({ ok: true });
+      const leaseBefore = await readLease(runId);
+      holdRead = true;
+      await controller.getByRole('button', { name: 'Retry renewal', exact: true }).click();
+      await readReady;
+      await expect(controller).not.toContainText('You control this Run.');
+      await expect(controller).toContainText('Checking current Run control');
+      releaseRead();
+      await expect(controller).toContainText('Current controller:');
+      expect(renewalBodies).toHaveLength(2);
+      expect(renewalBodies[1]).toBe(renewalBodies[0]);
+      expect(await readLease(runId)).toEqual(leaseBefore);
+      expect(await sql`SELECT event_id,payload FROM audit_events WHERE aggregate_id=${runId}
+        AND event_type='lifecycle.run-control-lease-renewed'`).toEqual(beforeRetry);
+      await capture(page, testInfo, 'controller-renewal-recovered');
+    } finally {
+      releaseRead(); stopped = true; await progress;
+      if (originalAdminRole) await sql`UPDATE user_role SET role=${originalAdminRole.role},assigned_by=${originalAdminRole.assigned_by},assigned_at=${originalAdminRole.assigned_at}::timestamptz WHERE user_id=${adminId}`;
+    }
+  });
+
+  test('a routine heartbeat preserves an open Resume and blocks submission only during fresh verification', async ({ page }) => {
+    test.setTimeout(70_000);
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('Auditor missing');
+    const runId = await seedRun('RUNNING');
+    await pauseSeededRun(runId, auditor.id);
+    await page.goto(`/runs/${runId}`);
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(controller).toContainText('You control this Run.');
+    let renewed = false;
+    let releaseRead!: () => void;
+    const released = new Promise<void>(resolve => { releaseRead = resolve; });
+    let capturedRead!: () => void;
+    const captured = new Promise<void>(resolve => { capturedRead = resolve; });
+    await page.route(`**/api/runs/${runId}/control`, async route => {
+      if (renewed) {
+        const response = await route.fetch(); capturedRead(); await released;
+        await route.fulfill({ response }); return;
+      }
+      await route.continue();
+    });
+    await page.route(`**/runs/${runId}`, async route => {
+      const request = route.request();
+      if (request.method() === 'POST' && request.headers()['next-action']) {
+        const args: unknown = JSON.parse(request.postData() ?? 'null');
+        if (Array.isArray(args) && args[0] === 'renew') renewed = true;
+      }
+      await route.continue();
+    });
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
+    try {
+      await captured;
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Resume Run', exact: true })).toHaveAttribute('aria-disabled', 'true');
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
+      releaseRead();
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Resume Run', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+      await dialog.getByRole('button', { name: 'Go back', exact: true }).click();
+      expect(await readLease(runId)).toMatchObject({ epoch: 1 });
+    } finally { releaseRead(); }
+  });
+
+  test('a pending ownership read does not queue an independent safety Pause behind it', async ({ page }) => {
+    const runId = await seedRun('RUNNING');
+    await page.goto(`/runs/${runId}`);
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(controller).toContainText('You control this Run.');
+    let releaseRead!: () => void;
+    let captureRead!: () => void;
+    const released = new Promise<void>(resolve => { releaseRead = resolve; });
+    const captured = new Promise<void>(resolve => { captureRead = resolve; });
+    await page.route(`**/api/runs/${runId}/control`, async route => {
+      const response = await route.fetch(); captureRead(); await released;
+      await route.fulfill({ response });
+    });
+    try {
+      await progressEvent(runId); await captured;
+      await expect(controller).toContainText('Checking current Run control');
+      await page.getByRole('button', { name: 'Pause', exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Pause Run', exact: true }).click();
+      // Assert the actual safety marker before releasing the held ownership response.
+      await expect.poll(async () => (await sql`SELECT pause_requested_at IS NOT NULL AS requested
+        FROM audit_run WHERE run_id=${runId}`)[0]?.requested).toBe(true);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId}
+        AND event_type='lifecycle.run-pause-requested'`).toHaveLength(1);
+    } finally { releaseRead(); }
+  });
+
+  test('counts delayed ownership delivery against server expiry even while a later read hangs', async ({ page }) => {
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('Auditor missing');
+    const runId = await seedRun('RUNNING');
+    await pauseSeededRun(runId, auditor.id);
+    await page.clock.install(); await page.clock.pauseAt(new Date());
+    await page.goto(`/runs/${runId}`);
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await expect(controller).toContainText('No auditor currently holds control.');
+    // Drain hydration/initial stream invalidation before introducing a delayed read.
+    await page.clock.runFor(1_000);
+    await expect(controller).toContainText('No auditor currently holds control.');
+    let reads = 0;
+    let releaseRead!: () => void;
+    const released = new Promise<void>(resolve => { releaseRead = resolve; });
+    let capturedRead!: () => void;
+    const captured = new Promise<void>(resolve => { capturedRead = resolve; });
+    const pendingRoutes: Array<() => Promise<void>> = [];
+    await page.route(`**/api/runs/${runId}/control`, async route => {
+      reads += 1;
+      if (reads === 1) {
+        // A full 120-second server lease already 108 seconds old; no production
+        // duration is changed, and this genuine projection is delayed in transit.
+        await sql`WITH stamp AS (SELECT clock_timestamp() AS at)
+          INSERT INTO run_control_lease(run_id,epoch,holder_id,updated_at,expires_at)
+          SELECT ${runId}::uuid,1,${auditor.id},at-interval '108 seconds',at+interval '12 seconds' FROM stamp`;
+        const response = await route.fetch(); capturedRead(); await released;
+        await route.fulfill({ response }); return;
+      }
+      await new Promise<void>(resolve => { pendingRoutes.push(async () => { await route.abort(); resolve(); }); });
+    });
+    try {
+      await page.evaluate(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await captured;
+      await page.clock.runFor(7_000); releaseRead();
+      await expect(controller).toContainText('You control this Run.');
+      await progressEvent(runId);
+      await page.clock.runFor(500);
+      await expect.poll(() => reads).toBeGreaterThan(1);
+      await page.clock.runFor(6_000);
+      await expect(controller).toContainText('The last confirmed control lease expired.');
+      await expect(controller).not.toContainText('You control this Run.');
+      await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-disabled', 'true');
+      await Promise.all(pendingRoutes.splice(0).map(release => release()));
+      await page.unroute(`**/api/runs/${runId}/control`);
+      await controller.getByRole('button', { name: 'Refresh control', exact: true }).click();
+      await expect(controller).toHaveAttribute('data-control-ready', 'true');
+      await expect(controller).not.toContainText('The last confirmed control lease expired.');
+    } finally { releaseRead(); await Promise.all(pendingRoutes.map(release => release())); }
+  });
+
+  test('a late successful read cannot restore ownership or an open Resume after a newer read fails', async ({ page }) => {
+    const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+    if (!auditor) throw new Error('Auditor missing');
+    const runId = await seedRun('RUNNING');
+    await pauseSeededRun(runId, auditor.id);
+    await page.goto(`/runs/${runId}`);
+    const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+    await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(controller).toContainText('You control this Run.');
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Resume this Run?' })).toBeVisible();
+    let readCount = 0;
+    let releaseOld!: () => void;
+    let capturedOld!: () => void;
+    const captured = new Promise<void>(resolve => { capturedOld = resolve; });
+    const released = new Promise<void>(resolve => { releaseOld = resolve; });
+    let settledOld!: () => void;
+    const settled = new Promise<void>(resolve => { settledOld = resolve; });
+    await page.route(`**/api/runs/${runId}/control`, async route => {
+      readCount += 1;
+      if (readCount === 1) {
+        const response = await route.fetch(); capturedOld();
+        await released; await route.fulfill({ response }); settledOld(); return;
+      }
+      await route.abort('failed');
+    });
+    const visibility = async (value: 'hidden' | 'visible') => page.evaluate(state => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: state });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, value);
+    try {
+      await visibility('hidden');
+      await expect(page.getByRole('dialog', { name: 'Resume this Run?' })).toHaveCount(0);
+      await visibility('visible'); await captured;
+      await controller.getByRole('button', { name: 'Refresh control', exact: true }).click();
+      await expect.poll(() => readCount).toBeGreaterThan(1);
+      await expect(controller).not.toContainText('You control this Run.');
+      releaseOld(); await settled;
+      await expect(controller).toContainText('Run control is unavailable.');
+      await expect(page.getByRole('button', { name: 'Resume', exact: true })).toHaveAttribute('aria-disabled', 'true');
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
+    } finally { releaseOld(); }
+  });
+
+  test('keeps independent tabs fenced and withdraws hidden ownership until a fresh visible read', async ({ context, page }) => {
+    test.setTimeout(100_000);
+    const runId = await seedRun('RUNNING');
+    await page.goto(`/runs/${runId}`);
+    const first = page.getByRole('region', { name: 'Run controller', exact: true });
+    await first.getByRole('button', { name: 'Acquire control', exact: true }).click();
+    await expect(first).toContainText('You control this Run.');
+    const secondPage = await context.newPage();
+    try {
+      await secondPage.goto(`/runs/${runId}`);
+      const second = secondPage.getByRole('region', { name: 'Run controller', exact: true });
+      await expect(second).toContainText('You control this Run.');
+      // Drive the browser visibility boundary without relying on a window manager in CI.
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await expect(first).not.toContainText('You control this Run.');
+      await expect.poll(async () => (await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId}
+        AND event_type='lifecycle.run-control-lease-renewed'`).length, { timeout: 40_000 }).toBe(1);
+      expect(await readLease(runId)).toMatchObject({ epoch: 1 });
+      await second.getByRole('button', { name: 'Release control', exact: true }).click();
+      await expect(second).toContainText('No auditor currently holds control.');
+      await second.getByRole('button', { name: 'Acquire control', exact: true }).click();
+      await expect(second).toContainText('You control this Run.');
+      expect(await readLease(runId)).toMatchObject({ epoch: 3 });
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await expect(first).toContainText('You control this Run.');
+      await expect.poll(async () => (await sql`SELECT payload FROM audit_events WHERE aggregate_id=${runId}
+        AND event_type='lifecycle.run-control-lease-renewed' AND payload->>'expectedEpoch'='3'`).length,
+        { timeout: 40_000 }).toBeGreaterThanOrEqual(2);
+      const receipts = await sql<{ key: string }[]>`SELECT payload->>'requestKey' AS key FROM audit_events
+        WHERE aggregate_id=${runId} AND event_type='lifecycle.run-control-lease-renewed'`;
+      expect(new Set(receipts.map(receipt => receipt.key)).size).toBe(receipts.length);
+      expect(await readLease(runId)).toMatchObject({ epoch: 3 });
+    } finally { await secondPage.close(); }
+  });
+
+  for (const invalidation of ['failed ownership read', 'same actor new epoch'] as const) {
+    test(`withdraws conversational Resume after ${invalidation} while Stop stays independent`, async ({ page }) => {
+      const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
+      if (!auditor) throw new Error('Auditor missing');
+      const runId = await seedRun('RUNNING');
+      const waitId = await pauseSeededRun(runId, auditor.id);
+      await page.goto(`/runs/${runId}/workspace`);
+      const controller = page.getByRole('region', { name: 'Run controller', exact: true });
+      await controller.getByRole('button', { name: 'Acquire control', exact: true }).click();
+      await expect(controller).toContainText('You control this Run.');
+      await page.getByLabel('Message the Run', { exact: true }).fill('Resume');
+      await page.getByRole('button', { name: 'Send message', exact: true }).click();
+      await expect(page.locator('.run-conversation__composer-status')).toHaveText('Message accepted.');
+      await page.getByRole('button', { name: 'Review Resume', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Resume this Run?', exact: true });
+      await expect(dialog).toBeVisible();
+      let confirmations = 0;
+      let reads = 0;
+      await page.route(`**/api/runs/${runId}/control`, async route => {
+        reads += 1;
+        if (invalidation === 'failed ownership read') { await route.abort('failed'); return; }
+        await route.continue();
+      });
+      await page.route(`**/runs/${runId}/workspace`, async route => {
+        const request = route.request();
+        if (request.method() === 'POST' && request.headers()['next-action']) {
+          const fields = actionFields(request.postData());
+          if (fields?.runId === runId && fields.commandId) confirmations += 1;
+        }
+        await route.continue();
+      });
+      if (invalidation === 'same actor new epoch') {
+        const db = createDb(sql);
+        const dependencies = { roles: new DrizzleRoleRepository(db), unitOfWork: new PostgresRunsUnitOfWork(db),
+          repository: new PostgresRunControlLeaseRepository(db), ids, allowEnrollment: true };
+        const session = { userId: auditor.id, sessionId: 'confirmation-epoch-fixture' };
+        expect(await releaseRunControlLease(dependencies, { session, request: { runId, expectedEpoch: 1 } })).toMatchObject({ ok: true });
+        expect(await acquireRunControlLease(dependencies, { session, request: { runId, expectedEpoch: 2 } })).toMatchObject({ ok: true });
+      }
+      await progressEvent(runId);
+      await expect.poll(() => reads).toBeGreaterThan(0);
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Review Resume', exact: true })).toHaveCount(0);
+      if (invalidation === 'same actor new epoch') {
+        await expect(controller).toContainText('You control this Run.');
+        expect(await readLease(runId)).toMatchObject({ epoch: 3, holder_id: auditor.id });
+      } else await expect(controller).toContainText('Run control is unavailable.');
+      expect(confirmations).toBe(0);
+      expect(await sql`SELECT state FROM audit_run WHERE run_id=${runId}`).toEqual([{ state: 'PAUSED' }]);
+      expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${waitId}`).toEqual([{ closed_at: null }]);
+      expect(await sql`SELECT event_id FROM audit_events WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`).toHaveLength(0);
+      // Lease-read failure must not borrow authority from, or disable, safety Stop.
+      await page.getByLabel('Message the Run', { exact: true }).fill('Stop');
+      await page.getByRole('button', { name: 'Send message', exact: true }).click();
+      await page.getByRole('button', { name: 'Review Stop', exact: true }).click();
+      const stop = page.getByRole('dialog', { name: 'Stop this Run?', exact: true });
+      await expect(stop.getByRole('button', { name: 'Stop Run', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+      await stop.getByRole('button', { name: 'Go back', exact: true }).click();
+      expect(confirmations).toBe(0);
+    });
+  }
+
   test('recovers the same conversational Resume after the response is lost', async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     const [auditor] = await sql<{ id: string }[]>`SELECT id FROM auth_user WHERE email=${ACCOUNTS.auditor.email}`;
@@ -230,13 +609,14 @@ test.describe('durable Run controller lease', () => {
     await expect(dialog.getByRole('button', { name: 'Go back', exact: true })).toBeFocused();
     expect(await sql`SELECT closed_at FROM run_wait WHERE wait_id=${waitId}`).toEqual([{ closed_at: null }]);
     let dropped = false;
+    let captured: Request | null = null;
     let forwardedStatus: number | null = null;
     await page.route(`**/runs/${runId}/workspace`, async route => {
       const request = route.request();
       const fields = actionFields(request.postData());
       if (!dropped && request.method() === 'POST' && request.headers()['next-action'] !== undefined &&
         fields?.runId === runId && fields.commandId === proposal.command_id) {
-        dropped = true;
+        dropped = true; captured = request;
         // Execute the real authenticated request, then lose only its response. The
         // retry must discover the existing effect instead of sending new inputs.
         const response = await route.fetch();
@@ -247,7 +627,10 @@ test.describe('durable Run controller lease', () => {
       await route.continue();
     });
     await dialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
-    await expect(dialog).toContainText('Retry this same confirmation');
+    // Either the event refresh has reconciled the applied receipt, or the original
+    // confirmation remains available to recover. Both preserve the same command.
+    await expect.poll(async () => await dialog.count() === 0 ||
+      (await dialog.textContent())?.includes('Retry this same confirmation')).toBe(true);
     expect(dropped).toBe(true);
     expect(forwardedStatus).toBe(200);
     expect(await sql`SELECT state,revision FROM audit_run WHERE run_id=${runId}`)
@@ -255,7 +638,16 @@ test.describe('durable Run controller lease', () => {
     const beforeRetry = await sql`SELECT event_id,sequence FROM audit_events
       WHERE aggregate_id=${runId} AND event_type='lifecycle.run-resumed'`;
     expect(beforeRetry).toHaveLength(1);
-    await dialog.getByRole('button', { name: 'Resume Run', exact: true }).click();
+    if (captured === null) throw new Error('The authenticated Resume confirmation was not captured.');
+    const replay = await page.request.fetch(captured);
+    expect(replay.status()).toBe(200);
+    const replayBody = await replay.text();
+    expect(replayBody).toContain('"commandId":"' + proposal.command_id + '"');
+    expect(replayBody).toContain('"state":"applied"');
+    expect(replayBody).toContain('"replayed":true');
+    // Read the authoritative history after exact authenticated recovery. Do not keep
+    // an already-applied modal artificially open against the live event projection.
+    await progressEvent(runId);
     await expect(dialog).toHaveCount(0);
     await expect(page.getByLabel('Conversation history')).toContainText('Resume request: applied.');
     await page.reload();
